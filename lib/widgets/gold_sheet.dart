@@ -1098,7 +1098,7 @@ class _CombatCard extends StatelessWidget {
         const Color(0xFFE24A4A);
     final frozen = type == 'spider' && logic.isRoutineFrozenToday(itemId);
     final fighting = _isActivelyCombating();
-    final avatar = logic.state.activeAvatar ?? '🧍';
+    final avatar = logic.state.activeAvatar ?? GoldEconomy.defaultAvatar;
     final sbires = logic.sbiresLeft(type, itemId);
     final exposed = sbires <= 0;
     final loot = GoldEconomy.pestLootBase(type, false);

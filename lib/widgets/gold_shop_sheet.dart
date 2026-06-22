@@ -130,7 +130,7 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
       ({String id, String emoji, String name, int price}) sk, ColorScheme cs) {
     final cosmId = 'avatar_${sk.id}';
     final owned = sk.price == 0 || logic.state.cosmeticsOwned.contains(cosmId);
-    final active = (logic.state.activeAvatar ?? '🧍') == sk.emoji;
+    final active = (logic.state.activeAvatar ?? GoldEconomy.defaultAvatar) == sk.emoji;
     return GestureDetector(
       onTap: _busy ? null : () => _equipAvatar(sk.id, sk.emoji, sk.price),
       child: Container(
