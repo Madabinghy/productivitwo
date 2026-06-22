@@ -3386,7 +3386,36 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // ── Panneau JARDIN in‑place ────────────────────────────────────────────────
   // Recouvre la bande `gardenRect` du domaine de l'avatar : combat (BacklogCombatPanel)
   // ou mini‑app dashboard des routines/activités du domaine.
+  // Corps du dashboard de domaine pour le PLEIN ÉCRAN mobile (+ croix de fermeture).
+  Widget _mobileDashBody() {
+    final w = _wv2;
+    final gp = _gardenPanel;
+    if (w == null || gp == null) return const SizedBox.shrink();
+    final c = w.byDomain[gp.domainId];
+    if (c == null) return const SizedBox.shrink();
+    final col = domainColor(gp.domainId, logic.state.activeDomains) ?? _kGold;
+    final body = (gp.mode == 'pestDash' &&
+            gp.pestType != null &&
+            gp.laneId != null)
+        ? _pestDashV2(gp.pestType!, gp.laneId!, col)
+        : _routineDashV2(c, col);
+    return Column(children: [
+      Align(
+        alignment: Alignment.centerRight,
+        child: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white70),
+          tooltip: 'Fermer',
+          onPressed: _closeV2Panel,
+        ),
+      ),
+      Expanded(child: body),
+    ]);
+  }
+
   Widget _gardenPanelV2(WorldLayout w) {
+    // Mobile : le dashboard est rendu en PLEIN ÉCRAN ailleurs (_mobileDashBody) → ici
+    // (panneau « taille jardin » dans l'espace scalé de la carte) on n'affiche rien.
+    if (widget.mobile) return const SizedBox.shrink();
     final gp = _gardenPanel!;
     final c = w.byDomain[gp.domainId];
     if (c == null) return const SizedBox.shrink();
@@ -6818,6 +6847,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                                     child: _combatPanel(),
                                   ),
                                 )),
+                    // Dashboard de domaine : PLEIN ÉCRAN sur mobile (le panneau
+                    // « taille jardin » est illisible au téléphone) + croix.
+                    if (widget.mobile &&
+                        _gardenPanel != null &&
+                        _gardenPanel!.mode != 'combat')
+                      Positioned.fill(
+                        child: Material(
+                          color: const Color(0xFF0E1714),
+                          child: SafeArea(child: _mobileDashBody()),
+                        ),
+                      ),
                   ]))
             : ((_loading || t == null || w == null)
                 ? const Center(
