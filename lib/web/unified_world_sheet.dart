@@ -8900,7 +8900,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _revealAroundV2(_posV2); // nuage de guerre : on révèle autour de l'avatar
     // Caméra cadrée sur le spawn UNE seule fois (plus d'auto‑centrage ensuite).
     if (firstSpawn) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAvatarV2());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _enforceMinZoomV2(); // jamais de bande noire au démarrage (mobile portrait)
+        _scrollToAvatarV2();
+      });
     }
   }
 
@@ -9628,6 +9631,37 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   Offset _v2CenterD(double x, double y) =>
       Offset(x * _kV2Slot + _kV2Slot / 2, y * _kV2Slot + _kV2Slot / 2);
 
+  // Zoom minimum = COUVERTURE du viewport dans LES DEUX axes (max des deux ratios
+  // d'ajustement). En dessous, la carte serait plus petite que l'écran sur un axe
+  // → bandes noires impossibles à recadrer (la map paraît « rongée »). On garde
+  // toujours l'écran rempli ; l'utilisateur panne pour voir le reste.
+  double _v2MinZoom() {
+    final w0 = _wv2;
+    if (w0 == null || !_v2HCtrl.hasClients || !_v2VCtrl.hasClients) {
+      return _kZoomMin;
+    }
+    final vpW = _v2HCtrl.position.viewportDimension;
+    final vpH = _v2VCtrl.position.viewportDimension;
+    final fitW = vpW / (w0.cols * _kV2Slot);
+    final fitH = vpH / (w0.rows * _kV2Slot);
+    final cover = fitW > fitH ? fitW : fitH;
+    return cover.clamp(0.1, _kZoomMax);
+  }
+
+  // Force le zoom courant à rester ≥ couverture (après layout / changement de
+  // viewport) et recadre pour éviter toute bande noire résiduelle.
+  void _enforceMinZoomV2() {
+    final lo = _v2MinZoom();
+    if (_v2Zoom < lo - 0.001) {
+      setState(() => _v2Zoom = lo);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
+        _v2HCtrl.jumpTo(_v2HCtrl.offset.clamp(0.0, _v2HCtrl.position.maxScrollExtent));
+        _v2VCtrl.jumpTo(_v2VCtrl.offset.clamp(0.0, _v2VCtrl.position.maxScrollExtent));
+      });
+    }
+  }
+
   void _scrollToAvatarV2() {
     if (!_v2HCtrl.hasClients || !_v2VCtrl.hasClients) return;
     final vpW = _v2HCtrl.position.viewportDimension;
@@ -9688,15 +9722,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
               // PINCH : zoom centré sur le viewport (recadrage post‑frame).
               if (d.scale != 1.0) {
-                final w0 = _wv2;
                 // Sensibilité réduite : on amortit l'écart de pinch.
                 final damp = 1 + (d.scale - 1) * 0.5;
-                // Min zoom = remplir la largeur (sinon zone noire à droite au dézoom).
-                final fitW = w0 != null
-                    ? _v2HCtrl.position.viewportDimension / (w0.cols * _kV2Slot)
-                    : _kZoomMin;
-                final lo = (fitW > _kZoomMin ? fitW : _kZoomMin)
-                    .clamp(_kZoomMin, _kZoomMax);
+                // Min zoom = COUVERTURE des deux axes (cf. _v2MinZoom) : jamais de
+                // bande noire (ni à droite, ni en bas) qu'on ne pourrait recadrer.
+                final lo = _v2MinZoom();
                 final nz = (_zoomStart * damp).clamp(lo, _kZoomMax);
                 if ((nz - _v2Zoom).abs() > 0.001) {
                   final vpW = _v2HCtrl.position.viewportDimension;
