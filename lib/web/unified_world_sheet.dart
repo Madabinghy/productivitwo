@@ -2609,7 +2609,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     const base = 124.0, knob = 54.0;
     const knobR = (base - knob) / 2;
     return Positioned(
-      left: 18,
+      right: 18,
       bottom: 24,
       child: GestureDetector(
         onPanStart: (d) {
@@ -6769,10 +6769,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     Positioned.fill(child: _contentV2()),
                     // Joystick mobile (bas‑gauche) : déplace l'avatar pas à pas.
                     if (widget.mobile) _v2Joystick(),
-                    // Donjon 🏔️ : entrée de l'aventure (montée en niveaux) → ouvre le
-                    // graphe d'expédition. Haut-GAUCHE de la map (zone libre).
-                    if (!widget.mobile)
-                      Positioned(top: 10, left: 10, child: _donjonMarker()),
+                    // Donjon 🏔️ : recadre la caméra sur le donjon (affiché en bande en
+                    // haut). Ré-exposé sur mobile (CTA). Haut-GAUCHE de la map.
+                    Positioned(top: 10, left: 10, child: _donjonMarker()),
                     Positioned(
                         top: 10,
                         right: 10,
@@ -9543,7 +9542,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                   .clamp(0.0, _v2VCtrl.position.maxScrollExtent));
               // PINCH : zoom centré sur le viewport (recadrage post‑frame).
               if (d.scale != 1.0) {
-                final nz = (_zoomStart * d.scale).clamp(_kZoomMin, _kZoomMax);
+                final w0 = _wv2;
+                // Sensibilité réduite : on amortit l'écart de pinch.
+                final damp = 1 + (d.scale - 1) * 0.5;
+                // Min zoom = remplir la largeur (sinon zone noire à droite au dézoom).
+                final fitW = w0 != null
+                    ? _v2HCtrl.position.viewportDimension / (w0.cols * _kV2Slot)
+                    : _kZoomMin;
+                final lo = (fitW > _kZoomMin ? fitW : _kZoomMin)
+                    .clamp(_kZoomMin, _kZoomMax);
+                final nz = (_zoomStart * damp).clamp(lo, _kZoomMax);
                 if ((nz - _v2Zoom).abs() > 0.001) {
                   final vpW = _v2HCtrl.position.viewportDimension;
                   final vpH = _v2VCtrl.position.viewportDimension;
@@ -9777,7 +9785,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
 
   // Cases visibles (fenêtre de scroll + marge) → Positioned.
   List<Widget> _visibleCellsV2(WorldLayout w) {
-    const slot = _kV2Slot, margin = 2;
+    const slot = _kV2Slot;
+    // Marge ADAPTATIVE : au dézoom, plus de tuiles tiennent à l'écran → on élargit
+    // la fenêtre construite pour éviter des bords noirs (cases non dessinées).
+    final margin = (3 / _v2Zoom).ceil().clamp(2, 10);
     // L'espace de scroll est scalé par le zoom : 1 tuile = slot × _v2Zoom pixels scalés.
     final ssl = slot * _v2Zoom;
     // Au 1ᵉʳ frame le viewport n'existe pas encore → on cadre une FENÊTRE autour de
