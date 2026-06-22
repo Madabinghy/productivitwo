@@ -2800,6 +2800,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final daysAgo = today.difference(target).inDays;
       final j = 6 - daysAgo;
       final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
+      // Recadre sur la trajectoire du boulet (mi-chemin tourelle → cible) pour que
+      // la boule de feu reste visible sans recentrage manuel (qui interromprait la
+      // séquence et ferait disparaître le projectile).
+      _v2CenterOn(Point((lane.turretX + col) ~/ 2, lane.y));
       _fireV2Bolt(col, lane.y, lane.turretX,
           dur: _kV2ExploreBoltDur, cellId: '${col}_${lane.y}');
       if (mounted) setState(() {});
@@ -5106,6 +5110,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   Widget _parcheminPanelV2(WorldLayout w) {
+    // Mobile : le parchemin est rendu en PLEIN ÉCRAN ailleurs (_mobileParcheminBody)
+    // → ici (panneau dans l'espace scalé de la carte, illisible au téléphone) rien.
+    if (widget.mobile) return const SizedBox.shrink();
     final pa = _parchemin!;
     final c = w.byDomain[pa.domainId];
     if (c == null) return const SizedBox.shrink();
@@ -5118,13 +5125,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final bottom = (v.top + v.height) > (g.top + g.height)
         ? (v.top + v.height)
         : (g.top + g.height);
-    final col = domainColor(pa.domainId, logic.state.activeDomains) ?? _kGold;
-    final projs = _projectsOfDomain(pa.domainId);
-    Project? sel;
-    for (final p in projs) {
-      if (p.id == pa.projectId) sel = p;
-    }
-    sel ??= projs.isNotEmpty ? projs.first : null;
     return Positioned(
       left: left * _kV2Slot,
       top: top * _kV2Slot,
@@ -5136,39 +5136,89 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         borderRadius: BorderRadius.circular(8),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
-          child: Column(children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-              color: col.withOpacity(.22),
-              child: Row(children: [
-                const Text('📜', style: TextStyle(fontSize: 15)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text('${_domainName(pa.domainId)} — Projets',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 13)),
-                ),
-                InkWell(
-                  onTap: _closeV2Panel,
-                  child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child:
-                          Icon(Icons.close, color: Colors.white60, size: 18)),
-                ),
-              ]),
-            ),
-            _parcheminMissionBanner(pa.domainId),
-            Expanded(
-              child: projs.isEmpty
-                  ? const Center(
-                      child: Text('Aucun projet dans ce domaine',
-                          style:
-                              TextStyle(color: Colors.white38, fontSize: 12)))
-                  : Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child: _parcheminBody(pa.domainId, pa.projectId),
+        ),
+      ),
+    );
+  }
+
+  // Plein écran mobile pour le parchemin (projets du domaine) : même corps que le
+  // panneau web, mais sans la position « taille village » (illisible au téléphone).
+  Widget _mobileParcheminBody() {
+    final pa = _parchemin;
+    if (pa == null) return const SizedBox.shrink();
+    return _parcheminBody(pa.domainId, pa.projectId);
+  }
+
+  // Corps du parchemin (header + bannière mission + liste projets / doc). Partagé
+  // entre le panneau web (in‑place) et le plein écran mobile.
+  Widget _parcheminBody(String domainId, String? projectId) {
+    final col = domainColor(domainId, logic.state.activeDomains) ?? _kGold;
+    final projs = _projectsOfDomain(domainId);
+    Project? sel;
+    for (final p in projs) {
+      if (p.id == projectId) sel = p;
+    }
+    sel ??= projs.isNotEmpty ? projs.first : null;
+    // Téléphone étroit : liste et doc empilés verticalement plutôt que côte à côte.
+    final narrow = widget.mobile;
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+        color: col.withOpacity(.22),
+        child: Row(children: [
+          const Text('📜', style: TextStyle(fontSize: 15)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('${_domainName(domainId)} — Projets',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13)),
+          ),
+          InkWell(
+            onTap: _closeV2Panel,
+            child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Colors.white60, size: 18)),
+          ),
+        ]),
+      ),
+      _parcheminMissionBanner(domainId),
+      Expanded(
+        child: projs.isEmpty
+            ? const Center(
+                child: Text('Aucun projet dans ce domaine',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)))
+            : narrow
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: 96,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 6),
+                          children: [
+                            for (final p in projs)
+                              _parcheminProjectChip(p, p.id == sel?.id, col),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1, color: Colors.white12),
+                      Expanded(
+                        child: sel == null
+                            ? const SizedBox.shrink()
+                            : _parcheminProjectDoc(sel, col),
+                      ),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                       Expanded(
                         flex: 4,
                         child: ListView(
@@ -5187,11 +5237,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                             : _parcheminProjectDoc(sel, col),
                       ),
                     ]),
-            ),
-          ]),
-        ),
       ),
-    );
+    ]);
   }
 
   // Bande MISSION en tête du parchemin : l'écart hebdo du domaine (= les petites
@@ -5262,6 +5309,54 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                 valueColor: AlwaysStoppedAnimation(col)),
           ),
         ]),
+      ),
+    );
+  }
+
+  // Variante compacte du projet pour la liste horizontale du parchemin mobile.
+  Widget _parcheminProjectChip(Project p, bool selected, Color col) {
+    final prog = _projectProgress(p);
+    return InkWell(
+      onTap: () => setState(() =>
+          _parchemin = (domainId: _parchemin!.domainId, projectId: p.id)),
+      child: Container(
+        width: 150,
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? col.withOpacity(.18) : Colors.white.withOpacity(.04),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: selected ? col : Colors.white12, width: selected ? 1.5 : 1),
+        ),
+        child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(p.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: selected ? Colors.white : Colors.white70,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                      fontSize: 12)),
+              Row(children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                        value: prog,
+                        minHeight: 5,
+                        backgroundColor: Colors.white12,
+                        valueColor: AlwaysStoppedAnimation(col)),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text('${(prog * 100).round()}%',
+                    style: TextStyle(
+                        color: col, fontWeight: FontWeight.w900, fontSize: 11)),
+              ]),
+            ]),
       ),
     );
   }
@@ -6685,13 +6780,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
     final n = _totalDefendEmbers();
     if (n <= 0) return const SizedBox.shrink();
+    // Sur mobile : version compacte « feu 🔥 N » (le label complet prend trop
+    // de place à l'écran).
+    final compact = widget.mobile;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: _v2DischargeBacklog,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          padding: EdgeInsets.symmetric(
+              horizontal: compact ? 12 : 18, vertical: compact ? 8 : 11),
           decoration: BoxDecoration(
             color: const Color(0xFF1C140A).withOpacity(.92),
             borderRadius: BorderRadius.circular(24),
@@ -6707,8 +6806,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text('🔥', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Text('Défendre le château · $n',
+              const SizedBox(width: 6),
+              Text(compact ? 'feu · $n' : 'Défendre le château · $n',
                   style: const TextStyle(
                       color: Color(0xFFFFC83D),
                       fontSize: 14,
@@ -6855,6 +6954,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         child: Material(
                           color: const Color(0xFF0E1714),
                           child: SafeArea(child: _mobileDashBody()),
+                        ),
+                      ),
+                    // Parchemin (projets du domaine) : PLEIN ÉCRAN sur mobile.
+                    if (widget.mobile && _parchemin != null)
+                      Positioned.fill(
+                        child: Material(
+                          color: const Color(0xFF161008),
+                          child: SafeArea(child: _mobileParcheminBody()),
                         ),
                       ),
                   ]))
@@ -7298,7 +7405,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   Widget _board(Territory t, UnifiedWorld w) {
-    final avatar = logic.state.activeAvatar ?? '🧍';
+    final avatar = logic.state.activeAvatar ?? GoldEconomy.defaultAvatar;
     final spider = _inInterior ? null : _spiderPos();
     return LayoutBuilder(builder: (context, c) {
       // Panneau latéral des noms de routines (intérieur) : réservé hors grille
@@ -10168,13 +10275,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       bg = Colors.white.withOpacity(.06);
       child = Opacity(
         opacity: .4,
-        child: Text(logic.state.activeAvatar ?? '🧍',
+        child: Text(logic.state.activeAvatar ?? GoldEconomy.defaultAvatar,
             style: const TextStyle(fontSize: inner * 0.6)),
       );
     }
     if (isAvatar) {
       bg = Colors.white.withOpacity(.18);
-      child = Text(logic.state.activeAvatar ?? '🧍',
+      child = Text(logic.state.activeAvatar ?? GoldEconomy.defaultAvatar,
           style: const TextStyle(fontSize: inner * 0.6));
     }
     final cell = SizedBox(

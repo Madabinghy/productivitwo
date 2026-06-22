@@ -300,6 +300,8 @@ class GoldEconomy {
 
   // ── Skins d'avatar (cosmétiques, puits d'or) ───────────────────────────────
   // Possédés via cosmeticsOwned ('avatar_<id>') ; activeAvatar stocke l'emoji.
+  // Avatar affiché par défaut (activeAvatar == null) : le ninja 🥷.
+  static const String defaultAvatar = '🥷';
   static const List<({String id, String emoji, String name, int price})>
       avatarSkins = [
     (id: 'default', emoji: '🧍', name: 'Aventurier', price: 0),

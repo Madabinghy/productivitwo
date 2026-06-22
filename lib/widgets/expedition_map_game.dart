@@ -375,7 +375,7 @@ class _ExpeditionGameState extends State<_ExpeditionGame> {
       tile: _map.at(x, y),
       visible: _revealed.contains('${x}_$y'),
       isAvatar: pos.x == x && pos.y == y,
-      avatarEmoji: logic.state.activeAvatar ?? '🧍',
+      avatarEmoji: logic.state.activeAvatar ?? GoldEconomy.defaultAvatar,
       reachable: (x - pos.x).abs() + (y - pos.y).abs() == 1,
       entity: ent,
       hpColor: hpColor,
