@@ -48,4 +48,39 @@ void main() {
     final m = buildOrganicMap(const []);
     expect(m.regions, isEmpty);
   });
+
+  group('routes-incursions', () {
+    test('déterministe + nombre de routes demandé', () {
+      final m = buildOrganicMap(sample);
+      final a = buildRoutes(m, 'travail', 3);
+      final b = buildRoutes(m, 'travail', 3);
+      expect(a.length, 3);
+      expect([for (final r in a) r.tiles], [for (final r in b) r.tiles]);
+    });
+
+    test('chaque case de route appartient au domaine, part du cœur', () {
+      final m = buildOrganicMap(sample);
+      final region = m.byDomain['travail']!;
+      for (final road in buildRoutes(m, 'travail', 3)) {
+        expect(road.tiles.first, region.center);
+        for (final t in road.tiles) {
+          expect(m.ownerAt(t.x, t.y), 'travail');
+        }
+      }
+    });
+
+    test('7 jalons (ou moins si route courte), du cœur vers le bord', () {
+      final m = buildOrganicMap(sample);
+      final road = buildRoutes(m, 'sante', 2).first;
+      final w = roadWaypoints(road);
+      expect(w.length, lessThanOrEqualTo(7));
+      expect(w, isNotEmpty);
+    });
+
+    test('domaine inconnu / count 0 → vide', () {
+      final m = buildOrganicMap(sample);
+      expect(buildRoutes(m, 'inexistant', 3), isEmpty);
+      expect(buildRoutes(m, 'sante', 0), isEmpty);
+    });
+  });
 }

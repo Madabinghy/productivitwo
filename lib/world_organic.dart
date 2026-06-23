@@ -44,6 +44,102 @@ class OrganicMap {
   int elevAt(int x, int y) => inBounds(x, y) ? elevation[_i(x, y)] : 0;
 }
 
+// ── ROUTES-INCURSIONS ───────────────────────────────────────────────────────
+// Encodage diégétique de la précision jour-par-jour : chaque routine d'une contrée
+// devient une ROUTE qui descend du cœur (centroïde) vers le bord sauvage (côte ou
+// frontière). Les 7 derniers jours y sont projetés en jalons (J‑0 près du cœur).
+// Géométrie PURE et déterministe (même domaine → mêmes routes) → testable.
+
+/// Une route : polyligne de cases, du cœur (index 0) vers le bord de la contrée.
+class IncursionRoad {
+  final List<Point<int>> tiles;
+  const IncursionRoad(this.tiles);
+  bool get isEmpty => tiles.isEmpty;
+  int get length => tiles.length;
+}
+
+// Hash déterministe et portable d'un id (n'utilise pas String.hashCode, dont la
+// stabilité inter‑run n'est pas garantie).
+int _seedOf(String s) {
+  var h = 2166136261;
+  for (final c in s.codeUnits) {
+    h = (h ^ c) * 16777619;
+    h &= 0x7fffffff;
+  }
+  return h;
+}
+
+const List<Point<int>> _dir8 = [
+  Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1),
+  Point(1, 1), Point(1, -1), Point(-1, 1), Point(-1, -1),
+];
+
+/// Trace `count` routes en éventail depuis le cœur de la contrée `domainId` vers
+/// son bord. Greedy : à chaque pas, le voisin DU DOMAINE qui (1) descend en
+/// altitude (vers la côte) et (2) s'aligne sur l'angle cible de la route.
+List<IncursionRoad> buildRoutes(OrganicMap map, String domainId, int count) {
+  final region = map.byDomain[domainId];
+  if (region == null || count <= 0) return const [];
+  final start = region.center;
+  if (map.ownerAt(start.x, start.y) != domainId) return const [];
+
+  final base = (_seedOf(domainId) % 360) * pi / 180.0;
+  final roads = <IncursionRoad>[];
+  for (var i = 0; i < count; i++) {
+    final theta = base + i * 2 * pi / count;
+    final dx0 = cos(theta), dy0 = sin(theta);
+    final path = <Point<int>>[start];
+    final seen = <int>{start.y * map.cols + start.x};
+    var cur = start;
+    for (var step = 0; step < 80; step++) {
+      Point<int>? best;
+      var bestScore = -1e9;
+      for (final d in _dir8) {
+        final nx = cur.x + d.x, ny = cur.y + d.y;
+        if (!map.inBounds(nx, ny)) continue;
+        if (map.ownerAt(nx, ny) != domainId) continue;
+        final key = ny * map.cols + nx;
+        if (seen.contains(key)) continue;
+        final align = d.x * dx0 + d.y * dy0; // -1..+1
+        final drop = (map.elevAt(cur.x, cur.y) - map.elevAt(nx, ny)) / 255.0;
+        final score = align + drop * 1.4;
+        if (score > bestScore) {
+          bestScore = score;
+          best = Point(nx, ny);
+        }
+      }
+      if (best == null) break;
+      seen.add(best.y * map.cols + best.x);
+      path.add(best);
+      cur = best;
+      var atEdge = false;
+      for (final d in const [Point(1, 0), Point(-1, 0), Point(0, 1), Point(0, -1)]) {
+        final nx = cur.x + d.x, ny = cur.y + d.y;
+        if (!map.inBounds(nx, ny) || map.ownerAt(nx, ny) == null) {
+          atEdge = true;
+          break;
+        }
+      }
+      if (atEdge) break;
+    }
+    roads.add(IncursionRoad(path));
+  }
+  return roads;
+}
+
+/// `days` jalons le long de la route : J‑0 juste au‑delà de la porte (cœur),
+/// J‑(days‑1) au bord sauvage. Échantillonnage régulier sur la polyligne.
+List<Point<int>> roadWaypoints(IncursionRoad road, {int days = 7}) {
+  final t = road.tiles;
+  if (t.isEmpty) return const [];
+  final out = <Point<int>>[];
+  for (var d = 0; d < days; d++) {
+    final f = days == 1 ? 1.0 : 0.20 + 0.80 * d / (days - 1);
+    out.add(t[(f * (t.length - 1)).round()]);
+  }
+  return out;
+}
+
 // Seuils d'altitude (sur 0..255) délimitant les biomes intérieurs. La côte est
 // détectée à part (adjacence eau), elle prime sur ces seuils.
 const int _kForest = 70;

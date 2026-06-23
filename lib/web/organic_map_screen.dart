@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/world_organic.dart';
 import 'package:productivitwo_v1/world_map_gen.dart';
 
@@ -22,9 +23,27 @@ class OrganicMapScreen extends StatefulWidget {
   State<OrganicMapScreen> createState() => _OrganicMapScreenState();
 }
 
+// Une route-incursion prête à rendre : la polyligne complète + 7 jalons (J‑0..J‑6)
+// avec leur état (jour manqué ?), la case-porte (tour), le nom de la routine.
+class _RoadView {
+  final List<Point<int>> path;
+  final List<Point<int>> way;
+  final List<bool> missed;
+  final Point<int> tower;
+  final String name;
+  const _RoadView({
+    required this.path,
+    required this.way,
+    required this.missed,
+    required this.tower,
+    required this.name,
+  });
+}
+
 class _OrganicMapScreenState extends State<OrganicMapScreen> {
   OrganicMap? _map;
   Map<String, String> _names = const {};
+  List<_RoadView> _roads = const [];
   String? _error;
 
   @override
@@ -49,15 +68,52 @@ class _OrganicMapScreenState extends State<OrganicMapScreen> {
       ];
       final names = {for (final d in logic.state.activeDomains) d.id: d.name};
       final map = buildOrganicMap(weights);
+      final roads = _computeRoads(map, logic);
       if (mounted) {
         setState(() {
           _map = map;
           _names = names;
+          _roads = roads;
         });
       }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
+  }
+
+  // Une route par routine (activité `isHabit`) de chaque contrée ; jalons J‑0..J‑6
+  // marqués manqués/tenus depuis les vrais hits (habitValueOnYmd). Palier 1 : les
+  // activités-temps (🦂) viendront ensuite.
+  List<_RoadView> _computeRoads(OrganicMap map, AppLogic logic) {
+    final today = DateTime.now();
+    final habitsByDom = <String, List<Activity>>{};
+    for (final a in logic.state.activeActivities) {
+      if (!a.isHabit) continue;
+      habitsByDom.putIfAbsent(a.domainId, () => []).add(a);
+    }
+    final out = <_RoadView>[];
+    habitsByDom.forEach((dom, habits) {
+      final roads = buildRoutes(map, dom, habits.length);
+      for (var i = 0; i < roads.length && i < habits.length; i++) {
+        final road = roads[i];
+        if (road.isEmpty) continue;
+        final way = roadWaypoints(road);
+        final missed = [
+          for (var d = 0; d < way.length; d++)
+            logic.habitValueOnYmd(
+                    habits[i].id, yyyymmdd(today.subtract(Duration(days: d)))) ==
+                0
+        ];
+        out.add(_RoadView(
+          path: road.tiles,
+          way: way,
+          missed: missed,
+          tower: road.tiles[road.length > 1 ? 1 : 0],
+          name: habits[i].name,
+        ));
+      }
+    });
+    return out;
   }
 
   @override
@@ -90,7 +146,7 @@ class _OrganicMapScreenState extends State<OrganicMapScreen> {
             child: SizedBox(
               width: w,
               height: h,
-              child: CustomPaint(painter: _OrganicMapPainter(map, _names)),
+              child: CustomPaint(painter: _OrganicMapPainter(map, _names, _roads)),
             ),
           ),
         ),
@@ -131,9 +187,10 @@ const Map<OrganicBiome, Color> _kBiome = {
 };
 
 class _OrganicMapPainter extends CustomPainter {
-  _OrganicMapPainter(this.map, this.names);
+  _OrganicMapPainter(this.map, this.names, this.roads);
   final OrganicMap map;
   final Map<String, String> names;
+  final List<_RoadView> roads;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -180,6 +237,10 @@ class _OrganicMapPainter extends CustomPainter {
 
     // 6) DÉTAILS semés (déterministe par case) : forêts + reliefs, posés sur la terre.
     _scatter(canvas);
+
+    // 6b) ROUTES-INCURSIONS : une route par routine (cœur → bord), 7 jalons jours,
+    //     nuisible sur chaque jour manqué, tour à la porte. (Visuel — palier 1.)
+    _drawRoads(canvas);
 
     // 7) LUMIÈRES chaudes au cœur des contrées (foyers) + noms en lettres glow.
     for (final r in map.regions) {
@@ -376,6 +437,101 @@ class _OrganicMapPainter extends CustomPainter {
           ..strokeWidth = 1.0);
   }
 
+  Offset _c(Point<int> p) =>
+      Offset(p.x * _kTile + _kTile / 2, p.y * _kTile + _kTile / 2);
+
+  void _drawRoads(Canvas canvas) {
+    for (final r in roads) {
+      if (r.path.length < 2) continue;
+      final path = Path()..moveTo(_c(r.path.first).dx, _c(r.path.first).dy);
+      for (var i = 1; i < r.path.length; i++) {
+        final o = _c(r.path[i]);
+        path.lineTo(o.dx, o.dy);
+      }
+      // chaussée sable + liseré pointillé
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = _kSand.withOpacity(.85)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = _kTile * 0.46
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round);
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = const Color(0xFF8A6A3A).withOpacity(.45)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4);
+      // jalons-jours : nuisible si manqué, foyer tenu sinon
+      for (var d = 0; d < r.way.length; d++) {
+        final o = _c(r.way[d]);
+        if (r.missed[d]) {
+          _pestMark(canvas, o);
+        } else {
+          canvas.drawCircle(o, _kTile * 0.12,
+              Paint()..color = const Color(0xFFFFE0A0));
+          canvas.drawCircle(
+              o,
+              _kTile * 0.20,
+              Paint()
+                ..color = const Color(0x55FFE0A0)
+                ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2));
+        }
+      }
+      _towerMark(canvas, _c(r.tower));
+    }
+  }
+
+  void _pestMark(Canvas canvas, Offset o) {
+    final r = _kTile * 0.17;
+    canvas.drawCircle(o.translate(1, 1.5), r,
+        Paint()..color = Colors.black.withOpacity(.22)); // ombre
+    canvas.drawCircle(
+        o,
+        r,
+        Paint()
+          ..color = const Color(0xFFB23A2E)
+          ..style = PaintingStyle.fill);
+    canvas.drawCircle(
+        o,
+        r,
+        Paint()
+          ..color = const Color(0xFF3A1410)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.0);
+    final p = Paint()
+      ..color = const Color(0xFF2A0E0A)
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+    for (final a in [0.6, 2.0, 3.7, 5.1]) {
+      canvas.drawLine(o, o + Offset(cos(a), sin(a)) * r * 1.5, p); // pattes
+    }
+  }
+
+  void _towerMark(Canvas canvas, Offset o) {
+    canvas.drawOval(
+        Rect.fromCenter(
+            center: o.translate(0, _kTile * 0.18),
+            width: _kTile * 0.5,
+            height: _kTile * 0.2),
+        Paint()..color = Colors.black.withOpacity(.25));
+    final body = Rect.fromCenter(
+        center: o, width: _kTile * 0.34, height: _kTile * 0.46);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(body, const Radius.circular(2)),
+        Paint()..color = const Color(0xFF4A3B26));
+    // créneaux + lueur de guet
+    canvas.drawRect(
+        Rect.fromCenter(
+            center: o.translate(0, -_kTile * 0.23),
+            width: _kTile * 0.34,
+            height: _kTile * 0.08),
+        Paint()..color = const Color(0xFF3A2E1C));
+    canvas.drawCircle(o.translate(0, -_kTile * 0.10), _kTile * 0.06,
+        Paint()..color = const Color(0xFFFFD98A));
+  }
+
   void _label(Canvas canvas, String text, Offset center, int regionSize) {
     final fontSize = (11 + sqrt(regionSize) * 0.5).clamp(12, 22).toDouble();
     final tp = TextPainter(
@@ -407,5 +563,5 @@ class _OrganicMapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OrganicMapPainter old) =>
-      old.map != map || old.names != names;
+      old.map != map || old.names != names || old.roads != roads;
 }
