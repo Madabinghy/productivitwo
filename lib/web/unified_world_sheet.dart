@@ -554,6 +554,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.pushAll(logic.state); // persiste (j'ai payé pour cette déloge)
   }
 
+  // Impute les shurikens dépensés au budget du JOUR. IDEMPOTENT : après imputation,
+  // _battleShkStart == _ninjaShurikens → un 2ᵉ appel ne recompte rien. Appelé à la
+  // victoire ET en quittant l'intérieur — sinon ressortir puis re-rentrer le même jour
+  // redonnait le budget PLEIN (bug : la dépense n'était persistée qu'à la victoire).
+  void _settleShurikens() {
+    final spent = _battleShkStart - _ninjaShurikens;
+    if (spent > 0) {
+      _consumeShurikens(spent);
+      _battleShkStart = _ninjaShurikens;
+    }
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
@@ -833,7 +845,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _cineSpawnT -= _kSbireSpawnEvery;
           final t = _cineToileSpawns[_cineSpawnIdx % _cineToileSpawns.length];
           _cineSpawnIdx++;
-          _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+          _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1)..src = t.key);
         }
       }
       // SUPPORT des tours : chaque tour AYANT des flammes tire 1 boule / 10 s
@@ -905,7 +917,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (_cineToileSpawns.isEmpty && _supportFbs.isEmpty) {
         _cineAttack = false;
         _cineActive = false;
-        _consumeShurikens(_battleShkStart - _ninjaShurikens);
+        _settleShurikens();
         final dom = _interiorDomainId;
         if (dom != null) {
           _v2Dislodged.add(dom); // ne reviendra pas
@@ -1024,6 +1036,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
       }
       _shurikens.removeWhere((shk) => shk.dead);
+      // Sbire tué → sa TOILE d'origine est DÉTRUITE (intention du champ `src`, jusque‑là
+      // jamais câblée). Sinon la case continue de spawner (bug signalé) ; et ça rend le
+      // boss gagnable AU SHURIKEN même sans tours (domaine négligé = pas de flammes).
+      for (final s in _cineSbires) {
+        if (s.hp <= 0 && s.src != null) {
+          _cineToileSpawns.removeWhere((t) => t.key == s.src);
+          _cineKilledToiles.add(s.src!);
+          if (s.src!.startsWith('toile:')) _dayKilledToiles.add(s.src!);
+        }
+      }
       _cineSbires.removeWhere((s) => s.hp <= 0);
       // Un sbire TOUCHE le ninja → -1 PV (le sbire disparaît). 0 PV → échec.
       _cineSbires.removeWhere((s) {
@@ -1758,6 +1780,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _exitInterior() {
     final saved = _savedW;
     if (saved == null && !widget.mobile) return;
+    _settleShurikens(); // impute la dépense AVANT de quitter (sinon re-rentrée = plein)
     setState(() {
       if (saved != null) {
         _w = saved;
