@@ -20,6 +20,7 @@ import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/arena_view.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
+import 'package:productivitwo_v1/web/daily_stake_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
@@ -1519,6 +1520,15 @@ class _FocusView extends StatelessWidget {
             icon: Icons.schedule_outlined,
             cs: cs,
             child: _buildScheduleSection(context, cs, todayStr),
+          ),
+          const SizedBox(height: 12),
+          // ── Card Mise du jour (sink d'or quotidien, commitment device) ───
+          _SidebarCard(
+            title: 'Mise du jour',
+            titleColor: const Color(0xFFC9A84C),
+            icon: Icons.casino_outlined,
+            cs: cs,
+            child: DailyStakeCard(sync: sync),
           ),
           const SizedBox(height: 12),
           // ── Card En retard ──────────────────────────────────────────────
