@@ -843,9 +843,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineSpawnT += dt;
         if (_cineSpawnT >= _kSbireSpawnEvery) {
           _cineSpawnT -= _kSbireSpawnEvery;
-          final t = _cineToileSpawns[_cineSpawnIdx % _cineToileSpawns.length];
-          _cineSpawnIdx++;
-          _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1)..src = t.key);
+          // Ne spawn QUE depuis une toile encore VIVANTE : une toile explosée cesse de
+          // pondre des sbires (bug : les cases détruites continuaient à en faire spawn).
+          final alive = [
+            for (final t in _cineToileSpawns)
+              if (!_cineKilledToiles.contains(t.key)) t
+          ];
+          if (alive.isNotEmpty) {
+            final t = alive[_cineSpawnIdx % alive.length];
+            _cineSpawnIdx++;
+            _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+          }
         }
       }
       // SUPPORT des tours : chaque tour AYANT des flammes tire 1 boule / 10 s
@@ -1036,16 +1044,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
       }
       _shurikens.removeWhere((shk) => shk.dead);
-      // Sbire tué → sa TOILE d'origine est DÉTRUITE (intention du champ `src`, jusque‑là
-      // jamais câblée). Sinon la case continue de spawner (bug signalé) ; et ça rend le
-      // boss gagnable AU SHURIKEN même sans tours (domaine négligé = pas de flammes).
-      for (final s in _cineSbires) {
-        if (s.hp <= 0 && s.src != null) {
-          _cineToileSpawns.removeWhere((t) => t.key == s.src);
-          _cineKilledToiles.add(s.src!);
-          if (s.src!.startsWith('toile:')) _dayKilledToiles.add(s.src!);
-        }
-      }
       _cineSbires.removeWhere((s) => s.hp <= 0);
       // Un sbire TOUCHE le ninja → -1 PV (le sbire disparaît). 0 PV → échec.
       _cineSbires.removeWhere((s) {
