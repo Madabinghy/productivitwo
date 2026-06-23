@@ -9382,10 +9382,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final boss = logic.state.bossInvasions.contains(c.domainId);
       // Délogée → ne revient pas… SAUF si un NOUVEAU boss de donjon la vise.
       if (!boss && _v2Dislodged.contains(c.domainId)) continue;
-      // Invasion COLLANTE : dès qu'on atteint N (ou boss de donjon), le domaine reste
-      // envahi jusqu'à ce qu'on l'ait DÉLOGÉE (affrontée).
-      if (_v2InvasionCount(c) >= _kInvasionN || boss) _v2Invaded.add(c.domainId);
-      if (!_v2Invaded.contains(c.domainId)) continue;
+      // Seuls les BOSS de donjon s'affichent en araignée sur la carte. Les invasions
+      // HEBDO (≥ N jours manqués) ne sont PLUS matérialisées par une araignée (choix
+      // produit : on évite la confusion ; le retard hebdo reste lisible ailleurs —
+      // jardin, compteur de nuisibles, défense du château).
+      if (boss) {
+        _v2Invaded.add(c.domainId);
+      } else {
+        _v2Invaded.remove(c.domainId); // une invasion hebdo ne rend plus « envahi »
+        continue;
+      }
       // Case‑séparateur (entre tourelles routines et activités), colonne tourelles.
       final y = c.sepY >= 0
           ? c.sepY
