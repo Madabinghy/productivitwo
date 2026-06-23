@@ -794,6 +794,47 @@ class _ExpeditionViewState extends State<ExpeditionView> {
                 for (final i in found)
                   if (i < challenges.length)
                     _ChallengeRow(c: challenges[i], cs: cs),
+              if (logic.expeditionHasObsoleteChallenge()) ...[
+                const SizedBox(height: 14),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Text(
+                    'Un défi cible une donnée supprimée — il ne pourra plus se valider.',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.onSurface.withOpacity(.65))),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Régénérer les défis (remet le donjon à zéro)'),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Régénérer les défis ?'),
+                        content: const Text(
+                            'De nouveaux défis seront tirés depuis tes données '
+                            'actuelles, et le parcours du donjon repart de zéro.'),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Annuler')),
+                          FilledButton(
+                              style: FilledButton.styleFrom(
+                                  backgroundColor: _kGold),
+                              onPressed: () => Navigator.pop(ctx, true),
+                              child: const Text('Régénérer',
+                                  style: TextStyle(color: Color(0xFF231900)))),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    logic.regenerateExpeditionChallenges(sync);
+                    if (!mounted) return;
+                    Navigator.pop(context); // ferme la feuille des défis
+                    setState(() {});
+                  },
+                ),
+              ],
             ],
           ),
         ),
