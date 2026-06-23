@@ -9545,18 +9545,23 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final araDom = _v2Araignee[id] ?? _v2Toiles[id];
     if (araDom != null) {
       final castle = w.byDomain[araDom];
+      final isBoss = logic.state.bossInvasions.contains(araDom);
       final n = castle == null ? 0 : _v2InvasionCount(castle);
-      // ≥ N araignées cette semaine → trop tôt : il faut valider ses routines pour
-      // redescendre sous N avant de pouvoir la déloger.
-      if (castle == null || n >= _kInvasionN) {
-        _toast(
-            '🕸️ ${_domainName(araDom)} : $n araignées cette semaine. Valide tes '
-            'routines pour descendre sous $_kInvasionN, puis déloge‑la.',
-            _kEnemy);
+      // Invasion HEBDO (≥ N araignées) → trop tôt : valide tes routines pour
+      // redescendre sous N avant de pouvoir la déloger. Un BOSS de donjon, lui, est
+      // TOUJOURS affrontable (menace à part) — sinon, posé sur un domaine déjà à ≥ N,
+      // il restait « non cliquable » (le gate hebdo le bloquait).
+      if (castle == null || (!isBoss && n >= _kInvasionN)) {
+        if (castle != null) {
+          _toast(
+              '🕸️ ${_domainName(araDom)} : $n araignées cette semaine. Valide tes '
+              'routines pour descendre sous $_kInvasionN, puis déloge‑la.',
+              _kEnemy);
+        }
         return;
       }
-      // < N → on peut TENTER de l'affronter. La déloge (et la conso de shurikens)
-      // n'a lieu qu'en cas de VICTOIRE du combat (cf. _simulateCine), pas au clic.
+      // affrontable → on TENTE. La déloge (et la conso de shurikens) n'a lieu qu'en
+      // cas de VICTOIRE du combat (cf. _simulateCine), pas au clic.
       _launchV2Cine(x, y, _posV2.x); // shuriken/jet vers l'araignée
       await Future.delayed(const Duration(milliseconds: 350));
       if (!mounted) return;
