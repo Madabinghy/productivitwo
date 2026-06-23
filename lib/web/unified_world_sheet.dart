@@ -6609,11 +6609,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   // ── Munitions des tourelles d'ACTIVITÉ‑TEMPS ──
-  // Munition = l'AVANCE (solde 7 j positif : temps loggué − objectif), MOINS ce qui a
-  // déjà été tiré (reconquêtes 'time' déjà posées sur la fenêtre). En MINUTES : c'est
-  // le « contenu » dépensable sur le retard passé. Affiché en TRANCHES de la cible du
-  // jour (1 flamme = goalMin) ; une tranche PARTIELLE compte quand même pour une flamme
-  // qui tirera son contenu réel.
+  // Munition = CHARGEUR : le temps RÉELLEMENT loggué AUJOURD'HUI, MOINS ce qui a déjà
+  // été tiré aujourd'hui (reconquêtes 'time' de source = aujourd'hui). Comme le charger
+  // des routines : l'effort du jour arme des flammes qu'on tire sur le RETARD PASSÉ.
+  // En MINUTES. Affiché en TRANCHES de la cible du jour (1 flamme = goalMin) ; une
+  // tranche PARTIELLE compte quand même pour une flamme qui tirera son contenu réel.
   ({int avail, int flames, int goalMin}) _timeTurretAmmo(String activityId) {
     Activity? a;
     for (final x in logic.state.activeActivities) {
@@ -6626,23 +6626,21 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       return (avail: 0, flames: 0, goalMin: 0);
     }
     final goal = a.goalMin;
-    final s = logic.timeSliding(activityId, 7);
-    final surplus = s.doneMin - s.targetMin; // avance (peut être négatif)
+    // Effort du jour = minutes réelles loguées aujourd'hui (fenêtre 1 jour).
+    final todayMin = logic.timeSliding(activityId, 1).doneMin;
     final now = DateTime.now();
-    final t0 = DateTime(now.year, now.month, now.day);
-    final lo = yyyymmdd(t0.subtract(const Duration(days: 6)));
-    final hi = yyyymmdd(t0);
-    var fired = 0;
+    final todayYmd = yyyymmdd(DateTime(now.year, now.month, now.day));
+    // Minutes déjà TIRÉES aujourd'hui (source = aujourd'hui) → ne pas re‑tirer.
+    var firedToday = 0;
     for (final r in logic.state.redemptions) {
       if (r.active &&
           r.type == 'time' &&
           r.activityId == activityId &&
-          r.targetDate.compareTo(lo) >= 0 &&
-          r.targetDate.compareTo(hi) <= 0) {
-        fired += r.amount;
+          r.sourceDate == todayYmd) {
+        firedToday += r.amount;
       }
     }
-    final avail = (surplus - fired) < 0 ? 0 : (surplus - fired);
+    final avail = (todayMin - firedToday) < 0 ? 0 : (todayMin - firedToday);
     // ceil : une tranche partielle (< goalMin) compte quand même pour 1 flamme.
     final flames = avail <= 0 ? 0 : ((avail + goal - 1) ~/ goal);
     return (avail: avail, flames: flames, goalMin: goal);
@@ -10236,7 +10234,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
             ),
           );
         } else if (_v2LaunchPadActivityId[id] != null) {
-          // Activité‑temps : MUNITION (🔥 flammes = tranches d'avance dépensables) au‑
+          // Activité‑temps : MUNITION (🔥 flammes = ton temps loggué aujourd'hui) au‑
           // dessus, puis pastille de SOLDE (temps loggué − objectif sur 7 j).
           bg = const Color(0xFFE8C13D).withOpacity(.16);
           final aid = _v2LaunchPadActivityId[id]!;
@@ -10247,9 +10245,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           if (tammo.flames > 0) {
             badges.add(Tooltip(
               message: 'Munition : ${tammo.flames} flamme(s) · '
-                  '${_fmtHM(tammo.avail)} d\'avance\n'
+                  '${_fmtHM(tammo.avail)} loggué aujourd\'hui\n'
                   '1 flamme = ${tammo.goalMin}min (cible du jour). '
-                  'Tire sur le retard passé, plus vieux d\'abord.',
+                  'Ton effort du jour tire sur le retard passé, plus vieux d\'abord.',
               child: _rampBadge(
                   '🔥', tammo.flames, const Color(0xFFFF8A3D), inner),
             ));
