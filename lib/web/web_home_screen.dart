@@ -522,18 +522,11 @@ class _FocusView extends StatelessWidget {
         .toSet()
         .toList();
 
-    final todayStr =
-        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
-
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Programme du jour ───────────────────────────────────────────
-          _buildScheduleSection(context, cs, todayStr),
-          const SizedBox(height: 20),
-
           // ── Tâches en cours / cette semaine ─────────────────────────────
           Row(children: [
             Icon(Icons.account_tree_outlined,
@@ -588,21 +581,6 @@ class _FocusView extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              Icon(Icons.schedule_outlined,
-                  size: 13, color: cs.onSurface.withOpacity(.45)),
-              const SizedBox(width: 6),
-              Text(
-                'PROGRAMME DU JOUR',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8,
-                  color: cs.onSurface.withOpacity(.45),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 10),
             if (blocks.isEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1525,11 +1503,24 @@ class _FocusView extends StatelessWidget {
     final progressProjects = allProjects
         .where((p) => p.status != 'done' && p.status != 'archived')
         .toList();
+    final todayStr =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Card Programme du jour (= onglet « Maintenant » du mobile) ───
+          // Toujours rendu dans la sidebar → visible quelle que soit la largeur
+          // et qu'il y ait des tâches actives ou non.
+          _SidebarCard(
+            title: 'Programme du jour',
+            titleColor: const Color(0xFF1D9E75),
+            icon: Icons.schedule_outlined,
+            cs: cs,
+            child: _buildScheduleSection(context, cs, todayStr),
+          ),
+          const SizedBox(height: 12),
           // ── Card En retard ──────────────────────────────────────────────
           _SidebarCard(
             title: 'En retard',
