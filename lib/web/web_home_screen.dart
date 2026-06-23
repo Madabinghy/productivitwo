@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/arena_view.dart';
+import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
@@ -163,6 +164,10 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         ),
         actions: [
           if (user != null) ...[
+            // Lanceur de chrono/minuteur GLOBAL : démarrer une activité depuis
+            // n'importe quel onglet, sans passer par l'Arène.
+            ChronoLauncher(sync: _sync),
+            const SizedBox(width: 4),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Center(
