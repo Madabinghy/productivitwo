@@ -9,14 +9,11 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/pulse.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/backlog_combat.dart' show showBacklogCombat;
-import 'package:productivitwo_v1/widgets/collection_sheet.dart';
 import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
-import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
-import 'package:productivitwo_v1/web/invasion_defense_sheet.dart';
+import 'package:productivitwo_v1/web/labs_view.dart';
 import 'package:productivitwo_v1/web/unified_world_sheet.dart';
-import 'package:productivitwo_v1/web/docks_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
 const _kCardBg = Color(0xFF120A0A);
@@ -758,7 +755,6 @@ class _ExplorationColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     final level = logic.effectiveLevel();
     final biome = expeditionBiome(level + 1);
-    final inDungeon = logic.state.expeditionDonjonLevel > 0;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -814,41 +810,21 @@ class _ExplorationColumn extends StatelessWidget {
             color: _kGold,
             onTap: () => showExpeditionGame(context, logic, sync),
           ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: inDungeon ? '🏰' : '🔒',
-            title: inDungeon ? 'Reprendre le donjon' : 'Donjon',
-            subtitle: inDungeon
-                ? 'Reprends où tu t\'es arrêté'
-                : 'Atteins le château sur la carte d\'abord',
-            color: const Color(0xFF8B5CF6),
-            onTap:
-                inDungeon ? () => showExpeditionSheet(context, logic, sync) : null,
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '🗺️',
-            title: 'Mes cartes',
-            subtitle: 'Ta collection de créatures et recettes de chasse',
-            color: const Color(0xFF22C55E),
-            onTap: () => showCollectionSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '🗃️',
-            title: 'Mes Docks',
-            subtitle: 'Tes decks en colonnes : vert · rouge · cartes · territoires',
-            color: const Color(0xFF06B6D4),
-            onTap: () => showDocksSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
-          _ExploreBtn(
-            emoji: '👑',
-            title: 'Invasion',
-            subtitle: 'Forge ton armée, envahis le ladder, défends ton territoire',
-            color: const Color(0xFFA855F7),
-            onTap: () => showInvasionSheet(context, logic, sync),
-          ),
+          // Modes expérimentaux (Donjon, Mes cartes, Docks, Invasion) déplacés
+          // dans « Labs » pour redonner de la cohérence à la boucle principale.
+          if (kLabsEnabled) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => showLabsSheet(context, logic, sync),
+                icon: const Icon(Icons.science_outlined, size: 16),
+                label: const Text('Labs (expérimental)'),
+                style: TextButton.styleFrom(
+                    foregroundColor: cs.onSurface.withOpacity(.55)),
+              ),
+            ),
+          ],
         ],
       ),
     );
