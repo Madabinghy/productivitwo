@@ -361,6 +361,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Donjon ouvert INLINE (panneau ExpeditionView intégré à la map, en haut de la cour).
   bool _donjonOpen = false;
   Set<String> _donjonBossBefore = const {}; // invasions avant l'ouverture (diff à la fermeture)
+  // Invasions de boss déjà MISES EN SCÈNE (araignées + annonce + recadrage). Permet de
+  // déclencher la cinématique pour une invasion lâchée depuis le REPÈRE du boss (flux
+  // inline), et pas seulement depuis la fermeture du donjon.
+  Set<String> _knownBossInvasions = {};
   // MODE COUR‑DONJON (Phase 1, visuel) : la cour affiche les vraies « étapes » à faire
   // (sous‑actions de tâches + actions libres d'activités), groupées par domaine à leur
   // hauteur. Activé en montant sur la case 🏔️ ou via le bouton Donjon.
@@ -746,6 +750,22 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final dt = _gameMs - _lastSimMs;
     if (dt < 33) return;
     _lastSimMs = _gameMs;
+    // Boss de donjon lâché (depuis le repère OU le donjon) : l'invasion est persistée
+    // dans bossInvasions, mais la mise en scène (araignées + annonce + recadrage) n'était
+    // faite que par _closeDonjon. On la déclenche ici pour TOUTE invasion nouvelle, d'où
+    // qu'elle vienne — sauf donjon ouvert (géré à sa fermeture, pour ne pas doubler).
+    if (!_donjonOpen) {
+      final fresh =
+          logic.state.bossInvasions.toSet().difference(_knownBossInvasions);
+      if (fresh.isNotEmpty) {
+        _knownBossInvasions = logic.state.bossInvasions.toSet();
+        final dom = fresh.first;
+        setState(_populateV2Araignees);
+        _toast('🕷️ Un boss envahit ${_domainName(dom)} ! Va le déloger 🥷',
+            _kEnemy);
+        _v2CenterOnDomainZone(dom);
+      }
+    }
     final hadShots = _shots.isNotEmpty;
     _shots.removeWhere((s) => _gameMs - s.startMs > s.durMs);
     // Reprise des cinématiques mobiles mises en file après la fin d'un combat.
@@ -6779,6 +6799,71 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
           _kEnemy);
       _v2CenterOnDomainZone(dom);
     }
+    // Déjà mises en scène ici → le tick de jeu ne les rejouera pas.
+    _knownBossInvasions = logic.state.bossInvasions.toSet();
+  }
+
+  // Bandeau d'ALERTE persistant : un (ou des) domaine(s) envahi(s) par un boss de
+  // donjon. Nomme le domaine (reconnaissable) et, au tap, recadre la caméra dessus
+  // (où aller le déloger). Masqué s'il n'y a pas d'invasion.
+  Widget _bossInvasionHud() {
+    final w = _wv2;
+    if (w == null) return const SizedBox.shrink();
+    final invaded = [
+      for (final c in w.castles)
+        if (logic.state.bossInvasions.contains(c.domainId)) c.domainId
+    ];
+    if (invaded.isEmpty) return const SizedBox.shrink();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: () => _v2CenterOnDomainZone(invaded.first),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 340),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: _kEnemy.withOpacity(.94),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(.4), blurRadius: 8)
+            ],
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Text('🕷️ ', style: TextStyle(fontSize: 16)),
+            Flexible(
+              child: Text(
+                invaded.length == 1
+                    ? 'Boss dans ${_domainName(invaded.first)} — clique pour y aller'
+                    : '${invaded.length} domaines envahis — clique pour y aller',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // Compteur de shurikens (munitions de combat) = budget du jour disponible.
+  Widget _shurikenHud() {
+    final n =
+        (logic.lifetimeBattleMasse - _shurikenSpentToday()).clamp(0, 1 << 30);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+          color: Colors.black.withOpacity(.55),
+          borderRadius: BorderRadius.circular(20)),
+      child: Text('🥷 $n',
+          style: const TextStyle(
+              color: Color(0xFFE7F0EA),
+              fontSize: 13,
+              fontWeight: FontWeight.w700)),
+    );
   }
 
   Widget _donjonMarker() {
@@ -7060,9 +7145,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                           children: [
                             _worldPestHud(),
                             const SizedBox(height: 8),
+                            _shurikenHud(),
+                            const SizedBox(height: 8),
                             _defendCastleButton(),
                           ],
                         )),
+                    // Bandeau d'alerte boss : domaine envahi (reconnaissable) + tap = y aller.
+                    Positioned(
+                        top: 10,
+                        left: 0,
+                        right: 0,
+                        child: Center(child: _bossInvasionHud())),
                     // Chrono en cours : épinglé en bas, visible quel que soit le panneau.
                     Positioned(
                         left: 0,
@@ -9008,6 +9101,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _rebuildWv2() {
     final layout = buildWorld(_domainSpecs());
     _wv2 = layout;
+    _knownBossInvasions = logic.state.bossInvasions.toSet(); // invasions déjà en place
     _wv2Version++; // structure/teintes changées → invalide le calque mini‑carte
     _cellWindow = null; // et la grille cullée
     _cachedCells = null;
