@@ -68,6 +68,34 @@ class GoldEconomy {
     return rounded < 10 ? 10 : rounded;
   }
 
+  // ── Royaume : PORTÉE des tourelles (sink d'or honnête) ─────────────────────
+  // L'or étend JUSQU'OÙ une tourelle peut reconquérir le passé ; les munitions
+  // restent gagnées par le travail (jamais fabriquées). Niveau 0 = 7 j (base) ;
+  // chaque niveau +7 j, plafonné par la fenêtre château (28 j) → max niveau 3.
+  static const int turretRangeMaxLevel = 3;
+  static const int turretRangeBase = 50; // coût du niveau 1
+  static const double turretRangeGrowth = 1.6;
+
+  /// Coût en or pour passer AU niveau de portée [level] (1..max). Géométrique,
+  /// arrondi à la dizaine.
+  static int turretRangeCost(int level) {
+    if (level <= 0) return 0;
+    var c = turretRangeBase.toDouble();
+    for (int i = 1; i < level; i++) {
+      c *= turretRangeGrowth;
+    }
+    final rounded = (c / 10).round() * 10;
+    return rounded < 10 ? 10 : rounded;
+  }
+
+  /// Jours de portée pour un niveau donné (0→7, 1→14, 2→21, 3→28).
+  static int turretRangeDaysForLevel(int level) {
+    final lvl = level < 0
+        ? 0
+        : (level > turretRangeMaxLevel ? turretRangeMaxLevel : level);
+    return 7 + lvl * 7;
+  }
+
   // ── Boutique : items par paliers + prix croissants ─────────────────────────
   /// Niveau minimum (débloqué) requis pour acheter chaque consommable.
   static const Map<String, int> itemMinLevel = {

@@ -169,6 +169,11 @@ class AppState {
   // Position des tours de défense de domaine (placement stratégique persisté) :
   // clé "domainId~routineId" → "x_y". Routine absente = retombe en zone de départ.
   Map<String, String> domTurretPos;
+  // « Royaume » : niveau de PORTÉE des tourelles (acheté avec l'or). 0 = portée de
+  // base (fenêtre 7 j) ; chaque niveau étend de combien de jours en arrière une
+  // tourelle peut reconquérir le passé avec des munitions DÉJÀ gagnées (jamais de
+  // munition fabriquée). Voir GoldEngine.turretRangeDays().
+  int turretRangeLevel;
 
   AppState({
     required this.domains,
@@ -256,6 +261,7 @@ class AppState {
     this.battleMasseToday = 0,
     this.battleMasseTodayYmd = '',
     this.deckResetYmd = '',
+    this.turretRangeLevel = 0,
     Map<String, String>? domTurretPos,
     Map<String, int>? weaponsSpent,
     Map<String, int>? pestKills,
@@ -403,6 +409,7 @@ class AppState {
         'battleMasseToday': battleMasseToday,
         'battleMasseTodayYmd': battleMasseTodayYmd,
         'deckResetYmd': deckResetYmd,
+        'turretRangeLevel': turretRangeLevel,
         'domTurretPos': domTurretPos,
         'engagedEnemies': engagedEnemies,
         'weaponPickups': weaponPickups,
@@ -569,6 +576,7 @@ class AppState {
       battleMasseToday: (j['battleMasseToday'] as num?)?.toInt() ?? 0,
       battleMasseTodayYmd: (j['battleMasseTodayYmd'] as String?) ?? '',
       deckResetYmd: (j['deckResetYmd'] as String?) ?? '',
+      turretRangeLevel: (j['turretRangeLevel'] as num?)?.toInt() ?? 0,
       domTurretPos: (j['domTurretPos'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
           <String, String>{},

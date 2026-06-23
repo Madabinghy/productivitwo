@@ -282,6 +282,7 @@ class FirestoreSync {
         battleMasseToday: (meta['battleMasseToday'] as num?)?.toInt() ?? 0,
         battleMasseTodayYmd: (meta['battleMasseTodayYmd'] as String?) ?? '',
         deckResetYmd: (meta['deckResetYmd'] as String?) ?? '',
+        turretRangeLevel: (meta['turretRangeLevel'] as num?)?.toInt() ?? 0,
         domTurretPos: (meta['domTurretPos'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), v.toString())),
         engagedEnemies: (meta['engagedEnemies'] as List?)?.cast<String>(),
@@ -427,6 +428,7 @@ class FirestoreSync {
       battleMasseTodayYmd:   local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) >= 0 ? local.battleMasseTodayYmd : remote.battleMasseTodayYmd,
       battleMasseToday:      local.battleMasseTodayYmd == remote.battleMasseTodayYmd ? (local.battleMasseToday >= remote.battleMasseToday ? local.battleMasseToday : remote.battleMasseToday) : (local.battleMasseTodayYmd.compareTo(remote.battleMasseTodayYmd) > 0 ? local.battleMasseToday : remote.battleMasseToday),
       deckResetYmd:          local.deckResetYmd.compareTo(remote.deckResetYmd) >= 0 ? local.deckResetYmd : remote.deckResetYmd,
+      turretRangeLevel:      local.turretRangeLevel >= remote.turretRangeLevel ? local.turretRangeLevel : remote.turretRangeLevel,
       domTurretPos:          local.domTurretPos.length >= remote.domTurretPos.length ? local.domTurretPos : remote.domTurretPos,
       engagedEnemies:        local.goldLifetime >= remote.goldLifetime ? local.engagedEnemies : remote.engagedEnemies,
       weaponPickups:         _mapSum(local.weaponPickups) >= _mapSum(remote.weaponPickups) ? local.weaponPickups : remote.weaponPickups,
@@ -1324,6 +1326,33 @@ class FirestoreSync {
         tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
           id: ledgerId, delta: -cost, category: 'spend',
           reasonCode: 'level_reveal', label: 'Révélation niveau $level',
+        ).toJson());
+      }
+      return true;
+    });
+  }
+
+  /// « Royaume » : achète un niveau de PORTÉE de tourelle (séquentiel, anti-skip),
+  /// calqué sur [revealLevel]. Débite l'or et monte `turretRangeLevel` d'UN cran.
+  /// L'or construit la machine ; les munitions restent gagnées par le travail.
+  Future<bool> upgradeTurretRange(
+      {required int newLevel, required int cost}) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    final ledgerId = '${DateTime.now().microsecondsSinceEpoch}';
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final gold = (data['gold'] as num?)?.toInt() ?? 0;
+      final current = (data['turretRangeLevel'] as num?)?.toInt() ?? 0;
+      if (newLevel != current + 1) return false; // séquentiel uniquement
+      if (gold < cost) return false;
+      tx.set(metaRef, {'gold': gold - cost, 'turretRangeLevel': newLevel},
+          SetOptions(merge: true));
+      if (cost > 0) {
+        tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
+          id: ledgerId, delta: -cost, category: 'spend',
+          reasonCode: 'turret_range', label: 'Portée tourelles niv. $newLevel',
         ).toJson());
       }
       return true;
