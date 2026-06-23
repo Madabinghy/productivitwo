@@ -20,7 +20,6 @@ import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/arena_view.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
-import 'package:productivitwo_v1/web/daily_stake_card.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
@@ -56,7 +55,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 2);
+    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 1);
     _load();
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
@@ -1412,15 +1411,6 @@ class _FocusView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
           ],
-          // ── Card Mise du jour (sink d'or quotidien, commitment device) ───
-          _SidebarCard(
-            title: 'Mise du jour',
-            titleColor: const Color(0xFFC9A84C),
-            icon: Icons.casino_outlined,
-            cs: cs,
-            child: DailyStakeCard(sync: sync),
-          ),
-          const SizedBox(height: 12),
           // ── Card En retard ──────────────────────────────────────────────
           _SidebarCard(
             title: 'En retard',

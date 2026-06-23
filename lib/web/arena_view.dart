@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/web/labs_view.dart';
 import 'package:productivitwo_v1/web/province_card.dart';
+import 'package:productivitwo_v1/web/daily_stake_card.dart';
 import 'package:productivitwo_v1/web/unified_world_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
@@ -203,6 +204,36 @@ class _ArenaViewState extends State<ArenaView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _StatsBar(logic: logic, cs: cs),
+        // ── Mise du jour (déplacée depuis l'onglet Focus) ─────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Container(
+            decoration: BoxDecoration(
+              color: _kCardBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: const Color(0xFFC9A84C).withOpacity(.35)),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: const [
+                  Icon(Icons.casino_outlined,
+                      size: 16, color: Color(0xFFC9A84C)),
+                  SizedBox(width: 6),
+                  Text('Mise du jour',
+                      style: TextStyle(
+                          color: Color(0xFFC9A84C),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13)),
+                ]),
+                const SizedBox(height: 8),
+                DailyStakeCard(sync: sync),
+              ],
+            ),
+          ),
+        ),
         // ── Bandeau chrono (session de temps en cours) ────────────────────────
         if (open != null)
           _TimerBanner(
