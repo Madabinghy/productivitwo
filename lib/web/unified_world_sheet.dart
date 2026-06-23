@@ -195,6 +195,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // INVASION : case araignée‑boss (≥ 10 araignées accumulées) → clic = combat.
   final Map<String, String> _v2Araignee = {}; // tileId → domainId en invasion
   final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
+  // TROU 🕳️ d'entrée du combat boss : posé sur une case JARDIN (cliquable garantie),
+  // géré tout en haut de _onTapV2 → entre dans la sous-map du domaine pour combattre.
+  final Map<String, String> _v2BossTrou = {}; // tileId (jardin) → domainId (boss)
+  // Toast rendu DANS le Stack du monde (les SnackBar passent derrière la map plein écran).
+  String? _hudToastMsg;
+  Color _hudToastColor = const Color(0xFF1D9E75);
+  int _hudToastUntilMs = 0;
   final Set<String> _v2Invaded = {}; // domaines envahis (collant : reste tant que pas délogé)
   final Set<String> _v2Dislodged = {}; // domaines délogés (réduits < N) → ne reviennent pas
   final Map<String, String> _v2LaneName = {}; // tileId → nom routine/activité
@@ -750,6 +757,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     final dt = _gameMs - _lastSimMs;
     if (dt < 33) return;
     _lastSimMs = _gameMs;
+    if (_hudToastMsg != null && _gameMs > _hudToastUntilMs) {
+      _hudToastMsg = null;
+      if (mounted) setState(() {});
+    }
     // Boss de donjon lâché (depuis le repère OU le donjon) : l'invasion est persistée
     // dans bossInvasions, mais la mise en scène (araignées + annonce + recadrage) n'était
     // faite que par _closeDonjon. On la déclenche ici pour TOUTE invasion nouvelle, d'où
@@ -6615,11 +6626,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   }
 
   void _toast(String m, Color c) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(m),
-        backgroundColor: c,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(milliseconds: 1400)));
+    // Un SnackBar ScaffoldMessenger s'affiche au bas de l'APP, DERRIÈRE la map plein
+    // écran (invisible). On rend donc le toast NOUS‑MÊMES, en overlay dans le Stack du
+    // monde (cf. _hudToastWidget), au‑dessus de la carte.
+    _hudToastMsg = m;
+    _hudToastColor = c;
+    _hudToastUntilMs = _gameMs + 2800;
+    if (mounted) setState(() {});
   }
 
   // ── MODÈLE 2 ÉTAGES (sur la rampe) : le canon tire D'ABORD le CHARGEUR (effort du
@@ -6863,6 +6876,27 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
               color: Color(0xFFE7F0EA),
               fontSize: 13,
               fontWeight: FontWeight.w700)),
+    );
+  }
+
+  // Toast rendu dans le monde (visible par-dessus la map plein écran).
+  Widget _hudToastWidget() {
+    final m = _hudToastMsg;
+    if (m == null) return const SizedBox.shrink();
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: _hudToastColor,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(.45), blurRadius: 10)
+        ],
+      ),
+      child: Text(m,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              color: Colors.white, fontSize: 13.5, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -7162,6 +7196,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         right: 0,
                         bottom: 14,
                         child: Center(child: _runningChronoHud())),
+                    // Toast du monde (rendu ici car les SnackBar passent derrière la map).
+                    Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 64,
+                        child: Center(child: _hudToastWidget())),
                     if (_combat != null)
                       // Écran étroit : le combat occupe tout l'écran. Desktop : il
                       // s'affiche IN‑PLACE dans le jardin (cf. _contentV2) ; on ne
@@ -9401,15 +9441,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Côté JARDIN du château (intérieur) : gauche en normal, droite en miroir.
       final araX = c.mirror ? c.castleRect.right - 1 : c.castleRect.left;
       _v2Araignee['${araX}_$y'] = c.domainId;
-      // Une toile dans le jardin (marqueur : valide tes routines pour la déloger).
+      // Centre du jardin = TROU 🕳️ d'entrée du combat (seul un BOSS arrive ici, cf.
+      // le `continue` plus haut pour les invasions hebdo). Toiles semées AUTOUR
+      // (~1 case sur 3), jamais sur le trou.
       final g = c.gardenRect;
-      _v2Toiles['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] = c.domainId;
-      // Boss de DONJON : des toiles PARTOUT dans le jardin (semis ~1 case sur 3).
-      if (boss) {
-        for (var gy = g.top; gy < g.top + g.height; gy++) {
-          for (var gx = g.left; gx < g.left + g.width; gx++) {
-            if ((gx + gy) % 3 == 0) _v2Toiles['${gx}_$gy'] = c.domainId;
-          }
+      final trouId = '${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}';
+      _v2BossTrou[trouId] = c.domainId;
+      for (var gy = g.top; gy < g.top + g.height; gy++) {
+        for (var gx = g.left; gx < g.left + g.width; gx++) {
+          final tid = '${gx}_$gy';
+          if (tid != trouId && (gx + gy) % 3 == 0) _v2Toiles[tid] = c.domainId;
         }
       }
     }
@@ -9478,6 +9519,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Walking = false;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
+    // TROU 🕳️ du boss : entrée DIRECTE du combat, PRIORITAIRE sur tout garde-fou
+    // (panneau ouvert, gate hebdo…) → toujours réactif, sans condition.
+    if (_v2BossTrou.containsKey(id)) {
+      if (_gardenPanel != null || _parchemin != null) _closeV2Panel();
+      _enterDomainFromV2(_v2BossTrou[id]!);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _inInterior) _startCine();
+      });
+      return;
+    }
     // Un tap sur la map (hors panneau) referme le donjon inline.
     if (_donjonOpen) {
       _closeDonjon();
@@ -10499,6 +10550,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     // Toile d'invasion dans le jardin (marqueur : valide tes routines pour déloger).
     if (_v2Toiles.containsKey(id)) {
       child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
+    }
+    // TROU 🕳️ du boss : entrée EXPLICITE du combat (case JARDIN, cliquable garantie).
+    if (_v2BossTrou.containsKey(id)) {
+      bg = _kEnemy.withOpacity(.5);
+      child = Text('🕳️', style: TextStyle(fontSize: inner * 0.72));
     }
     // Araignée d'invasion. Un BOSS de donjon est distinct des invasions hebdo
     // (couronné, plus gros, fond rouge plus vif) → l'user ne le confond pas avec
