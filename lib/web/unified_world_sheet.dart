@@ -2822,18 +2822,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       n--;
       fired++;
       final daysAgo = today.difference(target).inDays;
-      // Colonne VISÉE par le boulet : la case-araignée du jour reconquis si elle est
-      // dans la fenêtre 7 j ; sinon (retard plus vieux que la semaine) on vise la plus
-      // VIEILLE araignée encore VISIBLE — JAMAIS une case vide (le crédit, lui, reste
-      // posé sur `target`). Symétrie avec _fireTimeBacklog, qui ne tire que sur un
-      // 'spider' : sans ce garde-fou, un retard > 7 j faisait tirer sur la colonne 0
-      // même quand elle était vide.
-      final tokens = logic.routineWeekTokens(lane.id);
-      var j = 6 - daysAgo;
-      if (j < 0 || j > 6 || j >= tokens.length || tokens[j].type != 'spider') {
-        j = tokens.indexWhere((t) => t.type == 'spider');
-      }
-      if (j < 0) continue; // plus d'araignée visible → pas de boulet sur une case vide
+      // Le boulet frappe EXACTEMENT l'araignée qui va s'éteindre = la case-jour
+      // RECONQUISE (`target`) : la cible visuelle et le jour crédité sont la même
+      // colonne, donc l'araignée touchée est bien celle qui disparaît. On n'anime
+      // QUE si ce jour est dans la fenêtre 7 j (araignée visible) ; un retard plus
+      // ancien (hors écran) est bien crédité, mais SANS boulet — sinon on tirerait
+      // sur une case vide ou sur une autre araignée que celle qui s'efface.
+      final j = 6 - daysAgo;
+      if (j < 0 || j > 6) continue; // hors fenêtre : crédit posé, pas d'animation
       final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
       // Recadre sur la trajectoire du boulet (mi-chemin tourelle → cible) pour que
       // la boule de feu reste visible sans recentrage manuel (qui interromprait la
