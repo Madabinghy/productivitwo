@@ -229,6 +229,10 @@ class FirestoreSync {
         lastChallengeYmd: meta['lastChallengeYmd'] as String?,
         ganttActionsByDay: (meta['ganttActionsByDay'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        dailyStakeByDay: (meta['dailyStakeByDay'] as Map?)
+            ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
+        dailyStakeSettledDays:
+            (meta['dailyStakeSettledDays'] as List?)?.cast<String>(),
         challengeWinsByDay: (meta['challengeWinsByDay'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         battleShurikensByDay: (meta['battleShurikensByDay'] as Map?)
@@ -438,6 +442,8 @@ class FirestoreSync {
       lastPestDrainAt:       local.goldLifetime >= remote.goldLifetime ? local.lastPestDrainAt : remote.lastPestDrainAt,
       goldTodayGain:         local.goldLifetime >= remote.goldLifetime ? local.goldTodayGain : remote.goldTodayGain,
       goldTodayGainYmd:      local.goldLifetime >= remote.goldLifetime ? local.goldTodayGainYmd : remote.goldTodayGainYmd,
+      dailyStakeByDay:       local.goldLifetime >= remote.goldLifetime ? local.dailyStakeByDay : remote.dailyStakeByDay,
+      dailyStakeSettledDays: local.goldLifetime >= remote.goldLifetime ? local.dailyStakeSettledDays : remote.dailyStakeSettledDays,
       goldEpochYmd:          local.goldLifetime >= remote.goldLifetime ? local.goldEpochYmd : remote.goldEpochYmd,
       lastQuestClaimedYmd:   local.goldLifetime >= remote.goldLifetime ? local.lastQuestClaimedYmd : remote.lastQuestClaimedYmd,
       questStreak:           local.goldLifetime >= remote.goldLifetime ? local.questStreak : remote.questStreak,
@@ -530,6 +536,8 @@ class FirestoreSync {
         'challengeStreak': st.challengeStreak,
         'lastChallengeYmd': st.lastChallengeYmd,
         'ganttActionsByDay': st.ganttActionsByDay,
+        'dailyStakeByDay': st.dailyStakeByDay,
+        'dailyStakeSettledDays': st.dailyStakeSettledDays,
         'challengeWinsByDay': st.challengeWinsByDay,
         'battleShurikensByDay': st.battleShurikensByDay,
         // Clés du donjon : état quotidien éphémère, pas or-autoritatif → miroir OK.
@@ -1353,6 +1361,63 @@ class FirestoreSync {
         tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
           id: ledgerId, delta: -cost, category: 'spend',
           reasonCode: 'turret_range', label: 'Portée tourelles niv. $newLevel',
+        ).toJson());
+      }
+      return true;
+    });
+  }
+
+  /// « Mise du jour » : place une mise [amount] sur le jour [ymd] (YYYYMMDD).
+  /// Débite l'or immédiatement (l'or « part en jeu »). Refuse si déjà placée ce jour
+  /// ou solde insuffisant. Calquée sur [purchaseGold].
+  Future<bool> placeDailyStake(
+      {required String ymd, required int amount}) async {
+    if (uid == null || amount <= 0) return false;
+    final metaRef = _meta();
+    final ledgerId = 'stake_place_$ymd';
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final gold = (data['gold'] as num?)?.toInt() ?? 0;
+      final stakes =
+          Map<String, dynamic>.from(data['dailyStakeByDay'] as Map? ?? {});
+      if (stakes.containsKey(ymd)) return false; // déjà misée ce jour
+      if (gold < amount) return false;
+      stakes[ymd] = amount;
+      tx.set(metaRef, {'gold': gold - amount, 'dailyStakeByDay': stakes},
+          SetOptions(merge: true));
+      tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
+        id: ledgerId, delta: -amount, category: 'spend',
+        reasonCode: 'stake_place', label: 'Mise du jour',
+      ).toJson());
+      return true;
+    });
+  }
+
+  /// « Mise du jour » : règle la mise du jour [ymd] en créditant [payout] (≥ 0 :
+  /// remboursement proportionnel au travail réel + bonus à 100 %). Ne touche PAS
+  /// `goldLifetime` (pas de farm d'XP en cyclant l'or). Idempotent (jours réglés).
+  Future<bool> settleDailyStake(
+      {required String ymd, required int payout}) async {
+    if (uid == null) return false;
+    final metaRef = _meta();
+    final ledgerId = 'stake_settle_$ymd';
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(metaRef);
+      final data = snap.data() as Map<String, dynamic>? ?? {};
+      final gold = (data['gold'] as num?)?.toInt() ?? 0;
+      final settled = List<String>.from(
+          (data['dailyStakeSettledDays'] as List?)?.cast<String>() ??
+              const <String>[]);
+      if (settled.contains(ymd)) return false; // déjà réglé
+      settled.add(ymd);
+      final newGold = (gold + payout) < 0 ? 0 : (gold + payout);
+      tx.set(metaRef, {'gold': newGold, 'dailyStakeSettledDays': settled},
+          SetOptions(merge: true));
+      if (payout != 0) {
+        tx.set(_col('gold_ledger').doc(ledgerId), GoldLedgerEntry(
+          id: ledgerId, delta: payout, category: 'gain',
+          reasonCode: 'stake_settle', label: 'Règlement de la mise',
         ).toJson());
       }
       return true;

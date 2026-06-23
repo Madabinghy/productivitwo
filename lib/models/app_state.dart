@@ -77,6 +77,11 @@ class AppState {
   int challengeStreak;         // jours consécutifs avec ≥1 défi
   String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
   Map<String, int> ganttActionsByDay;  // actions Gantt cochées par jour (XP)
+  // « Mise du jour » (Royaume) : or misé sur la journée, par jour "YYYYMMDD".
+  // Présent = mise placée (or déjà débité). Réglé via dailyStakeSettledDays.
+  Map<String, int> dailyStakeByDay;
+  // Jours dont la mise a été réglée (remboursement proportionnel + bonus).
+  List<String> dailyStakeSettledDays;
   Map<String, int> challengeWinsByDay; // défis relevés par jour (XP du jour)
   Map<String, int> battleShurikensByDay; // shurikens dépensés par jour (déloges gagnés)
 
@@ -220,6 +225,8 @@ class AppState {
     this.challengeStreak = 0,
     this.lastChallengeYmd,
     Map<String, int>? ganttActionsByDay,
+    Map<String, int>? dailyStakeByDay,
+    List<String>? dailyStakeSettledDays,
     Map<String, int>? challengeWinsByDay,
     Map<String, int>? battleShurikensByDay,
     this.gold = 0,
@@ -303,6 +310,8 @@ class AppState {
         earnedBadges = earnedBadges ?? <EarnedBadge>[],
         skippedChallengeDates = skippedChallengeDates ?? <String>[],
         ganttActionsByDay = ganttActionsByDay ?? <String, int>{},
+        dailyStakeByDay = dailyStakeByDay ?? <String, int>{},
+        dailyStakeSettledDays = dailyStakeSettledDays ?? <String>[],
         challengeWinsByDay = challengeWinsByDay ?? <String, int>{},
         battleShurikensByDay = battleShurikensByDay ?? <String, int>{},
         goldInventory = goldInventory ?? <String, int>{},
@@ -373,6 +382,8 @@ class AppState {
         'challengeStreak': challengeStreak,
         'lastChallengeYmd': lastChallengeYmd,
         'ganttActionsByDay': ganttActionsByDay,
+        'dailyStakeByDay': dailyStakeByDay,
+        'dailyStakeSettledDays': dailyStakeSettledDays,
         'challengeWinsByDay': challengeWinsByDay,
         'battleShurikensByDay': battleShurikensByDay,
         'gold': gold,
@@ -523,6 +534,11 @@ class AppState {
       ganttActionsByDay: (j['ganttActionsByDay'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},
+      dailyStakeByDay: (j['dailyStakeByDay'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
+          <String, int>{},
+      dailyStakeSettledDays:
+          (j['dailyStakeSettledDays'] as List?)?.cast<String>() ?? <String>[],
       challengeWinsByDay: (j['challengeWinsByDay'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},

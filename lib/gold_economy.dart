@@ -96,6 +96,22 @@ class GoldEconomy {
     return 7 + lvl * 7;
   }
 
+  // ── Royaume : Mise du jour (commitment device, sink d'or QUOTIDIEN) ─────────
+  // Tu mises de l'or sur ta journée ; tu récupères proportionnellement au travail
+  // RÉEL fait, + un bonus à 100 %. En moyenne c'est un SINK (draine le tas) qui
+  // récompense la régularité. N'achète JAMAIS de productivité.
+  static const double stakeBonusRate = 0.5; // 100 % de la journée → mise + 50 %
+  static const int stakeMaxPerDay = 100; // plafond anti-abus
+
+  /// Or rendu pour une mise [amount] selon le [ratio] de complétion (0..1) du jour.
+  /// ratio < 1 → remboursement proportionnel (la part non faite est perdue) ;
+  /// ratio ≥ 1 → mise + bonus.
+  static int stakePayout(int amount, double ratio) {
+    final r = ratio < 0 ? 0.0 : (ratio > 1 ? 1.0 : ratio);
+    final mult = r >= 1.0 ? (1 + stakeBonusRate) : r;
+    return (amount * mult).round();
+  }
+
   // ── Boutique : items par paliers + prix croissants ─────────────────────────
   /// Niveau minimum (débloqué) requis pour acheter chaque consommable.
   static const Map<String, int> itemMinLevel = {
