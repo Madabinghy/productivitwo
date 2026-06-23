@@ -164,7 +164,11 @@ extension GoldEngineDonjon on AppLogic {
       }
     }
     if (a == null) return 0;
-    final tgt = activeHabitTarget(a);
+    // Seuil PAR JOUR (un jour « fait »), pas la cible de période : `activeHabitTarget`
+    // renvoie la cible HEBDO/MENSUELLE pour ces fréquences, qu'un seul jour
+    // (`hp.value` ≈ 1) n'atteint jamais → le défi « N jours » devenait IMPOSSIBLE
+    // (donjon bloqué). `dayQuotaFor` = 1/jour en hebdo/mensuel, inchangé en quotidien.
+    final tgt = dayQuotaFor(a);
     if (tgt <= 0) return 0;
     var days = 0;
     for (final hp in state.habitProgress) {
