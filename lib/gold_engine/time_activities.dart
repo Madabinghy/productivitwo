@@ -152,14 +152,43 @@ extension GoldEngineTime on AppLogic {
     return -1;
   }
 
+  /// Portée (en jours) des tourelles = fenêtre de reconquête. Base 7 j ; étendue
+  /// par l'or via `state.turretRangeLevel` (Royaume). Plafonnée à la fenêtre château.
+  int turretRangeDays() =>
+      GoldEconomy.turretRangeDaysForLevel(state.turretRangeLevel);
+
   /// Jour à créditer quand on « tue » la première araignée d'une routine en combat :
-  /// le jour manqué le plus ANCIEN de la fenêtre 7j (rattrapage), ou aujourd'hui si
+  /// le jour manqué le plus ANCIEN de la PORTÉE (rattrapage), ou aujourd'hui si
   /// aucune araignée. Tuer la 1ʳᵉ fait avancer la vague (le suivant devient la cible).
+  ///
+  /// Pour une routine QUOTIDIENNE, la portée peut dépasser la fenêtre 7 j (au-delà,
+  /// dans la négligence ancienne = toiles château) si l'or l'a achetée. Un jour est
+  /// manqué ⟺ `_habitValueOnGarden < quota` (identique aux tokens du jardin → au
+  /// niveau 0, comportement strictement inchangé). Les routines hebdo/mensuelles
+  /// gardent le ciblage 7 j (modèle de grâce différent).
   DateTime routineCatchUpDay(String routineId) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final j = firstSpiderIndex(routineId);
-    return j < 0 ? today : today.subtract(Duration(days: 6 - j));
+    Activity? a;
+    for (final x in state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit || effectiveHabitFreq(a) != HabitFreq.daily) {
+      final j = firstSpiderIndex(routineId);
+      return j < 0 ? today : today.subtract(Duration(days: 6 - j));
+    }
+    final quota = dayQuotaFor(a);
+    if (quota <= 0) return today;
+    final range = turretRangeDays();
+    // Du plus ANCIEN (k = range-1) vers hier (k = 1) ; aujourd'hui (k=0) JAMAIS.
+    for (var k = range - 1; k >= 1; k--) {
+      final d = today.subtract(Duration(days: k));
+      if (_habitValueOnGarden(routineId, d) < quota) return d;
+    }
+    return today;
   }
 
   /// Valide une routine en COMBAT — modèle « plus ancien d'abord, propre ».

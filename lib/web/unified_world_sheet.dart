@@ -2807,7 +2807,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       sync.saveRedemption(r);
       n--;
       final daysAgo = today.difference(target).inDays;
-      final j = 6 - daysAgo;
+      // Portée étendue : une cible hors fenêtre 7 j (daysAgo > 6) vise visuellement
+      // la colonne la plus ancienne (le crédit, lui, est bien posé sur `target`).
+      final j = (6 - daysAgo).clamp(0, 6);
       final col = mirror ? lane.dayX0 + (6 - j) : lane.dayX0 + j;
       // Recadre sur la trajectoire du boulet (mi-chemin tourelle → cible) pour que
       // la boule de feu reste visible sans recentrage manuel (qui interromprait la

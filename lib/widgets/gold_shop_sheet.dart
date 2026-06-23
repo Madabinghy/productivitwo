@@ -67,6 +67,30 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
     ));
   }
 
+  // « Royaume » : achète un cran de PORTÉE de tourelle (l'or étend la reconquête ;
+  // les munitions restent gagnées par le travail).
+  Future<void> _buyTurretRange() async {
+    if (_busy) return;
+    final lvl = logic.state.turretRangeLevel;
+    if (lvl >= GoldEconomy.turretRangeMaxLevel) return;
+    final cost = GoldEconomy.turretRangeCost(lvl + 1);
+    setState(() => _busy = true);
+    final ok =
+        await widget.sync.upgradeTurretRange(newLevel: lvl + 1, cost: cost);
+    if (ok) {
+      // Optimiste local (l'or est autoritatif Firestore ; pull reconvergera).
+      logic.state.gold -= cost;
+      logic.state.turretRangeLevel = lvl + 1;
+      logic.onChange();
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content:
+          Text(ok ? 'Portée des tourelles améliorée.' : 'Solde insuffisant.'),
+    ));
+  }
+
   Future<void> _buyTitle(String title, int price) async {
     if (_busy) return;
     final owned = logic.state.cosmeticsOwned.contains(title);
@@ -523,6 +547,90 @@ class _GoldShopSheetState extends State<_GoldShopSheet> {
                 if (boostActive)
                   _ActiveBadge('✨ Boost ×2 actif', cs),
               ]),
+            );
+          }),
+
+          // ── ROYAUME : portée des tourelles (sink d'or « honnête ») ──────────
+          Builder(builder: (_) {
+            final lvl = logic.state.turretRangeLevel;
+            final maxed = lvl >= GoldEconomy.turretRangeMaxLevel;
+            final daysNow = GoldEconomy.turretRangeDaysForLevel(lvl);
+            final daysNext = GoldEconomy.turretRangeDaysForLevel(lvl + 1);
+            final cost = maxed ? 0 : GoldEconomy.turretRangeCost(lvl + 1);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _kGold.withOpacity(.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _kGold.withOpacity(.35)),
+              ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      const Text('🏹', style: TextStyle(fontSize: 22)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Portée des tourelles',
+                                  style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold)),
+                              Text('Reconquête jusqu\'à $daysNow j en arrière',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurface.withOpacity(.6))),
+                            ]),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _kGold.withOpacity(.18),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('Niv. $lvl',
+                            style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: _kGold)),
+                      ),
+                    ]),
+                    const SizedBox(height: 8),
+                    Text(
+                      'L\'or étend jusqu\'où tes tourelles reconquièrent le passé. '
+                      'Les munitions restent gagnées par ton travail — tu vises '
+                      'plus loin, tu ne tires pas plus.',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: cs.onSurface.withOpacity(.55)),
+                    ),
+                    const SizedBox(height: 10),
+                    if (maxed)
+                      Text('Portée maximale atteinte ($daysNow j).',
+                          style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: _kGold))
+                    else
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: FilledButton.icon(
+                          onPressed: (_busy || _gold < cost)
+                              ? null
+                              : _buyTurretRange,
+                          icon: const Icon(Icons.arrow_outward, size: 16),
+                          label: Text('Étendre à $daysNext j  ·  $cost or'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _kGold,
+                            foregroundColor: Colors.black,
+                          ),
+                        ),
+                      ),
+                  ]),
             );
           }),
 
