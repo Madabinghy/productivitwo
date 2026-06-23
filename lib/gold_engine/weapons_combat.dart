@@ -147,8 +147,14 @@ extension GoldEngineWeapons on AppLogic {
           redemptionCreditsOn(a.id, yyyymmdd(today), 'habit');
       return hp < 0 ? 0 : hp;
     }
-    // scorpion : retard de temps du jour / 5 min (arrondi haut). La reconquête
+    // scorpion : retard de temps du JOUR / 5 min (arrondi haut). La reconquête
     // (crédits du jour, en minutes) réduit le retard sans toucher au relevé réel.
+    // GARDE-FOU de cohérence avec le jardin (activityTimeTokens) : si la fenêtre 7 j
+    // glissante est déjà tenue (surplus hebdo), le token du JOUR n'est PAS un 🦂 →
+    // aucun retard, même si la cible du jour n'est pas atteinte. Sans ça, une activité
+    // pourtant EN AVANCE (ex. +7 h) apparaissait « en retard » en combat.
+    final tokens = activityTimeTokens(itemId);
+    if (tokens.isEmpty || tokens.last.type != 'spider') return 0;
     final retard = a.goalMin -
         _activityLoggedMinutes(a.id, yyyymmdd(today)) -
         redemptionCreditsOn(a.id, yyyymmdd(today), 'time');
