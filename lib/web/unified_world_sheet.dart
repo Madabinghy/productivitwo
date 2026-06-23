@@ -10507,14 +10507,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final isBoss = logic.state.bossInvasions.contains(_v2Araignee[id]);
       bg = _kEnemy.withOpacity(isBoss ? .5 : .32);
       child = isBoss
+          // Couronne CONTENUE dans la case (pas de débordement → toute la case reste
+          // cliquable pour lancer le combat).
           ? Stack(
-              clipBehavior: Clip.none,
               alignment: Alignment.center,
               children: [
-                Text('🕷️', style: TextStyle(fontSize: inner * 0.85)),
-                Positioned(
-                    top: -inner * 0.30,
-                    child: Text('👑', style: TextStyle(fontSize: inner * 0.42))),
+                Text('🕷️', style: TextStyle(fontSize: inner * 0.78)),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Text('👑', style: TextStyle(fontSize: inner * 0.34)),
+                ),
               ],
             )
           : Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
