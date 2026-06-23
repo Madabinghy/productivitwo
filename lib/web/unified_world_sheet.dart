@@ -10494,10 +10494,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_v2Toiles.containsKey(id)) {
       child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
     }
-    // Araignée‑boss d'invasion (clic = combat si semaine propre).
+    // Araignée d'invasion. Un BOSS de donjon est distinct des invasions hebdo
+    // (couronné, plus gros, fond rouge plus vif) → l'user ne le confond pas avec
+    // les araignées « ordinaires » des autres domaines.
     if (_v2Araignee.containsKey(id)) {
-      bg = _kEnemy.withOpacity(.32);
-      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+      final isBoss = logic.state.bossInvasions.contains(_v2Araignee[id]);
+      bg = _kEnemy.withOpacity(isBoss ? .5 : .32);
+      child = isBoss
+          ? Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Text('🕷️', style: TextStyle(fontSize: inner * 0.85)),
+                Positioned(
+                    top: -inner * 0.30,
+                    child: Text('👑', style: TextStyle(fontSize: inner * 0.42))),
+              ],
+            )
+          : Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
     // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».
