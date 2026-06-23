@@ -1516,6 +1516,10 @@ class _FocusView extends StatelessWidget {
     List<({ProjectTask task, Project project})> weekPairs,
     List<Project> allProjects,
   ) {
+    // « Avancement » ne montre que les projets EN COURS — pas les terminés/archivés.
+    final progressProjects = allProjects
+        .where((p) => p.status != 'done' && p.status != 'archived')
+        .toList();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1627,7 +1631,7 @@ class _FocusView extends StatelessWidget {
             titleColor: Colors.teal.shade700,
             icon: Icons.trending_up_outlined,
             cs: cs,
-            child: allProjects.isEmpty
+            child: progressProjects.isEmpty
                 ? Text(
                     'Aucun projet actif',
                     style: TextStyle(
@@ -1638,7 +1642,7 @@ class _FocusView extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      for (final p in allProjects) ...[
+                      for (final p in progressProjects) ...[
                         _ProjectProgressItem(
                           project: p,
                           domains: domains,
