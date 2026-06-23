@@ -764,6 +764,12 @@ class _ExpeditionViewState extends State<ExpeditionView> {
         found.add(e.value);
       }
     }
+    // Inclut aussi tout défi non accompli encore « caché » (non placé sur un nœud
+    // atteignable) → la liste montre TOUJOURS ce qu'il reste à faire (sinon un défi
+    // requis mais invisible verrouille la sortie sans explication).
+    for (var i = 0; i < challenges.length; i++) {
+      if (!challenges[i].done && !found.contains(i)) found.add(i);
+    }
     found.sort();
     final cs = Theme.of(context).colorScheme;
     showModalBottomSheet<void>(
@@ -815,6 +821,15 @@ class _ExpeditionViewState extends State<ExpeditionView> {
         current = challenges[ci];
         break;
       }
+    }
+    // FILET ANTI SOFT-LOCK : un défi peut n'être placé sur AUCUN nœud atteignable
+    // (plus de défis que de nœuds-obstacles, ou défi posé sur une branche évitée).
+    // Sans ça, le bandeau annonçait « tous relevés — atteins la sortie » alors que la
+    // sortie reste verrouillée (le gate exige TOUS les défis) → blocage invisible. On
+    // surface donc le 1er défi non accompli, où qu'il soit, pour que l'user sache quoi
+    // faire (le défi s'auto-valide depuis les données, sans franchir son nœud).
+    if (current == null && doneCount < challenges.length) {
+      current = challenges.firstWhere((c) => !c.done);
     }
 
     return Column(
