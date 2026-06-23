@@ -9382,10 +9382,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final boss = logic.state.bossInvasions.contains(c.domainId);
       // Délogée → ne revient pas… SAUF si un NOUVEAU boss de donjon la vise.
       if (!boss && _v2Dislodged.contains(c.domainId)) continue;
-      // Invasion COLLANTE : dès qu'on atteint N (ou boss de donjon), le domaine reste
-      // envahi jusqu'à ce qu'on l'ait DÉLOGÉE (affrontée).
-      if (_v2InvasionCount(c) >= _kInvasionN || boss) _v2Invaded.add(c.domainId);
-      if (!_v2Invaded.contains(c.domainId)) continue;
+      // Seuls les BOSS de donjon s'affichent en araignée sur la carte. Les invasions
+      // HEBDO (≥ N jours manqués) ne sont PLUS matérialisées par une araignée (choix
+      // produit : on évite la confusion ; le retard hebdo reste lisible ailleurs —
+      // jardin, compteur de nuisibles, défense du château).
+      if (boss) {
+        _v2Invaded.add(c.domainId);
+      } else {
+        _v2Invaded.remove(c.domainId); // une invasion hebdo ne rend plus « envahi »
+        continue;
+      }
       // Case‑séparateur (entre tourelles routines et activités), colonne tourelles.
       final y = c.sepY >= 0
           ? c.sepY
@@ -10494,10 +10500,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_v2Toiles.containsKey(id)) {
       child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
     }
-    // Araignée‑boss d'invasion (clic = combat si semaine propre).
+    // Araignée d'invasion. Un BOSS de donjon est distinct des invasions hebdo
+    // (couronné, plus gros, fond rouge plus vif) → l'user ne le confond pas avec
+    // les araignées « ordinaires » des autres domaines.
     if (_v2Araignee.containsKey(id)) {
-      bg = _kEnemy.withOpacity(.32);
-      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+      final isBoss = logic.state.bossInvasions.contains(_v2Araignee[id]);
+      bg = _kEnemy.withOpacity(isBoss ? .5 : .32);
+      child = isBoss
+          ? Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                Text('🕷️', style: TextStyle(fontSize: inner * 0.85)),
+                Positioned(
+                    top: -inner * 0.30,
+                    child: Text('👑', style: TextStyle(fontSize: inner * 0.42))),
+              ],
+            )
+          : Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
     // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».
