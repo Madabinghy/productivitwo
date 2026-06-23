@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/gold_sheet.dart';
 import 'package:productivitwo_v1/web/labs_view.dart';
+import 'package:productivitwo_v1/web/province_card.dart';
 import 'package:productivitwo_v1/web/unified_world_sheet.dart';
 
 const _kGold = Color(0xFFD4A017);
@@ -756,13 +757,54 @@ class _ExplorationColumn extends StatelessWidget {
     final level = logic.effectiveLevel();
     final biome = expeditionBiome(level + 1);
 
+    final domains = logic.state.activeDomains;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Exploration',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          // ── Dashboard ROYAUME : tes domaines de vie en PROVINCES ──────────
+          Row(children: const [
+            Text('🏰 ', style: TextStyle(fontSize: 16)),
+            Text('Royaume',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 4),
+          Text('Tes domaines de vie, en provinces — niveau, prospérité, menaces.',
+              style:
+                  TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
+          const SizedBox(height: 12),
+          if (domains.isEmpty)
+            Text('Aucun domaine — crée-en pour bâtir ton royaume.',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: cs.onSurface.withOpacity(.45)))
+          else
+            for (final d in domains) ...[
+              ProvinceCard(
+                logic: logic,
+                domain: d,
+                onTap: () => showUnifiedWorldSheet(context, logic, sync),
+              ),
+              const SizedBox(height: 10),
+            ],
+          const SizedBox(height: 8),
+          // CTA principal : entrer dans le Monde (la grande carte unifiée).
+          _ExploreBtn(
+            emoji: '⚔️',
+            title: 'Entrer dans le Monde',
+            subtitle: 'Une seule grande carte : farm · château · grottes (avatar)',
+            color: const Color(0xFF14B8A6),
+            onTap: () => showUnifiedWorldSheet(context, logic, sync),
+          ),
+          const SizedBox(height: 18),
+          const Text('EXPLORATION',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8)),
           const SizedBox(height: 10),
           // Bandeau biome courant
           Container(
@@ -794,15 +836,6 @@ class _ExplorationColumn extends StatelessWidget {
             ]),
           ),
           const SizedBox(height: 14),
-          // En tête : la grande map unifiée (absorbe farm + défense de territoire).
-          _ExploreBtn(
-            emoji: '🗺️',
-            title: 'Monde',
-            subtitle: 'Une seule grande carte : farm · château · grottes (avatar)',
-            color: const Color(0xFF14B8A6),
-            onTap: () => showUnifiedWorldSheet(context, logic, sync),
-          ),
-          const SizedBox(height: 10),
           _ExploreBtn(
             emoji: biome.emoji,
             title: 'Carte overworld',
