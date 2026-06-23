@@ -1196,6 +1196,15 @@ class FirestoreSync {
         .set({'expeditionChallenges': challenges}, SetOptions(merge: true));
   }
 
+  /// Régénère les défis du donjon ET remet le parcours à zéro (nœuds franchis
+  /// vidés) — utilisé quand un défi est devenu obsolète (cible disparue).
+  Future<void> resetExpeditionProgress(List<String> challenges) async {
+    if (uid == null) return;
+    await _meta().set(
+        {'expeditionChallenges': challenges, 'expeditionCleared': <String>[]},
+        SetOptions(merge: true));
+  }
+
   /// Mémorise le niveau dont le gardien a été vaincu.
   Future<void> setExpeditionGuardianKilled(int level) async {
     if (uid == null) return;

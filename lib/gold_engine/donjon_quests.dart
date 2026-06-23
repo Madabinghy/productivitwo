@@ -146,6 +146,68 @@ extension GoldEngineDonjon on AppLogic {
     return st.isNotEmpty && st.every((c) => c.done);
   }
 
+  /// Vrai si un défi du niveau visé cible une donnée DISPARUE (activité supprimée,
+  /// tâche introuvable, JSON malformé, type inconnu) : il ne pourra jamais se
+  /// valider → le donjon est bloqué. Sert à proposer « Régénérer les défis ».
+  bool expeditionHasObsoleteChallenge() {
+    final target = effectiveLevel() + 1;
+    for (final raw in state.expeditionChallenges) {
+      Map<String, dynamic> m;
+      try {
+        m = jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {
+        return true; // malformé
+      }
+      if ((m['level'] as num?)?.toInt() != target) continue;
+      if (_challengeTargetMissing(
+          m['type'] as String? ?? '', m['refId'] as String? ?? '')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _challengeTargetMissing(String type, String refId) {
+    switch (type) {
+      case 'routine':
+      case 'time':
+        for (final a in state.activities) {
+          if (a.id == refId) return a.deleted; // présente mais supprimée = obsolète
+        }
+        return true; // activité introuvable
+      case 'task':
+        for (final p in currentProjects) {
+          for (final t in p.tasks) {
+            if (t.id == refId) return false; // tâche présente
+          }
+        }
+        return true; // tâche introuvable
+      default:
+        return true; // type inconnu
+    }
+  }
+
+  /// Régénère les défis du niveau visé depuis des cibles VALIDES (données
+  /// actuelles) et remet le donjon à zéro (parcours réinitialisé). No-op si aucune
+  /// cible valide n'existe (on ne casse pas un donjon en cours pour rien).
+  void regenerateExpeditionChallenges(FirestoreSync sync) {
+    final target = effectiveLevel() + 1;
+    final built = _buildChallengesForLevel(target);
+    if (built.isEmpty) return;
+    state.expeditionChallenges
+      ..removeWhere((raw) {
+        try {
+          return (jsonDecode(raw)['level'] as num?)?.toInt() == target;
+        } catch (_) {
+          return true; // malformé → on jette
+        }
+      })
+      ..addAll(built);
+    state.expeditionCleared.clear(); // donjon remis à zéro
+    onChange();
+    sync.resetExpeditionProgress(state.expeditionChallenges);
+  }
+
   bool _taskIsDone(String taskId) {
     for (final p in currentProjects) {
       for (final t in p.tasks) {
