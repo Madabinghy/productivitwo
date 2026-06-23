@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/arena_view.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/daily_stake_card.dart';
+import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
@@ -428,8 +429,10 @@ class _FocusView extends StatelessWidget {
         final isNarrow = constraints.maxWidth < 700;
         final isWide   = constraints.maxWidth >= 850;
         if (isNarrow) {
-          return _buildSidebar(
-              context, cs, today, weekStart, weekEnd, overduePairs, allPairs, projects);
+          // Pas de colonne du milieu → la sidebar porte le programme.
+          return _buildSidebar(context, cs, today, weekStart, weekEnd,
+              overduePairs, allPairs, projects,
+              showSchedule: true);
         }
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -467,8 +470,10 @@ class _FocusView extends StatelessWidget {
             // ── Sidebar ────────────────────────────────────────────────────
             Expanded(
               flex: 3,
-              child: _buildSidebar(
-                  context, cs, today, weekStart, weekEnd, overduePairs, allPairs, projects),
+              child: _buildSidebar(context, cs, today, weekStart, weekEnd,
+                  overduePairs, allPairs, projects,
+                  // ≥850 : la colonne du milieu porte le programme → pas de doublon.
+                  showSchedule: !isWide),
             ),
           ],
         );
@@ -504,18 +509,6 @@ class _FocusView extends StatelessWidget {
       projectMap[pair.project.id] = pair.project;
     }
 
-    if (byProject.isEmpty) {
-      return Center(
-        child: Text(
-          'Aucune tâche active cette semaine',
-          style: TextStyle(
-              fontSize: 13,
-              color: cs.onSurface.withOpacity(0.35),
-              fontStyle: FontStyle.italic),
-        ),
-      );
-    }
-
     // Trier par ordre d'apparition dans la liste originale des projets
     final orderedProjectIds = sourcePairs
         .map((e) => e.project.id)
@@ -528,6 +521,25 @@ class _FocusView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Programme du jour (cochable) — en haut de la colonne du milieu ──
+          Row(children: [
+            Icon(Icons.schedule_outlined,
+                size: 13, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 6),
+            Text(
+              'PROGRAMME DU JOUR',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurface.withOpacity(.45),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          WebDailyScheduleCard(sync: sync),
+          const SizedBox(height: 22),
+
           // ── Tâches en cours / cette semaine ─────────────────────────────
           Row(children: [
             Icon(Icons.account_tree_outlined,
@@ -544,148 +556,26 @@ class _FocusView extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 14),
-          for (final projectId in orderedProjectIds) ...[
-            _buildPanelProjectGroup(
-              context,
-              cs,
-              projectMap[projectId]!,
-              byProject[projectId]!,
-              today,
-            ),
-            const SizedBox(height: 14),
-          ],
-        ],
-      ),
-    );
-  }
-
-  // ── Programme du jour ──────────────────────────────────────────────────────
-
-  static const _categoryColor = {
-    'project':  Color(0xFF1D9E75),
-    'routine':  Color(0xFFE07B39),
-    'personal': Color(0xFF5B8DEF),
-    'break':    Color(0xFF8E9AAF),
-  };
-
-  Widget _buildScheduleSection(
-      BuildContext context, ColorScheme cs, String todayStr) {
-    return StreamBuilder<DailySchedule?>(
-      stream: sync.streamDailySchedule(todayStr),
-      builder: (context, snap) {
-        final schedule = snap.data;
-        final blocks = schedule?.blocks
-                .where((b) => b.status != 'deleted')
-                .toList() ??
-            [];
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (blocks.isEmpty)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(.18),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: cs.outlineVariant.withOpacity(.25), width: 1),
-                ),
-                child: Row(children: [
-                  Icon(Icons.wb_sunny_outlined,
-                      size: 14, color: cs.onSurface.withOpacity(.3)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Aucun programme — demande à Claude de planifier ta journée',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontStyle: FontStyle.italic,
-                        color: cs.onSurface.withOpacity(.35)),
-                  ),
-                ]),
-              )
-            else
-              for (final block in blocks)
-                _buildScheduleBlockRow(context, cs, block),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildScheduleBlockRow(
-      BuildContext context, ColorScheme cs, ScheduleBlock block) {
-    final isDone = block.status == 'done';
-    final isSkipped = block.status == 'skipped';
-    final color =
-        _categoryColor[block.category] ?? const Color(0xFF8E9AAF);
-    final dimmed = isDone || isSkipped;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 5),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 7),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [
-              color.withOpacity(dimmed ? 0.05 : 0.12),
-              cs.surfaceContainerHighest.withOpacity(.15),
+          if (byProject.isEmpty)
+            Text(
+              'Aucune tâche active cette semaine',
+              style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurface.withOpacity(0.35),
+                  fontStyle: FontStyle.italic),
+            )
+          else
+            for (final projectId in orderedProjectIds) ...[
+              _buildPanelProjectGroup(
+                context,
+                cs,
+                projectMap[projectId]!,
+                byProject[projectId]!,
+                today,
+              ),
+              const SizedBox(height: 14),
             ],
-          ),
-          borderRadius: BorderRadius.circular(8),
-          border: Border(
-            left: BorderSide(
-                color: color.withOpacity(dimmed ? 0.3 : 0.8), width: 3),
-          ),
-        ),
-        child: Row(
-          children: [
-            // Heure
-            SizedBox(
-              width: 36,
-              child: Text(
-                block.startTime,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: dimmed
-                      ? cs.onSurface.withOpacity(.3)
-                      : color.withOpacity(.9),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            // Titre
-            Expanded(
-              child: Text(
-                block.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface.withOpacity(dimmed ? .3 : .85),
-                  decoration:
-                      isSkipped ? TextDecoration.lineThrough : null,
-                ),
-              ),
-            ),
-            // Durée + statut
-            const SizedBox(width: 6),
-            if (isDone)
-              Icon(Icons.check_circle,
-                  size: 13, color: Colors.green.shade500)
-            else
-              Text(
-                '${block.durationMin}min',
-                style: TextStyle(
-                    fontSize: 10,
-                    color: cs.onSurface.withOpacity(.3)),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -1498,30 +1388,30 @@ class _FocusView extends StatelessWidget {
     DateTime weekEnd,
     List<({ProjectTask task, Project project})> overduePairs,
     List<({ProjectTask task, Project project})> weekPairs,
-    List<Project> allProjects,
-  ) {
+    List<Project> allProjects, {
+    bool showSchedule = true,
+  }) {
     // « Avancement » ne montre que les projets EN COURS — pas les terminés/archivés.
     final progressProjects = allProjects
         .where((p) => p.status != 'done' && p.status != 'archived')
         .toList();
-    final todayStr =
-        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Card Programme du jour (= onglet « Maintenant » du mobile) ───
-          // Toujours rendu dans la sidebar → visible quelle que soit la largeur
-          // et qu'il y ait des tâches actives ou non.
-          _SidebarCard(
-            title: 'Programme du jour',
-            titleColor: const Color(0xFF1D9E75),
-            icon: Icons.schedule_outlined,
-            cs: cs,
-            child: _buildScheduleSection(context, cs, todayStr),
-          ),
-          const SizedBox(height: 12),
+          // ── Card Programme du jour — FALLBACK : seulement quand la colonne du
+          // milieu (qui le porte) n'est pas affichée (écran étroit/moyen).
+          if (showSchedule) ...[
+            _SidebarCard(
+              title: 'Programme du jour',
+              titleColor: const Color(0xFF1D9E75),
+              icon: Icons.schedule_outlined,
+              cs: cs,
+              child: WebDailyScheduleCard(sync: sync),
+            ),
+            const SizedBox(height: 12),
+          ],
           // ── Card Mise du jour (sink d'or quotidien, commitment device) ───
           _SidebarCard(
             title: 'Mise du jour',
