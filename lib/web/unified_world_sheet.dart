@@ -2743,6 +2743,8 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2AutoExploring = true;
     _v2UserControl = false;
     final done = <String>{};
+    var habitDays = 0; // jours de routine repris
+    var timeMin = 0; // minutes d'activité‑temps reconquises
     try {
       var dir = -1; // vers le haut d'abord
       var flips = 0;
@@ -2765,15 +2767,16 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         if (lane.isRoutine) {
           final ammo = _turretAmmo(lane.id);
           // Étage 1 : le CHARGEUR (effort du jour) part en premier.
-          await _fireBacklogStage(lane, mirror, today, ammo.charger);
+          habitDays += await _fireBacklogStage(lane, mirror, today, ammo.charger);
           // Étage 2 : la RÉSERVE de streak tire ensuite (transition entre salves).
           if (ammo.reserve > 0 && mounted && !_v2UserControl) {
             await Future.delayed(const Duration(milliseconds: 500));
-            await _fireBacklogStage(lane, mirror, today, ammo.reserve);
+            habitDays +=
+                await _fireBacklogStage(lane, mirror, today, ammo.reserve);
           }
         } else {
-          // Activité‑temps : draine l'avance (minutes) sur le retard passé.
-          await _fireTimeBacklog(lane, mirror, today);
+          // Activité‑temps : draine l'effort du jour (minutes) sur le retard passé.
+          timeMin += await _fireTimeBacklog(lane, mirror, today);
         }
         done.add(lane.id);
       }
@@ -2782,15 +2785,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       _clearV2Projectiles(); // pas de boulet résiduel si interrompu
       // Resync AFFICHAGE ↔ DONNÉES en fin de séquence (refresh sans écart).
       if (mounted) setState(_populateV2Calendar);
+      // Bilan visible de la reconquête (le solde réel, lui, reste le relevé honnête).
+      if (mounted && (habitDays > 0 || timeMin > 0)) {
+        final parts = <String>[];
+        if (timeMin > 0) parts.add('🦂 ${_fmtHM(timeMin)} reconquises');
+        if (habitDays > 0) {
+          parts.add('🕷️ $habitDays jour${habitDays > 1 ? 's' : ''} repris');
+        }
+        _toast('🏰 Château défendu — ${parts.join(' · ')}',
+            const Color(0xFFFF8A3D));
+      }
     }
   }
 
   // Tire jusqu'à `count` boulets sur la lane, plus vieux jour d'abord : chaque tir =
   // 1 crédit de reconquête (−1 PV, plus de gaspillage : stop s'il n'y a plus de retard
   // ou si l'utilisateur reprend la main).
-  Future<void> _fireBacklogStage(
+  Future<int> _fireBacklogStage(
       LaneRow lane, bool mirror, DateTime today, int count) async {
     var n = count;
+    var fired = 0;
     while (n > 0 && mounted && !_v2UserControl) {
       final target = logic.routineCatchUpDay(lane.id);
       // JAMAIS aujourd'hui : le streak ne reconquiert QUE le passé. Aujourd'hui se
@@ -2806,6 +2820,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       logic.state.redemptions.add(r); // optimiste → routineCatchUpDay suivant
       sync.saveRedemption(r);
       n--;
+      fired++;
       final daysAgo = today.difference(target).inDays;
       // Portée étendue : une cible hors fenêtre 7 j (daysAgo > 6) vise visuellement
       // la colonne la plus ancienne (le crédit, lui, est bien posé sur `target`).
@@ -2821,6 +2836,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await Future.delayed(
           Duration(milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
     }
+    return fired;
   }
 
   // Décharge d'une tourelle d'ACTIVITÉ‑TEMPS : draine l'AVANCE (minutes), plus vieux
@@ -2829,8 +2845,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // Redemption('time') par tir = des minutes reconquises sur ce jour passé. Le pool est
   // figé en début de salve (les crédits posés le décrémentent localement, pas via
   // _timeTurretAmmo, pour éviter le double comptage).
-  Future<void> _fireTimeBacklog(LaneRow lane, bool mirror, DateTime today) async {
+  Future<int> _fireTimeBacklog(LaneRow lane, bool mirror, DateTime today) async {
     var pool = _timeTurretAmmo(lane.id).avail; // minutes dispo
+    var reconquered = 0;
     while (pool > 0 && mounted && !_v2UserControl) {
       final idx = _timeCatchUpIndex(lane.id);
       if (idx < 0) break; // plus de retard passé à viser
@@ -2849,6 +2866,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       logic.state.redemptions.add(r); // optimiste → araignée suivante recalculée
       sync.saveRedemption(r);
       pool -= dmg;
+      reconquered += dmg;
       final col = mirror ? lane.dayX0 + (6 - idx) : lane.dayX0 + idx;
       _v2CenterOn(Point((lane.turretX + col) ~/ 2, lane.y));
       _fireV2Bolt(col, lane.y, lane.turretX,
@@ -2857,6 +2875,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       await Future.delayed(
           Duration(milliseconds: (_kV2ExploreBoltDur * 1000).round() + 300));
     }
+    return reconquered;
   }
 
   // ── TEMPS RÉEL : minuteur d'activité (session ouverte) → assaut live ──
