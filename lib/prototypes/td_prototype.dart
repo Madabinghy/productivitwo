@@ -61,17 +61,22 @@ class _Slot {
 }
 
 class _Enemy {
-  _Enemy(this.d, this.hp, this.maxHp, this.speed, this.color, this.r);
+  _Enemy(this.d, this.hp, this.maxHp, this.speed, this.color, this.r,
+      this.reward, this.leak, this.boss);
   double d; // distance le long du circuit
   double hp;
   final double maxHp;
   final double speed;
   final Color color;
   final double r;
+  final int reward;
+  final int leak; // vies perdues si l'ennemi atteint la fin
+  final bool boss;
   double hit = 0;
   Offset pos = Offset.zero;
-  static _Enemy make(double hp, double speed, Color c, double r) =>
-      _Enemy(0, hp, hp, speed, c, r);
+  static _Enemy make(double hp, double speed, Color c, double r,
+          {int reward = 4, int leak = 1, bool boss = false}) =>
+      _Enemy(0, hp, hp, speed, c, r, reward, leak, boss);
 }
 
 class _Proj {
@@ -134,6 +139,8 @@ class _TdGameScreenState extends State<TdGameScreen>
   double _spawnCd = 0;
   double _waveHp = 0;
   double _waveSpeed = 0;
+  bool _bossWave = false;
+  bool _bossSpawned = false;
 
   // drag & drop
   TurretType? _dragType;
@@ -214,10 +221,13 @@ class _TdGameScreenState extends State<TdGameScreen>
     if (_waveActive) return;
     _wave++;
     _waveActive = true;
-    _toSpawn = 5 + _wave * 2;
+    _toSpawn = 6 + _wave * 3;
     _spawnCd = 0;
-    _waveHp = 3 + _wave * 2.2;
-    _waveSpeed = 46 + _wave * 3.5;
+    // HP qui grimpe nettement plus vite que la défense (≈ quadratique).
+    _waveHp = 4 + math.pow(_wave, 1.85).toDouble();
+    _waveSpeed = 42 + _wave * 4.0;
+    _bossWave = _wave % 5 == 0;
+    _bossSpawned = false;
   }
 
   void _tick(Duration e) {
@@ -232,20 +242,42 @@ class _TdGameScreenState extends State<TdGameScreen>
     if (_waveActive && _toSpawn > 0) {
       _spawnCd -= dt;
       if (_spawnCd <= 0) {
-        _spawnCd = 0.7;
+        _spawnCd = math.max(0.28, 0.62 - _wave * 0.015);
         _toSpawn--;
-        const pal = [
-          Color(0xFFFF4D6D),
-          Color(0xFFFF7A2B),
-          Color(0xFFB14DFF),
-        ];
-        _enemies.add(_Enemy.make(_waveHp, _waveSpeed,
-            pal[_rnd.nextInt(pal.length)], 13 + _waveHp.clamp(0, 18) * 0.4));
+        if (_bossWave && !_bossSpawned) {
+          // BOSS : gros sac de PV, lent, grosse récompense, -3 vies s'il passe.
+          _bossSpawned = true;
+          _enemies.add(_Enemy.make(_waveHp * 10, _waveSpeed * 0.5,
+              const Color(0xFFFF2D7A), 30,
+              reward: 60, leak: 3, boss: true));
+        } else {
+          // variété : rapide (peu de PV, vif) / tank (gros, lent) / normal
+          final roll = _rnd.nextDouble();
+          double hp = _waveHp, sp = _waveSpeed, r = 13;
+          int reward = 4;
+          Color c;
+          if (roll < 0.28) {
+            hp *= 0.45;
+            sp *= 1.75;
+            r = 11;
+            reward = 4;
+            c = const Color(0xFF35E0FF); // rapide
+          } else if (roll < 0.5) {
+            hp *= 2.4;
+            sp *= 0.6;
+            r = 20;
+            reward = 9;
+            c = const Color(0xFFFF7A2B); // tank
+          } else {
+            c = const Color(0xFFFF4D6D); // normal
+          }
+          _enemies.add(_Enemy.make(hp, sp, c, r, reward: reward));
+        }
       }
     }
     if (_waveActive && _toSpawn == 0 && _enemies.isEmpty) {
       _waveActive = false;
-      _gold += 30 + _wave * 5; // bonus fin de vague
+      _gold += 18 + _wave * 3; // bonus de fin de vague (plus serré)
     }
 
     // ennemis
@@ -255,7 +287,7 @@ class _TdGameScreenState extends State<TdGameScreen>
       en.hit = (en.hit - dt * 3).clamp(0.0, 1.0);
       if (en.d >= _pathLen) {
         en.hp = -999;
-        _lives = (_lives - 1).clamp(0, 999);
+        _lives = (_lives - en.leak).clamp(0, 999);
         _rings.add(_Ring(_path.last, const Color(0xFFFF4D6D), 60));
       }
     }
@@ -305,7 +337,7 @@ class _TdGameScreenState extends State<TdGameScreen>
         tg.hit = 1;
         _spark(p.pos, p.color, 4);
         if (tg.hp <= 0) {
-          _gold += 6;
+          _gold += tg.reward;
           _burst(tg.pos, tg.color);
           _rings.add(_Ring(tg.pos, tg.color, tg.r * 3));
         }
@@ -538,6 +570,11 @@ class _TdPainter extends CustomPainter {
     // ennemis
     for (final en in g._enemies) {
       _glow(canvas, en.pos, en.r * 1.5, en.color.withOpacity(0.45));
+      if (en.boss) {
+        final pulse = 0.5 + 0.5 * math.sin(g._last.inMilliseconds / 140.0);
+        canvas.drawCircle(en.pos, en.r + 6 + pulse * 4,
+            _stroke(en.color.withOpacity(0.5 + pulse * 0.4), 2.5));
+      }
       canvas.drawCircle(
           en.pos,
           en.r,
@@ -635,6 +672,10 @@ class _TdPainter extends CustomPainter {
         const Color(0xFFFF6F8A), 18, weight: FontWeight.w800);
     _text(canvas, 'Vague ${g._wave}', Offset(size.width - 70, 38),
         const Color(0xFF8FE9FF), 18, weight: FontWeight.w800);
+    if (g._waveActive && g._bossWave) {
+      _text(canvas, '⚠ BOSS', Offset(size.width - 70, 58),
+          const Color(0xFFFF2D7A), 13, weight: FontWeight.w800);
+    }
 
     // bouton vague
     final bw = 200.0, bh = 46.0;
