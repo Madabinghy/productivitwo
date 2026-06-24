@@ -71,7 +71,9 @@ class OrbitBody {
 
   double get warmth => 1 - orbitT;
   Color get color => Color.lerp(cold, hot, Curves.easeOut.transform(warmth))!;
-  double get planetRadius => 15 + mass * 27;
+  // Taille au prorata du domaine le + investi (mass = ratio 0..1, linéaire).
+  // Petit plancher pour qu'une toute petite planète reste visible/tappable.
+  double get planetRadius => 8 + mass * 40;
 
   String get subtitle {
     if (totalLabel != null) {
@@ -106,11 +108,17 @@ class OrbitView extends StatefulWidget {
     required this.bodies,
     this.interactive = true,
     this.onTapBody,
+    this.sunFill = 1.0,
+    this.sunLabel,
   });
 
   final List<OrbitBody> bodies;
   final bool interactive; // true = tap nourrit (démo) ; false = tap = onTapBody
   final void Function(OrbitBody body)? onTapBody;
+  // Soleil « Aujourd'hui » : taille pilotée par le temps loggé sur 24h glissantes
+  // (0..1, normalisé sur le record journalier). sunLabel = total sous le soleil.
+  final double sunFill;
+  final String? sunLabel;
 
   @override
   State<OrbitView> createState() => OrbitViewState();
@@ -255,6 +263,8 @@ class OrbitViewState extends State<OrbitView>
             pulses: _pulses,
             phase: _phase,
             scale: _scale,
+            sunFill: widget.sunFill,
+            sunLabel: widget.sunLabel,
           ),
         ),
       );
@@ -399,6 +409,8 @@ class _OrbitPainter extends CustomPainter {
     required this.pulses,
     required this.phase,
     required this.scale,
+    this.sunFill = 1.0,
+    this.sunLabel,
   });
 
   final List<OrbitBody> bodies;
@@ -409,6 +421,8 @@ class _OrbitPainter extends CustomPainter {
   final Map<OrbitBody, double> pulses;
   final double phase;
   final double scale;
+  final double sunFill;
+  final String? sunLabel;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -457,11 +471,15 @@ class _OrbitPainter extends CustomPainter {
       );
     }
 
-    // soleil « Aujourd'hui » — couronne qui respire
+    // soleil « Aujourd'hui » — taille selon le temps loggé sur 24h glissantes
+    // (sunFill 0..1, normalisé sur le record journalier) ; couronne qui respire.
     final breath = 1 + 0.04 * math.sin(twinkle * 1.4);
+    final sunMax = math.min(118.0, minR * 0.9);
+    final sunMin = sunMax * 0.46;
+    final sunR = (sunMin + (sunMax - sunMin) * sunFill.clamp(0.0, 1.0)) * breath;
     canvas.drawCircle(
       center,
-      96 * breath,
+      sunR,
       Paint()
         ..shader = const RadialGradient(
           colors: [
@@ -471,10 +489,14 @@ class _OrbitPainter extends CustomPainter {
             Color(0x00FF8F4A),
           ],
           stops: [0, 0.25, 0.55, 1],
-        ).createShader(Rect.fromCircle(center: center, radius: 96 * breath)),
+        ).createShader(Rect.fromCircle(center: center, radius: sunR)),
     );
-    _text(canvas, 'AUJOURD\'HUI', center.translate(0, -8),
+    _text(canvas, 'AUJOURD\'HUI', center.translate(0, sunLabel == null ? -8 : -9),
         color: const Color(0xFF5A3A14), size: 13, weight: FontWeight.w800);
+    if (sunLabel != null) {
+      _text(canvas, sunLabel!, center.translate(0, 9),
+          color: const Color(0xFF7A521A), size: 11, weight: FontWeight.w700);
+    }
 
     // planètes
     final geom = _layout(bodies, center, size, phase);
