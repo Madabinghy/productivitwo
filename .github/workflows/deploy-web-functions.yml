@@ -131,10 +131,21 @@ jobs:
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx -y firebase-tools@latest deploy \
-            --only hosting \
-            --project "$FIREBASE_PROJECT" \
-            --non-interactive --force
+          # Retry : l'auth Hosting de firebase-tools échoue parfois de façon
+          # transitoire ("Failed to authenticate") → on retente avant d'échouer.
+          deploy() {
+            npx -y firebase-tools@latest deploy \
+              --only hosting \
+              --project "$FIREBASE_PROJECT" \
+              --non-interactive --force
+          }
+          ok=0
+          for i in 1 2 3; do
+            if deploy; then ok=1; break; fi
+            echo "::warning::Deploy hosting tentative $i échouée (auth transitoire ?), retry…"
+            sleep $((i * 8))
+          done
+          [ "$ok" = 1 ] || { echo "::error::Deploy hosting échoué après 3 tentatives"; exit 1; }
 
   # ── Cloud Functions → Firebase ─────────────────────────────────────────────
   deploy-functions:
