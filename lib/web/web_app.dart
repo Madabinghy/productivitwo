@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
+import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/organic_map_screen.dart';
 import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
@@ -250,6 +251,10 @@ class _AuthGateState extends State<_AuthGate> {
         // Proto Flame AVEC TES DONNÉES : rend ton vrai WorldLayout en Flame.
         if (kIsWeb && Uri.base.queryParameters['flame'] == '3') {
           return FlameDataProtoScreen(sync: FirestoreSync());
+        }
+        // Proto « Système orbital » AVEC TES DONNÉES : domaines en orbite.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'orbit') {
+          return OrbitDataScreen(sync: FirestoreSync());
         }
         // Carte ORGANIQUE contemplative (parchemin, type deepnight) — derrière un
         // flag le temps de migrer ; la carte actuelle reste le défaut.
