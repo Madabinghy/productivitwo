@@ -8707,17 +8707,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                     ),
                   );
                 }(),
-              // Mon scorpion 🦂 ACCOMPAGNE l'avatar (phase farm). Masqué pendant
-              // la cinématique (sinon il suit le ninja partout).
-              if (_inInterior && !_phase1 && !_cineActive)
-                () {
-                  final c0 = centerD(_pos.x.toDouble(), _pos.y.toDouble());
-                  return Positioned(
-                    left: c0.dx - slot * 0.85,
-                    top: c0.dy + slot * 0.05,
-                    child: Text('🦂', style: TextStyle(fontSize: slot * 0.6)),
-                  );
-                }(),
+              // (Scorpion compagnon de l'avatar retiré — on ne le transporte plus en grotte.)
               // Araignée AU REPOS dans sa grotte (phase farm, avant l'assaut) → on
               // voit l'ennemi à déloger dès que le brouillard se lève.
               if (_inInterior && !_phase1)
