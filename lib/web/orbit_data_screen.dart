@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/prototypes/orbit_prototype.dart';
 
 // Prototype « Système orbital » branché sur TES données (?proto=orbit, après auth).
@@ -181,9 +182,10 @@ List<OrbitBody> _buildBodies(AppState state) {
     (daysWithSessionByDom[dom] ??= {}).add(yyyymmdd(start));
   }
 
-  final maxMin = minutes30ByDom.values.isEmpty
-      ? 1
-      : minutes30ByDom.values.reduce(math.max);
+  // Référence "pleine taille" = p90 des minutes par domaine (même système que
+  // les heatmaps de l'accueil : robuste aux pics isolés, plancher 1).
+  final timeRef = percentileOf(minutes30ByDom.values.toList(), 0.90)
+      .clamp(1.0, double.infinity);
 
   // domaine le + investi → anneau de Saturne
   String? ringedDom;
@@ -203,9 +205,10 @@ List<OrbitBody> _buildBodies(AppState state) {
         ? OrbitBody.maxDays
         : (now.difference(last).inMinutes / 1440).clamp(0.0, OrbitBody.maxDays);
     final min30 = minutes30ByDom[d.id] ?? 0;
-    // taille STRICTEMENT au prorata du domaine le + investi (linéaire) :
-    // on voit d'un coup d'œil sur quoi on passe le plus de temps ; petit = petit.
-    final mass = maxMin <= 0 ? 0.0 : (min30 / maxMin).clamp(0.0, 1.0);
+    // taille au prorata, référence = p90 (système des heatmaps de l'accueil) :
+    // on voit sur quoi on passe le plus de temps, sans qu'un pic isolé n'écrase
+    // tout. Les domaines au-delà du p90 sont à taille pleine ; petit = petit.
+    final mass = (min30 / timeRef).clamp(0.0, 1.0);
     final streak = _streak(daysWithSessionByDom[d.id] ?? const {}, now);
 
     final hot = d.colorValue != null
