@@ -574,11 +574,6 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _cineAttack = true;
     _ninjaHp = 10;
     _bossAttackT = 0;
-    // Référence pour le flux ∝ part de toiles restantes (démarrage doux, baisse ensuite).
-    _cineAttackInitialAlive = _cineToileSpawns
-        .where((t) => !_cineKilledToiles.contains(t.key))
-        .length
-        .clamp(1, 1 << 30);
     // Budget du JOUR : lifetime − déjà dépensé aujourd'hui (≥ 0). À 0 → tu tombes
     // vite à court → défaite : farme/attends demain pour reconstituer le deck.
     _ninjaShurikens =
@@ -645,6 +640,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       for (final t in _cineAllToiles())
         if (!shot.contains(t.key)) (key: t.key, col: t.col, row: t.row)
     ];
+    // Référence du flux ∝ part restante : nb de toiles AU DÉBUT de l'attaque (toutes
+    // vivantes ici — _cineKilledToiles vient d'être vidé). DOIT être calculé APRÈS la
+    // (re)construction de _cineToileSpawns ci‑dessus — sinon on lisait la valeur de
+    // l'ancien combat (→ initialAlive=1 → interval = 2/alive → flux beaucoup trop rapide).
+    _cineAttackInitialAlive = _cineToileSpawns.length.clamp(1, 1 << 30);
     _pickNinjaTarget();
   }
 
