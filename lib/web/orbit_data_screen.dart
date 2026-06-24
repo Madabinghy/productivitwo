@@ -7,9 +7,11 @@ import 'package:productivitwo_v1/prototypes/orbit_prototype.dart';
 // Prototype « Système orbital » branché sur TES données (?proto=orbit, après auth).
 // Chaque domaine actif devient une planète :
 //   • récence de sa dernière session   → rayon d'orbite (proche = récent)
-//   • minutes des 30 derniers jours    → taille de la planète
+//   • minutes des 30 derniers jours    → taille (AU PRORATA du domaine le + investi)
 //   • jours consécutifs avec session   → chaleur / série
 //   • couleur du domaine               → teinte chaude
+// Le soleil « Aujourd'hui » grossit selon le temps loggé sur 24h glissantes,
+// normalisé sur ton record journalier.
 class OrbitDataScreen extends StatefulWidget {
   final FirestoreSync sync;
   const OrbitDataScreen({super.key, required this.sync});
@@ -22,6 +24,8 @@ class _OrbitDataScreenState extends State<OrbitDataScreen> {
   List<OrbitBody>? _bodies;
   String? _error;
   int _domainCount = 0;
+  double _sunFill = 0;
+  String _sunLabel = '';
 
   @override
   void initState() {
@@ -34,10 +38,13 @@ class _OrbitDataScreenState extends State<OrbitDataScreen> {
       final state = await widget.sync.pull();
       if (state == null) throw Exception('Aucun état chargé');
       final bodies = _buildBodies(state);
+      final sun = _computeSun(state);
       if (mounted) {
         setState(() {
           _bodies = bodies;
           _domainCount = bodies.length;
+          _sunFill = sun.$1;
+          _sunLabel = sun.$2;
         });
       }
     } catch (e) {
@@ -89,6 +96,8 @@ class _OrbitDataScreenState extends State<OrbitDataScreen> {
               bodies: bodies,
               interactive: false,
               onTapBody: _showInfo,
+              sunFill: _sunFill,
+              sunLabel: _sunLabel,
             ),
           ),
           Positioned(
@@ -194,8 +203,9 @@ List<OrbitBody> _buildBodies(AppState state) {
         ? OrbitBody.maxDays
         : (now.difference(last).inMinutes / 1440).clamp(0.0, OrbitBody.maxDays);
     final min30 = minutes30ByDom[d.id] ?? 0;
-    // racine carrée : compresse l'écart → les petits domaines restent visibles
-    final mass = 0.35 + 0.65 * math.sqrt(min30 / maxMin);
+    // taille STRICTEMENT au prorata du domaine le + investi (linéaire) :
+    // on voit d'un coup d'œil sur quoi on passe le plus de temps ; petit = petit.
+    final mass = maxMin <= 0 ? 0.0 : (min30 / maxMin).clamp(0.0, 1.0);
     final streak = _streak(daysWithSessionByDom[d.id] ?? const {}, now);
 
     final hot = d.colorValue != null
@@ -216,6 +226,36 @@ List<OrbitBody> _buildBodies(AppState state) {
     ));
   }
   return bodies;
+}
+
+// Soleil « Aujourd'hui » : minutes loggées sur 24h glissantes, normalisées sur
+// le record journalier (« sur un max »). Retourne (remplissage 0..1, libellé).
+(double, String) _computeSun(AppState state) {
+  final now = DateTime.now();
+  var min24 = 0;
+  final perDay = <String, int>{};
+  for (final s in state.sessions) {
+    final m = s.duration.inMinutes.clamp(0, 24 * 60);
+    if (now.difference(s.startAt).inMinutes < 1440 &&
+        !s.startAt.isAfter(now)) {
+      min24 += m;
+    }
+    perDay[yyyymmdd(s.startAt)] = (perDay[yyyymmdd(s.startAt)] ?? 0) + m;
+  }
+  // max = ton meilleur jour (au moins 60 min pour éviter un soleil plein trop vite)
+  final maxDay = perDay.values.isEmpty
+      ? 60
+      : math.max(60, perDay.values.reduce(math.max));
+  final fill = (min24 / maxDay).clamp(0.0, 1.0);
+  final label = min24 <= 0 ? 'rien encore' : '${_fmtMin(min24)} / 24h';
+  return (fill, label);
+}
+
+String _fmtMin(int min) {
+  final h = min ~/ 60;
+  final m = min % 60;
+  if (h > 0) return '${h}h${m > 0 ? m.toString().padLeft(2, '0') : ''}';
+  return '${m}min';
 }
 
 // jours consécutifs avec session, en partant d'aujourd'hui (ou hier si vide)
