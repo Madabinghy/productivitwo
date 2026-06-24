@@ -197,7 +197,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
   // TROU 🕳️ d'entrée du combat boss : posé sur une case JARDIN (cliquable garantie),
   // géré tout en haut de _onTapV2 → entre dans la sous-map du domaine pour combattre.
-  final Map<String, String> _v2BossTrou = {}; // tileId (jardin) → domainId (boss)
+  // Entrée de grotte d'un domaine (centre du jardin) : cliquable TOUJOURS (explore hors
+  // invasion ; combat si envahi). tileId → domainId. Peuplée à la construction du monde.
+  final Map<String, String> _v2CaveEntry = {};
   // Toast rendu DANS le Stack du monde (les SnackBar passent derrière la map plein écran).
   String? _hudToastMsg;
   Color _hudToastColor = const Color(0xFF1D9E75);
@@ -445,6 +447,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
   int _ninjaHp = 10;
   double _bossAttackT = 0; // s écoulées → l'araignée frappe le ninja chaque minute
+  // Boss VISIBLE qui charge le ninja chaque minute (matérialise le -1 PV).
+  double _bossRestX = 0, _bossRestY = 0; // position de repos
+  double _bossDrawX = 0, _bossDrawY = 0; // position animée (rendu)
+  double _bossLunge = -1; // -1 = repos ; 0..1 = progression de la charge (aller-retour)
+  bool _bossHitDone = false; // -1 PV déjà appliqué pour cette charge ?
   // ARC : quand activé, le ninja s'arrête 5 s et tire 3 flèches/s (gratuit).
   bool _ninjaBow = false;
   double _bowDur = 0;
@@ -570,10 +577,38 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Flammes d'une tourelle de ROUTINE. Quotidienne : tokens 'flame' (2 jours
+  // consécutifs). HEBDO/MENSUELLE : ces tokens valent toujours 0 → on accorde
+  // 1 flamme si la routine est TENUE (pas en retard cette semaine), pour ne pas
+  // pénaliser les domaines à dominante hebdo. Combat uniquement (jardin inchangé).
+  int _routineTurretFlames(String routineId) {
+    final tokens = logic.routineWeekTokens(routineId);
+    final fl = tokens.where((t) => t.type == 'flame').length;
+    if (fl > 0) return fl;
+    Activity? a;
+    for (final x in logic.state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit || a.effHabitFreq == HabitFreq.daily) return 0;
+    final overdue = tokens.any((t) => t.type == 'spider');
+    return overdue ? 0 : 1; // hebdo/mensuelle tenue → 1 flamme
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
     _bossAttackT = 0;
+    // Boss au repos en haut‑centre de l'aire de combat ; il chargera le ninja.
+    final wb = _w;
+    _bossRestX = (wb != null ? wb.cols / 2.0 : 6.0);
+    _bossRestY = 1.5;
+    _bossDrawX = _bossRestX;
+    _bossDrawY = _bossRestY;
+    _bossLunge = -1;
+    _bossHitDone = false;
     // Budget du JOUR : lifetime − déjà dépensé aujourd'hui (≥ 0). À 0 → tu tombes
     // vite à court → défaite : farme/attends demain pour reconstituer le deck.
     _ninjaShurikens =
@@ -617,12 +652,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineTurretByRow[row] = tu;
       }
       for (var i = 0; i < routines.length; i++) {
-        addTurret(
-            r0 + i,
-            logic
-                .routineWeekTokens(routines[i].id)
-                .where((t) => t.type == 'flame')
-                .length);
+        addTurret(r0 + i, _routineTurretFlames(routines[i].id));
       }
       for (var j = 0; j < times.length; j++) {
         addTurret(
@@ -1064,12 +1094,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         return false;
       });
-      // L'ARAIGNÉE-BOSS frappe le ninja chaque minute d'assaut → -1 PV.
+      // L'ARAIGNÉE-BOSS CHARGE le ninja chaque minute (matérialise le -1 PV) :
+      // fonce sur lui (0→0,5), le frappe à l'impact, puis revient au repos (0,5→1).
       _bossAttackT += dt;
-      if (_bossAttackT >= 60.0) {
+      if (_bossLunge < 0 && _bossAttackT >= 60.0) {
         _bossAttackT -= 60.0;
-        _ninjaHp--;
-        _toast('🕷️ L\'araignée frappe le ninja — -1 PV !', _kEnemy);
+        _bossLunge = 0;
+        _bossHitDone = false;
+      }
+      if (_bossLunge >= 0) {
+        _bossLunge += dt / 0.9; // charge aller-retour en ~0,9 s
+        if (_bossLunge < 0.5) {
+          final f = (_bossLunge / 0.5).clamp(0.0, 1.0);
+          _bossDrawX = _bossRestX + (_ninjaX - _bossRestX) * f;
+          _bossDrawY = _bossRestY + (_ninjaY - _bossRestY) * f;
+        } else {
+          if (!_bossHitDone) {
+            _bossHitDone = true;
+            _ninjaHp--; // impact = -1 PV
+            _toast('🕷️ Le boss FRAPPE le ninja — -1 PV !', _kEnemy);
+          }
+          final f = ((_bossLunge - 0.5) / 0.5).clamp(0.0, 1.0);
+          _bossDrawX = _ninjaX + (_bossRestX - _ninjaX) * f;
+          _bossDrawY = _ninjaY + (_bossRestY - _ninjaY) * f;
+        }
+        if (_bossLunge >= 1.0) {
+          _bossLunge = -1;
+          _bossDrawX = _bossRestX;
+          _bossDrawY = _bossRestY;
+        }
       }
       if (_ninjaHp <= 0) {
         // DÉFAITE : on NE consomme PAS les shurikens (rien persisté) → tu peux
@@ -8226,6 +8279,24 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // BOSS : grosse araignée COURONNÉE qui charge le ninja chaque minute
+                // (matérialise le -1 PV) ; grossit pendant la charge.
+                if (_cineAttack)
+                  () {
+                    final c0 = centerD(_bossDrawX, _bossDrawY);
+                    final big = _bossLunge >= 0;
+                    return Positioned(
+                      left: c0.dx - slot * 0.7,
+                      top: c0.dy - slot * 0.8,
+                      width: slot * 1.4,
+                      height: slot * 1.4,
+                      child: Center(
+                        child: Text('🕷️',
+                            style: TextStyle(
+                                fontSize: slot * (big ? 1.05 : 0.85))),
+                      ),
+                    );
+                  }(),
                 // BOULES DE FEU de support (tours → toiles restantes) : tête orientée
                 // dans le sens du vol + traînée de flamme qui s'estompe vers la queue.
                 if (_cineAttack)
@@ -9179,7 +9250,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _cachedCells = null;
     _v2Tint.clear();
     _v2WallTint.clear();
+    _v2CaveEntry.clear();
     for (final c in layout.castles) {
+      // Entrée de grotte 🕳️ (centre du jardin) — TOUJOURS présente, même hors invasion :
+      // on peut entrer explorer l'intérieur ; le combat ne se lance que si le domaine
+      // est envahi. Familiariser le lieu avant l'invasion lui donne du sens.
+      final g = c.gardenRect;
+      _v2CaveEntry['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] =
+          c.domainId;
       final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
       // Château ET village teintés de la couleur du domaine.
       for (final r in [c.castleRect, c.villageRect]) {
@@ -9473,12 +9551,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Côté JARDIN du château (intérieur) : gauche en normal, droite en miroir.
       final araX = c.mirror ? c.castleRect.right - 1 : c.castleRect.left;
       _v2Araignee['${araX}_$y'] = c.domainId;
-      // Centre du jardin = TROU 🕳️ d'entrée du combat (seul un BOSS arrive ici, cf.
-      // le `continue` plus haut pour les invasions hebdo). Toiles semées AUTOUR
-      // (~1 case sur 3), jamais sur le trou.
+      // Centre du jardin = entrée de grotte (déjà posée à la construction du monde dans
+      // _v2CaveEntry) → on ne sème pas de toile dessus. Toiles AUTOUR (~1 case sur 3).
       final g = c.gardenRect;
       final trouId = '${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}';
-      _v2BossTrou[trouId] = c.domainId;
       // Marqueurs 🕸️ denses sur le jardin (look « infesté ») — COSMÉTIQUE : la difficulté
       // du combat vient du heatmap 12 sem. (_cineAllToiles), pas de ces marqueurs.
       for (var gy = g.top; gy < g.top + g.height; gy++) {
@@ -9553,13 +9629,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Walking = false;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
-    // TROU 🕳️ du boss : entrée DIRECTE du combat, PRIORITAIRE sur tout garde-fou
-    // (panneau ouvert, gate hebdo…) → toujours réactif, sans condition.
-    if (_v2BossTrou.containsKey(id)) {
+    // Entrée de GROTTE 🕳️ : on entre TOUJOURS dans l'intérieur du domaine (prioritaire
+    // sur tout garde-fou). Le COMBAT ne se lance que si le domaine est ENVAHI ; sinon
+    // c'est une simple exploration (familiariser le lieu avant l'invasion).
+    if (_v2CaveEntry.containsKey(id)) {
       if (_gardenPanel != null || _parchemin != null) _closeV2Panel();
-      _enterDomainFromV2(_v2BossTrou[id]!);
+      final dom = _v2CaveEntry[id]!;
+      _enterDomainFromV2(dom);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _inInterior) _startCine();
+        if (mounted && _inInterior && logic.state.bossInvasions.contains(dom)) {
+          _startCine();
+        }
       });
       return;
     }
@@ -10585,31 +10665,19 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_v2Toiles.containsKey(id)) {
       child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
     }
-    // TROU 🕳️ du boss : entrée EXPLICITE du combat (case JARDIN, cliquable garantie).
-    if (_v2BossTrou.containsKey(id)) {
-      bg = _kEnemy.withOpacity(.5);
+    // Entrée de GROTTE 🕳️ : présente sur chaque domaine. Fond rouge si ENVAHIE
+    // (clic = combat), neutre sinon (clic = exploration).
+    if (_v2CaveEntry.containsKey(id)) {
+      final invaded = logic.state.bossInvasions.contains(_v2CaveEntry[id]);
+      bg = invaded
+          ? _kEnemy.withOpacity(.5)
+          : Colors.black.withOpacity(.30);
       child = Text('🕳️', style: TextStyle(fontSize: inner * 0.72));
     }
-    // Araignée d'invasion. Un BOSS de donjon est distinct des invasions hebdo
-    // (couronné, plus gros, fond rouge plus vif) → l'user ne le confond pas avec
-    // les araignées « ordinaires » des autres domaines.
+    // Araignée d'invasion BOSS (seuls les boss s'affichent désormais).
     if (_v2Araignee.containsKey(id)) {
-      final isBoss = logic.state.bossInvasions.contains(_v2Araignee[id]);
-      bg = _kEnemy.withOpacity(isBoss ? .5 : .32);
-      child = isBoss
-          // Couronne CONTENUE dans la case (pas de débordement → toute la case reste
-          // cliquable pour lancer le combat).
-          ? Stack(
-              alignment: Alignment.center,
-              children: [
-                Text('🕷️', style: TextStyle(fontSize: inner * 0.78)),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: Text('👑', style: TextStyle(fontSize: inner * 0.34)),
-                ),
-              ],
-            )
-          : Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+      bg = _kEnemy.withOpacity(.5);
+      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.82));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
     // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».

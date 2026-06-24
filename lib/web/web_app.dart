@@ -22,7 +22,7 @@ import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 // Affiché en bas de CHAQUE écran web + imprimé au démarrage (terminal flutter run
 // + console navigateur). Sert à vérifier d'un coup d'œil qu'on n'exécute pas un
 // vieux build en local. À bumper à chaque changement de routing/auth notable.
-const String kWebBuildTag = 'build 2026-06-23c · boss-flow fix (0.5/s)';
+const String kWebBuildTag = 'build 2026-06-23f · grottes accessibles';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
 
