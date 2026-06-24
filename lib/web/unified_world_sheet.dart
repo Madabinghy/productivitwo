@@ -575,6 +575,26 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     }
   }
 
+  // Flammes d'une tourelle de ROUTINE. Quotidienne : tokens 'flame' (2 jours
+  // consécutifs). HEBDO/MENSUELLE : ces tokens valent toujours 0 → on accorde
+  // 1 flamme si la routine est TENUE (pas en retard cette semaine), pour ne pas
+  // pénaliser les domaines à dominante hebdo. Combat uniquement (jardin inchangé).
+  int _routineTurretFlames(String routineId) {
+    final tokens = logic.routineWeekTokens(routineId);
+    final fl = tokens.where((t) => t.type == 'flame').length;
+    if (fl > 0) return fl;
+    Activity? a;
+    for (final x in logic.state.activeActivities) {
+      if (x.id == routineId) {
+        a = x;
+        break;
+      }
+    }
+    if (a == null || !a.isHabit || a.effHabitFreq == HabitFreq.daily) return 0;
+    final overdue = tokens.any((t) => t.type == 'spider');
+    return overdue ? 0 : 1; // hebdo/mensuelle tenue → 1 flamme
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
@@ -630,12 +650,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineTurretByRow[row] = tu;
       }
       for (var i = 0; i < routines.length; i++) {
-        addTurret(
-            r0 + i,
-            logic
-                .routineWeekTokens(routines[i].id)
-                .where((t) => t.type == 'flame')
-                .length);
+        addTurret(r0 + i, _routineTurretFlames(routines[i].id));
       }
       for (var j = 0; j < times.length; j++) {
         addTurret(
@@ -8274,20 +8289,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                       width: slot * 1.4,
                       height: slot * 1.4,
                       child: Center(
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          alignment: Alignment.center,
-                          children: [
-                            Text('🕷️',
-                                style: TextStyle(
-                                    fontSize: slot * (big ? 1.05 : 0.85))),
-                            Positioned(
-                              top: -slot * 0.18,
-                              child: Text('👑',
-                                  style: TextStyle(fontSize: slot * 0.4)),
-                            ),
-                          ],
-                        ),
+                        child: Text('🕷️',
+                            style: TextStyle(
+                                fontSize: slot * (big ? 1.05 : 0.85))),
                       ),
                     );
                   }(),
@@ -10655,26 +10659,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       bg = _kEnemy.withOpacity(.5);
       child = Text('🕳️', style: TextStyle(fontSize: inner * 0.72));
     }
-    // Araignée d'invasion. Un BOSS de donjon est distinct des invasions hebdo
-    // (couronné, plus gros, fond rouge plus vif) → l'user ne le confond pas avec
-    // les araignées « ordinaires » des autres domaines.
+    // Araignée d'invasion BOSS (seuls les boss s'affichent désormais).
     if (_v2Araignee.containsKey(id)) {
-      final isBoss = logic.state.bossInvasions.contains(_v2Araignee[id]);
-      bg = _kEnemy.withOpacity(isBoss ? .5 : .32);
-      child = isBoss
-          // Couronne CONTENUE dans la case (pas de débordement → toute la case reste
-          // cliquable pour lancer le combat).
-          ? Stack(
-              alignment: Alignment.center,
-              children: [
-                Text('🕷️', style: TextStyle(fontSize: inner * 0.78)),
-                Align(
-                  alignment: Alignment.topCenter,
-                  child: Text('👑', style: TextStyle(fontSize: inner * 0.34)),
-                ),
-              ],
-            )
-          : Text('🕷️', style: TextStyle(fontSize: inner * 0.75));
+      bg = _kEnemy.withOpacity(.5);
+      child = Text('🕷️', style: TextStyle(fontSize: inner * 0.82));
     }
     // Parchemin 📜 (au-dessus de la 1ʳᵉ tourelle) : ouvre le grand dashboard projets.
     // Pastille 🎯N si le domaine a des MISSIONS (écart hebdo > 0) → « va voir ».
