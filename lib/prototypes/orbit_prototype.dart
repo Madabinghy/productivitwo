@@ -54,11 +54,18 @@ class OrbitBody {
   final String? totalLabel; // ex. "6h20 / 30 j" (données réelles)
   final bool ringed; // anneau type Saturne (domaine le + investi)
 
-  static const double maxDays = 7;
+  // Fenêtre de récence : au-delà, la planète est en bordure froide.
+  static const double maxDays = 14;
+  // Exposant > 1 : aujourd'hui/hier collent au soleil, la dérive s'accélère ensuite.
+  static const double _driftCurve = 1.4;
 
-  double get warmth => (1 - (displayDays.clamp(0, maxDays) / maxDays));
+  double get orbitT {
+    final t = displayDays.clamp(0, maxDays) / maxDays;
+    return math.pow(t, _driftCurve).toDouble();
+  }
+
+  double get warmth => 1 - orbitT;
   Color get color => Color.lerp(cold, hot, Curves.easeOut.transform(warmth))!;
-  double get orbitT => displayDays.clamp(0, maxDays) / maxDays;
   double get planetRadius => 15 + mass * 27;
 
   String get subtitle {
@@ -228,7 +235,7 @@ class _OrbitScreenState extends State<OrbitScreen> {
         cold: const Color(0xFF7E85A0),
         mass: 1.0,
         angle: 0.2,
-        days: 0.2,
+        days: 0.3,
         streak: 14,
         ringed: true),
     OrbitBody(
@@ -237,7 +244,7 @@ class _OrbitScreenState extends State<OrbitScreen> {
         cold: const Color(0xFF6A749A),
         mass: 0.8,
         angle: 2.5,
-        days: 1.5,
+        days: 3.5,
         streak: 4),
     OrbitBody(
         name: 'Créativité',
@@ -245,7 +252,7 @@ class _OrbitScreenState extends State<OrbitScreen> {
         cold: const Color(0xFF6A749A),
         mass: 0.45,
         angle: 4.3,
-        days: 3.2,
+        days: 8.0,
         streak: 1),
     OrbitBody(
         name: 'Relations',
@@ -253,7 +260,7 @@ class _OrbitScreenState extends State<OrbitScreen> {
         cold: const Color(0xFF767C96),
         mass: 0.6,
         angle: 5.6,
-        days: 6.0,
+        days: 13.0,
         streak: 0),
   ];
 
