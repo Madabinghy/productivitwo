@@ -477,7 +477,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_CineTurret> _cineTurrets = [];
   final Map<int, _CineTurret> _cineTurretByRow = {};
   final Set<String> _inFlightKeys = {}; // toiles déjà visées par un boulet en vol
-  static const double _kSbireSpawnEvery = 1.0; // 1 sbire / s (cyclique)
+  // Cadence PAR TOILE vivante : le flux total = nb de toiles vivantes /
+  // _kPerToileSpawnEvery. Détruire une toile RÉDUIT donc le flux (sinon, à cadence
+  // fixe, le ninja est submergé en continu → défaite systématique).
+  static const double _kPerToileSpawnEvery = 4.0;
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
   static const double _kTurretFireEvery = 10.0; // s entre 2 tirs d'une tour
   static const double _kTurretAimDur = 2.0; // s d'animation de visée (canon)
@@ -840,16 +843,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Spawn 1 sbire / s, en CYCLANT les toiles survivantes (pas tout d'un coup ;
       // après la dernière, on recommence à la première).
       if (_cineToileSpawns.isNotEmpty) {
-        _cineSpawnT += dt;
-        if (_cineSpawnT >= _kSbireSpawnEvery) {
-          _cineSpawnT -= _kSbireSpawnEvery;
-          // Ne spawn QUE depuis une toile encore VIVANTE : une toile explosée cesse de
-          // pondre des sbires (bug : les cases détruites continuaient à en faire spawn).
-          final alive = [
-            for (final t in _cineToileSpawns)
-              if (!_cineKilledToiles.contains(t.key)) t
-          ];
-          if (alive.isNotEmpty) {
+        final alive = [
+          for (final t in _cineToileSpawns)
+            if (!_cineKilledToiles.contains(t.key)) t
+        ];
+        if (alive.isNotEmpty) {
+          _cineSpawnT += dt;
+          // Cadence ∝ nb de toiles VIVANTES : chaque toile pond ~1 sbire toutes les
+          // _kPerToileSpawnEvery s. Détruire des toiles fait BAISSER le flux → le ninja
+          // peut reprendre le dessus et gagner (une toile explosée ne spawn plus).
+          final interval = _kPerToileSpawnEvery / alive.length;
+          if (_cineSpawnT >= interval) {
+            _cineSpawnT -= interval;
             final t = alive[_cineSpawnIdx % alive.length];
             _cineSpawnIdx++;
             _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
@@ -9468,10 +9473,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final g = c.gardenRect;
       final trouId = '${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}';
       _v2BossTrou[trouId] = c.domainId;
+      // Semis ESPACÉ (~1 toile par 4×4 cases → poignée de toiles) : avec la cadence
+      // ∝ toiles vivantes, trop de toiles = flux ingérable. Quelques toiles bien
+      // réparties suffisent ; les détruire fait nettement chuter le flux.
       for (var gy = g.top; gy < g.top + g.height; gy++) {
         for (var gx = g.left; gx < g.left + g.width; gx++) {
           final tid = '${gx}_$gy';
-          if (tid != trouId && (gx + gy) % 3 == 0) _v2Toiles[tid] = c.domainId;
+          if (tid != trouId &&
+              (gx - g.left) % 4 == 2 &&
+              (gy - g.top) % 4 == 2) {
+            _v2Toiles[tid] = c.domainId;
+          }
         }
       }
     }
