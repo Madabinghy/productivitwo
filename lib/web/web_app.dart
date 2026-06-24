@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/prototypes/fluo_prototype.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
+import 'package:productivitwo_v1/web/pet_data_screen.dart';
 import 'package:productivitwo_v1/web/defense_data_screen.dart';
 import 'package:productivitwo_v1/web/village_data_screen.dart';
 import 'package:productivitwo_v1/web/iso_world_screen.dart';
@@ -276,6 +277,10 @@ class _AuthGateState extends State<_AuthGate> {
         // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'rpg') {
           return RpgDataScreen(sync: FirestoreSync());
+        }
+        // Proto « Compagnon » AVEC TES DONNÉES : humeur = ta régularité.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'pet') {
+          return PetDataScreen(sync: FirestoreSync());
         }
         // Proto « Défense néon » AVEC TES DONNÉES : domaines = tourelles.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'defense') {
