@@ -1,10 +1,7 @@
 // Prototype « Tower Defense » jouable — test du feeling (dessiné en code).
 //
-// Vrai TD : circuit forcé pour les ennemis, emplacements de tourelles, palette
-// à GLISSER-DÉPOSER, vagues qui montent en puissance, or gagné aux kills,
-// évolution d'une tourelle au tap. Style néon/dark + juice. Standalone (sans
-// données ni login) → on teste juste si le gameplay accroche.
-//
+// Roster de tourelles à comportements distincts + plusieurs cartes.
+// Style néon/dark + juice. Standalone (sans données ni login).
 // Accès : ?proto=td (route sans auth dans web_app).
 
 import 'dart:math' as math;
@@ -22,10 +19,13 @@ class TdProtoApp extends StatelessWidget {
       );
 }
 
-// ── Types de tourelles ──────────────────────────────────────────────────────
+// ── Comportements ───────────────────────────────────────────────────────────
+enum Beh { gun, sniper, frost, mortar, flame, rail }
+
 class TurretType {
   const TurretType(this.key, this.name, this.color, this.cost, this.range,
-      this.dmg, this.rate);
+      this.dmg, this.rate, this.beh,
+      {this.splash = 0, this.role = ''});
   final String key;
   final String name;
   final Color color;
@@ -33,12 +33,26 @@ class TurretType {
   final double range;
   final double dmg;
   final double rate; // s entre deux tirs
+  final Beh beh;
+  final double splash; // rayon AoE (mortier)
+  final String role;
 }
 
 const _kTypes = [
-  TurretType('blaster', 'Blaster', Color(0xFF35E0FF), 40, 120, 1.0, 0.5),
-  TurretType('laser', 'Laser', Color(0xFFB6FF3C), 70, 150, 2.4, 1.0),
-  TurretType('tesla', 'Tesla', Color(0xFFA86BFF), 100, 100, 1.6, 0.7),
+  TurretType('gun', 'Blaster', Color(0xFF35E0FF), 40, 120, 1.0, 0.45, Beh.gun,
+      role: 'rapide, polyvalent'),
+  TurretType('sniper', 'Sniper', Color(0xFF7FE0FF), 95, 260, 8.0, 1.8,
+      Beh.sniper,
+      role: 'longue portée, gros dégâts'),
+  TurretType('frost', 'Givre', Color(0xFF8FE8FF), 70, 120, 0.6, 0.7, Beh.frost,
+      role: 'ralentit'),
+  TurretType('mortar', 'Mortier', Color(0xFFFFD36B), 95, 150, 2.4, 1.4,
+      Beh.mortar,
+      splash: 55, role: 'zone (AoE)'),
+  TurretType('flame', 'Flamme', Color(0xFFFF8A2B), 80, 82, 0.7, 0.16, Beh.flame,
+      role: 'anti-essaim'),
+  TurretType('rail', 'Railgun', Color(0xFFFF3DDA), 115, 240, 2.2, 1.3, Beh.rail,
+      role: 'perce en ligne'),
 ];
 
 class _Turret {
@@ -51,7 +65,7 @@ class _Turret {
   double get range => type.range * (1 + (tier - 1) * 0.18);
   double get dmg => type.dmg * (1 + (tier - 1) * 0.6);
   double get rate => type.rate * (1 - (tier - 1) * 0.18);
-  int get upCost => type.cost + (tier) * 35;
+  int get upCost => type.cost + tier * 35;
 }
 
 class _Slot {
@@ -61,32 +75,39 @@ class _Slot {
 }
 
 class _Enemy {
-  _Enemy(this.d, this.hp, this.maxHp, this.speed, this.color, this.r,
-      this.reward, this.leak, this.boss);
-  double d; // distance le long du circuit
+  _Enemy(this.hp, this.maxHp, this.speed, this.color, this.r, this.reward,
+      this.leak, this.boss);
+  double d = 0;
   double hp;
   final double maxHp;
   final double speed;
   final Color color;
   final double r;
   final int reward;
-  final int leak; // vies perdues si l'ennemi atteint la fin
+  final int leak;
   final bool boss;
   double hit = 0;
+  double slowT = 0;
   Offset pos = Offset.zero;
-  static _Enemy make(double hp, double speed, Color c, double r,
-          {int reward = 4, int leak = 1, bool boss = false}) =>
-      _Enemy(0, hp, hp, speed, c, r, reward, leak, boss);
 }
 
 class _Proj {
-  _Proj(this.pos, this.color, this.target, this.dmg);
+  _Proj(this.pos, this.color, this.target, this.dmg, this.beh, this.splash);
   Offset pos;
   final Color color;
   _Enemy? target;
   final double dmg;
+  final Beh beh;
+  final double splash;
   final List<Offset> trail = [];
   bool dead = false;
+}
+
+class _Beam {
+  _Beam(this.a, this.b, this.color);
+  final Offset a, b;
+  final Color color;
+  double life = 0;
 }
 
 class _Part {
@@ -106,6 +127,73 @@ class _Ring {
   double life = 0;
 }
 
+// ── Cartes (fractions de l'écran) ───────────────────────────────────────────
+class _MapDef {
+  const _MapDef(this.name, this.path, this.slots);
+  final String name;
+  final List<Offset> path;
+  final List<Offset> slots;
+}
+
+const _maps = [
+  _MapDef('Serpent', [
+    Offset(-0.05, 0.20),
+    Offset(0.78, 0.20),
+    Offset(0.78, 0.40),
+    Offset(0.18, 0.40),
+    Offset(0.18, 0.60),
+    Offset(0.82, 0.60),
+    Offset(1.05, 0.60),
+  ], [
+    Offset(0.30, 0.30),
+    Offset(0.55, 0.30),
+    Offset(0.66, 0.50),
+    Offset(0.42, 0.50),
+    Offset(0.30, 0.50),
+    Offset(0.55, 0.70),
+    Offset(0.10, 0.31),
+    Offset(0.90, 0.40),
+  ]),
+  _MapDef('Spirale', [
+    Offset(0.5, -0.05),
+    Offset(0.5, 0.30),
+    Offset(0.20, 0.30),
+    Offset(0.20, 0.66),
+    Offset(0.80, 0.66),
+    Offset(0.80, 0.18),
+    Offset(0.62, 0.18),
+    Offset(0.62, 0.50),
+    Offset(0.38, 0.50),
+    Offset(0.38, 1.05),
+  ], [
+    Offset(0.34, 0.20),
+    Offset(0.66, 0.20),
+    Offset(0.34, 0.42),
+    Offset(0.50, 0.42),
+    Offset(0.70, 0.42),
+    Offset(0.50, 0.58),
+    Offset(0.26, 0.58),
+    Offset(0.74, 0.58),
+  ]),
+  _MapDef('Zigzag', [
+    Offset(-0.05, 0.15),
+    Offset(0.85, 0.15),
+    Offset(0.15, 0.38),
+    Offset(0.85, 0.61),
+    Offset(0.15, 0.84),
+    Offset(1.05, 0.84),
+  ], [
+    Offset(0.30, 0.26),
+    Offset(0.55, 0.26),
+    Offset(0.50, 0.49),
+    Offset(0.25, 0.49),
+    Offset(0.72, 0.49),
+    Offset(0.40, 0.72),
+    Offset(0.62, 0.72),
+    Offset(0.18, 0.72),
+  ]),
+];
+
 class TdGameScreen extends StatefulWidget {
   const TdGameScreen({super.key});
   @override
@@ -118,15 +206,16 @@ class _TdGameScreenState extends State<TdGameScreen>
   Duration _last = Duration.zero;
   Size _size = Size.zero;
   bool _setup = false;
+  int _mapIndex = 0;
 
-  // circuit
   final List<Offset> _path = [];
   final List<double> _cum = [];
   double _pathLen = 0;
-
   final List<_Slot> _slots = [];
+
   final List<_Enemy> _enemies = [];
   final List<_Proj> _projs = [];
+  final List<_Beam> _beams = [];
   final List<_Part> _parts = [];
   final List<_Ring> _rings = [];
   final _rnd = math.Random(5);
@@ -142,12 +231,11 @@ class _TdGameScreenState extends State<TdGameScreen>
   bool _bossWave = false;
   bool _bossSpawned = false;
 
-  // drag & drop
   TurretType? _dragType;
   Offset? _dragPos;
 
-  // boutons (rects calculés au paint, lus au tap)
   Rect _waveBtn = Rect.zero;
+  Rect _mapBtn = Rect.zero;
   final List<Rect> _trayRects = [];
 
   @override
@@ -164,21 +252,11 @@ class _TdGameScreenState extends State<TdGameScreen>
 
   void _build(Size s) {
     _size = s;
-    _path.clear();
     final w = s.width, h = s.height;
-    // circuit en S (fractions)
-    final pts = [
-      const Offset(-0.05, 0.18),
-      const Offset(0.78, 0.18),
-      const Offset(0.78, 0.40),
-      const Offset(0.18, 0.40),
-      const Offset(0.18, 0.62),
-      const Offset(0.82, 0.62),
-      const Offset(1.05, 0.62),
-    ];
-    for (final p in pts) {
-      _path.add(Offset(p.dx * w, p.dy * h));
-    }
+    final m = _maps[_mapIndex];
+    _path
+      ..clear()
+      ..addAll(m.path.map((p) => Offset(p.dx * w, p.dy * h)));
     _cum
       ..clear()
       ..add(0);
@@ -187,22 +265,27 @@ class _TdGameScreenState extends State<TdGameScreen>
       _pathLen += (_path[i] - _path[i - 1]).distance;
       _cum.add(_pathLen);
     }
-    // emplacements (fractions), de part et d'autre du circuit
-    _slots.clear();
-    const sl = [
-      Offset(0.30, 0.30),
-      Offset(0.55, 0.30),
-      Offset(0.66, 0.51),
-      Offset(0.42, 0.51),
-      Offset(0.30, 0.51),
-      Offset(0.55, 0.74),
-      Offset(0.72, 0.50),
-      Offset(0.10, 0.30),
-    ];
-    for (final p in sl) {
-      _slots.add(_Slot(Offset(p.dx * w, p.dy * h)));
-    }
+    _slots
+      ..clear()
+      ..addAll(m.slots.map((p) => _Slot(Offset(p.dx * w, p.dy * h))));
     _setup = true;
+  }
+
+  void _resetGame() {
+    _enemies.clear();
+    _projs.clear();
+    _beams.clear();
+    _parts.clear();
+    _rings.clear();
+    for (final sl in _slots) {
+      sl.turret = null;
+    }
+    _gold = 140;
+    _lives = 20;
+    _wave = 0;
+    _waveActive = false;
+    _toSpawn = 0;
+    _setup = false; // force rebuild de la carte
   }
 
   Offset _posAt(double d) {
@@ -223,11 +306,21 @@ class _TdGameScreenState extends State<TdGameScreen>
     _waveActive = true;
     _toSpawn = 6 + _wave * 3;
     _spawnCd = 0;
-    // HP qui grimpe nettement plus vite que la défense (≈ quadratique).
     _waveHp = 4 + math.pow(_wave, 1.85).toDouble();
     _waveSpeed = 42 + _wave * 4.0;
     _bossWave = _wave % 5 == 0;
     _bossSpawned = false;
+  }
+
+  void _damage(_Enemy en, double dmg) {
+    if (en.hp <= 0) return;
+    en.hp -= dmg;
+    en.hit = 1;
+    if (en.hp <= 0) {
+      _gold += en.reward;
+      _burst(en.pos, en.color);
+      _rings.add(_Ring(en.pos, en.color, en.r * 3));
+    }
   }
 
   void _tick(Duration e) {
@@ -245,13 +338,10 @@ class _TdGameScreenState extends State<TdGameScreen>
         _spawnCd = math.max(0.28, 0.62 - _wave * 0.015);
         _toSpawn--;
         if (_bossWave && !_bossSpawned) {
-          // BOSS : gros sac de PV, lent, grosse récompense, -3 vies s'il passe.
           _bossSpawned = true;
-          _enemies.add(_Enemy.make(_waveHp * 10, _waveSpeed * 0.5,
-              const Color(0xFFFF2D7A), 30,
-              reward: 60, leak: 3, boss: true));
+          _enemies.add(_Enemy(_waveHp * 10, _waveHp * 10, _waveSpeed * 0.5,
+              const Color(0xFFFF2D7A), 30, 60, 3, true));
         } else {
-          // variété : rapide (peu de PV, vif) / tank (gros, lent) / normal
           final roll = _rnd.nextDouble();
           double hp = _waveHp, sp = _waveSpeed, r = 13;
           int reward = 4;
@@ -260,29 +350,30 @@ class _TdGameScreenState extends State<TdGameScreen>
             hp *= 0.45;
             sp *= 1.75;
             r = 11;
-            reward = 4;
-            c = const Color(0xFF35E0FF); // rapide
+            c = const Color(0xFF35E0FF);
           } else if (roll < 0.5) {
             hp *= 2.4;
             sp *= 0.6;
             r = 20;
             reward = 9;
-            c = const Color(0xFFFF7A2B); // tank
+            c = const Color(0xFFFF7A2B);
           } else {
-            c = const Color(0xFFFF4D6D); // normal
+            c = const Color(0xFFFF4D6D);
           }
-          _enemies.add(_Enemy.make(hp, sp, c, r, reward: reward));
+          _enemies.add(_Enemy(hp, hp, sp, c, r, reward, 1, false));
         }
       }
     }
     if (_waveActive && _toSpawn == 0 && _enemies.isEmpty) {
       _waveActive = false;
-      _gold += 18 + _wave * 3; // bonus de fin de vague (plus serré)
+      _gold += 18 + _wave * 3;
     }
 
     // ennemis
     for (final en in _enemies) {
-      en.d += en.speed * dt;
+      en.slowT = (en.slowT - dt).clamp(0.0, 99.0);
+      final spd = en.slowT > 0 ? en.speed * 0.45 : en.speed;
+      en.d += spd * dt;
       en.pos = _posAt(en.d);
       en.hit = (en.hit - dt * 3).clamp(0.0, 1.0);
       if (en.d >= _pathLen) {
@@ -297,29 +388,56 @@ class _TdGameScreenState extends State<TdGameScreen>
       final tu = sl.turret;
       if (tu == null) continue;
       tu.cd -= dt;
+      // cible la plus avancée dans la portée
       _Enemy? best;
       var bestProg = -1.0;
+      final inRange = <_Enemy>[];
       for (final en in _enemies) {
         if (en.hp <= 0) continue;
-        if ((en.pos - tu.pos).distance <= tu.range && en.d > bestProg) {
-          bestProg = en.d;
-          best = en;
+        if ((en.pos - tu.pos).distance <= tu.range) {
+          inRange.add(en);
+          if (en.d > bestProg) {
+            bestProg = en.d;
+            best = en;
+          }
         }
       }
       if (best != null) {
         final ta = math.atan2(best.pos.dy - tu.pos.dy, best.pos.dx - tu.pos.dx);
         tu.angle = _lerpA(tu.angle, ta, math.min(1, dt * 10));
-        if (tu.cd <= 0) {
-          tu.cd = tu.rate;
-          final tip =
-              tu.pos + Offset(math.cos(tu.angle), math.sin(tu.angle)) * 22;
-          _projs.add(_Proj(tip, tu.type.color, best, tu.dmg));
-          _parts.add(_Part(
-              tip,
-              Offset(math.cos(tu.angle), math.sin(tu.angle)) * 40,
-              tu.type.color,
-              3));
-        }
+      }
+      if (tu.cd > 0 || inRange.isEmpty) continue;
+      tu.cd = tu.rate;
+      final dir = Offset(math.cos(tu.angle), math.sin(tu.angle));
+      final tip = tu.pos + dir * 22;
+      switch (tu.type.beh) {
+        case Beh.flame:
+          for (final en in inRange) {
+            _damage(en, tu.dmg);
+          }
+          for (var i = 0; i < 6; i++) {
+            final a = tu.angle + (_rnd.nextDouble() - 0.5) * 0.7;
+            _parts.add(_Part(
+                tip,
+                Offset(math.cos(a), math.sin(a)) * (60 + _rnd.nextDouble() * 60),
+                i.isEven ? const Color(0xFFFF8A2B) : const Color(0xFFFFD36B),
+                3));
+          }
+          break;
+        case Beh.rail:
+          final end = tu.pos + dir * tu.range;
+          _beams.add(_Beam(tip, end, tu.type.color));
+          for (final en in _enemies) {
+            if (en.hp <= 0) continue;
+            if (_distToSeg(en.pos, tip, end) < en.r + 9) _damage(en, tu.dmg);
+          }
+          break;
+        default:
+          if (best != null) {
+            _projs.add(_Proj(tip, tu.type.color, best, tu.dmg, tu.type.beh,
+                tu.type.splash));
+            _parts.add(_Part(tip, dir * 40, tu.type.color, 3));
+          }
       }
     }
 
@@ -330,27 +448,36 @@ class _TdGameScreenState extends State<TdGameScreen>
         p.dead = true;
         continue;
       }
-      final dir = tg.pos - p.pos;
-      final dist = dir.distance;
+      final delta = tg.pos - p.pos;
+      final dist = delta.distance;
       if (dist < tg.r + 6) {
-        tg.hp -= p.dmg;
-        tg.hit = 1;
-        _spark(p.pos, p.color, 4);
-        if (tg.hp <= 0) {
-          _gold += tg.reward;
-          _burst(tg.pos, tg.color);
-          _rings.add(_Ring(tg.pos, tg.color, tg.r * 3));
+        _damage(tg, p.dmg);
+        if (p.beh == Beh.frost) tg.slowT = 1.4;
+        if (p.splash > 0) {
+          _rings.add(_Ring(p.pos, p.color, p.splash));
+          for (final en in _enemies) {
+            if (en != tg &&
+                en.hp > 0 &&
+                (en.pos - p.pos).distance < p.splash) {
+              _damage(en, p.dmg * 0.6);
+            }
+          }
         }
+        _spark(p.pos, p.color, 4);
         p.dead = true;
         continue;
       }
       p.trail.insert(0, p.pos);
       if (p.trail.length > 5) p.trail.removeLast();
-      p.pos += dir / dist * 560 * dt;
+      p.pos += delta / dist * 600 * dt;
     }
     _projs.removeWhere((p) => p.dead);
     _enemies.removeWhere((en) => en.hp <= 0);
 
+    for (final b in _beams) {
+      b.life += dt * 6;
+    }
+    _beams.removeWhere((b) => b.life >= 1);
     for (final pa in _parts) {
       pa.life += dt * 1.7;
       pa.pos += pa.vel * dt;
@@ -377,8 +504,8 @@ class _TdGameScreenState extends State<TdGameScreen>
     for (var i = 0; i < 12; i++) {
       final a = _rnd.nextDouble() * math.pi * 2;
       final sp = 50 + _rnd.nextDouble() * 140;
-      _parts.add(_Part(
-          o, Offset(math.cos(a), math.sin(a)) * sp, c, 2 + _rnd.nextDouble() * 3));
+      _parts.add(_Part(o, Offset(math.cos(a), math.sin(a)) * sp, c,
+          2 + _rnd.nextDouble() * 3));
     }
   }
 
@@ -389,13 +516,24 @@ class _TdGameScreenState extends State<TdGameScreen>
     return a + d * t;
   }
 
-  // ── interactions ──
+  double _distToSeg(Offset p, Offset a, Offset b) {
+    final ab = b - a;
+    final t =
+        ((p - a).dx * ab.dx + (p - a).dy * ab.dy) / (ab.distanceSquared + 1e-6);
+    final tc = t.clamp(0.0, 1.0);
+    return (p - (a + ab * tc)).distance;
+  }
+
   void _onTap(Offset p) {
     if (_waveBtn.contains(p)) {
       _startWave();
       return;
     }
-    // upgrade d'une tourelle posée
+    if (_mapBtn.contains(p)) {
+      _mapIndex = (_mapIndex + 1) % _maps.length;
+      _resetGame();
+      return;
+    }
     for (final sl in _slots) {
       final tu = sl.turret;
       if (tu == null) continue;
@@ -459,10 +597,7 @@ class _TdGameScreenState extends State<TdGameScreen>
             if (_dragType != null) setState(() => _dragPos = d.localPosition);
           },
           onPanEnd: (_) => _onPanEnd(),
-          child: CustomPaint(
-            size: s,
-            painter: _TdPainter(this),
-          ),
+          child: CustomPaint(size: s, painter: _TdPainter(this)),
         );
       }),
     );
@@ -503,7 +638,7 @@ class _TdPainter extends CustomPainter {
           path,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 30
+            ..strokeWidth = 28
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
             ..color = const Color(0xFF1A2340));
@@ -511,18 +646,18 @@ class _TdPainter extends CustomPainter {
           path,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 30
+            ..strokeWidth = 28
             ..strokeCap = StrokeCap.round
             ..strokeJoin = StrokeJoin.round
             ..color = const Color(0xFF35E0FF).withOpacity(0.10));
-      // flèche de fin
       _glow(canvas, g._path.last, 16, const Color(0xFFFF4D6D).withOpacity(0.4));
     }
 
     // emplacements vides
     for (final sl in g._slots) {
       if (sl.turret != null) continue;
-      final hl = g._dragType != null && (sl.pos - (g._dragPos ?? Offset.zero)).distance < 44;
+      final hl = g._dragType != null &&
+          (sl.pos - (g._dragPos ?? Offset.zero)).distance < 44;
       canvas.drawCircle(
           sl.pos,
           16,
@@ -531,10 +666,13 @@ class _TdPainter extends CustomPainter {
             ..strokeWidth = 2
             ..color = (hl ? const Color(0xFF8FE9FF) : const Color(0xFF3A4570))
                 .withOpacity(hl ? 0.9 : 0.6));
-      if (hl) {
-        canvas.drawCircle(sl.pos, 16,
-            Paint()..color = const Color(0xFF8FE9FF).withOpacity(0.12));
-      }
+    }
+
+    // beams (railgun)
+    for (final b in g._beams) {
+      final op = (1 - b.life);
+      canvas.drawLine(b.a, b.b, _stroke(b.color.withOpacity(op * 0.4), 8));
+      canvas.drawLine(b.a, b.b, _stroke(Colors.white.withOpacity(op), 2.5));
     }
 
     // rings
@@ -549,14 +687,12 @@ class _TdPainter extends CustomPainter {
             ..color = r.color.withOpacity(1 - r.life));
     }
 
-    // particules
     for (final pa in g._parts) {
       final op = (1 - pa.life).clamp(0, 1).toDouble();
       canvas.drawCircle(
           pa.pos, pa.size * op + 0.5, Paint()..color = pa.color.withOpacity(op));
     }
 
-    // projectiles
     for (final p in g._projs) {
       for (var i = 0; i < p.trail.length; i++) {
         final op = (1 - i / p.trail.length) * 0.5;
@@ -585,16 +721,17 @@ class _TdPainter extends CustomPainter {
             ]).createShader(Rect.fromCircle(center: en.pos, radius: en.r)));
       canvas.drawCircle(en.pos, en.r,
           _stroke(Colors.white.withOpacity(0.5 + en.hit * 0.4), 1.5));
-      // barre de vie
+      if (en.slowT > 0) {
+        canvas.drawCircle(en.pos, en.r,
+            Paint()..color = const Color(0xFF8FE8FF).withOpacity(0.35));
+      }
       final hpf = (en.hp / en.maxHp).clamp(0.0, 1.0);
       canvas.drawRect(
-          Rect.fromCenter(
-              center: en.pos.translate(0, -en.r - 7),
-              width: en.r * 2,
-              height: 3),
+          Rect.fromLTWH(en.pos.dx - en.r, en.pos.dy - en.r - 8.5, en.r * 2, 3),
           Paint()..color = Colors.black54);
       canvas.drawRect(
-          Rect.fromLTWH(en.pos.dx - en.r, en.pos.dy - en.r - 8.5, en.r * 2 * hpf, 3),
+          Rect.fromLTWH(
+              en.pos.dx - en.r, en.pos.dy - en.r - 8.5, en.r * 2 * hpf, 3),
           Paint()..color = const Color(0xFF6FE08A));
       if (en.hit > 0) {
         canvas.drawCircle(en.pos, en.r,
@@ -602,13 +739,11 @@ class _TdPainter extends CustomPainter {
       }
     }
 
-    // tourelles posées
     for (final sl in g._slots) {
-      final tu = sl.turret;
-      if (tu != null) _drawTurret(canvas, tu);
+      if (sl.turret != null) _drawTurret(canvas, sl.turret!);
     }
 
-    // ghost de drag
+    // ghost
     if (g._dragType != null && g._dragPos != null) {
       final c = g._dragType!.color;
       _glow(canvas, g._dragPos!, 30, c.withOpacity(0.4));
@@ -627,67 +762,100 @@ class _TdPainter extends CustomPainter {
   void _drawTurret(Canvas canvas, _Turret tu) {
     final c = tu.type.color;
     final pos = tu.pos;
-    _glow(canvas, pos, 28, c.withOpacity(0.35));
-    // canon orienté
+    _glow(canvas, pos, 26, c.withOpacity(0.35));
     canvas.save();
     canvas.translate(pos.dx, pos.dy);
     canvas.rotate(tu.angle);
-    if (tu.type.key == 'blaster') {
-      for (var k = 0; k < tu.tier; k++) {
-        final off = (k - (tu.tier - 1) / 2) * 6.0;
+    switch (tu.type.beh) {
+      case Beh.sniper:
         canvas.drawRRect(
             RRect.fromRectAndRadius(
-                Rect.fromLTWH(0, off - 3, 24, 6), const Radius.circular(3)),
+                Rect.fromLTWH(0, -2.5, 30 + tu.tier * 4, 5),
+                const Radius.circular(2.5)),
             Paint()..color = c);
-      }
-    } else if (tu.type.key == 'laser') {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(0, -3, 22 + tu.tier * 3, 6),
-              const Radius.circular(3)),
-          Paint()..color = c);
-    } else {
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromLTWH(0, -4, 18, 8), const Radius.circular(4)),
-          Paint()..color = c);
+        break;
+      case Beh.gun:
+        for (var k = 0; k < tu.tier; k++) {
+          final off = (k - (tu.tier - 1) / 2) * 6.0;
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(
+                  Rect.fromLTWH(0, off - 3, 22, 6), const Radius.circular(3)),
+              Paint()..color = c);
+        }
+        break;
+      case Beh.rail:
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(0, -7, 24, 4), const Radius.circular(2)),
+            Paint()..color = c);
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(0, 3, 24, 4), const Radius.circular(2)),
+            Paint()..color = c);
+        break;
+      case Beh.mortar:
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(0, -7, 18, 14), const Radius.circular(5)),
+            Paint()..color = c);
+        break;
+      case Beh.flame:
+        canvas.drawPath(
+            Path()
+              ..moveTo(0, -7)
+              ..lineTo(20, -10)
+              ..lineTo(20, 10)
+              ..lineTo(0, 7)
+              ..close(),
+            Paint()..color = c);
+        break;
+      case Beh.frost:
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromLTWH(0, -4, 16, 8), const Radius.circular(4)),
+            Paint()..color = c);
+        break;
     }
     canvas.restore();
-    // socle
     canvas.drawCircle(pos, 16, Paint()..color = const Color(0xFF111630));
     canvas.drawCircle(pos, 16, _stroke(c, 2.5));
     canvas.drawCircle(pos, 6, Paint()..color = c);
-    // pips de tier
     for (var k = 0; k < 3; k++) {
-      canvas.drawCircle(pos.translate(-8.0 + k * 8, 22),
-          2.4, Paint()..color = k < tu.tier ? c : const Color(0xFF3A4570));
+      canvas.drawCircle(pos.translate(-8.0 + k * 8, 22), 2.4,
+          Paint()..color = k < tu.tier ? c : const Color(0xFF3A4570));
     }
   }
 
   void _hud(Canvas canvas, Size size) {
-    // bandeau haut
-    _text(canvas, '💰 ${g._gold}', const Offset(58, 38), const Color(0xFFFFD36B),
+    _text(canvas, '💰 ${g._gold}', const Offset(58, 34), const Color(0xFFFFD36B),
         18, weight: FontWeight.w800);
-    _text(canvas, '❤ ${g._lives}', Offset(size.width / 2, 38),
+    _text(canvas, '❤ ${g._lives}', Offset(size.width / 2, 34),
         const Color(0xFFFF6F8A), 18, weight: FontWeight.w800);
-    _text(canvas, 'Vague ${g._wave}', Offset(size.width - 70, 38),
+    _text(canvas, 'Vague ${g._wave}', Offset(size.width - 64, 34),
         const Color(0xFF8FE9FF), 18, weight: FontWeight.w800);
     if (g._waveActive && g._bossWave) {
-      _text(canvas, '⚠ BOSS', Offset(size.width - 70, 58),
+      _text(canvas, '⚠ BOSS', Offset(size.width - 64, 54),
           const Color(0xFFFF2D7A), 13, weight: FontWeight.w800);
     }
 
+    // bouton carte
+    g._mapBtn = const Rect.fromLTWH(16, 50, 150, 30);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(g._mapBtn, const Radius.circular(15)),
+        Paint()..color = const Color(0xFF1A2340));
+    _text(canvas, '🗺 ${_maps[g._mapIndex].name} ▶', g._mapBtn.center,
+        const Color(0xFF8FE9FF), 12, weight: FontWeight.w700);
+
     // bouton vague
-    final bw = 200.0, bh = 46.0;
-    g._waveBtn = Rect.fromLTWH(
-        size.width / 2 - bw / 2, size.height - 150, bw, bh);
+    const bw = 210.0, bh = 46.0;
+    g._waveBtn =
+        Rect.fromLTWH(size.width / 2 - bw / 2, size.height - 152, bw, bh);
     final active = g._waveActive;
     canvas.drawRRect(
         RRect.fromRectAndRadius(g._waveBtn, const Radius.circular(23)),
         Paint()
-          ..color = active
-              ? const Color(0xFF1A2340)
-              : const Color(0xFF1D9E75));
+          ..color =
+              active ? const Color(0xFF1A2340) : const Color(0xFF1D9E75));
     _text(
         canvas,
         active ? 'Vague en cours…' : '▶ Lancer la vague ${g._wave + 1}',
@@ -696,43 +864,37 @@ class _TdPainter extends CustomPainter {
         15,
         weight: FontWeight.w800);
 
-    // palette (tray)
+    // palette
     g._trayRects.clear();
     final n = _kTypes.length;
-    final cw = 104.0, ch = 78.0, gap = 12.0;
+    const gap = 7.0;
+    final avail = size.width - 16;
+    final cw = ((avail - gap * (n - 1)) / n).clamp(48.0, 92.0);
+    final ch = 70.0;
     final totalW = n * cw + (n - 1) * gap;
     final startX = size.width / 2 - totalW / 2;
-    final y = size.height - 92;
+    final y = size.height - 84;
     for (var i = 0; i < n; i++) {
       final t = _kTypes[i];
       final r = Rect.fromLTWH(startX + i * (cw + gap), y, cw, ch);
       g._trayRects.add(r);
       final afford = g._gold >= t.cost;
       canvas.drawRRect(
-          RRect.fromRectAndRadius(r, const Radius.circular(14)),
-          Paint()..color = const Color(0xFF111630).withOpacity(afford ? 0.95 : 0.5));
-      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(14)),
+          RRect.fromRectAndRadius(r, const Radius.circular(12)),
+          Paint()
+            ..color =
+                const Color(0xFF111630).withOpacity(afford ? 0.95 : 0.5));
+      canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(12)),
           _stroke(t.color.withOpacity(afford ? 0.9 : 0.3), 2));
-      // mini icône
-      _glow(canvas, Offset(r.center.dx, r.top + 26), 16,
+      _glow(canvas, Offset(r.center.dx, r.top + 22), 13,
           t.color.withOpacity(afford ? 0.4 : 0.15));
-      canvas.drawCircle(Offset(r.center.dx, r.top + 26), 11,
+      canvas.drawCircle(Offset(r.center.dx, r.top + 22), 9,
           Paint()..color = t.color.withOpacity(afford ? 1 : 0.4));
-      _text(canvas, t.name, Offset(r.center.dx, r.bottom - 24),
-          Colors.white.withOpacity(afford ? 0.95 : 0.4), 12,
+      _text(canvas, t.name, Offset(r.center.dx, r.bottom - 22),
+          Colors.white.withOpacity(afford ? 0.95 : 0.4), 11,
           weight: FontWeight.w700);
-      _text(canvas, '💰${t.cost}', Offset(r.center.dx, r.bottom - 9),
-          const Color(0xFFFFD36B).withOpacity(afford ? 1 : 0.4), 12);
-    }
-
-    // aide
-    if (g._slots.every((s) => s.turret == null)) {
-      _text(
-          canvas,
-          'Glisse une tourelle sur un emplacement ○ · tape-la pour l\'améliorer',
-          Offset(size.width / 2, size.height - 120),
-          const Color(0xFF8FA0C8),
-          12);
+      _text(canvas, '💰${t.cost}', Offset(r.center.dx, r.bottom - 8),
+          const Color(0xFFFFD36B).withOpacity(afford ? 1 : 0.4), 11);
     }
   }
 
