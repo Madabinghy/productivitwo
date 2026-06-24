@@ -47,12 +47,17 @@ class OrbitBody {
   final Color hot; // couleur « nourri aujourd'hui »
   final Color cold; // couleur « délaissé »
   final double mass; // 0..1 → taille dessinée
-  double angle; // position angulaire courante (rad)
+  double angle; // angle initial (graine de la spirale)
   double displayDays; // valeur affichée (animée)
   double targetDays; // cible vers laquelle on tend
   int streak;
   final String? totalLabel; // ex. "6h20 / 30 j" (données réelles)
   final bool ringed; // anneau type Saturne (domaine le + investi)
+
+  // Position courante sur la spirale (animée vers le slot cible) :
+  // curRT = rayon normalisé 0..1, curAng = angle du slot (hors rotation globale).
+  double curRT = -1; // -1 = non initialisé
+  double curAng = 0;
 
   // Fenêtre de récence : au-delà, la planète est en bordure froide.
   static const double maxDays = 14;
@@ -121,7 +126,16 @@ class OrbitViewState extends State<OrbitView>
   final List<_Star> _stars = _genStars(80);
   final Map<OrbitBody, double> _pulses = {};
 
+  double _phase = 0; // rotation globale rigide (toutes les planètes ensemble)
+
+  // Angle d'or → packing en spirale de tournesol (zéro chevauchement).
+  static const double _kGolden = 2.399963229728653; // π·(3−√5)
+  static const double _kRotSpeed = 0.05; // rad/s, lent
+
   List<OrbitBody> get _bodies => widget.bodies;
+
+  // Réduit la taille des planètes quand il y a beaucoup de domaines.
+  double get _scale => math.min(1.0, 6.5 / math.max(6, _bodies.length));
 
   @override
   void initState() {
@@ -143,14 +157,33 @@ class OrbitViewState extends State<OrbitView>
       return;
     }
     _twinkle += dt;
+    _phase += dt * _kRotSpeed;
+
+    // Récence affichée tend vers la cible (anime le « nourrissage »).
     for (final b in _bodies) {
-      final speed = 0.07 + (1 - b.orbitT) * 0.45;
-      b.angle += dt * speed;
       b.displayDays += (b.targetDays - b.displayDays) * math.min(1, dt * 3.2);
       if ((b.targetDays - b.displayDays).abs() < 0.01) {
         b.displayDays = b.targetDays;
       }
     }
+
+    // Slots de spirale par rang de récence (le plus récent → vers le centre).
+    final order = List<OrbitBody>.from(_bodies)
+      ..sort((a, b) => a.displayDays.compareTo(b.displayDays));
+    final n = order.length;
+    for (var rank = 0; rank < n; rank++) {
+      final b = order[rank];
+      final targetRT = math.sqrt((rank + 0.55) / n);
+      final targetAng = rank * _kGolden;
+      if (b.curRT < 0) {
+        b.curRT = targetRT;
+        b.curAng = targetAng;
+      }
+      final k = math.min(1, dt * 2.2);
+      b.curRT += (targetRT - b.curRT) * k;
+      b.curAng = _easeAngle(b.curAng, targetAng, k.toDouble());
+    }
+
     _pulses.updateAll((_, v) => v + dt * 1.6);
     _pulses.removeWhere((_, v) => v >= 1);
     for (final r in _rewards) {
@@ -159,6 +192,14 @@ class OrbitViewState extends State<OrbitView>
     }
     _rewards.removeWhere((r) => r.life >= 1);
     setState(() {});
+  }
+
+  // Interpolation angulaire par le plus court chemin (gère le wrap 2π).
+  double _easeAngle(double cur, double target, double t) {
+    var d = (target - cur) % (2 * math.pi);
+    if (d > math.pi) d -= 2 * math.pi;
+    if (d < -math.pi) d += 2 * math.pi;
+    return cur + d * t;
   }
 
   void feed(OrbitBody b, Offset at) {
@@ -170,7 +211,7 @@ class OrbitViewState extends State<OrbitView>
 
   void feedColdest(Size size, Offset center) {
     final c = _bodies.reduce((a, b) => a.displayDays >= b.displayDays ? a : b);
-    final geom = _layout(_bodies, center, size);
+    final geom = _layout(_bodies, center, size, _phase);
     feed(c, geom[c] ?? center);
   }
 
@@ -182,9 +223,10 @@ class OrbitViewState extends State<OrbitView>
   }
 
   void _handleTap(Offset tap, Offset center, Size size) {
-    final geom = _layout(_bodies, center, size);
+    final geom = _layout(_bodies, center, size, _phase);
     for (final entry in geom.entries) {
-      if ((entry.value - tap).distance <= entry.key.planetRadius + 18) {
+      if ((entry.value - tap).distance <=
+          entry.key.planetRadius * _scale + 18) {
         if (widget.interactive) {
           feed(entry.key, entry.value);
         } else {
@@ -211,6 +253,8 @@ class OrbitViewState extends State<OrbitView>
             stars: _stars,
             rewards: _rewards,
             pulses: _pulses,
+            phase: _phase,
+            scale: _scale,
           ),
         ),
       );
@@ -326,16 +370,20 @@ class _OrbitScreenState extends State<OrbitScreen> {
 }
 
 // ── Géométrie partagée (paint + hit-test) ───────────────────────────────────
+// Position depuis le slot de spirale (curRT/curAng) + rotation globale (phase).
+// minR dégage le soleil ; 0.82 aplatit légèrement l'ellipse (perspective).
 Map<OrbitBody, Offset> _layout(
-    List<OrbitBody> bodies, Offset center, Size size) {
-  final innerR = size.width * 0.16;
+    List<OrbitBody> bodies, Offset center, Size size, double phase) {
+  final minR = size.width * 0.20;
   final outerR = size.width * 0.42;
   final res = <OrbitBody, Offset>{};
   for (final b in bodies) {
-    final r = innerR + b.orbitT * (outerR - innerR);
+    final rt = b.curRT < 0 ? 0.5 : b.curRT;
+    final r = minR + rt * (outerR - minR);
+    final ang = b.curAng + phase;
     res[b] = Offset(
-      center.dx + math.cos(b.angle) * r,
-      center.dy + math.sin(b.angle) * r * 0.82,
+      center.dx + math.cos(ang) * r,
+      center.dy + math.sin(ang) * r * 0.82,
     );
   }
   return res;
@@ -349,6 +397,8 @@ class _OrbitPainter extends CustomPainter {
     required this.stars,
     required this.rewards,
     required this.pulses,
+    required this.phase,
+    required this.scale,
   });
 
   final List<OrbitBody> bodies;
@@ -357,6 +407,8 @@ class _OrbitPainter extends CustomPainter {
   final List<_Star> stars;
   final List<_FloatReward> rewards;
   final Map<OrbitBody, double> pulses;
+  final double phase;
+  final double scale;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -390,28 +442,20 @@ class _OrbitPainter extends CustomPainter {
       );
     }
 
-    final innerR = size.width * 0.16;
+    final minR = size.width * 0.20;
     final outerR = size.width * 0.42;
 
-    // anneaux d'orbite
-    for (final t in const [0.15, 0.5, 0.85, 1.0]) {
-      final r = innerR + t * (outerR - innerR);
+    // anneaux d'orbite (repères discrets)
+    for (final t in const [0.0, 0.45, 0.8, 1.0]) {
+      final r = minR + t * (outerR - minR);
       canvas.drawOval(
         Rect.fromCenter(center: center, width: r * 2, height: r * 2 * 0.82),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.4
-          ..color = Colors.white.withOpacity(0.07),
+          ..color = Colors.white.withOpacity(0.06),
       );
     }
-    final rh = innerR + 0.15 * (outerR - innerR);
-    canvas.drawOval(
-      Rect.fromCenter(center: center, width: rh * 2, height: rh * 2 * 0.82),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = const Color(0xFFFFC861).withOpacity(0.3),
-    );
 
     // soleil « Aujourd'hui » — couronne qui respire
     final breath = 1 + 0.04 * math.sin(twinkle * 1.4);
@@ -433,19 +477,17 @@ class _OrbitPainter extends CustomPainter {
         color: const Color(0xFF5A3A14), size: 13, weight: FontWeight.w800);
 
     // planètes
-    final geom = _layout(bodies, center, size);
+    final geom = _layout(bodies, center, size, phase);
+    final showSubtitle = bodies.length <= 5;
     for (final b in bodies) {
       final pos = geom[b]!;
-      final pr = b.planetRadius;
+      final pr = b.planetRadius * scale;
 
-      // traînée de dérive (planètes froides)
+      // traînée de dérive (planètes froides) — vers l'extérieur
       if (b.orbitT > 0.55) {
-        final r = (pos - center).distance;
-        final back = b.angle - 0.5;
-        final tailEnd = Offset(
-          center.dx + math.cos(back) * r * 1.05,
-          center.dy + math.sin(back) * r * 1.05 * 0.82,
-        );
+        final dir = (pos - center);
+        final len = dir.distance;
+        final tailEnd = len < 1 ? pos : pos + dir * (pr * 1.3 / len);
         canvas.drawLine(
           pos,
           tailEnd,
@@ -508,10 +550,12 @@ class _OrbitPainter extends CustomPainter {
           Paint()..color = Colors.white.withOpacity(0.7));
 
       // libellés
-      _text(canvas, b.name, pos.translate(0, pr + 18),
-          color: b.color.withOpacity(0.95), size: 15, weight: FontWeight.w700);
-      _text(canvas, b.subtitle, pos.translate(0, pr + 38),
-          color: Colors.white.withOpacity(0.45), size: 12);
+      _text(canvas, b.name, pos.translate(0, pr + 16),
+          color: b.color.withOpacity(0.95), size: 13, weight: FontWeight.w700);
+      if (showSubtitle) {
+        _text(canvas, b.subtitle, pos.translate(0, pr + 36),
+            color: Colors.white.withOpacity(0.45), size: 12);
+      }
     }
 
     // vignette

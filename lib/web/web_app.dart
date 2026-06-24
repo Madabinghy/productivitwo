@@ -14,10 +14,16 @@ import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
+import 'package:productivitwo_v1/prototypes/td_prototype.dart';
+import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
+import 'package:productivitwo_v1/prototypes/level_prototype.dart';
+import 'package:productivitwo_v1/prototypes/fluo_prototype.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
+import 'package:productivitwo_v1/web/defense_data_screen.dart';
+import 'package:productivitwo_v1/web/village_data_screen.dart';
 import 'package:productivitwo_v1/web/iso_world_screen.dart';
 import 'package:productivitwo_v1/web/organic_map_screen.dart';
 import 'package:productivitwo_v1/web/dev_auth_screen.dart';
@@ -155,6 +161,15 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['flame'] == '1') return const FlameProtoScreen();
       if (params['flame'] == '2') return const FlameProto2Screen();
 
+      // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
+      if (params['proto'] == 'td') return const TdGameScreen();
+      // Proto Overworld fluo (héros déplaçable) — sans auth.
+      if (params['proto'] == 'world') return const OverworldScreen();
+      // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
+      if (params['proto'] == 'level') return const LevelScreen();
+      // Proto navigation Fluo (cosmos → map → grille, fusée) — sans auth.
+      if (params['proto'] == 'fluo') return const FluoNavScreen();
+
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
       // S'affiche tant qu'on n'est pas sur un VRAI compte (donc aussi en démo).
@@ -266,6 +281,14 @@ class _AuthGateState extends State<_AuthGate> {
         // Proto « Compagnon » AVEC TES DONNÉES : humeur = ta régularité.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'pet') {
           return PetDataScreen(sync: FirestoreSync());
+        }
+        // Proto « Défense néon » AVEC TES DONNÉES : domaines = tourelles.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'defense') {
+          return DefenseDataScreen(sync: FirestoreSync());
+        }
+        // Proto « Village » AVEC TES DONNÉES : chaque action bâtit ton monde.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'village') {
+          return VillageDataScreen(sync: FirestoreSync());
         }
         // Proto « Monde isométrique » AVEC TES DONNÉES (pixel-art blocks).
         if (kIsWeb && Uri.base.queryParameters['world'] == 'iso') {
