@@ -445,6 +445,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   double _ninjaTX = 0, _ninjaTY = 0; // cible de déplacement courante
   int _ninjaHp = 10;
   double _bossAttackT = 0; // s écoulées → l'araignée frappe le ninja chaque minute
+  // Boss VISIBLE qui charge le ninja chaque minute (matérialise le -1 PV).
+  double _bossRestX = 0, _bossRestY = 0; // position de repos
+  double _bossDrawX = 0, _bossDrawY = 0; // position animée (rendu)
+  double _bossLunge = -1; // -1 = repos ; 0..1 = progression de la charge (aller-retour)
+  bool _bossHitDone = false; // -1 PV déjà appliqué pour cette charge ?
   // ARC : quand activé, le ninja s'arrête 5 s et tire 3 flèches/s (gratuit).
   bool _ninjaBow = false;
   double _bowDur = 0;
@@ -574,6 +579,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _cineAttack = true;
     _ninjaHp = 10;
     _bossAttackT = 0;
+    // Boss au repos en haut‑centre de l'aire de combat ; il chargera le ninja.
+    final wb = _w;
+    _bossRestX = (wb != null ? wb.cols / 2.0 : 6.0);
+    _bossRestY = 1.5;
+    _bossDrawX = _bossRestX;
+    _bossDrawY = _bossRestY;
+    _bossLunge = -1;
+    _bossHitDone = false;
     // Budget du JOUR : lifetime − déjà dépensé aujourd'hui (≥ 0). À 0 → tu tombes
     // vite à court → défaite : farme/attends demain pour reconstituer le deck.
     _ninjaShurikens =
@@ -1064,12 +1077,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         }
         return false;
       });
-      // L'ARAIGNÉE-BOSS frappe le ninja chaque minute d'assaut → -1 PV.
+      // L'ARAIGNÉE-BOSS CHARGE le ninja chaque minute (matérialise le -1 PV) :
+      // fonce sur lui (0→0,5), le frappe à l'impact, puis revient au repos (0,5→1).
       _bossAttackT += dt;
-      if (_bossAttackT >= 60.0) {
+      if (_bossLunge < 0 && _bossAttackT >= 60.0) {
         _bossAttackT -= 60.0;
-        _ninjaHp--;
-        _toast('🕷️ L\'araignée frappe le ninja — -1 PV !', _kEnemy);
+        _bossLunge = 0;
+        _bossHitDone = false;
+      }
+      if (_bossLunge >= 0) {
+        _bossLunge += dt / 0.9; // charge aller-retour en ~0,9 s
+        if (_bossLunge < 0.5) {
+          final f = (_bossLunge / 0.5).clamp(0.0, 1.0);
+          _bossDrawX = _bossRestX + (_ninjaX - _bossRestX) * f;
+          _bossDrawY = _bossRestY + (_ninjaY - _bossRestY) * f;
+        } else {
+          if (!_bossHitDone) {
+            _bossHitDone = true;
+            _ninjaHp--; // impact = -1 PV
+            _toast('🕷️ Le boss FRAPPE le ninja — -1 PV !', _kEnemy);
+          }
+          final f = ((_bossLunge - 0.5) / 0.5).clamp(0.0, 1.0);
+          _bossDrawX = _ninjaX + (_bossRestX - _ninjaX) * f;
+          _bossDrawY = _ninjaY + (_bossRestY - _ninjaY) * f;
+        }
+        if (_bossLunge >= 1.0) {
+          _bossLunge = -1;
+          _bossDrawX = _bossRestX;
+          _bossDrawY = _bossRestY;
+        }
       }
       if (_ninjaHp <= 0) {
         // DÉFAITE : on NE consomme PAS les shurikens (rien persisté) → tu peux
@@ -8226,6 +8262,35 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
                         ),
                       );
                     }(),
+                // BOSS : grosse araignée COURONNÉE qui charge le ninja chaque minute
+                // (matérialise le -1 PV) ; grossit pendant la charge.
+                if (_cineAttack)
+                  () {
+                    final c0 = centerD(_bossDrawX, _bossDrawY);
+                    final big = _bossLunge >= 0;
+                    return Positioned(
+                      left: c0.dx - slot * 0.7,
+                      top: c0.dy - slot * 0.8,
+                      width: slot * 1.4,
+                      height: slot * 1.4,
+                      child: Center(
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          alignment: Alignment.center,
+                          children: [
+                            Text('🕷️',
+                                style: TextStyle(
+                                    fontSize: slot * (big ? 1.05 : 0.85))),
+                            Positioned(
+                              top: -slot * 0.18,
+                              child: Text('👑',
+                                  style: TextStyle(fontSize: slot * 0.4)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
                 // BOULES DE FEU de support (tours → toiles restantes) : tête orientée
                 // dans le sens du vol + traînée de flamme qui s'estompe vers la queue.
                 if (_cineAttack)
