@@ -554,6 +554,18 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     sync.pushAll(logic.state); // persiste (j'ai payé pour cette déloge)
   }
 
+  // Impute les shurikens dépensés au budget du JOUR. IDEMPOTENT : après imputation,
+  // _battleShkStart == _ninjaShurikens → un 2ᵉ appel ne recompte rien. Appelé à la
+  // victoire ET en quittant l'intérieur — sinon ressortir puis re-rentrer le même jour
+  // redonnait le budget PLEIN (bug : la dépense n'était persistée qu'à la victoire).
+  void _settleShurikens() {
+    final spent = _battleShkStart - _ninjaShurikens;
+    if (spent > 0) {
+      _consumeShurikens(spent);
+      _battleShkStart = _ninjaShurikens;
+    }
+  }
+
   void _startAttack() {
     _cineAttack = true;
     _ninjaHp = 10;
@@ -831,9 +843,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         _cineSpawnT += dt;
         if (_cineSpawnT >= _kSbireSpawnEvery) {
           _cineSpawnT -= _kSbireSpawnEvery;
-          final t = _cineToileSpawns[_cineSpawnIdx % _cineToileSpawns.length];
-          _cineSpawnIdx++;
-          _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+          // Ne spawn QUE depuis une toile encore VIVANTE : une toile explosée cesse de
+          // pondre des sbires (bug : les cases détruites continuaient à en faire spawn).
+          final alive = [
+            for (final t in _cineToileSpawns)
+              if (!_cineKilledToiles.contains(t.key)) t
+          ];
+          if (alive.isNotEmpty) {
+            final t = alive[_cineSpawnIdx % alive.length];
+            _cineSpawnIdx++;
+            _cineSbires.add(_Sbire(_cineSbireSeq++, t.col, t.row, 1));
+          }
         }
       }
       // SUPPORT des tours : chaque tour AYANT des flammes tire 1 boule / 10 s
@@ -905,7 +925,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       if (_cineToileSpawns.isEmpty && _supportFbs.isEmpty) {
         _cineAttack = false;
         _cineActive = false;
-        _consumeShurikens(_battleShkStart - _ninjaShurikens);
+        _settleShurikens();
         final dom = _interiorDomainId;
         if (dom != null) {
           _v2Dislodged.add(dom); // ne reviendra pas
@@ -1758,6 +1778,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   void _exitInterior() {
     final saved = _savedW;
     if (saved == null && !widget.mobile) return;
+    _settleShurikens(); // impute la dépense AVANT de quitter (sinon re-rentrée = plein)
     setState(() {
       if (saved != null) {
         _w = saved;
