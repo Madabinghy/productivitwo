@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto_screen.dart';
 import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
+import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
@@ -155,6 +156,9 @@ class _AuthGateState extends State<_AuthGate> {
       // Prototypes moteur de jeu Flame (isolés, sans auth) — évaluation « Le Monde ».
       if (params['flame'] == '1') return const FlameProtoScreen();
       if (params['flame'] == '2') return const FlameProto2Screen();
+
+      // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
+      if (params['proto'] == 'td') return const TdGameScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
