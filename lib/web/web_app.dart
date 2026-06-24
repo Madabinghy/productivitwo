@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
+import 'package:productivitwo_v1/web/defense_data_screen.dart';
 import 'package:productivitwo_v1/web/village_data_screen.dart';
 import 'package:productivitwo_v1/web/iso_world_screen.dart';
 import 'package:productivitwo_v1/web/organic_map_screen.dart';
@@ -262,6 +263,10 @@ class _AuthGateState extends State<_AuthGate> {
         // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'rpg') {
           return RpgDataScreen(sync: FirestoreSync());
+        }
+        // Proto « Défense néon » AVEC TES DONNÉES : domaines = tourelles.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'defense') {
+          return DefenseDataScreen(sync: FirestoreSync());
         }
         // Proto « Village » AVEC TES DONNÉES : chaque action bâtit ton monde.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'village') {
