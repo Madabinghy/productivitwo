@@ -197,7 +197,9 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final Map<String, String> _v2Toiles = {}; // tileId (jardin) → domainId (marqueur)
   // TROU 🕳️ d'entrée du combat boss : posé sur une case JARDIN (cliquable garantie),
   // géré tout en haut de _onTapV2 → entre dans la sous-map du domaine pour combattre.
-  final Map<String, String> _v2BossTrou = {}; // tileId (jardin) → domainId (boss)
+  // Entrée de grotte d'un domaine (centre du jardin) : cliquable TOUJOURS (explore hors
+  // invasion ; combat si envahi). tileId → domainId. Peuplée à la construction du monde.
+  final Map<String, String> _v2CaveEntry = {};
   // Toast rendu DANS le Stack du monde (les SnackBar passent derrière la map plein écran).
   String? _hudToastMsg;
   Color _hudToastColor = const Color(0xFF1D9E75);
@@ -9248,7 +9250,14 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _cachedCells = null;
     _v2Tint.clear();
     _v2WallTint.clear();
+    _v2CaveEntry.clear();
     for (final c in layout.castles) {
+      // Entrée de grotte 🕳️ (centre du jardin) — TOUJOURS présente, même hors invasion :
+      // on peut entrer explorer l'intérieur ; le combat ne se lance que si le domaine
+      // est envahi. Familiariser le lieu avant l'invasion lui donne du sens.
+      final g = c.gardenRect;
+      _v2CaveEntry['${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}'] =
+          c.domainId;
       final col = domainColor(c.domainId, logic.state.activeDomains) ?? _kGold;
       // Château ET village teintés de la couleur du domaine.
       for (final r in [c.castleRect, c.villageRect]) {
@@ -9542,12 +9551,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       // Côté JARDIN du château (intérieur) : gauche en normal, droite en miroir.
       final araX = c.mirror ? c.castleRect.right - 1 : c.castleRect.left;
       _v2Araignee['${araX}_$y'] = c.domainId;
-      // Centre du jardin = TROU 🕳️ d'entrée du combat (seul un BOSS arrive ici, cf.
-      // le `continue` plus haut pour les invasions hebdo). Toiles semées AUTOUR
-      // (~1 case sur 3), jamais sur le trou.
+      // Centre du jardin = entrée de grotte (déjà posée à la construction du monde dans
+      // _v2CaveEntry) → on ne sème pas de toile dessus. Toiles AUTOUR (~1 case sur 3).
       final g = c.gardenRect;
       final trouId = '${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}';
-      _v2BossTrou[trouId] = c.domainId;
       // Marqueurs 🕸️ denses sur le jardin (look « infesté ») — COSMÉTIQUE : la difficulté
       // du combat vient du heatmap 12 sem. (_cineAllToiles), pas de ces marqueurs.
       for (var gy = g.top; gy < g.top + g.height; gy++) {
@@ -9622,13 +9629,17 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _v2Walking = false;
     _v2TakeControl(); // clic = reprise de la main (interrompt l'exploration auto)
     final id = '${x}_$y';
-    // TROU 🕳️ du boss : entrée DIRECTE du combat, PRIORITAIRE sur tout garde-fou
-    // (panneau ouvert, gate hebdo…) → toujours réactif, sans condition.
-    if (_v2BossTrou.containsKey(id)) {
+    // Entrée de GROTTE 🕳️ : on entre TOUJOURS dans l'intérieur du domaine (prioritaire
+    // sur tout garde-fou). Le COMBAT ne se lance que si le domaine est ENVAHI ; sinon
+    // c'est une simple exploration (familiariser le lieu avant l'invasion).
+    if (_v2CaveEntry.containsKey(id)) {
       if (_gardenPanel != null || _parchemin != null) _closeV2Panel();
-      _enterDomainFromV2(_v2BossTrou[id]!);
+      final dom = _v2CaveEntry[id]!;
+      _enterDomainFromV2(dom);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _inInterior) _startCine();
+        if (mounted && _inInterior && logic.state.bossInvasions.contains(dom)) {
+          _startCine();
+        }
       });
       return;
     }
@@ -10654,9 +10665,13 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     if (_v2Toiles.containsKey(id)) {
       child = Text('🕸️', style: TextStyle(fontSize: inner * 0.6));
     }
-    // TROU 🕳️ du boss : entrée EXPLICITE du combat (case JARDIN, cliquable garantie).
-    if (_v2BossTrou.containsKey(id)) {
-      bg = _kEnemy.withOpacity(.5);
+    // Entrée de GROTTE 🕳️ : présente sur chaque domaine. Fond rouge si ENVAHIE
+    // (clic = combat), neutre sinon (clic = exploration).
+    if (_v2CaveEntry.containsKey(id)) {
+      final invaded = logic.state.bossInvasions.contains(_v2CaveEntry[id]);
+      bg = invaded
+          ? _kEnemy.withOpacity(.5)
+          : Colors.black.withOpacity(.30);
       child = Text('🕳️', style: TextStyle(fontSize: inner * 0.72));
     }
     // Araignée d'invasion BOSS (seuls les boss s'affichent désormais).
