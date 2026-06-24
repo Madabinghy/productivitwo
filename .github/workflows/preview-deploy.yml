@@ -1,0 +1,90 @@
+name: Preview Deploy (web)
+
+# Déploie N'IMPORTE QUELLE branche sur un CANAL DE PREVIEW Firebase Hosting →
+# URL temporaire (7 jours), SANS toucher la prod ni merger de PR.
+#
+# Même projet Firebase que la prod → l'auth + tes données fonctionnent
+# normalement sur l'URL de preview (les URLs de canal sont auto-autorisées).
+#
+# Déclenchement : onglet Actions → "Preview Deploy (web)" → Run workflow
+#   • ref     : branche / tag / SHA à déployer
+#   • channel : (optionnel) nom du canal ; défaut = dérivé de ref
+# L'URL de preview est affichée dans le résumé du run (Summary).
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branche / tag / SHA à déployer"
+        required: true
+        default: main
+      channel:
+        description: "Nom du canal (optionnel ; défaut = dérivé de ref)"
+        required: false
+
+concurrency:
+  group: preview-${{ github.event.inputs.channel || github.event.inputs.ref }}
+  cancel-in-progress: true
+
+env:
+  FIREBASE_PROJECT: productivitwo-app
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.6"
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Build web
+        run: |
+          flutter build web --release --no-tree-shake-icons \
+            --dart-define=GIT_SHA=${GITHUB_SHA::7} \
+            --dart-define=BUILD_TIME=$(date -u +%Y-%m-%dT%H:%MZ)
+
+      - name: Deploy preview channel
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+
+          # Canal : input.channel sinon ref nettoyée (minuscules, [a-z0-9-], ≤30)
+          raw='${{ github.event.inputs.channel }}'
+          [ -z "$raw" ] && raw='${{ github.event.inputs.ref }}'
+          channel=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' \
+                    | sed 's#[^a-z0-9-]#-#g; s#^-*##; s#-*$##' | cut -c1-30)
+          [ -z "$channel" ] && channel="preview"
+          echo "Canal de preview : $channel"
+
+          # Retry : l'auth Hosting de firebase-tools échoue parfois de façon transitoire
+          deploy() {
+            npx -y firebase-tools@latest hosting:channel:deploy "$channel" \
+              --project "$FIREBASE_PROJECT" --expires 7d --json > out.json 2> err.log
+          }
+          ok=0
+          for i in 1 2 3; do
+            if deploy; then ok=1; break; fi
+            echo "Tentative $i échouée :"; tail -8 err.log || true
+            sleep $((i * 6))
+          done
+          if [ "$ok" != 1 ]; then echo "::error::Déploiement preview échoué"; cat err.log; exit 1; fi
+
+          url=$(node -e "const j=require('./out.json');const r=j.result||{};const k=Object.keys(r)[0];console.log((r[k]&&r[k].url)||'')")
+          echo "Preview URL : $url"
+          {
+            echo "## 🔗 Preview prête"
+            echo ""
+            echo "- **Branche déployée :** \`${{ github.event.inputs.ref }}\`"
+            echo "- **Canal :** \`$channel\` (expire dans 7 j)"
+            echo "- **URL :** $url"
+            echo ""
+            echo "Pense à te connecter, puis ajoute une route, ex. \`$url/?proto=pet\`."
+          } >> "$GITHUB_STEP_SUMMARY"
