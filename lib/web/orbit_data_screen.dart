@@ -194,7 +194,8 @@ List<OrbitBody> _buildBodies(AppState state) {
         ? OrbitBody.maxDays
         : (now.difference(last).inMinutes / 1440).clamp(0.0, OrbitBody.maxDays);
     final min30 = minutes30ByDom[d.id] ?? 0;
-    final mass = 0.32 + 0.68 * (min30 / maxMin);
+    // racine carrée : compresse l'écart → les petits domaines restent visibles
+    final mass = 0.35 + 0.65 * math.sqrt(min30 / maxMin);
     final streak = _streak(daysWithSessionByDom[d.id] ?? const {}, now);
 
     final hot = d.colorValue != null
