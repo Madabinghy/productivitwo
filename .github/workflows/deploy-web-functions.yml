@@ -139,13 +139,14 @@ jobs:
               --project "$FIREBASE_PROJECT" \
               --non-interactive --force
           }
+          # Les fenêtres de panne d'auth durent plusieurs minutes → on étale les
+          # tentatives sur ~6 min (sleeps croissants) pour les franchir.
           ok=0
-          for i in 1 2 3; do
+          for s in 0 20 40 60 90 120; do
+            [ "$s" -gt 0 ] && { echo "::warning::Deploy hosting échoué (auth transitoire ?), retry dans ${s}s…"; sleep "$s"; }
             if deploy; then ok=1; break; fi
-            echo "::warning::Deploy hosting tentative $i échouée (auth transitoire ?), retry…"
-            sleep $((i * 8))
           done
-          [ "$ok" = 1 ] || { echo "::error::Deploy hosting échoué après 3 tentatives"; exit 1; }
+          [ "$ok" = 1 ] || { echo "::error::Deploy hosting échoué après 6 tentatives (~6 min) — le cron reprendra"; exit 1; }
 
   # ── Cloud Functions → Firebase ─────────────────────────────────────────────
   deploy-functions:
