@@ -1,9 +1,11 @@
 // Prototype « Fluo Adventure — navigation » : les 3 échelles reliées par la fusée.
 //
-//   🌌 COSMOS   planètes = domaines de vie. 🚀 → entrer dans un domaine.
-//   🏠 MAP      1 map / domaine ; pièces = activités. 🚀 (case Entrée) → cosmos.
-//               chaque pièce a un terminal ⌗ cliquable → la grille.
-//   ⌗  GRILLE   un niveau : amène le jeton au but → débloque un item. 🚀 → map.
+//   🌌 COSMOS    planètes = domaines de vie. 🚀 → entrer dans un domaine.
+//   🏠 MAP       1 map / domaine ; pièces = activités. 🚀 (case Entrée) → cosmos.
+//                chaque pièce a un terminal ⌗ cliquable → la carte à nœuds.
+//   🗺 NODE-MAP  la « grille » à nœuds, INFINIE : on monte de nœud en nœud
+//                (combat ⚔ / trésor ◆ / planète 🪐 / boss ☠), de plus en plus
+//                loin ; trésors & boss débloquent un item. 🚀 → map.
 //
 // Démontre l'assemblage / la navigation (zoom out/in via la fusée). Look fluo,
 // dessiné en code. Standalone (sans données ni login). Accès : ?proto=fluo
@@ -23,7 +25,9 @@ class FluoNavApp extends StatelessWidget {
       );
 }
 
-enum _View { cosmos, map, grid }
+enum _View { cosmos, map, run }
+
+enum NodeKind { start, combat, treasure, planet, boss }
 
 class _Planet {
   const _Planet(this.frac, this.r, this.color, this.name, this.activities);
@@ -42,6 +46,19 @@ class _Room {
   final bool entry;
 }
 
+// nœud de la carte infinie
+class _MNode {
+  _MNode(this.row, this.xFrac, this.kind);
+  final int row;
+  final double xFrac;
+  final NodeKind kind;
+  final List<int> links = []; // vers la rangée suivante
+  bool visited = false;
+  bool unlocked = false;
+  double worldY = 0;
+  double pulse = 0;
+}
+
 class FluoNavScreen extends StatefulWidget {
   const FluoNavScreen({super.key});
   @override
@@ -55,12 +72,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   double _t = 0;
   Size _size = Size.zero;
   bool _setup = false;
-  final math.Random _rng = math.Random(11);
 
   _View _view = _View.cosmos;
-  double _trans = 1.0; // 1 = posé, monte de 0→1 à chaque changement de vue
-  int _domain = 0; // domaine sélectionné
-  int _activity = 0; // activité (pièce) sélectionnée
+  double _trans = 1.0;
+  int _domain = 0;
+  int _activity = 0;
   int _itemsUnlocked = 0;
   String? _flash;
   double _flashT = 0;
@@ -76,7 +92,6 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         ['Médit.', 'Journal', 'Respire', 'Gratitude', 'Pause']),
   ];
 
-  // pièces : [0]=couloir, [1]=Entrée (launchpad), [2..6]=activités
   static const _rooms = <_Room>[
     _Room(Rect.fromLTWH(0.05, 0.46, 0.86, 0.10), '', corridor: true),
     _Room(Rect.fromLTWH(0.05, 0.38, 0.15, 0.26), 'Entrée', entry: true),
@@ -97,17 +112,22 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   static const double _speed = 240;
   static const double _heroLight = 130;
 
-  // grille (vue grid)
-  static const int _gN = 5;
-  late List<List<bool>> _blocked;
-  Point<int> _tok = const Point(0, 2);
-  Point<int> _goal = const Point(4, 2);
+  // node-map (vue run) — carte infinie
+  static const double _rowGap = 120;
+  final List<_MNode> _nodes = [];
+  int _rowCount = 0;
+  int _cur = 0;
+  int? _movingTo;
+  double _moveT = 0;
+  double _camY = 0;
+  Offset _heroW = Offset.zero;
+  int _depth = 0;
+  math.Random _runRng = math.Random(1);
 
   @override
   void initState() {
     super.initState();
     _ticker = createTicker(_tick)..start();
-    _genGrid();
   }
 
   @override
@@ -130,19 +150,113 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _setup = true;
   }
 
-  void _genGrid() {
-    _blocked =
-        List.generate(_gN, (_) => List.generate(_gN, (_) => false));
-    _tok = const Point(0, 2);
-    _goal = Point(_gN - 1, _rng.nextInt(_gN));
-    // quelques cases bloquées (jamais sur départ/arrivée)
-    var placed = 0;
-    while (placed < 5) {
-      final x = _rng.nextInt(_gN), y = _rng.nextInt(_gN);
-      final p = Point(x, y);
-      if (p == _tok || p == _goal || _blocked[y][x]) continue;
-      _blocked[y][x] = true;
-      placed++;
+  // ── node-map ────────────────────────────────────────────────────────────
+  NodeKind _pickKind() {
+    final r = _runRng.nextDouble();
+    if (r < 0.5) return NodeKind.combat;
+    if (r < 0.8) return NodeKind.treasure;
+    return NodeKind.planet;
+  }
+
+  void _genRow() {
+    final r = _rowCount;
+    final newIdx = <int>[];
+    if (r == 0) {
+      final n = _MNode(0, 0.5, NodeKind.start)..worldY = 0;
+      _nodes.add(n);
+      newIdx.add(_nodes.length - 1);
+    } else {
+      final two = _runRng.nextDouble() < 0.5;
+      final xs = two
+          ? [0.26 + _runRng.nextDouble() * 0.12, 0.60 + _runRng.nextDouble() * 0.12]
+          : [0.36 + _runRng.nextDouble() * 0.28];
+      for (final x in xs) {
+        final kind = (r % 6 == 0) ? NodeKind.boss : _pickKind();
+        _nodes.add(_MNode(r, x, kind)..worldY = -r * _rowGap);
+        newIdx.add(_nodes.length - 1);
+      }
+      final prev = <int>[];
+      for (var i = 0; i < _nodes.length; i++) {
+        if (_nodes[i].row == r - 1) prev.add(i);
+      }
+      for (final ni in newIdx) {
+        prev.sort((a, b) => (_nodes[a].xFrac - _nodes[ni].xFrac)
+            .abs()
+            .compareTo((_nodes[b].xFrac - _nodes[ni].xFrac).abs()));
+        _nodes[prev.first].links.add(ni);
+      }
+      // chaque nœud précédent doit avoir ≥1 lien vers l'avant
+      for (final pi in prev) {
+        if (!_nodes[pi].links.any((l) => _nodes[l].row == r)) {
+          newIdx.sort((a, b) => (_nodes[a].xFrac - _nodes[pi].xFrac)
+              .abs()
+              .compareTo((_nodes[b].xFrac - _nodes[pi].xFrac).abs()));
+          _nodes[pi].links.add(newIdx.first);
+        }
+      }
+    }
+    _rowCount++;
+  }
+
+  void _initRun() {
+    _runRng = math.Random(_domain * 97 + _activity * 31 + 7);
+    _nodes.clear();
+    _rowCount = 0;
+    for (var i = 0; i < 8; i++) {
+      _genRow();
+    }
+    _nodes[0].visited = true;
+    _nodes[0].unlocked = true;
+    for (final l in _nodes[0].links) {
+      _nodes[l].unlocked = true;
+    }
+    _cur = 0;
+    _movingTo = null;
+    _moveT = 0;
+    _camY = 0;
+    _depth = 0;
+    _heroW = Offset(0.5 * _size.width, 0);
+  }
+
+  Offset _nodeWorld(int i) =>
+      Offset(_nodes[i].xFrac * _size.width, _nodes[i].worldY);
+
+  Offset _project(Offset world) =>
+      Offset(world.dx, _size.height * 0.62 + (world.dy - _camY));
+
+  void _arrive(int i) {
+    final n = _nodes[i];
+    n.visited = true;
+    _cur = i;
+    _depth = math.max(_depth, n.row);
+    for (final l in n.links) {
+      _nodes[l].unlocked = true;
+    }
+    switch (n.kind) {
+      case NodeKind.treasure:
+        _itemsUnlocked++;
+        _flash = 'Item débloqué ◆ (${_planets[_domain].activities[_activity]})';
+        _flashT = 2.2;
+        break;
+      case NodeKind.boss:
+        _itemsUnlocked++;
+        _flash = 'Boss vaincu ☠ — item rare débloqué !';
+        _flashT = 2.4;
+        break;
+      case NodeKind.combat:
+        _flash = 'Combat ⚔ (tower-defense à venir)';
+        _flashT = 1.6;
+        break;
+      case NodeKind.planet:
+        _flash = 'Planète 🪐 — domaine nourri';
+        _flashT = 1.6;
+        break;
+      case NodeKind.start:
+        break;
+    }
+    // génère la suite (carte infinie)
+    while (_rowCount < n.row + 6) {
+      _genRow();
     }
   }
 
@@ -151,21 +265,6 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       _view = v;
       _trans = 0;
     });
-  }
-
-  void _moveTok(int dx, int dy) {
-    final nx = _tok.x + dx, ny = _tok.y + dy;
-    if (nx < 0 || ny < 0 || nx >= _gN || ny >= _gN) return;
-    if (_blocked[ny][nx]) return;
-    setState(() => _tok = Point(nx, ny));
-    if (_tok == _goal) {
-      _itemsUnlocked++;
-      _flash = 'Item débloqué ! ✦ (${_planets[_domain].activities[_activity]})';
-      _flashT = 2.4;
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) setState(_genGrid);
-      });
-    }
   }
 
   bool _walkable(Offset p) {
@@ -202,6 +301,23 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           _target = _hero;
         }
       }
+    } else if (_view == _View.run && _nodes.isNotEmpty) {
+      for (final n in _nodes) {
+        n.pulse += dt;
+      }
+      _camY += (_nodes[_cur].worldY - _camY) * math.min(1.0, dt * 4);
+      final mt = _movingTo;
+      if (mt != null) {
+        _moveT = (_moveT + dt * 1.8).clamp(0.0, 1.0);
+        _heroW = Offset.lerp(_nodeWorld(_cur), _nodeWorld(mt),
+            Curves.easeInOut.transform(_moveT))!;
+        if (_moveT >= 1) {
+          _arrive(mt);
+          _movingTo = null;
+        }
+      } else {
+        _heroW = _nodeWorld(_cur).translate(0, math.sin(_t * 2.2) * 2);
+      }
     }
     setState(() {});
   }
@@ -219,23 +335,20 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         }
         break;
       case _View.map:
-        // fusée sur la case Entrée → cosmos
         final rocket = _px[1].topCenter.translate(0, 30);
         if ((rocket - p).distance < 28) {
           _go(_View.cosmos);
           return;
         }
-        // terminal d'une pièce-activité → grille
         for (var i = 2; i < _px.length; i++) {
           final term = _px[i].center.translate(0, 26);
           if ((term - p).distance < 24) {
             _activity = i - 2;
-            _genGrid();
-            _go(_View.grid);
+            _initRun();
+            _go(_View.run);
             return;
           }
         }
-        // sinon : déplacer le héros
         if (_walkable(p)) {
           _target = p;
         } else {
@@ -253,7 +366,18 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           if (best != null) _target = best;
         }
         break;
-      case _View.grid:
+      case _View.run:
+        if (_movingTo != null) return;
+        for (var i = 0; i < _nodes.length; i++) {
+          final n = _nodes[i];
+          if (!n.unlocked || n.visited) continue;
+          if (!_nodes[_cur].links.contains(i)) continue;
+          if ((_project(_nodeWorld(i)) - p).distance <= 28) {
+            _movingTo = i;
+            _moveT = 0;
+            return;
+          }
+        }
         break;
     }
   }
@@ -272,19 +396,12 @@ class _FluoNavScreenState extends State<FluoNavScreen>
               child: CustomPaint(size: s, painter: _NavPainter(this)),
             ),
           ),
-          // bouton retour fusée (sauf cosmos)
           if (_view != _View.cosmos)
             Positioned(
               left: 14,
               top: 14,
-              child: _rocketBtn(() => _go(_view == _View.grid ? _View.map : _View.cosmos)),
-            ),
-          // pad directionnel (grille)
-          if (_view == _View.grid)
-            Positioned(
-              right: 18,
-              bottom: 18,
-              child: _dpad(),
+              child: _rocketBtn(
+                  () => _go(_view == _View.run ? _View.map : _View.cosmos)),
             ),
         ]);
       }),
@@ -315,49 +432,31 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           ),
         ),
       );
-
-  Widget _dpad() {
-    Widget btn(IconData ic, int dx, int dy) => Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _moveTok(dx, dy),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: const Color(0xFFB6FF3C).withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFB6FF3C).withOpacity(0.7)),
-              ),
-              child: Icon(ic, color: const Color(0xFFB6FF3C), size: 24),
-            ),
-          ),
-        );
-    const gap = SizedBox(width: 6, height: 6);
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      btn(Icons.keyboard_arrow_up, 0, -1),
-      gap,
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        btn(Icons.keyboard_arrow_left, -1, 0),
-        const SizedBox(width: 52),
-        btn(Icons.keyboard_arrow_right, 1, 0),
-      ]),
-      gap,
-      btn(Icons.keyboard_arrow_down, 0, 1),
-    ]);
-  }
 }
 
 class _NavPainter extends CustomPainter {
   _NavPainter(this.g);
   final _FluoNavScreenState g;
 
+  static const _kindColor = {
+    NodeKind.start: Color(0xFF7DFFCE),
+    NodeKind.combat: Color(0xFFFF3DDA),
+    NodeKind.treasure: Color(0xFFFFD36B),
+    NodeKind.planet: Color(0xFFA86BFF),
+    NodeKind.boss: Color(0xFFFF4D5E),
+  };
+  static const _kindIcon = {
+    NodeKind.start: '⌂',
+    NodeKind.combat: '⚔',
+    NodeKind.treasure: '◆',
+    NodeKind.planet: '🪐',
+    NodeKind.boss: '☠',
+  };
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     final ease = Curves.easeOut.transform(g._trans);
-    // transition : fade + léger zoom
     canvas.saveLayer(rect, Paint()..color = Colors.white.withOpacity(ease));
     final sc = 1.06 - 0.06 * ease;
     canvas.save();
@@ -372,13 +471,12 @@ class _NavPainter extends CustomPainter {
       case _View.map:
         _paintMap(canvas, size);
         break;
-      case _View.grid:
-        _paintGrid(canvas, size);
+      case _View.run:
+        _paintRun(canvas, size);
         break;
     }
     canvas.restore();
     canvas.restore();
-
     _paintFlash(canvas, size);
   }
 
@@ -414,20 +512,19 @@ class _NavPainter extends CustomPainter {
               colors: [Colors.white.withOpacity(0.9), pl.color, pl.color],
               stops: const [0.0, 0.4, 1.0],
             ).createShader(Rect.fromCircle(center: p, radius: pl.r)));
-      // anneau
       canvas.save();
       canvas.translate(p.dx, p.dy);
       canvas.rotate(-0.4);
-      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: pl.r * 3, height: pl.r),
+      canvas.drawOval(
+          Rect.fromCenter(center: Offset.zero, width: pl.r * 3, height: pl.r),
           _stroke(pl.color.withOpacity(0.5), 2));
       canvas.restore();
       _text(canvas, pl.name, p.translate(0, pl.r + 18), Colors.white, 15,
           weight: FontWeight.w800);
-      // mini-fusée d'invite
       _text(canvas, '🚀', p.translate(pl.r * 0.7, -pl.r * 0.7), Colors.white, 16);
     }
-    _text(canvas, 'COSMOS', Offset(size.width / 2, 30),
-        const Color(0xFFB6FF3C), 22, weight: FontWeight.w900);
+    _text(canvas, 'COSMOS', Offset(size.width / 2, 30), const Color(0xFFB6FF3C),
+        22, weight: FontWeight.w900);
     _text(canvas, 'Tes domaines de vie · touche une planète pour y voyager 🚀',
         Offset(size.width / 2, 54), const Color(0xFF8FA0C8), 12);
     _text(canvas, 'Items débloqués : ${g._itemsUnlocked}',
@@ -435,7 +532,7 @@ class _NavPainter extends CustomPainter {
         weight: FontWeight.w700);
   }
 
-  // ── MAP ─────────────────────────────────────────────────────────────────
+  // ── MAP ───────────────────────────────────────────────────────────────────
   void _paintMap(Canvas canvas, Size size) {
     final dom = _FluoNavScreenState._planets[g._domain];
     final rect = Offset.zero & size;
@@ -443,42 +540,41 @@ class _NavPainter extends CustomPainter {
     for (var i = 0; i < _FluoNavScreenState._rooms.length; i++) {
       _drawRoom(canvas, g._px[i], _FluoNavScreenState._rooms[i], dom, i);
     }
-    // voile + lumière du héros
     canvas.saveLayer(rect, Paint());
     canvas.drawRect(rect, Paint()..color = const Color(0xFF0A0C16).withOpacity(0.55));
     _punch(canvas, g._hero, _FluoNavScreenState._heroLight);
     canvas.restore();
 
-    // fusée de la case Entrée → cosmos
     final rocket = g._px[1].topCenter.translate(0, 30);
     _glow(canvas, rocket, 18, const Color(0xFF35E0FF).withOpacity(0.5));
     canvas.drawCircle(rocket, 15, Paint()..color = const Color(0xFF0B1422));
     canvas.drawCircle(rocket, 15, _stroke(const Color(0xFF35E0FF), 1.8));
     _text(canvas, '🚀', rocket, Colors.white, 16);
-    _text(canvas, 'Décoller', rocket.translate(0, 26),
-        const Color(0xFF7FD0C0), 10);
+    _text(canvas, 'Décoller', rocket.translate(0, 26), const Color(0xFF7FD0C0), 10);
 
     _drawHero(canvas, g._hero, dom.color);
 
-    _text(canvas, dom.name.toUpperCase(), Offset(size.width / 2, 28),
-        dom.color, 22, weight: FontWeight.w900);
+    _text(canvas, dom.name.toUpperCase(), Offset(size.width / 2, 28), dom.color,
+        22, weight: FontWeight.w900);
     _text(canvas, 'Map du domaine · les pièces sont tes activités',
         Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
-    _text(canvas, 'Touche un terminal ⌗ d\'activité pour entrer dans son niveau',
-        Offset(size.width / 2, size.height - 24),
-        const Color(0xFF8FA0C8), 12);
+    _text(canvas, 'Touche un terminal ⌗ d\'activité pour explorer sa carte',
+        Offset(size.width / 2, size.height - 24), const Color(0xFF8FA0C8), 12);
   }
 
   void _drawRoom(Canvas canvas, Rect px, _Room r, _Planet dom, int idx) {
     final rr = RRect.fromRectAndRadius(px, const Radius.circular(6));
     canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B1422));
-    canvas.drawRRect(rr, Paint()..color = dom.color.withOpacity(r.corridor ? 0.05 : 0.12));
+    canvas.drawRRect(
+        rr, Paint()..color = dom.color.withOpacity(r.corridor ? 0.05 : 0.12));
     if (!r.corridor) {
       _glow(canvas, px.center, math.min(px.width, px.height) * 0.5,
           dom.color.withOpacity(0.14));
     }
     canvas.drawRRect(
-        rr, _stroke(dom.color.withOpacity(r.corridor ? 0.4 : 0.85), r.corridor ? 1.5 : 2.5));
+        rr,
+        _stroke(dom.color.withOpacity(r.corridor ? 0.4 : 0.85),
+            r.corridor ? 1.5 : 2.5));
     if (r.entry) {
       _text(canvas, 'Entrée', Offset(px.center.dx, px.top + 16),
           Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
@@ -486,7 +582,6 @@ class _NavPainter extends CustomPainter {
       final name = dom.activities[idx - 2];
       _text(canvas, name, Offset(px.center.dx, px.top + 16),
           Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
-      // terminal cliquable
       final term = px.center.translate(0, 26);
       final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + idx);
       _glow(canvas, term, 14 * pulse, const Color(0xFFFFD36B).withOpacity(0.5));
@@ -504,8 +599,8 @@ class _NavPainter extends CustomPainter {
     }
   }
 
-  // ── GRILLE ───────────────────────────────────────────────────────────────
-  void _paintGrid(Canvas canvas, Size size) {
+  // ── NODE-MAP (carte infinie) ───────────────────────────────────────────────
+  void _paintRun(Canvas canvas, Size size) {
     final dom = _FluoNavScreenState._planets[g._domain];
     final rect = Offset.zero & size;
     canvas.drawRect(
@@ -513,52 +608,78 @@ class _NavPainter extends CustomPainter {
         Paint()
           ..shader = const RadialGradient(
             center: Alignment(0, -0.1),
-            radius: 1.1,
-            colors: [Color(0xFF141034), Color(0xFF07061A)],
+            radius: 1.2,
+            colors: [Color(0xFF1A1440), Color(0xFF0B0A22), Color(0xFF05070F)],
           ).createShader(rect));
-    final n = _FluoNavScreenState._gN;
-    final cell = math.min(size.width, size.height) * 0.62 / n;
-    final gw = cell * n;
-    final ox = (size.width - gw) / 2, oy = (size.height - gw) / 2 + 14;
-    // cases
-    for (var y = 0; y < n; y++) {
-      for (var x = 0; x < n; x++) {
-        final cr = Rect.fromLTWH(ox + x * cell, oy + y * cell, cell - 4, cell - 4);
-        final rr = RRect.fromRectAndRadius(cr, const Radius.circular(6));
-        final blocked = g._blocked[y][x];
-        canvas.drawRRect(
-            rr,
+    // étoiles défilantes (parallaxe simple selon la caméra)
+    final rnd = math.Random(5);
+    for (var i = 0; i < 70; i++) {
+      final sx = rnd.nextDouble() * size.width;
+      final sy = (rnd.nextDouble() * size.height - g._camY * 0.2) % size.height;
+      canvas.drawCircle(Offset(sx, sy < 0 ? sy + size.height : sy),
+          rnd.nextDouble() * 1.3 + 0.3, Paint()..color = Colors.white.withOpacity(0.4));
+    }
+
+    if (g._nodes.isEmpty) return;
+
+    // arêtes visibles
+    for (var i = 0; i < g._nodes.length; i++) {
+      final n = g._nodes[i];
+      final a = g._project(g._nodeWorld(i));
+      if (a.dy < -60 || a.dy > size.height + 60) continue;
+      for (final l in n.links) {
+        final b = g._project(g._nodeWorld(l));
+        final live = n.visited || (n.unlocked && g._nodes[l].unlocked);
+        canvas.drawLine(
+            a,
+            b,
             Paint()
-              ..color = blocked
-                  ? const Color(0xFF15171F)
-                  : const Color(0xFF101A2B));
-        canvas.drawRRect(rr,
-            _stroke(dom.color.withOpacity(blocked ? 0.12 : 0.3), 1.2));
+              ..strokeWidth = live ? 3 : 1.5
+              ..color = (live
+                      ? const Color(0xFF8FE9FF)
+                      : const Color(0xFF3A4570))
+                  .withOpacity(live ? 0.5 : 0.25));
       }
     }
-    // but
-    final goalC = Offset(ox + g._goal.x * cell + (cell - 4) / 2,
-        oy + g._goal.y * cell + (cell - 4) / 2);
-    final gp = 0.6 + 0.4 * math.sin(g._t * 4);
-    _glow(canvas, goalC, 22 * gp, const Color(0xFFFFD36B).withOpacity(0.6));
-    _text(canvas, '✦', goalC, const Color(0xFFFFD36B), 24, weight: FontWeight.w900);
-    // jeton
-    final tokC = Offset(ox + g._tok.x * cell + (cell - 4) / 2,
-        oy + g._tok.y * cell + (cell - 4) / 2);
-    _drawHero(canvas, tokC, const Color(0xFFB6FF3C));
+    // nœuds visibles
+    for (var i = 0; i < g._nodes.length; i++) {
+      final n = g._nodes[i];
+      final pos = g._project(g._nodeWorld(i));
+      if (pos.dy < -40 || pos.dy > size.height + 40) continue;
+      final c = _kindColor[n.kind]!;
+      final reachable = !n.visited &&
+          n.unlocked &&
+          g._nodes[g._cur].links.contains(i) &&
+          g._movingTo == null;
+      final op = n.unlocked ? 1.0 : 0.4;
+      _glow(canvas, pos, 22, c.withOpacity(n.unlocked ? 0.4 : 0.12));
+      if (reachable) {
+        final pr = 17 + (0.5 + 0.5 * math.sin(n.pulse * 4)) * 8;
+        canvas.drawCircle(pos, pr, _stroke(c.withOpacity(0.7), 2));
+      }
+      canvas.drawCircle(
+          pos, 17, Paint()..color = const Color(0xFF120F30).withOpacity(op));
+      canvas.drawCircle(pos, 17, _stroke(c.withOpacity(op), 2.4));
+      if (n.visited) {
+        canvas.drawCircle(pos, 17, Paint()..color = c.withOpacity(0.18));
+      }
+      _text(canvas, _kindIcon[n.kind]!, pos, c.withOpacity(op), 15);
+    }
+    // héros
+    _drawHero(canvas, g._project(g._heroW), const Color(0xFFB6FF3C));
 
-    _text(canvas, 'NIVEAU · ${dom.activities[g._activity]}',
-        Offset(size.width / 2, 30), const Color(0xFFB6FF3C), 20,
-        weight: FontWeight.w900);
-    _text(canvas, 'Amène le héros jusqu\'au ✦ pour débloquer un item',
-        Offset(size.width / 2, 54), const Color(0xFF8FA0C8), 12);
-    _text(canvas, 'Flèches → · murs sombres bloquent',
-        Offset(size.width / 2, size.height - 24), const Color(0xFF8FA0C8), 12);
+    _text(canvas, '${dom.name} · ${dom.activities[g._activity]}'.toUpperCase(),
+        Offset(size.width / 2, 28), dom.color, 19, weight: FontWeight.w900);
+    _text(canvas, 'Carte infinie · monte de nœud en nœud, de plus en plus loin',
+        Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
+    _text(canvas, '✦ Profondeur ${g._depth}   ·   ◆ Items ${g._itemsUnlocked}',
+        Offset(size.width / 2, size.height - 24), const Color(0xFFB6FF3C), 13,
+        weight: FontWeight.w700);
   }
 
   void _paintFlash(Canvas canvas, Size size) {
     if (g._flashT <= 0 || g._flash == null) return;
-    final a = (g._flashT / 2.4).clamp(0.0, 1.0);
+    final a = (g._flashT / 2.2).clamp(0.0, 1.0);
     final box = Rect.fromCenter(
         center: Offset(size.width / 2, size.height * 0.18),
         width: 360,
@@ -567,11 +688,11 @@ class _NavPainter extends CustomPainter {
         Paint()..color = const Color(0xFF0B1422).withOpacity(0.92 * a));
     canvas.drawRRect(RRect.fromRectAndRadius(box, const Radius.circular(12)),
         _stroke(const Color(0xFFFFD36B).withOpacity(a), 1.5));
-    _text(canvas, g._flash!, box.center,
-        const Color(0xFFFFE08A).withOpacity(a), 14, weight: FontWeight.w800);
+    _text(canvas, g._flash!, box.center, const Color(0xFFFFE08A).withOpacity(a),
+        14, weight: FontWeight.w800);
   }
 
-  // ── helpers ───────────────────────────────────────────────────────────────
+  // ── helpers ────────────────────────────────────────────────────────────────
   void _punch(Canvas canvas, Offset c, double r) {
     canvas.drawCircle(
         c,
@@ -636,13 +757,4 @@ class _NavPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _NavPainter old) => true;
-}
-
-class Point<T extends num> {
-  const Point(this.x, this.y);
-  final T x, y;
-  @override
-  bool operator ==(Object o) => o is Point && o.x == x && o.y == y;
-  @override
-  int get hashCode => Object.hash(x, y);
 }
