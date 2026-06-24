@@ -41,6 +41,8 @@ import 'package:productivitwo_v1/web/web_app_stub.dart'
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
+import 'package:productivitwo_v1/prototypes/orbit_prototype.dart'
+    show OrbitProtoApp;
 import 'package:productivitwo_v1/fcm_service.dart';
 import 'package:productivitwo_v1/live_activity_service.dart';
 import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
@@ -746,6 +748,13 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (kIsWeb) {
+    // Route cachée d'évaluation : ?proto=orbit → lance le prototype isolé
+    // « Système orbital » sans Firebase ni auth. Aucun lien depuis l'UI.
+    if (Uri.base.queryParameters['proto'] == 'orbit') {
+      debugPrint('▶ PROTO ORBIT');
+      runApp(const OrbitProtoApp());
+      return;
+    }
     // Web : Firebase uniquement — timeout 10s pour éviter un blocage sur Firefox/Safari
     try {
       if (Firebase.apps.isEmpty) {
