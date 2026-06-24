@@ -35,7 +35,7 @@ dashboard déguisé.
 | Pilier | Ce que c'est | Verbe |
 |--------|--------------|-------|
 | 🗺 **Overworld** | Carte-monde de nœuds néon ; un **héros fluo** qu'on déplace de nœud en nœud. Le HUB. | explorer, avancer |
-| 🏠 **Niveaux / cartes** | Lieux à explorer (style top-down néon) : loot, énigmes, ennemis. | fouiller, résoudre |
+| 🏠 **Niveaux / cartes** | Lieux à explorer **librement** (top-down néon), plongés dans le noir. On **récolte des Lumens** et on les dépense pour éclairer / colorer / décorer. | explorer, éclairer |
 | ⚔️ **Combats** | **Tower-defense néon** : on pose/évolue des tourelles, les vagues montent. | défendre, composer |
 | 🌌 **Cosmos** | Tes **domaines de vie = planètes** qui grandissent avec ton temps. | faire croître |
 
@@ -104,6 +104,33 @@ ensuite).
 - **Personne** ne fait « ta vraie productivité **fuel** un vrai jeu d'aventure/TD ».
 - Profondeur (TD, exploration) **sans** stratégie lourde → accessible.
 - Émotion (héros qui t'encourage) **+** gameplay (agency, enjeu) dans le même objet.
+
+---
+
+## L'économie de la lumière (Lumens) — moteur des niveaux
+
+Le noir n'est **pas un mur** : c'est l'antagoniste d'ambiance (on devine des choses
+tapies dans l'ombre → tension qui donne envie d'éclairer). On explore **librement**
+et on **récolte des Lumens** (laissés par ton activité réelle). On les dépense sur
+trois horizons :
+
+| Horizon | On dépense pour… | Récompense | Cadence |
+|---|---|---|---|
+| **Court terme** | + de **lumière** (plancher de luminosité, lampe, halos) | le monde s'éclaire et se **colore** maintenant | par session |
+| **Moyen terme** | des **items / assets** à poser | collection, personnalisation | par semaine |
+| **Long terme** | de l'**espace** (pièces, maps) | plus de place → plus d'items → plus à éclairer | par mois |
+
+Flywheel : plus d'espace ⇒ plus de noir à repousser ⇒ besoin de plus de Lumens ⇒
+besoin de produire. **Pas de gating par énigme** (l'accès reste libre) — la
+progression, c'est rendre la map de plus en plus **gaie**.
+
+> Réglage retenu : **plancher de luminosité permanent** (on garde ce qu'on a bâti)
+> + un **halo de “charge”** qui pulse avec l'activité récente (productif = couleurs
+> plus vives ; on lâche = ça retombe au plancher, plus terne mais jamais noir).
+
+Prototypé : `?proto=level` — récolte de Lumens + bouton « Lumière » qui fait monter
+le plancher (la map sort de l'ombre, couleurs qui saturent, lucioles, fleurs,
+héros qui sourit, yeux dans le noir qui se retirent).
 
 ---
 
