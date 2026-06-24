@@ -470,6 +470,7 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   // (incite à avoir un max de flammes). Non vidé en ré-entrant (clés = routine+sem).
   final Set<String> _dayKilledToiles = {};
   int _cineSpawnIdx = 0; // toile suivante à faire spawn (cyclique)
+  int _cineAttackInitialAlive = 1; // nb de toiles vivantes au DÉBUT de l'attaque
   double _cineSpawnT = 0;
   final List<_CineFb> _supportFbs = []; // boules de feu de support en vol
   // Tours en mode SUPPORT (attaque) : seules celles ayant des flammes tirent,
@@ -477,10 +478,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
   final List<_CineTurret> _cineTurrets = [];
   final Map<int, _CineTurret> _cineTurretByRow = {};
   final Set<String> _inFlightKeys = {}; // toiles déjà visées par un boulet en vol
-  // Cadence PAR TOILE vivante : le flux total = nb de toiles vivantes /
-  // _kPerToileSpawnEvery. Détruire une toile RÉDUIT donc le flux (sinon, à cadence
-  // fixe, le ninja est submergé en continu → défaite systématique).
-  static const double _kPerToileSpawnEvery = 4.0;
+  // Flux de sbires = PART de toiles encore vivantes (pas leur nombre absolu) : démarre
+  // DOUX (~0,5 sbire/s) quel que soit le nb initial de toiles, et BAISSE à mesure qu'on
+  // les détruit. _kBossSpawnBase = secondes entre sbires quand TOUTES les toiles vivent.
+  static const double _kBossSpawnBase = 2.0;
   static const double _kSbireSpeed = 0.4; // cases / s (lent → esquivable)
   static const double _kTurretFireEvery = 10.0; // s entre 2 tirs d'une tour
   static const double _kTurretAimDur = 2.0; // s d'animation de visée (canon)
@@ -573,6 +574,11 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
     _cineAttack = true;
     _ninjaHp = 10;
     _bossAttackT = 0;
+    // Référence pour le flux ∝ part de toiles restantes (démarrage doux, baisse ensuite).
+    _cineAttackInitialAlive = _cineToileSpawns
+        .where((t) => !_cineKilledToiles.contains(t.key))
+        .length
+        .clamp(1, 1 << 30);
     // Budget du JOUR : lifetime − déjà dépensé aujourd'hui (≥ 0). À 0 → tu tombes
     // vite à court → défaite : farme/attends demain pour reconstituer le deck.
     _ninjaShurikens =
@@ -849,10 +855,10 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
         ];
         if (alive.isNotEmpty) {
           _cineSpawnT += dt;
-          // Cadence ∝ nb de toiles VIVANTES : chaque toile pond ~1 sbire toutes les
-          // _kPerToileSpawnEvery s. Détruire des toiles fait BAISSER le flux → le ninja
-          // peut reprendre le dessus et gagner (une toile explosée ne spawn plus).
-          final interval = _kPerToileSpawnEvery / alive.length;
+          // Cadence ∝ PART de toiles restantes : ~_kBossSpawnBase s au départ (flux doux,
+          // indépendant du nb de toiles), puis de plus en plus lent à mesure qu'on en
+          // détruit (alive ↓ → interval ↑). Une toile explosée ne spawn plus.
+          final interval = _kBossSpawnBase * _cineAttackInitialAlive / alive.length;
           if (_cineSpawnT >= interval) {
             _cineSpawnT -= interval;
             final t = alive[_cineSpawnIdx % alive.length];
@@ -9473,17 +9479,12 @@ class _UnifiedWorldViewState extends State<_UnifiedWorldView>
       final g = c.gardenRect;
       final trouId = '${g.left + g.width ~/ 2}_${g.top + g.height ~/ 2}';
       _v2BossTrou[trouId] = c.domainId;
-      // Semis ESPACÉ (~1 toile par 4×4 cases → poignée de toiles) : avec la cadence
-      // ∝ toiles vivantes, trop de toiles = flux ingérable. Quelques toiles bien
-      // réparties suffisent ; les détruire fait nettement chuter le flux.
+      // Marqueurs 🕸️ denses sur le jardin (look « infesté ») — COSMÉTIQUE : la difficulté
+      // du combat vient du heatmap 12 sem. (_cineAllToiles), pas de ces marqueurs.
       for (var gy = g.top; gy < g.top + g.height; gy++) {
         for (var gx = g.left; gx < g.left + g.width; gx++) {
           final tid = '${gx}_$gy';
-          if (tid != trouId &&
-              (gx - g.left) % 4 == 2 &&
-              (gy - g.top) % 4 == 2) {
-            _v2Toiles[tid] = c.domainId;
-          }
+          if (tid != trouId && (gx + gy) % 3 == 0) _v2Toiles[tid] = c.domainId;
         }
       }
     }
