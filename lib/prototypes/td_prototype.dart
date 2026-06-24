@@ -1,6 +1,10 @@
 // Prototype « Tower Defense » jouable — test du feeling (dessiné en code).
 //
 // Roster de tourelles à comportements distincts + plusieurs cartes.
+// • Placement LIBRE sur grille (chemin fixe ; on pose où on veut, hors chemin).
+// • Carburant IRL → puissance des tourelles : plus tu as été régulier (jauge
+//   « Régularité IRL », simulée par le bouton « +séance »), plus tes tourelles
+//   tapent fort (multiplicateur de dégâts). C'est le lien réel ↔ mini-jeu.
 // Style néon/dark + juice. Standalone (sans données ni login).
 // Accès : ?proto=td (route sans auth dans web_app).
 
@@ -68,11 +72,8 @@ class _Turret {
   int get upCost => type.cost + tier * 35;
 }
 
-class _Slot {
-  _Slot(this.pos);
-  final Offset pos;
-  _Turret? turret;
-}
+// Placement libre : plus de _Slot imposé — les tourelles se posent sur n'importe
+// quelle case de grille constructible (hors chemin, non occupée).
 
 class _Enemy {
   _Enemy(this.hp, this.maxHp, this.speed, this.color, this.r, this.reward,
@@ -129,10 +130,9 @@ class _Ring {
 
 // ── Cartes (fractions de l'écran) ───────────────────────────────────────────
 class _MapDef {
-  const _MapDef(this.name, this.path, this.slots);
+  const _MapDef(this.name, this.path);
   final String name;
   final List<Offset> path;
-  final List<Offset> slots;
 }
 
 const _maps = [
@@ -144,15 +144,6 @@ const _maps = [
     Offset(0.18, 0.60),
     Offset(0.82, 0.60),
     Offset(1.05, 0.60),
-  ], [
-    Offset(0.30, 0.30),
-    Offset(0.55, 0.30),
-    Offset(0.66, 0.50),
-    Offset(0.42, 0.50),
-    Offset(0.30, 0.50),
-    Offset(0.55, 0.70),
-    Offset(0.10, 0.31),
-    Offset(0.90, 0.40),
   ]),
   _MapDef('Spirale', [
     Offset(0.5, -0.05),
@@ -165,15 +156,6 @@ const _maps = [
     Offset(0.62, 0.50),
     Offset(0.38, 0.50),
     Offset(0.38, 1.05),
-  ], [
-    Offset(0.34, 0.20),
-    Offset(0.66, 0.20),
-    Offset(0.34, 0.42),
-    Offset(0.50, 0.42),
-    Offset(0.70, 0.42),
-    Offset(0.50, 0.58),
-    Offset(0.26, 0.58),
-    Offset(0.74, 0.58),
   ]),
   _MapDef('Zigzag', [
     Offset(-0.05, 0.15),
@@ -182,15 +164,6 @@ const _maps = [
     Offset(0.85, 0.61),
     Offset(0.15, 0.84),
     Offset(1.05, 0.84),
-  ], [
-    Offset(0.30, 0.26),
-    Offset(0.55, 0.26),
-    Offset(0.50, 0.49),
-    Offset(0.25, 0.49),
-    Offset(0.72, 0.49),
-    Offset(0.40, 0.72),
-    Offset(0.62, 0.72),
-    Offset(0.18, 0.72),
   ]),
 ];
 
@@ -211,7 +184,15 @@ class _TdGameScreenState extends State<TdGameScreen>
   final List<Offset> _path = [];
   final List<double> _cum = [];
   double _pathLen = 0;
-  final List<_Slot> _slots = [];
+  final List<_Turret> _turrets = [];
+
+  // placement libre sur grille
+  static const double _cell = 40;
+
+  // carburant IRL → puissance des tourelles. Simulé ici par le bouton « +séance ».
+  // (Plus tu as été régulier IRL, plus tes tourelles tapent fort.)
+  double _fuel = 0.3; // régularité 0..1
+  double get _powerMult => 1 + _fuel * 1.5; // ×1.0 → ×2.5
 
   final List<_Enemy> _enemies = [];
   final List<_Proj> _projs = [];
@@ -236,6 +217,7 @@ class _TdGameScreenState extends State<TdGameScreen>
 
   Rect _waveBtn = Rect.zero;
   Rect _mapBtn = Rect.zero;
+  Rect _fuelBtn = Rect.zero;
   final List<Rect> _trayRects = [];
 
   @override
@@ -265,10 +247,32 @@ class _TdGameScreenState extends State<TdGameScreen>
       _pathLen += (_path[i] - _path[i - 1]).distance;
       _cum.add(_pathLen);
     }
-    _slots
-      ..clear()
-      ..addAll(m.slots.map((p) => _Slot(Offset(p.dx * w, p.dy * h))));
     _setup = true;
+  }
+
+  // centre de case de grille le plus proche d'un point
+  Offset _snap(Offset p) =>
+      Offset((p.dx / _cell).floor() * _cell + _cell / 2,
+          (p.dy / _cell).floor() * _cell + _cell / 2);
+
+  double _distToPath(Offset p) {
+    var best = double.infinity;
+    for (var i = 1; i < _path.length; i++) {
+      final d = _distToSeg(p, _path[i - 1], _path[i]);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  // une case est-elle constructible ? (dans l'aire, hors chemin, libre)
+  bool _canPlace(Offset c) {
+    if (c.dx < _cell / 2 || c.dx > _size.width - _cell / 2) return false;
+    if (c.dy < 78 || c.dy > _size.height - 170) return false;
+    if (_distToPath(c) < 30) return false;
+    for (final t in _turrets) {
+      if ((t.pos - c).distance < _cell * 0.7) return false;
+    }
+    return true;
   }
 
   void _resetGame() {
@@ -277,9 +281,7 @@ class _TdGameScreenState extends State<TdGameScreen>
     _beams.clear();
     _parts.clear();
     _rings.clear();
-    for (final sl in _slots) {
-      sl.turret = null;
-    }
+    _turrets.clear();
     _gold = 140;
     _lives = 20;
     _wave = 0;
@@ -384,9 +386,7 @@ class _TdGameScreenState extends State<TdGameScreen>
     }
 
     // tourelles
-    for (final sl in _slots) {
-      final tu = sl.turret;
-      if (tu == null) continue;
+    for (final tu in _turrets) {
       tu.cd -= dt;
       // cible la plus avancée dans la portée
       _Enemy? best;
@@ -408,12 +408,13 @@ class _TdGameScreenState extends State<TdGameScreen>
       }
       if (tu.cd > 0 || inRange.isEmpty) continue;
       tu.cd = tu.rate;
+      final dmg = tu.dmg * _powerMult; // carburant IRL → puissance
       final dir = Offset(math.cos(tu.angle), math.sin(tu.angle));
       final tip = tu.pos + dir * 22;
       switch (tu.type.beh) {
         case Beh.flame:
           for (final en in inRange) {
-            _damage(en, tu.dmg);
+            _damage(en, dmg);
           }
           for (var i = 0; i < 6; i++) {
             final a = tu.angle + (_rnd.nextDouble() - 0.5) * 0.7;
@@ -429,12 +430,12 @@ class _TdGameScreenState extends State<TdGameScreen>
           _beams.add(_Beam(tip, end, tu.type.color));
           for (final en in _enemies) {
             if (en.hp <= 0) continue;
-            if (_distToSeg(en.pos, tip, end) < en.r + 9) _damage(en, tu.dmg);
+            if (_distToSeg(en.pos, tip, end) < en.r + 9) _damage(en, dmg);
           }
           break;
         default:
           if (best != null) {
-            _projs.add(_Proj(tip, tu.type.color, best, tu.dmg, tu.type.beh,
+            _projs.add(_Proj(tip, tu.type.color, best, dmg, tu.type.beh,
                 tu.type.splash));
             _parts.add(_Part(tip, dir * 40, tu.type.color, 3));
           }
@@ -534,13 +535,15 @@ class _TdGameScreenState extends State<TdGameScreen>
       _resetGame();
       return;
     }
-    for (final sl in _slots) {
-      final tu = sl.turret;
-      if (tu == null) continue;
-      if ((sl.pos - p).distance <= 22 && tu.tier < 3 && _gold >= tu.upCost) {
+    if (_fuelBtn.contains(p)) {
+      _fuel = (_fuel + 0.15).clamp(0.0, 1.0);
+      return;
+    }
+    for (final tu in _turrets) {
+      if ((tu.pos - p).distance <= 22 && tu.tier < 3 && _gold >= tu.upCost) {
         _gold -= tu.upCost;
         tu.tier++;
-        _rings.add(_Ring(sl.pos, tu.type.color, 50));
+        _rings.add(_Ring(tu.pos, tu.type.color, 50));
         return;
       }
     }
@@ -563,20 +566,11 @@ class _TdGameScreenState extends State<TdGameScreen>
     final dt = _dragType;
     final dp = _dragPos;
     if (dt != null && dp != null) {
-      _Slot? best;
-      var bd = 44.0;
-      for (final sl in _slots) {
-        if (sl.turret != null) continue;
-        final d = (sl.pos - dp).distance;
-        if (d < bd) {
-          bd = d;
-          best = sl;
-        }
-      }
-      if (best != null && _gold >= dt.cost) {
-        best.turret = _Turret(dt, best.pos);
+      final cell = _snap(dp);
+      if (_canPlace(cell) && _gold >= dt.cost) {
+        _turrets.add(_Turret(dt, cell));
         _gold -= dt.cost;
-        _rings.add(_Ring(best.pos, dt.color, 46));
+        _rings.add(_Ring(cell, dt.color, 46));
       }
     }
     _dragType = null;
@@ -653,19 +647,28 @@ class _TdPainter extends CustomPainter {
       _glow(canvas, g._path.last, 16, const Color(0xFFFF4D6D).withOpacity(0.4));
     }
 
-    // emplacements vides
-    for (final sl in g._slots) {
-      if (sl.turret != null) continue;
-      final hl = g._dragType != null &&
-          (sl.pos - (g._dragPos ?? Offset.zero)).distance < 44;
-      canvas.drawCircle(
-          sl.pos,
-          16,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 2
-            ..color = (hl ? const Color(0xFF8FE9FF) : const Color(0xFF3A4570))
-                .withOpacity(hl ? 0.9 : 0.6));
+    // pendant un drag : surligne les cases constructibles autour du curseur
+    if (g._dragType != null && g._dragPos != null) {
+      final dp = g._dragPos!;
+      final fill = Paint()..color = const Color(0xFF35E0FF).withOpacity(0.05);
+      final ok = Paint()..color = const Color(0xFF6FE08A).withOpacity(0.12);
+      for (var gx = dp.dx - 2 * _TdGameScreenState._cell;
+          gx <= dp.dx + 2 * _TdGameScreenState._cell;
+          gx += _TdGameScreenState._cell) {
+        for (var gy = dp.dy - 2 * _TdGameScreenState._cell;
+            gy <= dp.dy + 2 * _TdGameScreenState._cell;
+            gy += _TdGameScreenState._cell) {
+          final c = g._snap(Offset(gx, gy));
+          final cellRect = Rect.fromCenter(
+              center: c,
+              width: _TdGameScreenState._cell - 3,
+              height: _TdGameScreenState._cell - 3);
+          final canPlace = g._canPlace(c);
+          canvas.drawRRect(
+              RRect.fromRectAndRadius(cellRect, const Radius.circular(4)),
+              canPlace ? ok : fill);
+        }
+      }
     }
 
     // beams (railgun)
@@ -739,21 +742,29 @@ class _TdPainter extends CustomPainter {
       }
     }
 
-    for (final sl in g._slots) {
-      if (sl.turret != null) _drawTurret(canvas, sl.turret!);
+    for (final tu in g._turrets) {
+      _drawTurret(canvas, tu);
     }
 
-    // ghost
+    // ghost : la tourelle se cale sur la case de grille la plus proche
     if (g._dragType != null && g._dragPos != null) {
       final c = g._dragType!.color;
-      _glow(canvas, g._dragPos!, 30, c.withOpacity(0.4));
-      canvas.drawCircle(g._dragPos!, g._dragType!.range,
-          Paint()..color = c.withOpacity(0.06));
+      final cell = g._snap(g._dragPos!);
+      final valid = g._canPlace(cell);
+      final col = valid ? c : const Color(0xFFFF4D6D);
+      _glow(canvas, cell, 30, col.withOpacity(0.4));
       canvas.drawCircle(
-          g._dragPos!, g._dragType!.range, _stroke(c.withOpacity(0.4), 1.5));
-      canvas.drawCircle(g._dragPos!, 16, Paint()..color = const Color(0xFF111630));
-      canvas.drawCircle(g._dragPos!, 16, _stroke(c, 2.5));
-      canvas.drawCircle(g._dragPos!, 6, Paint()..color = c);
+          cell, g._dragType!.range, Paint()..color = col.withOpacity(0.06));
+      canvas.drawCircle(cell, g._dragType!.range, _stroke(col.withOpacity(0.4), 1.5));
+      canvas.drawCircle(cell, 16, Paint()..color = const Color(0xFF111630));
+      canvas.drawCircle(cell, 16, _stroke(col, 2.5));
+      canvas.drawCircle(cell, 6, Paint()..color = col);
+      if (!valid) {
+        canvas.drawLine(cell.translate(-9, -9), cell.translate(9, 9),
+            _stroke(const Color(0xFFFF4D6D), 2.5));
+        canvas.drawLine(cell.translate(9, -9), cell.translate(-9, 9),
+            _stroke(const Color(0xFFFF4D6D), 2.5));
+      }
     }
 
     _hud(canvas, size);
@@ -845,6 +856,40 @@ class _TdPainter extends CustomPainter {
         Paint()..color = const Color(0xFF1A2340));
     _text(canvas, '🗺 ${_maps[g._mapIndex].name} ▶', g._mapBtn.center,
         const Color(0xFF8FE9FF), 12, weight: FontWeight.w700);
+
+    // ── carburant IRL → puissance des tourelles ──────────────────────────────
+    // bouton « +séance » (simule une activité réelle loggée)
+    g._fuelBtn = Rect.fromLTWH(size.width - 150, 50, 134, 30);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(g._fuelBtn, const Radius.circular(15)),
+        Paint()..color = const Color(0xFF15324A));
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(g._fuelBtn, const Radius.circular(15)),
+        _stroke(const Color(0xFF35E0FF).withOpacity(0.7), 1.4));
+    _text(canvas, '⚡ +séance IRL', g._fuelBtn.center, const Color(0xFF8FE9FF), 12,
+        weight: FontWeight.w800);
+    // jauge de régularité + multiplicateur de puissance (centré en haut)
+    final barW = 190.0;
+    final bar = Rect.fromLTWH(size.width / 2 - barW / 2, 56, barW, 9);
+    _text(canvas, 'Régularité IRL', Offset(size.width / 2, 49),
+        const Color(0xFF8FA0C8), 10);
+    canvas.drawRRect(RRect.fromRectAndRadius(bar, const Radius.circular(5)),
+        Paint()..color = const Color(0xFF142033));
+    final fillW = (barW * g._fuel).clamp(2.0, barW);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(bar.left, bar.top, fillW, bar.height),
+            const Radius.circular(5)),
+        Paint()
+          ..color = Color.lerp(const Color(0xFFFF8A2B), const Color(0xFFB6FF3C),
+              g._fuel)!);
+    _text(
+        canvas,
+        'Puissance des tourelles ×${g._powerMult.toStringAsFixed(1)}',
+        Offset(size.width / 2, 76),
+        const Color(0xFFB6FF3C),
+        12,
+        weight: FontWeight.w800);
 
     // bouton vague
     const bw = 210.0, bh = 46.0;
