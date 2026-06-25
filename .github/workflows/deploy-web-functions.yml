@@ -127,6 +127,21 @@ jobs:
             --dart-define=GIT_SHA=${GITHUB_SHA::7} \
             --dart-define=BUILD_TIME=$(date -u +%Y-%m-%dT%H:%MZ)
 
+      # DIAGNOSTIC TEMPORAIRE : une passe --debug NON bloquante pour révéler la
+      # vraie erreur d'auth Hosting (code HTTP, endpoint, permission) que le
+      # wrapper de retry masque derrière "Failed to authenticate". À retirer une
+      # fois la cause identifiée.
+      - name: Diagnose hosting auth (--debug, non-bloquant)
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          echo "::group::firebase deploy --only hosting --debug (diagnostic)"
+          npx -y firebase-tools@latest deploy \
+            --only hosting \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive --force --debug 2>&1 | tail -120 || true
+          echo "::endgroup::"
+
       - name: Deploy hosting
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
