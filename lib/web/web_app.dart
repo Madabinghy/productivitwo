@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
 import 'package:productivitwo_v1/prototypes/level_prototype.dart';
 import 'package:productivitwo_v1/prototypes/rive_poc_screen.dart';
+import 'package:productivitwo_v1/prototypes/expedition_prototype.dart';
 import 'package:productivitwo_v1/web/fluo_data_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
@@ -170,6 +171,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['proto'] == 'level') return const LevelScreen();
       // POC Rive (perso animé chargé depuis le réseau) — sans auth.
       if (params['proto'] == 'rive') return const RivePocScreen();
+      // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
+      if (params['proto'] == 'expedition') return const ExpeditionScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
