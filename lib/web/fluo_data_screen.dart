@@ -37,7 +37,7 @@ class _FluoDataScreenState extends State<FluoDataScreen> {
     try {
       final state = await widget.sync.pull();
       if (state == null) throw Exception('Aucun état chargé');
-      final built = _build(state);
+      final built = buildFluoData(state);
       if (mounted) {
         setState(() {
           _doms = built.doms;
@@ -104,12 +104,14 @@ const _fallbackPalette = [
   Color(0xFFFFB37E),
 ];
 
+// Construit la galaxie (planètes/domaines), les pièces (activités+énergie) et le
+// soleil depuis un AppState. Réutilisé par le web (FluoDataScreen) ET le mobile.
 ({
   List<FluoDomain> doms,
   List<OrbitBody> bodies,
   double sunFill,
   String sunLabel,
-}) _build(AppState state) {
+}) buildFluoData(AppState state) {
   final now = DateTime.now();
   final domains = state.activeDomains;
   if (domains.isEmpty) {
