@@ -85,14 +85,6 @@ enum _View { cosmos, map, run }
 
 enum NodeKind { start, combat, treasure, planet, boss }
 
-class _Room {
-  const _Room(this.frac, this.label, {this.corridor = false, this.entry = false});
-  final Rect frac;
-  final String label;
-  final bool corridor;
-  final bool entry;
-}
-
 class _MNode {
   _MNode(this.row, this.xFrac, this.kind);
   final int row;
@@ -136,16 +128,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   String? _flash;
   double _flashT = 0;
 
-  // jusqu'à 5 pièces-activités (indices 2..6) + Entrée (1) + couloir (0)
-  static const _rooms = <_Room>[
-    _Room(Rect.fromLTWH(0.05, 0.46, 0.86, 0.10), '', corridor: true),
-    _Room(Rect.fromLTWH(0.05, 0.38, 0.15, 0.26), 'Entrée', entry: true),
-    _Room(Rect.fromLTWH(0.22, 0.13, 0.18, 0.39), ''),
-    _Room(Rect.fromLTWH(0.50, 0.15, 0.16, 0.37), ''),
-    _Room(Rect.fromLTWH(0.70, 0.12, 0.21, 0.40), ''),
-    _Room(Rect.fromLTWH(0.26, 0.50, 0.22, 0.36), ''),
-    _Room(Rect.fromLTWH(0.66, 0.50, 0.20, 0.34), ''),
-  ];
+  // étages : index 0 = cage d'escalier, 1 = entrée, 2+ = activités
   static const int _maxActivityRooms = 5;
 
   late List<Rect> _px;
@@ -160,6 +143,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   static const double _heroLight = 130;
   // torches allumées dans la map du domaine (indices de pièces 2..6)
   final Set<int> _lit = {};
+  // enquête noire : indices trouvés (1 par étage éclairé), verdict
+  final List<String> _clues = [];
+  bool _carnetOpen = false;
+  bool _solved = false;
+  String? _verdict;
 
   // node-map (vue run) — carte infinie
   static const double _rowGap = 120;
@@ -225,12 +213,24 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     return (i - 2) < _activityCount(_domain);
   }
 
-  Rect _toPx(Rect f, Size s) => Rect.fromLTWH(
-      f.left * s.width, f.top * s.height, f.width * s.width, f.height * s.height);
-
   void _build(Size s) {
     _size = s;
-    _px = _rooms.map((r) => _toPx(r.frac, s)).toList();
+    // Manoir vertical : cage d'escalier à gauche (index 0), entrée en bas
+    // (index 1), puis 1 étage par activité (index 2+, de bas en haut).
+    final nAct = _activityCount(_domain);
+    const topPad = 96.0, botPad = 64.0;
+    final usableH = math.max(140.0, s.height - topPad - botPad);
+    final bands = nAct + 1; // entrée + étages activités
+    final bandH = usableH / bands;
+    final shaftLeft = s.width * 0.04;
+    final shaftW = s.width * 0.12;
+    final floorLeft = shaftLeft + shaftW - 8; // chevauche la cage → connexe
+    final floorRight = s.width * 0.96;
+    _px = [Rect.fromLTWH(shaftLeft, topPad, shaftW, usableH)]; // 0 = escalier
+    for (var k = 0; k <= nAct; k++) {
+      final top = topPad + usableH - (k + 1) * bandH + 4;
+      _px.add(Rect.fromLTWH(floorLeft, top, floorRight - floorLeft, bandH - 8));
+    }
     // planètes : anneau autour du centre, taille selon le nb d'activités
     final n = _doms.length;
     final cx = s.width * 0.5, cy = s.height * 0.46;
@@ -409,6 +409,37 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     });
   }
 
+  // ── enquête noire ─────────────────────────────────────────────────────────
+  static const _noirLines = [
+    'Une tasse encore tiède traîne près de « {A} »…',
+    'Des papiers froissés, planqués sous « {A} ».',
+    'Une ombre a rôdé du côté de « {A} » cette semaine.',
+    'Trop de silence autour de « {A} ». Suspect.',
+    'On a négligé « {A} »… volontairement ?',
+    'Une porte de « {A} » fermée à double tour.',
+  ];
+  String _noirClue(String a) =>
+      _noirLines[_clues.length % _noirLines.length].replaceAll('{A}', a);
+
+  void _solveCase() {
+    final acts = _doms[_domain].activities;
+    if (acts.isEmpty) return;
+    var culprit = acts.first;
+    for (final a in acts) {
+      if (a.energy < culprit.energy) culprit = a;
+    }
+    setState(() {
+      _solved = true;
+      _carnetOpen = false;
+      _verdict =
+          'Le saboteur de ${_doms[_domain].name.toUpperCase()} :\n« ${culprit.name} ».\n\n'
+          'Négligée (⚡${culprit.energy}), elle a laissé l\'ombre gagner.\n'
+          'Ravive-la pour rallumer le manoir.';
+      _flash = 'Enquête résolue 🕵️';
+      _flashT = 2.6;
+    });
+  }
+
   void _go(_View v) {
     setState(() {
       _view = v;
@@ -451,15 +482,16 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           _target = _hero;
         }
       }
-      // allumage des torches en s'approchant (une par pièce-activité)
+      // allumage des torches en s'approchant (une par étage) → 1 indice/étage
       final n = _activityCount(_domain);
       for (var i = 2; i < 2 + n; i++) {
         if (_lit.contains(i)) continue;
         if ((_px[i].center - _hero).distance < 34) {
           _lit.add(i);
+          _clues.add(_noirClue(_doms[_domain].activities[i - 2].name));
           _flash = _lit.length >= n
-              ? 'Domaine éclairé ✨'
-              : 'Torche allumée — ${_lit.length}/$n';
+              ? 'Tous les étages fouillés — résous l\'enquête 🔍'
+              : 'Indice trouvé — ${_lit.length}/$n';
           _flashT = 1.8;
         }
       }
@@ -499,7 +531,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       case _View.map:
         for (var i = 2; i < _px.length; i++) {
           if (!_roomActive(i) || !_lit.contains(i)) continue;
-          final term = _px[i].center.translate(0, 26);
+          final term = Offset(_px[i].right - 26, _px[i].center.dy);
           if ((term - p).distance < 24) {
             _activity = i - 2;
             _initRun();
@@ -569,6 +601,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
                 setState(() {
                   _domain = i;
                   _lit.clear();
+                  _clues.clear();
+                  _solved = false;
+                  _verdict = null;
+                  _carnetOpen = false;
+                  _build(_size); // recalcule les étages pour ce domaine
                   _hero = _px[1].center;
                   _target = _hero;
                   _view = _View.map;
@@ -599,10 +636,128 @@ class _FluoNavScreenState extends State<FluoNavScreen>
               bottom: 18,
               child: _energyBtn(),
             ),
+          // manoir-enquête : carnet d'indices + résoudre
+          if (_view == _View.map && _activityCount(_domain) > 0) ...[
+            Positioned(
+              left: 14,
+              bottom: 18,
+              child: _pill('🔍 Carnet ${_clues.length}', const Color(0xFFFFB35A),
+                  () => setState(() => _carnetOpen = !_carnetOpen)),
+            ),
+            if (_clues.length >= _activityCount(_domain) && !_solved)
+              Positioned(
+                right: 14,
+                bottom: 18,
+                child: _pill('🕵️ Résoudre', const Color(0xFFB6FF3C), _solveCase),
+              ),
+          ],
+          if (_view == _View.map && _carnetOpen) _carnetPanel(),
+          if (_view == _View.map && _solved && _verdict != null) _verdictPanel(),
         ]);
       }),
     );
   }
+
+  Widget _pill(String label, Color c, VoidCallback onTap) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: c.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: c.withOpacity(0.8)),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    color: c, fontWeight: FontWeight.w800, fontSize: 13)),
+          ),
+        ),
+      );
+
+  Widget _carnetPanel() => Positioned.fill(
+        child: GestureDetector(
+          onTap: () => setState(() => _carnetOpen = false),
+          child: Container(
+            color: Colors.black.withOpacity(0.6),
+            alignment: Alignment.center,
+            child: Container(
+              margin: const EdgeInsets.all(28),
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B0D12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFFB35A).withOpacity(0.5)),
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('🔍 Carnet d\'enquête',
+                    style: TextStyle(
+                        color: Color(0xFFFFB35A),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18)),
+                const SizedBox(height: 12),
+                if (_clues.isEmpty)
+                  const Text('Aucun indice. Explore les étages dans le noir.',
+                      style: TextStyle(color: Colors.white70))
+                else
+                  ..._clues.map((c) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('• ',
+                                  style: TextStyle(color: Color(0xFFFFB35A))),
+                              Expanded(
+                                  child: Text(c,
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 13))),
+                            ]),
+                      )),
+                const SizedBox(height: 12),
+                Text('Touche pour fermer',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4), fontSize: 11)),
+              ]),
+            ),
+          ),
+        ),
+      );
+
+  Widget _verdictPanel() => Positioned.fill(
+        child: GestureDetector(
+          onTap: () => setState(() => _verdict = null),
+          child: Container(
+            color: Colors.black.withOpacity(0.72),
+            alignment: Alignment.center,
+            child: Container(
+              margin: const EdgeInsets.all(28),
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0B0D12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFB6FF3C).withOpacity(0.6)),
+              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('🕵️ Verdict',
+                    style: TextStyle(
+                        color: Color(0xFFB6FF3C),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20)),
+                const SizedBox(height: 14),
+                Text(_verdict ?? '',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 14, height: 1.4)),
+                const SizedBox(height: 16),
+                Text('Touche pour fermer',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.4), fontSize: 11)),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   Widget _energyBtn() => Material(
         color: Colors.transparent,
@@ -760,50 +915,79 @@ class _NavPainter extends CustomPainter {
         weight: FontWeight.w700);
   }
 
-  // ── MAP (domaine, plongée dans le noir : torches à trouver) ────────────────
+  // ── MANOIR NOIR (domaine) : 1 étage par activité, plongé dans l'ombre ──────
   void _paintMap(Canvas canvas, Size size) {
     final dom = g._doms[g._domain];
     final rect = Offset.zero & size;
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF05070F));
-
-    // 1. pièces (sol/murs) — révélées par la lumière
-    for (var i = 0; i < _FluoNavScreenState._rooms.length; i++) {
-      if (!g._roomActive(i)) continue;
-      _drawRoom(canvas, g._px[i], _FluoNavScreenState._rooms[i], dom, i);
-    }
-    // torches éteintes (visibles seulement quand la lumière du héros passe)
+    final accent = Color.lerp(dom.color, const Color(0xFF8090A0), 0.45)!; // désaturé noir
+    canvas.drawRect(
+        rect,
+        Paint()
+          ..shader = const RadialGradient(
+            center: Alignment(0, -0.2),
+            radius: 1.3,
+            colors: [Color(0xFF12151C), Color(0xFF0A0B10), Color(0xFF050608)],
+          ).createShader(rect));
     final nAct = g._activityCount(g._domain);
+
+    // 1. structure du manoir (sol/murs) — révélée par la lumière
+    // cage d'escalier (index 0)
+    final shaft = g._px[0];
+    canvas.drawRRect(RRect.fromRectAndRadius(shaft, const Radius.circular(4)),
+        Paint()..color = const Color(0xFF0C0E14));
+    canvas.drawRRect(RRect.fromRectAndRadius(shaft, const Radius.circular(4)),
+        _stroke(accent.withOpacity(0.3), 1.4));
+    for (double y = shaft.top + 14; y < shaft.bottom; y += 18) {
+      canvas.drawLine(Offset(shaft.left + 4, y), Offset(shaft.right - 4, y),
+          _stroke(const Color(0xFF1A1E28), 1.2));
+    }
+    // étages (entrée index 1 + activités 2+)
+    for (var i = 1; i < g._px.length; i++) {
+      if (!g._roomActive(i)) continue;
+      final px = g._px[i];
+      final rr = RRect.fromRectAndRadius(px, const Radius.circular(5));
+      final lit = i == 1 || g._lit.contains(i);
+      canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B0D12));
+      if (lit && i >= 2) {
+        canvas.drawRRect(rr, Paint()..color = accent.withOpacity(0.10));
+      }
+      canvas.drawRRect(rr, _stroke(accent.withOpacity(lit ? 0.6 : 0.22), 1.6));
+    }
+    // torches éteintes (révélées quand la lampe du héros passe)
     for (var i = 2; i < 2 + nAct; i++) {
-      if (!g._lit.contains(i)) _drawTorch(canvas, g._px[i].center, false);
+      if (!g._lit.contains(i)) {
+        _drawTorch(canvas, Offset(g._px[i].left + 26, g._px[i].center.dy), false);
+      }
     }
 
-    // 2. voile sombre, percé par le héros + les torches allumées
+    // 2. voile d'ombre noir, percé par la lampe du héros + les étages fouillés
     canvas.saveLayer(rect, Paint());
     canvas.drawRect(
-        rect, Paint()..color = const Color(0xFF0A0C16).withOpacity(0.88));
+        rect, Paint()..color = const Color(0xFF05060B).withOpacity(0.90));
     _punch(canvas, g._hero, _FluoNavScreenState._heroLight);
     for (final i in g._lit) {
       _punch(canvas, g._px[i].center,
-          math.min(g._px[i].width, g._px[i].height) * 0.85);
+          math.min(g._px[i].width, g._px[i].height) * 1.1);
     }
     canvas.restore();
 
-    // 3. au-dessus du voile : pièces éclairées (libellé + ⚡ + torche + terminal)
+    // 3. au-dessus du voile : étages éclairés (lampe + nom + ⚡ + indice + ⌗)
+    _text(canvas, 'Entrée', Offset(g._px[1].center.dx, g._px[1].center.dy),
+        Colors.white.withOpacity(0.6), 12, weight: FontWeight.w700);
     for (var i = 2; i < 2 + nAct; i++) {
       if (!g._lit.contains(i)) continue;
       final px = g._px[i];
       final act = dom.activities[i - 2];
-      _glow(canvas, px.center, math.min(px.width, px.height) * 0.45,
-          dom.color.withOpacity(0.16));
-      _text(canvas, act.name, Offset(px.center.dx, px.top + 16),
+      final cy = px.center.dy;
+      _drawTorch(canvas, Offset(px.left + 26, cy + 4), true);
+      _text(canvas, act.name, Offset(px.center.dx, cy - 7),
           Colors.white.withOpacity(0.92), 13, weight: FontWeight.w700);
-      _text(canvas, '⚡${act.energy}', Offset(px.center.dx, px.top + 32),
-          const Color(0xFFFFE08A).withOpacity(0.85), 10, weight: FontWeight.w700);
-      _drawTorch(canvas, px.center.translate(0, -10), true);
-      // terminal ⌗ → carte à nœuds
-      final term = px.center.translate(0, 26);
+      _text(canvas, '🔍 indice · ⚡${act.energy}', Offset(px.center.dx, cy + 9),
+          const Color(0xFFFFB35A).withOpacity(0.8), 10, weight: FontWeight.w700);
+      // terminal ⌗ → carte à nœuds (à droite de l'étage)
+      final term = Offset(px.right - 26, cy);
       final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + i);
-      _glow(canvas, term, 14 * pulse, const Color(0xFFFFD36B).withOpacity(0.5));
+      _glow(canvas, term, 13 * pulse, const Color(0xFFFFD36B).withOpacity(0.45));
       canvas.drawRRect(
           RRect.fromRectAndRadius(
               Rect.fromCenter(center: term, width: 22, height: 22),
@@ -816,54 +1000,34 @@ class _NavPainter extends CustomPainter {
           _stroke(const Color(0xFFFFD36B), 1.6));
       _text(canvas, '⌗', term, const Color(0xFFFFD36B), 15,
           weight: FontWeight.w900);
-      // butin posé : items gagnés en combat, le long du bord bas de la pièce
+      // butin posé (items gagnés en combat)
       final items = g._roomItems[g._actKey(g._domain, i - 2)] ?? const [];
-      for (var k = 0; k < items.length && k < 8; k++) {
-        final col = k % 4, rowi = k ~/ 4;
-        final ip = Offset(px.left + 16 + col * 18, px.bottom - 16 - rowi * 18);
-        _drawItem(canvas, ip, items[k]);
+      for (var k = 0; k < items.length && k < 6; k++) {
+        _drawItem(canvas, Offset(px.left + 70 + k * 18, cy), items[k]);
       }
     }
 
-    _drawHero(canvas, g._hero, dom.color);
+    _drawHero(canvas, g._hero, const Color(0xFFB6FF3C));
 
     // HUD
-    _text(canvas, dom.name.toUpperCase(), Offset(size.width / 2, 28), dom.color,
-        22, weight: FontWeight.w900);
+    _text(canvas, 'MANOIR · ${dom.name.toUpperCase()}',
+        Offset(size.width / 2, 30), accent, 20, weight: FontWeight.w900);
     if (nAct == 0) {
       _text(canvas, 'Aucune activité dans ce domaine',
           Offset(size.width / 2, size.height / 2),
           Colors.white.withOpacity(0.5), 14);
     } else {
-      final allLit = g._lit.length >= nAct;
       _text(
           canvas,
-          allLit
-              ? '✨ Domaine éclairé · touche un ⌗ pour explorer une activité'
-              : 'Explore dans le noir · trouve les torches de tes activités',
+          g._solved
+              ? 'Enquête résolue 🕵️'
+              : 'Explore les étages dans le noir · 1 indice par étage',
           Offset(size.width / 2, 52),
-          allLit ? const Color(0xFFB6FF3C) : const Color(0xFF8FA0C8),
+          const Color(0xFF8FA0C8),
           12);
-      _text(canvas, '🔦 Torches ${g._lit.length}/$nAct',
+      _text(canvas, '🔍 Indices ${g._clues.length}/$nAct',
           Offset(size.width / 2, size.height - 24),
           const Color(0xFFFFB35A), 13, weight: FontWeight.w700);
-    }
-  }
-
-  // pièce : sol + murs (le reste — libellé/torche/terminal — dessiné une fois
-  // éclairé, au-dessus du voile).
-  void _drawRoom(Canvas canvas, Rect px, _Room r, FluoDomain dom, int idx) {
-    final rr = RRect.fromRectAndRadius(px, const Radius.circular(6));
-    canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B1422));
-    canvas.drawRRect(
-        rr, Paint()..color = dom.color.withOpacity(r.corridor ? 0.05 : 0.12));
-    canvas.drawRRect(
-        rr,
-        _stroke(dom.color.withOpacity(r.corridor ? 0.4 : 0.85),
-            r.corridor ? 1.5 : 2.5));
-    if (r.entry) {
-      _text(canvas, 'Entrée', Offset(px.center.dx, px.top + 16),
-          Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
     }
   }
 
