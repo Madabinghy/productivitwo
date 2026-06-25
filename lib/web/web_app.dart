@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
 import 'package:productivitwo_v1/prototypes/level_prototype.dart';
+import 'package:productivitwo_v1/prototypes/rive_poc_screen.dart';
 import 'package:productivitwo_v1/web/fluo_data_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
@@ -167,6 +168,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['proto'] == 'world') return const OverworldScreen();
       // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
       if (params['proto'] == 'level') return const LevelScreen();
+      // POC Rive (perso animé chargé depuis le réseau) — sans auth.
+      if (params['proto'] == 'rive') return const RivePocScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).

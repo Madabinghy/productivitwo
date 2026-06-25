@@ -41,6 +41,7 @@ dependencies:
   pdf: ^3.11.0
   printing: ^5.13.2
   alarm: ^5.4.1
+  rive: ^0.13.20 # POC : perso animé (couche visuelle, piloté par notre logique)
 
 
 dev_dependencies:
