@@ -59,8 +59,7 @@ import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
-import 'package:productivitwo_v1/widgets/world_mobile_sheet.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:productivitwo_v1/widgets/fluo_mobile_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -3000,15 +2999,7 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
-          WorldMobileScreen(
-            logic: logic,
-            sync: _sync,
-            onOpenActivity: (id) {
-              final a = logic.state.activities
-                  .firstWhereOrNull((x) => x.id == id);
-              if (a != null) _openActivitySheet(a);
-            },
-          ),
+          FluoMobileScreen(logic: logic),
         ],
       ),
     );
@@ -5345,19 +5336,10 @@ class _AppRootState extends State<AppRoot>
               icon: Icon(Icons.play_circle_outline),
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
-          BottomNavigationBarItem(
-              icon: SvgPicture.asset('assets/icons/gunshot.svg',
-                  width: 24,
-                  height: 24,
-                  colorFilter: ColorFilter.mode(
-                      Theme.of(context).unselectedWidgetColor,
-                      BlendMode.srcIn)),
-              activeIcon: SvgPicture.asset('assets/icons/gunshot.svg',
-                  width: 24,
-                  height: 24,
-                  colorFilter: ColorFilter.mode(
-                      Theme.of(context).colorScheme.primary, BlendMode.srcIn)),
-              label: 'Combattre'),
+          const BottomNavigationBarItem(
+              icon: Icon(Icons.bubble_chart_outlined),
+              activeIcon: Icon(Icons.bubble_chart),
+              label: 'Galaxie'),
         ],
       ),
 
