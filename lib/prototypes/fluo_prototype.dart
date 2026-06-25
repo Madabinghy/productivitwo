@@ -7,8 +7,10 @@
 //                (combat ⚔ / trésor ◆ / planète 🪐 / boss ☠), de plus en plus
 //                loin ; trésors & boss débloquent un item. 🚀 → map.
 //
-// Démontre l'assemblage / la navigation (zoom out/in via la fusée). Look fluo,
-// dessiné en code. Standalone (sans données ni login). Accès : ?proto=fluo
+// Données : FluoNavScreen accepte une liste de FluoDomain (vrais domaines +
+// activités). Sans données → jeu de démo. lib/web/fluo_data_screen.dart le
+// branche sur AppState (?proto=fluo, après auth).
+// Dessiné en code. Accès démo standalone : ?proto=fluo (sans données).
 
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -25,18 +27,45 @@ class FluoNavApp extends StatelessWidget {
       );
 }
 
+// ── Données injectables (vrais domaines / activités) ────────────────────────
+class FluoDomain {
+  const FluoDomain(
+      {required this.name,
+      required this.color,
+      required this.activities,
+      this.mass = 0.6});
+  final String name;
+  final Color color;
+  final List<String> activities; // noms des activités du domaine
+  final double mass; // 0..1 → taille de la planète (temps, réf. p90)
+}
+
+const _demoDoms = <FluoDomain>[
+  FluoDomain(
+      name: 'Santé',
+      color: Color(0xFF5BD0A0),
+      mass: 1.0,
+      activities: ['Course', 'Muscu', 'Sommeil', 'Repas', 'Étirement']),
+  FluoDomain(
+      name: 'Travail',
+      color: Color(0xFF35E0FF),
+      mass: 0.8,
+      activities: ['Focus', 'Réunions', 'Mails', 'Projets', 'Veille']),
+  FluoDomain(
+      name: 'Perso',
+      color: Color(0xFFFF5A8A),
+      mass: 0.45,
+      activities: ['Lecture', 'Musique', 'Amis', 'Jeux', 'Sorties']),
+  FluoDomain(
+      name: 'Esprit',
+      color: Color(0xFFA86BFF),
+      mass: 0.6,
+      activities: ['Médit.', 'Journal', 'Respire', 'Gratitude', 'Pause']),
+];
+
 enum _View { cosmos, map, run }
 
 enum NodeKind { start, combat, treasure, planet, boss }
-
-class _Planet {
-  const _Planet(this.frac, this.r, this.color, this.name, this.activities);
-  final Offset frac;
-  final double r;
-  final Color color;
-  final String name;
-  final List<String> activities;
-}
 
 class _Room {
   const _Room(this.frac, this.label, {this.corridor = false, this.entry = false});
@@ -46,13 +75,12 @@ class _Room {
   final bool entry;
 }
 
-// nœud de la carte infinie
 class _MNode {
   _MNode(this.row, this.xFrac, this.kind);
   final int row;
   final double xFrac;
   final NodeKind kind;
-  final List<int> links = []; // vers la rangée suivante
+  final List<int> links = [];
   bool visited = false;
   bool unlocked = false;
   double worldY = 0;
@@ -60,7 +88,8 @@ class _MNode {
 }
 
 class FluoNavScreen extends StatefulWidget {
-  const FluoNavScreen({super.key});
+  const FluoNavScreen({super.key, this.data});
+  final List<FluoDomain>? data; // null → démo
   @override
   State<FluoNavScreen> createState() => _FluoNavScreenState();
 }
@@ -73,6 +102,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Size _size = Size.zero;
   bool _setup = false;
 
+  late final List<FluoDomain> _doms;
+
   _View _view = _View.cosmos;
   double _trans = 1.0;
   int _domain = 0;
@@ -81,17 +112,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   String? _flash;
   double _flashT = 0;
 
-  static const _planets = <_Planet>[
-    _Planet(Offset(0.28, 0.40), 38, Color(0xFF5BD0A0), 'Santé',
-        ['Course', 'Muscu', 'Sommeil', 'Repas', 'Étirement']),
-    _Planet(Offset(0.66, 0.32), 46, Color(0xFF35E0FF), 'Travail',
-        ['Focus', 'Réunions', 'Mails', 'Projets', 'Veille']),
-    _Planet(Offset(0.40, 0.68), 34, Color(0xFFFF5A8A), 'Perso',
-        ['Lecture', 'Musique', 'Amis', 'Jeux', 'Sorties']),
-    _Planet(Offset(0.74, 0.70), 40, Color(0xFFA86BFF), 'Esprit',
-        ['Médit.', 'Journal', 'Respire', 'Gratitude', 'Pause']),
-  ];
-
+  // jusqu'à 5 pièces-activités (indices 2..6) + Entrée (1) + couloir (0)
   static const _rooms = <_Room>[
     _Room(Rect.fromLTWH(0.05, 0.46, 0.86, 0.10), '', corridor: true),
     _Room(Rect.fromLTWH(0.05, 0.38, 0.15, 0.26), 'Entrée', entry: true),
@@ -101,9 +122,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _Room(Rect.fromLTWH(0.26, 0.50, 0.22, 0.36), ''),
     _Room(Rect.fromLTWH(0.66, 0.50, 0.20, 0.34), ''),
   ];
+  static const int _maxActivityRooms = 5;
 
   late List<Rect> _px;
   late List<Offset> _planetPx;
+  late List<double> _planetR;
 
   // héros (vue map)
   Offset _hero = Offset.zero;
@@ -127,6 +150,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   @override
   void initState() {
     super.initState();
+    final d = widget.data;
+    _doms = (d == null || d.isEmpty) ? _demoDoms : d;
     _ticker = createTicker(_tick)..start();
   }
 
@@ -136,15 +161,37 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     super.dispose();
   }
 
+  int _activityCount(int domain) =>
+      math.min(_maxActivityRooms, _doms[domain].activities.length);
+
+  // une pièce est-elle active pour le domaine courant ?
+  bool _roomActive(int i) {
+    if (i < 2) return true; // couloir + Entrée
+    return (i - 2) < _activityCount(_domain);
+  }
+
   Rect _toPx(Rect f, Size s) => Rect.fromLTWH(
       f.left * s.width, f.top * s.height, f.width * s.width, f.height * s.height);
 
   void _build(Size s) {
     _size = s;
     _px = _rooms.map((r) => _toPx(r.frac, s)).toList();
-    _planetPx = _planets
-        .map((p) => Offset(p.frac.dx * s.width, p.frac.dy * s.height))
-        .toList();
+    // planètes : anneau autour du centre, taille selon le nb d'activités
+    final n = _doms.length;
+    final cx = s.width * 0.5, cy = s.height * 0.46;
+    final rx = s.width * 0.30, ry = s.height * 0.30;
+    _planetPx = [];
+    _planetR = [];
+    for (var i = 0; i < n; i++) {
+      if (n == 1) {
+        _planetPx.add(Offset(cx, cy));
+      } else {
+        final ang = -math.pi / 2 + i * 2 * math.pi / n;
+        _planetPx.add(Offset(cx + math.cos(ang) * rx, cy + math.sin(ang) * ry));
+      }
+      // taille = temps (mass, réf. p90 comme les heatmaps) ; plancher visible
+      _planetR.add(18 + _doms[i].mass.clamp(0.0, 1.0) * 30);
+    }
     _hero = _px[1].center;
     _target = _hero;
     _setup = true;
@@ -162,8 +209,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     final r = _rowCount;
     final newIdx = <int>[];
     if (r == 0) {
-      final n = _MNode(0, 0.5, NodeKind.start)..worldY = 0;
-      _nodes.add(n);
+      _nodes.add(_MNode(0, 0.5, NodeKind.start)..worldY = 0);
       newIdx.add(_nodes.length - 1);
     } else {
       final two = _runRng.nextDouble() < 0.5;
@@ -185,7 +231,6 @@ class _FluoNavScreenState extends State<FluoNavScreen>
             .compareTo((_nodes[b].xFrac - _nodes[ni].xFrac).abs()));
         _nodes[prev.first].links.add(ni);
       }
-      // chaque nœud précédent doit avoir ≥1 lien vers l'avant
       for (final pi in prev) {
         if (!_nodes[pi].links.any((l) => _nodes[l].row == r)) {
           newIdx.sort((a, b) => (_nodes[a].xFrac - _nodes[pi].xFrac)
@@ -224,6 +269,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Offset _project(Offset world) =>
       Offset(world.dx, _size.height * 0.62 + (world.dy - _camY));
 
+  String get _curActivity {
+    final acts = _doms[_domain].activities;
+    return _activity < acts.length ? acts[_activity] : 'Activité';
+  }
+
   void _arrive(int i) {
     final n = _nodes[i];
     n.visited = true;
@@ -235,7 +285,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     switch (n.kind) {
       case NodeKind.treasure:
         _itemsUnlocked++;
-        _flash = 'Item débloqué ◆ (${_planets[_domain].activities[_activity]})';
+        _flash = 'Item débloqué ◆ ($_curActivity)';
         _flashT = 2.2;
         break;
       case NodeKind.boss:
@@ -254,7 +304,6 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       case NodeKind.start:
         break;
     }
-    // génère la suite (carte infinie)
     while (_rowCount < n.row + 6) {
       _genRow();
     }
@@ -268,8 +317,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   }
 
   bool _walkable(Offset p) {
-    for (final r in _px) {
-      if (r.inflate(-_heroR * 0.4).contains(p)) return true;
+    for (var i = 0; i < _px.length; i++) {
+      if (!_roomActive(i)) continue;
+      if (_px[i].inflate(-_heroR * 0.4).contains(p)) return true;
     }
     return false;
   }
@@ -327,7 +377,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     switch (_view) {
       case _View.cosmos:
         for (var i = 0; i < _planetPx.length; i++) {
-          if ((_planetPx[i] - p).distance <= _planets[i].r + 16) {
+          if ((_planetPx[i] - p).distance <= _planetR[i] + 16) {
             _domain = i;
             _go(_View.map);
             return;
@@ -341,6 +391,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           return;
         }
         for (var i = 2; i < _px.length; i++) {
+          if (!_roomActive(i)) continue;
           final term = _px[i].center.translate(0, 26);
           if ((term - p).distance < 24) {
             _activity = i - 2;
@@ -354,7 +405,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         } else {
           Offset? best;
           double bd = double.infinity;
-          for (final r in _px) {
+          for (var i = 0; i < _px.length; i++) {
+            if (!_roomActive(i)) continue;
+            final r = _px[i];
             final c = Offset(p.dx.clamp(r.left + _heroR, r.right - _heroR),
                 p.dy.clamp(r.top + _heroR, r.bottom - _heroR));
             final d = (c - p).distance;
@@ -500,28 +553,31 @@ class _NavPainter extends CustomPainter {
     }
     for (var i = 0; i < g._planetPx.length; i++) {
       final p = g._planetPx[i];
-      final pl = _FluoNavScreenState._planets[i];
+      final pr = g._planetR[i];
+      final dom = g._doms[i];
       final pulse = 1 + 0.03 * math.sin(g._t * 2 + i);
-      _glow(canvas, p, pl.r * 1.7, pl.color.withOpacity(0.35));
+      _glow(canvas, p, pr * 1.7, dom.color.withOpacity(0.35));
       canvas.drawCircle(
           p,
-          pl.r * pulse,
+          pr * pulse,
           Paint()
             ..shader = RadialGradient(
               center: const Alignment(-0.4, -0.4),
-              colors: [Colors.white.withOpacity(0.9), pl.color, pl.color],
+              colors: [Colors.white.withOpacity(0.9), dom.color, dom.color],
               stops: const [0.0, 0.4, 1.0],
-            ).createShader(Rect.fromCircle(center: p, radius: pl.r)));
+            ).createShader(Rect.fromCircle(center: p, radius: pr)));
       canvas.save();
       canvas.translate(p.dx, p.dy);
       canvas.rotate(-0.4);
       canvas.drawOval(
-          Rect.fromCenter(center: Offset.zero, width: pl.r * 3, height: pl.r),
-          _stroke(pl.color.withOpacity(0.5), 2));
+          Rect.fromCenter(center: Offset.zero, width: pr * 3, height: pr),
+          _stroke(dom.color.withOpacity(0.5), 2));
       canvas.restore();
-      _text(canvas, pl.name, p.translate(0, pl.r + 18), Colors.white, 15,
+      _text(canvas, dom.name, p.translate(0, pr + 18), Colors.white, 15,
           weight: FontWeight.w800);
-      _text(canvas, '🚀', p.translate(pl.r * 0.7, -pl.r * 0.7), Colors.white, 16);
+      _text(canvas, '${dom.activities.length} act.', p.translate(0, pr + 36),
+          Colors.white.withOpacity(0.45), 11);
+      _text(canvas, '🚀', p.translate(pr * 0.7, -pr * 0.7), Colors.white, 16);
     }
     _text(canvas, 'COSMOS', Offset(size.width / 2, 30), const Color(0xFFB6FF3C),
         22, weight: FontWeight.w900);
@@ -534,10 +590,11 @@ class _NavPainter extends CustomPainter {
 
   // ── MAP ───────────────────────────────────────────────────────────────────
   void _paintMap(Canvas canvas, Size size) {
-    final dom = _FluoNavScreenState._planets[g._domain];
+    final dom = g._doms[g._domain];
     final rect = Offset.zero & size;
     canvas.drawRect(rect, Paint()..color = const Color(0xFF05070F));
     for (var i = 0; i < _FluoNavScreenState._rooms.length; i++) {
+      if (!g._roomActive(i)) continue;
       _drawRoom(canvas, g._px[i], _FluoNavScreenState._rooms[i], dom, i);
     }
     canvas.saveLayer(rect, Paint());
@@ -558,11 +615,18 @@ class _NavPainter extends CustomPainter {
         22, weight: FontWeight.w900);
     _text(canvas, 'Map du domaine · les pièces sont tes activités',
         Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
-    _text(canvas, 'Touche un terminal ⌗ d\'activité pour explorer sa carte',
-        Offset(size.width / 2, size.height - 24), const Color(0xFF8FA0C8), 12);
+    if (g._activityCount(g._domain) == 0) {
+      _text(canvas, 'Aucune activité dans ce domaine',
+          Offset(size.width / 2, size.height / 2),
+          Colors.white.withOpacity(0.5), 14);
+    } else {
+      _text(canvas, 'Touche un terminal ⌗ d\'activité pour explorer sa carte',
+          Offset(size.width / 2, size.height - 24),
+          const Color(0xFF8FA0C8), 12);
+    }
   }
 
-  void _drawRoom(Canvas canvas, Rect px, _Room r, _Planet dom, int idx) {
+  void _drawRoom(Canvas canvas, Rect px, _Room r, FluoDomain dom, int idx) {
     final rr = RRect.fromRectAndRadius(px, const Radius.circular(6));
     canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B1422));
     canvas.drawRRect(
@@ -601,7 +665,7 @@ class _NavPainter extends CustomPainter {
 
   // ── NODE-MAP (carte infinie) ───────────────────────────────────────────────
   void _paintRun(Canvas canvas, Size size) {
-    final dom = _FluoNavScreenState._planets[g._domain];
+    final dom = g._doms[g._domain];
     final rect = Offset.zero & size;
     canvas.drawRect(
         rect,
@@ -611,7 +675,6 @@ class _NavPainter extends CustomPainter {
             radius: 1.2,
             colors: [Color(0xFF1A1440), Color(0xFF0B0A22), Color(0xFF05070F)],
           ).createShader(rect));
-    // étoiles défilantes (parallaxe simple selon la caméra)
     final rnd = math.Random(5);
     for (var i = 0; i < 70; i++) {
       final sx = rnd.nextDouble() * size.width;
@@ -622,7 +685,6 @@ class _NavPainter extends CustomPainter {
 
     if (g._nodes.isEmpty) return;
 
-    // arêtes visibles
     for (var i = 0; i < g._nodes.length; i++) {
       final n = g._nodes[i];
       final a = g._project(g._nodeWorld(i));
@@ -641,7 +703,6 @@ class _NavPainter extends CustomPainter {
                   .withOpacity(live ? 0.5 : 0.25));
       }
     }
-    // nœuds visibles
     for (var i = 0; i < g._nodes.length; i++) {
       final n = g._nodes[i];
       final pos = g._project(g._nodeWorld(i));
@@ -665,10 +726,9 @@ class _NavPainter extends CustomPainter {
       }
       _text(canvas, _kindIcon[n.kind]!, pos, c.withOpacity(op), 15);
     }
-    // héros
     _drawHero(canvas, g._project(g._heroW), const Color(0xFFB6FF3C));
 
-    _text(canvas, '${dom.name} · ${dom.activities[g._activity]}'.toUpperCase(),
+    _text(canvas, '${dom.name} · ${g._curActivity}'.toUpperCase(),
         Offset(size.width / 2, 28), dom.color, 19, weight: FontWeight.w900);
     _text(canvas, 'Carte infinie · monte de nœud en nœud, de plus en plus loin',
         Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
