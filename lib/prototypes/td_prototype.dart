@@ -168,7 +168,11 @@ const _maps = [
 ];
 
 class TdGameScreen extends StatefulWidget {
-  const TdGameScreen({super.key});
+  const TdGameScreen({super.key, this.initialFuel, this.combatLabel});
+  // Carburant initial (0..1) injecté par l'appelant (= ta régularité réelle sur
+  // l'activité). null → valeur de démo + bouton « +séance ».
+  final double? initialFuel;
+  final String? combatLabel; // ex. « Combat · Course »
   @override
   State<TdGameScreen> createState() => _TdGameScreenState();
 }
@@ -223,6 +227,9 @@ class _TdGameScreenState extends State<TdGameScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.initialFuel != null) {
+      _fuel = widget.initialFuel!.clamp(0.0, 1.0);
+    }
     _ticker = createTicker(_tick)..start();
   }
 
@@ -579,21 +586,61 @@ class _TdGameScreenState extends State<TdGameScreen>
 
   @override
   Widget build(BuildContext context) {
+    final canPop = Navigator.of(context).canPop();
     return Scaffold(
       backgroundColor: const Color(0xFF06070F),
-      body: LayoutBuilder(builder: (context, c) {
-        final s = Size(c.maxWidth, c.maxHeight);
-        if (!_setup || s != _size) _build(s);
-        return GestureDetector(
-          onTapUp: (d) => _onTap(d.localPosition),
-          onPanStart: (d) => _onPanStart(d.localPosition),
-          onPanUpdate: (d) {
-            if (_dragType != null) setState(() => _dragPos = d.localPosition);
-          },
-          onPanEnd: (_) => _onPanEnd(),
-          child: CustomPaint(size: s, painter: _TdPainter(this)),
-        );
-      }),
+      body: Stack(children: [
+        Positioned.fill(
+          child: LayoutBuilder(builder: (context, c) {
+            final s = Size(c.maxWidth, c.maxHeight);
+            if (!_setup || s != _size) _build(s);
+            return GestureDetector(
+              onTapUp: (d) => _onTap(d.localPosition),
+              onPanStart: (d) => _onPanStart(d.localPosition),
+              onPanUpdate: (d) {
+                if (_dragType != null) setState(() => _dragPos = d.localPosition);
+              },
+              onPanEnd: (_) => _onPanEnd(),
+              child: CustomPaint(size: s, painter: _TdPainter(this)),
+            );
+          }),
+        ),
+        // bouton retour (quand lancé depuis la carte à nœuds)
+        if (canPop)
+          Positioned(
+            left: 10,
+            top: 8,
+            child: SafeArea(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => Navigator.of(context).maybePop(),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0B1422).withOpacity(0.92),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF35E0FF).withOpacity(0.7)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.arrow_back,
+                          color: Color(0xFF35E0FF), size: 16),
+                      const SizedBox(width: 6),
+                      Text(widget.combatLabel ?? 'Retour',
+                          style: const TextStyle(
+                              color: Color(0xFF35E0FF),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ]),
     );
   }
 }

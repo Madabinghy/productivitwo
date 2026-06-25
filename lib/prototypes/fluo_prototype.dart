@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:productivitwo_v1/prototypes/orbit_prototype.dart';
+import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 
 void main() => runApp(const FluoNavApp());
 
@@ -339,8 +340,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         _flashT = 2.4;
         break;
       case NodeKind.combat:
-        _flash = 'Combat ⚔ (tower-defense à venir)';
-        _flashT = 1.6;
+        _flash = 'Combat ⚔';
+        _flashT = 1.2;
+        _launchCombat();
         break;
       case NodeKind.planet:
         _flash = 'Planète 🪐 — domaine nourri';
@@ -352,6 +354,23 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     while (_rowCount < n.row + 6) {
       _genRow();
     }
+  }
+
+  // Ouvre le vrai tower-defense pour un nœud combat. Le carburant initial = ta
+  // régularité réelle sur l'activité (≈ nb de séances/coches 30 j).
+  void _launchCombat() {
+    final acts = _doms[_domain].activities;
+    final e = _activity < acts.length ? acts[_activity].energy : 0;
+    final fuel = (e / 10).clamp(0.2, 1.0).toDouble();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => TdGameScreen(
+          initialFuel: fuel,
+          combatLabel: 'Combat · ${_curActivity}',
+        ),
+      ));
+    });
   }
 
   void _go(_View v) {
