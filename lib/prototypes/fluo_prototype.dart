@@ -157,6 +157,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   static const double _heroR = 13;
   static const double _speed = 240;
   static const double _heroLight = 130;
+  // torches allumées dans la map du domaine (indices de pièces 2..6)
+  final Set<int> _lit = {};
 
   // node-map (vue run) — carte infinie
   static const double _rowGap = 120;
@@ -394,6 +396,18 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           _target = _hero;
         }
       }
+      // allumage des torches en s'approchant (une par pièce-activité)
+      final n = _activityCount(_domain);
+      for (var i = 2; i < 2 + n; i++) {
+        if (_lit.contains(i)) continue;
+        if ((_px[i].center - _hero).distance < 34) {
+          _lit.add(i);
+          _flash = _lit.length >= n
+              ? 'Domaine éclairé ✨'
+              : 'Torche allumée — ${_lit.length}/$n';
+          _flashT = 1.8;
+        }
+      }
     } else if (_view == _View.run && _nodes.isNotEmpty) {
       for (final n in _nodes) {
         n.pulse += dt;
@@ -428,13 +442,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         }
         break;
       case _View.map:
-        final rocket = _px[1].topCenter.translate(0, 30);
-        if ((rocket - p).distance < 28) {
-          _go(_View.cosmos);
-          return;
-        }
         for (var i = 2; i < _px.length; i++) {
-          if (!_roomActive(i)) continue;
+          if (!_roomActive(i) || !_lit.contains(i)) continue;
           final term = _px[i].center.translate(0, 26);
           if ((term - p).distance < 24) {
             _activity = i - 2;
@@ -504,6 +513,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
               if (i >= 0) {
                 setState(() {
                   _domain = i;
+                  _lit.clear();
+                  _hero = _px[1].center;
+                  _target = _hero;
                   _view = _View.map;
                   _trans = 0;
                 });
@@ -693,68 +705,49 @@ class _NavPainter extends CustomPainter {
         weight: FontWeight.w700);
   }
 
-  // ── MAP ───────────────────────────────────────────────────────────────────
+  // ── MAP (domaine, plongée dans le noir : torches à trouver) ────────────────
   void _paintMap(Canvas canvas, Size size) {
     final dom = g._doms[g._domain];
     final rect = Offset.zero & size;
     canvas.drawRect(rect, Paint()..color = const Color(0xFF05070F));
+
+    // 1. pièces (sol/murs) — révélées par la lumière
     for (var i = 0; i < _FluoNavScreenState._rooms.length; i++) {
       if (!g._roomActive(i)) continue;
       _drawRoom(canvas, g._px[i], _FluoNavScreenState._rooms[i], dom, i);
     }
+    // torches éteintes (visibles seulement quand la lumière du héros passe)
+    final nAct = g._activityCount(g._domain);
+    for (var i = 2; i < 2 + nAct; i++) {
+      if (!g._lit.contains(i)) _drawTorch(canvas, g._px[i].center, false);
+    }
+
+    // 2. voile sombre, percé par le héros + les torches allumées
     canvas.saveLayer(rect, Paint());
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF0A0C16).withOpacity(0.55));
+    canvas.drawRect(
+        rect, Paint()..color = const Color(0xFF0A0C16).withOpacity(0.88));
     _punch(canvas, g._hero, _FluoNavScreenState._heroLight);
+    for (final i in g._lit) {
+      _punch(canvas, g._px[i].center,
+          math.min(g._px[i].width, g._px[i].height) * 0.85);
+    }
     canvas.restore();
 
-    final rocket = g._px[1].topCenter.translate(0, 30);
-    _glow(canvas, rocket, 18, const Color(0xFF35E0FF).withOpacity(0.5));
-    canvas.drawCircle(rocket, 15, Paint()..color = const Color(0xFF0B1422));
-    canvas.drawCircle(rocket, 15, _stroke(const Color(0xFF35E0FF), 1.8));
-    _text(canvas, '🚀', rocket, Colors.white, 16);
-    _text(canvas, 'Décoller', rocket.translate(0, 26), const Color(0xFF7FD0C0), 10);
-
-    _drawHero(canvas, g._hero, dom.color);
-
-    _text(canvas, dom.name.toUpperCase(), Offset(size.width / 2, 28), dom.color,
-        22, weight: FontWeight.w900);
-    _text(canvas, 'Map du domaine · les pièces sont tes activités',
-        Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
-    if (g._activityCount(g._domain) == 0) {
-      _text(canvas, 'Aucune activité dans ce domaine',
-          Offset(size.width / 2, size.height / 2),
-          Colors.white.withOpacity(0.5), 14);
-    } else {
-      _text(canvas, 'Touche un terminal ⌗ d\'activité pour explorer sa carte',
-          Offset(size.width / 2, size.height - 24),
-          const Color(0xFF8FA0C8), 12);
-    }
-  }
-
-  void _drawRoom(Canvas canvas, Rect px, _Room r, FluoDomain dom, int idx) {
-    final rr = RRect.fromRectAndRadius(px, const Radius.circular(6));
-    canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B1422));
-    canvas.drawRRect(
-        rr, Paint()..color = dom.color.withOpacity(r.corridor ? 0.05 : 0.12));
-    if (!r.corridor) {
-      _glow(canvas, px.center, math.min(px.width, px.height) * 0.5,
-          dom.color.withOpacity(0.14));
-    }
-    canvas.drawRRect(
-        rr,
-        _stroke(dom.color.withOpacity(r.corridor ? 0.4 : 0.85),
-            r.corridor ? 1.5 : 2.5));
-    if (r.entry) {
-      _text(canvas, 'Entrée', Offset(px.center.dx, px.top + 16),
-          Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
-    } else if (!r.corridor) {
-      final act = dom.activities[idx - 2];
+    // 3. au-dessus du voile : pièces éclairées (libellé + ⚡ + torche + terminal)
+    for (var i = 2; i < 2 + nAct; i++) {
+      if (!g._lit.contains(i)) continue;
+      final px = g._px[i];
+      final act = dom.activities[i - 2];
+      _glow(canvas, px.center, math.min(px.width, px.height) * 0.45,
+          dom.color.withOpacity(0.16));
       _text(canvas, act.name, Offset(px.center.dx, px.top + 16),
-          Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
+          Colors.white.withOpacity(0.92), 13, weight: FontWeight.w700);
       _text(canvas, '⚡${act.energy}', Offset(px.center.dx, px.top + 32),
-          const Color(0xFFFFE08A).withOpacity(0.8), 10, weight: FontWeight.w700);
+          const Color(0xFFFFE08A).withOpacity(0.85), 10, weight: FontWeight.w700);
+      _drawTorch(canvas, px.center.translate(0, -10), true);
+      // terminal ⌗ → carte à nœuds
       final term = px.center.translate(0, 26);
-      final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + idx);
+      final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + i);
       _glow(canvas, term, 14 * pulse, const Color(0xFFFFD36B).withOpacity(0.5));
       canvas.drawRRect(
           RRect.fromRectAndRadius(
@@ -766,7 +759,75 @@ class _NavPainter extends CustomPainter {
               Rect.fromCenter(center: term, width: 22, height: 22),
               const Radius.circular(4)),
           _stroke(const Color(0xFFFFD36B), 1.6));
-      _text(canvas, '⌗', term, const Color(0xFFFFD36B), 15, weight: FontWeight.w900);
+      _text(canvas, '⌗', term, const Color(0xFFFFD36B), 15,
+          weight: FontWeight.w900);
+    }
+
+    _drawHero(canvas, g._hero, dom.color);
+
+    // HUD
+    _text(canvas, dom.name.toUpperCase(), Offset(size.width / 2, 28), dom.color,
+        22, weight: FontWeight.w900);
+    if (nAct == 0) {
+      _text(canvas, 'Aucune activité dans ce domaine',
+          Offset(size.width / 2, size.height / 2),
+          Colors.white.withOpacity(0.5), 14);
+    } else {
+      final allLit = g._lit.length >= nAct;
+      _text(
+          canvas,
+          allLit
+              ? '✨ Domaine éclairé · touche un ⌗ pour explorer une activité'
+              : 'Explore dans le noir · trouve les torches de tes activités',
+          Offset(size.width / 2, 52),
+          allLit ? const Color(0xFFB6FF3C) : const Color(0xFF8FA0C8),
+          12);
+      _text(canvas, '🔦 Torches ${g._lit.length}/$nAct',
+          Offset(size.width / 2, size.height - 24),
+          const Color(0xFFFFB35A), 13, weight: FontWeight.w700);
+    }
+  }
+
+  // pièce : sol + murs (le reste — libellé/torche/terminal — dessiné une fois
+  // éclairé, au-dessus du voile).
+  void _drawRoom(Canvas canvas, Rect px, _Room r, FluoDomain dom, int idx) {
+    final rr = RRect.fromRectAndRadius(px, const Radius.circular(6));
+    canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B1422));
+    canvas.drawRRect(
+        rr, Paint()..color = dom.color.withOpacity(r.corridor ? 0.05 : 0.12));
+    canvas.drawRRect(
+        rr,
+        _stroke(dom.color.withOpacity(r.corridor ? 0.4 : 0.85),
+            r.corridor ? 1.5 : 2.5));
+    if (r.entry) {
+      _text(canvas, 'Entrée', Offset(px.center.dx, px.top + 16),
+          Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
+    }
+  }
+
+  void _drawTorch(Canvas canvas, Offset p, bool lit) {
+    canvas.drawLine(p.translate(0, 2), p.translate(0, 13),
+        _stroke(const Color(0xFF6A5A40), 2.4));
+    if (lit) {
+      final f = 0.8 + 0.2 * math.sin(g._t * 9 + p.dx);
+      _glow(canvas, p.translate(0, -4), 18 * f, const Color(0xFFFFB35A));
+      final flame = Path()
+        ..moveTo(p.dx - 5, p.dy)
+        ..quadraticBezierTo(p.dx - 4, p.dy - 12 * f, p.dx, p.dy - 16 * f)
+        ..quadraticBezierTo(p.dx + 4, p.dy - 12 * f, p.dx + 5, p.dy)
+        ..close();
+      canvas.drawPath(flame, Paint()..color = const Color(0xFFFF8A2B));
+      canvas.drawPath(
+          Path()
+            ..moveTo(p.dx - 2.5, p.dy - 1)
+            ..quadraticBezierTo(p.dx, p.dy - 9 * f, p.dx + 2.5, p.dy - 1)
+            ..close(),
+          Paint()..color = const Color(0xFFFFE08A));
+    } else {
+      canvas.drawCircle(p.translate(0, -3), 5,
+          Paint()..color = const Color(0xFF2A2230));
+      canvas.drawCircle(p.translate(0, -3), 5,
+          _stroke(const Color(0xFFFFB35A).withOpacity(0.5), 1.4));
     }
   }
 
