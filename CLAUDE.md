@@ -5,6 +5,22 @@ Langue du code : anglais. Langue des commentaires et UI : français.
 
 ---
 
+## Workflow PR (important)
+
+L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussitôt
+(prototypes via routes cachées `?proto=…`). Conséquences pour Claude :
+
+- **Toujours `git fetch origin main` puis brancher depuis `origin/main` à jour**
+  juste avant de créer une PR (le main a souvent bougé entre deux PR).
+- **Une PR = une seule fonctionnalité**, et ne committer **que les fichiers
+  réellement modifiés** pour elle — ne jamais embarquer une version périmée d'un
+  fichier déjà modifié par une autre PR mergée (sinon on l'annule).
+- Si des commits sont poussés **après** que la PR a été mergée, ils deviennent
+  orphelins : refaire une **PR propre** depuis `origin/main` (n'inclure que les
+  fichiers voulus).
+
+---
+
 ## Stack
 
 - **Flutter** `>=3.0`, Dart `>=3.0`
