@@ -17,7 +17,7 @@ import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
 import 'package:productivitwo_v1/prototypes/level_prototype.dart';
-import 'package:productivitwo_v1/prototypes/fluo_prototype.dart';
+import 'package:productivitwo_v1/web/fluo_data_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
@@ -167,8 +167,6 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['proto'] == 'world') return const OverworldScreen();
       // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
       if (params['proto'] == 'level') return const LevelScreen();
-      // Proto navigation Fluo (cosmos → map → grille, fusée) — sans auth.
-      if (params['proto'] == 'fluo') return const FluoNavScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
@@ -273,6 +271,11 @@ class _AuthGateState extends State<_AuthGate> {
         // Proto « Système orbital » AVEC TES DONNÉES : domaines en orbite.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'orbit') {
           return OrbitDataScreen(sync: FirestoreSync());
+        }
+        // « Fluo Adventure » AVEC TES DONNÉES : cosmos (domaines) → map
+        // (activités) → carte à nœuds. Navigation à la fusée.
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'fluo') {
+          return FluoDataScreen(sync: FirestoreSync());
         }
         // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'rpg') {
