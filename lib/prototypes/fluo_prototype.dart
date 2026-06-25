@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:productivitwo_v1/prototypes/orbit_prototype.dart';
 
 void main() => runApp(const FluoNavApp());
 
@@ -28,6 +29,14 @@ class FluoNavApp extends StatelessWidget {
 }
 
 // ── Données injectables (vrais domaines / activités) ────────────────────────
+// Une activité du domaine. energy = carburant gagné par tes VRAIES séances
+// (≈ nombre de séances/coches sur 30 j) ; avancer d'un nœud en consomme.
+class FluoActivity {
+  const FluoActivity(this.name, {this.energy = 0});
+  final String name;
+  final int energy;
+}
+
 class FluoDomain {
   const FluoDomain(
       {required this.name,
@@ -36,31 +45,39 @@ class FluoDomain {
       this.mass = 0.6});
   final String name;
   final Color color;
-  final List<String> activities; // noms des activités du domaine
+  final List<FluoActivity> activities;
   final double mass; // 0..1 → taille de la planète (temps, réf. p90)
 }
 
 const _demoDoms = <FluoDomain>[
-  FluoDomain(
-      name: 'Santé',
-      color: Color(0xFF5BD0A0),
-      mass: 1.0,
-      activities: ['Course', 'Muscu', 'Sommeil', 'Repas', 'Étirement']),
-  FluoDomain(
-      name: 'Travail',
-      color: Color(0xFF35E0FF),
-      mass: 0.8,
-      activities: ['Focus', 'Réunions', 'Mails', 'Projets', 'Veille']),
-  FluoDomain(
-      name: 'Perso',
-      color: Color(0xFFFF5A8A),
-      mass: 0.45,
-      activities: ['Lecture', 'Musique', 'Amis', 'Jeux', 'Sorties']),
-  FluoDomain(
-      name: 'Esprit',
-      color: Color(0xFFA86BFF),
-      mass: 0.6,
-      activities: ['Médit.', 'Journal', 'Respire', 'Gratitude', 'Pause']),
+  FluoDomain(name: 'Santé', color: Color(0xFF5BD0A0), mass: 1.0, activities: [
+    FluoActivity('Course', energy: 7),
+    FluoActivity('Muscu', energy: 4),
+    FluoActivity('Sommeil', energy: 9),
+    FluoActivity('Repas', energy: 2),
+    FluoActivity('Étirement', energy: 1),
+  ]),
+  FluoDomain(name: 'Travail', color: Color(0xFF35E0FF), mass: 0.8, activities: [
+    FluoActivity('Focus', energy: 6),
+    FluoActivity('Réunions', energy: 3),
+    FluoActivity('Mails', energy: 5),
+    FluoActivity('Projets', energy: 4),
+    FluoActivity('Veille', energy: 1),
+  ]),
+  FluoDomain(name: 'Perso', color: Color(0xFFFF5A8A), mass: 0.45, activities: [
+    FluoActivity('Lecture', energy: 3),
+    FluoActivity('Musique', energy: 2),
+    FluoActivity('Amis', energy: 1),
+    FluoActivity('Jeux', energy: 0),
+    FluoActivity('Sorties', energy: 1),
+  ]),
+  FluoDomain(name: 'Esprit', color: Color(0xFFA86BFF), mass: 0.6, activities: [
+    FluoActivity('Médit.', energy: 5),
+    FluoActivity('Journal', energy: 2),
+    FluoActivity('Respire', energy: 3),
+    FluoActivity('Gratitude', energy: 1),
+    FluoActivity('Pause', energy: 2),
+  ]),
 ];
 
 enum _View { cosmos, map, run }
@@ -88,8 +105,13 @@ class _MNode {
 }
 
 class FluoNavScreen extends StatefulWidget {
-  const FluoNavScreen({super.key, this.data});
+  const FluoNavScreen(
+      {super.key, this.data, this.bodies, this.sunFill = 1.0, this.sunLabel});
   final List<FluoDomain>? data; // null → démo
+  // Galaxie (niveau 0) = la vraie vue orbit. bodies[i] ↔ data[i] (même ordre).
+  final List<OrbitBody>? bodies;
+  final double sunFill;
+  final String? sunLabel;
   @override
   State<FluoNavScreen> createState() => _FluoNavScreenState();
 }
@@ -103,6 +125,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   bool _setup = false;
 
   late final List<FluoDomain> _doms;
+  late final List<OrbitBody> _bodies; // galaxie (niveau 0)
 
   _View _view = _View.cosmos;
   double _trans = 1.0;
@@ -145,6 +168,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   double _camY = 0;
   Offset _heroW = Offset.zero;
   int _depth = 0;
+  int _energy = 0; // carburant restant (gagné par les vraies séances)
   math.Random _runRng = math.Random(1);
 
   @override
@@ -152,8 +176,23 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     super.initState();
     final d = widget.data;
     _doms = (d == null || d.isEmpty) ? _demoDoms : d;
+    _bodies = widget.bodies ?? _synthBodies(_doms);
     _ticker = createTicker(_tick)..start();
   }
+
+  // Galaxie de démo (si aucune donnée fournie).
+  List<OrbitBody> _synthBodies(List<FluoDomain> ds) => [
+        for (var i = 0; i < ds.length; i++)
+          OrbitBody(
+            name: ds[i].name,
+            hot: ds[i].color,
+            cold: Color.lerp(ds[i].color, const Color(0xFF6A749A), 0.72)!,
+            mass: ds[i].mass,
+            angle: i * 1.7,
+            days: (i * 3.0).clamp(0.0, OrbitBody.maxDays).toDouble(),
+            streak: 0,
+          ),
+      ];
 
   @override
   void dispose() {
@@ -260,6 +299,10 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _moveT = 0;
     _camY = 0;
     _depth = 0;
+    final acts = _doms[_domain].activities;
+    _energy = _activity < acts.length ? acts[_activity].energy : 0;
+    _flash = '⚡ $_energy énergie · ${_curActivity} (tes vraies séances)';
+    _flashT = 2.2;
     _heroW = Offset(0.5 * _size.width, 0);
   }
 
@@ -271,7 +314,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
 
   String get _curActivity {
     final acts = _doms[_domain].activities;
-    return _activity < acts.length ? acts[_activity] : 'Activité';
+    return _activity < acts.length ? acts[_activity].name : 'Activité';
   }
 
   void _arrive(int i) {
@@ -426,6 +469,12 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           if (!n.unlocked || n.visited) continue;
           if (!_nodes[_cur].links.contains(i)) continue;
           if ((_project(_nodeWorld(i)) - p).distance <= 28) {
+            if (_energy <= 0) {
+              _flash = 'Plus d\'énergie — fais une séance de ${_curActivity}';
+              _flashT = 2.2;
+              return;
+            }
+            _energy -= 1; // avancer coûte du carburant réel
             _movingTo = i;
             _moveT = 0;
             return;
@@ -442,26 +491,82 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       body: LayoutBuilder(builder: (context, c) {
         final s = Size(c.maxWidth, c.maxHeight);
         if (!_setup || s != _size) _build(s);
+        final Widget content;
+        if (_view == _View.cosmos) {
+          // niveau 0 = la vraie galaxie orbit (planètes autour d'Aujourd'hui)
+          content = OrbitView(
+            bodies: _bodies,
+            interactive: false,
+            sunFill: widget.sunFill,
+            sunLabel: widget.sunLabel,
+            onTapBody: (b) {
+              final i = _bodies.indexOf(b);
+              if (i >= 0) {
+                setState(() {
+                  _domain = i;
+                  _view = _View.map;
+                  _trans = 0;
+                });
+              }
+            },
+          );
+        } else {
+          content = GestureDetector(
+            onTapDown: (d) => _onTapCanvas(d.localPosition),
+            child: CustomPaint(size: s, painter: _NavPainter(this)),
+          );
+        }
         return Stack(children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onTapDown: (d) => _onTapCanvas(d.localPosition),
-              child: CustomPaint(size: s, painter: _NavPainter(this)),
-            ),
-          ),
+          Positioned.fill(child: content),
           if (_view != _View.cosmos)
             Positioned(
               left: 14,
               top: 14,
-              child: _rocketBtn(
+              child: _backBtn(
                   () => _go(_view == _View.run ? _View.map : _View.cosmos)),
+            ),
+          // bouton de test : simule une vraie séance (recharge le carburant)
+          if (_view == _View.run)
+            Positioned(
+              right: 14,
+              bottom: 18,
+              child: _energyBtn(),
             ),
         ]);
       }),
     );
   }
 
-  Widget _rocketBtn(VoidCallback onTap) => Material(
+  Widget _energyBtn() => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => setState(() {
+            _energy += 1;
+            _flash = '⚡ +1 énergie (séance simulée)';
+            _flashT = 1.4;
+          }),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFE08A).withOpacity(0.14),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFFE08A).withOpacity(0.8)),
+            ),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('⚡', style: TextStyle(fontSize: 15)),
+              SizedBox(width: 6),
+              Text('+séance (test)',
+                  style: TextStyle(
+                      color: Color(0xFFFFE08A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13)),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _backBtn(VoidCallback onTap) => Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
@@ -474,7 +579,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
               border: Border.all(color: const Color(0xFF35E0FF).withOpacity(0.8)),
             ),
             child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Text('🚀', style: TextStyle(fontSize: 16)),
+              Icon(Icons.arrow_back, color: Color(0xFF35E0FF), size: 16),
               SizedBox(width: 6),
               Text('Retour',
                   style: TextStyle(
@@ -643,9 +748,11 @@ class _NavPainter extends CustomPainter {
       _text(canvas, 'Entrée', Offset(px.center.dx, px.top + 16),
           Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
     } else if (!r.corridor) {
-      final name = dom.activities[idx - 2];
-      _text(canvas, name, Offset(px.center.dx, px.top + 16),
+      final act = dom.activities[idx - 2];
+      _text(canvas, act.name, Offset(px.center.dx, px.top + 16),
           Colors.white.withOpacity(0.9), 13, weight: FontWeight.w700);
+      _text(canvas, '⚡${act.energy}', Offset(px.center.dx, px.top + 32),
+          const Color(0xFFFFE08A).withOpacity(0.8), 10, weight: FontWeight.w700);
       final term = px.center.translate(0, 26);
       final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + idx);
       _glow(canvas, term, 14 * pulse, const Color(0xFFFFD36B).withOpacity(0.5));
@@ -711,7 +818,8 @@ class _NavPainter extends CustomPainter {
       final reachable = !n.visited &&
           n.unlocked &&
           g._nodes[g._cur].links.contains(i) &&
-          g._movingTo == null;
+          g._movingTo == null &&
+          g._energy > 0;
       final op = n.unlocked ? 1.0 : 0.4;
       _glow(canvas, pos, 22, c.withOpacity(n.unlocked ? 0.4 : 0.12));
       if (reachable) {
@@ -730,10 +838,20 @@ class _NavPainter extends CustomPainter {
 
     _text(canvas, '${dom.name} · ${g._curActivity}'.toUpperCase(),
         Offset(size.width / 2, 28), dom.color, 19, weight: FontWeight.w900);
-    _text(canvas, 'Carte infinie · monte de nœud en nœud, de plus en plus loin',
-        Offset(size.width / 2, 52), const Color(0xFF8FA0C8), 12);
-    _text(canvas, '✦ Profondeur ${g._depth}   ·   ◆ Items ${g._itemsUnlocked}',
-        Offset(size.width / 2, size.height - 24), const Color(0xFFB6FF3C), 13,
+    _text(
+        canvas,
+        g._energy > 0
+            ? 'Avancer coûte 1 ⚡ (gagnée par tes vraies séances)'
+            : 'Plus d\'énergie — fais une séance de ${g._curActivity} pour avancer',
+        Offset(size.width / 2, 52),
+        g._energy > 0 ? const Color(0xFF8FA0C8) : const Color(0xFFFFB35A),
+        12);
+    _text(
+        canvas,
+        '⚡ Énergie ${g._energy}   ·   ✦ Profondeur ${g._depth}   ·   ◆ Items ${g._itemsUnlocked}',
+        Offset(size.width / 2, size.height - 24),
+        const Color(0xFFB6FF3C),
+        13,
         weight: FontWeight.w700);
   }
 
