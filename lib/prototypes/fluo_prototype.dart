@@ -138,6 +138,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   // héros (vue map)
   Offset _hero = Offset.zero;
   Offset _target = Offset.zero;
+  Offset _joy = Offset.zero; // direction joystick (-1..1)
+  Offset _knob = Offset.zero; // position visuelle du pouce
   static const double _heroR = 13;
   static const double _speed = 240;
   static const double _heroLight = 130;
@@ -467,19 +469,32 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     if (_trans < 1) _trans = (_trans + dt * 2.4).clamp(0.0, 1.0);
 
     if (_view == _View.map) {
-      final to = _target - _hero;
-      final dist = to.distance;
-      if (dist > 1) {
-        final dir = to / dist;
-        final step = dir * math.min(_speed * dt, dist);
+      // joystick prioritaire ; sinon tap-to-move
+      if (_joy.distance > 0.08) {
+        _target = _hero; // coupe le tap-to-move
+        final step = _joy * _speed * dt;
         if (_walkable(_hero + step)) {
           _hero += step;
         } else if (_walkable(_hero + Offset(step.dx, 0))) {
           _hero += Offset(step.dx, 0);
         } else if (_walkable(_hero + Offset(0, step.dy))) {
           _hero += Offset(0, step.dy);
-        } else {
-          _target = _hero;
+        }
+      } else {
+        final to = _target - _hero;
+        final dist = to.distance;
+        if (dist > 1) {
+          final dir = to / dist;
+          final step = dir * math.min(_speed * dt, dist);
+          if (_walkable(_hero + step)) {
+            _hero += step;
+          } else if (_walkable(_hero + Offset(step.dx, 0))) {
+            _hero += Offset(step.dx, 0);
+          } else if (_walkable(_hero + Offset(0, step.dy))) {
+            _hero += Offset(0, step.dy);
+          } else {
+            _target = _hero;
+          }
         }
       }
       // allumage des torches en s'approchant (une par étage) → 1 indice/étage
@@ -653,8 +668,60 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           ],
           if (_view == _View.map && _carnetOpen) _carnetPanel(),
           if (_view == _View.map && _solved && _verdict != null) _verdictPanel(),
+          // joystick de déplacement (manoir)
+          if (_view == _View.map)
+            Positioned(left: 16, bottom: 70, child: _joystick()),
         ]);
       }),
+    );
+  }
+
+  void _updateJoy(Offset local, double r) {
+    var d = local - Offset(r, r);
+    final len = d.distance;
+    final maxR = r * 0.66;
+    if (len > maxR) d = d / len * maxR;
+    setState(() {
+      _knob = d;
+      _joy = Offset(d.dx / maxR, d.dy / maxR);
+    });
+  }
+
+  Widget _joystick() {
+    const sz = 116.0;
+    const r = sz / 2;
+    return GestureDetector(
+      onPanStart: (e) => _updateJoy(e.localPosition, r),
+      onPanUpdate: (e) => _updateJoy(e.localPosition, r),
+      onPanEnd: (_) => setState(() {
+        _joy = Offset.zero;
+        _knob = Offset.zero;
+      }),
+      child: Container(
+        width: sz,
+        height: sz,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withOpacity(0.04),
+          border: Border.all(
+              color: const Color(0xFF35E0FF).withOpacity(0.35), width: 1.5),
+        ),
+        child: Center(
+          child: Transform.translate(
+            offset: _knob,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF35E0FF).withOpacity(0.22),
+                border:
+                    Border.all(color: const Color(0xFF35E0FF), width: 2),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
