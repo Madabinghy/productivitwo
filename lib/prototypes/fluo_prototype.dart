@@ -173,6 +173,18 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   int _depth = 0;
   int _energy = 0; // carburant restant (gagné par les vraies séances)
   final Set<int> _wonNodes = {}; // nœuds combat gagnés (✓)
+  // butin posé dans les pièces : clé 'domaine:activité' → kinds d'items
+  final Map<String, List<int>> _roomItems = {};
+  static const int _kItemKinds = 6;
+  static const _itemNames = [
+    'Trophée',
+    'Plante',
+    'Cristal',
+    'Lampe',
+    'Étoile',
+    'Fanion'
+  ];
+  String _actKey(int dom, int act) => '$dom:$act';
   math.Random _runRng = math.Random(1);
 
   @override
@@ -380,11 +392,14 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         if (!mounted) return;
         setState(() {
           if (won == true) {
+            final kind = _runRng.nextInt(_kItemKinds);
+            (_roomItems[_actKey(_domain, _activity)] ??= []).add(kind);
             _wonNodes.add(nodeIndex);
             _itemsUnlocked++;
             _energy += 2;
-            _flash = 'Combat gagné ⚔ — butin ◆  +2⚡';
-            _flashT = 2.6;
+            _flash =
+                'Combat gagné ⚔ — ${_itemNames[kind]} posé dans ${_curActivity}  +2⚡';
+            _flashT = 2.8;
           } else if (won == false) {
             _flash = 'Combat perdu… retente un nœud ⚔';
             _flashT = 2.0;
@@ -801,6 +816,13 @@ class _NavPainter extends CustomPainter {
           _stroke(const Color(0xFFFFD36B), 1.6));
       _text(canvas, '⌗', term, const Color(0xFFFFD36B), 15,
           weight: FontWeight.w900);
+      // butin posé : items gagnés en combat, le long du bord bas de la pièce
+      final items = g._roomItems[g._actKey(g._domain, i - 2)] ?? const [];
+      for (var k = 0; k < items.length && k < 8; k++) {
+        final col = k % 4, rowi = k ~/ 4;
+        final ip = Offset(px.left + 16 + col * 18, px.bottom - 16 - rowi * 18);
+        _drawItem(canvas, ip, items[k]);
+      }
     }
 
     _drawHero(canvas, g._hero, dom.color);
@@ -986,6 +1008,76 @@ class _NavPainter extends CustomPainter {
             colors: const [Colors.white, Colors.white, Color(0x00FFFFFF)],
             stops: const [0.0, 0.5, 1.0],
           ).createShader(Rect.fromCircle(center: c, radius: r)));
+  }
+
+  // butin posé dans une pièce (dessiné en code ; assets possibles plus tard)
+  void _drawItem(Canvas canvas, Offset p, int kind) {
+    switch (kind) {
+      case 0: // trophée
+        const c = Color(0xFFFFD36B);
+        _glow(canvas, p, 10, c.withOpacity(0.5));
+        canvas.drawArc(Rect.fromCenter(center: p.translate(0, -2), width: 12, height: 12),
+            0, math.pi, false, _stroke(c, 2.2));
+        canvas.drawLine(p.translate(0, 4), p.translate(0, 7), _stroke(c, 2));
+        canvas.drawLine(p.translate(-4, 7), p.translate(4, 7), _stroke(c, 2));
+        break;
+      case 1: // plante
+        const c = Color(0xFFB6FF3C);
+        _glow(canvas, p.translate(0, -4), 9, c.withOpacity(0.4));
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(
+                Rect.fromCenter(center: p.translate(0, 4), width: 8, height: 6),
+                const Radius.circular(2)),
+            Paint()..color = const Color(0xFF3A2A1A));
+        for (final a in [-0.6, 0.0, 0.6]) {
+          canvas.drawLine(p.translate(0, 1),
+              p.translate(math.sin(a) * 7, -8 - math.cos(a) * 2), _stroke(c, 2));
+        }
+        break;
+      case 2: // cristal (losange)
+        const c = Color(0xFF35E0FF);
+        _glow(canvas, p, 10, c.withOpacity(0.5));
+        canvas.drawPath(
+            Path()
+              ..moveTo(p.dx, p.dy - 7)
+              ..lineTo(p.dx + 5, p.dy)
+              ..lineTo(p.dx, p.dy + 7)
+              ..lineTo(p.dx - 5, p.dy)
+              ..close(),
+            Paint()..color = c);
+        break;
+      case 3: // lampe
+        const c = Color(0xFFFFE08A);
+        _glow(canvas, p, 11, c.withOpacity(0.5));
+        canvas.drawCircle(p, 5, Paint()..color = c);
+        canvas.drawLine(p.translate(0, 5), p.translate(0, 9),
+            _stroke(const Color(0xFF6A7A90), 2));
+        break;
+      case 4: // étoile
+        const c = Color(0xFFFF9EC4);
+        _glow(canvas, p, 10, c.withOpacity(0.5));
+        final star = Path();
+        for (var s = 0; s < 10; s++) {
+          final a = -math.pi / 2 + s * math.pi / 5;
+          final r = s.isEven ? 6.5 : 2.6;
+          final pt = p.translate(math.cos(a) * r, math.sin(a) * r);
+          s == 0 ? star.moveTo(pt.dx, pt.dy) : star.lineTo(pt.dx, pt.dy);
+        }
+        star.close();
+        canvas.drawPath(star, Paint()..color = c);
+        break;
+      default: // fanion
+        const c = Color(0xFFA86BFF);
+        _glow(canvas, p, 9, c.withOpacity(0.45));
+        canvas.drawLine(p.translate(-5, -7), p.translate(-5, 7), _stroke(c, 2));
+        canvas.drawPath(
+            Path()
+              ..moveTo(p.dx - 5, p.dy - 7)
+              ..lineTo(p.dx + 6, p.dy - 3)
+              ..lineTo(p.dx - 5, p.dy + 1)
+              ..close(),
+            Paint()..color = c);
+    }
   }
 
   void _drawHero(Canvas canvas, Offset p, Color c) {
