@@ -168,11 +168,15 @@ const _maps = [
 ];
 
 class TdGameScreen extends StatefulWidget {
-  const TdGameScreen({super.key, this.initialFuel, this.combatLabel});
+  const TdGameScreen(
+      {super.key, this.initialFuel, this.combatLabel, this.targetWave});
   // Carburant initial (0..1) injecté par l'appelant (= ta régularité réelle sur
   // l'activité). null → valeur de démo + bouton « +séance ».
   final double? initialFuel;
   final String? combatLabel; // ex. « Combat · Course »
+  // Vague à atteindre pour GAGNER (null → endless standalone). Au-delà, le combat
+  // renvoie true (Navigator.pop) ; perdre toutes ses vies renvoie false.
+  final int? targetWave;
   @override
   State<TdGameScreen> createState() => _TdGameScreenState();
 }
@@ -215,6 +219,7 @@ class _TdGameScreenState extends State<TdGameScreen>
   double _waveSpeed = 0;
   bool _bossWave = false;
   bool _bossSpawned = false;
+  int _outcome = 0; // 0 = en cours, 1 = gagné, 2 = perdu
 
   TurretType? _dragType;
   Offset? _dragPos;
@@ -376,6 +381,10 @@ class _TdGameScreenState extends State<TdGameScreen>
     if (_waveActive && _toSpawn == 0 && _enemies.isEmpty) {
       _waveActive = false;
       _gold += 18 + _wave * 3;
+      // objectif atteint → victoire (mode combat lié à un nœud)
+      if (widget.targetWave != null && _wave >= widget.targetWave!) {
+        _outcome = 1;
+      }
     }
 
     // ennemis
@@ -391,6 +400,7 @@ class _TdGameScreenState extends State<TdGameScreen>
         _rings.add(_Ring(_path.last, const Color(0xFFFF4D6D), 60));
       }
     }
+    if (_outcome == 0 && _lives <= 0) _outcome = 2; // défaite
 
     // tourelles
     for (final tu in _turrets) {
@@ -533,6 +543,11 @@ class _TdGameScreenState extends State<TdGameScreen>
   }
 
   void _onTap(Offset p) {
+    // combat décidé → un tap renvoie le résultat à la carte à nœuds
+    if (_outcome != 0) {
+      Navigator.of(context).maybePop(_outcome == 1);
+      return;
+    }
     if (_waveBtn.contains(p)) {
       _startWave();
       return;
@@ -815,6 +830,27 @@ class _TdPainter extends CustomPainter {
     }
 
     _hud(canvas, size);
+
+    // bandeau victoire / défaite (combat lié à un nœud)
+    if (g._outcome != 0) {
+      canvas.drawRect(Offset.zero & size,
+          Paint()..color = Colors.black.withOpacity(0.55));
+      final won = g._outcome == 1;
+      _text(
+          canvas,
+          won ? '⚔ VICTOIRE' : '☠ DÉFAITE',
+          Offset(size.width / 2, size.height / 2 - 18),
+          won ? const Color(0xFFB6FF3C) : const Color(0xFFFF6F8A),
+          34,
+          weight: FontWeight.w900);
+      _text(
+          canvas,
+          won ? 'Butin récupéré ◆ — touche pour revenir' : 'Touche pour revenir',
+          Offset(size.width / 2, size.height / 2 + 18),
+          Colors.white.withOpacity(0.85),
+          15,
+          weight: FontWeight.w700);
+    }
   }
 
   void _drawTurret(Canvas canvas, _Turret tu) {
@@ -889,11 +925,20 @@ class _TdPainter extends CustomPainter {
         18, weight: FontWeight.w800);
     _text(canvas, '❤ ${g._lives}', Offset(size.width / 2, 34),
         const Color(0xFFFF6F8A), 18, weight: FontWeight.w800);
-    _text(canvas, 'Vague ${g._wave}', Offset(size.width - 64, 34),
-        const Color(0xFF8FE9FF), 18, weight: FontWeight.w800);
+    final tw = g.widget.targetWave;
+    _text(
+        canvas,
+        tw != null ? 'Vague ${g._wave}/$tw' : 'Vague ${g._wave}',
+        Offset(size.width - 64, 34),
+        const Color(0xFF8FE9FF),
+        18,
+        weight: FontWeight.w800);
     if (g._waveActive && g._bossWave) {
       _text(canvas, '⚠ BOSS', Offset(size.width - 64, 54),
           const Color(0xFFFF2D7A), 13, weight: FontWeight.w800);
+    } else if (tw != null) {
+      _text(canvas, '🎯 tiens $tw vagues', Offset(size.width - 64, 54),
+          const Color(0xFF8FE9FF).withOpacity(0.7), 11, weight: FontWeight.w700);
     }
 
     // bouton carte

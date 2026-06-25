@@ -172,6 +172,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Offset _heroW = Offset.zero;
   int _depth = 0;
   int _energy = 0; // carburant restant (gagné par les vraies séances)
+  final Set<int> _wonNodes = {}; // nœuds combat gagnés (✓)
   math.Random _runRng = math.Random(1);
 
   @override
@@ -302,6 +303,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _moveT = 0;
     _camY = 0;
     _depth = 0;
+    _wonNodes.clear();
     final acts = _doms[_domain].activities;
     _energy = _activity < acts.length ? acts[_activity].energy : 0;
     _flash = '⚡ $_energy énergie · ${_curActivity} (tes vraies séances)';
@@ -342,7 +344,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       case NodeKind.combat:
         _flash = 'Combat ⚔';
         _flashT = 1.2;
-        _launchCombat();
+        _launchCombat(n.row, i);
         break;
       case NodeKind.planet:
         _flash = 'Planète 🪐 — domaine nourri';
@@ -356,20 +358,39 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     }
   }
 
-  // Ouvre le vrai tower-defense pour un nœud combat. Le carburant initial = ta
-  // régularité réelle sur l'activité (≈ nb de séances/coches 30 j).
-  void _launchCombat() {
+  // Ouvre le vrai tower-defense pour un nœud combat. Carburant initial = ta
+  // régularité réelle sur l'activité ; objectif (vagues) = profondeur du nœud ;
+  // gagner rapporte un item + de l'énergie.
+  void _launchCombat(int row, int nodeIndex) {
     final acts = _doms[_domain].activities;
     final e = _activity < acts.length ? acts[_activity].energy : 0;
     final fuel = (e / 10).clamp(0.2, 1.0).toDouble();
+    final target = (1 + row ~/ 2).clamp(1, 6);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => TdGameScreen(
-          initialFuel: fuel,
-          combatLabel: 'Combat · ${_curActivity}',
-        ),
-      ));
+      Navigator.of(context)
+          .push<bool>(MaterialPageRoute(
+            builder: (_) => TdGameScreen(
+              initialFuel: fuel,
+              combatLabel: 'Combat · ${_curActivity}',
+              targetWave: target,
+            ),
+          ))
+          .then((won) {
+        if (!mounted) return;
+        setState(() {
+          if (won == true) {
+            _wonNodes.add(nodeIndex);
+            _itemsUnlocked++;
+            _energy += 2;
+            _flash = 'Combat gagné ⚔ — butin ◆  +2⚡';
+            _flashT = 2.6;
+          } else if (won == false) {
+            _flash = 'Combat perdu… retente un nœud ⚔';
+            _flashT = 2.0;
+          }
+        });
+      });
     });
   }
 
@@ -913,6 +934,10 @@ class _NavPainter extends CustomPainter {
         canvas.drawCircle(pos, 17, Paint()..color = c.withOpacity(0.18));
       }
       _text(canvas, _kindIcon[n.kind]!, pos, c.withOpacity(op), 15);
+      if (g._wonNodes.contains(i)) {
+        _text(canvas, '✓', pos.translate(13, -13), const Color(0xFFB6FF3C), 13,
+            weight: FontWeight.w900);
+      }
     }
     _drawHero(canvas, g._project(g._heroW), const Color(0xFFB6FF3C));
 
