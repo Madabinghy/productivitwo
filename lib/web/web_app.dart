@@ -268,14 +268,17 @@ class _AuthGateState extends State<_AuthGate> {
         if (kIsWeb && Uri.base.queryParameters['flame'] == '3') {
           return FlameDataProtoScreen(sync: FirestoreSync());
         }
-        // Proto « Système orbital » AVEC TES DONNÉES : domaines en orbite.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'orbit') {
-          return OrbitDataScreen(sync: FirestoreSync());
-        }
-        // « Fluo Adventure » AVEC TES DONNÉES : cosmos (domaines) → map
-        // (activités) → carte à nœuds. Navigation à la fusée.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'fluo') {
+        // « Fluo Adventure » AVEC TES DONNÉES : galaxie (domaines autour
+        // d'Aujourd'hui) → tape une planète → map (activités) → carte à nœuds.
+        // C'est l'entrée principale, sur ?proto=orbit (et ?proto=fluo).
+        if (kIsWeb &&
+            (Uri.base.queryParameters['proto'] == 'orbit' ||
+                Uri.base.queryParameters['proto'] == 'fluo')) {
           return FluoDataScreen(sync: FirestoreSync());
+        }
+        // Galaxie « pure » (contemplation, tap = info, sans navigation).
+        if (kIsWeb && Uri.base.queryParameters['proto'] == 'galaxy') {
+          return OrbitDataScreen(sync: FirestoreSync());
         }
         // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
         if (kIsWeb && Uri.base.queryParameters['proto'] == 'rpg') {
