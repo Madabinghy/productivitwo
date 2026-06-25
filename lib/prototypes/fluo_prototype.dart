@@ -81,7 +81,14 @@ const _demoDoms = <FluoDomain>[
   ]),
 ];
 
-enum _View { cosmos, map, run }
+enum _View { cosmos, map, run, room }
+
+// bougie dans une pièce d'étage
+class _Candle {
+  _Candle(this.pos);
+  final Offset pos;
+  bool lit = false;
+}
 
 enum NodeKind { start, combat, treasure, planet, boss }
 
@@ -140,6 +147,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Offset _target = Offset.zero;
   Offset _joy = Offset.zero; // direction joystick (-1..1)
   Offset _knob = Offset.zero; // position visuelle du pouce
+  static const double _kJoyFactor = 0.6; // joystick un peu plus lent
   static const double _heroR = 13;
   static const double _speed = 240;
   static const double _heroLight = 130;
@@ -150,6 +158,17 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   bool _carnetOpen = false;
   bool _solved = false;
   String? _verdict;
+
+  // intérieur d'étage (pièce à explorer)
+  Rect _roomRect = Rect.zero;
+  Offset _rHero = Offset.zero;
+  final List<_Candle> _candles = [];
+  Offset _cluePos = Offset.zero;
+  bool _clueTaken = false;
+  String _clueText = '';
+  Offset _guardPos = Offset.zero;
+  bool _guardAlive = true;
+  bool _inGuardFight = false;
 
   // node-map (vue run) — carte infinie
   static const double _rowGap = 120;
@@ -300,6 +319,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _rowCount++;
   }
 
+  // Carte à nœuds (legacy) — conservée mais hors flux actuel (manoir → pièce →
+  // gardien). Réintégrable plus tard.
+  // ignore: unused_element
   void _initRun() {
     _runRng = math.Random(_domain * 97 + _activity * 31 + 7);
     _nodes.clear();
@@ -442,6 +464,66 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     });
   }
 
+  // ── intérieur d'étage : une pièce à fouiller (bougies + indice + gardien) ──
+  void _initRoom(int act) {
+    _activity = act;
+    _lit.add(act + 2); // l'étage devient « visité » dans le manoir
+    final w = _size.width, h = _size.height;
+    _roomRect = Rect.fromLTWH(w * 0.08, h * 0.15, w * 0.84, h * 0.62);
+    final r = _roomRect.deflate(40);
+    final rng = math.Random(_domain * 131 + act * 17 + 5);
+    Offset rp() => Offset(
+        r.left + rng.nextDouble() * r.width, r.top + rng.nextDouble() * r.height);
+    _candles
+      ..clear()
+      ..addAll([for (var k = 0; k < 4; k++) _Candle(rp())]);
+    _cluePos = rp();
+    _clueTaken = false;
+    _clueText = _noirClue(_doms[_domain].activities[act].name);
+    _guardPos = Offset(_roomRect.center.dx, _roomRect.top + 52);
+    _guardAlive = true;
+    _inGuardFight = false;
+    _rHero = _roomRect.bottomCenter.translate(0, -44);
+  }
+
+  void _fightGuardian() {
+    if (_inGuardFight) return;
+    _inGuardFight = true;
+    final acts = _doms[_domain].activities;
+    final e = _activity < acts.length ? acts[_activity].energy : 0;
+    final fuel = (e / 10).clamp(0.2, 1.0).toDouble();
+    final target = 2 + (_activity % 3);
+    final name = acts[_activity].name;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context)
+          .push<bool>(MaterialPageRoute(
+            builder: (_) => TdGameScreen(
+                initialFuel: fuel,
+                combatLabel: 'Gardien · $name',
+                targetWave: target),
+          ))
+          .then((won) {
+        _inGuardFight = false;
+        if (!mounted) return;
+        setState(() {
+          _rHero = _roomRect.bottomCenter.translate(0, -44); // éloigne du gardien
+          if (won == true) {
+            _guardAlive = false;
+            _itemsUnlocked++;
+            (_roomItems[_actKey(_domain, _activity)] ??= [])
+                .add(_itemsUnlocked % _kItemKinds);
+            _flash = 'Gardien vaincu ⚔ — étage nettoyé, butin ◆';
+            _flashT = 2.6;
+          } else if (won == false) {
+            _flash = 'Le gardien tient bon… reviens plus fort';
+            _flashT = 2.0;
+          }
+        });
+      });
+    });
+  }
+
   void _go(_View v) {
     setState(() {
       _view = v;
@@ -472,7 +554,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       // joystick prioritaire ; sinon tap-to-move
       if (_joy.distance > 0.08) {
         _target = _hero; // coupe le tap-to-move
-        final step = _joy * _speed * dt;
+        final step = _joy * _speed * _kJoyFactor * dt;
         if (_walkable(_hero + step)) {
           _hero += step;
         } else if (_walkable(_hero + Offset(step.dx, 0))) {
@@ -497,18 +579,40 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           }
         }
       }
-      // allumage des torches en s'approchant (une par étage) → 1 indice/étage
+      // révèle un étage en s'en approchant (le nom sort de l'ombre)
       final n = _activityCount(_domain);
       for (var i = 2; i < 2 + n; i++) {
         if (_lit.contains(i)) continue;
         if ((_px[i].center - _hero).distance < 34) {
           _lit.add(i);
-          _clues.add(_noirClue(_doms[_domain].activities[i - 2].name));
-          _flash = _lit.length >= n
-              ? 'Tous les étages fouillés — résous l\'enquête 🔍'
-              : 'Indice trouvé — ${_lit.length}/$n';
-          _flashT = 1.8;
+          _flash = 'Étage trouvé — touche-le pour y entrer';
+          _flashT = 1.6;
         }
+      }
+    } else if (_view == _View.room) {
+      // déplacement joystick dans la pièce
+      if (_joy.distance > 0.08) {
+        final n = _rHero + _joy * _speed * _kJoyFactor * dt;
+        final inset = _roomRect.deflate(14);
+        _rHero = Offset(n.dx.clamp(inset.left, inset.right),
+            n.dy.clamp(inset.top, inset.bottom));
+      }
+      for (final c in _candles) {
+        if (!c.lit && (c.pos - _rHero).distance < 30) {
+          c.lit = true;
+          _flash = 'Bougie allumée';
+          _flashT = 0.9;
+        }
+      }
+      if (!_clueTaken && (_cluePos - _rHero).distance < 28) {
+        _clueTaken = true;
+        _clues.add(_clueText);
+        _flash = 'Indice ramassé 🔍 (${_clues.length})';
+        _flashT = 1.8;
+      }
+      if (_guardAlive && !_inGuardFight &&
+          (_guardPos - _rHero).distance < 42) {
+        _fightGuardian();
       }
     } else if (_view == _View.run && _nodes.isNotEmpty) {
       for (final n in _nodes) {
@@ -544,13 +648,12 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         }
         break;
       case _View.map:
+        // tape un étage révélé → entre dans sa pièce
         for (var i = 2; i < _px.length; i++) {
           if (!_roomActive(i) || !_lit.contains(i)) continue;
-          final term = Offset(_px[i].right - 26, _px[i].center.dy);
-          if ((term - p).distance < 24) {
-            _activity = i - 2;
-            _initRun();
-            _go(_View.run);
+          if (_px[i].contains(p)) {
+            _initRoom(i - 2);
+            _go(_View.room);
             return;
           }
         }
@@ -592,6 +695,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           }
         }
         break;
+      case _View.room:
+        break; // déplacement au joystick
     }
   }
 
@@ -642,7 +747,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
               left: 14,
               top: 14,
               child: _backBtn(
-                  () => _go(_view == _View.run ? _View.map : _View.cosmos)),
+                  () => _go(_view == _View.map ? _View.cosmos : _View.map)),
             ),
           // bouton de test : simule une vraie séance (recharge le carburant)
           if (_view == _View.run)
@@ -668,9 +773,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           ],
           if (_view == _View.map && _carnetOpen) _carnetPanel(),
           if (_view == _View.map && _solved && _verdict != null) _verdictPanel(),
-          // joystick de déplacement (manoir)
-          if (_view == _View.map)
-            Positioned(left: 16, bottom: 70, child: _joystick()),
+          // joystick de déplacement (à droite) — manoir + pièce d'étage
+          if (_view == _View.map || _view == _View.room)
+            Positioned(right: 18, bottom: 70, child: _joystick()),
         ]);
       }),
     );
@@ -921,6 +1026,9 @@ class _NavPainter extends CustomPainter {
       case _View.run:
         _paintRun(canvas, size);
         break;
+      case _View.room:
+        _paintRoom(canvas, size);
+        break;
     }
     canvas.restore();
     canvas.restore();
@@ -1049,24 +1157,8 @@ class _NavPainter extends CustomPainter {
       _drawTorch(canvas, Offset(px.left + 26, cy + 4), true);
       _text(canvas, act.name, Offset(px.center.dx, cy - 7),
           Colors.white.withOpacity(0.92), 13, weight: FontWeight.w700);
-      _text(canvas, '🔍 indice · ⚡${act.energy}', Offset(px.center.dx, cy + 9),
+      _text(canvas, '⚡${act.energy} · ▸ entrer', Offset(px.center.dx, cy + 9),
           const Color(0xFFFFB35A).withOpacity(0.8), 10, weight: FontWeight.w700);
-      // terminal ⌗ → carte à nœuds (à droite de l'étage)
-      final term = Offset(px.right - 26, cy);
-      final pulse = 0.6 + 0.4 * math.sin(g._t * 3 + i);
-      _glow(canvas, term, 13 * pulse, const Color(0xFFFFD36B).withOpacity(0.45));
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromCenter(center: term, width: 22, height: 22),
-              const Radius.circular(4)),
-          Paint()..color = const Color(0xFF0B1422));
-      canvas.drawRRect(
-          RRect.fromRectAndRadius(
-              Rect.fromCenter(center: term, width: 22, height: 22),
-              const Radius.circular(4)),
-          _stroke(const Color(0xFFFFD36B), 1.6));
-      _text(canvas, '⌗', term, const Color(0xFFFFD36B), 15,
-          weight: FontWeight.w900);
       // butin posé (items gagnés en combat)
       final items = g._roomItems[g._actKey(g._domain, i - 2)] ?? const [];
       for (var k = 0; k < items.length && k < 6; k++) {
@@ -1096,6 +1188,80 @@ class _NavPainter extends CustomPainter {
           Offset(size.width / 2, size.height - 24),
           const Color(0xFFFFB35A), 13, weight: FontWeight.w700);
     }
+  }
+
+  // ── PIÈCE D'ÉTAGE : on fouille (bougies + indice + gardien) ────────────────
+  void _paintRoom(Canvas canvas, Size size) {
+    final dom = g._doms[g._domain];
+    final rect = Offset.zero & size;
+    final act = dom.activities[g._activity];
+    canvas.drawRect(rect, Paint()..color = const Color(0xFF050608));
+    // sol + murs de la pièce
+    final rr = RRect.fromRectAndRadius(g._roomRect, const Radius.circular(8));
+    canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B0D12));
+    canvas.drawRRect(rr, _stroke(const Color(0xFF7C8AA0).withOpacity(0.5), 2));
+    // dalles
+    canvas.save();
+    canvas.clipRRect(rr);
+    final grid = _stroke(const Color(0xFF161A22), 1);
+    for (double x = g._roomRect.left; x < g._roomRect.right; x += 30) {
+      canvas.drawLine(Offset(x, g._roomRect.top), Offset(x, g._roomRect.bottom), grid);
+    }
+    for (double y = g._roomRect.top; y < g._roomRect.bottom; y += 30) {
+      canvas.drawLine(Offset(g._roomRect.left, y), Offset(g._roomRect.right, y), grid);
+    }
+    canvas.restore();
+
+    // contenu (indice, gardien, bougies) — sera voilé puis révélé par la lumière
+    if (!g._clueTaken) {
+      final pz = 0.6 + 0.4 * math.sin(g._t * 4);
+      _glow(canvas, g._cluePos, 14 * pz, const Color(0xFFFFD36B).withOpacity(0.5));
+      _text(canvas, '🔍', g._cluePos, const Color(0xFFFFE08A), 18);
+    }
+    if (g._guardAlive) {
+      final gp = 0.5 + 0.5 * math.sin(g._t * 3);
+      _glow(canvas, g._guardPos, 22, const Color(0xFFFF4D5E).withOpacity(0.4 + gp * 0.2));
+      canvas.drawCircle(g._guardPos, 16, Paint()..color = const Color(0xFF2A0F14));
+      canvas.drawCircle(g._guardPos, 16, _stroke(const Color(0xFFFF4D5E), 2));
+      // yeux
+      canvas.drawCircle(g._guardPos.translate(-5, -2), 2.4,
+          Paint()..color = const Color(0xFFFF4D5E));
+      canvas.drawCircle(g._guardPos.translate(5, -2), 2.4,
+          Paint()..color = const Color(0xFFFF4D5E));
+      _text(canvas, '☠', g._guardPos.translate(0, 12),
+          const Color(0xFFFF4D5E).withOpacity(0.8), 11);
+    }
+    for (final c in g._candles) {
+      _drawTorch(canvas, c.pos, c.lit);
+    }
+
+    // voile d'ombre, percé par la lampe du héros + les bougies allumées
+    canvas.saveLayer(rect, Paint());
+    canvas.drawRect(rect, Paint()..color = const Color(0xFF05060B).withOpacity(0.92));
+    _punch(canvas, g._rHero, 110);
+    for (final c in g._candles) {
+      if (c.lit) _punch(canvas, c.pos, 90);
+    }
+    canvas.restore();
+
+    _drawHero(canvas, g._rHero, const Color(0xFFB6FF3C));
+
+    // HUD
+    _text(canvas, 'ÉTAGE · ${act.name.toUpperCase()}',
+        Offset(size.width / 2, 30), const Color(0xFF7C8AA0), 18,
+        weight: FontWeight.w900);
+    final litN = g._candles.where((c) => c.lit).length;
+    _text(
+        canvas,
+        g._guardAlive
+            ? 'Allume les bougies · ramasse l\'indice · le gardien ☠ garde la sortie'
+            : 'Étage nettoyé ✓ — reviens au manoir',
+        Offset(size.width / 2, 52),
+        const Color(0xFF8FA0C8),
+        11);
+    _text(canvas, '🕯 $litN/${g._candles.length}   ·   🔍 ${g._clueTaken ? "indice ✓" : "indice ?"}',
+        Offset(size.width / 2, size.height - 24),
+        const Color(0xFFFFB35A), 12, weight: FontWeight.w700);
   }
 
   void _drawTorch(Canvas canvas, Offset p, bool lit) {
