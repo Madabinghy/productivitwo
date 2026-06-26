@@ -42,6 +42,7 @@ dependencies:
   printing: ^5.13.2
   alarm: ^5.4.1
   rive: ^0.13.20 # POC : perso animé (couche visuelle, piloté par notre logique)
+  google_fonts: ^6.2.1 # refonte Soft Pop : Fredoka (UI) + Space Mono (chiffres)
 
 
 dev_dependencies:

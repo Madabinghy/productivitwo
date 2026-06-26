@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
+import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
@@ -5539,6 +5540,22 @@ class _AppRootState extends State<AppRoot>
                     );
                   },
                 ),
+              // Aperçu Soft Pop (design system de la refonte — preview)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.palette_outlined),
+                title: const Text('Aperçu Soft Pop'),
+                subtitle: const Text('Design system de la refonte (preview)'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const SoftPopPreviewScreen(),
+                    ),
+                  );
+                },
+              ),
               // Compte
               ListTile(
                 contentPadding: EdgeInsets.zero,
