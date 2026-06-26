@@ -92,6 +92,19 @@ class _Candle {
   bool lit = false;
 }
 
+// Comportements du boss (couche 1 = aggro selon la distance ; couche 3 = la
+// lumière le domine → defense puis dizzy). Un état = une planche d'animation.
+enum _BossState { idle, walk, run, attack, defense, dizzy }
+
+// Descripteur d'une planche : asset + grille (colonnes/total) + cadence.
+class _BossAnim {
+  const _BossAnim(this.asset, this.cols, this.frames, {this.fps = 10});
+  final String asset;
+  final int cols; // colonnes de la grille (frames de 256 px)
+  final int frames; // nombre total de frames
+  final double fps;
+}
+
 enum NodeKind { start, combat, treasure, planet, boss }
 
 class _MNode {
@@ -181,12 +194,26 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Offset _guardPos = Offset.zero;
   bool _guardAlive = true;
   bool _inGuardFight = false;
-  // sprite du boss (araignée) : spritesheet 6×4 de frames 256px (anim « idle »)
-  ui.Image? _bossImg;
-  ui.Image? _bossShadow;
-  static const int _bossCols = 6;
-  static const int _bossFrames = 24;
+  // Boss (araignée) animé : une planche par état, frames de 256 px.
+  // Ajouter un autre boss = un autre jeu de planches sur ce même schéma.
   static const double _bossFrameSize = 256;
+  static const double _bossSpeed = 72;
+  static const Map<_BossState, _BossAnim> _bossAnims = {
+    _BossState.idle: _BossAnim('assets/sprites/boss_spider_idle.png', 6, 24),
+    _BossState.walk:
+        _BossAnim('assets/sprites/boss_spider_walk.png', 4, 16, fps: 12),
+    _BossState.run:
+        _BossAnim('assets/sprites/boss_spider_run.png', 4, 16, fps: 16),
+    _BossState.attack:
+        _BossAnim('assets/sprites/boss_spider_attack.png', 5, 20, fps: 18),
+    _BossState.defense:
+        _BossAnim('assets/sprites/boss_spider_defense.png', 4, 16),
+    _BossState.dizzy:
+        _BossAnim('assets/sprites/boss_spider_dizzy.png', 4, 16, fps: 8),
+  };
+  final Map<_BossState, ui.Image> _bossSheets = {};
+  _BossState _bossState = _BossState.idle;
+  double _bossAttackT = 0; // wind-up de morsure avant le combat TD
 
   // node-map (vue run) — carte infinie
   static const double _rowGap = 120;
@@ -225,17 +252,16 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   }
 
   Future<void> _loadBossSprite() async {
-    try {
-      final img = await _decodeAsset('assets/sprites/boss_spider_idle.png');
-      final sh = await _decodeAsset('assets/sprites/boss_spider_idle_shadow.png');
-      if (!mounted) return;
-      setState(() {
-        _bossImg = img;
-        _bossShadow = sh;
-      });
-    } catch (_) {
-      // pas de sprite → fallback dessiné en code (cercle), aucune erreur bloquante
+    for (final e in _bossAnims.entries) {
+      try {
+        final img = await _decodeAsset(e.value.asset);
+        if (!mounted) return;
+        _bossSheets[e.key] = img;
+      } catch (_) {
+        // planche manquante → fallback cercle pour cet état, jamais bloquant
+      }
     }
+    if (mounted) setState(() {});
   }
 
   Future<ui.Image> _decodeAsset(String path) async {
@@ -559,6 +585,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _guardPos = Offset(boss.center.dx, boss.top + 64);
     _guardAlive = true;
     _inGuardFight = false;
+    _bossState = _BossState.idle;
+    _bossAttackT = 0;
     _rHero = Offset(_rooms.first.center.dx, _rooms.first.bottom - 44);
     _roomCam = _clampRoomCam(_rHero - Offset(w / 2, h / 2));
   }
@@ -602,22 +630,77 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         _inGuardFight = false;
         if (!mounted) return;
         setState(() {
-          // éloigne le héros du boss (bas de la salle du fond)
+          // éloigne le héros du boss (bas de la salle du fond), boss au repos
           _rHero = Offset(_rooms.last.center.dx, _rooms.last.bottom - 44);
+          _bossState = _BossState.idle;
+          _bossAttackT = 0;
           if (won == true) {
             _guardAlive = false;
             _itemsUnlocked++;
             (_roomItems[_actKey(_domain, _activity)] ??= [])
                 .add(_itemsUnlocked % _kItemKinds);
-            _flash = 'Gardien vaincu ⚔ — étage nettoyé, butin ◆';
+            _flash = 'Boss vaincu ⚔ — étage nettoyé, butin ◆';
             _flashT = 2.6;
           } else if (won == false) {
-            _flash = 'Le gardien tient bon… reviens plus fort';
+            _flash = 'Le boss tient bon… reviens plus fort';
             _flashT = 2.0;
           }
         });
       });
     });
+  }
+
+  // ── comportements du boss (couche 1 distance + couche 3 lumière) ──────────
+  // Le boss garde la salle du fond. Peu de lumière → il chasse le héros
+  // (idle → walk → run → morsure = combat TD). On monte les lumens → il se
+  // protège (defense) puis se fait éblouir (dizzy = fenêtre sûre).
+  void _updateBoss(double dt) {
+    if (!_guardAlive || _inGuardFight || _rooms.isEmpty) return;
+    final bossRoom = _rooms.last;
+    final toHero = _rHero - _guardPos;
+    final d = toHero.distance;
+    final dir = d > 0.001 ? toHero / d : const Offset(0, 1);
+
+    // couche 3 : la lumière domine l'araignée
+    if (_lumens >= 0.80) {
+      _bossState = _BossState.dizzy; // ébloui → ne bouge plus, n'attaque pas
+      _bossAttackT = 0;
+      return;
+    }
+    if (_lumens >= 0.50) {
+      _bossState = _BossState.defense; // se protège et recule vers le fond
+      _bossAttackT = 0;
+      _moveBoss(-dir * _bossSpeed * 0.5 * dt, bossRoom);
+      return;
+    }
+
+    // couche 1 : aggro selon la distance (peu de lumière)
+    if (_bossAttackT > 0) {
+      _bossState = _BossState.attack;
+      _bossAttackT -= dt;
+      if (_bossAttackT <= 0) _fightGuardian(); // la morsure ouvre le combat TD
+      return;
+    }
+    const aggroR = 240.0, runR = 130.0, biteR = 56.0;
+    if (d <= biteR) {
+      _bossState = _BossState.attack;
+      _bossAttackT = 0.45; // wind-up visible avant le TD
+    } else if (d <= runR) {
+      _bossState = _BossState.run;
+      _moveBoss(dir * _bossSpeed * 1.7 * dt, bossRoom);
+    } else if (d <= aggroR) {
+      _bossState = _BossState.walk;
+      _moveBoss(dir * _bossSpeed * dt, bossRoom);
+    } else {
+      _bossState = _BossState.idle;
+    }
+  }
+
+  void _moveBoss(Offset step, Rect room) {
+    final r = room.deflate(46);
+    final n = _guardPos + step;
+    _guardPos =
+        Offset(n.dx.clamp(r.left, r.right), n.dy.clamp(r.top, r.bottom));
   }
 
   void _go(_View v) {
@@ -714,10 +797,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         _flash = 'Indice ramassé 🔍 (${_clues.length})';
         _flashT = 1.8;
       }
-      if (_guardAlive && !_inGuardFight &&
-          (_guardPos - _rHero).distance < 42) {
-        _fightGuardian();
-      }
+      _updateBoss(dt);
     } else if (_view == _View.run && _nodes.isNotEmpty) {
       for (final n in _nodes) {
         n.pulse += dt;
@@ -1447,7 +1527,7 @@ class _NavPainter extends CustomPainter {
     _text(
         canvas,
         g._guardAlive
-            ? 'Explore les salles · ramasse l\'indice · le boss ☠ t\'attend au fond'
+            ? 'Explore · ramasse l\'indice · monte les 💡 lumens pour éblouir le boss'
             : 'Étage nettoyé ✓ — reviens au manoir',
         Offset(size.width / 2, 52),
         const Color(0xFF8FA0C8),
@@ -1680,35 +1760,41 @@ class _NavPainter extends CustomPainter {
     }
   }
 
-  // Boss = sprite araignée animé (anim « idle »). Sans sprite chargé → cercle.
+  // Boss = sprite araignée animé : la planche dépend de l'état (idle/walk/run/
+  // attack/defense/dizzy). Halo rouge en chasse, bleu quand la lumière le domine.
   void _drawBoss(Canvas canvas, Offset p) {
+    final state = g._bossState;
+    final dominated =
+        state == _BossState.dizzy || state == _BossState.defense;
+    final halo = dominated ? const Color(0xFF8FE9FF) : const Color(0xFFFF4D5E);
     final gp = 0.5 + 0.5 * math.sin(g._t * 3);
-    _glow(canvas, p, 34,
-        const Color(0xFFFF4D5E).withOpacity(0.28 + gp * 0.14));
-    final img = g._bossImg;
+    _glow(canvas, p, 34, halo.withOpacity(0.26 + gp * 0.14));
+    // ombre portée (dessinée en code, commune à tous les états)
+    canvas.drawOval(
+        Rect.fromCenter(center: p.translate(0, 42), width: 92, height: 26),
+        Paint()..color = Colors.black.withOpacity(0.35));
+
+    final anim = _FluoNavScreenState._bossAnims[state]!;
+    final img = g._bossSheets[state];
     if (img == null) {
       canvas.drawCircle(p, 22, Paint()..color = const Color(0xFF2A0F14));
-      canvas.drawCircle(p, 22, _stroke(const Color(0xFFFF4D5E), 2.4));
-      canvas.drawCircle(p.translate(-7, -3), 3,
-          Paint()..color = const Color(0xFFFF4D5E));
-      canvas.drawCircle(p.translate(7, -3), 3,
-          Paint()..color = const Color(0xFFFF4D5E));
+      canvas.drawCircle(p, 22, _stroke(halo, 2.4));
     } else {
       const fs = _FluoNavScreenState._bossFrameSize;
-      final f = (g._t * 10).floor() % _FluoNavScreenState._bossFrames;
-      final src = Rect.fromLTWH((f % _FluoNavScreenState._bossCols) * fs,
-          (f ~/ _FluoNavScreenState._bossCols) * fs, fs, fs);
+      final f = (g._t * anim.fps).floor() % anim.frames;
+      final src = Rect.fromLTWH(
+          (f % anim.cols) * fs, (f ~/ anim.cols) * fs, fs, fs);
       const sz = 150.0;
-      final dst = Rect.fromCenter(center: p, width: sz, height: sz);
-      final sh = g._bossShadow;
-      if (sh != null) {
-        canvas.drawImageRect(sh, src, dst,
-            Paint()..color = Colors.white.withOpacity(0.6));
-      }
-      canvas.drawImageRect(img, src, dst, Paint());
+      canvas.drawImageRect(
+          img, src, Rect.fromCenter(center: p, width: sz, height: sz), Paint());
     }
-    _text(canvas, '☠ BOSS', p.translate(0, 56),
-        const Color(0xFFFF4D5E).withOpacity(0.9), 12, weight: FontWeight.w800);
+    final label = state == _BossState.dizzy
+        ? '✦ ébloui'
+        : state == _BossState.defense
+            ? '☠ se protège'
+            : '☠ BOSS';
+    _text(canvas, label, p.translate(0, 58), halo.withOpacity(0.9), 12,
+        weight: FontWeight.w800);
   }
 
   void _drawHero(Canvas canvas, Offset p, Color c) {
