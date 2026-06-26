@@ -136,6 +136,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   int _itemsUnlocked = 0;
   String? _flash;
   double _flashT = 0;
+  // jauge de TEST : luminosité globale 0..1 (simule des « lumens » collectés
+  // pour éclairer la map). À retirer/relier à la vraie monnaie plus tard.
+  double _lumens = 0;
 
   // étages : index 0 = cage d'escalier, 1 = entrée, 2+ = activités
   static const int _maxActivityRooms = 5;
@@ -877,6 +880,9 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           // joystick de déplacement (à droite) — manoir + pièce d'étage
           if (_view == _View.map || _view == _View.room)
             Positioned(right: 18, bottom: 32, child: _joystick()),
+          // jauge de TEST : règle la luminosité globale (simule des lumens)
+          if (_view == _View.map || _view == _View.room)
+            Positioned(top: 50, right: 12, child: _lumensSlider()),
         ]);
       }),
     );
@@ -930,6 +936,41 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       ),
     );
   }
+
+  // jauge de test : glisser pour éclairer toute la map (lumens simulés)
+  Widget _lumensSlider() => Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0B1422).withOpacity(0.85),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFFE08A).withOpacity(0.7)),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('💡 Lumens (test) ${(_lumens * 100).round()}%',
+              style: const TextStyle(
+                  color: Color(0xFFFFE08A),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11)),
+          SizedBox(
+            width: 150,
+            height: 26,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 3,
+                overlayShape: SliderComponentShape.noOverlay,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                activeTrackColor: const Color(0xFFFFE08A),
+                inactiveTrackColor: Colors.white24,
+                thumbColor: const Color(0xFFFFE08A),
+              ),
+              child: Slider(
+                value: _lumens,
+                onChanged: (v) => setState(() => _lumens = v),
+              ),
+            ),
+          ),
+        ]),
+      );
 
   Widget _pill(String label, Color c, VoidCallback onTap) => Material(
         color: Colors.transparent,
@@ -1239,8 +1280,12 @@ class _NavPainter extends CustomPainter {
     // 2. voile d'ombre noir, percé par la lampe du héros + les étages fouillés
     canvas.saveLayer(rect, Paint());
     canvas.drawRect(
-        rect, Paint()..color = const Color(0xFF05060B).withOpacity(0.90));
-    _punch(canvas, g._hero, _FluoNavScreenState._heroLight);
+        rect,
+        Paint()
+          ..color = const Color(0xFF05060B)
+              .withOpacity((0.90 - 0.82 * g._lumens).clamp(0.0, 1.0)));
+    _punch(canvas, g._hero,
+        _FluoNavScreenState._heroLight * (1 + g._lumens));
     for (final i in g._lit) {
       _punch(canvas, g._px[i].center,
           math.min(g._px[i].width, g._px[i].height) * 1.1);
@@ -1381,8 +1426,11 @@ class _NavPainter extends CustomPainter {
     final visible = Rect.fromLTWH(cam.dx, cam.dy, size.width, size.height);
     canvas.saveLayer(visible, Paint());
     canvas.drawRect(
-        visible, Paint()..color = const Color(0xFF05060B).withOpacity(0.92));
-    _punch(canvas, g._rHero, 120);
+        visible,
+        Paint()
+          ..color = const Color(0xFF05060B)
+              .withOpacity((0.92 - 0.84 * g._lumens).clamp(0.0, 1.0)));
+    _punch(canvas, g._rHero, 120 * (1 + g._lumens));
     for (final c in g._candles) {
       if (c.lit) _punch(canvas, c.pos, 90);
     }
