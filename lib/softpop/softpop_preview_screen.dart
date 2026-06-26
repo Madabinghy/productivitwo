@@ -3,6 +3,7 @@ import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
 import 'softpop_components.dart';
 import 'softpop_home_screen.dart';
+import 'softpop_routine_types_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -37,6 +38,16 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                     builder: (_) => const SoftPopHomeScreen()),
+              ),
+            ),
+            const SizedBox(height: SoftPop.s8),
+            SoftPill(
+              label: 'Types de routine',
+              icon: Icons.tune,
+              accent: SoftPop.teal,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const SoftPopRoutineTypesScreen()),
               ),
             ),
             const SizedBox(height: SoftPop.s20),
