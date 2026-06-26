@@ -8,6 +8,7 @@ import 'softpop_streak_screen.dart';
 import 'softpop_balance_screen.dart';
 import 'softpop_project_screen.dart';
 import 'softpop_celebration_screen.dart';
+import 'softpop_onboarding_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -42,6 +43,16 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                     builder: (_) => const SoftPopHomeScreen()),
+              ),
+            ),
+            const SizedBox(height: SoftPop.s8),
+            SoftPill(
+              label: 'Onboarding',
+              icon: Icons.waving_hand_outlined,
+              accent: SoftPop.violet,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const SoftPopOnboardingScreen()),
               ),
             ),
             const SizedBox(height: SoftPop.s8),
