@@ -24,6 +24,7 @@ import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_routine_types_screen.dart';
+import 'package:productivitwo_v1/softpop/softpop_streak_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -182,6 +183,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['softpop'] == 'home') return const SoftPopHomeScreen();
       // Aperçu des 3 types de routine (compteur / binaire / chrono).
       if (params['softpop'] == 'routine') return const SoftPopRoutineTypesScreen();
+      // Aperçu de l'écran Série (streaks, non punitif).
+      if (params['softpop'] == 'streak') return const SoftPopStreakScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
