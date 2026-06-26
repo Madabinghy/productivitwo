@@ -29,6 +29,7 @@ import 'package:productivitwo_v1/softpop/softpop_balance_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_project_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_celebration_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_onboarding_screen.dart';
+import 'package:productivitwo_v1/softpop/softpop_focus_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -197,6 +198,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['softpop'] == 'celebrate') return const SoftPopCelebrationScreen();
       // Aperçu de l'onboarding refondu (catalogue réel partagé).
       if (params['softpop'] == 'onboarding') return const SoftPopOnboardingScreen();
+      // Aperçu de l'écran Maintenant / Focus (file de routines + chrono).
+      if (params['softpop'] == 'focus') return const SoftPopFocusScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
