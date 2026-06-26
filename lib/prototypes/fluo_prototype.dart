@@ -159,8 +159,15 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   bool _solved = false;
   String? _verdict;
 
-  // intérieur d'étage (pièce à explorer)
-  Rect _roomRect = Rect.zero;
+  // intérieur d'étage : une petite MAP à explorer — plusieurs salles reliées
+  // par un mini couloir, le boss au fond. La caméra suit l'avatar (coords monde,
+  // map plus grande que l'écran).
+  List<Rect> _rooms = [];
+  List<Rect> _corridors = [];
+  double _roomWorldW = 0;
+  double _roomWorldH = 0;
+  Offset _roomCam = Offset.zero;
+  static const double _roomCorridorOverlap = 18; // couloir mord sur les salles
   Offset _rHero = Offset.zero;
   final List<_Candle> _candles = [];
   Offset _cluePos = Offset.zero;
@@ -464,26 +471,82 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     });
   }
 
-  // ── intérieur d'étage : une pièce à fouiller (bougies + indice + gardien) ──
+  // ── intérieur d'étage : une MAP à explorer (salles + couloir + boss au fond) ─
+  // L'étage n'est plus une seule pièce : c'est une enfilade de salles séparées
+  // par un mini couloir. On entre par la 1ʳᵉ salle, on fouille (bougies, indice),
+  // et le boss garde la salle du fond. La caméra suit l'avatar.
   void _initRoom(int act) {
     _activity = act;
     _lit.add(act + 2); // l'étage devient « visité » dans le manoir
     final w = _size.width, h = _size.height;
-    _roomRect = Rect.fromLTWH(w * 0.08, h * 0.15, w * 0.84, h * 0.62);
-    final r = _roomRect.deflate(40);
     final rng = math.Random(_domain * 131 + act * 17 + 5);
-    Offset rp() => Offset(
-        r.left + rng.nextDouble() * r.width, r.top + rng.nextDouble() * r.height);
+
+    const nRooms = 3; // salle d'entrée + salle(s) + salle du boss
+    final roomW = w * 0.80;
+    final roomH = h * 0.60;
+    final corridorW = w * 0.34;
+    final corridorH = h * 0.22;
+    const topPad = 100.0;
+    final cy = topPad + roomH / 2; // axe vertical des couloirs
+
+    _rooms = [];
+    _corridors = [];
+    for (var k = 0; k < nRooms; k++) {
+      final left = k * (roomW + corridorW);
+      _rooms.add(Rect.fromLTWH(left, topPad, roomW, roomH));
+      if (k < nRooms - 1) {
+        // le couloir chevauche les deux salles voisines → passage connexe
+        final cLeft = left + roomW - _roomCorridorOverlap;
+        final cRight = left + roomW + corridorW + _roomCorridorOverlap;
+        _corridors.add(Rect.fromLTWH(
+            cLeft, cy - corridorH / 2, cRight - cLeft, corridorH));
+      }
+    }
+    _roomWorldW = (nRooms - 1) * (roomW + corridorW) + roomW;
+    _roomWorldH = topPad + roomH + 80;
+
+    Offset rp(Rect room) {
+      final r = room.deflate(40);
+      return Offset(r.left + rng.nextDouble() * r.width,
+          r.top + rng.nextDouble() * r.height);
+    }
+
+    // bougies réparties dans toutes les salles (l'entrée en a deux)
     _candles
       ..clear()
-      ..addAll([for (var k = 0; k < 4; k++) _Candle(rp())]);
-    _cluePos = rp();
+      ..addAll([
+        for (var k = 0; k < nRooms; k++) _Candle(rp(_rooms[k])),
+        _Candle(rp(_rooms.first)),
+      ]);
+    // indice dans une salle intermédiaire
+    _cluePos = rp(_rooms[nRooms ~/ 2]);
     _clueTaken = false;
     _clueText = _noirClue(_doms[_domain].activities[act].name);
-    _guardPos = Offset(_roomRect.center.dx, _roomRect.top + 52);
+    // boss au fond (dernière salle), héros à l'entrée (première salle)
+    final boss = _rooms.last;
+    _guardPos = Offset(boss.center.dx, boss.top + 64);
     _guardAlive = true;
     _inGuardFight = false;
-    _rHero = _roomRect.bottomCenter.translate(0, -44);
+    _rHero = Offset(_rooms.first.center.dx, _rooms.first.bottom - 44);
+    _roomCam = _clampRoomCam(_rHero - Offset(w / 2, h / 2));
+  }
+
+  // borne la caméra de la pièce à l'intérieur du monde (pas de hors-map)
+  Offset _clampRoomCam(Offset c) {
+    final maxX = math.max(0.0, _roomWorldW - _size.width);
+    final maxY = math.max(0.0, _roomWorldH - _size.height);
+    return Offset(c.dx.clamp(0.0, maxX), c.dy.clamp(0.0, maxY));
+  }
+
+  // marchable dans la map d'étage = à l'intérieur d'une salle OU d'un couloir
+  bool _roomWalkable(Offset p) {
+    for (final r in _rooms) {
+      if (r.inflate(-_heroR * 0.4).contains(p)) return true;
+    }
+    for (final c in _corridors) {
+      if (c.inflate(-_heroR * 0.3).contains(p)) return true;
+    }
+    return false;
   }
 
   void _fightGuardian() {
@@ -507,7 +570,8 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         _inGuardFight = false;
         if (!mounted) return;
         setState(() {
-          _rHero = _roomRect.bottomCenter.translate(0, -44); // éloigne du gardien
+          // éloigne le héros du boss (bas de la salle du fond)
+          _rHero = Offset(_rooms.last.center.dx, _rooms.last.bottom - 44);
           if (won == true) {
             _guardAlive = false;
             _itemsUnlocked++;
@@ -590,13 +654,21 @@ class _FluoNavScreenState extends State<FluoNavScreen>
         }
       }
     } else if (_view == _View.room) {
-      // déplacement joystick dans la pièce
+      // déplacement joystick : libre tant qu'on reste sur une salle ou un couloir
       if (_joy.distance > 0.08) {
-        final n = _rHero + _joy * _speed * _kJoyFactor * dt;
-        final inset = _roomRect.deflate(14);
-        _rHero = Offset(n.dx.clamp(inset.left, inset.right),
-            n.dy.clamp(inset.top, inset.bottom));
+        final step = _joy * _speed * _kJoyFactor * dt;
+        if (_roomWalkable(_rHero + step)) {
+          _rHero += step;
+        } else if (_roomWalkable(_rHero + Offset(step.dx, 0))) {
+          _rHero += Offset(step.dx, 0);
+        } else if (_roomWalkable(_rHero + Offset(0, step.dy))) {
+          _rHero += Offset(0, step.dy);
+        }
       }
+      // la caméra suit l'avatar (map d'étage plus grande que l'écran)
+      final tc =
+          _clampRoomCam(_rHero - Offset(_size.width / 2, _size.height / 2));
+      _roomCam += (tc - _roomCam) * math.min(1.0, dt * 6);
       for (final c in _candles) {
         if (!c.lit && (c.pos - _rHero).distance < 30) {
           c.lit = true;
@@ -775,7 +847,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           if (_view == _View.map && _solved && _verdict != null) _verdictPanel(),
           // joystick de déplacement (à droite) — manoir + pièce d'étage
           if (_view == _View.map || _view == _View.room)
-            Positioned(right: 18, bottom: 70, child: _joystick()),
+            Positioned(right: 18, bottom: 32, child: _joystick()),
         ]);
       }),
     );
@@ -1190,29 +1262,52 @@ class _NavPainter extends CustomPainter {
     }
   }
 
-  // ── PIÈCE D'ÉTAGE : on fouille (bougies + indice + gardien) ────────────────
+  // ── MAP D'ÉTAGE : salles séparées par un mini couloir, le boss au fond ─────
+  // Le monde est plus grand que l'écran : la caméra (g._roomCam) suit l'avatar.
   void _paintRoom(Canvas canvas, Size size) {
     final dom = g._doms[g._domain];
-    final rect = Offset.zero & size;
     final act = dom.activities[g._activity];
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF050608));
-    // sol + murs de la pièce
-    final rr = RRect.fromRectAndRadius(g._roomRect, const Radius.circular(8));
-    canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B0D12));
-    canvas.drawRRect(rr, _stroke(const Color(0xFF7C8AA0).withOpacity(0.5), 2));
-    // dalles
-    canvas.save();
-    canvas.clipRRect(rr);
-    final grid = _stroke(const Color(0xFF161A22), 1);
-    for (double x = g._roomRect.left; x < g._roomRect.right; x += 30) {
-      canvas.drawLine(Offset(x, g._roomRect.top), Offset(x, g._roomRect.bottom), grid);
-    }
-    for (double y = g._roomRect.top; y < g._roomRect.bottom; y += 30) {
-      canvas.drawLine(Offset(g._roomRect.left, y), Offset(g._roomRect.right, y), grid);
-    }
-    canvas.restore();
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFF050608));
 
-    // contenu (indice, gardien, bougies) — sera voilé puis révélé par la lumière
+    final cam = g._roomCam;
+    canvas.save();
+    canvas.translate(-cam.dx, -cam.dy);
+
+    // couloirs reliant les salles
+    for (final c in g._corridors) {
+      final rr = RRect.fromRectAndRadius(c, const Radius.circular(5));
+      canvas.drawRRect(rr, Paint()..color = const Color(0xFF090B10));
+      canvas.drawLine(c.topLeft, c.topRight,
+          _stroke(const Color(0xFF7C8AA0).withOpacity(0.4), 1.6));
+      canvas.drawLine(c.bottomLeft, c.bottomRight,
+          _stroke(const Color(0xFF7C8AA0).withOpacity(0.4), 1.6));
+    }
+
+    // salles (la dernière = salle du boss, liseré rouge)
+    for (var ri = 0; ri < g._rooms.length; ri++) {
+      final room = g._rooms[ri];
+      final isBoss = ri == g._rooms.length - 1;
+      final rr = RRect.fromRectAndRadius(room, const Radius.circular(8));
+      canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B0D12));
+      canvas.drawRRect(
+          rr,
+          _stroke(
+              (isBoss ? const Color(0xFFFF4D5E) : const Color(0xFF7C8AA0))
+                  .withOpacity(0.5),
+              2));
+      canvas.save();
+      canvas.clipRRect(rr);
+      final grid = _stroke(const Color(0xFF161A22), 1);
+      for (double x = room.left; x < room.right; x += 30) {
+        canvas.drawLine(Offset(x, room.top), Offset(x, room.bottom), grid);
+      }
+      for (double y = room.top; y < room.bottom; y += 30) {
+        canvas.drawLine(Offset(room.left, y), Offset(room.right, y), grid);
+      }
+      canvas.restore();
+    }
+
+    // contenu (indice, boss, bougies) — voilé puis révélé par la lumière
     if (!g._clueTaken) {
       final pz = 0.6 + 0.4 * math.sin(g._t * 4);
       _glow(canvas, g._cluePos, 14 * pz, const Color(0xFFFFD36B).withOpacity(0.5));
@@ -1220,33 +1315,37 @@ class _NavPainter extends CustomPainter {
     }
     if (g._guardAlive) {
       final gp = 0.5 + 0.5 * math.sin(g._t * 3);
-      _glow(canvas, g._guardPos, 22, const Color(0xFFFF4D5E).withOpacity(0.4 + gp * 0.2));
-      canvas.drawCircle(g._guardPos, 16, Paint()..color = const Color(0xFF2A0F14));
-      canvas.drawCircle(g._guardPos, 16, _stroke(const Color(0xFFFF4D5E), 2));
+      _glow(canvas, g._guardPos, 30,
+          const Color(0xFFFF4D5E).withOpacity(0.4 + gp * 0.2));
+      canvas.drawCircle(g._guardPos, 22, Paint()..color = const Color(0xFF2A0F14));
+      canvas.drawCircle(g._guardPos, 22, _stroke(const Color(0xFFFF4D5E), 2.4));
       // yeux
-      canvas.drawCircle(g._guardPos.translate(-5, -2), 2.4,
+      canvas.drawCircle(g._guardPos.translate(-7, -3), 3,
           Paint()..color = const Color(0xFFFF4D5E));
-      canvas.drawCircle(g._guardPos.translate(5, -2), 2.4,
+      canvas.drawCircle(g._guardPos.translate(7, -3), 3,
           Paint()..color = const Color(0xFFFF4D5E));
-      _text(canvas, '☠', g._guardPos.translate(0, 12),
-          const Color(0xFFFF4D5E).withOpacity(0.8), 11);
+      _text(canvas, '☠ BOSS', g._guardPos.translate(0, 22),
+          const Color(0xFFFF4D5E).withOpacity(0.85), 11, weight: FontWeight.w800);
     }
     for (final c in g._candles) {
       _drawTorch(canvas, c.pos, c.lit);
     }
 
-    // voile d'ombre, percé par la lampe du héros + les bougies allumées
-    canvas.saveLayer(rect, Paint());
-    canvas.drawRect(rect, Paint()..color = const Color(0xFF05060B).withOpacity(0.92));
-    _punch(canvas, g._rHero, 110);
+    // voile d'ombre sur la zone visible, percé par la lampe + bougies allumées
+    final visible = Rect.fromLTWH(cam.dx, cam.dy, size.width, size.height);
+    canvas.saveLayer(visible, Paint());
+    canvas.drawRect(
+        visible, Paint()..color = const Color(0xFF05060B).withOpacity(0.92));
+    _punch(canvas, g._rHero, 120);
     for (final c in g._candles) {
       if (c.lit) _punch(canvas, c.pos, 90);
     }
     canvas.restore();
 
     _drawHero(canvas, g._rHero, const Color(0xFFB6FF3C));
+    canvas.restore();
 
-    // HUD
+    // HUD (espace écran, hors caméra)
     _text(canvas, 'ÉTAGE · ${act.name.toUpperCase()}',
         Offset(size.width / 2, 30), const Color(0xFF7C8AA0), 18,
         weight: FontWeight.w900);
@@ -1254,14 +1353,24 @@ class _NavPainter extends CustomPainter {
     _text(
         canvas,
         g._guardAlive
-            ? 'Allume les bougies · ramasse l\'indice · le gardien ☠ garde la sortie'
+            ? 'Explore les salles · ramasse l\'indice · le boss ☠ t\'attend au fond'
             : 'Étage nettoyé ✓ — reviens au manoir',
         Offset(size.width / 2, 52),
         const Color(0xFF8FA0C8),
         11);
-    _text(canvas, '🕯 $litN/${g._candles.length}   ·   🔍 ${g._clueTaken ? "indice ✓" : "indice ?"}',
+    _text(
+        canvas,
+        '🕯 $litN/${g._candles.length}   ·   🔍 ${g._clueTaken ? "indice ✓" : "indice ?"}',
         Offset(size.width / 2, size.height - 24),
-        const Color(0xFFFFB35A), 12, weight: FontWeight.w700);
+        const Color(0xFFFFB35A),
+        12,
+        weight: FontWeight.w700);
+    // boussole : le boss est hors-champ à droite → indique la direction
+    if (g._guardAlive && g._guardPos.dx - cam.dx > size.width - 8) {
+      _text(canvas, 'Boss →', Offset(size.width - 48, size.height / 2),
+          const Color(0xFFFF4D5E).withOpacity(0.85), 13,
+          weight: FontWeight.w800);
+    }
   }
 
   void _drawTorch(Canvas canvas, Offset p, bool lit) {
