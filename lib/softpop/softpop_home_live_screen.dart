@@ -178,7 +178,8 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
         ),
       );
 
-  // Groupe les routines par DayBlock (Matin/Midi/Soir). Hors-bloc → « À tout moment ».
+  // Groupe les routines par DayBlock (Matin/Midi/Soir) SI des blocs existent.
+  // Sinon (UI blocs désactivée → aucun DayBlock) : liste plate, sans sous-titre.
   List<Widget> _blocks(List<Activity> habits) {
     final out = <Widget>[];
     final placed = <String>{};
@@ -190,6 +191,14 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
       out.addAll(_section(b.emoji ?? '•', b.name, items));
     }
     final rest = habits.where((a) => !placed.contains(a.id)).toList();
+    if (out.isEmpty) {
+      // Aucun bloc : liste plate directe sous « Aujourd'hui ».
+      for (final a in rest) {
+        out.add(_tile(a));
+        out.add(const SizedBox(height: SoftPop.s8));
+      }
+      return out;
+    }
     if (rest.isNotEmpty) out.addAll(_section('🕐', 'À tout moment', rest));
     return out;
   }
