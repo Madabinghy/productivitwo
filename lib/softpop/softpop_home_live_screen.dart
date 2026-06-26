@@ -26,6 +26,89 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
   AppLogic get logic => widget.logic;
   DateTime get _today => DateTime.now();
 
+  @override
+  void initState() {
+    super.initState();
+    _ensureDefaultBlocks();
+  }
+
+  // Réactivation des blocs : crée Matin/Midi/Soir par défaut s'il n'y en a aucun.
+  void _ensureDefaultBlocks() {
+    if (logic.state.blocks.isNotEmpty) return;
+    logic.createBlock('Matin', emoji: '🌅');
+    logic.createBlock('Midi', emoji: '☀️');
+    logic.createBlock('Soir', emoji: '🌙');
+  }
+
+  DayBlock? _blockOf(String activityId) {
+    for (final b in logic.state.blocks) {
+      if (b.activityIds.contains(activityId)) return b;
+    }
+    return null;
+  }
+
+  void _assign(Activity a, String? blockId) {
+    for (final b in logic.state.blocks) {
+      if (b.activityIds.contains(a.id)) {
+        logic.removeActivityFromBlock(b.id, a.id);
+      }
+    }
+    if (blockId != null) logic.addActivityToBlock(blockId, a.id);
+    setState(() {});
+  }
+
+  Future<void> _pickMoment(Activity a) async {
+    final blocks = [...logic.state.blocks]
+      ..sort((x, y) => x.order.compareTo(y.order));
+    final current = _blockOf(a.id);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: SoftPop.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(SoftPop.rCard)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(SoftPop.s16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Ranger « ${a.name} »',
+                  style: SoftPop.ui(size: 16, weight: FontWeight.w700)),
+              const SizedBox(height: SoftPop.s12),
+              for (final b in blocks)
+                ListTile(
+                  leading: Text(b.emoji ?? '•',
+                      style: const TextStyle(fontSize: 20)),
+                  title: Text(b.name, style: SoftPop.ui(size: 15)),
+                  trailing: current?.id == b.id
+                      ? const Icon(Icons.check_circle, color: SoftPop.teal)
+                      : null,
+                  onTap: () {
+                    _assign(a, b.id);
+                    Navigator.pop(ctx);
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.clear, color: SoftPop.inkMuted),
+                title: Text('Aucun moment',
+                    style: SoftPop.ui(size: 15, color: SoftPop.inkSecondary)),
+                trailing: current == null
+                    ? const Icon(Icons.check_circle, color: SoftPop.teal)
+                    : null,
+                onTap: () {
+                  _assign(a, null);
+                  Navigator.pop(ctx);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   static const _palette = [
     SoftPop.violet, SoftPop.coral, SoftPop.teal, SoftPop.amber, SoftPop.pink,
   ];
@@ -286,6 +369,8 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
               ],
             ),
           ),
+          _momentBtn(a),
+          const SizedBox(width: SoftPop.s8),
           AnimatedContainer(
             duration: const Duration(milliseconds: 150),
             width: 30,
@@ -304,6 +389,26 @@ class _SoftPopHomeLiveScreenState extends State<SoftPopHomeLiveScreen> {
                 : null,
           ),
         ],
+      ),
+    );
+  }
+
+  // Bouton d'assignation à un moment : montre l'emoji du bloc courant, ou un +.
+  Widget _momentBtn(Activity a) {
+    final b = _blockOf(a.id);
+    return InkWell(
+      borderRadius: BorderRadius.circular(SoftPop.rPill),
+      onTap: () => _pickMoment(a),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: SoftPop.s8, vertical: SoftPop.s4),
+        decoration: BoxDecoration(
+          color: SoftPop.violetSoft,
+          borderRadius: BorderRadius.circular(SoftPop.rPill),
+        ),
+        child: b != null
+            ? Text(b.emoji ?? b.name, style: const TextStyle(fontSize: 14))
+            : const Icon(Icons.more_time, size: 16, color: SoftPop.violet),
       ),
     );
   }
