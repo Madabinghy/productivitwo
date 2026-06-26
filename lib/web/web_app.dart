@@ -32,6 +32,7 @@ import 'package:productivitwo_v1/softpop/softpop_onboarding_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_focus_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_lair_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_strategy_screen.dart';
+import 'package:productivitwo_v1/main.dart' show softpopShellEnabled;
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -298,6 +299,12 @@ class _AuthGateState extends State<_AuthGate> {
         // Page de DÉV : prévisu mobile native dans un cadre téléphone.
         if (kIsWeb &&
             Uri.base.queryParameters['mobilepreview'] == 'true') {
+          return MobilePreviewScreen(sync: FirestoreSync());
+        }
+        // Nouvelle UI Soft Pop AVEC TES DONNÉES (sans build iOS) : on force le
+        // flag du shell puis on rend l'app mobile complète (session web authent.).
+        if (kIsWeb && Uri.base.queryParameters['softpop'] == 'app') {
+          softpopShellEnabled.value = true;
           return MobilePreviewScreen(sync: FirestoreSync());
         }
         // Page de DÉV : ouvre direct le Monde (cinématique/combat) — recharge
