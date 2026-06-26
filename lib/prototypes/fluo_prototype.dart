@@ -847,7 +847,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
           if (_view == _View.map && _solved && _verdict != null) _verdictPanel(),
           // joystick de déplacement (à droite) — manoir + pièce d'étage
           if (_view == _View.map || _view == _View.room)
-            Positioned(right: 18, bottom: 70, child: _joystick()),
+            Positioned(right: 18, bottom: 32, child: _joystick()),
         ]);
       }),
     );
