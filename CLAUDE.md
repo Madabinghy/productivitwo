@@ -5,6 +5,28 @@ Langue du code : anglais. Langue des commentaires et UI : français.
 
 ---
 
+## ⏪ Refonte en cours « Soft Pop » + point de restauration
+
+Depuis 2026-06, l'app est en **refonte** : nouvelle direction design **« Soft Pop »**
+(Fredoka/Space Mono, palette violet/corail/teal, ton calme jamais punitif) + nouvelle
+**couche jeu opt-in** (tower-defense / raid asynchrone entre amis ; monnaies **XP / ⚡ énergie /
+💎 gemmes** ; équité par **% du standard personnel**, pas le volume). On **transforme `main`
+directement, PR par PR** (pas de branche longue).
+
+**Stratégie de retour en arrière si la direction n'est pas retenue :**
+
+- **Point de restauration permanent** = branche **`archive/style-actuel-2026-06`** sur le remote
+  (commit `2f335d1`) = l'app/style AVANT la refonte. Ne jamais la modifier ni la supprimer.
+- **Repêcher un fichier précis** de l'ancien design :
+  `git checkout archive/style-actuel-2026-06 -- <chemin>`.
+- **Tout restaurer** : recréer une branche depuis `archive/style-actuel-2026-06` et la remettre
+  en `main` (PR de restauration). Rien n'est perdu tant qu'on ne **force-push jamais** sur `main`.
+- ⚠️ Ne **jamais** force-push sur `main` (ça écraserait l'historique du style actuel).
+- Note : les **tags** ne sont pas poussables via le proxy git de session (403 politique) — d'où
+  l'usage d'une **branche d'archive** comme repère, créée via l'API GitHub.
+
+---
+
 ## Workflow PR (important)
 
 L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussitôt
