@@ -13,7 +13,9 @@
 // Dessiné en code. Accès démo standalone : ?proto=fluo (sans données).
 
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:productivitwo_v1/prototypes/orbit_prototype.dart';
 import 'package:productivitwo_v1/prototypes/td_prototype.dart';
@@ -176,6 +178,12 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   Offset _guardPos = Offset.zero;
   bool _guardAlive = true;
   bool _inGuardFight = false;
+  // sprite du boss (araignée) : spritesheet 6×4 de frames 256px (anim « idle »)
+  ui.Image? _bossImg;
+  ui.Image? _bossShadow;
+  static const int _bossCols = 6;
+  static const int _bossFrames = 24;
+  static const double _bossFrameSize = 256;
 
   // node-map (vue run) — carte infinie
   static const double _rowGap = 120;
@@ -210,6 +218,27 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _doms = (d == null || d.isEmpty) ? _demoDoms : d;
     _bodies = widget.bodies ?? _synthBodies(_doms);
     _ticker = createTicker(_tick)..start();
+    _loadBossSprite();
+  }
+
+  Future<void> _loadBossSprite() async {
+    try {
+      final img = await _decodeAsset('assets/sprites/boss_spider_idle.png');
+      final sh = await _decodeAsset('assets/sprites/boss_spider_idle_shadow.png');
+      if (!mounted) return;
+      setState(() {
+        _bossImg = img;
+        _bossShadow = sh;
+      });
+    } catch (_) {
+      // pas de sprite → fallback dessiné en code (cercle), aucune erreur bloquante
+    }
+  }
+
+  Future<ui.Image> _decodeAsset(String path) async {
+    final data = await rootBundle.load(path);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+    return (await codec.getNextFrame()).image;
   }
 
   // Galaxie de démo (si aucune donnée fournie).
@@ -1273,38 +1302,68 @@ class _NavPainter extends CustomPainter {
     canvas.save();
     canvas.translate(-cam.dx, -cam.dy);
 
-    // couloirs reliant les salles
-    for (final c in g._corridors) {
-      final rr = RRect.fromRectAndRadius(c, const Radius.circular(5));
-      canvas.drawRRect(rr, Paint()..color = const Color(0xFF090B10));
-      canvas.drawLine(c.topLeft, c.topRight,
-          _stroke(const Color(0xFF7C8AA0).withOpacity(0.4), 1.6));
-      canvas.drawLine(c.bottomLeft, c.bottomRight,
-          _stroke(const Color(0xFF7C8AA0).withOpacity(0.4), 1.6));
+    // Sol continu : salles + couloirs partagent la même couleur de sol, puis on
+    // ne trace les murs QUE là où il n'y a pas d'ouverture → aucun mur entre un
+    // couloir et la salle qu'il dessert.
+    const floor = Color(0xFF0B0D12);
+    final grid = _stroke(const Color(0xFF161A22), 1);
+    final wallN = _stroke(const Color(0xFF7C8AA0).withOpacity(0.5), 2);
+
+    void fillAndGrid(Rect r) {
+      canvas.drawRect(r, Paint()..color = floor);
+      canvas.save();
+      canvas.clipRect(r);
+      for (double x = r.left; x < r.right; x += 30) {
+        canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), grid);
+      }
+      for (double y = r.top; y < r.bottom; y += 30) {
+        canvas.drawLine(Offset(r.left, y), Offset(r.right, y), grid);
+      }
+      canvas.restore();
     }
 
-    // salles (la dernière = salle du boss, liseré rouge)
+    for (final c in g._corridors) {
+      fillAndGrid(c);
+    }
+    for (final room in g._rooms) {
+      fillAndGrid(room);
+    }
+
+    // murs des couloirs : uniquement entre deux salles (le reste = ouverture)
+    for (var k = 0; k < g._corridors.length; k++) {
+      final c = g._corridors[k];
+      final a = g._rooms[k], b = g._rooms[k + 1];
+      canvas.drawLine(Offset(a.right, c.top), Offset(b.left, c.top), wallN);
+      canvas.drawLine(Offset(a.right, c.bottom), Offset(b.left, c.bottom), wallN);
+    }
+
+    // murs des salles : pleins, sauf l'ouverture vers le(s) couloir(s)
     for (var ri = 0; ri < g._rooms.length; ri++) {
       final room = g._rooms[ri];
       final isBoss = ri == g._rooms.length - 1;
-      final rr = RRect.fromRectAndRadius(room, const Radius.circular(8));
-      canvas.drawRRect(rr, Paint()..color = const Color(0xFF0B0D12));
-      canvas.drawRRect(
-          rr,
-          _stroke(
-              (isBoss ? const Color(0xFFFF4D5E) : const Color(0xFF7C8AA0))
-                  .withOpacity(0.5),
-              2));
-      canvas.save();
-      canvas.clipRRect(rr);
-      final grid = _stroke(const Color(0xFF161A22), 1);
-      for (double x = room.left; x < room.right; x += 30) {
-        canvas.drawLine(Offset(x, room.top), Offset(x, room.bottom), grid);
+      final wall = isBoss
+          ? _stroke(const Color(0xFFFF4D5E).withOpacity(0.5), 2)
+          : wallN;
+      canvas.drawLine(room.topLeft, room.topRight, wall);
+      canvas.drawLine(room.bottomLeft, room.bottomRight, wall);
+      // gauche : ouverture si un couloir arrive de la gauche
+      final leftGap = ri > 0 ? g._corridors[ri - 1] : null;
+      if (leftGap == null) {
+        canvas.drawLine(room.topLeft, room.bottomLeft, wall);
+      } else {
+        canvas.drawLine(room.topLeft, Offset(room.left, leftGap.top), wall);
+        canvas.drawLine(
+            Offset(room.left, leftGap.bottom), room.bottomLeft, wall);
       }
-      for (double y = room.top; y < room.bottom; y += 30) {
-        canvas.drawLine(Offset(room.left, y), Offset(room.right, y), grid);
+      // droite : ouverture si un couloir part vers la droite
+      final rightGap = ri < g._corridors.length ? g._corridors[ri] : null;
+      if (rightGap == null) {
+        canvas.drawLine(room.topRight, room.bottomRight, wall);
+      } else {
+        canvas.drawLine(room.topRight, Offset(room.right, rightGap.top), wall);
+        canvas.drawLine(
+            Offset(room.right, rightGap.bottom), room.bottomRight, wall);
       }
-      canvas.restore();
     }
 
     // contenu (indice, boss, bougies) — voilé puis révélé par la lumière
@@ -1313,20 +1372,7 @@ class _NavPainter extends CustomPainter {
       _glow(canvas, g._cluePos, 14 * pz, const Color(0xFFFFD36B).withOpacity(0.5));
       _text(canvas, '🔍', g._cluePos, const Color(0xFFFFE08A), 18);
     }
-    if (g._guardAlive) {
-      final gp = 0.5 + 0.5 * math.sin(g._t * 3);
-      _glow(canvas, g._guardPos, 30,
-          const Color(0xFFFF4D5E).withOpacity(0.4 + gp * 0.2));
-      canvas.drawCircle(g._guardPos, 22, Paint()..color = const Color(0xFF2A0F14));
-      canvas.drawCircle(g._guardPos, 22, _stroke(const Color(0xFFFF4D5E), 2.4));
-      // yeux
-      canvas.drawCircle(g._guardPos.translate(-7, -3), 3,
-          Paint()..color = const Color(0xFFFF4D5E));
-      canvas.drawCircle(g._guardPos.translate(7, -3), 3,
-          Paint()..color = const Color(0xFFFF4D5E));
-      _text(canvas, '☠ BOSS', g._guardPos.translate(0, 22),
-          const Color(0xFFFF4D5E).withOpacity(0.85), 11, weight: FontWeight.w800);
-    }
+    if (g._guardAlive) _drawBoss(canvas, g._guardPos);
     for (final c in g._candles) {
       _drawTorch(canvas, c.pos, c.lit);
     }
@@ -1584,6 +1630,37 @@ class _NavPainter extends CustomPainter {
               ..close(),
             Paint()..color = c);
     }
+  }
+
+  // Boss = sprite araignée animé (anim « idle »). Sans sprite chargé → cercle.
+  void _drawBoss(Canvas canvas, Offset p) {
+    final gp = 0.5 + 0.5 * math.sin(g._t * 3);
+    _glow(canvas, p, 34,
+        const Color(0xFFFF4D5E).withOpacity(0.28 + gp * 0.14));
+    final img = g._bossImg;
+    if (img == null) {
+      canvas.drawCircle(p, 22, Paint()..color = const Color(0xFF2A0F14));
+      canvas.drawCircle(p, 22, _stroke(const Color(0xFFFF4D5E), 2.4));
+      canvas.drawCircle(p.translate(-7, -3), 3,
+          Paint()..color = const Color(0xFFFF4D5E));
+      canvas.drawCircle(p.translate(7, -3), 3,
+          Paint()..color = const Color(0xFFFF4D5E));
+    } else {
+      const fs = _FluoNavScreenState._bossFrameSize;
+      final f = (g._t * 10).floor() % _FluoNavScreenState._bossFrames;
+      final src = Rect.fromLTWH((f % _FluoNavScreenState._bossCols) * fs,
+          (f ~/ _FluoNavScreenState._bossCols) * fs, fs, fs);
+      const sz = 150.0;
+      final dst = Rect.fromCenter(center: p, width: sz, height: sz);
+      final sh = g._bossShadow;
+      if (sh != null) {
+        canvas.drawImageRect(sh, src, dst,
+            Paint()..color = Colors.white.withOpacity(0.6));
+      }
+      canvas.drawImageRect(img, src, dst, Paint());
+    }
+    _text(canvas, '☠ BOSS', p.translate(0, 56),
+        const Color(0xFFFF4D5E).withOpacity(0.9), 12, weight: FontWeight.w800);
   }
 
   void _drawHero(Canvas canvas, Offset p, Color c) {
