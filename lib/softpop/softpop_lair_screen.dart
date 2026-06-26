@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
 import 'softpop_components.dart';
+import 'softpop_strategy_screen.dart';
 
 /// Ami raidable (mock).
 class _Friend {
@@ -281,16 +282,19 @@ class SoftPopLairScreen extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(SoftPop.rPill),
         onTap: () {
+          if (canRaid) {
+            Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const SoftPopStrategyScreen()));
+            return;
+          }
           ScaffoldMessenger.of(context)
             ..clearSnackBars()
             ..showSnackBar(SnackBar(
               content: Text(
-                  canRaid
-                      ? 'Raid sur ${f.name} → Constructeur de stratégie (à venir)'
-                      : 'Énergie trop basse. Fais des routines pour recharger.',
+                  'Énergie trop basse. Fais des routines pour recharger.',
                   style: SoftPop.ui(
                       color: Colors.white, weight: FontWeight.w600)),
-              backgroundColor: canRaid ? SoftPop.violet : SoftPop.inkSecondary,
+              backgroundColor: SoftPop.inkSecondary,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(SoftPop.rChip)),
