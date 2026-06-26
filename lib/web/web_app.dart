@@ -22,6 +22,7 @@ import 'package:productivitwo_v1/prototypes/expedition_prototype.dart';
 import 'package:productivitwo_v1/web/fluo_data_screen.dart';
 import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
+import 'package:productivitwo_v1/softpop/softpop_home_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -176,6 +177,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['proto'] == 'expedition') return const ExpeditionScreen();
       // Aperçu du design system « Soft Pop » (refonte) — sans auth ni données.
       if (params['softpop'] == '1') return const SoftPopPreviewScreen();
+      // Aperçu de l'écran Accueil refondu (boucle cœur, données mock).
+      if (params['softpop'] == 'home') return const SoftPopHomeScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).

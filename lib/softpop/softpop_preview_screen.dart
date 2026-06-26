@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
 import 'softpop_components.dart';
+import 'softpop_home_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -29,6 +30,15 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
               SoftPop.s16, SoftPop.s8, SoftPop.s16, SoftPop.s32),
           children: [
             _heroHeader(),
+            const SizedBox(height: SoftPop.s16),
+            SoftHeroButton(
+              label: 'Voir l’écran Accueil',
+              icon: Icons.home_outlined,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                    builder: (_) => const SoftPopHomeScreen()),
+              ),
+            ),
             const SizedBox(height: SoftPop.s20),
             _section('Couleurs'),
             _swatches(),
