@@ -184,28 +184,31 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['proto'] == 'rive') return const RivePocScreen();
       // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
       if (params['proto'] == 'expedition') return const ExpeditionScreen();
-      // Aperçu du design system « Soft Pop » (refonte) — sans auth ni données.
-      if (params['softpop'] == '1') return const SoftPopPreviewScreen();
-      // Aperçu de l'écran Accueil refondu (boucle cœur, données mock).
-      if (params['softpop'] == 'home') return const SoftPopHomeScreen();
-      // Aperçu des 3 types de routine (compteur / binaire / chrono).
-      if (params['softpop'] == 'routine') return const SoftPopRoutineTypesScreen();
-      // Aperçu de l'écran Série (streaks, non punitif).
-      if (params['softpop'] == 'streak') return const SoftPopStreakScreen();
-      // Aperçu de l'écran Équilibre des domaines (roue + détail).
-      if (params['softpop'] == 'balance') return const SoftPopBalanceScreen();
-      // Aperçu du détail projet à jalons (frise + actions).
-      if (params['softpop'] == 'project') return const SoftPopProjectScreen();
-      // Aperçu de la célébration de jalon (confettis + récompenses).
-      if (params['softpop'] == 'celebrate') return const SoftPopCelebrationScreen();
-      // Aperçu de l'onboarding refondu (catalogue réel partagé).
-      if (params['softpop'] == 'onboarding') return const SoftPopOnboardingScreen();
-      // Aperçu de l'écran Maintenant / Focus (file de routines + chrono).
-      if (params['softpop'] == 'focus') return const SoftPopFocusScreen();
-      // Aperçu du Repaire (hub de la couche jeu).
-      if (params['softpop'] == 'lair') return const SoftPopLairScreen();
-      // Aperçu du Constructeur de stratégie (allocation ⚡ + résolution du duel).
-      if (params['softpop'] == 'strategy') return const SoftPopStrategyScreen();
+      // Aperçus refonte « Soft Pop » (sans auth ni données). Les écrans sont des
+      // Scaffold sans MaterialApp → on les enveloppe ici pour l'entrée web.
+      final softpop = params['softpop'];
+      if (softpop != null) {
+        final screen = <String, Widget>{
+          '1': const SoftPopPreviewScreen(),
+          'home': const SoftPopHomeScreen(),
+          'routine': const SoftPopRoutineTypesScreen(),
+          'streak': const SoftPopStreakScreen(),
+          'balance': const SoftPopBalanceScreen(),
+          'project': const SoftPopProjectScreen(),
+          'celebrate': const SoftPopCelebrationScreen(),
+          'onboarding': const SoftPopOnboardingScreen(),
+          'focus': const SoftPopFocusScreen(),
+          'lair': const SoftPopLairScreen(),
+          'strategy': const SoftPopStrategyScreen(),
+        }[softpop];
+        if (screen != null) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            locale: const Locale('fr', 'FR'),
+            home: screen,
+          );
+        }
+      }
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
