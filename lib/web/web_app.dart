@@ -32,7 +32,8 @@ import 'package:productivitwo_v1/softpop/softpop_onboarding_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_focus_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_lair_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_strategy_screen.dart';
-import 'package:productivitwo_v1/main.dart' show softpopShellEnabled;
+import 'package:productivitwo_v1/main.dart'
+    show softpopShellEnabled, loadSoftpopShellFlag;
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -139,6 +140,22 @@ class _AuthGateState extends State<_AuthGate> {
   void initState() {
     super.initState();
     _stream = _buildStream();
+    // Flag refonte (par navigateur) : permet à la PWA installée (start_url "/")
+    // d'ouvrir directement le shell Soft Pop une fois activé.
+    loadSoftpopShellFlag().then((_) {
+      if (mounted) setState(() {});
+    });
+    softpopShellEnabled.addListener(_onSoftpopFlag);
+  }
+
+  void _onSoftpopFlag() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    softpopShellEnabled.removeListener(_onSoftpopFlag);
+    super.dispose();
   }
 
   Future<void> _signInDemo() async {
@@ -301,10 +318,15 @@ class _AuthGateState extends State<_AuthGate> {
             Uri.base.queryParameters['mobilepreview'] == 'true') {
           return MobilePreviewScreen(sync: FirestoreSync());
         }
-        // Nouvelle UI Soft Pop AVEC TES DONNÉES (sans build iOS) : on force le
-        // flag du shell puis on rend l'app mobile complète (session web authent.).
-        if (kIsWeb && Uri.base.queryParameters['softpop'] == 'app') {
-          softpopShellEnabled.value = true;
+        // Nouvelle UI Soft Pop AVEC TES DONNÉES (sans build iOS) : ?softpop=app
+        // l'active, et le flag persistant la rouvre ensuite à la racine "/"
+        // (donc la PWA installée ouvre directement le shell). Réversible.
+        if (kIsWeb &&
+            (Uri.base.queryParameters['softpop'] == 'app' ||
+                softpopShellEnabled.value)) {
+          if (Uri.base.queryParameters['softpop'] == 'app') {
+            softpopShellEnabled.value = true;
+          }
           return MobilePreviewScreen(sync: FirestoreSync());
         }
         // Page de DÉV : ouvre direct le Monde (cinématique/combat) — recharge
