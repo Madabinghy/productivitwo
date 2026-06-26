@@ -5,6 +5,7 @@ import 'softpop_components.dart';
 import 'softpop_home_screen.dart';
 import 'softpop_routine_types_screen.dart';
 import 'softpop_streak_screen.dart';
+import 'softpop_balance_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -62,6 +63,15 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) => const SoftPopStreakScreen()),
+                  ),
+                ),
+                SoftPill(
+                  label: 'Équilibre',
+                  icon: Icons.donut_large,
+                  accent: SoftPop.amber,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopBalanceScreen()),
                   ),
                 ),
               ],
