@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -81,6 +82,50 @@ class _SoftPopFocusLiveScreenState extends State<SoftPopFocusLiveScreen> {
     });
   }
 
+  // ── Chrono (Session) ────────────────────────────────────────────────────────
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _openSession() != null) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  Session? _openSession() {
+    Session? last;
+    for (final s in logic.state.sessions) {
+      if (s.endAt != null) continue;
+      if (last == null || s.startAt.isAfter(last.startAt)) last = s;
+    }
+    return last;
+  }
+
+  void _stopChrono() {
+    for (final s in logic.state.sessions.where((s) => s.endAt == null)) {
+      s.endAt = DateTime.now();
+    }
+    logic.onChange();
+    setState(() {});
+  }
+
+  String _fmt(Duration d) {
+    final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
+    final mm = m.toString().padLeft(2, '0'), ss = s.toString().padLeft(2, '0');
+    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+  }
+
+  // Activités-temps (chronométrables).
+  List<Activity> get _timeActivities =>
+      logic.state.activeActivities.where((a) => !a.isHabit).toList();
+
   @override
   Widget build(BuildContext context) {
     final queue = _queue;
@@ -90,35 +135,164 @@ class _SoftPopFocusLiveScreenState extends State<SoftPopFocusLiveScreen> {
           logic.habitValueOn(a.id, _today) > 0;
     }).length;
     final done = total - queue.length;
+    final open = _openSession();
+    final timeActs = _timeActivities;
     return Theme(
       data: softPopTheme(),
       child: Scaffold(
         appBar: AppBar(title: const Text('Maintenant')),
-        body: queue.isEmpty
-            ? _empty(done)
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(
-                    SoftPop.s16, SoftPop.s8, SoftPop.s16, SoftPop.s32),
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text('$done faites · ${queue.length} à faire',
-                        style: SoftPop.ui(size: 12, color: SoftPop.inkMuted)),
-                  ),
-                  const SizedBox(height: SoftPop.s8),
-                  _focusCard(queue.first),
-                  if (queue.length > 1) ...[
-                    const SizedBox(height: SoftPop.s24),
-                    Text('À suivre',
-                        style: SoftPop.ui(size: 16, weight: FontWeight.w700)),
-                    const SizedBox(height: SoftPop.s12),
-                    for (final a in queue.skip(1).take(4)) _upNext(a),
-                  ],
-                ],
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(
+              SoftPop.s16, SoftPop.s8, SoftPop.s16, SoftPop.s32),
+          children: [
+            if (open != null) ...[
+              _runningCard(open),
+              const SizedBox(height: SoftPop.s16),
+            ],
+            if (queue.isNotEmpty) ...[
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text('$done faites · ${queue.length} à faire',
+                    style: SoftPop.ui(size: 12, color: SoftPop.inkMuted)),
               ),
+              const SizedBox(height: SoftPop.s8),
+              _focusCard(queue.first),
+              if (queue.length > 1) ...[
+                const SizedBox(height: SoftPop.s24),
+                Text('À suivre',
+                    style: SoftPop.ui(size: 16, weight: FontWeight.w700)),
+                const SizedBox(height: SoftPop.s12),
+                for (final a in queue.skip(1).take(4)) _upNext(a),
+              ],
+            ] else
+              _allDone(done),
+            if (timeActs.isNotEmpty) ...[
+              const SizedBox(height: SoftPop.s24),
+              Text('Chrono',
+                  style: SoftPop.ui(size: 16, weight: FontWeight.w700)),
+              const SizedBox(height: SoftPop.s4),
+              Text('Lance un minuteur sur une activité-temps.',
+                  style: SoftPop.ui(size: 12, color: SoftPop.inkSecondary)),
+              const SizedBox(height: SoftPop.s12),
+              for (final a in timeActs) _chronoRow(a, open),
+            ],
+          ],
+        ),
       ),
     );
   }
+
+  Widget _runningCard(Session open) {
+    final a = logic.state.activeActivities.firstWhere(
+      (x) => x.id == open.activityId,
+      orElse: () => Activity(domainId: '', name: '—', habitTarget: 1),
+    );
+    final c = _domColor(a.domainId);
+    return SoftCard(
+      gradient: SoftPop.heroGradient,
+      radius: SoftPop.rCardLg,
+      padding: const EdgeInsets.all(SoftPop.s20),
+      child: Column(
+        children: [
+          Text('EN COURS',
+              style: SoftPop.ui(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: .85),
+                  letterSpacing: 1)),
+          const SizedBox(height: SoftPop.s8),
+          Text(a.name,
+              textAlign: TextAlign.center,
+              style: SoftPop.ui(size: 18, weight: FontWeight.w700, color: Colors.white)),
+          const SizedBox(height: SoftPop.s8),
+          Text(_fmt(DateTime.now().difference(open.startAt)),
+              style: SoftPop.mono(size: 40, weight: FontWeight.w700, color: Colors.white)),
+          const SizedBox(height: SoftPop.s16),
+          Material(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(SoftPop.rPill),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(SoftPop.rPill),
+              onTap: _stopChrono,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: SoftPop.s24, vertical: SoftPop.s12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.stop_rounded, color: c, size: 20),
+                    const SizedBox(width: SoftPop.s8),
+                    Text('Arrêter',
+                        style: SoftPop.ui(
+                            size: 15, weight: FontWeight.w700, color: c)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chronoRow(Activity a, Session? open) {
+    final c = _domColor(a.domainId);
+    final isRunning = open?.activityId == a.id;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: SoftPop.s8),
+      child: SoftCard(
+        padding: const EdgeInsets.all(SoftPop.s12),
+        radius: SoftPop.rCardSm,
+        onTap: () {
+          if (isRunning) {
+            _stopChrono();
+          } else {
+            logic.start(a.id);
+            setState(() {});
+          }
+        },
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: c.withValues(alpha: .14),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Icon(
+                a.iconCode != null
+                    // ignore: non_const_argument_for_const_parameter
+                    ? IconData(a.iconCode!, fontFamily: 'MaterialIcons')
+                    : Icons.timer_outlined,
+                size: 18,
+                color: c,
+              ),
+            ),
+            const SizedBox(width: SoftPop.s12),
+            Expanded(
+              child: Text(a.name,
+                  style: SoftPop.ui(size: 14, weight: FontWeight.w600)),
+            ),
+            Icon(isRunning ? Icons.stop_circle : Icons.play_circle_fill,
+                size: 30, color: c),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _allDone(int done) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: SoftPop.s24),
+        child: Column(
+          children: [
+            const PomoMascot(size: 72),
+            const SizedBox(height: SoftPop.s12),
+            Text('Routines du jour faites ! 🎉',
+                style: SoftPop.ui(size: 18, weight: FontWeight.w700)),
+          ],
+        ),
+      );
 
   Widget _focusCard(Activity a) {
     final c = _domColor(a.domainId);
@@ -210,23 +384,4 @@ class _SoftPopFocusLiveScreenState extends State<SoftPopFocusLiveScreen> {
     );
   }
 
-  Widget _empty(int done) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(SoftPop.s32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const PomoMascot(size: 96),
-              const SizedBox(height: SoftPop.s20),
-              Text('Tout est fait ! 🎉',
-                  style: SoftPop.ui(size: 22, weight: FontWeight.w700)),
-              const SizedBox(height: SoftPop.s8),
-              Text('$done routine${done > 1 ? 's' : ''} accomplie${done > 1 ? 's' : ''} aujourd’hui. Profite 💛',
-                  textAlign: TextAlign.center,
-                  style: SoftPop.ui(
-                      size: 14, color: SoftPop.inkSecondary, height: 1.4)),
-            ],
-          ),
-        ),
-      );
 }
