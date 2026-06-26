@@ -10,6 +10,7 @@ import 'softpop_project_screen.dart';
 import 'softpop_celebration_screen.dart';
 import 'softpop_onboarding_screen.dart';
 import 'softpop_focus_screen.dart';
+import 'softpop_lair_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -67,6 +68,15 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) => const SoftPopFocusScreen()),
+                  ),
+                ),
+                SoftPill(
+                  label: 'Le Repaire (jeu)',
+                  icon: Icons.castle_outlined,
+                  accent: SoftPop.coral,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopLairScreen()),
                   ),
                 ),
               ],
