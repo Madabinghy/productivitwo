@@ -6,6 +6,7 @@ import 'softpop_components.dart';
 import 'softpop_home_live_screen.dart';
 import 'softpop_focus_live_screen.dart';
 import 'softpop_balance_live_screen.dart';
+import 'softpop_projects_live_screen.dart';
 import 'softpop_lair_screen.dart';
 
 /// Coquille de l'app « Soft Pop » — la nouvelle UI quand le flag est actif.
@@ -31,9 +32,9 @@ class _SoftPopShellState extends State<SoftPopShell> {
     final pages = [
       SoftPopHomeLiveScreen(logic: widget.logic),
       SoftPopFocusLiveScreen(logic: widget.logic),
+      SoftPopProjectsLiveScreen(logic: widget.logic),
       SoftPopBalanceLiveScreen(logic: widget.logic),
-      const SoftPopLairScreen(),
-      _SettingsTab(onExitToClassic: widget.onExitToClassic),
+      _MoreTab(onExitToClassic: widget.onExitToClassic),
     ];
     return Theme(
       data: softPopTheme(),
@@ -54,9 +55,9 @@ class _SoftPopShellState extends State<SoftPopShell> {
                 children: [
                   _navItem(0, Icons.home_rounded, 'Accueil'),
                   _navItem(1, Icons.play_circle_fill_rounded, 'Maintenant'),
-                  _navItem(2, Icons.donut_large_rounded, 'Équilibre'),
-                  _navItem(3, Icons.castle_rounded, 'Jeu'),
-                  _navItem(4, Icons.settings_rounded, 'Réglages'),
+                  _navItem(2, Icons.flag_rounded, 'Projets'),
+                  _navItem(3, Icons.donut_large_rounded, 'Équilibre'),
+                  _navItem(4, Icons.grid_view_rounded, 'Plus'),
                 ],
               ),
             ),
@@ -96,14 +97,14 @@ class _SoftPopShellState extends State<SoftPopShell> {
   }
 }
 
-class _SettingsTab extends StatelessWidget {
+class _MoreTab extends StatelessWidget {
   final VoidCallback onExitToClassic;
-  const _SettingsTab({required this.onExitToClassic});
+  const _MoreTab({required this.onExitToClassic});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Réglages')),
+      appBar: AppBar(title: const Text('Plus')),
       body: ListView(
         padding: const EdgeInsets.all(SoftPop.s16),
         children: [
@@ -119,6 +120,31 @@ class _SettingsTab extends StatelessWidget {
                       style: SoftPop.ui(
                           size: 13, color: SoftPop.inkSecondary, height: 1.3)),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(height: SoftPop.s12),
+          SoftCard(
+            radius: SoftPop.rCardSm,
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SoftPopLairScreen())),
+            child: Row(
+              children: [
+                const Icon(Icons.castle_rounded, color: SoftPop.coral),
+                const SizedBox(width: SoftPop.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Le Repaire (jeu)',
+                          style:
+                              SoftPop.ui(size: 15, weight: FontWeight.w600)),
+                      Text('La couche jeu — raid asynchrone (aperçu).',
+                          style: SoftPop.ui(size: 11, color: SoftPop.inkMuted)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, color: SoftPop.inkMuted),
               ],
             ),
           ),
@@ -151,7 +177,7 @@ class _SettingsTab extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: SoftPop.s4),
             child: Text(
-                'Les écrans pas encore portés (projets, stats, abonnement…) restent dans l’app classique.',
+                'Les écrans pas encore portés (stats, abonnement, réglages détaillés…) restent dans l’app classique.',
                 style: SoftPop.ui(size: 11, color: SoftPop.inkMuted, height: 1.3)),
           ),
         ],
