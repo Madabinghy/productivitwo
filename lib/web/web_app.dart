@@ -31,6 +31,7 @@ import 'package:productivitwo_v1/softpop/softpop_celebration_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_onboarding_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_focus_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_lair_screen.dart';
+import 'package:productivitwo_v1/softpop/softpop_strategy_screen.dart';
 import 'package:productivitwo_v1/web/orbit_data_screen.dart';
 import 'package:productivitwo_v1/web/rpg_data_screen.dart';
 import 'package:productivitwo_v1/web/pet_data_screen.dart';
@@ -203,6 +204,8 @@ class _AuthGateState extends State<_AuthGate> {
       if (params['softpop'] == 'focus') return const SoftPopFocusScreen();
       // Aperçu du Repaire (hub de la couche jeu).
       if (params['softpop'] == 'lair') return const SoftPopLairScreen();
+      // Aperçu du Constructeur de stratégie (allocation ⚡ + résolution du duel).
+      if (params['softpop'] == 'strategy') return const SoftPopStrategyScreen();
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).

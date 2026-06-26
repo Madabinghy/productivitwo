@@ -11,6 +11,7 @@ import 'softpop_celebration_screen.dart';
 import 'softpop_onboarding_screen.dart';
 import 'softpop_focus_screen.dart';
 import 'softpop_lair_screen.dart';
+import 'softpop_strategy_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -77,6 +78,15 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                         builder: (_) => const SoftPopLairScreen()),
+                  ),
+                ),
+                SoftPill(
+                  label: 'Stratégie de raid',
+                  icon: Icons.sports_kabaddi,
+                  accent: SoftPop.amber,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopStrategyScreen()),
                   ),
                 ),
               ],
