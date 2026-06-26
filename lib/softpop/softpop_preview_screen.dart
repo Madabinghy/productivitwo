@@ -4,6 +4,7 @@ import 'softpop_theme.dart';
 import 'softpop_components.dart';
 import 'softpop_home_screen.dart';
 import 'softpop_routine_types_screen.dart';
+import 'softpop_streak_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -41,14 +42,29 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
               ),
             ),
             const SizedBox(height: SoftPop.s8),
-            SoftPill(
-              label: 'Types de routine',
-              icon: Icons.tune,
-              accent: SoftPop.teal,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => const SoftPopRoutineTypesScreen()),
-              ),
+            Wrap(
+              spacing: SoftPop.s8,
+              runSpacing: SoftPop.s8,
+              children: [
+                SoftPill(
+                  label: 'Types de routine',
+                  icon: Icons.tune,
+                  accent: SoftPop.teal,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopRoutineTypesScreen()),
+                  ),
+                ),
+                SoftPill(
+                  label: 'Série',
+                  icon: Icons.local_fire_department,
+                  accent: SoftPop.coral,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopStreakScreen()),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: SoftPop.s20),
             _section('Couleurs'),
