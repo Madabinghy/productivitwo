@@ -97,12 +97,16 @@ class _Candle {
 enum _BossState { idle, walk, run, attack, defense, dizzy }
 
 // Descripteur d'une planche : asset + grille (colonnes/total) + cadence.
+// Si directional, `asset` est un motif avec {a} = angle 3 chiffres (000..315)
+// et on charge une planche par direction (le corps s'oriente vers la marche).
 class _BossAnim {
-  const _BossAnim(this.asset, this.cols, this.frames, {this.fps = 10});
+  const _BossAnim(this.asset, this.cols, this.frames,
+      {this.fps = 10, this.directional = false});
   final String asset;
   final int cols; // colonnes de la grille (frames de 256 px)
   final int frames; // nombre total de frames
   final double fps;
+  final bool directional;
 }
 
 enum NodeKind { start, combat, treasure, planet, boss }
@@ -200,10 +204,10 @@ class _FluoNavScreenState extends State<FluoNavScreen>
   static const double _bossSpeed = 72;
   static const Map<_BossState, _BossAnim> _bossAnims = {
     _BossState.idle: _BossAnim('assets/sprites/boss_spider_idle.png', 6, 24),
-    _BossState.walk:
-        _BossAnim('assets/sprites/boss_spider_walk.png', 4, 16, fps: 12),
-    _BossState.run:
-        _BossAnim('assets/sprites/boss_spider_run.png', 4, 16, fps: 16),
+    _BossState.walk: _BossAnim('assets/sprites/boss_spider_walk_{a}.png', 4, 16,
+        fps: 12, directional: true),
+    _BossState.run: _BossAnim('assets/sprites/boss_spider_run_{a}.png', 4, 16,
+        fps: 16, directional: true),
     _BossState.attack:
         _BossAnim('assets/sprites/boss_spider_attack.png', 5, 20, fps: 18),
     _BossState.defense:
@@ -211,8 +215,12 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _BossState.dizzy:
         _BossAnim('assets/sprites/boss_spider_dizzy.png', 4, 16, fps: 8),
   };
-  final Map<_BossState, ui.Image> _bossSheets = {};
+  // 8 directions (boussole horaire : 0=haut, 90=droite, 180=bas, 270=gauche)
+  static const List<int> _bossDirs = [0, 45, 90, 135, 180, 225, 270, 315];
+  final Map<_BossState, ui.Image> _bossSheets = {}; // états non-directionnels
+  final Map<_BossState, List<ui.Image>> _bossDirSheets = {}; // walk/run × 8 dir
   _BossState _bossState = _BossState.idle;
+  Offset _bossFacing = const Offset(0, 1); // direction du corps (défaut : bas)
   double _bossAttackT = 0; // wind-up de morsure avant le combat TD
 
   // node-map (vue run) — carte infinie
@@ -253,15 +261,35 @@ class _FluoNavScreenState extends State<FluoNavScreen>
 
   Future<void> _loadBossSprite() async {
     for (final e in _bossAnims.entries) {
+      final a = e.value;
       try {
-        final img = await _decodeAsset(e.value.asset);
-        if (!mounted) return;
-        _bossSheets[e.key] = img;
+        if (a.directional) {
+          final imgs = <ui.Image>[];
+          for (final ang in _bossDirs) {
+            imgs.add(await _decodeAsset(
+                a.asset.replaceAll('{a}', ang.toString().padLeft(3, '0'))));
+          }
+          if (!mounted) return;
+          _bossDirSheets[e.key] = imgs;
+        } else {
+          final img = await _decodeAsset(a.asset);
+          if (!mounted) return;
+          _bossSheets[e.key] = img;
+        }
       } catch (_) {
         // planche manquante → fallback cercle pour cet état, jamais bloquant
       }
     }
     if (mounted) setState(() {});
+  }
+
+  // index de la planche directionnelle la plus proche du vecteur de marche
+  // (boussole horaire : 0=haut). Retombe sur le bas (180) si immobile.
+  int _bossDirIndex(Offset facing) {
+    if (facing.distance < 0.001) return _bossDirs.indexOf(180);
+    var deg = math.atan2(facing.dx, -facing.dy) * 180 / math.pi;
+    if (deg < 0) deg += 360;
+    return (deg / 45).round() % _bossDirs.length;
   }
 
   Future<ui.Image> _decodeAsset(String path) async {
@@ -586,6 +614,7 @@ class _FluoNavScreenState extends State<FluoNavScreen>
     _guardAlive = true;
     _inGuardFight = false;
     _bossState = _BossState.idle;
+    _bossFacing = const Offset(0, 1);
     _bossAttackT = 0;
     _rHero = Offset(_rooms.first.center.dx, _rooms.first.bottom - 44);
     _roomCam = _clampRoomCam(_rHero - Offset(w / 2, h / 2));
@@ -687,9 +716,11 @@ class _FluoNavScreenState extends State<FluoNavScreen>
       _bossAttackT = 0.45; // wind-up visible avant le TD
     } else if (d <= runR) {
       _bossState = _BossState.run;
+      _bossFacing = dir; // le corps s'oriente vers la marche
       _moveBoss(dir * _bossSpeed * 1.7 * dt, bossRoom);
     } else if (d <= aggroR) {
       _bossState = _BossState.walk;
+      _bossFacing = dir;
       _moveBoss(dir * _bossSpeed * dt, bossRoom);
     } else {
       _bossState = _BossState.idle;
@@ -1775,7 +1806,16 @@ class _NavPainter extends CustomPainter {
         Paint()..color = Colors.black.withOpacity(0.35));
 
     final anim = _FluoNavScreenState._bossAnims[state]!;
-    final img = g._bossSheets[state];
+    // directionnel (walk/run) → planche orientée vers la marche ; sinon planche unique
+    ui.Image? img;
+    if (anim.directional) {
+      final dirs = g._bossDirSheets[state];
+      if (dirs != null && dirs.isNotEmpty) {
+        img = dirs[g._bossDirIndex(g._bossFacing) % dirs.length];
+      }
+    } else {
+      img = g._bossSheets[state];
+    }
     if (img == null) {
       canvas.drawCircle(p, 22, Paint()..color = const Color(0xFF2A0F14));
       canvas.drawCircle(p, 22, _stroke(halo, 2.4));
