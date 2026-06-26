@@ -4,6 +4,8 @@ import 'softpop_tokens.dart';
 import 'softpop_theme.dart';
 import 'softpop_components.dart';
 import 'softpop_home_live_screen.dart';
+import 'softpop_focus_live_screen.dart';
+import 'softpop_balance_live_screen.dart';
 import 'softpop_lair_screen.dart';
 
 /// Coquille de l'app « Soft Pop » — la nouvelle UI quand le flag est actif.
@@ -28,6 +30,8 @@ class _SoftPopShellState extends State<SoftPopShell> {
   Widget build(BuildContext context) {
     final pages = [
       SoftPopHomeLiveScreen(logic: widget.logic),
+      SoftPopFocusLiveScreen(logic: widget.logic),
+      SoftPopBalanceLiveScreen(logic: widget.logic),
       const SoftPopLairScreen(),
       _SettingsTab(onExitToClassic: widget.onExitToClassic),
     ];
@@ -49,8 +53,10 @@ class _SoftPopShellState extends State<SoftPopShell> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _navItem(0, Icons.home_rounded, 'Accueil'),
-                  _navItem(1, Icons.castle_rounded, 'Jeu'),
-                  _navItem(2, Icons.settings_rounded, 'Réglages'),
+                  _navItem(1, Icons.play_circle_fill_rounded, 'Maintenant'),
+                  _navItem(2, Icons.donut_large_rounded, 'Équilibre'),
+                  _navItem(3, Icons.castle_rounded, 'Jeu'),
+                  _navItem(4, Icons.settings_rounded, 'Réglages'),
                 ],
               ),
             ),
@@ -75,8 +81,11 @@ class _SoftPopShellState extends State<SoftPopShell> {
                   size: 24, color: on ? SoftPop.violet : SoftPop.inkMuted),
               const SizedBox(height: 2),
               Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                   style: SoftPop.ui(
-                      size: 11,
+                      size: 10,
                       weight: on ? FontWeight.w700 : FontWeight.w500,
                       color: on ? SoftPop.violet : SoftPop.inkMuted)),
             ],
