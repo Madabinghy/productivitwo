@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
+import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
@@ -743,6 +744,25 @@ class _StatsViewState extends State<StatsView> {
 
 final _navigatorKey = GlobalKey<NavigatorState>();
 
+/// Flag refonte : true = nouvelle UI Soft Pop (shell) par défaut au lancement.
+/// Persisté dans SharedPreferences ('ui_softpop'). Réversible à tout moment.
+final ValueNotifier<bool> softpopShellEnabled = ValueNotifier<bool>(false);
+
+Future<void> setSoftpopShell(bool v) async {
+  softpopShellEnabled.value = v;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ui_softpop', v);
+  } catch (_) {}
+}
+
+Future<void> loadSoftpopShellFlag() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    softpopShellEnabled.value = prefs.getBool('ui_softpop') ?? false;
+  } catch (_) {}
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -800,6 +820,7 @@ void main() async {
   } catch (e) {
     devLog.error('Alarm.init FAIL', tag: 'MAIN', error: e);
   }
+  await loadSoftpopShellFlag(); // refonte : UI Soft Pop par défaut ?
   runApp(const ProductivitwoApp());
 }
 
@@ -1862,6 +1883,7 @@ class _AppRootState extends State<AppRoot>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    softpopShellEnabled.addListener(_onSoftpopFlag);
 
     _tick = ValueNotifier<int>(0);
     _confettiController =
@@ -1937,8 +1959,13 @@ class _AppRootState extends State<AppRoot>
     });
   }
 
+  void _onSoftpopFlag() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    softpopShellEnabled.removeListener(_onSoftpopFlag);
     _heartbeat?.cancel();
     _countdownTimer?.cancel();
     _alarmRingSub?.cancel();
@@ -4337,6 +4364,15 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
+    // Refonte : si la nouvelle UI Soft Pop est activée, on rend la coquille
+    // dédiée (réversible via son onglet Réglages).
+    if (softpopShellEnabled.value) {
+      return SoftPopShell(
+        logic: logic,
+        onExitToClassic: () => setSoftpopShell(false),
+      );
+    }
+
     final filtersOn = logic.state.filters.isActive;
 
     void _openFullStats(BuildContext ctx) {
@@ -5572,6 +5608,19 @@ class _AppRootState extends State<AppRoot>
                       builder: (_) => SoftPopHomeLiveScreen(logic: logic),
                     ),
                   );
+                },
+              ),
+              // Bascule : utiliser la nouvelle UI Soft Pop par défaut (réversible)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Nouvelle UI Soft Pop par défaut'),
+                subtitle: const Text(
+                    'Lance l’app sur la nouvelle interface (retour possible depuis ses Réglages)'),
+                value: softpopShellEnabled.value,
+                onChanged: (v) {
+                  setSoftpopShell(v);
+                  Navigator.pop(sheetCtx);
                 },
               ),
               // Compte
