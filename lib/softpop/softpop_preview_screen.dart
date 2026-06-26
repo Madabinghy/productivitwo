@@ -9,6 +9,7 @@ import 'softpop_balance_screen.dart';
 import 'softpop_project_screen.dart';
 import 'softpop_celebration_screen.dart';
 import 'softpop_onboarding_screen.dart';
+import 'softpop_focus_screen.dart';
 
 /// Galerie du design system « Soft Pop ».
 ///
@@ -46,14 +47,29 @@ class _SoftPopPreviewScreenState extends State<SoftPopPreviewScreen> {
               ),
             ),
             const SizedBox(height: SoftPop.s8),
-            SoftPill(
-              label: 'Onboarding',
-              icon: Icons.waving_hand_outlined,
-              accent: SoftPop.violet,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                    builder: (_) => const SoftPopOnboardingScreen()),
-              ),
+            Wrap(
+              spacing: SoftPop.s8,
+              runSpacing: SoftPop.s8,
+              children: [
+                SoftPill(
+                  label: 'Onboarding',
+                  icon: Icons.waving_hand_outlined,
+                  accent: SoftPop.violet,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopOnboardingScreen()),
+                  ),
+                ),
+                SoftPill(
+                  label: 'Maintenant / Focus',
+                  icon: Icons.play_circle_outline,
+                  accent: SoftPop.teal,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const SoftPopFocusScreen()),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: SoftPop.s8),
             Wrap(
