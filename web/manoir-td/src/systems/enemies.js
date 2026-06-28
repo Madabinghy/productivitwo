@@ -6,7 +6,7 @@ import { nearestNode, bfsPath } from '../graph.js';
 import { hitTurret } from './turrets.js';
 
 export function spawnEnemies(game) {
-  game.G.enemies = []; game._spawnT = 0;
+  game.G.enemies = []; game._spawnT = 0; game.G.wave = 1;
   spawnOne(game, 0); spawnOne(game, 1);
 }
 
@@ -30,12 +30,13 @@ export function killEnemy(game, e) {
 export function updateEnemies(game, dt) {
   const { G, WALLS, NODES, CANDLES } = game; const H = game.HERO; const ui = game.ui;
 
-  // vagues (suspendues pendant l'intro du tuto via game.noSpawn)
+  // vagues (suspendues pendant l'intro du tuto ; bornées par l'objectif de mission)
   if (!game.noSpawn) {
+    const target = game.mission ? game.mission.waves : Infinity;
     game._spawnT = (game._spawnT || 0) + dt;
     if (game._spawnT >= ENEMY.spawnEvery) {
       game._spawnT = 0;
-      if (G.enemies.length < ENEMY.cap) { spawnOne(game, 0); spawnOne(game, 1); }
+      if ((G.wave || 0) < target && G.enemies.length < ENEMY.cap) { spawnOne(game, 0); spawnOne(game, 1); G.wave = (G.wave || 0) + 1; }
     }
   }
 

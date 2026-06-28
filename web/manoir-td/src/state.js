@@ -20,10 +20,12 @@ export function createGame() {
     HERO: { x: 540, y: 1320, hp: 100, maxHp: 100, inv: 0, dir: 0, trail: [] },
     cam: { fx: 540, fy: 1320 },
 
+    // gisements dans la Bibliothèque (pièce voisine, au-dessus du Hall d'entrée) :
+    // il faut s'y déplacer pour récolter (pas de récolte gratuite au spawn).
     CRYSTALS: [
-      { x: 700, y: 1250, amount: 760, max: 760 },
-      { x: 430, y: 1235, amount: 760, max: 760 },
-      { x: 880, y: 1350, amount: 760, max: 760 },
+      { x: 480, y: 420, amount: 760, max: 760 },
+      { x: 620, y: 410, amount: 760, max: 760 },
+      { x: 560, y: 540, amount: 760, max: 760 },
     ],
     STASH: {},
     AIM: {}, CD: {},
@@ -33,12 +35,12 @@ export function createGame() {
 
     // état UI
     ui: {
-      amb: 'ombrelune', tab: 'turret', sel: { cat: 'turret', key: 'givre' }, selId: null,
-      heroSelected: false,
+      amb: 'ombrelune', tab: 'turret', sel: null, selId: null,
+      heroSelected: true,   // au démarrage : le Commander est sélectionné (clic = déplacement)
       warmth: 0.55, darkMode: false, aimMode: false,
       breached: false, heroDown: false, win: false, report: null,
       owned: {}, placed: [],
-      msg: "Bienvenue. Allume les bougies du Hall d'entrée pour le conquérir, puis explore. Pose des tourelles dans ta lumière (clic).",
+      msg: 'Commander sélectionné — clique un point pour l\'y envoyer. Choisis une tourelle à droite pour en poser une.',
     },
 
     // flux de jeu (routeur + tuto)
