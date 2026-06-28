@@ -12,10 +12,11 @@ export function createGame() {
 
     // état temps réel
     G: {
-      enemies: [], beams: [], projectiles: [], mottes: [],
+      enemies: [], foes: [], beams: [], projectiles: [], mottes: [],
       lit: new Set(), nextId: 10, kills: 0, time: 0,
       mass: MASS_START, massCap: MASS_CAP,
     },
+    ai: null,            // commandant adverse (la Veilleuse) — créé au lancement de mission
 
     HERO: { x: 540, y: 1320, hp: 100, maxHp: 100, inv: 0, dir: 0, trail: [] },
     cam: { fx: 540, fy: 1320 },
@@ -39,7 +40,7 @@ export function createGame() {
       heroSelected: true,   // au démarrage : le Commander est sélectionné (clic = déplacement)
       warmth: 0.55, darkMode: false, aimMode: false,
       breached: false, heroDown: false, win: false, report: null,
-      owned: {}, placed: [],
+      owned: {}, enemyOwned: {}, placed: [],
       msg: 'Commander sélectionné — clique un point pour l\'y envoyer. Choisis une tourelle à droite pour en poser une.',
     },
 

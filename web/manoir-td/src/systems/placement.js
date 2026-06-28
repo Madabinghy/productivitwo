@@ -18,12 +18,22 @@ export function actAt(game, wx, wy, touch) {
     s.msg = "Commander sélectionné — clique un point pour l'y envoyer.";
     return;
   }
-  // Commander sélectionné : un clic au sol = ordre de déplacement (clic sur une tourelle = la sélectionner)
+  // Commander sélectionné : un clic au sol = ordre de déplacement (clic sur une tourelle/unité = la sélectionner)
   if (s.heroSelected) {
-    const onTurret = s.placed.find(p => p.cat === 'turret' && Math.hypot(p.x - wx, p.y - wy) < 32);
-    if (onTurret) { s.heroSelected = false; s.selId = onTurret.id; return; }
+    const onP = s.placed.find(p => (p.cat === 'turret' || p.cat === 'unit') && Math.hypot(p.x - wx, p.y - wy) < 32);
+    if (onP) { s.heroSelected = false; s.selId = onP.id; return; }
     game.heroTarget = { x: wx, y: wy }; game.freeCam = false;
     s.msg = 'En route…'; return;
+  }
+
+  // unité (Cuirassé-tortue) sélectionnée : clic = ordre de déplacement (si non déployée)
+  const selU = s.selId ? s.placed.find(p => p.id === s.selId && p.cat === 'unit') : null;
+  if (selU) {
+    const other = s.placed.find(p => (p.cat === 'turret' || p.cat === 'unit') && p.id !== s.selId && Math.hypot(p.x - wx, p.y - wy) < 32);
+    if (other) { s.selId = other.id; return; }
+    if (Math.hypot(selU.x - wx, selU.y - wy) < 20) return;
+    if (!selU.deployed) { selU.moveTarget = { x: wx, y: wy }; s.msg = 'Cuirassé-tortue en route…'; }
+    return;
   }
 
   // une tourelle est sélectionnée : re-cibler sa visée ou sélectionner une autre
@@ -39,8 +49,8 @@ export function actAt(game, wx, wy, touch) {
     }
   }
 
-  // clic sur une tourelle posée → sélection
-  const hit = s.placed.find(p => p.cat === 'turret' && Math.hypot(p.x - wx, p.y - wy) < 32);
+  // clic sur une tourelle/unité posée → sélection
+  const hit = s.placed.find(p => (p.cat === 'turret' || p.cat === 'unit') && Math.hypot(p.x - wx, p.y - wy) < 32);
   if (hit) { s.selId = hit.id; s.aimMode = false; return; }
 
   if (!s.sel) return;
@@ -70,14 +80,15 @@ export function doPlace(game, wx, wy) {
   if (s.sel.cat === 'turret') { let bd = 1e9; for (const en of game.ENTRY) { const p = game.NODES[en]; const d = Math.hypot(p.x - gx, p.y - gy); if (d < bd) { bd = d; face = compass(p.x - gx, p.y - gy); } } }
   const key = s.sel.key;
   const sv = (s.sel.cat === 'turret' && game.STASH[key]) ? game.STASH[key] : null; if (sv) delete game.STASH[key];
-  const mhp = baseHp(key); const isT = s.sel.cat === 'turret'; const chantier = isT && !sv; const c = costOf(key);
+  const mhp = baseHp(key); const buildable = s.sel.cat === 'turret' || s.sel.cat === 'unit'; const chantier = buildable && !sv; const c = costOf(key);
   s.placed.push({
     id: game.G.nextId++, cat: s.sel.cat, key, x: gx, y: gy, face,
     level: sv ? sv.level : 1, bonusR: sv ? sv.bonusR : 0, bonusD: sv ? sv.bonusD : 0,
     maxHp: sv ? (sv.maxHp || mhp) : mhp, hp: sv ? sv.hp : mhp,
     built: chantier ? false : true, prog: chantier ? 0 : 1,
+    deployed: false, moveTarget: null,
   });
-  s.msg = isT ? (sv ? 'Tourelle redéployée — niveau & PV conservés.' : '⚒ Chantier posé (' + c.mass + ' masse · ' + c.time + 's) — amène le Commander à côté pour le bâtir.') : 'Décor posé.';
+  s.msg = buildable ? (sv ? 'Redéployé — niveau & PV conservés.' : '⚒ Chantier posé (' + c.mass + ' masse · ' + c.time + 's) — amène le Commander à côté pour le bâtir.') : 'Décor posé.';
   // après la pose : le focus revient au Commander (clic = déplacement)
   s.sel = null; s.heroSelected = true; game._pendingTap = null; clearGhost(game);
 }

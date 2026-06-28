@@ -4,7 +4,7 @@
 // - Bercail : soigne héros & tourelles. Bouclier : intercepte les tirs ennemis.
 import { turretStats, SHOT, TCOL, baseHp } from '../config.js';
 import { blocked, compass, angDiff } from '../geometry.js';
-import { killEnemy } from './enemies.js';
+import { killTarget, targets } from './enemies.js';
 
 const GUARD = 90;        // demi-amplitude → balayage de 180°
 const norm = (a) => ((a % 360) + 360) % 360;
@@ -74,9 +74,10 @@ export function updateTurrets(game, dt) {
     const range = ts.range, half = ts.half, face = t.face == null ? 0 : t.face;
     let facing = game.AIM[t.id] == null ? face : game.AIM[t.id];
 
-    // une tourelle voit dans son propre champ (portée + arc + LOS), de jour comme de nuit
+    // une tourelle voit dans son propre champ (portée + arc + LOS), de jour comme de nuit ;
+    // cibles = flemmes + structures adverses (cercles, tourelles, Veilleuse)
     let best = null, bd = 1e9;
-    for (const e of G.enemies) {
+    for (const e of targets(game)) {
       const d = Math.hypot(e.x - t.x, e.y - t.y);
       if (d <= range && d < bd && !blocked(game.WALLS, t.x, t.y, e.x, e.y)) {
         const ang = compass(e.x - t.x, e.y - t.y);
@@ -104,7 +105,7 @@ export function updateTurrets(game, dt) {
           if (cfg.beam === 'bolt') beam.pts = jagged(mxp, myp, best.x, best.y);
           else { beam.ax = mxp; beam.ay = myp; beam.bx = best.x; beam.by = best.y; }
           G.beams.push(beam);
-          if (best.hp <= 0) killEnemy(game, best);
+          if (best.hp <= 0) killTarget(game, best);
         } else {
           G.projectiles.push({ x: mxp, y: myp, tgt: best, color: col, shot: cfg.shot, dmg, speed: 430, ang: facing });
         }

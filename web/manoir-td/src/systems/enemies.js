@@ -5,6 +5,18 @@ import { blocked } from '../geometry.js';
 import { nearestNode, bfsPath } from '../graph.js';
 import { hitTurret } from './turrets.js';
 
+// Cibles que les tourelles/héros peuvent frapper : flemmes + structures adverses.
+export function targets(game) { return game.G.foes && game.G.foes.length ? game.G.enemies.concat(game.G.foes) : game.G.enemies; }
+
+export function spawnFlemmeAt(game, x, y, kind) {
+  const hp = 44 + (game.G.kills || 0) * 5;
+  game.G.enemies.push({
+    x, y, hp, maxHp: hp, speed: 30 + Math.random() * 14,
+    chase: false, path: null, pi: 0, acd: Math.random(),
+    kind: kind || 'spider', facing: 180,
+  });
+}
+
 export function spawnEnemies(game) {
   game.G.enemies = []; game._spawnT = 0; game.G.wave = 1;
   spawnOne(game, 0); spawnOne(game, 1);
@@ -12,12 +24,7 @@ export function spawnEnemies(game) {
 
 export function spawnOne(game, idx) {
   const cur = game.ENTRY[idx]; const p = game.NODES[cur];
-  const hp = 44 + (game.G.kills || 0) * 5;
-  game.G.enemies.push({
-    x: p.x, y: p.y, hp, maxHp: hp, speed: 30 + Math.random() * 14,
-    chase: false, path: null, pi: 0, acd: Math.random(),
-    kind: idx === 0 ? 'spider' : 'mecha', spawn: idx, facing: 180,
-  });
+  spawnFlemmeAt(game, p.x, p.y, idx === 0 ? 'spider' : 'mecha');
 }
 
 export function killEnemy(game, e) {
@@ -27,18 +34,23 @@ export function killEnemy(game, e) {
   game.G.mottes.push({ x: e.x, y: e.y, val, life: 18, max: 18, wob: Math.random() * 6.28 });
 }
 
+// Mort d'une cible (flemme OU structure adverse).
+export function killTarget(game, t) {
+  if (!t) return;
+  if (t._foe) {
+    game.G.foes = game.G.foes.filter(f => f !== t);
+    game.G.kills = (game.G.kills || 0) + 1;
+    if (t.kind === 'commander' && game.ai) game.ai.defeated = true;
+    const val = Math.round(10 + (t.maxHp || 100) / 12);
+    game.G.mottes.push({ x: t.x, y: t.y, val, life: 18, max: 18, wob: Math.random() * 6.28 });
+    return;
+  }
+  killEnemy(game, t);
+}
+
 export function updateEnemies(game, dt) {
   const { G, WALLS, NODES, CANDLES } = game; const H = game.HERO; const ui = game.ui;
-
-  // vagues (suspendues pendant l'intro du tuto ; bornées par l'objectif de mission)
-  if (!game.noSpawn) {
-    const target = game.mission ? game.mission.waves : Infinity;
-    game._spawnT = (game._spawnT || 0) + dt;
-    if (game._spawnT >= ENEMY.spawnEvery) {
-      game._spawnT = 0;
-      if ((G.wave || 0) < target && G.enemies.length < ENEMY.cap) { spawnOne(game, 0); spawnOne(game, 1); G.wave = (G.wave || 0) + 1; }
-    }
-  }
+  // (l'apparition des flemmes est gérée par le commandant adverse — systems/enemy_ai.js)
 
   const destroyed = [];
   for (const e of G.enemies) {
@@ -87,9 +99,9 @@ export function updateEnemies(game, dt) {
       }
     }
 
-    // tire sur la tourelle la plus proche à portée
+    // tire sur la tourelle/unité la plus proche à portée (le Cuirassé déployé est increvable)
     let tgt = null, tb = 1e9;
-    for (const t of ui.placed) { if (t.cat !== 'turret') continue; const d = Math.hypot(t.x - e.x, t.y - e.y); if (d < ENEMY.turretFireDist && d < tb && !blocked(WALLS, e.x, e.y, t.x, t.y)) { tb = d; tgt = t; } }
+    for (const t of ui.placed) { if ((t.cat !== 'turret' && t.cat !== 'unit') || t.built === false || t.deployed) continue; const d = Math.hypot(t.x - e.x, t.y - e.y); if (d < ENEMY.turretFireDist && d < tb && !blocked(WALLS, e.x, e.y, t.x, t.y)) { tb = d; tgt = t; } }
     if (tgt) {
       e.acd = (e.acd || 0) - dt;
       if (e.acd <= 0) { e.acd = 1.2; const removed = hitTurret(game, e, tgt); if (removed != null) destroyed.push(removed); }
