@@ -29,6 +29,8 @@
     .mass-bg { height: 7px; border-radius: 4px; background: rgba(0,0,0,.4); overflow: hidden; border: 1px solid rgba(255,207,110,.2); }
     .mass-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff9e3d, var(--flame)); box-shadow: 0 0 8px var(--flame); transition: width .15s; }
     .mass-val { font-size: 11px; font-weight: 700; color: #f3eeff; }
+    .darkbtn { font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+    .darkbtn.on { border-color: var(--accent); background: rgba(138,108,255,.12); color: #cdbfff; }
     .body { display: flex; gap: 18px; align-items: flex-start; max-width: 1500px; width: 100%; }
     .left { display: flex; flex-direction: column; gap: 14px; }
     .stage { width: 1080px; max-width: 100%; }
@@ -71,8 +73,11 @@
         <div class="mass-bg"><div class="mass-fill" id="hud-massfill"></div></div>
         <div class="mass-val" id="hud-massval">85 / 150</div>
       </div>
+      <div class="chip"><span class="num" id="hud-lit">0</span><span class="lbl">Bougies</span></div>
+      <div class="chip"><span class="num" id="hud-owned">0</span><span class="lbl">Salles</span></div>
       <div class="chip"><span class="num" id="hud-alive">0</span><span class="lbl">Flemmes</span></div>
       <div class="chip"><span class="num" id="hud-chrono">0:00</span><span class="lbl">Chrono</span></div>
+      <button id="hud-dark" class="darkbtn">☀ Exploration</button>
     </div>
     <div class="body">
       <div class="left">

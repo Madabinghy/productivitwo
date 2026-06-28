@@ -1,5 +1,5 @@
 // État de jeu central (hors rendu). Créé une fois, muté par les systèmes à chaque tick.
-import { MASS_START, MASS_CAP, VPW, VPH } from './config.js';
+import { MASS_START, MASS_CAP, VPW, VPH, ROOMS } from './config.js';
 import { buildGraph, buildWalls, buildCandles } from './graph.js';
 
 export function createGame() {
@@ -8,7 +8,7 @@ export function createGame() {
   const { CANDLES, ROOMCAND } = buildCandles(EDGES);
 
   const game = {
-    NODES, EDGES, RN, ENTRY, WALLS, CANDLES, ROOMCAND,
+    ROOMS, NODES, EDGES, RN, ENTRY, WALLS, CANDLES, ROOMCAND,
 
     // état temps réel
     G: {

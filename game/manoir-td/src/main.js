@@ -39,9 +39,18 @@ function tick(dt) {
 }
 
 // HUD minimal (étoffé aux étapes suivantes)
+const darkBtn = document.getElementById('hud-dark');
+darkBtn.onclick = () => {
+  game.ui.darkMode = !game.ui.darkMode;
+  game.ui.msg = game.ui.darkMode ? 'Nuit noire — le plan ne révèle que les flemmes éclairées (héros, bougies, radar, satellite).' : 'Mode exploration rétabli (jour).';
+};
+
 const hud = {
   alive: document.getElementById('hud-alive'),
+  lit: document.getElementById('hud-lit'),
+  owned: document.getElementById('hud-owned'),
   chrono: document.getElementById('hud-chrono'),
+  dark: darkBtn,
   msg: document.getElementById('hud-msg'),
   massWrap: document.querySelector('.mass'),
   massFill: document.getElementById('hud-massfill'),
@@ -50,6 +59,9 @@ const hud = {
 };
 function paintHud() {
   if (hud.alive) hud.alive.textContent = game.G.enemies.length;
+  if (hud.lit) hud.lit.textContent = game.G.lit.size + '/' + game.CANDLES.length;
+  if (hud.owned) hud.owned.textContent = Object.keys(game.ui.owned).length + '/' + game.ROOMS.length;
+  if (hud.dark) { hud.dark.textContent = game.ui.darkMode ? '☾ Nuit noire' : '☀ Exploration'; hud.dark.classList.toggle('on', game.ui.darkMode); }
   if (hud.chrono) { const s = Math.floor(game.G.time || 0); hud.chrono.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   if (hud.msg) hud.msg.textContent = game.ui.msg;
   const G = game.G; const full = G.mass >= G.massCap;

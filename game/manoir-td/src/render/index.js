@@ -5,17 +5,19 @@ import { drawEnemy, drawCoffre, drawCrystal } from './sprites.js';
 import { drawHero } from './hero.js';
 import { armMuzzle } from '../systems/hero.js';
 import { drawPlaced, drawGhost, drawBuildBeam, drawPlaceHalos } from './buildings.js';
+import { drawFog, drawMinimap } from './fog.js';
+import { enemyRevealed, turretSees } from '../systems/vision.js';
 
 export function draw(game, ctx, t) {
   const th = THEMES[game.ui.amb];
   const cam = game.cam;
-  const tx = -(cam.fx - VPW / 2), ty = -(cam.fy - VPH / 2);
+  const tx = Math.round(-(cam.fx - VPW / 2)), ty = Math.round(-(cam.fy - VPH / 2));
 
   ctx.clearRect(0, 0, VPW, VPH);
   ctx.fillStyle = th.stage; ctx.fillRect(0, 0, VPW, VPH);
 
   ctx.save();
-  ctx.translate(Math.round(tx), Math.round(ty));
+  ctx.translate(tx, ty);
 
   drawWorld(game, ctx, th, t);
   drawPlaceHalos(game, ctx, th);
@@ -61,7 +63,10 @@ export function draw(game, ctx, t) {
 
   drawPlaced(game, ctx, th, t);
 
-  for (const e of game.G.enemies) drawEnemy(ctx, e, th.enemy, t);
+  for (const e of game.G.enemies) {
+    if (game.ui.darkMode && !(enemyRevealed(game, e) || turretSees(game, e))) continue; // caché par le brouillard
+    drawEnemy(ctx, e, th.enemy, t);
+  }
 
   // projectiles des tourelles (forme par type de tir)
   for (const p of game.G.projectiles) {
@@ -93,4 +98,8 @@ export function draw(game, ctx, t) {
   drawGhost(game, ctx, th, t);
 
   ctx.restore();
+
+  // surcouches en repère écran
+  drawFog(game, ctx, th, tx, ty);
+  drawMinimap(game, ctx, th);
 }
