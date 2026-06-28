@@ -41,6 +41,11 @@ export function createGame() {
       msg: "Bienvenue. Allume les bougies du Hall d'entrée pour le conquérir, puis explore. Pose des tourelles dans ta lumière (clic).",
     },
 
+    // flux de jeu (routeur + tuto)
+    screen: 'title',   // 'title' | 'mission'
+    noSpawn: false,    // suspend l'apparition des flemmes (intro du tuto)
+    tutorial: null,
+
     // éphémères calculés par les systèmes (lecture par le rendu)
     _buildId: null, _buildStall: false, _harvestId: null, _laserTgt: null, _heroCD: 0,
     heroTarget: null,  // ordre de déplacement au clic (RTS) ; annulé par ZQSD

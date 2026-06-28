@@ -11,10 +11,14 @@ import { updateObjectives, resume } from './systems/objectives.js';
 import { attachInput } from './input.js';
 import { draw } from './render/index.js';
 import { createPanel } from './render/panel.js';
+import { loadSave, writeSave, defaultSave, hasSave } from './save.js';
+import { startTutorial, updateTutorial } from './tutorial.js';
 
 const game = createGame();
-spawnEnemies(game);
 window.__game = game; // utile pour le débogage / tests
+
+let save = loadSave() || defaultSave();
+game.save = save;
 
 const canvas = document.getElementById('view');
 canvas.width = VPW; canvas.height = VPH;
@@ -22,10 +26,32 @@ const ctx = canvas.getContext('2d');
 attachInput(game, canvas);
 const panel = createPanel(game);
 
+// ---- routeur d'écrans : titre → mission ----
+const titleOv = document.getElementById('ov-title');
+const tutbar = document.getElementById('tutbar');
+const btnContinue = document.getElementById('btn-continue');
+btnContinue.hidden = !(hasSave() && save.seenTutorial);
+
+function startMission({ tutorial }) {
+  game.screen = 'mission';
+  titleOv.hidden = true;
+  game.G.kills = 0; game._spawnT = 0;
+  if (tutorial) { startTutorial(game); }
+  else { game.noSpawn = false; spawnEnemies(game); }
+}
+
+document.getElementById('btn-new').onclick = () => {
+  save = defaultSave(); game.save = save; writeSave(save);
+  startMission({ tutorial: true });
+};
+btnContinue.onclick = () => startMission({ tutorial: false });
+
 function tick(dt) {
   const { G } = game;
   if (G.lit.size < game.CANDLES.length) G.time = (G.time || 0) + dt;
   if (game.HERO.inv > 0) game.HERO.inv -= dt;
+
+  updateTutorial(game, dt, () => { save.seenTutorial = true; writeSave(save); });
 
   updateHeroMove(game, dt);
   updateEnemies(game, dt);
@@ -78,6 +104,13 @@ function paintHud() {
   if (hud.massWrap) hud.massWrap.classList.toggle('full', full);
   panel.refresh();
 
+  // bandeau de tuto (Veilleuse)
+  const tut = game.tutorial;
+  if (tut && tut.active && tut.text) { tutbar.hidden = false; tutbar.textContent = tut.text; } else { tutbar.hidden = true; }
+
+  // persistance des stats à la victoire
+  if (game.ui.win && !game._winSaved) { game._winSaved = true; save.stats.missionsWon = (save.stats.missionsWon || 0) + 1; save.stats.kills = (save.stats.kills || 0) + (game.G.kills || 0); writeSave(save); }
+
   // overlays de fin de partie
   ov.win.hidden = !game.ui.win;
   ov.down.hidden = !(game.ui.heroDown && !game.ui.breached);
@@ -97,7 +130,7 @@ let last = performance.now();
 function frame(now) {
   let dt = (now - last) / 1000; last = now;
   if (dt > 0.05) dt = 0.05; if (dt <= 0) dt = 0.016;
-  tick(dt);
+  if (game.screen === 'mission') tick(dt);
   draw(game, ctx, game.G.time || 0);
   paintHud();
   requestAnimationFrame(frame);

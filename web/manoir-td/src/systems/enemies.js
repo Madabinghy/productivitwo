@@ -30,11 +30,13 @@ export function killEnemy(game, e) {
 export function updateEnemies(game, dt) {
   const { G, WALLS, NODES, CANDLES } = game; const H = game.HERO; const ui = game.ui;
 
-  // vagues
-  game._spawnT = (game._spawnT || 0) + dt;
-  if (game._spawnT >= ENEMY.spawnEvery) {
-    game._spawnT = 0;
-    if (G.enemies.length < ENEMY.cap) { spawnOne(game, 0); spawnOne(game, 1); }
+  // vagues (suspendues pendant l'intro du tuto via game.noSpawn)
+  if (!game.noSpawn) {
+    game._spawnT = (game._spawnT || 0) + dt;
+    if (game._spawnT >= ENEMY.spawnEvery) {
+      game._spawnT = 0;
+      if (G.enemies.length < ENEMY.cap) { spawnOne(game, 0); spawnOne(game, 1); }
+    }
   }
 
   const destroyed = [];
