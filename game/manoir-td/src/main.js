@@ -4,6 +4,7 @@ import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
 import { updateEconomy } from './systems/economy.js';
+import { updateTurrets } from './systems/turrets.js';
 import { updateConstruction } from './systems/construction.js';
 import { updateEffects } from './systems/effects.js';
 import { attachInput } from './input.js';
@@ -27,6 +28,7 @@ function tick(dt) {
 
   updateHeroMove(game, dt);
   updateEnemies(game, dt);
+  updateTurrets(game, dt);
   updateConstruction(game, dt);
   updateEconomy(game, dt);
   heroLaser(game, dt);

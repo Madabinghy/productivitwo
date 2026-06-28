@@ -63,10 +63,20 @@ export function draw(game, ctx, t) {
 
   for (const e of game.G.enemies) drawEnemy(ctx, e, th.enemy, t);
 
-  // projectiles (tourelles — étape 5)
+  // projectiles des tourelles (forme par type de tir)
   for (const p of game.G.projectiles) {
-    ctx.save(); ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 11;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 7); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(p.x, p.y);
+    if (p.shot === 'fireball') {
+      ctx.rotate((p.ang || 0) * Math.PI / 180);
+      ctx.globalAlpha = 0.7; ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.ellipse(0, 10, 3, 12, 0, 0, 7); ctx.fill(); ctx.globalAlpha = 1; ctx.rotate(-(p.ang || 0) * Math.PI / 180);
+    }
+    if (p.shot === 'sigil') { ctx.strokeStyle = p.color; ctx.lineWidth = 2; ctx.shadowColor = p.color; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.stroke(); }
+    const g = ctx.createRadialGradient(0, -1, 0, 0, 0, 7);
+    g.addColorStop(0, '#fff'); g.addColorStop(0.4, p.color); g.addColorStop(1, p.color + '00');
+    ctx.fillStyle = g; ctx.shadowColor = p.color; ctx.shadowBlur = 11;
+    ctx.beginPath(); ctx.arc(0, 0, p.shot === 'sigil' ? 4 : 6, 0, 7); ctx.fill();
+    ctx.restore();
   }
 
   // traînée lumineuse du héros

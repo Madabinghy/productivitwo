@@ -7,45 +7,67 @@ import { armMuzzle } from '../systems/hero.js';
 
 const isBuilt = (t) => t.built !== false;
 
-// Socle + canon générique d'une tourelle ; variantes simples pour le soutien.
-function turretSprite(ctx, key, facing, level, t) {
-  const col = TCOL[key] || '#8a6cff';
-  const ts = turretStats(t);
-  // socle
-  ctx.save();
+function basePlate(ctx, col) {
   const base = ctx.createRadialGradient(0, -2, 1, 0, 0, 18);
   base.addColorStop(0, '#3a4150'); base.addColorStop(1, '#13161f');
   ctx.fillStyle = base; ctx.strokeStyle = col; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
-  ctx.restore();
+}
 
-  if (ts.support || ts.heal) {
-    // soutien : anneau + cœur (visuels affinés à l'étape 5)
-    ctx.save();
-    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8;
-    ctx.beginPath(); ctx.arc(0, 0, 11, 0, 7); ctx.stroke();
-    ctx.globalAlpha = 1; ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 9;
-    ctx.beginPath(); ctx.arc(0, 0, 5, 0, 7); ctx.fill();
-    ctx.restore();
-  } else {
-    // canon orienté
-    ctx.save();
-    ctx.rotate(facing * Math.PI / 180);
-    const bg = ctx.createLinearGradient(-4, 0, 4, 0); bg.addColorStop(0, '#8a96b3'); bg.addColorStop(1, '#3a4150');
-    ctx.fillStyle = bg; ctx.strokeStyle = col; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.rect(-4, -20, 8, 22); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.arc(0, -20, 3, 0, 7); ctx.fill();
-    ctx.restore();
-    // cœur
-    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 9;
-    ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    // badge niveau
-    ctx.save(); ctx.translate(11, 11); ctx.fillStyle = '#0d0a18'; ctx.strokeStyle = col; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = col; ctx.font = "9px 'Chakra Petch', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(level), 0, 0.5); ctx.restore();
+// Sprite d'un bâtiment (dans son repère local), orienté pour les tourelles offensives.
+function turretSprite(ctx, key, facing, level, t, time) {
+  const col = TCOL[key] || '#8a6cff';
+
+  if (key === 'bercail') {
+    basePlate(ctx, col);
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10;
+    ctx.fillRect(-2, -8, 4, 16); ctx.fillRect(-8, -2, 16, 4); // croix de soin
+    ctx.shadowBlur = 0; return;
   }
+  if (key === 'radar') {
+    basePlate(ctx, col);
+    ctx.save(); ctx.rotate((time || 0) * 2.6); // balayage tournant
+    const g = ctx.createConicGradient ? ctx.createConicGradient(0, 0, 0) : null;
+    if (g) { g.addColorStop(0, col + 'cc'); g.addColorStop(0.2, 'transparent'); ctx.fillStyle = g; }
+    else ctx.fillStyle = col + '55';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 14, -1.2, 0); ctx.closePath(); ctx.globalAlpha = 0.85; ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(0, 0, 4, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    return;
+  }
+  if (key === 'satellite') {
+    basePlate(ctx, col);
+    ctx.save(); ctx.rotate(-0.5);
+    const dg = ctx.createRadialGradient(0, -2, 0, 0, 0, 12); dg.addColorStop(0, col + '55'); dg.addColorStop(1, '#0b0a06');
+    ctx.fillStyle = dg; ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(0, 0, 12, 8, 0, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(0, 0, 3, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    return;
+  }
+  if (key === 'bouclier') {
+    // barre-barrière orientée (perpendiculaire au facing)
+    ctx.save(); ctx.rotate(facing * Math.PI / 180);
+    ctx.fillStyle = '#2a313f'; ctx.fillRect(-3, -2, 6, 14); // pied
+    const sg = ctx.createLinearGradient(0, -8, 0, 0); sg.addColorStop(0, col); sg.addColorStop(1, col + '22');
+    ctx.fillStyle = sg; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.ellipse(0, -8, 30, 9, 0, Math.PI, 0); ctx.fill(); ctx.stroke();
+    ctx.restore(); return;
+  }
+
+  // tourelle offensive : socle + canon orienté + cœur + badge niveau
+  basePlate(ctx, col);
+  ctx.save(); ctx.rotate(facing * Math.PI / 180);
+  const bg = ctx.createLinearGradient(-4, 0, 4, 0); bg.addColorStop(0, '#8a96b3'); bg.addColorStop(1, '#3a4150');
+  ctx.fillStyle = bg; ctx.strokeStyle = col; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.rect(-4, -20, 8, 22); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(0, -20, 3, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(0, 0, 4.5, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.save(); ctx.translate(11, 11); ctx.fillStyle = '#0d0a18'; ctx.strokeStyle = col; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, 7, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col; ctx.font = "9px 'Chakra Petch', monospace"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(String(level), 0, 0.5); ctx.restore();
 }
 
 export function drawPlaced(game, ctx, th, t) {
@@ -56,11 +78,27 @@ export function drawPlaced(game, ctx, th, t) {
     const ts = turretStats(p);
     const building = !isBuilt(p); const isSite = game._buildId === p.id; const bprog = Math.max(0, Math.min(1, p.prog || 0));
 
+    const sel = game.ui.selId === p.id;
+
+    // anneaux au sol : radar (révélation), bercail (soin)
+    if (!building && p.key === 'radar') {
+      const rr = radarRadius(p);
+      ctx.save(); ctx.setLineDash([4, 5]); ctx.strokeStyle = col + (sel ? 'aa' : '66'); ctx.lineWidth = 1.5;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr); g.addColorStop(0, col + '12'); g.addColorStop(0.7, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(p.x, p.y, rr, 0, 7); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+    }
+    if (!building && ts.heal) {
+      ctx.save(); ctx.strokeStyle = '#7bff9b55'; ctx.lineWidth = 1.5;
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, ts.radius); g.addColorStop(0, '#7bff9b16'); g.addColorStop(0.72, 'transparent');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, ts.radius, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(p.x, p.y, ts.radius, 0, 7); ctx.stroke();
+      ctx.restore();
+    }
+
     // cône de portée (tourelles bâties, offensives)
     if (!building && !ts.support && !ts.heal && ts.range > 0) {
       const fr = facing * Math.PI / 180; const effR = rayDist(game.WALLS, p.x, p.y, Math.sin(fr), -Math.cos(fr), ts.range);
       ctx.save(); ctx.translate(p.x, p.y); ctx.rotate((facing - 90) * Math.PI / 180);
-      const sel = game.ui.selId === p.id;
       const g = ctx.createLinearGradient(0, 0, effR, 0); g.addColorStop(0, col + (sel ? '4a' : '24')); g.addColorStop(0.8, 'transparent');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(effR, -effR * 0.35); ctx.lineTo(effR, effR * 0.35); ctx.closePath(); ctx.fill();
       ctx.restore();
@@ -68,7 +106,7 @@ export function drawPlaced(game, ctx, th, t) {
 
     ctx.save(); ctx.translate(p.x, p.y);
     if (building) { ctx.globalAlpha = 0.28 + bprog * 0.42; }
-    turretSprite(ctx, p.key, facing, p.level, p);
+    turretSprite(ctx, p.key, facing, p.level, p, t);
     ctx.restore();
 
     // état chantier : anneau + barre + %
@@ -122,7 +160,7 @@ export function drawGhost(game, ctx, th, t) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.stroke();
   ctx.setLineDash([]); ctx.shadowBlur = 0;
   // silhouette
-  turretSprite(ctx, key, face, 1, { key, level: 1 });
+  turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
   ctx.restore();
   // coût
   const c = costOf(key);
