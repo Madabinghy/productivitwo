@@ -8,7 +8,7 @@ export function hitTurret(game, e, tgt) {
   const hitT = tgt;
   if (hitT.hp == null) { const mh = baseHp(hitT.key); hitT.hp = mh; hitT.maxHp = mh; }
   hitT.hp -= 7;
-  game.G.beams.push({ x1: e.x, y1: e.y, x2: hitT.x, y2: hitT.y, color: '#ff5d7a', life: 0.12, maxLife: 0.12, seg: true });
+  game.G.beams.push({ kind: 'laser', ax: e.x, ay: e.y, bx: hitT.x, by: hitT.y, color: '#ff5d7a', life: 0.12, maxLife: 0.12 });
   return hitT.hp <= 0 ? hitT.id : null;
 }
 

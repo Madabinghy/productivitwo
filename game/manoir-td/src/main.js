@@ -2,10 +2,14 @@
 import { VPW, VPH } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
+import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
+import { updateEffects } from './systems/effects.js';
+import { attachInput } from './input.js';
 import { draw } from './render/index.js';
 
 const game = createGame();
 spawnEnemies(game);
+attachInput(game);
 window.__game = game; // utile pour le débogage / tests
 
 const canvas = document.getElementById('view');
@@ -17,7 +21,11 @@ function tick(dt) {
   if (G.lit.size < game.CANDLES.length) G.time = (G.time || 0) + dt;
   if (game.HERO.inv > 0) game.HERO.inv -= dt;
 
+  updateHeroMove(game, dt);
   updateEnemies(game, dt);
+  heroLaser(game, dt);
+  orientHero(game, dt);
+  updateEffects(game, dt);
 
   if (!game.freeCam) { game.cam.fx = game.clampFx(game.HERO.x); game.cam.fy = game.clampFy(game.HERO.y); }
 }

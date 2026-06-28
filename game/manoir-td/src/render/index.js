@@ -30,16 +30,37 @@ export function draw(game, ctx, t) {
     ctx.beginPath(); ctx.arc(m.x, m.y, sz, 0, 7); ctx.fill(); ctx.restore();
   }
 
-  // tirs ennemis (segments) — d'autres faisceaux viendront avec les tourelles
+  // faisceaux : laser (droit) / bolt (zigzag) — héros, tourelles, tirs ennemis
   for (const b of game.G.beams) {
-    if (!b.seg) continue;
-    const ln = b.life / (b.maxLife || 0.12);
-    ctx.save(); ctx.globalAlpha = ln; ctx.strokeStyle = b.color; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-    ctx.shadowColor = b.color; ctx.shadowBlur = 6;
-    ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke(); ctx.restore();
+    const ln = b.life / (b.maxLife || 0.14);
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.shadowColor = b.color; ctx.shadowBlur = 6;
+    const trace = () => {
+      ctx.beginPath();
+      if (b.pts) { ctx.moveTo(b.pts[0].x, b.pts[0].y); for (let i = 1; i < b.pts.length; i++) ctx.lineTo(b.pts[i].x, b.pts[i].y); }
+      else { ctx.moveTo(b.ax, b.ay); ctx.lineTo(b.bx, b.by); }
+      ctx.stroke();
+    };
+    ctx.strokeStyle = b.color; ctx.globalAlpha = ln * 0.4; ctx.lineWidth = b.kind === 'bolt' ? 7 : 8; trace();
+    ctx.strokeStyle = b.kind === 'bolt' ? '#fff6c4' : '#eaffff'; ctx.globalAlpha = ln; ctx.lineWidth = b.kind === 'bolt' ? 2.4 : 2.6; trace();
+    ctx.restore();
   }
 
   for (const e of game.G.enemies) drawEnemy(ctx, e, th.enemy, t);
+
+  // projectiles (tourelles — étape 5)
+  for (const p of game.G.projectiles) {
+    ctx.save(); ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 11;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, 7); ctx.fill(); ctx.restore();
+  }
+
+  // traînée lumineuse du héros
+  for (const tp of (game.HERO.trail || [])) {
+    const sz = 8 + tp.life * 14;
+    ctx.save(); ctx.globalAlpha = tp.life * 0.55;
+    const g = ctx.createRadialGradient(tp.x, tp.y, 0, tp.x, tp.y, sz / 2);
+    g.addColorStop(0, th.flame); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(tp.x, tp.y, sz / 2, 0, 7); ctx.fill(); ctx.restore();
+  }
 
   drawHero(game, ctx, th, t);
 
