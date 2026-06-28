@@ -34,6 +34,7 @@ export function createGame() {
     // état UI
     ui: {
       amb: 'ombrelune', tab: 'turret', sel: { cat: 'turret', key: 'givre' }, selId: null,
+      heroSelected: false,
       warmth: 0.55, darkMode: false, aimMode: false,
       breached: false, heroDown: false, win: false, report: null,
       owned: {}, placed: [],
@@ -42,6 +43,7 @@ export function createGame() {
 
     // éphémères calculés par les systèmes (lecture par le rendu)
     _buildId: null, _buildStall: false, _harvestId: null, _laserTgt: null, _heroCD: 0,
+    heroTarget: null,  // ordre de déplacement au clic (RTS) ; annulé par ZQSD
   };
 
   // vue/camera helpers (bornés aux limites de carte)

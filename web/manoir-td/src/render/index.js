@@ -93,6 +93,17 @@ export function draw(game, ctx, t) {
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(tp.x, tp.y, sz / 2, 0, 7); ctx.fill(); ctx.restore();
   }
 
+  // marqueur de destination (ordre de déplacement du Commander)
+  if (game.heroTarget) {
+    const m = game.heroTarget;
+    ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(t * 1.5);
+    ctx.strokeStyle = th.flame; ctx.lineWidth = 2; ctx.shadowColor = th.flame; ctx.shadowBlur = 8;
+    const r = 9 + Math.sin(t * 6) * 2;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+    for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(0, -r - 3); ctx.lineTo(0, -r + 1); ctx.stroke(); }
+    ctx.restore();
+  }
+
   drawBuildBeam(game, ctx, t);
   drawHero(game, ctx, th, t);
   drawGhost(game, ctx, th, t);

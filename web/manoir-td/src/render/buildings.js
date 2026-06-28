@@ -63,8 +63,8 @@ function drawMuzzle(ctx, kind, w, col, len) {
 
 // Canons selon le niveau (vue de dessus, émanant du centre vers -y).
 function barrelSpecs(key, level) {
-  const L = 15, W = 5.2;                     // canon un peu plus court (était 19)
-  if (key === 'sniper') return [{ dx: 0, len: L * 1.85, w: W * 0.62 }];
+  const L = 24, W = 5.2;                     // canon allongé, conforme au design
+  if (key === 'sniper') return [{ dx: 0, len: L * 1.75, w: W * 0.62 }];
   if (level <= 1) return [{ dx: 0, len: L, w: W }];
   if (level === 2) return [{ dx: 0, len: L * 1.14, w: W * 1.28 }];
   if (level === 3) return [{ dx: -W * 0.95, len: L * 1.06, w: W * 0.8 }, { dx: W * 0.95, len: L * 1.06, w: W * 0.8 }];
@@ -280,7 +280,7 @@ export function drawPlaced(game, ctx, th, t) {
 }
 
 export function drawPlaceHalos(game, ctx, th) {
-  if (!(game.ui.sel && !game.ui.selId)) return;
+  if (!(game.ui.sel && !game.ui.selId) || game.ui.heroSelected) return;
   for (const sv of visionSources(game)) {
     const col = sv.kind === 'radar' ? TCOL.radar : th.flame;
     ctx.save(); ctx.setLineDash([6, 6]); ctx.strokeStyle = col + '66'; ctx.lineWidth = 1.5;
@@ -292,7 +292,7 @@ export function drawPlaceHalos(game, ctx, th) {
 }
 
 export function drawGhost(game, ctx, th, t) {
-  if (!(game.ui.sel && !game.ui.selId) || !game._ghostW) return;
+  if (!(game.ui.sel && !game.ui.selId) || !game._ghostW || game.ui.heroSelected) return;
   const { wx, wy } = game._ghostW; const gx = Math.round(wx / GRID) * GRID, gy = Math.round(wy / GRID) * GRID;
   const ok = canPlaceAt(game, wx, wy); const key = game.ui.sel.key; const vc = ok ? '#7bff9b' : '#ff5d7a';
   let face = 0, bd = 1e9; for (const en of game.ENTRY) { const p = game.NODES[en]; const d = Math.hypot(p.x - gx, p.y - gy); if (d < bd) { bd = d; face = compass(p.x - gx, p.y - gy); } }

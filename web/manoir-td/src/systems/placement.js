@@ -10,7 +10,21 @@ export function clearGhost(game) { game._ghostW = null; }
 
 // Clic / tap dans le monde.
 export function actAt(game, wx, wy, touch) {
-  const s = game.ui;
+  const s = game.ui; const H = game.HERO;
+
+  // clic sur le Commander → bascule sa sélection (prioritaire)
+  if (H && Math.hypot(H.x - wx, H.y - wy) < 36) {
+    s.heroSelected = !s.heroSelected; s.selId = null;
+    s.msg = s.heroSelected ? "Commander sélectionné — clique un point pour l'y envoyer." : 'Commander désélectionné.';
+    return;
+  }
+  // Commander sélectionné : un clic au sol = ordre de déplacement (clic sur une tourelle = la sélectionner)
+  if (s.heroSelected) {
+    const onTurret = s.placed.find(p => p.cat === 'turret' && Math.hypot(p.x - wx, p.y - wy) < 32);
+    if (onTurret) { s.heroSelected = false; s.selId = onTurret.id; return; }
+    game.heroTarget = { x: wx, y: wy }; game.freeCam = false;
+    s.msg = 'En route…'; return;
+  }
 
   // une tourelle est sélectionnée : re-cibler sa visée ou sélectionner une autre
   if (s.selId) {

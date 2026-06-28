@@ -35,6 +35,13 @@ export function drawHero(game, ctx, th, t) {
   ctx.save();
   ctx.translate(H.x, H.y);
 
+  // anneau de sélection (clic sur le Commander)
+  if (game.ui.heroSelected) {
+    ctx.save(); ctx.rotate((t || 0) * 0.6); ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.shadowColor = g; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(0, 4, 30, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+
   glow(ctx, 0, 0, 26, g);                                              // halo de lanterne
   ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.ellipse(0, 18, 22, 6, 0, 0, 7); ctx.fill(); // ombre
 
