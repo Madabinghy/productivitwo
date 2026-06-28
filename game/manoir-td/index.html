@@ -59,6 +59,24 @@
     .btn-back { background: transparent; border: none; color: var(--muted); }
     .row2 { display: flex; gap: 6px; }
     .row2 > * { flex: 1; }
+    .stage { position: relative; }
+    .overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; border-radius: 16px; background: rgba(6,5,12,.85); text-align: center; padding: 20px; }
+    .overlay.danger { background: rgba(14,4,8,.86); }
+    .overlay[hidden] { display: none; }
+    .ov-title { font-family: 'Cinzel', serif; font-weight: 900; font-size: 34px; letter-spacing: 3px; }
+    .ov-title.flame { color: var(--flame); text-shadow: 0 0 26px var(--flame); }
+    .ov-title.rose { color: #ff5d7a; text-shadow: 0 0 26px #ff5d7a; }
+    .ov-sub { font-size: 13px; letter-spacing: 1px; color: var(--accentText, #cdbfff); max-width: 430px; line-height: 1.55; }
+    .ov-sub.rose { color: #ffb3c1; }
+    .ov-btn { font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 11px 22px; border-radius: 10px; margin-top: 6px; border: 1px solid var(--accent); background: rgba(138,108,255,.16); color: #cdbfff; }
+    .ov-btn.rose { border-color: #ff5d7a; background: rgba(255,93,122,.16); color: #ffd0d8; }
+    .report { width: 430px; max-width: 84%; padding: 16px 18px; border-radius: 10px; text-align: left; background: linear-gradient(180deg,#1c1622,#120e18); border: 1px dashed #ff5d7a66; box-shadow: 0 0 26px rgba(255,93,122,.18); }
+    .report .tag { font-size: 10px; letter-spacing: 2.5px; color: #ff8da0; text-transform: uppercase; margin-bottom: 10px; }
+    .report .l1 { font-size: 15px; font-weight: 700; color: #f3eeff; }
+    .report .l2 { font-size: 12.5px; color: #bdb3d8; margin-top: 4px; line-height: 1.5; }
+    .report .bar { margin-top: 12px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .report .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#ff5d7a,#ffb3c1); box-shadow: 0 0 8px #ff5d7a; }
+    .report .foot { font-size: 10.5px; color: #8f86ab; margin-top: 8px; letter-spacing: 1px; }
   </style>
 </head>
 <body>
@@ -81,7 +99,24 @@
     </div>
     <div class="body">
       <div class="left">
-        <div class="stage"><canvas id="view" width="1080" height="680"></canvas></div>
+        <div class="stage">
+          <canvas id="view" width="1080" height="680"></canvas>
+          <div class="overlay" id="ov-win" hidden>
+            <div class="ov-title flame">VICTOIRE</div>
+            <div class="ov-sub">Le manoir est entièrement éclairé — le coffre-fort est sauf. La procrastination recule.</div>
+          </div>
+          <div class="overlay" id="ov-down" hidden>
+            <div class="ov-title flame">LE COMMANDER EST TOMBÉ</div>
+            <div class="ov-sub">Le Majordome-automate s'est éteint. Sans lui, plus de lumière ni de défense.</div>
+            <button class="ov-btn" id="btn-down">Reprendre la défense</button>
+          </div>
+          <div class="overlay danger" id="ov-breach" hidden>
+            <div class="ov-title rose">COFFRE FORCÉ</div>
+            <div class="ov-sub rose">Vos données confidentielles ont fuité…</div>
+            <div class="report" id="report"></div>
+            <button class="ov-btn rose" id="btn-breach">Reprendre la défense</button>
+          </div>
+        </div>
         <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>
       </div>
       <aside class="panel" id="panel"></aside>

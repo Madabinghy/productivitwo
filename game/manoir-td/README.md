@@ -47,12 +47,26 @@ src/
     hero.js           — le Commander
 ```
 
-## Périmètre V1 (étapes 1→7)
+## Périmètre V1 (étapes 1→7) — complet ✅
 
 1. ✅ Carte manoir + collisions + pathfinding ennemi (BFS).
-2. ⬜ Commander jouable (déplacement, orientation, 3 actions par bras).
-3. ⬜ Économie : masse plafonnée + mottes + gisements rechargeables.
-4. ⬜ Construction « occupée » à portée de vision (faisceau doré).
-5. ⬜ Tourelles payantes orientables (+ balayage 180°) + 4 bâtiments de soutien.
-6. ⬜ Vision jour/nuit + brouillard + minimap.
-7. ⬜ Vagues d'ennemis + conditions victoire/défaite + rapport.
+2. ✅ Commander jouable (déplacement, orientation, 3 actions par bras).
+3. ✅ Économie : masse plafonnée + mottes + gisements rechargeables.
+4. ✅ Construction « occupée » à portée de vision (faisceau doré).
+5. ✅ Tourelles payantes orientables (+ balayage 180°) + 4 bâtiments de soutien.
+6. ✅ Vision jour/nuit + brouillard + minimap.
+7. ✅ Vagues d'ennemis + conditions victoire/défaite + rapport.
+
+## Contrôles
+
+- **Déplacement** : ZQSD / WASD / flèches.
+- **Souris** : survol = fantôme de pose ; clic = poser / sélectionner ; molette = pan.
+- **Espace** : récupérer la tourelle sous le héros. **G** : déposer un gisement (test).
+- **Tactile** : pose en 2 temps (tap fantôme → tap confirmer) ; pan à 2 doigts.
+- Panneau droit : choisir tourelle/soutien. Bouton **☀/☾** : bascule jour/nuit.
+
+## Hors V1 (V2)
+
+Multi-constructeurs / Ingénieur, Cuirassé-tortue déployable, Cercle d'invocation (usine),
+Stockage (plafond+), la Veilleuse comme boss + messages tentateurs, campagne/donjon,
+postures d'unités. (Réfs dans `protos-reference/` du handoff — non implémentées.)

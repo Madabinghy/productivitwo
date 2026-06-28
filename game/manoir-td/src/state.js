@@ -35,7 +35,7 @@ export function createGame() {
     ui: {
       amb: 'ombrelune', tab: 'turret', sel: { cat: 'turret', key: 'givre' }, selId: null,
       warmth: 0.55, darkMode: false, aimMode: false,
-      breached: false, heroDown: false, report: null,
+      breached: false, heroDown: false, win: false, report: null,
       owned: {}, placed: [],
       msg: "Bienvenue. Allume les bougies du Hall d'entrée pour le conquérir, puis explore. Pose des tourelles dans ta lumière (clic).",
     },
