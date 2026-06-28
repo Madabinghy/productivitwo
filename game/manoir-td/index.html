@@ -29,6 +29,34 @@
     .mass-bg { height: 7px; border-radius: 4px; background: rgba(0,0,0,.4); overflow: hidden; border: 1px solid rgba(255,207,110,.2); }
     .mass-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff9e3d, var(--flame)); box-shadow: 0 0 8px var(--flame); transition: width .15s; }
     .mass-val { font-size: 11px; font-weight: 700; color: #f3eeff; }
+    .body { display: flex; gap: 18px; align-items: flex-start; max-width: 1500px; width: 100%; }
+    .left { display: flex; flex-direction: column; gap: 14px; }
+    .stage { width: 1080px; max-width: 100%; }
+    .panel { flex: 1 1 auto; min-width: 280px; display: flex; flex-direction: column; gap: 9px; }
+    .tabs { display: flex; gap: 5px; padding: 4px; border-radius: 11px; background: var(--panel); border: 1px solid var(--border); }
+    .tab { flex: 1; font-size: 12px; font-weight: 700; cursor: pointer; padding: 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-family: inherit; }
+    .tab.on { border-color: var(--accent); background: rgba(138,108,255,.12); color: var(--accentText, #cdbfff); }
+    .card { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 12px; cursor: pointer; background: var(--panel); border: 1px solid var(--border); }
+    .card.on { border-color: var(--accent); box-shadow: 0 0 18px rgba(138,108,255,.33); background: rgba(138,108,255,.10); }
+    .card.dim { opacity: .42; cursor: default; }
+    .card .ico { width: 44px; height: 42px; flex: 0 0 auto; border-radius: 9px; background: #0a0714; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+    .card .ico .dot { width: 20px; height: 20px; border-radius: 50%; }
+    .card .nm { font-family: 'Cinzel', serif; font-weight: 700; font-size: 13.5px; color: #f3eeff; line-height: 1.15; }
+    .card .mt { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .hint { margin-top: 2px; padding: 11px 13px; border-radius: 10px; background: var(--panel); border: 1px dashed var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+    .detail { display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--border); }
+    .detail .dh { font-family: 'Cinzel', serif; font-weight: 700; font-size: 16px; color: #f3eeff; }
+    .detail .ds { font-size: 12px; color: var(--muted); }
+    .detail .dd { font-size: 11.5px; color: #d6cdf0; line-height: 1.5; padding: 9px 11px; border-radius: 9px; background: rgba(138,108,255,.08); border: 1px solid rgba(138,108,255,.2); }
+    .detail button, .panel .act { font-family: inherit; cursor: pointer; border-radius: 9px; padding: 10px; font-size: 12.5px; font-weight: 700; }
+    .btn-up { background: rgba(138,108,255,.12); border: 1px solid rgba(138,108,255,.5); color: #cdbfff; }
+    .btn-up.max { background: rgba(60,60,70,.4); border-color: var(--border); color: var(--muted); cursor: default; }
+    .btn-aim { background: rgba(138,108,255,.10); border: 1px solid rgba(138,108,255,.5); color: #f3eeff; }
+    .btn-aim.on { background: rgba(138,108,255,.28); }
+    .btn-rm { background: transparent; border: 1px solid rgba(255,93,122,.4); color: #ff8da0; }
+    .btn-back { background: transparent; border: none; color: var(--muted); }
+    .row2 { display: flex; gap: 6px; }
+    .row2 > * { flex: 1; }
   </style>
 </head>
 <body>
@@ -46,10 +74,13 @@
       <div class="chip"><span class="num" id="hud-alive">0</span><span class="lbl">Flemmes</span></div>
       <div class="chip"><span class="num" id="hud-chrono">0:00</span><span class="lbl">Chrono</span></div>
     </div>
-    <div class="stage">
-      <canvas id="view" width="1080" height="680"></canvas>
+    <div class="body">
+      <div class="left">
+        <div class="stage"><canvas id="view" width="1080" height="680"></canvas></div>
+        <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>
+      </div>
+      <aside class="panel" id="panel"></aside>
     </div>
-    <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>
   </div>
   <script type="module" src="./src/main.js"></script>
 </body>

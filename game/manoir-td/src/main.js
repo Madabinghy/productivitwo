@@ -4,18 +4,21 @@ import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
 import { updateEconomy } from './systems/economy.js';
+import { updateConstruction } from './systems/construction.js';
 import { updateEffects } from './systems/effects.js';
 import { attachInput } from './input.js';
 import { draw } from './render/index.js';
+import { createPanel } from './render/panel.js';
 
 const game = createGame();
 spawnEnemies(game);
-attachInput(game);
 window.__game = game; // utile pour le débogage / tests
 
 const canvas = document.getElementById('view');
 canvas.width = VPW; canvas.height = VPH;
 const ctx = canvas.getContext('2d');
+attachInput(game, canvas);
+const panel = createPanel(game);
 
 function tick(dt) {
   const { G } = game;
@@ -24,6 +27,7 @@ function tick(dt) {
 
   updateHeroMove(game, dt);
   updateEnemies(game, dt);
+  updateConstruction(game, dt);
   updateEconomy(game, dt);
   heroLaser(game, dt);
   orientHero(game, dt);
@@ -51,6 +55,7 @@ function paintHud() {
   if (hud.massVal) hud.massVal.textContent = Math.round(G.mass) + ' / ' + G.massCap;
   if (hud.massFull) hud.massFull.textContent = full ? '⚠ plein' : '';
   if (hud.massWrap) hud.massWrap.classList.toggle('full', full);
+  panel.refresh();
 }
 
 let last = performance.now();

@@ -4,6 +4,7 @@ import { drawWorld } from './world.js';
 import { drawEnemy, drawCoffre, drawCrystal } from './sprites.js';
 import { drawHero } from './hero.js';
 import { armMuzzle } from '../systems/hero.js';
+import { drawPlaced, drawGhost, drawBuildBeam, drawPlaceHalos } from './buildings.js';
 
 export function draw(game, ctx, t) {
   const th = THEMES[game.ui.amb];
@@ -17,6 +18,7 @@ export function draw(game, ctx, t) {
   ctx.translate(Math.round(tx), Math.round(ty));
 
   drawWorld(game, ctx, th, t);
+  drawPlaceHalos(game, ctx, th);
 
   for (const cr of game.CRYSTALS) drawCrystal(ctx, cr, t);
   drawCoffre(ctx, COFFRE, th, game.G.enemies.some(e => Math.hypot(e.x - COFFRE.x, e.y - COFFRE.y) < 170), t);
@@ -57,6 +59,8 @@ export function draw(game, ctx, t) {
     ctx.restore();
   }
 
+  drawPlaced(game, ctx, th, t);
+
   for (const e of game.G.enemies) drawEnemy(ctx, e, th.enemy, t);
 
   // projectiles (tourelles — étape 5)
@@ -74,7 +78,9 @@ export function draw(game, ctx, t) {
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(tp.x, tp.y, sz / 2, 0, 7); ctx.fill(); ctx.restore();
   }
 
+  drawBuildBeam(game, ctx, t);
   drawHero(game, ctx, th, t);
+  drawGhost(game, ctx, th, t);
 
   ctx.restore();
 }
