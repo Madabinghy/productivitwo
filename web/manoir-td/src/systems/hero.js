@@ -17,11 +17,22 @@ export function updateHeroMove(game, dt) {
   if (K['d'] || K['arrowright']) mx += 1;
   if (K['w'] || K['z'] || K['arrowup']) my -= 1;
   if (K['s'] || K['arrowdown']) my += 1;
+
+  // ordre de déplacement (clic) : suivi tant qu'aucune touche n'est pressée
+  if (game.heroTarget) {
+    if (mx || my) game.heroTarget = null;            // ZQSD annule l'ordre
+    else {
+      const dx = game.heroTarget.x - H.x, dy = game.heroTarget.y - H.y, d = Math.hypot(dx, dy);
+      if (d < 8) game.heroTarget = null;             // arrivé
+      else { mx = dx / d; my = dy / d; }
+    }
+  }
   game._moveX = mx; game._moveY = my;
 
   if (mx || my) {
     game.freeCam = false;
     const L = Math.hypot(mx, my); const sp = HCFG.speed * dt;
+    const px = H.x, py = H.y;
     let nx = H.x + mx / L * sp, ny = H.y + my / L * sp;
     nx = Math.max(20, Math.min(MAP.W - 20, nx)); ny = Math.max(20, Math.min(MAP.H - 20, ny));
     if (!blocked(W, H.x, H.y, nx, H.y)) H.x = nx;          // collision axe par axe (glisse le long des murs)
@@ -29,6 +40,11 @@ export function updateHeroMove(game, dt) {
     if (!H.trail) H.trail = [];
     game._trailT = (game._trailT || 0) + dt;
     if (game._trailT >= 0.045) { game._trailT = 0; H.trail.push({ x: H.x, y: H.y, life: 0.55 }); if (H.trail.length > 14) H.trail.shift(); }
+    // ordre de déplacement bloqué par un mur (pas de pathfinding héros) → abandon après ~1,2 s
+    if (game.heroTarget) {
+      game._stuckT = (Math.hypot(H.x - px, H.y - py) < sp * 0.3) ? (game._stuckT || 0) + dt : 0;
+      if (game._stuckT > 1.2) { game.heroTarget = null; game._stuckT = 0; game.ui.msg = 'Chemin bloqué — déplace-toi en ZQSD.'; }
+    }
   }
   if (H.trail) { for (const tp of H.trail) tp.life -= dt; H.trail = H.trail.filter(tp => tp.life > 0); }
 }
