@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Manoir d'Ombrelune — Tower Defense</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --accent: #8a6cff; --ink: #e9e4f2; --muted: #8a80a6; --flame: #ffcf6e; --panel: rgba(22,18,34,.82); --border: rgba(138,108,255,.2); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 50% -10%, #1a1430 0%, #0b0816 60%, #070510 100%); color: var(--ink); font-family: 'Chakra Petch', sans-serif; }
+    #app { min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px; }
+    .title { font-family: 'Cinzel', serif; font-weight: 900; font-size: 22px; letter-spacing: 3px; color: #f3eeff; text-shadow: 0 0 16px #8a6cff55; }
+    .tagline { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-top: -8px; }
+    .hud { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .chip { display: flex; flex-direction: column; align-items: center; line-height: 1; padding: 7px 13px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+    .chip .num { font-size: 17px; font-weight: 700; color: #cdbfff; }
+    .chip .lbl { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+    .stage { position: relative; width: 1080px; max-width: 100%; }
+    canvas { display: block; width: 1080px; height: 680px; max-width: 100%; border-radius: 16px; background: #0a0714; border: 1px solid var(--border); box-shadow: 0 24px 60px rgba(0,0,0,.5); touch-action: none; cursor: crosshair; }
+    .msgbar { width: 1080px; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 15px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+    .msgbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 9px var(--accent); flex: 0 0 auto; }
+    .msgbar .txt { font-size: 12.5px; color: var(--ink); }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div style="text-align:center">
+      <div class="title">MANOIR D'OMBRELUNE</div>
+      <div class="tagline">Défense du coffre — productivité vs procrastination</div>
+    </div>
+    <div class="hud">
+      <div class="chip"><span class="num" id="hud-alive">0</span><span class="lbl">Flemmes</span></div>
+      <div class="chip"><span class="num" id="hud-chrono">0:00</span><span class="lbl">Chrono</span></div>
+    </div>
+    <div class="stage">
+      <canvas id="view" width="1080" height="680"></canvas>
+    </div>
+    <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
