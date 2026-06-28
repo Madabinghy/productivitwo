@@ -16,7 +16,8 @@ export function createPanel(game) {
     const placed = s.placed.map(p => p.id + ':' + p.key + ':' + p.level + ':' + (p.built ? 1 : 0)).join(',');
     const sel = s.selId ? (() => { const t = s.placed.find(p => p.id === s.selId); return t ? t.id + t.key + t.level + (t.bonusR || 0) + (t.bonusD || 0) : ''; })() : '';
     const snCd = s.selId ? Math.ceil(Math.max(0, ((s.placed.find(p => p.id === s.selId) || {})._next || 0) - (game.G.time || 0))) : 0;
-    return [s.tab, s.sel && s.sel.key, s.selId, s.aimMode, placed, sel, snCd, Object.keys(game.STASH).join('')].join('|');
+    const roster = game.save ? game.save.roster.turrets.join(',') : '';
+    return [s.tab, s.sel && s.sel.key, s.selId, s.aimMode, placed, sel, snCd, Object.keys(game.STASH).join(''), roster].join('|');
   }
 
   function build() {
@@ -33,23 +34,27 @@ export function createPanel(game) {
     }
     root.appendChild(tabs);
 
+    const roster = game.save ? game.save.roster.turrets : null;
     const items = s.tab === 'support' ? SUPPORT_ITEMS : TURRET_ITEMS;
     for (const it of items) {
+      const locked = roster ? !roster.includes(it.key) : false;
       const cnt = s.placed.filter(p => p.cat === 'turret' && p.key === it.key).length;
       const max = it.key === 'bouclier' ? 3 : 1; const dep = cnt >= max;
       const c = costOf(it.key);
       const card = document.createElement('div');
-      card.className = 'card' + (s.sel && s.sel.key === it.key ? ' on' : '') + (dep ? ' dim' : '');
-      const ico = document.createElement('div'); ico.className = 'ico'; ico.appendChild(chip(TCOL[it.key] || '#8a6cff'));
+      card.className = 'card' + (s.sel && s.sel.key === it.key ? ' on' : '') + ((dep || locked) ? ' dim' : '');
+      const ico = document.createElement('div'); ico.className = 'ico'; ico.appendChild(chip(locked ? '#5a5566' : (TCOL[it.key] || '#8a6cff')));
       const txt = document.createElement('div');
-      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = it.name;
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (locked ? '🔒 ' : '') + it.name;
       const mt = document.createElement('div'); mt.className = 'mt';
-      mt.textContent = dep ? (max > 1 ? cnt + '/' + max + ' déployés · ⎵ pour récupérer' : 'Déployée · ⎵ pour récupérer')
+      mt.textContent = locked ? 'À débloquer en campagne'
+                     : dep ? (max > 1 ? cnt + '/' + max + ' déployés · ⎵ pour récupérer' : 'Déployée · ⎵ pour récupérer')
                            : ('✦' + c.mass + ' · ' + c.time + 's · ' + (it.key === 'bouclier' ? cnt + '/3 — ' : '') + (DESC[it.key] || ''));
       txt.appendChild(nm); txt.appendChild(mt);
       card.appendChild(ico); card.appendChild(txt);
-      if (dep) card.onclick = () => { game.ui.msg = 'Déjà déployé — récupère-le (Espace sur la tourelle).'; };
-      else card.onclick = () => selectItem(game, s.tab === 'support' ? 'turret' : 'turret', it.key, it.name);
+      if (locked) card.onclick = () => { game.ui.msg = '🔒 « ' + it.name + ' » se débloque en gagnant une mission de campagne.'; };
+      else if (dep) card.onclick = () => { game.ui.msg = 'Déjà déployé — récupère-le (Espace sur la tourelle).'; };
+      else card.onclick = () => selectItem(game, 'turret', it.key, it.name);
       root.appendChild(card);
     }
 

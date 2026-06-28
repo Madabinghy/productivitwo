@@ -63,6 +63,8 @@
     .overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; border-radius: 16px; background: rgba(6,5,12,.85); text-align: center; padding: 20px; }
     .overlay.danger { background: rgba(14,4,8,.86); }
     .overlay[hidden] { display: none; }
+    .overlay:not([hidden]) { animation: ovfade .25s ease; }
+    @keyframes ovfade { from { opacity: 0; } to { opacity: 1; } }
     .ov-title { font-family: 'Cinzel', serif; font-weight: 900; font-size: 34px; letter-spacing: 3px; }
     .ov-title.flame { color: var(--flame); text-shadow: 0 0 26px var(--flame); }
     .ov-title.rose { color: #ff5d7a; text-shadow: 0 0 26px #ff5d7a; }
@@ -80,6 +82,23 @@
     .tutbar { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 28; max-width: 80%; padding: 10px 16px; border-radius: 12px; background: rgba(20,12,30,.92); border: 1px solid rgba(138,108,255,.5); box-shadow: 0 8px 26px rgba(0,0,0,.5); color: #e9e4f2; font-size: 13px; line-height: 1.4; text-align: center; }
     .tutbar[hidden] { display: none; }
     .overlay.title { background: radial-gradient(ellipse at 50% 30%, rgba(26,20,48,.92), rgba(7,5,16,.96)); }
+    .row2btn { display: flex; gap: 10px; margin-top: 6px; }
+    .ov-btn.ghost { background: transparent; border-color: var(--border); color: var(--muted); }
+    .reward { margin-top: 4px; padding: 8px 14px; border-radius: 10px; background: rgba(255,207,110,.12); border: 1px solid rgba(255,207,110,.45); color: var(--flame); font-size: 13px; font-weight: 700; }
+    #ov-campaign { background: radial-gradient(ellipse at 50% 20%, rgba(20,16,38,.95), rgba(6,5,14,.97)); justify-content: flex-start; padding-top: 26px; }
+    .cmap { position: relative; width: 1080px; max-width: 100%; height: 470px; margin: 8px 0; }
+    .cmap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .cphase { position: absolute; top: 0; font-family: 'Chakra Petch'; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .8; }
+    .cnode { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; background: none; border: none; font-family: inherit; }
+    .cnode .disc { width: 46px; height: 46px; border-radius: 50%; border: 2px solid; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .cnode.boss .disc { width: 58px; height: 58px; }
+    .cnode .nm { font-size: 11px; color: #efe6cf; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+    .cnode.locked { cursor: not-allowed; }
+    .cnode.locked .nm { color: #8a8068; }
+    .cnode.locked .disc { opacity: .6; }
+    .cnode.current .disc { animation: nodePulse 1.6s ease-in-out infinite; }
+    @keyframes nodePulse { 0%,100% { box-shadow: 0 0 8px currentColor; } 50% { box-shadow: 0 0 20px currentColor; } }
+    .rew-dot { width: 9px; height: 9px; border-radius: 50%; position: absolute; right: -2px; top: -2px; border: 1px solid #0008; }
   </style>
 </head>
 <body>
@@ -113,20 +132,27 @@
               <button class="ov-btn" id="btn-continue" hidden>Continuer</button>
             </div>
           </div>
+          <div class="overlay" id="ov-campaign" hidden>
+            <div class="ov-title flame" style="font-size:24px">CARTE DE CAMPAGNE</div>
+            <div class="cmap" id="cmap"></div>
+            <div class="ov-sub" id="cmap-hint">Clique un nœud déverrouillé pour lancer la mission.</div>
+          </div>
           <div class="overlay" id="ov-win" hidden>
-            <div class="ov-title flame">VICTOIRE</div>
-            <div class="ov-sub">Le manoir est entièrement éclairé — le coffre-fort est sauf. La procrastination recule.</div>
+            <div class="ov-title flame">MISSION ACCOMPLIE</div>
+            <div class="ov-sub" id="win-recap"></div>
+            <div class="reward" id="win-reward" hidden></div>
+            <button class="ov-btn" id="btn-win-map">Retour à la carte</button>
           </div>
           <div class="overlay" id="ov-down" hidden>
             <div class="ov-title flame">LE COMMANDER EST TOMBÉ</div>
             <div class="ov-sub">Le Majordome-automate s'est éteint. Sans lui, plus de lumière ni de défense.</div>
-            <button class="ov-btn" id="btn-down">Reprendre la défense</button>
+            <div class="row2btn"><button class="ov-btn" id="btn-down">Reprendre</button><button class="ov-btn ghost" id="btn-down-map">Carte</button></div>
           </div>
           <div class="overlay danger" id="ov-breach" hidden>
             <div class="ov-title rose">COFFRE FORCÉ</div>
             <div class="ov-sub rose">Vos données confidentielles ont fuité…</div>
             <div class="report" id="report"></div>
-            <button class="ov-btn rose" id="btn-breach">Reprendre la défense</button>
+            <div class="row2btn"><button class="ov-btn rose" id="btn-breach">Reprendre</button><button class="ov-btn ghost" id="btn-breach-map">Carte</button></div>
           </div>
         </div>
         <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>

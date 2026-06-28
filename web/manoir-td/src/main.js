@@ -1,7 +1,9 @@
 // Point d'entrée : boucle de jeu (requestAnimationFrame), assemblage des systèmes.
-import { VPW, VPH } from './config.js';
+import { VPW, VPH, MASS_START, MASS_CAP } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
+import { nodeById, completeNode } from './campaign.js';
+import { createCampaign } from './render/map.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
 import { updateEconomy } from './systems/economy.js';
 import { updateTurrets } from './systems/turrets.js';
@@ -26,25 +28,58 @@ const ctx = canvas.getContext('2d');
 attachInput(game, canvas);
 const panel = createPanel(game);
 
-// ---- routeur d'écrans : titre → mission ----
+// ---- routeur d'écrans : titre ⇄ carte ⇄ mission ----
 const titleOv = document.getElementById('ov-title');
+const campaignOv = document.getElementById('ov-campaign');
 const tutbar = document.getElementById('tutbar');
 const btnContinue = document.getElementById('btn-continue');
 btnContinue.hidden = !(hasSave() && save.seenTutorial);
 
-function startMission({ tutorial }) {
+const campaign = createCampaign(game, (node) => startMissionNode(node, { tutorial: false }));
+
+// remet la mission à neuf pour un nœud donné
+function resetMission(game, node) {
+  const G = game.G;
+  G.enemies = []; G.beams = []; G.projectiles = []; G.mottes = [];
+  G.lit = new Set(); G.kills = 0; G.time = 0; G.wave = 0;
+  G.mass = MASS_START; G.massCap = MASS_CAP; G.nextId = 10;
+  for (const cr of game.CRYSTALS) cr.amount = cr.max;
+  game.HERO = { x: 540, y: 1320, hp: 100, maxHp: 100, inv: 0, dir: 0, trail: [] };
+  game.cam = { fx: 540, fy: 1320 }; game.freeCam = false;
+  game.AIM = {}; game.CD = {}; game.STASH = {}; game.heroTarget = null;
+  game._spawnT = 0; game._winSaved = false; game.noSpawn = false; game.tutorial = null;
+  Object.assign(game.ui, { sel: null, selId: null, heroSelected: true, aimMode: false, breached: false, heroDown: false, win: false, report: null, owned: {}, placed: [] });
+  game.ui.darkMode = !!(node && node.mission.night);
+  game.mission = node ? { nodeId: node.id, waves: node.mission.waves, night: node.mission.night } : null;
+}
+
+function startMissionNode(node, { tutorial }) {
+  resetMission(game, node);
   game.screen = 'mission';
-  titleOv.hidden = true;
-  game.G.kills = 0; game._spawnT = 0;
-  if (tutorial) { startTutorial(game); }
-  else { game.noSpawn = false; spawnEnemies(game); }
+  if (tutorial) startTutorial(game);          // tuto : noSpawn jusqu'à l'étape combat
+  else spawnEnemies(game);                     // sinon : 1ère vague tout de suite
+  game.ui.msg = tutorial ? '' : ('Mission : ' + node.name + ' — survis à ' + node.mission.waves + ' vagues. Protège le coffre.');
 }
 
 document.getElementById('btn-new').onclick = () => {
   save = defaultSave(); game.save = save; writeSave(save);
-  startMission({ tutorial: true });
+  startMissionNode(nodeById('m1'), { tutorial: true });
 };
-btnContinue.onclick = () => startMission({ tutorial: false });
+btnContinue.onclick = () => { campaign.refresh(); game.screen = 'campaign'; };
+
+// retour à la carte (depuis résultats) — applique la récompense si victoire
+function backToMap({ won }) {
+  if (won && game.mission) {
+    const node = nodeById(game.mission.nodeId);
+    completeNode(save, node); save.currentNode = node.id;
+    save.stats.missionsWon = (save.stats.missionsWon || 0) + 1; save.stats.kills = (save.stats.kills || 0) + (game.G.kills || 0);
+    writeSave(save);
+  }
+  game.mission = null; game.screen = 'campaign'; campaign.refresh();
+}
+document.getElementById('btn-win-map').onclick = () => backToMap({ won: true });
+document.getElementById('btn-down-map').onclick = () => backToMap({ won: false });
+document.getElementById('btn-breach-map').onclick = () => backToMap({ won: false });
 
 function tick(dt) {
   const { G } = game;
@@ -68,9 +103,13 @@ function tick(dt) {
 
 // HUD minimal (étoffé aux étapes suivantes)
 // overlays de fin
-const ov = { win: document.getElementById('ov-win'), down: document.getElementById('ov-down'), breach: document.getElementById('ov-breach'), report: document.getElementById('report') };
-document.getElementById('btn-down').onclick = () => resume(game);
-document.getElementById('btn-breach').onclick = () => resume(game);
+const ov = { win: document.getElementById('ov-win'), down: document.getElementById('ov-down'), breach: document.getElementById('ov-breach'), report: document.getElementById('report'), winRecap: document.getElementById('win-recap'), winReward: document.getElementById('win-reward') };
+function retry() {
+  if (game.mission) startMissionNode(nodeById(game.mission.nodeId), { tutorial: false });
+  else resume(game);
+}
+document.getElementById('btn-down').onclick = retry;
+document.getElementById('btn-breach').onclick = retry;
 
 const darkBtn = document.getElementById('hud-dark');
 darkBtn.onclick = () => {
@@ -90,6 +129,9 @@ const hud = {
   massVal: document.getElementById('hud-massval'),
   massFull: document.getElementById('hud-massfull'),
 };
+const hudWrap = document.querySelector('.hud');
+const panelEl = document.getElementById('panel');
+const msgbarEl = document.querySelector('.msgbar');
 function paintHud() {
   if (hud.alive) hud.alive.textContent = game.G.enemies.length;
   if (hud.lit) hud.lit.textContent = game.G.lit.size + '/' + game.CANDLES.length;
@@ -104,17 +146,34 @@ function paintHud() {
   if (hud.massWrap) hud.massWrap.classList.toggle('full', full);
   panel.refresh();
 
+  // visibilité des écrans (titre / carte cachent l'UI de mission)
+  const inMission = game.screen === 'mission';
+  titleOv.hidden = game.screen !== 'title';
+  campaignOv.hidden = game.screen !== 'campaign';
+  hudWrap.style.visibility = inMission ? 'visible' : 'hidden';
+  panelEl.style.visibility = inMission ? 'visible' : 'hidden';
+  msgbarEl.style.visibility = inMission ? 'visible' : 'hidden';
+
   // bandeau de tuto (Veilleuse)
   const tut = game.tutorial;
-  if (tut && tut.active && tut.text) { tutbar.hidden = false; tutbar.textContent = tut.text; } else { tutbar.hidden = true; }
+  if (inMission && tut && tut.active && tut.text) { tutbar.hidden = false; tutbar.textContent = tut.text; } else { tutbar.hidden = true; }
 
-  // persistance des stats à la victoire
-  if (game.ui.win && !game._winSaved) { game._winSaved = true; save.stats.missionsWon = (save.stats.missionsWon || 0) + 1; save.stats.kills = (save.stats.kills || 0) + (game.G.kills || 0); writeSave(save); }
+  // résultats de victoire : récap + récompense débloquée
+  if (game.ui.win && ov.win.dataset.shown !== '1') {
+    ov.win.dataset.shown = '1';
+    const w = Math.max(0, game.mission ? game.mission.waves : 0);
+    ov.winRecap.textContent = (game.mission ? game.mission.waves + ' vagues repoussées · ' : '') + (game.G.kills || 0) + ' flemmes vaincues · masse ' + Math.round(game.G.mass);
+    const node = game.mission ? nodeById(game.mission.nodeId) : null;
+    const rewKey = node && node.reward && (node.reward.turret || node.reward.support);
+    if (rewKey) { ov.winReward.hidden = false; ov.winReward.textContent = '✦ Débloqué : ' + rewKey.charAt(0).toUpperCase() + rewKey.slice(1); }
+    else ov.winReward.hidden = true;
+  }
+  if (!game.ui.win) ov.win.dataset.shown = '';
 
-  // overlays de fin de partie
-  ov.win.hidden = !game.ui.win;
-  ov.down.hidden = !(game.ui.heroDown && !game.ui.breached);
-  ov.breach.hidden = !game.ui.breached;
+  // overlays de fin de partie (seulement en mission)
+  ov.win.hidden = !(inMission && game.ui.win);
+  ov.down.hidden = !(inMission && game.ui.heroDown && !game.ui.breached);
+  ov.breach.hidden = !(inMission && game.ui.breached);
   if (game.ui.breached && game.ui.report && ov.report.dataset.id !== game.ui.report.id) {
     const r = game.ui.report; ov.report.dataset.id = r.id;
     ov.report.innerHTML =

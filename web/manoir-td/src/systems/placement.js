@@ -12,10 +12,10 @@ export function clearGhost(game) { game._ghostW = null; }
 export function actAt(game, wx, wy, touch) {
   const s = game.ui; const H = game.HERO;
 
-  // clic sur le Commander → bascule sa sélection (prioritaire)
+  // clic sur le Commander → le sélectionne (annule une pose en cours)
   if (H && Math.hypot(H.x - wx, H.y - wy) < 36) {
-    s.heroSelected = !s.heroSelected; s.selId = null;
-    s.msg = s.heroSelected ? "Commander sélectionné — clique un point pour l'y envoyer." : 'Commander désélectionné.';
+    s.heroSelected = true; s.selId = null; s.sel = null; game._pendingTap = null; clearGhost(game);
+    s.msg = "Commander sélectionné — clique un point pour l'y envoyer.";
     return;
   }
   // Commander sélectionné : un clic au sol = ordre de déplacement (clic sur une tourelle = la sélectionner)
@@ -78,17 +78,17 @@ export function doPlace(game, wx, wy) {
     built: chantier ? false : true, prog: chantier ? 0 : 1,
   });
   s.msg = isT ? (sv ? 'Tourelle redéployée — niveau & PV conservés.' : '⚒ Chantier posé (' + c.mass + ' masse · ' + c.time + 's) — amène le Commander à côté pour le bâtir.') : 'Décor posé.';
+  // après la pose : le focus revient au Commander (clic = déplacement)
+  s.sel = null; s.heroSelected = true; game._pendingTap = null; clearGhost(game);
 }
 
 // ---- actions UI (panneau latéral) ----
 export function setTab(game, t) {
-  const cat = t === 'decor' ? 'decor' : 'turret';
-  const key = t === 'turret' ? 'givre' : t === 'support' ? 'radar' : 'bookshelf';
-  game.ui.tab = t; game.ui.sel = { cat, key }; game.ui.selId = null;
+  game.ui.tab = t; game.ui.sel = null; game.ui.selId = null;   // changer d'onglet ne pré-sélectionne rien
 }
 export function selectItem(game, cat, key, name) {
   game._pendingTap = null; clearGhost(game);
-  game.ui.sel = { cat, key }; game.ui.selId = null;
+  game.ui.sel = { cat, key }; game.ui.selId = null; game.ui.heroSelected = false;  // pose : on quitte le Commander
   game.ui.msg = '« ' + name + ' » prêt — clique (ou touchez) dans ton champ de vision pour le déposer.';
 }
 export function clearSel(game) { game.ui.selId = null; game.ui.aimMode = false; }
