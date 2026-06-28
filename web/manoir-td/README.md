@@ -22,10 +22,19 @@ HTML/CSS (lisible, accessible, facile à maintenir).
 Servir le dossier en HTTP (les modules ES exigent http, pas `file://`) :
 
 ```
-cd game/manoir-td
+cd web/manoir-td
 python3 -m http.server 8099    # ou: npx serve
 # puis ouvrir http://localhost:8099/
 ```
+
+## En production
+
+Servi par **Firebase Hosting** : le dossier `web/` est copié dans `build/web/` par
+`flutter build web`, puis déployé. Sur **merge dans `main`**, le workflow
+`Deploy Web + Functions` reconstruit et déploie automatiquement. URLs prod :
+
+- **https://productivitwo-app.web.app/manoir-td/**
+- raccourci : **/manoir** → redirige vers `/manoir-td/`
 
 ## Structure
 

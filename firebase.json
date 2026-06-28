@@ -58,6 +58,9 @@
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ],
+    "redirects": [
+      { "source": "/manoir", "type": 302, "destination": "/manoir-td/" }
+    ],
     "rewrites": [
       { "source": "/mcp/**", "run": { "serviceId": "mcphandler", "region": "us-central1" } },
       { "source": "/demo", "destination": "/demo.html" },
