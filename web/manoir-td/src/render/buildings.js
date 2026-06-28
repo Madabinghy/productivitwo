@@ -14,16 +14,125 @@ function basePlate(ctx, col) {
   ctx.beginPath(); ctx.arc(0, 0, 16, 0, 7); ctx.fill(); ctx.shadowColor = col; ctx.shadowBlur = 8; ctx.stroke(); ctx.shadowBlur = 0;
 }
 
+// ── Sprites de tourelles offensives, fidèles à Turret.dc.html ──────────────────
+// Forme du cœur par type (clip-path % du proto → coords centrées). null = disque/goutte.
+const CORE_CLIP = {
+  sniper: '50 2,90 50,50 98,10 50', givre: '50 2,90 50,50 98,10 50',
+  brasier: '50 6,94 90,6 90', fulgur: '58 2,30 54,50 54,42 98,76 42,54 42',
+  arcane: '50 2,61 38,98 38,68 60,79 96,50 75,21 96,32 60,2 38,39 38',
+  calice: '22 4,78 4,98 50,72 96,28 96,2 50',
+};
+const MUZZLE = { brasier: 'flare', givre: 'crystal', fulgur: 'tesla', venin: 'canister', arcane: 'lens', spectre: 'wisp', calice: 'chalice', sniper: 'tesla' };
+
+function drawCore(ctx, key, r, col, time) {
+  ctx.save(); ctx.rotate((time || 0) * 0.6);
+  ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 9;
+  const clip = CORE_CLIP[key];
+  if (clip) {
+    const pts = clip.split(',').map(s => s.trim().split(/\s+/).map(Number));
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => { const px = ((x - 50) / 50) * r, py = ((y - 50) / 50) * r; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.closePath(); ctx.fill();
+  } else if (key === 'spectre') { ctx.beginPath(); ctx.ellipse(0, 0, r * 0.8, r, 0, 0, 7); ctx.fill(); }
+  else { ctx.beginPath(); ctx.arc(0, 0, r * 0.92, 0, 7); ctx.fill(); }
+  ctx.restore(); ctx.shadowBlur = 0;
+}
+
+// Bouche du canon (repère du canon, pointe vers -y) au bout (0, -len).
+function drawMuzzle(ctx, kind, w, col, len) {
+  ctx.save(); ctx.translate(0, -len); ctx.fillStyle = col; ctx.strokeStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 7;
+  const h = w * 1.1;
+  switch (kind) {
+    case 'flare': ctx.beginPath(); ctx.moveTo(-w * 0.5, 0); ctx.lineTo(w * 0.5, 0); ctx.lineTo(w * 0.85, -h); ctx.lineTo(-w * 0.85, -h); ctx.closePath(); ctx.fill(); break;
+    case 'chalice': ctx.beginPath(); ctx.moveTo(-w * 0.4, 0); ctx.lineTo(w * 0.4, 0); ctx.lineTo(w * 0.8, -h); ctx.lineTo(-w * 0.8, -h); ctx.closePath(); ctx.fill(); break;
+    case 'crystal': ctx.beginPath(); ctx.moveTo(0, -h); ctx.lineTo(w * 0.7, -h * 0.5); ctx.lineTo(0, 0); ctx.lineTo(-w * 0.7, -h * 0.5); ctx.closePath(); ctx.fill(); break;
+    case 'tesla': ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-w * 0.45, 0); ctx.lineTo(-w * 0.45, -h); ctx.moveTo(w * 0.45, 0); ctx.lineTo(w * 0.45, -h); ctx.stroke(); break;
+    case 'canister': ctx.beginPath(); ctx.arc(0, -h * 0.5, w * 0.6, 0, 7); ctx.fill(); break;
+    case 'lens': ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -h * 0.5, w * 0.55, 0, 7); ctx.stroke(); break;
+    case 'wisp': { const g = ctx.createRadialGradient(0, -h * 0.5, 0, 0, -h * 0.5, w * 0.8); g.addColorStop(0, col); g.addColorStop(1, 'transparent'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -h * 0.5, w * 0.8, 0, 7); ctx.fill(); break; }
+  }
+  ctx.restore(); ctx.shadowBlur = 0;
+}
+
+// Canons selon le niveau (vue de dessus, émanant du centre vers -y).
+function barrelSpecs(key, level) {
+  const L = 19, W = 5.2;
+  if (key === 'sniper') return [{ dx: 0, len: L * 1.95, w: W * 0.62 }];
+  if (level <= 1) return [{ dx: 0, len: L, w: W }];
+  if (level === 2) return [{ dx: 0, len: L * 1.14, w: W * 1.28 }];
+  if (level === 3) return [{ dx: -W * 0.95, len: L * 1.06, w: W * 0.8 }, { dx: W * 0.95, len: L * 1.06, w: W * 0.8 }];
+  return [{ dx: 0, len: L * 1.24, w: W * 1.34 }, { dx: -W * 1.55, len: L * 0.84, w: W * 0.62 }, { dx: W * 1.55, len: L * 0.84, w: W * 0.62 }];
+}
+
+// Anneaux orbitaux (0/1/2/2), particules (0/1/2/4) et pattes d'ancrage (niv 3+).
+function drawAuras(ctx, level, col, time) {
+  const rings = [0, 1, 2, 2][level - 1] || 0;
+  for (let i = 0; i < rings; i++) {
+    ctx.save(); ctx.rotate((time || 0) * (i % 2 ? -0.3 : 0.3));
+    ctx.setLineDash([4, 5]); ctx.strokeStyle = col + '66'; ctx.lineWidth = 1.2; ctx.globalAlpha = level >= 4 ? 0.6 : 0.45;
+    ctx.beginPath(); ctx.arc(0, 0, 14 + i * 4.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+  const parts = [0, 1, 2, 4][level - 1] || 0;
+  for (let k = 0; k < parts; k++) {
+    const orbit = 17 + (k % 2) * 3.5, a = (time || 0) * (0.8 + k * 0.15) + k * 1.7;
+    ctx.fillStyle = k % 2 ? '#fff' : col; ctx.shadowColor = col; ctx.shadowBlur = 7;
+    ctx.beginPath(); ctx.arc(Math.cos(a) * orbit, Math.sin(a) * orbit, 1.8, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  }
+  if (level >= 3) {
+    const angs = level >= 4 ? [30, 90, 150, 210, 270, 330] : [45, 135, 225, 315];
+    for (const ang of angs) {
+      ctx.save(); ctx.rotate(ang * Math.PI / 180);
+      ctx.fillStyle = '#1a1426'; ctx.strokeStyle = col + '77'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-1.8, 9); ctx.lineTo(1.8, 9); ctx.lineTo(1.1, 14); ctx.lineTo(-1.1, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5; ctx.beginPath(); ctx.arc(0, 15, 1.7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }
+}
+
+// Embase lumineuse (anneau) + cœur typé (ou disque pour le soutien).
+function drawMountCore(ctx, key, level, col, time, hasCore) {
+  const rR = 9 + level * 0.4;
+  const mg = ctx.createRadialGradient(0, 0, 0, 0, 0, rR); mg.addColorStop(0, '#241b36'); mg.addColorStop(1, '#0c0814');
+  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.shadowColor = col; ctx.shadowBlur = 8 + level * 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+  if (hasCore) drawCore(ctx, key, 4.5 + level * 0.5, col, time);
+  else { ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(0, 0, 4.2 + level * 0.4, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+}
+
+function drawOffensiveTurret(ctx, key, facing, level, time) {
+  const col = TCOL[key];
+  drawAuras(ctx, level, col, time);
+  // canons orientés
+  ctx.save(); ctx.rotate(facing * Math.PI / 180);
+  for (const b of barrelSpecs(key, level)) {
+    const grad = ctx.createLinearGradient(0, 0, 0, -b.len); grad.addColorStop(0, '#352c48'); grad.addColorStop(1, '#1a1426');
+    ctx.fillStyle = grad; ctx.strokeStyle = col + '66'; ctx.lineWidth = 1;
+    const r = Math.min(b.w * 0.45, 3);
+    ctx.beginPath();
+    ctx.moveTo(b.dx - b.w / 2, 0); ctx.lineTo(b.dx - b.w / 2, -b.len + r);
+    ctx.arcTo(b.dx - b.w / 2, -b.len, b.dx, -b.len, r); ctx.arcTo(b.dx + b.w / 2, -b.len, b.dx + b.w / 2, -b.len + r, r);
+    ctx.lineTo(b.dx + b.w / 2, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.save(); ctx.translate(b.dx, 0); drawMuzzle(ctx, MUZZLE[key], b.w, col, b.len); ctx.restore();
+  }
+  ctx.restore();
+  drawMountCore(ctx, key, level, col, time, true);
+}
+
 // Sprite d'un bâtiment (dans son repère local), orienté pour les tourelles offensives.
 function turretSprite(ctx, key, facing, level, t, time) {
   const col = TCOL[key] || '#8a6cff';
 
   if (key === 'bercail') {
-    basePlate(ctx, col);
-    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10;
-    ctx.fillRect(-2, -8, 4, 16); ctx.fillRect(-8, -2, 16, 4); // croix de soin
-    ctx.shadowBlur = 0; return;
+    // soin : anneaux concentriques + cœur vert (sans canon), comme la galerie de réf.
+    const lv = level || 1;
+    drawAuras(ctx, lv, col, time);
+    drawMountCore(ctx, 'bercail', lv, col, time, false);
+    ctx.strokeStyle = col + 'aa'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.stroke();
+    return;
   }
+  if (MUZZLE[key]) { drawOffensiveTurret(ctx, key, facing, level, time); return; }
   if (key === 'radar') {
     basePlate(ctx, col);
     ctx.save(); ctx.rotate((time || 0) * 2.6); // balayage tournant
