@@ -7,6 +7,13 @@ import { armMuzzle } from '../systems/hero.js';
 
 const isBuilt = (t) => t.built !== false;
 
+// Échelle d'affichage de la tourelle : plus grosse, et grandit nettement avec le niveau.
+function turretScale(key, level) {
+  const lv = level || 1;
+  const base = key === 'sniper' ? 1.45 : 1.6;
+  return base + (lv - 1) * 0.2;             // niv1 ~1.6 → niv4 ~2.2
+}
+
 function basePlate(ctx, col) {
   const base = ctx.createRadialGradient(0, -2, 1, 0, 0, 18);
   base.addColorStop(0, '#3a4150'); base.addColorStop(1, '#13161f');
@@ -93,10 +100,21 @@ function drawAuras(ctx, level, col, time) {
 // Embase lumineuse (anneau) + cœur typé (ou disque pour le soutien).
 function drawMountCore(ctx, key, level, col, time, hasCore) {
   const rR = 9 + level * 0.4;
-  const mg = ctx.createRadialGradient(0, 0, 0, 0, 0, rR); mg.addColorStop(0, '#241b36'); mg.addColorStop(1, '#0c0814');
+  // halo (s'intensifie avec le niveau)
+  const hg = ctx.createRadialGradient(0, 0, 0, 0, 0, rR * 2.1);
+  hg.addColorStop(0, col + '33'); hg.addColorStop(0.6, 'transparent');
+  ctx.save(); ctx.globalAlpha = 0.35 + level * 0.07; ctx.fillStyle = hg;
+  ctx.beginPath(); ctx.arc(0, 0, rR * 2.1, 0, 7); ctx.fill(); ctx.restore();
+  // anneau décoratif extérieur (tournant ; plus marqué niv 3+)
+  ctx.save(); ctx.rotate((time || 0) * 0.15); ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = col + (level >= 3 ? '66' : '33'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(0, 0, rR * 1.55, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  // embase : disque sombre + anneau lumineux + liseré interne
+  const mg = ctx.createRadialGradient(0, -rR * 0.2, 0, 0, 0, rR); mg.addColorStop(0, '#2a2040'); mg.addColorStop(1, '#0c0814');
   ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.fill();
-  ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.shadowColor = col; ctx.shadowBlur = 8 + level * 2.5;
+  ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.shadowColor = col; ctx.shadowBlur = 9 + level * 3;
   ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.strokeStyle = col + '55'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, rR * 0.62, 0, 7); ctx.stroke();
   if (hasCore) drawCore(ctx, key, 4.5 + level * 0.5, col, time);
   else { ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(0, 0, 4.2 + level * 0.4, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
 }
@@ -106,14 +124,28 @@ function drawOffensiveTurret(ctx, key, facing, level, time) {
   drawAuras(ctx, level, col, time);
   // canons orientés
   ctx.save(); ctx.rotate(facing * Math.PI / 180);
+  // appendice par type, derrière l'embase (stabilisateur sniper / goutte calice)
+  if (key === 'sniper') {
+    ctx.strokeStyle = '#8a96b3'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-3, 9); ctx.lineTo(-6, 15); ctx.moveTo(3, 9); ctx.lineTo(6, 15); ctx.stroke();
+  } else if (key === 'calice') {
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(0, 9); ctx.quadraticCurveTo(2.6, 13, 0, 16); ctx.quadraticCurveTo(-2.6, 13, 0, 9); ctx.fill(); ctx.shadowBlur = 0;
+  }
   for (const b of barrelSpecs(key, level)) {
-    const grad = ctx.createLinearGradient(0, 0, 0, -b.len); grad.addColorStop(0, '#352c48'); grad.addColorStop(1, '#1a1426');
-    ctx.fillStyle = grad; ctx.strokeStyle = col + '66'; ctx.lineWidth = 1;
+    const grad = ctx.createLinearGradient(b.dx - b.w / 2, 0, b.dx + b.w / 2, 0);
+    grad.addColorStop(0, '#5a5168'); grad.addColorStop(0.35, '#352c48'); grad.addColorStop(1, '#160f22');
+    ctx.fillStyle = grad; ctx.strokeStyle = col + '77'; ctx.lineWidth = 1;
     const r = Math.min(b.w * 0.45, 3);
     ctx.beginPath();
     ctx.moveTo(b.dx - b.w / 2, 0); ctx.lineTo(b.dx - b.w / 2, -b.len + r);
     ctx.arcTo(b.dx - b.w / 2, -b.len, b.dx, -b.len, r); ctx.arcTo(b.dx + b.w / 2, -b.len, b.dx + b.w / 2, -b.len + r, r);
     ctx.lineTo(b.dx + b.w / 2, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    // reflet métallique (liseré clair sur l'arête gauche)
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(b.dx - b.w / 2 + 0.8, -2); ctx.lineTo(b.dx - b.w / 2 + 0.8, -b.len + r); ctx.stroke();
+    // bague de bouche
+    ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(b.dx - b.w / 2, -b.len + 2); ctx.lineTo(b.dx + b.w / 2, -b.len + 2); ctx.stroke();
     ctx.save(); ctx.translate(b.dx, 0); drawMuzzle(ctx, MUZZLE[key], b.w, col, b.len); ctx.restore();
   }
   ctx.restore();
@@ -215,6 +247,8 @@ export function drawPlaced(game, ctx, th, t) {
 
     ctx.save(); ctx.translate(p.x, p.y);
     if (building) { ctx.globalAlpha = 0.28 + bprog * 0.42; }
+    const sc = turretScale(p.key, p.level);     // plus grosses, surtout niv 3/4
+    ctx.scale(sc, sc);
     turretSprite(ctx, p.key, facing, p.level, p, t);
     ctx.restore();
 
@@ -268,7 +302,8 @@ export function drawGhost(game, ctx, th, t) {
   const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 40); g.addColorStop(0, vc + '26'); g.addColorStop(0.7, 'transparent');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.stroke();
   ctx.setLineDash([]); ctx.shadowBlur = 0;
-  // silhouette
+  // silhouette (même échelle qu'une tourelle posée niv 1)
+  const sc = turretScale(key, 1); ctx.scale(sc, sc);
   turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
   ctx.restore();
   // coût
