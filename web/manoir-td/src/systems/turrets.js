@@ -5,7 +5,6 @@
 import { turretStats, SHOT, TCOL, baseHp } from '../config.js';
 import { blocked, compass, angDiff } from '../geometry.js';
 import { killEnemy } from './enemies.js';
-import { enemyRevealed } from './vision.js';
 
 const GUARD = 90;        // demi-amplitude → balayage de 180°
 const norm = (a) => ((a % 360) + 360) % 360;
@@ -75,13 +74,11 @@ export function updateTurrets(game, dt) {
     const range = ts.range, half = ts.half, face = t.face == null ? 0 : t.face;
     let facing = game.AIM[t.id] == null ? face : game.AIM[t.id];
 
-    const night = game.ui.darkMode;
+    // une tourelle voit dans son propre champ (portée + arc + LOS), de jour comme de nuit
     let best = null, bd = 1e9;
     for (const e of G.enemies) {
       const d = Math.hypot(e.x - t.x, e.y - t.y);
       if (d <= range && d < bd && !blocked(game.WALLS, t.x, t.y, e.x, e.y)) {
-        // de nuit : on ne cible que les flemmes révélées (halo/bougie/radar/satellite)
-        if (night && !enemyRevealed(game, e)) continue;
         const ang = compass(e.x - t.x, e.y - t.y);
         if (Math.abs(angDiff(ang, facing)) <= half && Math.abs(angDiff(ang, face)) <= GUARD) { bd = d; best = e; }
       }

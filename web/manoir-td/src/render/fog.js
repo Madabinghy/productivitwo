@@ -10,18 +10,24 @@ export function drawFog(game, ctx, th, tx, ty) {
   if (hasSatellite(game)) return;                // œil-satellite : révélation totale
   const H = game.HERO;
   ctx.save();
-  ctx.fillStyle = 'rgba(5,4,11,.9)'; ctx.fillRect(0, 0, VPW, VPH);
+  ctx.fillStyle = 'rgba(5,4,11,.86)'; ctx.fillRect(0, 0, VPW, VPH);
   ctx.globalCompositeOperation = 'destination-out';
   const punch = (wx, wy, r) => {
     const sx = wx + tx, sy = wy + ty;
     if (sx < -r || sy < -r || sx > VPW + r || sy > VPH + r) return;
     const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.7, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.72, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fill();
   };
-  if (H) punch(H.x, H.y, VIS);
-  for (const idx of game.G.lit) { const c = game.CANDLES[idx]; punch(c.x, c.y, CANDLE_VIS); }
-  for (const t of game.ui.placed) { if (t.cat === 'turret' && t.key === 'radar' && isBuilt(t)) punch(t.x, t.y, radarRadius(t)); }
+  if (H) punch(H.x, H.y, VIS);                                   // halo du Commander
+  for (const idx of game.G.lit) { const c = game.CANDLES[idx]; punch(c.x, c.y, CANDLE_VIS); } // bougies
+  // champ de vision des bâtiments : tourelles (leur portée), radar, soin/bouclier
+  for (const t of game.ui.placed) {
+    if (t.cat !== 'turret' || !isBuilt(t)) continue;
+    const ts = turretStats(t);
+    const r = t.key === 'radar' ? radarRadius(t) : (ts.range > 0 ? ts.range : 170);
+    punch(t.x, t.y, r);
+  }
   ctx.restore();
 }
 
