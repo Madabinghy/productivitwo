@@ -3,6 +3,7 @@ import { VPW, VPH, THEMES, COFFRE } from '../config.js';
 import { drawWorld } from './world.js';
 import { drawEnemy, drawCoffre, drawCrystal } from './sprites.js';
 import { drawHero } from './hero.js';
+import { armMuzzle } from '../systems/hero.js';
 
 export function draw(game, ctx, t) {
   const th = THEMES[game.ui.amb];
@@ -42,6 +43,17 @@ export function draw(game, ctx, t) {
     };
     ctx.strokeStyle = b.color; ctx.globalAlpha = ln * 0.4; ctx.lineWidth = b.kind === 'bolt' ? 7 : 8; trace();
     ctx.strokeStyle = b.kind === 'bolt' ? '#fff6c4' : '#eaffff'; ctx.globalAlpha = ln; ctx.lineWidth = b.kind === 'bolt' ? 2.4 : 2.6; trace();
+    ctx.restore();
+  }
+
+  // faisceau de récolte (bras droit) : triangle cyan vers le gisement ciblé
+  if (game._harvestId != null && game.CRYSTALS[game._harvestId]) {
+    const H = game.HERO, cr = game.CRYSTALS[game._harvestId];
+    const m = armMuzzle(H, cr.x, cr.y, 1);
+    const dx = cr.x - m.x, dy = cr.y - m.y, d = Math.hypot(dx, dy) || 1; const px = -dy / d, py = dx / d, w = 15;
+    const j = 0.5 + 0.5 * Math.sin(t * 16);
+    ctx.save(); ctx.globalAlpha = 0.32 + j * 0.3; ctx.fillStyle = '#bfe6ff'; ctx.shadowColor = '#9fd8ff'; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(cr.x + px * w, cr.y + py * w); ctx.lineTo(cr.x - px * w, cr.y - py * w); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 

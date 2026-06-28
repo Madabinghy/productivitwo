@@ -3,6 +3,7 @@ import { VPW, VPH } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
+import { updateEconomy } from './systems/economy.js';
 import { updateEffects } from './systems/effects.js';
 import { attachInput } from './input.js';
 import { draw } from './render/index.js';
@@ -23,6 +24,7 @@ function tick(dt) {
 
   updateHeroMove(game, dt);
   updateEnemies(game, dt);
+  updateEconomy(game, dt);
   heroLaser(game, dt);
   orientHero(game, dt);
   updateEffects(game, dt);
@@ -35,11 +37,20 @@ const hud = {
   alive: document.getElementById('hud-alive'),
   chrono: document.getElementById('hud-chrono'),
   msg: document.getElementById('hud-msg'),
+  massWrap: document.querySelector('.mass'),
+  massFill: document.getElementById('hud-massfill'),
+  massVal: document.getElementById('hud-massval'),
+  massFull: document.getElementById('hud-massfull'),
 };
 function paintHud() {
   if (hud.alive) hud.alive.textContent = game.G.enemies.length;
   if (hud.chrono) { const s = Math.floor(game.G.time || 0); hud.chrono.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   if (hud.msg) hud.msg.textContent = game.ui.msg;
+  const G = game.G; const full = G.mass >= G.massCap;
+  if (hud.massFill) hud.massFill.style.width = (Math.max(0, Math.min(1, G.mass / G.massCap)) * 100).toFixed(0) + '%';
+  if (hud.massVal) hud.massVal.textContent = Math.round(G.mass) + ' / ' + G.massCap;
+  if (hud.massFull) hud.massFull.textContent = full ? '⚠ plein' : '';
+  if (hud.massWrap) hud.massWrap.classList.toggle('full', full);
 }
 
 let last = performance.now();
