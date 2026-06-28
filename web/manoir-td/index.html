@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Manoir d'Ombrelune — Tower Defense</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root { --accent: #8a6cff; --ink: #e9e4f2; --muted: #8a80a6; --flame: #ffcf6e; --panel: rgba(22,18,34,.82); --border: rgba(138,108,255,.2); }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: radial-gradient(ellipse at 50% -10%, #1a1430 0%, #0b0816 60%, #070510 100%); color: var(--ink); font-family: 'Chakra Petch', sans-serif; }
+    #app { min-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 18px; }
+    .title { font-family: 'Cinzel', serif; font-weight: 900; font-size: 22px; letter-spacing: 3px; color: #f3eeff; text-shadow: 0 0 16px #8a6cff55; }
+    .tagline { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-top: -8px; }
+    .hud { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .chip { display: flex; flex-direction: column; align-items: center; line-height: 1; padding: 7px 13px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+    .chip .num { font-size: 17px; font-weight: 700; color: #cdbfff; }
+    .chip .lbl { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+    .stage { position: relative; width: 1080px; max-width: 100%; }
+    canvas { display: block; width: 1080px; height: 680px; max-width: 100%; border-radius: 16px; background: #0a0714; border: 1px solid var(--border); box-shadow: 0 24px 60px rgba(0,0,0,.5); touch-action: none; cursor: crosshair; }
+    .msgbar { width: 1080px; max-width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 15px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+    .msgbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 9px var(--accent); flex: 0 0 auto; }
+    .msgbar .txt { font-size: 12.5px; color: var(--ink); }
+    .mass { display: flex; flex-direction: column; gap: 3px; padding: 6px 11px; border-radius: 11px; background: var(--panel); border: 1px solid var(--border); min-width: 150px; }
+    .mass.full { border-color: var(--flame); }
+    .mass-lbl { font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--flame); }
+    .mass-bg { height: 7px; border-radius: 4px; background: rgba(0,0,0,.4); overflow: hidden; border: 1px solid rgba(255,207,110,.2); }
+    .mass-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff9e3d, var(--flame)); box-shadow: 0 0 8px var(--flame); transition: width .15s; }
+    .mass-val { font-size: 11px; font-weight: 700; color: #f3eeff; }
+    .darkbtn { font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+    .darkbtn.on { border-color: var(--accent); background: rgba(138,108,255,.12); color: #cdbfff; }
+    .body { display: flex; gap: 18px; align-items: flex-start; max-width: 1500px; width: 100%; }
+    .left { display: flex; flex-direction: column; gap: 14px; }
+    .stage { width: 1080px; max-width: 100%; }
+    .panel { flex: 1 1 auto; min-width: 280px; display: flex; flex-direction: column; gap: 9px; }
+    .tabs { display: flex; gap: 5px; padding: 4px; border-radius: 11px; background: var(--panel); border: 1px solid var(--border); }
+    .tab { flex: 1; font-size: 12px; font-weight: 700; cursor: pointer; padding: 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font-family: inherit; }
+    .tab.on { border-color: var(--accent); background: rgba(138,108,255,.12); color: var(--accentText, #cdbfff); }
+    .card { display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 12px; cursor: pointer; background: var(--panel); border: 1px solid var(--border); }
+    .card.on { border-color: var(--accent); box-shadow: 0 0 18px rgba(138,108,255,.33); background: rgba(138,108,255,.10); }
+    .card.dim { opacity: .42; cursor: default; }
+    .card .ico { width: 44px; height: 42px; flex: 0 0 auto; border-radius: 9px; background: #0a0714; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; }
+    .card .ico .dot { width: 20px; height: 20px; border-radius: 50%; }
+    .card .nm { font-family: 'Cinzel', serif; font-weight: 700; font-size: 13.5px; color: #f3eeff; line-height: 1.15; }
+    .card .mt { font-size: 10px; color: var(--muted); margin-top: 2px; }
+    .hint { margin-top: 2px; padding: 11px 13px; border-radius: 10px; background: var(--panel); border: 1px dashed var(--border); font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+    .detail { display: flex; flex-direction: column; gap: 9px; padding: 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--border); }
+    .detail .dh { font-family: 'Cinzel', serif; font-weight: 700; font-size: 16px; color: #f3eeff; }
+    .detail .ds { font-size: 12px; color: var(--muted); }
+    .detail .dd { font-size: 11.5px; color: #d6cdf0; line-height: 1.5; padding: 9px 11px; border-radius: 9px; background: rgba(138,108,255,.08); border: 1px solid rgba(138,108,255,.2); }
+    .detail button, .panel .act { font-family: inherit; cursor: pointer; border-radius: 9px; padding: 10px; font-size: 12.5px; font-weight: 700; }
+    .btn-up { background: rgba(138,108,255,.12); border: 1px solid rgba(138,108,255,.5); color: #cdbfff; }
+    .btn-up.max { background: rgba(60,60,70,.4); border-color: var(--border); color: var(--muted); cursor: default; }
+    .btn-aim { background: rgba(138,108,255,.10); border: 1px solid rgba(138,108,255,.5); color: #f3eeff; }
+    .btn-aim.on { background: rgba(138,108,255,.28); }
+    .btn-rm { background: transparent; border: 1px solid rgba(255,93,122,.4); color: #ff8da0; }
+    .btn-back { background: transparent; border: none; color: var(--muted); }
+    .row2 { display: flex; gap: 6px; }
+    .row2 > * { flex: 1; }
+    .stage { position: relative; }
+    .overlay { position: absolute; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 11px; border-radius: 16px; background: rgba(6,5,12,.85); text-align: center; padding: 20px; }
+    .overlay.danger { background: rgba(14,4,8,.86); }
+    .overlay[hidden] { display: none; }
+    .ov-title { font-family: 'Cinzel', serif; font-weight: 900; font-size: 34px; letter-spacing: 3px; }
+    .ov-title.flame { color: var(--flame); text-shadow: 0 0 26px var(--flame); }
+    .ov-title.rose { color: #ff5d7a; text-shadow: 0 0 26px #ff5d7a; }
+    .ov-sub { font-size: 13px; letter-spacing: 1px; color: var(--accentText, #cdbfff); max-width: 430px; line-height: 1.55; }
+    .ov-sub.rose { color: #ffb3c1; }
+    .ov-btn { font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; padding: 11px 22px; border-radius: 10px; margin-top: 6px; border: 1px solid var(--accent); background: rgba(138,108,255,.16); color: #cdbfff; }
+    .ov-btn.rose { border-color: #ff5d7a; background: rgba(255,93,122,.16); color: #ffd0d8; }
+    .report { width: 430px; max-width: 84%; padding: 16px 18px; border-radius: 10px; text-align: left; background: linear-gradient(180deg,#1c1622,#120e18); border: 1px dashed #ff5d7a66; box-shadow: 0 0 26px rgba(255,93,122,.18); }
+    .report .tag { font-size: 10px; letter-spacing: 2.5px; color: #ff8da0; text-transform: uppercase; margin-bottom: 10px; }
+    .report .l1 { font-size: 15px; font-weight: 700; color: #f3eeff; }
+    .report .l2 { font-size: 12.5px; color: #bdb3d8; margin-top: 4px; line-height: 1.5; }
+    .report .bar { margin-top: 12px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
+    .report .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#ff5d7a,#ffb3c1); box-shadow: 0 0 8px #ff5d7a; }
+    .report .foot { font-size: 10.5px; color: #8f86ab; margin-top: 8px; letter-spacing: 1px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div style="text-align:center">
+      <div class="title">MANOIR D'OMBRELUNE</div>
+      <div class="tagline">Défense du coffre — productivité vs procrastination</div>
+    </div>
+    <div class="hud">
+      <div class="mass">
+        <div class="mass-lbl">✦ Masse lumineuse <span id="hud-massfull"></span></div>
+        <div class="mass-bg"><div class="mass-fill" id="hud-massfill"></div></div>
+        <div class="mass-val" id="hud-massval">85 / 150</div>
+      </div>
+      <div class="chip"><span class="num" id="hud-lit">0</span><span class="lbl">Bougies</span></div>
+      <div class="chip"><span class="num" id="hud-owned">0</span><span class="lbl">Salles</span></div>
+      <div class="chip"><span class="num" id="hud-alive">0</span><span class="lbl">Flemmes</span></div>
+      <div class="chip"><span class="num" id="hud-chrono">0:00</span><span class="lbl">Chrono</span></div>
+      <button id="hud-dark" class="darkbtn">☀ Exploration</button>
+    </div>
+    <div class="body">
+      <div class="left">
+        <div class="stage">
+          <canvas id="view" width="1080" height="680"></canvas>
+          <div class="overlay" id="ov-win" hidden>
+            <div class="ov-title flame">VICTOIRE</div>
+            <div class="ov-sub">Le manoir est entièrement éclairé — le coffre-fort est sauf. La procrastination recule.</div>
+          </div>
+          <div class="overlay" id="ov-down" hidden>
+            <div class="ov-title flame">LE COMMANDER EST TOMBÉ</div>
+            <div class="ov-sub">Le Majordome-automate s'est éteint. Sans lui, plus de lumière ni de défense.</div>
+            <button class="ov-btn" id="btn-down">Reprendre la défense</button>
+          </div>
+          <div class="overlay danger" id="ov-breach" hidden>
+            <div class="ov-title rose">COFFRE FORCÉ</div>
+            <div class="ov-sub rose">Vos données confidentielles ont fuité…</div>
+            <div class="report" id="report"></div>
+            <button class="ov-btn rose" id="btn-breach">Reprendre la défense</button>
+          </div>
+        </div>
+        <div class="msgbar"><span class="dot"></span><span class="txt" id="hud-msg"></span></div>
+      </div>
+      <aside class="panel" id="panel"></aside>
+    </div>
+  </div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
