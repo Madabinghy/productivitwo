@@ -63,8 +63,8 @@ function drawMuzzle(ctx, kind, w, col, len) {
 
 // Canons selon le niveau (vue de dessus, émanant du centre vers -y).
 function barrelSpecs(key, level) {
-  const L = 19, W = 5.2;
-  if (key === 'sniper') return [{ dx: 0, len: L * 1.95, w: W * 0.62 }];
+  const L = 15, W = 5.2;                     // canon un peu plus court (était 19)
+  if (key === 'sniper') return [{ dx: 0, len: L * 1.85, w: W * 0.62 }];
   if (level <= 1) return [{ dx: 0, len: L, w: W }];
   if (level === 2) return [{ dx: 0, len: L * 1.14, w: W * 1.28 }];
   if (level === 3) return [{ dx: -W * 0.95, len: L * 1.06, w: W * 0.8 }, { dx: W * 0.95, len: L * 1.06, w: W * 0.8 }];
