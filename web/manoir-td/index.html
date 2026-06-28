@@ -77,6 +77,9 @@
     .report .bar { margin-top: 12px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.08); overflow: hidden; }
     .report .bar > i { display: block; height: 100%; background: linear-gradient(90deg,#ff5d7a,#ffb3c1); box-shadow: 0 0 8px #ff5d7a; }
     .report .foot { font-size: 10.5px; color: #8f86ab; margin-top: 8px; letter-spacing: 1px; }
+    .tutbar { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 28; max-width: 80%; padding: 10px 16px; border-radius: 12px; background: rgba(20,12,30,.92); border: 1px solid rgba(138,108,255,.5); box-shadow: 0 8px 26px rgba(0,0,0,.5); color: #e9e4f2; font-size: 13px; line-height: 1.4; text-align: center; }
+    .tutbar[hidden] { display: none; }
+    .overlay.title { background: radial-gradient(ellipse at 50% 30%, rgba(26,20,48,.92), rgba(7,5,16,.96)); }
   </style>
 </head>
 <body>
@@ -101,6 +104,15 @@
       <div class="left">
         <div class="stage">
           <canvas id="view" width="1080" height="680"></canvas>
+          <div class="tutbar" id="tutbar" hidden></div>
+          <div class="overlay title" id="ov-title">
+            <div class="ov-title flame" style="font-size:38px">MANOIR D'OMBRELUNE</div>
+            <div class="ov-sub">Défends le coffre-fort contre les flemmes. Productivité vs procrastination.</div>
+            <div style="display:flex;gap:12px;margin-top:14px">
+              <button class="ov-btn" id="btn-new">Nouvelle partie</button>
+              <button class="ov-btn" id="btn-continue" hidden>Continuer</button>
+            </div>
+          </div>
           <div class="overlay" id="ov-win" hidden>
             <div class="ov-title flame">VICTOIRE</div>
             <div class="ov-sub">Le manoir est entièrement éclairé — le coffre-fort est sauf. La procrastination recule.</div>
