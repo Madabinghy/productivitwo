@@ -64,19 +64,46 @@ function barrelSpecs(key, level) {
   return [{ dx: 0, len: L * 1.24, w: W * 1.34 }, { dx: -W * 1.55, len: L * 0.84, w: W * 0.62 }, { dx: W * 1.55, len: L * 0.84, w: W * 0.62 }];
 }
 
-function drawOffensiveTurret(ctx, key, facing, level, time) {
-  const col = TCOL[key];
-  // pattes d'ancrage (niv 3+)
+// Anneaux orbitaux (0/1/2/2), particules (0/1/2/4) et pattes d'ancrage (niv 3+).
+function drawAuras(ctx, level, col, time) {
+  const rings = [0, 1, 2, 2][level - 1] || 0;
+  for (let i = 0; i < rings; i++) {
+    ctx.save(); ctx.rotate((time || 0) * (i % 2 ? -0.3 : 0.3));
+    ctx.setLineDash([4, 5]); ctx.strokeStyle = col + '66'; ctx.lineWidth = 1.2; ctx.globalAlpha = level >= 4 ? 0.6 : 0.45;
+    ctx.beginPath(); ctx.arc(0, 0, 14 + i * 4.5, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+  const parts = [0, 1, 2, 4][level - 1] || 0;
+  for (let k = 0; k < parts; k++) {
+    const orbit = 17 + (k % 2) * 3.5, a = (time || 0) * (0.8 + k * 0.15) + k * 1.7;
+    ctx.fillStyle = k % 2 ? '#fff' : col; ctx.shadowColor = col; ctx.shadowBlur = 7;
+    ctx.beginPath(); ctx.arc(Math.cos(a) * orbit, Math.sin(a) * orbit, 1.8, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  }
   if (level >= 3) {
     const angs = level >= 4 ? [30, 90, 150, 210, 270, 330] : [45, 135, 225, 315];
-    for (const a of angs) {
-      ctx.save(); ctx.rotate(a * Math.PI / 180);
-      ctx.fillStyle = '#1a1426'; ctx.strokeStyle = col + '88'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(-2.2, 7); ctx.lineTo(2.2, 7); ctx.lineTo(1.4, 15); ctx.lineTo(-1.4, 15); ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(0, 16, 2.2, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+    for (const ang of angs) {
+      ctx.save(); ctx.rotate(ang * Math.PI / 180);
+      ctx.fillStyle = '#1a1426'; ctx.strokeStyle = col + '77'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-1.8, 9); ctx.lineTo(1.8, 9); ctx.lineTo(1.1, 14); ctx.lineTo(-1.1, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 5; ctx.beginPath(); ctx.arc(0, 15, 1.7, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
       ctx.restore();
     }
   }
+}
+
+// Embase lumineuse (anneau) + cœur typé (ou disque pour le soutien).
+function drawMountCore(ctx, key, level, col, time, hasCore) {
+  const rR = 9 + level * 0.4;
+  const mg = ctx.createRadialGradient(0, 0, 0, 0, 0, rR); mg.addColorStop(0, '#241b36'); mg.addColorStop(1, '#0c0814');
+  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.shadowColor = col; ctx.shadowBlur = 8 + level * 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, rR, 0, 7); ctx.stroke(); ctx.shadowBlur = 0;
+  if (hasCore) drawCore(ctx, key, 4.5 + level * 0.5, col, time);
+  else { ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(0, 0, 4.2 + level * 0.4, 0, 7); ctx.fill(); ctx.shadowBlur = 0; }
+}
+
+function drawOffensiveTurret(ctx, key, facing, level, time) {
+  const col = TCOL[key];
+  drawAuras(ctx, level, col, time);
   // canons orientés
   ctx.save(); ctx.rotate(facing * Math.PI / 180);
   for (const b of barrelSpecs(key, level)) {
@@ -90,11 +117,7 @@ function drawOffensiveTurret(ctx, key, facing, level, time) {
     ctx.save(); ctx.translate(b.dx, 0); drawMuzzle(ctx, MUZZLE[key], b.w, col, b.len); ctx.restore();
   }
   ctx.restore();
-  // socle central (mount) + cœur typé
-  const mg = ctx.createRadialGradient(0, -1, 0, 0, 0, 10); mg.addColorStop(0, '#241b36'); mg.addColorStop(1, '#0c0814');
-  ctx.fillStyle = mg; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 9 + level * 2;
-  ctx.beginPath(); ctx.arc(0, 0, 9, 0, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
-  drawCore(ctx, key, 5 + level * 0.5, col, time);
+  drawMountCore(ctx, key, level, col, time, true);
 }
 
 // Sprite d'un bâtiment (dans son repère local), orienté pour les tourelles offensives.
@@ -102,15 +125,12 @@ function turretSprite(ctx, key, facing, level, t, time) {
   const col = TCOL[key] || '#8a6cff';
 
   if (key === 'bercail') {
-    // socle de soin sans canon : couronne + croix
-    const mg = ctx.createRadialGradient(0, -1, 0, 0, 0, 12); mg.addColorStop(0, '#1c2a20'); mg.addColorStop(1, '#0a140d');
-    ctx.fillStyle = mg; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 9;
-    ctx.beginPath(); ctx.arc(0, 0, 12, 0, 7); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
-    ctx.save(); ctx.rotate((time || 0) * 0.5); ctx.setLineDash([3, 4]); ctx.strokeStyle = col + '88';
-    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 10;
-    ctx.fillRect(-2, -8, 4, 16); ctx.fillRect(-8, -2, 16, 4);
-    ctx.shadowBlur = 0; return;
+    // soin : anneaux concentriques + cœur vert (sans canon), comme la galerie de réf.
+    const lv = level || 1;
+    drawAuras(ctx, lv, col, time);
+    drawMountCore(ctx, 'bercail', lv, col, time, false);
+    ctx.strokeStyle = col + 'aa'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 6, 0, 7); ctx.stroke();
+    return;
   }
   if (MUZZLE[key]) { drawOffensiveTurret(ctx, key, facing, level, time); return; }
   if (key === 'radar') {
