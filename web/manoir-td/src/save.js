@@ -8,7 +8,7 @@ export function defaultSave() {
     version: 1,
     currentNode: 'm1',
     done: [], unlocked: ['m1'],
-    roster: { turrets: ['brasier', 'givre'], units: [], upgrades: [] },
+    roster: { turrets: ['brasier', 'givre', 'tortue'], units: [], upgrades: [] },
     stats: { kills: 0, missionsWon: 0 },
     seenTutorial: false,
   };

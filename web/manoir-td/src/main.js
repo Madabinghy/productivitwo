@@ -4,6 +4,8 @@ import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { nodeById, completeNode } from './campaign.js';
 import { createCampaign } from './render/map.js';
+import { initEnemyAI, updateEnemyAI } from './systems/enemy_ai.js';
+import { updateUnits } from './systems/units.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
 import { updateEconomy } from './systems/economy.js';
 import { updateTurrets } from './systems/turrets.js';
@@ -48,17 +50,18 @@ function resetMission(game, node) {
   game.cam = { fx: 540, fy: 1320 }; game.freeCam = false;
   game.AIM = {}; game.CD = {}; game.STASH = {}; game.heroTarget = null;
   game._spawnT = 0; game._winSaved = false; game.noSpawn = false; game.tutorial = null;
-  Object.assign(game.ui, { sel: null, selId: null, heroSelected: true, aimMode: false, breached: false, heroDown: false, win: false, report: null, owned: {}, placed: [] });
+  Object.assign(game.ui, { sel: null, selId: null, heroSelected: true, aimMode: false, breached: false, heroDown: false, win: false, report: null, owned: {}, enemyOwned: {}, placed: [] });
   game.ui.darkMode = !!(node && node.mission.night);
   game.mission = node ? { nodeId: node.id, waves: node.mission.waves, night: node.mission.night } : null;
+  initEnemyAI(game);          // commandant adverse (la Veilleuse)
 }
 
 function startMissionNode(node, { tutorial }) {
   resetMission(game, node);
   game.screen = 'mission';
   if (tutorial) startTutorial(game);          // tuto : noSpawn jusqu'à l'étape combat
-  else spawnEnemies(game);                     // sinon : 1ère vague tout de suite
-  game.ui.msg = tutorial ? '' : ('Mission : ' + node.name + ' — survis à ' + node.mission.waves + ' vagues. Protège le coffre.');
+  else game.noSpawn = false;                    // l'IA adverse (Veilleuse) prend le relais
+  game.ui.msg = tutorial ? '' : ('Mission : ' + node.name + ' — anéantis la Veilleuse et ses sanctuaires.');
 }
 
 document.getElementById('btn-new').onclick = () => {
@@ -90,7 +93,9 @@ function tick(dt) {
 
   updateHeroMove(game, dt);
   updateEnemies(game, dt);
+  updateEnemyAI(game, dt);
   updateTurrets(game, dt);
+  updateUnits(game, dt);
   updateConstruction(game, dt);
   updateEconomy(game, dt);
   heroLaser(game, dt);

@@ -7,6 +7,8 @@ import { armMuzzle } from '../systems/hero.js';
 import { drawPlaced, drawGhost, drawBuildBeam, drawPlaceHalos } from './buildings.js';
 import { drawFog, drawMinimap } from './fog.js';
 import { enemyRevealed, turretSees } from '../systems/vision.js';
+import { drawFoes, drawEnemyTerritory } from './foes.js';
+import { drawUnits } from './units.js';
 
 export function draw(game, ctx, t) {
   const th = THEMES[game.ui.amb];
@@ -20,6 +22,7 @@ export function draw(game, ctx, t) {
   ctx.translate(tx, ty);
 
   drawWorld(game, ctx, th, t);
+  drawEnemyTerritory(game, ctx);
   drawPlaceHalos(game, ctx, th);
 
   for (const cr of game.CRYSTALS) drawCrystal(ctx, cr, t);
@@ -62,6 +65,8 @@ export function draw(game, ctx, t) {
   }
 
   drawPlaced(game, ctx, th, t);
+  drawUnits(game, ctx, th, t);
+  drawFoes(game, ctx, th, t);
 
   for (const e of game.G.enemies) {
     if (game.ui.darkMode && !(enemyRevealed(game, e) || turretSees(game, e))) continue; // caché par le brouillard

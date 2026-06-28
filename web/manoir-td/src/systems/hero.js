@@ -2,7 +2,7 @@
 // lissée (déplacement > chantier > récolte > défense), et laser défensif du bras gauche.
 import { HERO as HCFG, VIS, MAP } from '../config.js';
 import { blocked, compass, angDiff } from '../geometry.js';
-import { killEnemy } from './enemies.js';
+import { killTarget, targets } from './enemies.js';
 
 // Point de bouche d'un bras : décalé du centre vers la cible, perpendiculaire selon le côté.
 export function armMuzzle(H, tx, ty, side) {
@@ -54,7 +54,7 @@ export function heroLaser(game, dt) {
   const H = game.HERO; const ui = game.ui; if (ui.heroDown) { game._laserTgt = null; return; }
   game._heroCD = (game._heroCD || 0) - dt;
   let be = null, bd = 1e9;
-  for (const e of game.G.enemies) {
+  for (const e of targets(game)) {
     const d = Math.hypot(e.x - H.x, e.y - H.y);
     if (d <= VIS * 0.95 && d < bd && !blocked(game.WALLS, H.x, H.y, e.x, e.y)) { bd = d; be = e; }
   }
@@ -63,7 +63,7 @@ export function heroLaser(game, dt) {
     game._heroCD = HCFG.laserCd;
     const m = armMuzzle(H, be.x, be.y, -1);
     game.G.beams.push({ kind: 'laser', ax: m.x, ay: m.y, bx: be.x, by: be.y, color: '#8fe3ff', life: 0.12, maxLife: 0.12 });
-    be.hp -= HCFG.laserDmg; if (be.hp <= 0) killEnemy(game, be);
+    be.hp -= HCFG.laserDmg; if (be.hp <= 0) killTarget(game, be);
   }
 }
 

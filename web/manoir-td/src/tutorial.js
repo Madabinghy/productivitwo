@@ -1,8 +1,6 @@
 // Onboarding — tuto scénarisé de la mission 1, porté par la Veilleuse (la Procrastination).
 // File d'étapes : chaque étape attend une condition avant de passer à la suivante.
 // Vagues suspendues (game.noSpawn) jusqu'à l'étape de combat. seenTutorial gère le saut.
-import { spawnEnemies } from './systems/enemies.js';
-
 const V = '☾ La Veilleuse — ';
 
 function steps(game) {
@@ -23,8 +21,8 @@ function steps(game) {
     { text: V + 'Reste près du chantier : ton bras la bâtit. (La vaisselle attendra, elle.)',
       done: () => game.ui.placed.some(p => p.cat === 'turret' && p.built !== false) },
 
-    { text: V + 'Trop tard pour la sieste : voilà les flemmes ! Tiens la ligne, protège le coffre.',
-      enter: () => { spawnEnemies(game); game.noSpawn = false; },
+    { text: V + 'Trop tard pour la sieste : la Veilleuse arrive invoquer ses flemmes ! Tiens la ligne.',
+      enter: () => { game.noSpawn = false; },   // active le commandant adverse (enemy_ai)
       done: () => (game.G.kills || 0) >= 3 },
   ];
 }

@@ -58,6 +58,10 @@ export const SUPPORT_ITEMS = [
   { key: 'radar',     name: 'Radar des âmes',  el: 'Détection' },
   { key: 'satellite', name: 'Œil-satellite',   el: 'Révélation' },
 ];
+export const UNIT_ITEMS = [
+  { key: 'tortue', name: 'Cuirassé-tortue', el: 'Unité' },
+];
+export const TORTUE = { hp: 460, speed: 70, range: 215, dmg: 9, interval: 0.32, healRadius: 200, healHero: 14, healTurret: 12, buildRadius: 200 };
 
 export const SHOT = {
   brasier: { kind: 'proj', shot: 'fireball' }, givre: { kind: 'beam', beam: 'laser' },
@@ -71,6 +75,7 @@ export const COST = {
   venin: { mass: 30, time: 4 },    arcane: { mass: 66, time: 7.5 }, spectre: { mass: 54, time: 6.5 },
   calice: { mass: 58, time: 7 },   sniper: { mass: 80, time: 9 },   bercail: { mass: 50, time: 6 },
   bouclier: { mass: 40, time: 5 }, radar: { mass: 46, time: 5.5 },  satellite: { mass: 110, time: 12 },
+  tortue: { mass: 95, time: 11 },
 };
 export function costOf(key) { return COST[key] || { mass: 40, time: 5 }; }
 
@@ -87,6 +92,7 @@ export const DESC = {
   radar: 'Détection : révèle les flemmes proches sur le plan. Son rayon grandit à chaque niveau.',
   satellite: 'Révélation : dévoile toutes les flemmes de la carte, sur le plan et à l\'écran.',
   bouclier: 'Barrière orientable : encaisse les tirs ennemis et laisse passer les vôtres. 3 maximum.',
+  tortue: 'Cuirassé-tortue : unité blindée. Mobile, ses canons fauchent les flemmes. Déployée : increvable, soigne et ouvre une zone de chantier (comme un Bercail mobile).',
 };
 
 // 3 thèmes d'ambiance — couleurs principales pour le rendu canvas
@@ -97,7 +103,7 @@ export const THEMES = {
 };
 
 export function baseHp(key) {
-  return key === 'sniper' ? 45 : key === 'bercail' ? 90 : key === 'radar' ? 75
+  return key === 'tortue' ? TORTUE.hp : key === 'sniper' ? 45 : key === 'bercail' ? 90 : key === 'radar' ? 75
        : key === 'satellite' ? 85 : key === 'bouclier' ? 160 : 120;
 }
 export function radarRadius(t) { return 360 + (((t && t.level) || 1) - 1) * 200; }

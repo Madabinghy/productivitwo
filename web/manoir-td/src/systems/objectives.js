@@ -28,10 +28,12 @@ export function updateObjectives(game) {
     if (game.ROOMCAND[r.id].every(idx => G.lit.has(idx))) { ui.owned[r.id] = true; ui.msg = '✦ ' + r.name + ' conquise — toutes ses bougies brûlent !'; }
   }
 
-  // victoire : mission de campagne = survivre à N vagues ; jeu libre = tout éclairer
+  // victoire : mission = anéantir l'IA adverse (Veilleuse + sanctuaires + flemmes)
   if (!ui.win) {
     if (game.mission) {
-      if ((G.wave || 0) >= game.mission.waves && G.enemies.length === 0) { ui.win = true; ui.msg = '✦ Coffre tenu — toutes les vagues repoussées. Victoire !'; }
+      if (game.ai && game.ai.spawned && game.ai.defeated && G.foes.length === 0 && G.enemies.length === 0) {
+        ui.win = true; ui.msg = '✦ La Veilleuse est vaincue — le manoir est purgé. Victoire !';
+      }
     } else if (G.lit.size >= game.CANDLES.length) {
       ui.win = true; ui.msg = '✦ Manoir entièrement éclairé — le coffre est sauf. Victoire !';
     }

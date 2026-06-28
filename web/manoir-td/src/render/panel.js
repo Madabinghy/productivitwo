@@ -1,9 +1,11 @@
 // Panneau latéral (DOM) : onglets Tourelles / Soutien, cartes d'items sélectionnables,
 // et fiche détail/amélioration de la tourelle sélectionnée.
-import { TURRET_ITEMS, SUPPORT_ITEMS, TCOL, DESC, costOf, turretStats } from '../config.js';
+import { TURRET_ITEMS, SUPPORT_ITEMS, UNIT_ITEMS, TCOL, DESC, costOf, turretStats } from '../config.js';
 import { setTab, selectItem, upgrade, upSniper, removeSel, setAim, clearSel } from '../systems/placement.js';
+import { deployUnit } from '../systems/units.js';
 
-const TABS = [{ k: 'turret', label: 'Tourelles' }, { k: 'support', label: 'Soutien' }];
+const TABS = [{ k: 'turret', label: 'Tourelles' }, { k: 'support', label: 'Soutien' }, { k: 'unit', label: 'Unités' }];
+const UCOL = { tortue: '#9ad06a' };
 
 function chip(col) { const d = document.createElement('span'); d.className = 'dot'; d.style.background = col; d.style.boxShadow = '0 0 9px ' + col; return d; }
 
@@ -13,7 +15,7 @@ export function createPanel(game) {
 
   function signature() {
     const s = game.ui;
-    const placed = s.placed.map(p => p.id + ':' + p.key + ':' + p.level + ':' + (p.built ? 1 : 0)).join(',');
+    const placed = s.placed.map(p => p.id + ':' + p.key + ':' + p.level + ':' + (p.built ? 1 : 0) + ':' + (p.deployed ? 1 : 0)).join(',');
     const sel = s.selId ? (() => { const t = s.placed.find(p => p.id === s.selId); return t ? t.id + t.key + t.level + (t.bonusR || 0) + (t.bonusD || 0) : ''; })() : '';
     const snCd = s.selId ? Math.ceil(Math.max(0, ((s.placed.find(p => p.id === s.selId) || {})._next || 0) - (game.G.time || 0))) : 0;
     const roster = game.save ? game.save.roster.turrets.join(',') : '';
@@ -23,8 +25,8 @@ export function createPanel(game) {
   function build() {
     root.innerHTML = '';
     const s = game.ui;
-    const selT = s.placed.find(p => p.id === s.selId && p.cat === 'turret');
-    if (selT) { buildDetail(root, game, selT); return; }
+    const selT = s.placed.find(p => p.id === s.selId && (p.cat === 'turret' || p.cat === 'unit'));
+    if (selT) { (selT.cat === 'unit' ? buildUnitDetail : buildDetail)(root, game, selT); return; }
 
     // onglets
     const tabs = document.createElement('div'); tabs.className = 'tabs';
@@ -35,15 +37,16 @@ export function createPanel(game) {
     root.appendChild(tabs);
 
     const roster = game.save ? game.save.roster.turrets : null;
-    const items = s.tab === 'support' ? SUPPORT_ITEMS : TURRET_ITEMS;
+    const isUnit = s.tab === 'unit'; const cat = isUnit ? 'unit' : 'turret';
+    const items = s.tab === 'support' ? SUPPORT_ITEMS : isUnit ? UNIT_ITEMS : TURRET_ITEMS;
     for (const it of items) {
       const locked = roster ? !roster.includes(it.key) : false;
-      const cnt = s.placed.filter(p => p.cat === 'turret' && p.key === it.key).length;
-      const max = it.key === 'bouclier' ? 3 : 1; const dep = cnt >= max;
-      const c = costOf(it.key);
+      const cnt = s.placed.filter(p => p.cat === cat && p.key === it.key).length;
+      const max = isUnit ? Infinity : it.key === 'bouclier' ? 3 : 1; const dep = cnt >= max;
+      const c = costOf(it.key); const col = UCOL[it.key] || TCOL[it.key] || '#8a6cff';
       const card = document.createElement('div');
       card.className = 'card' + (s.sel && s.sel.key === it.key ? ' on' : '') + ((dep || locked) ? ' dim' : '');
-      const ico = document.createElement('div'); ico.className = 'ico'; ico.appendChild(chip(locked ? '#5a5566' : (TCOL[it.key] || '#8a6cff')));
+      const ico = document.createElement('div'); ico.className = 'ico'; ico.appendChild(chip(locked ? '#5a5566' : col));
       const txt = document.createElement('div');
       const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = (locked ? '🔒 ' : '') + it.name;
       const mt = document.createElement('div'); mt.className = 'mt';
@@ -54,12 +57,14 @@ export function createPanel(game) {
       card.appendChild(ico); card.appendChild(txt);
       if (locked) card.onclick = () => { game.ui.msg = '🔒 « ' + it.name + ' » se débloque en gagnant une mission de campagne.'; };
       else if (dep) card.onclick = () => { game.ui.msg = 'Déjà déployé — récupère-le (Espace sur la tourelle).'; };
-      else card.onclick = () => selectItem(game, 'turret', it.key, it.name);
+      else card.onclick = () => selectItem(game, cat, it.key, it.name);
       root.appendChild(card);
     }
 
     const hint = document.createElement('div'); hint.className = 'hint';
-    hint.textContent = s.tab === 'turret'
+    hint.textContent = isUnit
+      ? "Pose un Cuirassé-tortue dans ta lumière, le Commander le bâtit. Clique-le pour le sélectionner : clic = déplacement (il tire en roulant), bouton Déployer = increvable + soin + zone de chantier."
+      : s.tab === 'turret'
       ? "Sélectionne une tourelle puis clique dans le halo du héros (ou d'une bougie) pour poser un chantier. Le Commander le bâtit en restant à portée de vision."
       : 'Bercail : soigne héros & tourelles. Bouclier (3 max) : oriente-le pour encaisser les tirs ennemis. Radar : révèle les flemmes voisines. Œil-satellite : révèle toute la carte.';
     root.appendChild(hint);
@@ -99,6 +104,24 @@ export function createPanel(game) {
         : maxed ? 'Niveau maximum' : (t.key === 'radar' ? 'Élargir le rayon (niv ' + t.level + '→' + (t.level + 1) + ')' : 'Améliorer (niv ' + t.level + '→' + (t.level + 1) + ')');
       if (!maxed) u.onclick = () => upgrade(game);
       card.appendChild(u);
+    }
+    const rm = document.createElement('button'); rm.className = 'act btn-rm'; rm.textContent = 'Récupérer'; rm.onclick = () => removeSel(game); card.appendChild(rm);
+    const back = document.createElement('button'); back.className = 'act btn-back'; back.textContent = '← Retour'; back.onclick = () => clearSel(game); card.appendChild(back);
+    root.appendChild(card);
+  }
+
+  function buildUnitDetail(root, game, u) {
+    const col = UCOL[u.key] || '#9ad06a';
+    const card = document.createElement('div'); card.className = 'detail'; card.style.borderColor = col + '88';
+    const h = document.createElement('div'); h.className = 'dh'; h.textContent = 'Cuirassé-tortue'; card.appendChild(h);
+    const st = document.createElement('div'); st.className = 'ds';
+    st.textContent = u.built === false ? '⚒ En construction…' : (u.deployed ? '⛨ Déployé — increvable · soigne · zone de chantier' : '⚔ Mobile · canons actifs · clique pour le déplacer') + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
+    card.appendChild(st);
+    const dd = document.createElement('div'); dd.className = 'dd'; dd.textContent = DESC.tortue; card.appendChild(dd);
+    if (u.built !== false) {
+      const dpl = document.createElement('button'); dpl.className = 'act btn-aim' + (u.deployed ? ' on' : '');
+      dpl.textContent = u.deployed ? '⤺ Replier (redevenir mobile)' : '⛨ Déployer (increvable + soin + chantier)';
+      dpl.onclick = () => deployUnit(game, u); card.appendChild(dpl);
     }
     const rm = document.createElement('button'); rm.className = 'act btn-rm'; rm.textContent = 'Récupérer'; rm.onclick = () => removeSel(game); card.appendChild(rm);
     const back = document.createElement('button'); back.className = 'act btn-back'; back.textContent = '← Retour'; back.onclick = () => clearSel(game); card.appendChild(back);
