@@ -117,6 +117,15 @@ darkBtn.onclick = () => {
   game.ui.msg = game.ui.darkMode ? 'Nuit noire — le plan ne révèle que les flemmes éclairées (héros, bougies, radar, satellite).' : 'Mode exploration rétabli (jour).';
 };
 
+// Quitter la mission en cours → retour à la carte (double-clic de confirmation)
+const quitBtn = document.getElementById('hud-quit');
+let quitArm = 0;
+quitBtn.onclick = () => {
+  if (game.screen !== 'mission') return;
+  if (quitArm) { quitArm = 0; quitBtn.textContent = '✕ Quitter'; backToMap({ won: false }); }
+  else { quitArm = 1; quitBtn.textContent = '✕ Confirmer ?'; setTimeout(() => { quitArm = 0; quitBtn.textContent = '✕ Quitter'; }, 2000); }
+};
+
 const hud = {
   alive: document.getElementById('hud-alive'),
   lit: document.getElementById('hud-lit'),
