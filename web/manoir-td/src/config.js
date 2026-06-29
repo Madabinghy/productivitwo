@@ -63,8 +63,9 @@ export const UNIT_ITEMS = [
 ];
 export const TORTUE = {
   hp: 460, speed: 30, range: 230, dmg: 11, projSpeed: 360,
-  cannonInterval: 1.9, carapaceRot: 170, cannonRot: 260,
-  cannonRest: [-18, 18, -62, 62],   // angles de repos des 4 canons (deg, depuis l'avant carapace)
+  cannonInterval: 1.9, carapaceRot: 170, cannonRot: 260, deployTime: 0.6,
+  cannonMounts: [-30, 30, -90, 90],  // position des 4 canons sur la carapace (offset depuis l'avant, deg)
+  cannonRest: [-6, 6, -45, 45],      // visée de repos des 4 canons : 2 avant + 1 NO + 1 NE (offset depuis l'avant)
   healRadius: 150, healHero: 14, healTurret: 12,
 };
 
