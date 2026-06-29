@@ -23,6 +23,9 @@ export function initEnemyAI(game) {
   };
 }
 
+// Mix de sbires produits par les cercles d'invocation (araignées jaunes + scorpions inclus).
+const SBIRE_KINDS = ['spider', 'mecha', 'yellow', 'yellow', 'scorpion'];
+
 const roomCenter = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 const commander = (game) => game.G.foes.find(f => f.kind === 'commander');
 
@@ -98,7 +101,7 @@ export function updateEnemyAI(game, dt) {
   for (const f of G.foes) {
     if (f.kind !== 'circle') continue;
     f.spawnT -= dt;
-    if (f.spawnT <= 0) { f.spawnT = AI.circleSpawnEvery; if (G.enemies.length < ai.flemmeCap) spawnFlemmeAt(game, f.x, f.y, Math.random() < 0.5 ? 'spider' : 'mecha'); }
+    if (f.spawnT <= 0) { f.spawnT = AI.circleSpawnEvery; if (G.enemies.length < ai.flemmeCap) spawnFlemmeAt(game, f.x, f.y, SBIRE_KINDS[(Math.random() * SBIRE_KINDS.length) | 0]); }
   }
 
   // tourelles adverses : tirent sur la tourelle/le Commander du joueur à portée

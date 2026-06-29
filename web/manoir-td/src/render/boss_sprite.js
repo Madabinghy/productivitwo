@@ -13,6 +13,36 @@ const dirImg = (deg) => IMG.walk[(Math.round((((deg % 360) + 360) % 360) / 45) *
 
 export function bossReady() { return IMG.idle._ready; }
 
+// Cache des feuilles teintées (clé = nom+couleur) — teinte une fois, réutilise.
+const TINT = {};
+function tinted(img, name, color) {
+  if (!img || !img._ready) return null;
+  const key = name + color;
+  if (TINT[key]) return TINT[key];
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0);
+  x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.5; x.fillStyle = color;
+  x.fillRect(0, 0, c.width, c.height);
+  x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+  TINT[key] = c; return c;
+}
+
+// Sbire « araignée » : réutilise les vrais sprites isométriques du boss, réduits et teintés.
+// foe.facing (boussole, deg) choisit la feuille directionnelle ; renvoie false si pas encore prête.
+export function drawSbireSpider(ctx, foe, t, size, tint) {
+  const deg = (Math.round(((((foe.facing != null ? foe.facing : foe.dir) || 180) % 360) + 360) % 360 / 45) * 45) % 360;
+  const im = IMG.walk[deg] || IMG.walk[180];
+  if (!im || !im._ready) return false;
+  const grid = GRID.walk, frames = grid.c * grid.r;
+  const f = Math.floor(t * grid.fps + (foe._ph || 0)) % frames;
+  const sx = (f % grid.c) * FRAME, sy = Math.floor(f / grid.c) * FRAME;
+  const src = tint ? tinted(im, 'w' + deg, tint) : im;
+  if (!src) return false;
+  ctx.drawImage(src, sx, sy, FRAME, FRAME, -size / 2, -size / 2, size, size);
+  return true;
+}
+
 // Dessine le boss centré sur (0,0) (repère déjà translaté). size = taille à l'écran.
 export function drawBossSpider(ctx, foe, t, size = 96) {
   const anim = foe.anim || 'idle';

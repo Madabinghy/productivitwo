@@ -13,7 +13,7 @@ export function spawnFlemmeAt(game, x, y, kind) {
   game.G.enemies.push({
     x, y, hp, maxHp: hp, speed: 30 + Math.random() * 14,
     chase: false, path: null, pi: 0, acd: Math.random(),
-    kind: kind || 'spider', facing: 180,
+    kind: kind || 'spider', facing: 180, _ph: Math.random() * 16,
   });
 }
 

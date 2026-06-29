@@ -1,5 +1,6 @@
 // Sprites dessinés au canvas (pas de formes CSS empilées) : flemmes, coffre, cristaux, héros.
 // Vue de dessus stricte ; chaque sprite est dessiné dans son repère local puis transformé.
+import { drawSbireSpider } from './boss_sprite.js';
 
 function hpBar(ctx, x, y, w, f) {
   ctx.save();
@@ -72,16 +73,64 @@ function drawMecha(ctx, eye, chase) {
   ctx.restore();
 }
 
+// Sbire « scorpion » : pinces, corps segmenté, queue recourbée + dard. Vue de dessus.
+function drawScorpion(ctx, col, chase, t) {
+  ctx.save();
+  const dark = '#6e4a1f';
+  // pattes
+  ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) for (const ly of [-1, 2, 5]) { ctx.beginPath(); ctx.moveTo(s * 2, ly); ctx.lineTo(s * 9, ly + (ly < 0 ? -2 : 2)); ctx.stroke(); }
+  // abdomen segmenté
+  for (let i = 0; i < 4; i++) { const y = 2 + i * 2.2; ctx.fillStyle = i % 2 ? col : dark; ctx.beginPath(); ctx.ellipse(0, y, 4 - i * 0.4, 2.2, 0, 0, 7); ctx.fill(); }
+  // céphalothorax
+  const g = ctx.createRadialGradient(0, -2, 0, 0, -1, 6); g.addColorStop(0, col); g.addColorStop(1, dark);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, -1, 5, 5.5, 0, 0, 7); ctx.fill();
+  // pinces
+  for (const s of [-1, 1]) {
+    ctx.save(); ctx.translate(s * 5, -5); ctx.rotate(s * 0.5);
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 2); ctx.lineTo(0, -3); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(0, -5, 2.4, 3, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(0.6, -5, 1, 2, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+  // queue + dard (recourbée par-dessus)
+  ctx.strokeStyle = col; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  const wob = Math.sin(t * 6) * 1.2;
+  ctx.beginPath(); ctx.moveTo(0, 9); ctx.quadraticCurveTo(2 + wob, 13, 4 + wob, 8); ctx.quadraticCurveTo(6 + wob, 4, 3 + wob, 1); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(3 + wob, 0.5, 1.8, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  // yeux
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(-1.5, -2, 1, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(1.5, -2, 1, 0, 7); ctx.fill();
+  if (chase) { ctx.strokeStyle = col + 'cc'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 13, 0, 7); ctx.stroke(); }
+  ctx.restore();
+}
+
 export function drawEnemy(ctx, e, col, t) {
+  const kind = e.kind; let color = col, scale = 1;
+  if (kind === 'yellow') { color = '#ffe14d'; scale = 0.72; }       // araignée jaune (sbire)
+  else if (kind === 'scorpion') { color = '#e0a85e'; scale = 0.8; } // scorpion (sbire)
+
+  // araignée jaune : vrai sprite PNG isométrique (boss-spider teinté, réduit), fallback canvas
+  if (kind === 'yellow') {
+    ctx.save(); ctx.translate(e.x, e.y);
+    ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0, 13 * scale, 15 * scale, 4.5 * scale, 0, 0, 7); ctx.fill();
+    const size = 92 * scale;
+    if (!drawSbireSpider(ctx, e, t, size, '#ffe14d')) { ctx.save(); ctx.rotate((e.facing || 0) * Math.PI / 180); ctx.scale(scale, scale); drawSpider(ctx, color, !!e.chase, t); ctx.restore(); }
+    if (e.chase) { ctx.strokeStyle = color + 'cc'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, size * 0.42, 0, 7); ctx.stroke(); }
+    hpBar(ctx, 0, -size * 0.42, 30 * scale, Math.max(0, Math.min(1, e.hp / (e.maxHp || 50))));
+    ctx.restore();
+    return;
+  }
+
   ctx.save();
   ctx.translate(e.x, e.y);
-  // ombre
-  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0, 11, 13, 4, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0, 11 * scale, 13 * scale, 4 * scale, 0, 0, 7); ctx.fill();
   ctx.save();
-  ctx.rotate(((e.facing || 0)) * Math.PI / 180);
-  if (e.kind === 'mecha') drawMecha(ctx, col, !!e.chase); else drawSpider(ctx, col, !!e.chase, t);
+  ctx.rotate(((e.facing || 0)) * Math.PI / 180); ctx.scale(scale, scale);
+  if (kind === 'mecha') drawMecha(ctx, color, !!e.chase);
+  else if (kind === 'scorpion') drawScorpion(ctx, color, !!e.chase, t);
+  else drawSpider(ctx, color, !!e.chase, t);
   ctx.restore();
-  hpBar(ctx, 0, -18, 26, Math.max(0, Math.min(1, e.hp / (e.maxHp || 50))));
+  hpBar(ctx, 0, -18 * scale, 26 * scale, Math.max(0, Math.min(1, e.hp / (e.maxHp || 50))));
   ctx.restore();
 }
 
