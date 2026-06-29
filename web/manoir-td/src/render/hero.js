@@ -1,7 +1,7 @@
-// Le Commander (Majordome-automate) — sprite vue de dessus, fidèle à apresToken()
-// de « Commander - Amélioré.dc.html » : anneau d'épaule laiton, épaulières + rivets,
-// engrenage, plastron, cœur-âme doré, heaume, visière + monocle, flamme de crête,
-// lanterne tenue (relevée). S'oriente selon H.dir (degrés boussole).
+// Le Commander (Majordome-automate) — sprite PNG designé (assets-png/commander.png),
+// avec fallback canvas fidèle à apresToken(). S'oriente selon H.dir (degrés boussole).
+import { drawArt } from './art.js';
+const HERO_SCALE = 0.42;
 const GD = '#ff9e3d', B = '#c9a050', BH = '#f0cf86', BD = '#806026',
       S = '#566079', SH = '#8a96b3', DK = '#161220';
 
@@ -18,6 +18,13 @@ function glow(ctx, x, y, r, col) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);
   g.addColorStop(0, col + 'cc'); g.addColorStop(0.45, col + '44'); g.addColorStop(1, 'transparent');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+}
+// barre de vie du Commander (repère translaté, non tourné)
+function drawHpBar(ctx, H) {
+  const f = Math.max(0, Math.min(1, (H.hp == null ? 100 : H.hp) / (H.maxHp || 100)));
+  if (f >= 1) return;
+  ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(-17, -32, 34, 4);
+  ctx.fillStyle = f > 0.5 ? '#7bff9b' : f > 0.25 ? '#ffd66e' : '#ff5d7a'; ctx.fillRect(-17, -32, 34 * f, 4);
 }
 function gear(ctx, x, y, r) {
   ctx.save(); ctx.translate(x, y);
@@ -47,9 +54,13 @@ export function drawHero(game, ctx, th, t) {
 
   const hurt = (H.inv || 0) > 0.6;
   ctx.save();
-  // +180 comme le proto (commanderParts) : le Commander avance épaulières/bras en avant
-  ctx.rotate(((H.dir || 0) + 180) * Math.PI / 180);
   if (hurt) ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 30);
+
+  // sprite PNG designé (orienté ; +180 = avance épaulières/bras en avant comme le proto)
+  if (drawArt(ctx, 'commander', HERO_SCALE, (H.dir || 0) + 180, { center: true })) { ctx.restore(); drawHpBar(ctx, H); ctx.restore(); return; }
+
+  // — fallback canvas (fidèle à apresToken) —
+  ctx.rotate(((H.dir || 0) + 180) * Math.PI / 180);
 
   // anneau d'épaule laiton (corps vu de dessus)
   const body = ctx.createRadialGradient(0, -4, 1, 0, 6, 22);
@@ -100,11 +111,6 @@ export function drawHero(game, ctx, th, t) {
 
   ctx.restore(); // fin rotation
 
-  // barre de vie (non tournée)
-  const f = Math.max(0, Math.min(1, (H.hp == null ? 100 : H.hp) / (H.maxHp || 100)));
-  if (f < 1) {
-    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(-17, -32, 34, 4);
-    ctx.fillStyle = f > 0.5 ? '#7bff9b' : f > 0.25 ? '#ffd66e' : '#ff5d7a'; ctx.fillRect(-17, -32, 34 * f, 4);
-  }
+  drawHpBar(ctx, H);
   ctx.restore();
 }

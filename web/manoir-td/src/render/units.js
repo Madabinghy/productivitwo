@@ -4,9 +4,24 @@
 //   cœur grossit. MOBILE : canons posés sur les écailles, recul au tir. DÉPLOYÉE : aura + motes,
 //   badge INCREVABLE (PV masqués).
 import { TORTUE } from '../config.js';
+import { drawArt } from './art.js';
 
 const STEEL_HI = '#8a96b3', STEEL = '#566079', STEEL_DK = '#161220';
 const GOLD = '#ffce5e', GOLD_D = '#ff9e3d', GREEN = '#6effa8', GREEN_D = '#1d9c5e';
+const TORTUE_ART_SCALE = 0.34;
+
+// État MOBILE : sprite PNG designé (carapace orientée vers la menace) + éclairs de bouche.
+// Repère déjà translaté sur l'unité. Renvoie false si l'image n'est pas chargée → fallback canvas.
+function drawTortueMobileArt(ctx, u) {
+  if (!drawArt(ctx, 'cuirasse-tortue', TORTUE_ART_SCALE, (u.carapace || 180) - 180)) return false;
+  if (u.cannons) for (const c of u.cannons) {
+    if (!(c.flash > 0)) continue;
+    const mdir = ((u.carapace || 180) + (c.mount || 0)) * Math.PI / 180, r = 24;
+    ctx.save(); ctx.fillStyle = '#fff3c4'; ctx.shadowColor = GOLD_D; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(Math.sin(mdir) * r, -Math.cos(mdir) * r, 4, 0, 7); ctx.fill(); ctx.restore();
+  }
+  return true;
+}
 
 // interpolation linéaire entre deux couleurs hexadécimales
 function hexLerp(a, b, t) {
@@ -64,8 +79,11 @@ export function drawUnits(game, ctx, th, t) {
 
     const R = 20, ext = 1 - tt;
 
+    // mobile complète : sprite PNG designé (carapace orientée), sinon corps canvas animé
+    const pngBody = built && tt < 0.04 && drawTortueMobileArt(ctx, u);
+
     // pattes (corps fixe) — rentrent quand déployée
-    if (ext > 0.05) {
+    if (!pngBody && ext > 0.05) {
       ctx.globalAlpha = (built ? 1 : ctx.globalAlpha) * (1 - 0.92 * tt);
       ctx.fillStyle = STEEL; ctx.strokeStyle = STEEL_HI; ctx.lineWidth = 1;
       const legR = R * (1 - 0.35 * tt);
@@ -74,7 +92,7 @@ export function drawUnits(game, ctx, th, t) {
     }
 
     // tête fixe au nord (ne tourne pas avec la carapace) — rentre quand déployée
-    if (ext > 0.05) {
+    if (!pngBody && ext > 0.05) {
       ctx.save(); ctx.globalAlpha = (built ? 1 : ctx.globalAlpha) * (1 - 0.92 * tt);
       const hy = -R - 1 + 12 * tt;
       ctx.fillStyle = STEEL; ctx.strokeStyle = STEEL_HI; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(0, hy, 6 * ext + 1, 5 * ext + 1, 0, 0, 7); ctx.fill(); ctx.stroke();
@@ -82,7 +100,7 @@ export function drawUnits(game, ctx, th, t) {
     }
 
     // canons (posés sur les écailles, mount tourne avec la carapace, visée indépendante, recul)
-    if (ext > 0.05 && u.cannons) {
+    if (!pngBody && ext > 0.05 && u.cannons) {
       for (const c of u.cannons) {
         const mdir = ((u.carapace || 180) + (c.mount || 0)) * Math.PI / 180;
         const bx = Math.sin(mdir) * (R * 0.92), by = -Math.cos(mdir) * (R * 0.92);
@@ -102,16 +120,18 @@ export function drawUnits(game, ctx, th, t) {
       ctx.globalAlpha = built ? 1 : 0.3 + (u.prog || 0) * 0.5;
     }
 
-    // carapace (pivote ; écailles + liseré vert pilotés par tt)
-    ctx.save(); ctx.rotate((u.carapace || 180) * Math.PI / 180);
-    plates(ctx, R - 2 * tt, tt);
-    ctx.restore();
+    if (!pngBody) {
+      // carapace (pivote ; écailles + liseré vert pilotés par tt)
+      ctx.save(); ctx.rotate((u.carapace || 180) * Math.PI / 180);
+      plates(ctx, R - 2 * tt, tt);
+      ctx.restore();
 
-    // cœur central lumineux (grossit + OR→VERT quand déployée)
-    const cr = 7 + 2 * tt;
-    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, cr + 2); cg.addColorStop(0, '#fff'); cg.addColorStop(0.4, accent); cg.addColorStop(1, accentD);
-    ctx.fillStyle = cg; ctx.shadowColor = accent; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(0, 0, cr, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.strokeStyle = accent + 'aa'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, cr + 4, 0, 7); ctx.stroke();
+      // cœur central lumineux (grossit + OR→VERT quand déployée)
+      const cr = 7 + 2 * tt;
+      const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, cr + 2); cg.addColorStop(0, '#fff'); cg.addColorStop(0.4, accent); cg.addColorStop(1, accentD);
+      ctx.fillStyle = cg; ctx.shadowColor = accent; ctx.shadowBlur = 12; ctx.beginPath(); ctx.arc(0, 0, cr, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = accent + 'aa'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, cr + 4, 0, 7); ctx.stroke();
+    }
     ctx.restore();
 
     // sélection
