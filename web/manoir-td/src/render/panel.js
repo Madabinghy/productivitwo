@@ -63,7 +63,7 @@ export function createPanel(game) {
 
     const hint = document.createElement('div'); hint.className = 'hint';
     hint.textContent = isUnit
-      ? "Pose un Cuirassé-tortue dans ta lumière, le Commander le bâtit. Clique-le pour le sélectionner : clic = déplacement (il tire en roulant), bouton Déployer = increvable + soin + zone de chantier."
+      ? "Pose un Cuirassé-tortue dans ta lumière, le Commander le bâtit. Clique-le pour le sélectionner : clic = déplacement (artillerie qui tire en roulant), bouton Déployer = increvable + aura de soin (désarmé)."
       : s.tab === 'turret'
       ? "Sélectionne une tourelle puis clique dans le halo du héros (ou d'une bougie) pour poser un chantier. Le Commander le bâtit en restant à portée de vision."
       : 'Bercail : soigne héros & tourelles. Bouclier (3 max) : oriente-le pour encaisser les tirs ennemis. Radar : révèle les flemmes voisines. Œil-satellite : révèle toute la carte.';
@@ -115,12 +115,12 @@ export function createPanel(game) {
     const card = document.createElement('div'); card.className = 'detail'; card.style.borderColor = col + '88';
     const h = document.createElement('div'); h.className = 'dh'; h.textContent = 'Cuirassé-tortue'; card.appendChild(h);
     const st = document.createElement('div'); st.className = 'ds';
-    st.textContent = u.built === false ? '⚒ En construction…' : (u.deployed ? '⛨ Déployé — increvable · soigne · zone de chantier' : '⚔ Mobile · canons actifs · clique pour le déplacer') + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
+    st.textContent = u.built === false ? '⚒ En construction…' : (u.deployed ? '⛨ Déployé — increvable · aura de soin · désarmé' : '⚔ Artillerie mobile · 4 canons · clique pour le déplacer') + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
     card.appendChild(st);
     const dd = document.createElement('div'); dd.className = 'dd'; dd.textContent = DESC.tortue; card.appendChild(dd);
     if (u.built !== false) {
       const dpl = document.createElement('button'); dpl.className = 'act btn-aim' + (u.deployed ? ' on' : '');
-      dpl.textContent = u.deployed ? '⤺ Replier (redevenir mobile)' : '⛨ Déployer (increvable + soin + chantier)';
+      dpl.textContent = u.deployed ? '⤺ Replier (artillerie mobile)' : '⛨ Déployer (increvable + aura de soin)';
       dpl.onclick = () => deployUnit(game, u); card.appendChild(dpl);
     }
     const rm = document.createElement('button'); rm.className = 'act btn-rm'; rm.textContent = 'Récupérer'; rm.onclick = () => removeSel(game); card.appendChild(rm);

@@ -61,7 +61,12 @@ export const SUPPORT_ITEMS = [
 export const UNIT_ITEMS = [
   { key: 'tortue', name: 'Cuirassé-tortue', el: 'Unité' },
 ];
-export const TORTUE = { hp: 460, speed: 70, range: 215, dmg: 9, interval: 0.32, healRadius: 200, healHero: 14, healTurret: 12, buildRadius: 200 };
+export const TORTUE = {
+  hp: 460, speed: 30, range: 230, dmg: 11, projSpeed: 360,
+  cannonInterval: 1.9, carapaceRot: 170, cannonRot: 260,
+  cannonRest: [-18, 18, -62, 62],   // angles de repos des 4 canons (deg, depuis l'avant carapace)
+  healRadius: 150, healHero: 14, healTurret: 12,
+};
 
 export const SHOT = {
   brasier: { kind: 'proj', shot: 'fireball' }, givre: { kind: 'beam', beam: 'laser' },
@@ -92,7 +97,7 @@ export const DESC = {
   radar: 'Détection : révèle les flemmes proches sur le plan. Son rayon grandit à chaque niveau.',
   satellite: 'Révélation : dévoile toutes les flemmes de la carte, sur le plan et à l\'écran.',
   bouclier: 'Barrière orientable : encaisse les tirs ennemis et laisse passer les vôtres. 3 maximum.',
-  tortue: 'Cuirassé-tortue : unité blindée. Mobile, ses canons fauchent les flemmes. Déployée : increvable, soigne et ouvre une zone de chantier (comme un Bercail mobile).',
+  tortue: 'Cuirassé-tortue : artillerie blindée. Mobile, sa carapace pivote et ses 4 canons fauchent les flemmes. Déployée : increvable & aura de soin, mais désarmée (au choix : tirer ou soigner).',
 };
 
 // 3 thèmes d'ambiance — couleurs principales pour le rendu canvas

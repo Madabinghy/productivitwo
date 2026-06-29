@@ -34,8 +34,6 @@ export function visionSources(game) {
   if (H) src.push({ x: H.x, y: H.y, r: VIS, kind: 'hero' });
   if (game.G.lit && game.CANDLES) for (const idx of game.G.lit) { const c = game.CANDLES[idx]; src.push({ x: c.x, y: c.y, r: CANDLE_VIS, kind: 'candle' }); }
   for (const t of game.ui.placed) { if (t.cat !== 'turret' || !isBuilt(t)) continue; if (t.key === 'radar') src.push({ x: t.x, y: t.y, r: radarRadius(t), kind: 'radar' }); }
-  // Cuirassé-tortue : vision / zone de chantier (plus large une fois déployé)
-  for (const u of game.ui.placed) { if (u.cat === 'unit' && isBuilt(u)) src.push({ x: u.x, y: u.y, r: u.deployed ? 200 : 150, kind: 'unit' }); }
   return src;
 }
 
