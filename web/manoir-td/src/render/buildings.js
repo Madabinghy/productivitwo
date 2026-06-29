@@ -4,8 +4,29 @@ import { TCOL, GRID, turretStats, radarRadius, VIS, costOf } from '../config.js'
 import { rayDist, compass } from '../geometry.js';
 import { visionSources, canPlaceAt } from '../systems/vision.js';
 import { armMuzzle } from '../systems/hero.js';
+import { drawArt } from './art.js';
 
 const isBuilt = (t) => t.built !== false;
+
+// ── Sprites PNG designés (fidèles au handoff) ─────────────────────────────────
+// Échelle commune (px écran / px natif) ; chaque sprite est dimensionné pour son rôle.
+const ART_SCALE = 0.64;
+function turretArtName(p) {
+  const lv = p.level || 1;
+  if (MUZZLE[p.key]) return { name: `tourelle-${p.key}-niv${lv}`, rot: 'face' };
+  if (p.key === 'bercail') return { name: `bercail-niv${lv}`, rot: 0 };
+  if (p.key === 'radar') return { name: 'radar', rot: 'spin' };
+  if (p.key === 'satellite') return { name: 'satellite', rot: 0 };
+  if (p.key === 'bouclier') return { name: 'bouclier', rot: 'face' };
+  return null;
+}
+// Tente le sprite PNG (orienté pour les offensives + bouclier, balayage pour le radar).
+// Renvoie false si pas encore chargé → fallback canvas (turretSprite).
+function drawTurretArt(ctx, p, facing, t) {
+  const a = turretArtName(p); if (!a) return false;
+  const rot = a.rot === 'face' ? facing : a.rot === 'spin' ? (t * 50) % 360 : 0;
+  return drawArt(ctx, a.name, ART_SCALE, rot);
+}
 
 // Échelle d'affichage de la tourelle : plus grosse, et grandit nettement avec le niveau.
 function turretScale(key, level) {
@@ -247,9 +268,11 @@ export function drawPlaced(game, ctx, th, t) {
 
     ctx.save(); ctx.translate(p.x, p.y);
     if (building) { ctx.globalAlpha = 0.28 + bprog * 0.42; }
-    const sc = turretScale(p.key, p.level);     // plus grosses, surtout niv 3/4
-    ctx.scale(sc, sc);
-    turretSprite(ctx, p.key, facing, p.level, p, t);
+    if (!drawTurretArt(ctx, p, facing, t)) {     // sprite PNG, sinon fallback canvas
+      const sc = turretScale(p.key, p.level);     // plus grosses, surtout niv 3/4
+      ctx.scale(sc, sc);
+      turretSprite(ctx, p.key, facing, p.level, p, t);
+    }
     ctx.restore();
 
     // état chantier : anneau + barre + %
@@ -303,8 +326,10 @@ export function drawGhost(game, ctx, th, t) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.stroke();
   ctx.setLineDash([]); ctx.shadowBlur = 0;
   // silhouette (même échelle qu'une tourelle posée niv 1)
-  const sc = turretScale(key, 1); ctx.scale(sc, sc);
-  turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
+  if (!drawTurretArt(ctx, { key, level: 1 }, face, t)) {
+    const sc = turretScale(key, 1); ctx.scale(sc, sc);
+    turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
+  }
   ctx.restore();
   // coût
   const c = costOf(key);
