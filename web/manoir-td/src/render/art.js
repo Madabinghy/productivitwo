@@ -20,7 +20,7 @@ export function artReady(name) { const i = cache[name]; return !!(i && i._ready)
 export function drawArt(ctx, name, scale, rot, opt = {}) {
   const i = img(name); if (!i._ready) return false;
   const w = i.width, h = i.height;
-  const pivotX = w / 2, pivotY = opt.pivotY != null ? opt.pivotY : (h - w / 2);
+  const pivotX = w / 2, pivotY = opt.center ? h / 2 : (opt.pivotY != null ? opt.pivotY : (h - w / 2));
   ctx.save();
   if (opt.alpha != null) ctx.globalAlpha *= opt.alpha;
   if (rot) ctx.rotate(rot * Math.PI / 180);
