@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — L'enquête du manoir (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#070510; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes fadein { from{ transform: translateY(6px) } to{ transform: none } }
+  @keyframes shake { 0%,100%{ transform:translateX(0) } 25%{ transform:translateX(-5px) } 75%{ transform:translateX(5px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.4; transform:translate(-50%,-50%) scale(1) } 50%{ opacity:.8; transform:translate(-50%,-50%) scale(1.1) } }
+  @keyframes pop { 0%{ transform:scale(.85) } 60%{ transform:scale(1.06) } 100%{ transform:scale(1) } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* OMBRELUNE — L'enquête du manoir (déduction), 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var LOCATIONS = [
+    { key:'gants',    icon:'🧤', place:'3ᵉ étage · le boudoir', action:'Relever la cire gantée', clue:'De la cire gantée sur chaque bougeoir : le coupable portait des gants.' },
+    { key:'registre', icon:'📓', place:'Rez-de-chaussée · la cave', action:'Consulter le registre', clue:'Le registre place la Gouvernante à la cave toute la nuit.' },
+    { key:'invite',   icon:'🕯️', place:'Hall · un souvenir', action:"Te rappeler l'arrivée de l'Invité", clue:"L'Invité réclamait une chambre éclairée : il fuyait le noir." }
+  ];
+  var SUSPECTS = [
+    { key:'gouvernante', face:'👩\u200d🦳', name:'La Gouvernante' },
+    { key:'maitre',      face:'🎩', name:'Le Maître' },
+    { key:'invite',      face:'🧐', name:"L'Invité" }
+  ];
+  var CULPRIT = 'maitre';
+  var WRONG = {
+    gouvernante: 'Le registre la place à la cave toute la nuit. Elle n\u2019a pas pu.',
+    invite: "Il fuyait le noir — l'accuser, c'est ignorer ton propre indice."
+  };
+
+  var S = { collected:{}, sel:null, wrong:null, phase:'play' };
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function allDone(){ return LOCATIONS.every(function(l){ return S.collected[l.key]; }); }
+  function gather(key){ if(S.collected[key]) return; S.collected[key]=true; render(); }
+  function select(key){ if(!allDone()) return; S.sel=key; S.wrong=null; render(); }
+  function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; } else { S.wrong=S.sel; } render(); }
+  function back(){ try { window.location.href = './index.html'; } catch(e){} }
+
+  function playHTML(){
+    var done = allDone();
+    var clues = LOCATIONS.map(function(l){
+      var got = !!S.collected[l.key];
+      var style = 'display:flex; align-items:flex-start; gap:11px; width:100%; text-align:left; cursor:'+(got?'default':'pointer')+'; padding:11px 13px; border-radius:13px; border:1px solid '+(got?'rgba(95,184,126,.32)':'rgba(214,168,74,.32)')+'; background:'+(got?'rgba(28,44,32,.45)':'rgba(40,28,60,.5)')+'; animation:'+(got?'pop .4s ease both':'none')+';';
+      return '<button data-gather="'+l.key+'" style="'+style+'">'
+        + '<span style="font-size:18px; margin-top:1px;">'+(got?l.icon:'🔒')+'</span>'
+        + '<span style="flex:1; display:flex; flex-direction:column; align-items:flex-start; text-align:left;">'
+        +   '<span style="font-weight:700; font-size:11px; color:'+(got?'#9fe0b0':'#c9a456')+';">'+(got?'Indice récolté':esc(l.place))+'</span>'
+        +   '<span style="font-weight:500; font-size:11.5px; line-height:1.4; color:'+(got?'#d8cae8':'#9a86b8')+'; margin-top:2px;">'+(got?esc(l.clue):esc(l.action))+'</span>'
+        + '</span>'
+        + '<span style="font-weight:700; font-size:10px; color:'+(got?'#9fe0b0':'#e7c878')+';">'+(got?'✓':'Y aller ›')+'</span></button>';
+    }).join('');
+    var suspects = SUSPECTS.map(function(sp){
+      var on = S.sel===sp.key;
+      var isWrong = S.wrong===sp.key;
+      var style = 'flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; padding:13px 6px; border-radius:14px; cursor:'+(done?'pointer':'default')+'; border:1.5px solid '+(on?'rgba(214,168,74,.8)':'rgba(154,134,184,.18)')+'; background:'+(on?'linear-gradient(180deg, rgba(48,34,16,.7), rgba(28,18,8,.7))':'rgba(30,22,44,.45)')+'; box-shadow:'+(on?'0 0 18px rgba(214,168,74,.3)':'none')+'; opacity:'+(done?1:.7)+'; animation:'+(isWrong?'shake .4s ease':'none')+';';
+      return '<button data-suspect="'+sp.key+'" style="'+style+'">'
+        + '<span style="font-size:28px; filter:'+((on||done)?'none':'grayscale(.7) opacity(.45)')+';">'+sp.face+'</span>'
+        + '<span style="font-weight:700; font-size:11px; color:'+(on?'#f3cd72':(done?'#cdbfe0':'#6f6088'))+'; text-align:center; line-height:1.2;">'+esc(sp.name)+'</span></button>';
+    }).join('');
+    var aOn = done && S.sel;
+    var accuseStyle = 'margin-top:auto; width:100%; padding:15px; border-radius:15px; border:none; cursor:'+(aOn?'pointer':'default')+'; font-weight:800; font-size:14px; color:'+(aOn?'#1c1206':'#6f6088')+'; background:'+(aOn?'linear-gradient(180deg, #f2cd72, #d6a84a)':'rgba(40,30,58,.6)')+'; box-shadow:'+(aOn?'0 12px 28px rgba(214,168,74,.3)':'none')+';';
+    var accuseLabel = !done ? 'Récolte les 3 indices d\u2019abord' : (S.sel?'Accuser ✦':'Choisis un suspect');
+    return '<div style="position:relative; flex:1; display:flex; flex-direction:column; padding:14px 22px 18px; animation:fadein .5s ease both;">'
+      + '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; line-height:1.2; color:#fbf3e2;">Qui a éteint les bougies ?</div>'
+      + '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#a796c0;">'+esc(done?'Trois indices réunis. Écarte les innocents, puis accuse.':'Va récolter les indices dans le manoir, puis recoupe-les.')+'</div>'
+      + '<div style="margin-top:15px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Les indices</div>'
+      + '<div style="margin-top:9px; display:flex; flex-direction:column; gap:8px;">'+clues+'</div>'
+      + '<div style="margin-top:16px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:'+(done?'#9a86b8':'#5a4f70')+';">Les suspects '+(done?'':'🔒')+'</div>'
+      + '<div style="margin-top:9px; display:flex; gap:9px;">'+suspects+'</div>'
+      + '<div style="min-height:16px; margin-top:10px; text-align:center; font-weight:600; font-size:11.5px; line-height:1.4; color:#e0859a;">'+esc(S.wrong?(WRONG[S.wrong]||'Les indices disent le contraire.'):'')+'</div>'
+      + '<button data-act="accuse" style="'+accuseStyle+'">'+accuseLabel+'</button>'
+      + '</div>';
+  }
+
+  function verdictHTML(){
+    return '<div style="position:relative; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px 28px; text-align:center; animation:fadein .55s ease both;">'
+      + '<div style="position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center;"><div style="position:absolute; left:50%; top:50%; width:180px; height:180px; transform:translate(-50%,-50%); background:radial-gradient(circle, rgba(214,168,74,.5), transparent 64%); animation:glowpulse 3.5s ease-in-out infinite;"></div><span style="font-size:60px;">🎩</span></div>'
+      + '<div style="margin-top:18px; font-weight:700; font-size:10px; letter-spacing:2.4px; text-transform:uppercase; color:#f2cd72;">Coupable démasqué</div>'
+      + '<div style="margin-top:10px; font-family:\'Fraunces\',serif; font-weight:600; font-size:25px; line-height:1.16; color:#fbf3e2; max-width:300px;">C\'était le Maître.</div>'
+      + '<div style="margin-top:13px; font-size:13.5px; line-height:1.56; color:#bcaccf; max-width:300px;">La Gouvernante avait son alibi, l\'Invité fuyait le noir. Restait lui — gants aux mains, il a soufflé ses propres bougies pour s\'effacer du manoir. La porte de la Galerie s\'ouvre.</div>'
+      + '<button data-act="back" style="margin-top:26px; padding:15px 28px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Salle suivante ✦</button>'
+      + '</div>';
+  }
+
+  function view(){
+    var n = LOCATIONS.filter(function(l){ return S.collected[l.key]; }).length;
+    var body = S.phase==='verdict' ? verdictHTML() : playHTML();
+    return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 70% at 50% 14%, #241a3a 0%, #140d20 52%, #0a0712 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
+      + '<div style="position:relative; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:20px 24px 0;">'
+      +   '<div style="display:flex; flex-direction:column;"><span style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#e9dcc2;">L\'enquête du manoir</span><span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">Salle 2 · déduction</span></div>'
+      +   '<div style="display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28);"><span style="font-size:11px;">🔍</span><span style="font-weight:700; font-size:12px; color:#f2cd72;">'+n+'/3</span></div>'
+      + '</div>'
+      + body
+      + '</div>';
+  }
+
+  var app = document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var g = ev.target.closest('[data-gather]'); if(g){ gather(g.getAttribute('data-gather')); return; }
+    var s = ev.target.closest('[data-suspect]'); if(s){ select(s.getAttribute('data-suspect')); return; }
+    var a = ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='accuse') accuse(); else if(k==='back') back(); }
+  });
+  function render(){ app.innerHTML = view(); }
+  render();
+})();
+</script>
+</body>
+</html>

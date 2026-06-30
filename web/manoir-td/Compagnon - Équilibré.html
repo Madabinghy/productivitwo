@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — Mode Équilibré (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0710; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes floaty { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-6px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.5; transform:scale(1) } 50%{ opacity:.85; transform:scale(1.05) } }
+  @keyframes flick { 0%,100%{ transform: scaleY(1); opacity:1 } 50%{ transform: scaleY(.86); opacity:.85 } }
+  @keyframes risein { from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform:none } }
+  @keyframes breathe { 0%,100%{ opacity:.9 } 50%{ opacity:.5 } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* OMBRELUNE — Accueil mode ÉQUILIBRÉ, 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var TASKS = [
+    { icon:'💧', kindLabel:'Santé · hydratation', title:'Boire un verre d\'eau', subtitle:'Un geste, rien de plus.', reward:6, line:'Belle régularité. On garde le rythme, sans forcer.', tempt:'« Tu peux souffler une minute avant, non ? »' },
+    { icon:'🚶', kindLabel:'Santé · mouvement',   title:'Marcher un peu', subtitle:'Le temps que tu veux y mettre.', reward:8, line:'Le corps aime la constance plus que l\'intensité.', tempt:'« Dehors il fait frais… reste donc au chaud. »' },
+    { icon:'📖', kindLabel:'Esprit · lecture',     title:'Lire quelques pages', subtitle:'Deux pages comptent autant qu\'un chapitre.', reward:7, line:'Pas à pas, le manoir s\'éclaire. Tu fais ce qu\'il faut.', tempt:'« Demain tu liras le double, promis. »' },
+    { icon:'🧹', kindLabel:'Maison · entretien',   title:'Ranger un coin', subtitle:'Un seul recoin suffit pour aujourd\'hui.', reward:6, line:'Un manoir tenu, c\'est l\'esprit léger. Doucement.', tempt:'« La poussière t\'attendra bien sagement. »' },
+    { icon:'🧘', kindLabel:'Bien-être · pause',    title:'Respirer en conscience', subtitle:'Trois minutes, les yeux mi-clos.', reward:7, line:'Souffler fait partie du rythme, pas l\'inverse.', tempt:'« Tu te reposeras mieux allongé, tu sais. »' }
+  ];
+
+  var S = { i:0, streak:5, weekDone:9, days:[true,true,false,true,true,false,false] };
+  function cur(){ return TASKS[S.i % TASKS.length]; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function complete(){ S.i+=1; S.streak+=1; S.weekDone+=1; render(); }
+  function skip(){ S.i+=1; render(); }
+  function goDoors(){ window.location.href = './Compagnon - Choix de profil.html'; }
+
+  function view(){
+    var t = cur();
+    var days = ['L','M','M','J','V','S','D'];
+    var litCount = S.days.filter(Boolean).length;
+    var week = S.days.map(function(lit,i){
+      var isToday = i===4;
+      var candle = 'position:relative; width:13px; height:34px; border-radius:4px 4px 3px 3px; background:'+(lit?'linear-gradient(180deg,#e9dcc2,#c9b78e)':'linear-gradient(180deg,#2c2438,#1c1628)')+'; border:'+(isToday?'1px solid rgba(242,205,114,.7)':'1px solid rgba(154,134,184,.2)')+'; box-shadow:'+(lit?'0 0 10px rgba(214,168,74,.3)':'none')+';';
+      var flame = 'position:absolute; top:-9px; left:50%; transform:translateX(-50%); width:8px; height:12px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:'+(lit?'radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e)':'transparent')+'; box-shadow:'+(lit?'0 0 10px rgba(240,185,78,.85)':'none')+'; animation:'+(lit?'flick 1.6s ease-in-out infinite':'none')+'; opacity:'+(lit?1:0)+';';
+      var lbl = 'font-weight:600; font-size:9.5px; color:'+(isToday?'#e7c878':(lit?'#b7a7cc':'#6f6088'))+';';
+      return '<div style="display:flex; flex-direction:column; align-items:center; gap:8px;"><div style="'+candle+'"><div style="'+flame+'"></div></div><span style="'+lbl+'">'+days[i]+'</span></div>';
+    }).join('');
+    var rhythmNote = litCount>=5 ? 'Un beau rythme — pas besoin d\'en faire plus.' : 'Chaque bougie compte. On avance à ton allure.';
+
+    return '<div style="position:relative; width:390px; min-height:780px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 80% at 50% -10%, #2a1840 0%, #160d22 46%, #0c0814 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
+      + '<div style="position:absolute; top:30px; left:-50px; width:200px; height:200px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.16), transparent 70%); filter:blur(10px);"></div>'
+      // top bar
+      + '<div style="position:relative; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 6px;">'
+      +   '<div style="display:flex; align-items:center; gap:9px;"><div style="width:26px; height:26px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #ffe6a6, #d6a84a 60%, #8a5a16); box-shadow:0 0 14px rgba(214,168,74,.6);"></div>'
+      +     '<div><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#e9dcc2; line-height:1;">Ombrelune</div><div data-act="goDoors" style="font-weight:700; font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456; margin-top:3px; cursor:pointer;">‹ Mode équilibré</div></div></div>'
+      +   '<div style="display:flex; align-items:center; gap:5px; padding:6px 12px; border-radius:999px; background:rgba(214,168,74,.12); border:1px solid rgba(214,168,74,.3);"><span style="font-size:12px;">🕯️</span><span style="font-weight:800; font-size:13px; color:#e7c878;">'+S.streak+' j</span></div>'
+      + '</div>'
+      // hero companion
+      + '<div style="position:relative; display:flex; flex-direction:column; align-items:center; padding:14px 30px 4px;">'
+      +   '<div style="position:relative; width:84px; height:94px; display:flex; align-items:center; justify-content:center; animation:floaty 5s ease-in-out infinite;">'
+      +     '<div style="position:absolute; inset:8px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.34), transparent 68%); animation:glowpulse 4s ease-in-out infinite;"></div>'
+      +     '<div style="position:relative; width:66px; height:76px; border-radius:34px 34px 28px 28px / 38px 38px 30px 30px; background:linear-gradient(180deg, #20132f, #160c22); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(214,168,74,.22); overflow:hidden;">'
+      +       '<div style="position:absolute; left:50%; top:54%; transform:translate(-50%,-50%); width:19px; height:28px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e); box-shadow:0 0 18px rgba(240,185,78,.8); animation:flick 1.6s ease-in-out infinite;"></div>'
+      +       '<div style="position:absolute; top:24px; left:18px; width:6px; height:8px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +       '<div style="position:absolute; top:24px; right:18px; width:6px; height:8px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div style="margin-top:12px; text-align:center; font-family:\'Fraunces\',serif; font-weight:500; font-style:italic; font-size:15px; line-height:1.42; color:#e9dcc2; max-width:300px;">'+esc(t.line)+'</div>'
+      + '</div>'
+      // weekly rhythm
+      + '<div style="margin:18px 22px 0; padding:16px; border-radius:18px; background:linear-gradient(180deg, rgba(40,26,60,.6), rgba(24,15,36,.6)); border:1px solid rgba(214,168,74,.16);">'
+      +   '<div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Le rythme de ta semaine</span><span style="font-weight:700; font-size:11px; color:#e7c878;">'+litCount+' / 7</span></div>'
+      +   '<div style="margin-top:15px; display:flex; align-items:flex-end; justify-content:space-between;">'+week+'</div>'
+      +   '<div style="margin-top:13px; font-size:11.5px; line-height:1.42; color:#a99cc0; text-align:center;">'+esc(rhythmNote)+'</div>'
+      + '</div>'
+      // stat tiles
+      + '<div style="margin:11px 22px 0; display:grid; grid-template-columns:1fr 1fr; gap:9px;">'
+      +   '<div style="padding:14px 14px; border-radius:15px; background:rgba(40,26,60,.5); border:1px solid rgba(214,168,74,.14);"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:24px; color:#fbf3e2; line-height:1;">'+S.streak+'<span style="font-size:13px; color:#9a86b8;"> jours</span></div><div style="margin-top:6px; font-weight:600; font-size:10px; letter-spacing:.4px; color:#9a86b8;">de constance, en douceur</div></div>'
+      +   '<div style="padding:14px 14px; border-radius:15px; background:rgba(40,26,60,.5); border:1px solid rgba(214,168,74,.14);"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:24px; color:#9fe0b0; line-height:1;">'+S.weekDone+'<span style="font-size:13px; color:#9a86b8;"> routines</span></div><div style="margin-top:6px; font-weight:600; font-size:10px; letter-spacing:.4px; color:#9a86b8;">entretenues cette semaine</div></div>'
+      + '</div>'
+      // current routine
+      + '<div style="margin:11px 22px 0; padding:17px; border-radius:18px; background:linear-gradient(180deg, rgba(214,168,74,.12), rgba(214,168,74,.04)); border:1px solid rgba(214,168,74,.28); animation:risein .4s ease both;">'
+      +   '<div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;"><span style="font-weight:700; font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:#c9a456;">'+esc(t.kindLabel)+'</span><span style="flex:1; height:1px; background:linear-gradient(90deg, rgba(214,168,74,.4), transparent);"></span><span style="font-weight:600; font-size:10px; color:#9a86b8;">à ton rythme</span></div>'
+      +   '<div style="display:flex; align-items:center; gap:14px;"><div style="font-size:32px; line-height:1; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));">'+t.icon+'</div><div style="flex:1;"><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; color:#fbf3e2; line-height:1.12;">'+esc(t.title)+'</div><div style="font-size:12.5px; color:#b7a7cc; margin-top:3px;">'+esc(t.subtitle)+'</div></div></div>'
+      + '</div>'
+      // veilleuse note
+      + '<div style="margin:11px 22px 0; padding:13px 15px; border-radius:16px; background:linear-gradient(180deg, rgba(60,40,100,.32), rgba(36,22,64,.32)); border:1px solid rgba(154,108,224,.22); display:flex; align-items:center; gap:13px;">'
+      +   '<div style="position:relative; width:34px; height:40px; flex-shrink:0;">'
+      +     '<div style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:34px; height:25px; background:linear-gradient(180deg,#241640,#150c26); border-radius:48% 48% 30% 30% / 64% 64% 30% 30%;"></div>'
+      +     '<div style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:25px; height:31px; background:linear-gradient(180deg,#2e1d52,#1a1030); border-radius:50% 50% 42% 42% / 62% 62% 40% 40%; border:1px solid rgba(154,108,224,.2);"></div>'
+      +     '<div style="position:absolute; top:12px; left:calc(50% - 4.5px); width:3.5px; height:5px; border-radius:50%; background:#cdb4f5; box-shadow:0 0 5px rgba(123,84,196,.7); animation:breathe 3.4s ease-in-out infinite;"></div>'
+      +     '<div style="position:absolute; top:12px; left:calc(50% + 1px); width:3.5px; height:5px; border-radius:50%; background:#cdb4f5; box-shadow:0 0 5px rgba(123,84,196,.7); animation:breathe 3.4s ease-in-out infinite;"></div>'
+      +   '</div>'
+      +   '<div style="flex:1;"><div style="font-weight:700; font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:#b79ae0;">La Veilleuse, tout bas</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-style:italic; font-size:13px; line-height:1.36; color:#cdbfe2;">'+esc(t.tempt)+'</div></div>'
+      + '</div>'
+      + '<div style="flex:1; min-height:14px;"></div>'
+      // CTA
+      + '<div style="position:relative; padding:14px 22px 24px; display:flex; flex-direction:column; gap:10px;">'
+      +   '<button data-act="complete" style="width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-weight:800; font-size:15px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 10px 24px rgba(214,168,74,.3), 0 0 0 1px rgba(255,255,255,.18) inset;">C\'est fait ✓ &nbsp;+'+t.reward+' ✦</button>'
+      +   '<button data-act="skip" style="width:100%; padding:11px; border:1px solid rgba(154,134,184,.28); border-radius:13px; cursor:pointer; font-weight:600; font-size:12px; background:transparent; color:#a99cc0;">Pas aujourd\'hui — sans culpabilité</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  var ACTIONS = { goDoors:goDoors, complete:complete, skip:skip };
+  var app = document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var el = ev.target.closest('[data-act]'); if(!el) return;
+    var a = el.getAttribute('data-act'); if(ACTIONS[a]) ACTIONS[a]();
+  });
+  function render(){ app.innerHTML = view(); }
+  render();
+})();
+</script>
+</body>
+</html>

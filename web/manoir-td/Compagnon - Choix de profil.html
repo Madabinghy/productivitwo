@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — Choix de porte (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0710; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes floaty { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-5px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.45; transform:scale(1) } 50%{ opacity:.8; transform:scale(1.06) } }
+  @keyframes flick { 0%,100%{ transform: translateX(-50%) scaleY(1); opacity:1 } 50%{ transform: translateX(-50%) scaleY(.84); opacity:.85 } }
+  @keyframes risein { from{ opacity:0; transform: translateY(10px) } to{ opacity:1; transform:none } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* OMBRELUNE — Choix de porte (profil), 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var PROFILES = [
+    { key:'flemmard', emblem:'🕯️', name:'Le Boudoir', kicker:'Pour les flemmards',
+      accent:'#e0954e', glow:'rgba(224,149,78,.5)', flame:'radial-gradient(circle at 50% 70%, #ffe2b0, #e8954e 60%, #b85c1e)',
+      tag:'La barre au sol. Juste commencer suffit déjà.',
+      traits:[
+        { label:'Lampyre', value:'douce et tentée — jamais culpabilisante.' },
+        { label:'Stats', value:'cachées. Aucun chrono, aucune pression.' },
+        { label:'Récompenses', value:'généreuses : peu d\'effort, vraie célébration.' }
+      ] },
+    { key:'equilibre', emblem:'⚖️', name:'Le Hall', kicker:'Êtres équilibrés',
+      accent:'#e7c878', glow:'rgba(214,168,74,.55)', flame:'radial-gradient(circle at 50% 70%, #fff0c4, #f0b94e 58%, #c8841e)',
+      tag:'Le rythme durable. Tenir sans s\'épuiser.',
+      traits:[
+        { label:'Lampyre', value:'complice et régulière, elle entretient le rythme.' },
+        { label:'Stats', value:'douces : séries, constance, rien d\'écrasant.' },
+        { label:'Récompenses', value:'justes — l\'effort régulier paie.' }
+      ] },
+    { key:'grinder', emblem:'📊', name:'La Forge', kicker:'Power grinders',
+      accent:'#b79ae0', glow:'rgba(154,108,224,.6)', flame:'radial-gradient(circle at 50% 70%, #e6d4ff, #9a6ce0 58%, #6a3eb0)',
+      tag:'La perf assumée. Bats ton record, chaque jour.',
+      traits:[
+        { label:'Lampyre', value:'rivale exigeante — elle te pousse à fond.' },
+        { label:'Stats', value:'partout : indices, courbes, focus, records.' },
+        { label:'Procrastination', value:'un adversaire à écraser au scoreboard.' }
+      ] }
+  ];
+  var DEST = {
+    flemmard: 'Compagnon - Accueil.html',
+    equilibre: 'Compagnon - Équilibré.html',
+    grinder: 'Compagnon - Grinder.html'
+  };
+
+  var S = { sel: 1 };
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function doorHTML(p, i){
+    var on = i === S.sel;
+    var wrap = 'flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; background:transparent; border:none; cursor:pointer; padding:0; opacity:'+(on?1:.5)+'; transform:'+(on?'translateY(-2px)':'none')+'; transition:all .25s ease;';
+    var frame = 'width:100%; aspect-ratio:104 / 148; border-radius:50px 50px 10px 10px; padding:5px; background:'+(on?'linear-gradient(180deg, #6a4f24, #3a2a12)':'linear-gradient(180deg, #2c2438, #1c1628)')+'; border:1.5px solid '+(on?p.accent:'rgba(154,134,184,.25)')+'; box-shadow:'+(on?'0 12px 28px rgba(0,0,0,.5), 0 0 22px '+p.glow:'0 6px 16px rgba(0,0,0,.4)')+'; transition:all .25s ease;';
+    var arch = 'position:relative; width:100%; height:100%; border-radius:46px 46px 7px 7px; background:'+(on?'radial-gradient(ellipse at 50% 38%, '+p.glow+', rgba(14,8,22,.9) 72%)':'radial-gradient(ellipse at 50% 38%, rgba(60,46,86,.4), rgba(14,8,22,.95) 72%)')+'; overflow:hidden; display:flex; align-items:center; justify-content:center;';
+    var emblem = 'font-size:26px; line-height:1; margin-top:-6px; filter:'+(on?'drop-shadow(0 0 8px '+p.glow+')':'grayscale(.4)')+';';
+    var flame = 'position:absolute; bottom:12px; left:50%; transform:translateX(-50%); width:10px; height:15px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:'+p.flame+'; box-shadow:'+(on?'0 0 12px '+p.glow:'none')+'; animation:'+(on?'flick 1.6s ease-in-out infinite':'none')+'; opacity:'+(on?1:.4)+';';
+    var name = 'font-weight:700; font-size:11px; letter-spacing:.3px; color:'+(on?'#fbf3e2':'#8a7aa6')+';';
+    return '<button data-door="'+i+'" style="'+wrap+'">'
+      + '<div style="'+frame+'"><div style="'+arch+'">'
+      + '<div style="'+emblem+'">'+p.emblem+'</div>'
+      + '<div style="'+flame+'"></div>'
+      + '</div></div>'
+      + '<div style="'+name+'">'+esc(p.name)+'</div></button>';
+  }
+
+  function view(){
+    var p = PROFILES[S.sel];
+    var doors = PROFILES.map(doorHTML).join('');
+    var traits = p.traits.map(function(t){
+      return '<div style="display:flex; align-items:baseline; gap:9px;">'
+        + '<span style="font-weight:700; font-size:9.5px; letter-spacing:1px; text-transform:uppercase; color:#9a86b8; width:78px; flex-shrink:0;">'+esc(t.label)+'</span>'
+        + '<span style="font-size:12.5px; line-height:1.4; color:#d8c8a8;">'+esc(t.value)+'</span></div>';
+    }).join('');
+
+    return '<div style="position:relative; width:390px; min-height:820px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 75% at 50% -8%, #2a1840 0%, #160d22 48%, #0c0814 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column; padding:30px 24px 26px;">'
+      + '<div style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:300px; height:200px; background:radial-gradient(ellipse at center top, rgba(214,168,74,.16), transparent 70%); pointer-events:none;"></div>'
+      + '<div style="position:relative; text-align:center;">'
+      +   '<div style="margin:0 auto; position:relative; width:64px; height:72px; display:flex; align-items:center; justify-content:center; animation:floaty 5s ease-in-out infinite;">'
+      +     '<div style="position:absolute; inset:4px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.34), transparent 68%); animation:glowpulse 4s ease-in-out infinite;"></div>'
+      +     '<div style="position:relative; width:52px; height:60px; border-radius:28px 28px 24px 24px / 32px 32px 26px 26px; background:linear-gradient(180deg, #20132f, #160c22); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(214,168,74,.22); overflow:hidden;">'
+      +       '<div style="position:absolute; left:50%; top:55%; transform:translate(-50%,-50%); width:15px; height:22px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e); box-shadow:0 0 16px rgba(240,185,78,.8); animation:flick 1.6s ease-in-out infinite;"></div>'
+      +       '<div style="position:absolute; top:18px; left:14px; width:5px; height:7px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +       '<div style="position:absolute; top:18px; right:14px; width:5px; height:7px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div style="margin-top:14px; font-family:\'Fraunces\',serif; font-weight:600; font-size:23px; color:#fbf3e2; line-height:1.16;">Choisis ta porte</div>'
+      +   '<div style="margin-top:7px; font-size:13px; line-height:1.5; color:#b7a7cc; max-width:300px; margin-left:auto; margin-right:auto;">Trois manières d\'habiter le manoir. Tu pourras en changer quand l\'humeur tourne.</div>'
+      + '</div>'
+      + '<div style="position:relative; margin-top:16px; padding:12px 14px; border-radius:14px; background:linear-gradient(180deg, rgba(214,168,74,.12), rgba(214,168,74,.04)); border:1px solid rgba(214,168,74,.26); display:flex; align-items:center; gap:11px;">'
+      +   '<div style="font-size:20px; line-height:1; flex-shrink:0;">✦</div>'
+      +   '<div style="font-size:11.5px; line-height:1.46; color:#d8c8a8;"><b style="color:#f2cd72;">La masse lumineuse</b> est la ressource du manoir : chaque routine accomplie t\'en rend. Elle rallume les bougies et bâtit tes défenses contre les flemmes.</div>'
+      + '</div>'
+      + '<div style="position:relative; margin-top:22px; display:flex; gap:10px; justify-content:center;">'+doors+'</div>'
+      + '<div style="position:relative; margin-top:20px; padding:18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,26,60,.7), rgba(24,15,36,.7)); border:1px solid rgba(214,168,74,.22); animation:risein .35s ease both;">'
+      +   '<div style="display:flex; align-items:center; gap:11px;">'
+      +     '<div style="font-size:26px; line-height:1;">'+p.emblem+'</div>'
+      +     '<div><div style="font-weight:800; font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:'+p.accent+';">'+esc(p.kicker)+'</div>'
+      +     '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; color:#fbf3e2; line-height:1.1; margin-top:3px;">'+esc(p.name)+'</div></div>'
+      +   '</div>'
+      +   '<div style="margin-top:11px; font-family:\'Fraunces\',serif; font-weight:500; font-style:italic; font-size:14px; line-height:1.4; color:#e9dcc2;">'+esc(p.tag)+'</div>'
+      +   '<div style="margin-top:14px; display:flex; flex-direction:column; gap:10px;">'+traits+'</div>'
+      + '</div>'
+      + '<div style="flex:1; min-height:18px;"></div>'
+      + '<button data-act="confirm" style="width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-weight:800; font-size:15px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 10px 24px rgba(214,168,74,.3), 0 0 0 1px rgba(255,255,255,.18) inset; transition:all .25s ease;">Franchir '+esc(p.name)+' ✦</button>'
+      + '</div>';
+  }
+
+  function confirmChoice(){
+    var p = PROFILES[S.sel];
+    try { localStorage.setItem('ombrelune.profil', p.key); } catch(e){}
+    window.location.href = './' + encodeURIComponent(DEST[p.key]);
+  }
+
+  var app = document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var d = ev.target.closest('[data-door]');
+    if(d){ S.sel = parseInt(d.getAttribute('data-door'),10); render(); return; }
+    var a = ev.target.closest('[data-act="confirm"]');
+    if(a){ confirmChoice(); }
+  });
+  function render(){ app.innerHTML = view(); }
+  render();
+})();
+</script>
+</body>
+</html>
