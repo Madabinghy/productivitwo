@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Manoir d'Ombrelune — Compagnon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #0b0710; font-family: 'Outfit', sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; padding: 24px; }
+  @keyframes floaty { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-5px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.45; transform:scale(1) } 50%{ opacity:.8; transform:scale(1.06) } }
+  @keyframes flick { 0%,100%{ transform: translateX(-50%) scaleY(1); opacity:1 } 50%{ transform: translateX(-50%) scaleY(.84); opacity:.85 } }
+  @keyframes risein { from{ opacity:0; transform: translateY(10px) } to{ opacity:1; transform:none } }
+  @keyframes pulsedot { 0%,100%{ opacity:.5 } 50%{ opacity:1 } }
+
+  .card { position: relative; width: 390px; min-height: 820px; border-radius: 40px; overflow: hidden;
+    background: radial-gradient(120% 75% at 50% -8%, #2a1840 0%, #160d22 48%, #0c0814 100%);
+    box-shadow: 0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset;
+    display: flex; flex-direction: column; padding: 30px 24px 26px; }
+  .topglow { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 300px; height: 200px;
+    background: radial-gradient(ellipse at center top, rgba(214,168,74,.16), transparent 70%); pointer-events: none; }
+
+  /* lanterne (Lampyre) */
+  .lantern { position: relative; width: 52px; height: 60px; border-radius: 28px 28px 24px 24px / 32px 32px 26px 26px;
+    background: linear-gradient(180deg, #20132f, #160c22); border: 1.5px solid rgba(214,168,74,.5);
+    box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(214,168,74,.22); overflow: hidden; }
+  .lantern .core { position: absolute; left: 50%; top: 55%; transform: translate(-50%,-50%); width: 15px; height: 22px;
+    border-radius: 50% 50% 50% 50% / 64% 64% 36% 36%; background: radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e);
+    box-shadow: 0 0 16px rgba(240,185,78,.8); animation: flick 1.6s ease-in-out infinite; }
+  .lantern .eye { position: absolute; top: 18px; width: 5px; height: 7px; border-radius: 50%; background: #ffe9b0; box-shadow: 0 0 6px rgba(255,233,176,.9); }
+  .lantern .eye.l { left: 14px; } .lantern .eye.r { right: 14px; }
+  .lanternWrap { margin: 0 auto; position: relative; width: 64px; height: 72px; display: flex; align-items: center; justify-content: center; animation: floaty 5s ease-in-out infinite; }
+  .lanternWrap .halo { position: absolute; inset: 4px; border-radius: 50%; background: radial-gradient(circle, rgba(214,168,74,.34), transparent 68%); animation: glowpulse 4s ease-in-out infinite; }
+
+  .h1 { font-family: 'Fraunces', serif; font-weight: 600; font-size: 23px; color: #fbf3e2; line-height: 1.16; }
+  .sub { font-family: 'Outfit'; font-size: 13px; line-height: 1.5; color: #b7a7cc; max-width: 300px; margin: 7px auto 0; }
+  .masseBox { position: relative; margin-top: 16px; padding: 12px 14px; border-radius: 14px;
+    background: linear-gradient(180deg, rgba(214,168,74,.12), rgba(214,168,74,.04)); border: 1px solid rgba(214,168,74,.26);
+    display: flex; align-items: center; gap: 11px; }
+  .masseBox .star { font-size: 20px; line-height: 1; flex-shrink: 0; }
+  .masseBox .txt { font-family: 'Outfit'; font-size: 11.5px; line-height: 1.46; color: #d8c8a8; }
+  .masseBox b { color: #f2cd72; }
+
+  .doors { position: relative; margin-top: 22px; display: flex; gap: 10px; justify-content: center; }
+  .door { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; background: transparent; border: none; cursor: pointer; padding: 0; transition: all .25s ease; opacity: .5; }
+  .door.on { opacity: 1; transform: translateY(-2px); }
+  .door .frame { width: 100%; aspect-ratio: 104 / 148; border-radius: 50px 50px 10px 10px; padding: 5px; transition: all .25s ease;
+    background: linear-gradient(180deg, #2c2438, #1c1628); border: 1.5px solid rgba(154,134,184,.25); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .door .arch { position: relative; width: 100%; height: 100%; border-radius: 46px 46px 7px 7px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 50% 38%, rgba(60,46,86,.4), rgba(14,8,22,.95) 72%); }
+  .door .emblem { font-size: 26px; line-height: 1; margin-top: -6px; filter: grayscale(.4); }
+  .door .dflame { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); width: 10px; height: 15px;
+    border-radius: 50% 50% 50% 50% / 64% 64% 36% 36%; opacity: .4; }
+  .door .dname { font-family: 'Outfit'; font-weight: 700; font-size: 11px; letter-spacing: .3px; color: #8a7aa6; }
+
+  .detail { position: relative; margin-top: 20px; padding: 18px; border-radius: 18px;
+    background: linear-gradient(180deg, rgba(40,26,60,.7), rgba(24,15,36,.7)); border: 1px solid rgba(214,168,74,.22); animation: risein .35s ease both; }
+  .detail .dhead { display: flex; align-items: center; gap: 11px; }
+  .detail .demblem { font-size: 26px; line-height: 1; }
+  .detail .dkicker { font-family: 'Outfit'; font-weight: 800; font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase; }
+  .detail .dname { font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px; color: #fbf3e2; line-height: 1.1; margin-top: 3px; }
+  .detail .dtag { margin-top: 11px; font-family: 'Fraunces', serif; font-weight: 500; font-style: italic; font-size: 14px; line-height: 1.4; color: #e9dcc2; }
+  .detail .traits { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .detail .trait { display: flex; align-items: baseline; gap: 9px; }
+  .detail .tl { font-family: 'Outfit'; font-weight: 700; font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: #9a86b8; width: 88px; flex-shrink: 0; }
+  .detail .tv { font-family: 'Outfit'; font-size: 12.5px; line-height: 1.4; color: #d8c8a8; }
+
+  .spacer { flex: 1; min-height: 18px; }
+  .cta { width: 100%; padding: 16px; border: none; border-radius: 16px; cursor: pointer; font-family: 'Outfit'; font-weight: 800; font-size: 15px; color: #1c1206;
+    background: linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow: 0 10px 24px rgba(214,168,74,.3), 0 0 0 1px rgba(255,255,255,.18) inset; transition: all .25s ease; }
+  .cta:active { transform: translateY(1px); }
+
+  /* écran home */
+  .hHead { display: flex; align-items: center; gap: 12px; }
+  .hHead .greet { flex: 1; }
+  .hHead .kicker { font-family: 'Outfit'; font-weight: 800; font-size: 10px; letter-spacing: 1.6px; text-transform: uppercase; }
+  .hHead .gname { font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px; color: #fbf3e2; margin-top: 2px; }
+  .switch { background: transparent; border: 1px solid rgba(154,134,184,.3); color: #b7a7cc; font-family: 'Outfit'; font-weight: 600; font-size: 11px; border-radius: 10px; padding: 7px 10px; cursor: pointer; }
+  .taskCard { margin-top: 18px; padding: 18px; border-radius: 18px; background: linear-gradient(180deg, rgba(40,26,60,.7), rgba(24,15,36,.7)); border: 1px solid rgba(214,168,74,.22); animation: risein .3s ease both; }
+  .taskCard .trow { display: flex; align-items: center; gap: 12px; }
+  .taskCard .ticon { width: 46px; height: 46px; border-radius: 13px; display: flex; align-items: center; justify-content: center; font-size: 24px; background: rgba(214,168,74,.1); border: 1px solid rgba(214,168,74,.22); flex-shrink: 0; }
+  .taskCard .tkind { font-family: 'Outfit'; font-weight: 700; font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase; color: #9a86b8; }
+  .taskCard .ttitle { font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px; color: #fbf3e2; margin-top: 3px; line-height: 1.15; }
+  .taskCard .tcoach { margin-top: 12px; font-family: 'Outfit'; font-size: 12.5px; line-height: 1.5; color: #d8c8a8; }
+  .taskCard .ttempt { margin-top: 9px; font-family: 'Fraunces', serif; font-style: italic; font-size: 12.5px; line-height: 1.45; color: #9a86b8; }
+  .taskCard .reward { margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; font-family: 'Outfit'; font-weight: 700; font-size: 12px; color: #f2cd72; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; }
+  .btnDo { flex: 2; padding: 14px; border: none; border-radius: 14px; cursor: pointer; font-family: 'Outfit'; font-weight: 800; font-size: 14px; color: #1c1206; background: linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow: 0 8px 18px rgba(214,168,74,.3); }
+  .btnSkip { flex: 1; padding: 14px; border: 1px solid rgba(154,134,184,.3); border-radius: 14px; cursor: pointer; font-family: 'Outfit'; font-weight: 600; font-size: 13px; color: #b7a7cc; background: transparent; }
+  .statBlock { margin-top: 16px; padding: 15px; border-radius: 16px; background: rgba(0,0,0,.24); border: 1px solid rgba(150,130,184,.16); }
+  .chips { display: flex; gap: 10px; }
+  .chip2 { flex: 1; text-align: center; }
+  .chip2 .num { font-family: 'Fraunces', serif; font-weight: 600; font-size: 21px; color: #fbf3e2; }
+  .chip2 .lbl { font-family: 'Outfit'; font-size: 9.5px; letter-spacing: .6px; text-transform: uppercase; color: #8a7aa6; margin-top: 3px; }
+  .week { display: flex; gap: 8px; justify-content: space-between; align-items: flex-end; margin-top: 14px; }
+  .wcol { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+  .wcandle { position: relative; width: 13px; height: 34px; border-radius: 4px 4px 3px 3px; }
+  .wflame { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); width: 8px; height: 12px; border-radius: 50% 50% 50% 50% / 64% 64% 36% 36%; }
+  .wbarwrap { width: 100%; height: 56px; display: flex; align-items: flex-end; }
+  .wbar { width: 100%; border-radius: 5px 5px 2px 2px; min-height: 3px; }
+  .wlbl { font-family: 'Outfit'; font-weight: 600; font-size: 9.5px; }
+  .note { margin-top: 12px; font-family: 'Outfit'; font-size: 11.5px; line-height: 1.45; color: #9a86b8; text-align: center; }
+  .gaugeRow { display: flex; align-items: center; gap: 16px; }
+  .gauge { width: 86px; height: 86px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .gauge .inner { width: 66px; height: 66px; border-radius: 50%; background: #160d22; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge .gn { font-family: 'Fraunces', serif; font-weight: 700; font-size: 22px; color: #fbf3e2; }
+  .gauge .gl { font-family: 'Outfit'; font-size: 8px; letter-spacing: 1px; text-transform: uppercase; color: #8a7aa6; }
+  .timer { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .timer .tlabel { font-family: 'Fraunces', serif; font-weight: 600; font-size: 19px; color: #fbf3e2; min-width: 64px; }
+  .timer .tdot { width: 9px; height: 9px; border-radius: 50%; }
+  .timerBtn { margin-left: auto; padding: 11px 18px; border: none; border-radius: 13px; cursor: pointer; font-family: 'Outfit'; font-weight: 800; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+(function () {
+  const root = document.getElementById('root');
+  const LS = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+  const PROFILES = [
+    { key: 'flemmard', emblem: '🕯️', name: 'Le Boudoir', kicker: 'Pour les flemmards',
+      accent: '#e0954e', glow: 'rgba(224,149,78,.5)', flame: 'radial-gradient(circle at 50% 70%, #ffe2b0, #e8954e 60%, #b85c1e)',
+      tag: 'La barre au sol. Juste commencer suffit déjà.',
+      traits: [['Lampyre', 'douce et tentée — jamais culpabilisante.'], ['Stats', 'cachées. Aucun chrono, aucune pression.'], ['Récompenses', 'généreuses : peu d\'effort, vraie célébration.']] },
+    { key: 'equilibre', emblem: '⚖️', name: 'Le Hall', kicker: 'Êtres équilibrés',
+      accent: '#e7c878', glow: 'rgba(214,168,74,.55)', flame: 'radial-gradient(circle at 50% 70%, #fff0c4, #f0b94e 58%, #c8841e)',
+      tag: 'Le rythme durable. Tenir sans s\'épuiser.',
+      traits: [['Lampyre', 'complice et régulière, elle entretient le rythme.'], ['Stats', 'douces : séries, constance, rien d\'écrasant.'], ['Récompenses', 'justes — l\'effort régulier paie.']] },
+    { key: 'grinder', emblem: '📊', name: 'La Forge', kicker: 'Power grinders',
+      accent: '#b79ae0', glow: 'rgba(154,108,224,.6)', flame: 'radial-gradient(circle at 50% 70%, #e6d4ff, #9a6ce0 58%, #6a3eb0)',
+      tag: 'La perf assumée. Bats ton record, chaque jour.',
+      traits: [['Lampyre', 'rivale exigeante — elle te pousse à fond.'], ['Stats', 'partout : indices, courbes, focus, records.'], ['Procrastination', 'un adversaire à écraser au scoreboard.']] },
+  ];
+  const byKey = k => PROFILES.find(p => p.key === k) || PROFILES[0];
+
+  const TASKS = {
+    flemmard: [
+      { icon: '💧', kind: 'Santé · quotidien', title: 'Bois un verre d\'eau', coach: 'On commence doucement. Un verre d\'eau, et la première bougie se rallume.', tempt: '« Tu n\'as pas vraiment soif. Reste là, bien tranquille. »', reward: 'Renforce tes tourelles' },
+      { icon: '🍽️', kind: 'Environnement · quotidien', title: 'Fais la vaisselle', coach: 'Range ton antre. Évier vide, c\'est un rempart de plus contre les flemmes.', tempt: '« La vaisselle ? Demain. Ce soir, repose-toi. »', reward: 'Bonus de défense' },
+      { icon: '📖', kind: 'Apprentissage · quotidien', title: 'Lis quelques pages', coach: 'Une page éclaircit déjà le manoir. Juste une, pour commencer ?', tempt: '« Ce livre ne s\'envolera pas. Ferme les yeux un instant… »', reward: 'Vision étendue' },
+      { icon: '🧘', kind: 'Bien-être · quotidien', title: 'Médite 1 minute', coach: 'Une minute, juste pour souffler avant la prochaine vague.', tempt: '« Tu es déjà immobile, déjà si calme. Pourquoi en faire plus ? »', reward: 'Régénère le héros' },
+    ],
+    equilibre: [
+      { icon: '💧', kind: 'Santé · hydratation', title: 'Boire un verre d\'eau', coach: 'Belle régularité. On garde le rythme, sans forcer.', tempt: '« Tu peux souffler une minute avant, non ? »', reward: 'Renforce tes tourelles' },
+      { icon: '🚶', kind: 'Santé · mouvement', title: 'Marcher un peu', coach: 'Le corps aime la constance plus que l\'intensité.', tempt: '« Dehors il fait frais… reste donc au chaud. »', reward: 'Bonus de défense' },
+      { icon: '📖', kind: 'Esprit · lecture', title: 'Lire quelques pages', coach: 'Pas à pas, le manoir s\'éclaire. Tu fais ce qu\'il faut.', tempt: '« Demain tu liras le double, promis. »', reward: 'Vision étendue' },
+      { icon: '🧹', kind: 'Maison · entretien', title: 'Ranger un coin', coach: 'Un manoir tenu, c\'est l\'esprit léger. Doucement.', tempt: '« La poussière t\'attendra bien sagement. »', reward: 'Bonus de défense' },
+      { icon: '🧘', kind: 'Bien-être · pause', title: 'Respirer en conscience', coach: 'Souffler fait partie du rythme, pas l\'inverse.', tempt: '« Tu te reposeras mieux allongé, tu sais. »', reward: 'Régénère le héros' },
+    ],
+    grinder: [
+      { icon: '💧', kind: 'Santé · hydratation', title: 'Hydratation', target: '8 verres', cur: 6, max: 8, coach: '6 sur 8. Deux verres et le combo parfait tombe.', reward: '+12' },
+      { icon: '🏃', kind: 'Santé · cardio', title: 'Cardio du matin', target: '30 min', cur: 0, max: 30, coach: 'Zéro minute au compteur. Lance le focus, on grimpe l\'indice.', reward: '+24' },
+      { icon: '📖', kind: 'Apprentissage', title: 'Lecture ciblée', target: '40 min', cur: 25, max: 40, coach: '25/40. Tu es à 62 % — finis fort, le record est à portée.', reward: '+18' },
+      { icon: '🧘', kind: 'Bien-être · focus', title: 'Méditation', target: '10 min', cur: 10, max: 10, coach: 'Objectif plein. Valide et capitalise la série.', reward: '+10' },
+      { icon: '🗝️', kind: 'Au front · projet', title: 'Sprint projet', target: '1 bloc de 50 min', cur: 0, max: 50, coach: 'Le gros morceau du jour. Un bloc de 50, focus enclenché.', reward: '+40' },
+    ],
+  };
+
+  const st = {
+    screen: LS.get('ombrelune.profil') ? 'home' : 'choix',
+    sel: Math.max(0, PROFILES.findIndex(p => p.key === LS.get('ombrelune.profil'))),
+    profil: LS.get('ombrelune.profil') || null,
+    i: 0, streak: parseInt(LS.get('ombrelune.streak') || '5', 10),
+    masse: parseInt(LS.get('ombrelune.masse') || '0', 10),
+    days: [true, true, false, true, true, false, false],
+    weekMass: [64, 52, 78, 40, 88, 71, 46], level: 7, record: 18,
+    running: false, elapsed: 0, resisted: 23, caved: 2,
+  };
+  if (st.sel < 0) st.sel = 0;
+  let timerId = null;
+
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const lantern = () => `<div class="lanternWrap"><div class="halo"></div><div class="lantern"><div class="core"></div><div class="eye l"></div><div class="eye r"></div></div></div>`;
+
+  function renderChoix() {
+    const p = PROFILES[st.sel];
+    const doors = PROFILES.map((d, i) => {
+      const on = i === st.sel;
+      return `<button class="door ${on ? 'on' : ''}" data-door="${i}">
+        <div class="frame" style="${on ? `background:linear-gradient(180deg,#6a4f24,#3a2a12);border:1.5px solid ${d.accent};box-shadow:0 12px 28px rgba(0,0,0,.5),0 0 22px ${d.glow}` : ''}">
+          <div class="arch" style="${on ? `background:radial-gradient(ellipse at 50% 38%, ${d.glow}, rgba(14,8,22,.9) 72%)` : ''}">
+            <div class="emblem" style="${on ? `filter:drop-shadow(0 0 8px ${d.glow})` : ''}">${d.emblem}</div>
+            <div class="dflame" style="background:${d.flame};${on ? `box-shadow:0 0 12px ${d.glow};opacity:1;animation:flick 1.6s ease-in-out infinite` : ''}"></div>
+          </div>
+        </div>
+        <div class="dname" style="${on ? 'color:#fbf3e2' : ''}">${d.name}</div>
+      </button>`;
+    }).join('');
+    root.innerHTML = `<div class="card"><div class="topglow"></div>
+      <div style="text-align:center">${lantern()}
+        <div class="h1" style="margin-top:14px">Choisis ta porte</div>
+        <div class="sub">Trois manières d'habiter le manoir. Tu pourras en changer quand l'humeur tourne.</div>
+      </div>
+      <div class="masseBox"><div class="star">✦</div><div class="txt"><b>La masse lumineuse</b> est la ressource du manoir : chaque routine accomplie t'en rend. Elle rallume les bougies et bâtit tes défenses contre les flemmes.</div></div>
+      <div class="doors">${doors}</div>
+      <div class="detail" key="${st.sel}">
+        <div class="dhead"><div class="demblem">${p.emblem}</div><div>
+          <div class="dkicker" style="color:${p.accent}">${esc(p.kicker)}</div>
+          <div class="dname">${esc(p.name)}</div></div></div>
+        <div class="dtag">${esc(p.tag)}</div>
+        <div class="traits">${p.traits.map(t => `<div class="trait"><span class="tl">${esc(t[0])}</span><span class="tv">${esc(t[1])}</span></div>`).join('')}</div>
+      </div>
+      <div class="spacer"></div>
+      <button class="cta" id="confirm">Franchir ${esc(p.name)} ✦</button>
+    </div>`;
+    root.querySelectorAll('[data-door]').forEach(b => b.onclick = () => { st.sel = +b.dataset.door; renderChoix(); });
+    root.querySelector('#confirm').onclick = () => {
+      st.profil = PROFILES[st.sel].key; LS.set('ombrelune.profil', st.profil);
+      st.screen = 'home'; st.i = 0; render();
+    };
+  }
+
+  function statBlock(prof) {
+    if (prof === 'flemmard') {
+      return `<div class="statBlock"><div class="note" style="color:#d8c8a8;font-size:12.5px">Aucun chrono, aucune pression. Chaque geste rallume une bougie — c'est déjà une victoire. 🕯️</div></div>`;
+    }
+    if (prof === 'equilibre') {
+      const days = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+      const lit = st.days.filter(Boolean).length;
+      const week = st.days.map((on, i) => {
+        const today = i === 4;
+        return `<div class="wcol"><div class="wcandle" style="background:${on ? 'linear-gradient(180deg,#e9dcc2,#c9b78e)' : 'linear-gradient(180deg,#2c2438,#1c1628)'};border:1px solid ${today ? 'rgba(242,205,114,.7)' : 'rgba(154,134,184,.2)'};${on ? 'box-shadow:0 0 10px rgba(214,168,74,.3)' : ''}">
+          <div class="wflame" style="${on ? 'background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e);box-shadow:0 0 10px rgba(240,185,78,.85);animation:flick 1.6s ease-in-out infinite' : 'background:transparent'}"></div></div>
+          <div class="wlbl" style="color:${today ? '#e7c878' : (on ? '#b7a7cc' : '#6f6088')}">${days[i]}</div></div>`;
+      }).join('');
+      return `<div class="statBlock"><div class="chips">
+          <div class="chip2"><div class="num">${st.streak}</div><div class="lbl">série</div></div>
+          <div class="chip2"><div class="num">${lit}/7</div><div class="lbl">bougies / sem.</div></div>
+        </div><div class="week">${week}</div>
+        <div class="note">${lit >= 5 ? 'Un beau rythme — pas besoin d\'en faire plus.' : 'Chaque bougie compte. On avance à ton allure.'}</div></div>`;
+    }
+    // grinder
+    const days = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    const max = Math.max(...st.weekMass);
+    const week = st.weekMass.map((v, i) => {
+      const today = i === 6;
+      return `<div class="wcol"><div class="wbarwrap"><div class="wbar" style="height:${Math.round((v / max) * 100)}%;background:${today ? 'linear-gradient(180deg,#f2cd72,#d6a84a)' : 'rgba(154,108,224,.45)'}"></div></div><div class="wlbl" style="color:${today ? '#e7c878' : '#6f6088'}">${days[i]}</div></div>`;
+    }).join('');
+    const total = st.resisted + st.caved, winRate = total ? Math.round(st.resisted / total * 100) : 100;
+    const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    return `<div class="statBlock">
+      <div class="gaugeRow">
+        <div class="gauge" style="background:conic-gradient(#f2cd72 0% 87%, rgba(154,108,224,.28) 87% 100%)"><div class="inner"><div class="gn">87</div><div class="gl">indice</div></div></div>
+        <div class="chips" style="flex:1">
+          <div class="chip2"><div class="num">${st.level}</div><div class="lbl">niveau</div></div>
+          <div class="chip2"><div class="num">${st.streak}</div><div class="lbl">série</div></div>
+          <div class="chip2"><div class="num">${winRate}%</div><div class="lbl">résisté</div></div>
+        </div>
+      </div>
+      <div class="week">${week}</div>
+      <div class="timer"><span class="tdot" style="background:${st.running ? '#9fe0b0' : '#6f6088'};${st.running ? 'animation:pulsedot 1.2s ease-in-out infinite' : ''}"></span>
+        <span class="tlabel">${fmt(st.elapsed)}</span>
+        <button class="timerBtn" id="timerBtn" style="color:${st.running ? '#2a1840' : '#1c1206'};background:${st.running ? 'linear-gradient(180deg,#cdb4f5,#9a6ce0)' : 'linear-gradient(180deg,#f2cd72,#d6a84a)'}">${st.running ? 'Pause' : 'Focus'}</button>
+      </div></div>`;
+  }
+
+  function renderHome() {
+    const p = byKey(st.profil);
+    const list = TASKS[st.profil] || TASKS.flemmard;
+    const t = list[st.i % list.length];
+    const showTempt = st.profil !== 'grinder';
+    root.innerHTML = `<div class="card"><div class="topglow"></div>
+      <div class="hHead">${lantern()}
+        <div class="greet"><div class="kicker" style="color:${p.accent}">${esc(p.kicker)}</div><div class="gname">${esc(p.name)}</div></div>
+        <button class="switch" id="switch">Changer de porte</button>
+      </div>
+      <div class="masseBox" style="margin-top:14px"><div class="star">✦</div><div class="txt"><b>${st.masse}</b> de masse lumineuse récoltée — de quoi rallumer bougies & défenses.</div></div>
+      <div class="taskCard" key="${st.profil}-${st.i}">
+        <div class="trow"><div class="ticon">${t.icon}</div><div>
+          <div class="tkind">${esc(t.kind)}</div><div class="ttitle">${esc(t.title)}${t.target ? ` <span style="font-size:12px;color:#9a86b8">· ${esc(t.target)}</span>` : ''}</div></div></div>
+        <div class="tcoach">${esc(t.coach)}</div>
+        ${showTempt ? `<div class="ttempt">${esc(t.tempt)}</div>` : ''}
+        <div class="reward">✦ ${esc(t.reward)}</div>
+        <div class="actions"><button class="btnDo" id="do">Accomplir</button><button class="btnSkip" id="skip">Plus tard</button></div>
+      </div>
+      ${statBlock(st.profil)}
+      <div class="spacer"></div>
+      <button class="cta" id="enter">Entrer dans le manoir ✦</button>
+    </div>`;
+    root.querySelector('#switch').onclick = () => { st.screen = 'choix'; stopTimer(); render(); };
+    root.querySelector('#do').onclick = () => {
+      st.masse += st.profil === 'grinder' ? 14 : 8; st.streak += 1;
+      LS.set('ombrelune.masse', st.masse); LS.set('ombrelune.streak', st.streak);
+      st.i += 1; stopTimer(); render();
+    };
+    root.querySelector('#skip').onclick = () => { st.i += 1; if (st.profil === 'grinder') { st.streak = 0; LS.set('ombrelune.streak', 0); } stopTimer(); render(); };
+    root.querySelector('#enter').onclick = () => { window.location.href = './index.html'; };
+    const tb = root.querySelector('#timerBtn');
+    if (tb) tb.onclick = () => { st.running = !st.running; if (st.running) startTimer(); else stopTimer(); render(); };
+  }
+
+  function startTimer() { if (timerId) return; timerId = setInterval(() => { st.elapsed += 1; const el = root.querySelector('.tlabel'); if (el) el.textContent = Math.floor(st.elapsed / 60) + ':' + String(st.elapsed % 60).padStart(2, '0'); }, 1000); }
+  function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+  function render() { (st.screen === 'choix' ? renderChoix : renderHome)(); }
+  render();
+})();
+</script>
+</body>
+</html>
