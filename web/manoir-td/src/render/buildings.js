@@ -4,31 +4,14 @@ import { TCOL, GRID, turretStats, radarRadius, VIS, costOf } from '../config.js'
 import { rayDist, compass } from '../geometry.js';
 import { visionSources, canPlaceAt } from '../systems/vision.js';
 import { armMuzzle } from '../systems/hero.js';
-import { drawArt } from './art.js';
+import { drawTurretCanvas } from './turret_canvas.js';
 
 const isBuilt = (t) => t.built !== false;
 
-// ── Sprites PNG designés (fidèles au handoff) ─────────────────────────────────
-// Échelle commune (px écran / px natif) ; chaque sprite est dimensionné pour son rôle.
-const ART_SCALE = 0.64;
-function turretArtName(p) {
-  const lv = p.level || 1;
-  if (MUZZLE[p.key]) return { name: `tourelle-${p.key}-niv${lv}`, rot: 'face' };
-  if (p.key === 'bercail') return { name: `bercail-niv${lv}`, rot: 0 };
-  if (p.key === 'radar') return { name: 'radar', rot: 'spin' };
-  if (p.key === 'satellite') return { name: 'satellite', rot: 0 };
-  if (p.key === 'bouclier') return { name: 'bouclier', rot: 'face' };
-  return null;
-}
-// Tente le sprite PNG (orienté pour les offensives + bouclier, balayage pour le radar).
-// Renvoie false si pas encore chargé → fallback canvas (turretSprite).
-function drawTurretArt(ctx, p, facing, t) {
-  const a = turretArtName(p); if (!a) return false;
-  const rot = a.rot === 'face' ? facing : a.rot === 'spin' ? (t * 50) % 360 : 0;
-  return drawArt(ctx, a.name, ART_SCALE, rot);
-}
+// Taille de la tourelle Canvas (sur chenilles), grandit légèrement avec le niveau.
+function turretSize(level) { return 56 + ((level || 1) - 1) * 4; }
 
-// Échelle d'affichage de la tourelle : plus grosse, et grandit nettement avec le niveau.
+// Échelle d'affichage des bâtiments de soutien (ancien rendu canvas).
 function turretScale(key, level) {
   const lv = level || 1;
   const base = key === 'sniper' ? 1.45 : 1.6;
@@ -268,8 +251,10 @@ export function drawPlaced(game, ctx, th, t) {
 
     ctx.save(); ctx.translate(p.x, p.y);
     if (building) { ctx.globalAlpha = 0.28 + bprog * 0.42; }
-    if (!drawTurretArt(ctx, p, facing, t)) {     // sprite PNG, sinon fallback canvas
-      const sc = turretScale(p.key, p.level);     // plus grosses, surtout niv 3/4
+    if (MUZZLE[p.key]) {                           // offensives : tourelle Canvas sur chenilles
+      drawTurretCanvas(ctx, p.key, p.level, facing, t, turretSize(p.level));
+    } else {                                       // soutien : ancien rendu Canvas
+      const sc = turretScale(p.key, p.level);
       ctx.scale(sc, sc);
       turretSprite(ctx, p.key, facing, p.level, p, t);
     }
@@ -326,7 +311,9 @@ export function drawGhost(game, ctx, th, t) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.stroke();
   ctx.setLineDash([]); ctx.shadowBlur = 0;
   // silhouette (même échelle qu'une tourelle posée niv 1)
-  if (!drawTurretArt(ctx, { key, level: 1 }, face, t)) {
+  if (MUZZLE[key]) {
+    drawTurretCanvas(ctx, key, 1, face, t, turretSize(1));
+  } else {
     const sc = turretScale(key, 1); ctx.scale(sc, sc);
     turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
   }
