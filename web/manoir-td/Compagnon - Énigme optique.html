@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — L'énigme du miroir (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#070510; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes flick { 0%,100%{ transform: translate(-50%,-50%) scaleY(1); opacity:1 } 50%{ transform: translate(-50%,-50%) scaleY(.8); opacity:.85 } }
+  @keyframes beampulse { 0%,100%{ opacity:.92 } 50%{ opacity:.66 } }
+  @keyframes sealspin { from{ transform: translate(-50%,-50%) rotate(0) } to{ transform: translate(-50%,-50%) rotate(360deg) } }
+  @keyframes sealglow { 0%,100%{ box-shadow:0 0 18px 2px rgba(214,168,74,.4) } 50%{ box-shadow:0 0 34px 8px rgba(242,205,114,.85) } }
+  @keyframes bannerin { from{ opacity:0; transform: translateY(24px) } to{ opacity:1; transform:none } }
+  @keyframes mirrornudge { 0%,100%{ transform:translate(-50%,-50%) scale(1) } 50%{ transform:translate(-50%,-50%) scale(1.07) } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* OMBRELUNE — L'énigme du miroir (optique), 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var CELL=42, COLS=7, ROWS=9;
+  var SOURCE={ r:7, c:0, dir:'E' };
+  var TARGET={ r:2, c:6, enter:'E' };
+  var MPOS={ A:{r:7,c:3}, B:{r:2,c:3}, D:{r:5,c:5} };
+  var DEFAULT={ A:'\\', B:'\\', D:'/' };
+
+  var S = { orient: { A:'\\', B:'\\', D:'/' } };
+
+  function reset(){ S.orient = { A:DEFAULT.A, B:DEFAULT.B, D:DEFAULT.D }; render(); }
+  function rotate(id){ S.orient[id] = S.orient[id]==='/' ? '\\' : '/'; render(); }
+  function center(r,c){ return { x: c*CELL + CELL/2, y: r*CELL + CELL/2 }; }
+  function reflect(dir,o){ if(o==='/') return { E:'N', N:'E', W:'S', S:'W' }[dir]; return { E:'S', S:'E', W:'N', N:'W' }[dir]; }
+  function step(r,c,dir){ return dir==='E'?{r:r,c:c+1}:dir==='W'?{r:r,c:c-1}:dir==='N'?{r:r-1,c:c}:{r:r+1,c:c}; }
+
+  function trace(){
+    var o=S.orient;
+    var mAt=function(r,c){ return Object.keys(MPOS).find(function(k){ return MPOS[k].r===r && MPOS[k].c===c; }); };
+    var r=SOURCE.r, c=SOURCE.c, dir=SOURCE.dir;
+    var pts=[ center(r,c) ]; var solved=false;
+    for(var i=0;i<60;i++){
+      var nx=step(r,c,dir);
+      if(nx.r<0||nx.r>=ROWS||nx.c<0||nx.c>=COLS){ var cc=center(r,c); var d=dir==='E'?{x:1,y:0}:dir==='W'?{x:-1,y:0}:dir==='N'?{x:0,y:-1}:{x:0,y:1}; pts.push({ x:cc.x+d.x*CELL/2, y:cc.y+d.y*CELL/2 }); break; }
+      r=nx.r; c=nx.c;
+      if(r===TARGET.r && c===TARGET.c && dir===TARGET.enter){ pts.push(center(r,c)); solved=true; break; }
+      var id=mAt(r,c);
+      if(id){ dir=reflect(dir,o[id]); pts.push(center(r,c)); }
+    }
+    return { pts:pts, solved:solved };
+  }
+
+  function view(){
+    var res=trace(), pts=res.pts, solved=res.solved;
+    // beams
+    var beam='';
+    for(var i=0;i<pts.length-1;i++){
+      var a=pts[i], b=pts[i+1];
+      var horiz=Math.abs(a.y-b.y)<1;
+      var col=solved?'linear-gradient(90deg,#fff3d0,#f2cd72)':'linear-gradient(90deg,#ffd98a,#f0a64e)';
+      var glow=solved?'0 0 16px 3px rgba(242,205,114,.8)':'0 0 12px 2px rgba(240,166,78,.6)';
+      if(horiz){ beam+='<div style="position:absolute; left:'+Math.min(a.x,b.x)+'px; top:'+(a.y-2)+'px; width:'+Math.abs(b.x-a.x)+'px; height:4px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
+      else { beam+='<div style="position:absolute; left:'+(a.x-2)+'px; top:'+Math.min(a.y,b.y)+'px; width:4px; height:'+Math.abs(b.y-a.y)+'px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
+    }
+    // source
+    var sc=center(SOURCE.r,SOURCE.c);
+    var source='<div style="position:absolute; left:'+(sc.x-16)+'px; top:'+(sc.y-16)+'px; width:32px; height:32px; z-index:7;">'
+      + '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:22px; height:26px; border-radius:13px 13px 10px 10px; background:linear-gradient(180deg,#22142f,#160c22); border:1.4px solid rgba(214,168,74,.55);"></div>'
+      + '<div style="position:absolute; left:50%; top:50%; width:11px; height:16px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e); box-shadow:0 0 16px rgba(240,185,78,.9); animation:flick 1.5s ease-in-out infinite;"></div></div>';
+    // mirrors
+    var mirrors=Object.keys(MPOS).map(function(id){
+      var p=center(MPOS[id].r, MPOS[id].c);
+      var o=S.orient[id];
+      var rot=o==='/'?'-45deg':'45deg';
+      var wrap='position:absolute; left:'+p.x+'px; top:'+p.y+'px; width:38px; height:38px; border-radius:9px; cursor:pointer; border:1px solid rgba(214,168,74,.3); background:radial-gradient(circle at 38% 32%, rgba(60,52,72,.7), rgba(28,22,38,.7)); box-shadow:0 4px 12px rgba(0,0,0,.45); padding:0; z-index:8; animation:mirrornudge 2.6s ease-in-out infinite;';
+      var bar='position:absolute; left:50%; top:50%; width:30px; height:5px; border-radius:3px; transform:translate(-50%,-50%) rotate('+rot+'); background:linear-gradient(90deg,#e8eef6,#aeb9cc); box-shadow:0 0 10px rgba(220,235,255,.55);';
+      var shine='position:absolute; left:50%; top:50%; width:30px; height:1.5px; transform:translate(-50%,-50%) rotate('+rot+'); background:rgba(255,255,255,.9);';
+      return '<button data-mirror="'+id+'" style="'+wrap+'"><div style="'+bar+'"></div><div style="'+shine+'"></div></button>';
+    }).join('');
+    // seal
+    var tc=center(TARGET.r,TARGET.c);
+    var sealRing=solved
+      ? 'position:absolute; left:50%; top:50%; width:38px; height:38px; transform:translate(-50%,-50%); border-radius:50%; border:2px solid rgba(242,205,114,.9); animation:sealglow 1.6s ease-in-out infinite, sealspin 8s linear infinite;'
+      : 'position:absolute; left:50%; top:50%; width:38px; height:38px; transform:translate(-50%,-50%); border-radius:50%; border:2px dashed rgba(154,134,184,.4);';
+    var seal='<div style="position:absolute; left:'+(tc.x-19)+'px; top:'+(tc.y-19)+'px; width:38px; height:38px; z-index:7;"><div style="'+sealRing+'"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:18px; filter:'+(solved?'drop-shadow(0 0 8px rgba(242,205,114,1))':'grayscale(1) opacity(.45)')+';">✶</div></div>';
+
+    var footer = solved
+      ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La silhouette encapuchonnée apparaît sur le mur…</div><button data-act="back" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Avancer dans le couloir ✦</button></div>'
+      : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">Deux miroirs comptent, un troisième te distrait. Trouve l\u2019angle qui renvoie la flamme vers le sceau, en haut à droite.</span></div>';
+
+    return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
+      + '<div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 12px;">'
+      +   '<div data-act="back" style="display:flex; flex-direction:column; cursor:pointer;"><span style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#e9dcc2;">Le Vestibule</span><span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">‹ Salle 1 · l\'énigme du miroir</span></div>'
+      +   '<button data-act="reset" style="background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28); border-radius:999px; padding:6px 13px; cursor:pointer; font-weight:600; font-size:11px; color:#e7c878;">↺ Recommencer</button>'
+      + '</div>'
+      + '<div style="position:relative; z-index:30; padding:2px 24px 14px;"><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:18px; line-height:1.25; color:#fbf3e2;">'+(solved?'La lumière a trouvé son chemin.':'Le sceau reste dans l\u2019ombre.')+'</div><div style="margin-top:4px; font-size:12px; line-height:1.5; color:#a796c0;">Tape un miroir pour le faire pivoter. Guide la flamme de Lampyre jusqu\'au sceau.</div></div>'
+      + '<div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:6px;">'
+      +   '<div style="position:relative; width:294px; height:378px; border-radius:8px; overflow:hidden; background:radial-gradient(ellipse at 24% 76%, #2a2030 0%, #1a1422 46%, #110b19 100%); border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">'
+      +     '<div style="position:absolute; inset:0; opacity:.42; background:repeating-linear-gradient(0deg, transparent 0, transparent 40px, rgba(0,0,0,.3) 40px, rgba(0,0,0,.3) 42px);"></div>'
+      +     beam + source + mirrors + seal
+      +   '</div>'
+      + '</div>'
+      + '<div style="position:relative; z-index:30; padding:10px 24px 26px;">'+footer+'</div>'
+      + '</div>';
+  }
+
+  function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+
+  var app=document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
+    var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='back') back(); }
+  });
+  function render(){ app.innerHTML = view(); }
+  render();
+})();
+</script>
+</body>
+</html>

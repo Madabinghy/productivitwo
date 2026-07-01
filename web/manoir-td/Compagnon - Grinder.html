@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — Mode Grinder (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0710; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes floaty { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-6px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.5; transform:scale(1) } 50%{ opacity:.85; transform:scale(1.05) } }
+  @keyframes flick { 0%,100%{ transform: scaleY(1); opacity:1 } 50%{ transform: scaleY(.86); opacity:.85 } }
+  @keyframes risein { from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform:none } }
+  @keyframes ringdraw { from{ opacity:0; transform: scale(.9) } to{ opacity:1; transform:none } }
+  @keyframes pulsedot { 0%,100%{ opacity:1 } 50%{ opacity:.3 } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* OMBRELUNE — Accueil mode GRINDER, 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var TASKS = [
+    { icon:'💧', kindLabel:'Santé · hydratation', title:'Hydratation', target:'8 verres', cur:6, max:8, reward:12, line:'6 sur 8. Deux verres et le combo parfait tombe.' },
+    { icon:'🏃', kindLabel:'Santé · cardio',      title:'Cardio du matin', target:'30 min', cur:0, max:30, reward:24, line:'Zéro minute au compteur. Lance le focus, on grimpe l’indice.' },
+    { icon:'📖', kindLabel:'Apprentissage',       title:'Lecture ciblée', target:'40 min', cur:25, max:40, reward:18, line:'25/40. Tu es à 62 % — finis fort, le record est à portée.' },
+    { icon:'🧘', kindLabel:'Bien-être · focus',   title:'Méditation', target:'10 min', cur:10, max:10, reward:10, line:'Objectif plein. Valide et capitalise la série.' },
+    { icon:'🗝️', kindLabel:'Au front · projet',   title:'Sprint projet', target:'1 bloc de 50 min', cur:0, max:50, reward:40, line:'Le gros morceau du jour. Un bloc de 50, focus enclenché.' }
+  ];
+
+  var S = { i:0, streak:12, record:18, level:7, focusSec:9520, running:false, elapsed:0,
+            resisted:23, caved:2, weekMass:[64,52,78,40,88,71,46] };
+
+  function cur(){ return TASKS[S.i % TASKS.length]; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function fmt(sec){ var m=Math.floor(sec/60), s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+  function fmtH(sec){ var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60); return h>0 ? (h+'h'+String(m).padStart(2,'0')) : (m+' min'); }
+
+  function toggleTimer(){ S.running=!S.running; render(); }
+  function complete(){ S.i+=1; S.streak+=1; S.record=Math.max(S.record,S.streak); S.running=false; S.elapsed=0; render(); }
+  function skip(){ S.i+=1; S.streak=0; S.running=false; S.elapsed=0; S.caved+=1; render(); }
+  function goDoors(){ window.location.href = './Compagnon - Choix de profil.html'; }
+
+  function view(){
+    var t = cur();
+    var max = Math.max.apply(null, S.weekMass);
+    var days = ['L','M','M','J','V','S','D'];
+    var bars = S.weekMass.map(function(v,i){
+      var today = i===6;
+      var bar = 'width:100%; border-radius:5px 5px 2px 2px; min-height:3px; height:'+Math.round((v/max)*100)+'%; background:'+(today?'linear-gradient(180deg,#f2cd72,#d6a84a)':'rgba(154,108,224,.45)')+';';
+      var lbl = 'font-weight:600; font-size:9px; color:'+(today?'#e7c878':'#6f6088')+';';
+      return '<div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end;"><div style="'+bar+'"></div><span style="'+lbl+'">'+days[i]+'</span></div>';
+    }).join('');
+    var pct = Math.round((t.cur/t.max)*100);
+    var total = S.resisted + S.caved;
+    var winRate = total ? Math.round((S.resisted/total)*100) : 100;
+    var running = S.running;
+    var timerBtn = 'padding:11px 18px; border:none; border-radius:13px; cursor:pointer; font-weight:800; font-size:13px; color:'+(running?'#2a1840':'#1c1206')+'; background:'+(running?'linear-gradient(180deg,#cdb4f5,#9a6ce0)':'linear-gradient(180deg,#f2cd72,#d6a84a)')+'; box-shadow:0 8px 18px rgba(214,168,74,.3);';
+
+    return '<div style="position:relative; width:390px; min-height:780px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 80% at 50% -10%, #2a1840 0%, #160d22 46%, #0c0814 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
+      + '<div style="position:absolute; top:40px; right:-40px; width:180px; height:180px; border-radius:50%; background:radial-gradient(circle, rgba(123,84,196,.2), transparent 70%); filter:blur(8px);"></div>'
+      // top bar
+      + '<div style="position:relative; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 6px;">'
+      +   '<div style="display:flex; align-items:center; gap:9px;">'
+      +     '<div style="width:26px; height:26px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #ffe6a6, #d6a84a 60%, #8a5a16); box-shadow:0 0 14px rgba(214,168,74,.6);"></div>'
+      +     '<div><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#e9dcc2; line-height:1;">Ombrelune</div>'
+      +     '<div data-act="goDoors" style="font-weight:700; font-size:9px; letter-spacing:1.6px; text-transform:uppercase; color:#8a6db0; margin-top:3px; cursor:pointer;">‹ Mode grinder</div></div>'
+      +   '</div>'
+      +   '<div style="display:flex; align-items:center; gap:7px;">'
+      +     '<div style="display:flex; align-items:center; gap:5px; padding:6px 11px; border-radius:999px; background:rgba(123,84,196,.14); border:1px solid rgba(154,108,224,.32);"><span style="font-weight:800; font-size:12px; color:#c4a6f0;">Niv. '+S.level+'</span></div>'
+      +     '<div style="display:flex; align-items:center; gap:5px; padding:6px 11px; border-radius:999px; background:rgba(214,168,74,.12); border:1px solid rgba(214,168,74,.3);"><span style="font-size:12px;">🔥</span><span style="font-weight:800; font-size:13px; color:#e7c878;">'+S.streak+'</span></div>'
+      +   '</div>'
+      + '</div>'
+      // hero gauge + companion
+      + '<div style="position:relative; display:flex; align-items:center; gap:16px; padding:16px 22px 8px;">'
+      +   '<div style="position:relative; width:132px; height:132px; flex-shrink:0; animation:ringdraw .6s ease both;">'
+      +     '<div style="position:absolute; inset:0; border-radius:50%; background:conic-gradient(#f2cd72 0% 87%, rgba(154,108,224,.28) 87% 100%);"></div>'
+      +     '<div style="position:absolute; inset:11px; border-radius:50%; background:radial-gradient(circle at 50% 40%, #1f1330, #140b22); display:flex; flex-direction:column; align-items:center; justify-content:center;">'
+      +       '<div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:44px; line-height:1; color:#f3cd72;">87</div>'
+      +       '<div style="font-weight:700; font-size:8.5px; letter-spacing:1.4px; text-transform:uppercase; color:#9a86b8; margin-top:3px;">Indice du jour</div>'
+      +       '<div style="margin-top:5px; display:flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:rgba(95,184,126,.16); font-weight:700; font-size:10px; color:#9fe0b0;">▲ 5</div>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div style="flex:1; display:flex; flex-direction:column; align-items:center;">'
+      +     '<div style="position:relative; width:72px; height:80px; display:flex; align-items:center; justify-content:center; animation:floaty 5s ease-in-out infinite;">'
+      +       '<div style="position:absolute; inset:6px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.32), transparent 68%); animation:glowpulse 4s ease-in-out infinite;"></div>'
+      +       '<div style="position:relative; width:58px; height:66px; border-radius:30px 30px 26px 26px / 34px 34px 28px 28px; background:linear-gradient(180deg, #20132f, #160c22); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 8px 20px rgba(0,0,0,.5), 0 0 16px rgba(214,168,74,.22); overflow:hidden;">'
+      +         '<div style="position:absolute; left:50%; top:54%; transform:translate(-50%,-50%); width:17px; height:25px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e); box-shadow:0 0 16px rgba(240,185,78,.8); animation:flick 1.6s ease-in-out infinite;"></div>'
+      +         '<div style="position:absolute; top:21px; left:16px; width:6px; height:8px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +         '<div style="position:absolute; top:21px; right:16px; width:6px; height:8px; border-radius:50%; background:#ffe9b0; box-shadow:0 0 6px rgba(255,233,176,.9);"></div>'
+      +       '</div>'
+      +     '</div>'
+      +     '<div style="margin-top:8px; text-align:center; font-family:\'Fraunces\',serif; font-weight:500; font-style:italic; font-size:13.5px; line-height:1.36; color:#e9dcc2;">'+esc(t.line)+'</div>'
+      +   '</div>'
+      + '</div>'
+      // weekly bars
+      + '<div style="margin:14px 22px 0; padding:15px 16px 13px; border-radius:18px; background:linear-gradient(180deg, rgba(40,26,60,.7), rgba(24,15,36,.7)); border:1px solid rgba(214,168,74,.16);">'
+      +   '<div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Masse lumineuse · 7 jours</span><span style="font-weight:700; font-size:11px; color:#e7c878;">'+S.weekMass.reduce(function(a,b){return a+b;},0)+' ✦</span></div>'
+      +   '<div style="margin-top:13px; display:flex; align-items:flex-end; gap:8px; height:62px;">'+bars+'</div>'
+      + '</div>'
+      // stat tiles
+      + '<div style="margin:11px 22px 0; display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px;">'
+      +   '<div style="padding:13px 11px; border-radius:15px; background:rgba(40,26,60,.55); border:1px solid rgba(214,168,74,.16);"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:23px; color:#fbf3e2; line-height:1;">'+S.streak+'<span style="font-size:12px; color:#9a86b8;"> j</span></div><div style="margin-top:5px; font-weight:600; font-size:9.5px; letter-spacing:.4px; color:#9a86b8;">Série en cours</div></div>'
+      +   '<div style="padding:13px 11px; border-radius:15px; background:rgba(40,26,60,.55); border:1px solid rgba(214,168,74,.16);"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:23px; color:#fbf3e2; line-height:1;">'+S.record+'<span style="font-size:12px; color:#9a86b8;"> j</span></div><div style="margin-top:5px; font-weight:600; font-size:9.5px; letter-spacing:.4px; color:#9a86b8;">Record perso</div></div>'
+      +   '<div style="padding:13px 11px; border-radius:15px; background:rgba(40,26,60,.55); border:1px solid rgba(214,168,74,.16);"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:23px; color:#f3cd72; line-height:1;">'+fmtH(S.focusSec)+'</div><div style="margin-top:5px; font-weight:600; font-size:9.5px; letter-spacing:.4px; color:#9a86b8;">Focus aujourd\'hui</div></div>'
+      + '</div>'
+      // objective + timer
+      + '<div style="margin:11px 22px 0; padding:16px; border-radius:18px; background:linear-gradient(180deg, rgba(214,168,74,.12), rgba(214,168,74,.04)); border:1px solid rgba(214,168,74,.3); animation:risein .4s ease both;">'
+      +   '<div style="display:flex; align-items:center; gap:8px; margin-bottom:11px;"><span style="font-weight:700; font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:#c9a456;">'+esc(t.kindLabel)+'</span><span style="flex:1; height:1px; background:linear-gradient(90deg, rgba(214,168,74,.4), transparent);"></span><span style="font-weight:700; font-size:10px; color:#9a86b8;">'+((S.i%TASKS.length)+1)+' / '+TASKS.length+'</span></div>'
+      +   '<div style="display:flex; align-items:center; gap:13px;"><div style="font-size:30px; line-height:1; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));">'+t.icon+'</div>'
+      +     '<div style="flex:1;"><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:19px; color:#fbf3e2; line-height:1.12;">'+esc(t.title)+'</div><div style="font-size:12px; color:#b7a7cc; margin-top:2px;">Cible · '+esc(t.target)+'</div></div>'
+      +     '<div style="text-align:right;"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:18px; color:#f3cd72; line-height:1;">'+pct+'%</div></div>'
+      +   '</div>'
+      +   '<div style="margin-top:12px; height:7px; border-radius:4px; background:rgba(0,0,0,.35); overflow:hidden;"><div style="height:100%; border-radius:4px; background:linear-gradient(90deg, #d6a84a, #f2cd72); width:'+pct+'%;"></div></div>'
+      +   '<div style="margin-top:14px; display:flex; align-items:center; gap:10px;">'
+      +     '<div style="flex:1; display:flex; align-items:center; gap:9px; padding:10px 13px; border-radius:13px; background:rgba(0,0,0,.28); border:1px solid rgba(214,168,74,.18);"><span style="width:8px; height:8px; border-radius:50%; background:'+(running?'#9fe0b0':'#6f6088')+'; animation:'+(running?'pulsedot 1.2s ease-in-out infinite':'none')+';"></span><span style="font-weight:700; font-size:20px; letter-spacing:1px; color:#fbf3e2; font-variant-numeric:tabular-nums;">'+fmt(S.elapsed)+'</span><span style="font-weight:600; font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#9a86b8; margin-left:auto;">Focus</span></div>'
+      +     '<button data-act="toggleTimer" style="'+timerBtn+'">'+(running?'Pause':'Focus')+'</button>'
+      +   '</div>'
+      + '</div>'
+      // scoreboard
+      + '<div style="margin:11px 22px 0; padding:13px 15px; border-radius:16px; background:linear-gradient(180deg, rgba(60,40,100,.4), rgba(36,22,64,.4)); border:1px solid rgba(154,108,224,.26); display:flex; align-items:center; gap:13px;">'
+      +   '<div style="position:relative; width:38px; height:42px; flex-shrink:0;">'
+      +     '<div style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:38px; height:27px; background:linear-gradient(180deg,#241640,#150c26); border-radius:48% 48% 30% 30% / 64% 64% 30% 30%;"></div>'
+      +     '<div style="position:absolute; top:0; left:50%; transform:translateX(-50%); width:28px; height:34px; background:linear-gradient(180deg,#2e1d52,#1a1030); border-radius:50% 50% 42% 42% / 62% 62% 40% 40%; border:1px solid rgba(154,108,224,.22);"></div>'
+      +     '<div style="position:absolute; top:13px; left:calc(50% - 5px); width:4px; height:6px; border-radius:50%; background:#cdb4f5; box-shadow:0 0 6px rgba(123,84,196,.85);"></div>'
+      +     '<div style="position:absolute; top:13px; left:calc(50% + 1px); width:4px; height:6px; border-radius:50%; background:#cdb4f5; box-shadow:0 0 6px rgba(123,84,196,.85);"></div>'
+      +   '</div>'
+      +   '<div style="flex:1;"><div style="font-weight:700; font-size:9.5px; letter-spacing:1.4px; text-transform:uppercase; color:#b79ae0;">Duel · la Procrastination</div>'
+      +     '<div style="margin-top:5px; display:flex; gap:14px;"><div><span style="font-family:\'Fraunces\',serif; font-weight:700; font-size:18px; color:#9fe0b0;">'+S.resisted+'</span><span style="font-weight:600; font-size:10px; color:#9a86b8; margin-left:3px;">résistances</span></div><div><span style="font-family:\'Fraunces\',serif; font-weight:700; font-size:18px; color:#e8a6a6;">'+S.caved+'</span><span style="font-weight:600; font-size:10px; color:#9a86b8; margin-left:3px;">cédées</span></div></div>'
+      +   '</div>'
+      +   '<div style="text-align:right;"><div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:22px; color:#f3cd72; line-height:1;">'+winRate+'%</div><div style="font-weight:600; font-size:9px; letter-spacing:.6px; text-transform:uppercase; color:#9a86b8; margin-top:3px;">taux de victoire</div></div>'
+      + '</div>'
+      + '<div style="flex:1; min-height:14px;"></div>'
+      // CTA
+      + '<div style="position:relative; padding:14px 22px 24px; display:flex; flex-direction:column; gap:10px;">'
+      +   '<button data-act="complete" style="width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-weight:800; font-size:15px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e); box-shadow:0 10px 24px rgba(95,184,126,.32), 0 0 0 1px rgba(255,255,255,.2) inset;">Valider l\'objectif ✓ +'+t.reward+' ✦</button>'
+      +   '<button data-act="skip" style="width:100%; padding:11px; border:1px solid rgba(154,134,184,.28); border-radius:13px; cursor:pointer; font-weight:600; font-size:12px; background:transparent; color:#9786b0;">Reporter — la série tombe à 0</button>'
+      + '</div>'
+      + '</div>';
+  }
+
+  var ACTIONS = { goDoors:goDoors, toggleTimer:toggleTimer, complete:complete, skip:skip };
+  var app = document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var el = ev.target.closest('[data-act]'); if(!el) return;
+    var a = el.getAttribute('data-act'); if(ACTIONS[a]) ACTIONS[a]();
+  });
+  function render(){ app.innerHTML = view(); }
+  render();
+  // live focus timer
+  setInterval(function(){ if(S.running){ S.elapsed+=1; S.focusSec+=1; render(); } }, 1000);
+})();
+</script>
+</body>
+</html>

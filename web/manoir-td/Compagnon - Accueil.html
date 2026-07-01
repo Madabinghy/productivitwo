@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — Accueil (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0710; font-family:'Outfit',sans-serif; padding:24px; }
+
+  @keyframes floaty { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-7px) } }
+  @keyframes glowpulse { 0%,100%{ opacity:.55; transform:scale(1) } 50%{ opacity:.9; transform:scale(1.06) } }
+  @keyframes risein { from{ opacity:0; transform: translateY(14px) } to{ opacity:1; transform:none } }
+  @keyframes warpzoom { 0%{ transform:scale(.3); opacity:0 } 55%{ opacity:1 } 100%{ transform:scale(2.4); opacity:0 } }
+  @keyframes flashbg { 0%{ opacity:0 } 35%{ opacity:.9 } 100%{ opacity:0 } }
+  @keyframes briefup { from{ opacity:0; transform: translateY(34px) } to{ opacity:1; transform:none } }
+  @keyframes lidopen { from{ transform: rotateX(0) } to{ transform: rotateX(-118deg) } }
+  @keyframes rewardpop { 0%{ opacity:0; transform: translateY(20px) scale(.7) } 60%{ opacity:1; transform: translateY(-4px) scale(1.06) } 100%{ opacity:1; transform:none } }
+  @keyframes chestnudge { 0%,100%{ transform: translateY(0) } 50%{ transform: translateY(-5px) } }
+  @keyframes temptrise { from{ opacity:0; transform: translateY(22px) scale(.97) } to{ opacity:1; transform:none } }
+  @keyframes temptbg { from{ opacity:0 } to{ opacity:1 } }
+  @keyframes dimpulse { 0%,100%{ opacity:.5; transform:scale(1) } 50%{ opacity:.95; transform:scale(1.18) } }
+  @keyframes swayhood { 0%,100%{ transform: translateX(-50%) rotate(-1.4deg) } 50%{ transform: translateX(-50%) rotate(1.4deg) } }
+  @keyframes drowsy { 0%{ transform: translateY(-6px); opacity:0 } 25%{ opacity:.7 } 100%{ transform: translateY(64px); opacity:0 } }
+
+  button{ font-family:'Outfit',sans-serif; }
+  .phone{ position:relative; width:390px; min-height:760px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 80% at 50% -10%, #2a1840 0%, #160d22 46%, #0c0814 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column; }
+  .ambient-a{ position:absolute; top:60px; left:-30px; width:160px; height:160px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.22), transparent 70%); filter:blur(6px); }
+  .ambient-b{ position:absolute; bottom:120px; right:-40px; width:200px; height:200px; border-radius:50%; background:radial-gradient(circle, rgba(123,84,196,.22), transparent 70%); filter:blur(8px); }
+  .btn-primary{ width:100%; padding:17px; border:none; border-radius:16px; cursor:pointer; font-weight:700; font-size:16px; color:#1c1206; background:linear-gradient(180deg,#f2cd72,#d6a84a); box-shadow:0 10px 24px rgba(214,168,74,.35), 0 0 0 1px rgba(255,255,255,.15) inset; }
+  .btn-ghost{ width:100%; padding:13px; border:1px solid rgba(154,134,184,.3); border-radius:14px; cursor:pointer; font-weight:500; font-size:13px; background:transparent; color:#9786b0; }
+  .btn-tiny{ width:100%; padding:11px; border:none; border-radius:12px; cursor:pointer; font-weight:600; font-size:12px; letter-spacing:.4px; background:transparent; color:#7e6ba0; }
+  input{ font-family:'Fraunces',serif; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* =================================================================
+   OMBRELUNE — Écran d'accueil compagnon, 100% VANILLA JS
+   Aucune dépendance (pas de framework). État + rendu maison.
+   ================================================================= */
+(function(){
+  'use strict';
+
+  // ---------- DONNÉES ----------
+  var CATS = [
+    { name:'Santé',         rk:'eau',       kind:'routine', kindLabel:'Santé · quotidien',        reward:'+ Renforce tes tourelles' },
+    { name:'Environnement', rk:'vaisselle', kind:'routine', kindLabel:'Environnement · quotidien', reward:'+ Bonus de défense' },
+    { name:'Apprentissage', rk:'lecture',   kind:'routine', kindLabel:'Apprentissage · quotidien', reward:'+ Vision étendue' },
+    { name:'Bien-être',     rk:'meditation',kind:'routine', kindLabel:'Bien-être · quotidien',     reward:'+ Régénère le héros' },
+    { name:'Projet',        rk:'eau',       kind:'action',  kindLabel:'Au front · projet',         reward:'Ouvre le coffre de l’ennemi' }
+  ];
+  var EMOJIS = ['✦','💧','🍽️','📖','🧘','🏃','🌱','✍️','🧹','🛏️','💪','🥗','🪥','💼','☀️','🎯'];
+
+  var TASKS = [
+    { kind:'routine', rk:'eau', kindLabel:'Santé · quotidien', icon:'💧', title:'Bois un verre d’eau', reward:'+ Renforce tes tourelles', line:'On commence doucement. Un verre d’eau, et la première bougie se rallume.', tempt:'Tu n’as pas vraiment soif. Reste là, bien tranquille, encore un instant.', stat:{ big:'6 jours', label:'à ta cible (8 verres/jour) d’affilée', sub:'+1 aujourd’hui — record perso' } },
+    { kind:'routine', rk:'vaisselle', kindLabel:'Environnement · quotidien', icon:'🍽️', title:'Fais la vaisselle', reward:'+ Bonus de défense', line:'Range ton antre. Évier vide, c’est un rempart de plus contre les flemmes.', tempt:'La vaisselle ? Tu la feras demain. Ce soir, tu mérites de te reposer.', stat:{ big:'23', label:'fois ce mois-ci', sub:'82 % des soirs — ton meilleur mois' } },
+    { kind:'routine', rk:'lecture', kindLabel:'Apprentissage · quotidien', icon:'📖', title:'Lis 30 minutes', reward:'+ Vision étendue', line:'Trente minutes de lecture éclaircissent le manoir. Juste une page pour commencer ?', tempt:'Ce livre ne s’envolera pas. Ferme les yeux, juste un instant…', stat:{ big:'2 h 50', label:'de lecture cette semaine', sub:'+25 min vs la semaine passée' } },
+    { kind:'action', kindLabel:'Au front · projet', icon:'🗝️', title:'Avance sur ton projet : 1 pas', reward:'Ouvre le coffre de l’ennemi', line:'La prochaine étape t’attend dans le coffre adverse. Un seul pas suffit pour aujourd’hui.', tempt:'Un si grand projet… demain tu seras plus frais. Ce soir, repose-toi.' },
+    { kind:'routine', rk:'meditation', kindLabel:'Bien-être · quotidien', icon:'🧘', title:'Médite 1 minute', reward:'+ Régénère le héros', line:'Avant la prochaine vague : une minute, juste pour souffler.', tempt:'Tu es déjà immobile, déjà si calme. Pourquoi en faire plus ?', stat:{ big:'9 jours', label:'de méditation d’affilée', sub:'série de calme +1' } }
+  ];
+
+  var DEPIT = [
+    'Encore toi qui résistes… très bien. Mais je serai là demain, et après-demain.',
+    'Quelle obstination. Tu finiras par craquer, et je t’attendrai bien au chaud.',
+    'Insupportable de discipline. Ça ne durera pas, tu le sais aussi bien que moi.'
+  ];
+
+  var MAX_WAVES = 5;
+  var GAME_URL = './' + encodeURIComponent('Manoir - Exploration.html');
+  var MINI_URL = './index.html';
+
+  // ---------- ÉTAT ----------
+  var S = {
+    i:0, streak:3, flash:null, flashKind:null, flashN:0,
+    mission:null, chest:false, skips:{}, tempt:null,
+    resisted:0, resistStreak:0,
+    userTasks:[], creating:false, draftTitle:'', draftIcon:'✦', draftCat:0
+  };
+  var timers = {};
+
+  try { var raw = localStorage.getItem('ombrelune_user_tasks'); if(raw) S.userTasks = JSON.parse(raw) || []; } catch(e){}
+  function persistUser(){ try { localStorage.setItem('ombrelune_user_tasks', JSON.stringify(S.userTasks)); } catch(e){} }
+
+  // —— Lien IRL : boire un verre d'eau ici incrémente le compteur journalier partagé
+  //    `ombrelune_water` → le bar du manoir (Exploration) retire un verre en direct.
+  function logWaterGlass(){
+    try {
+      var today = new Date().toISOString().slice(0,10);
+      var w = { d:today, n:0 };
+      try { w = JSON.parse(localStorage.getItem('ombrelune_water')||'null') || w; } catch(e){}
+      if(w.d !== today) w = { d:today, n:0 };
+      w.n = Math.min(10, (w.n||0) + 1);
+      localStorage.setItem('ombrelune_water', JSON.stringify(w));
+    } catch(e){}
+  }
+
+  // ---------- HELPERS ÉTAT ----------
+  function allTasks(){ return TASKS.concat(S.userTasks || []); }
+  function cur(){ var a = allTasks(); return a[S.i % a.length]; }
+  function keyOf(t){ return t ? t.title : ''; }
+  function skipCount(t){ return (S.skips && S.skips[keyOf(t)]) || 0; }
+  function waveCount(t){ return Math.min(1 + skipCount(t), MAX_WAVES); }
+  function addSkip(t){ var k=keyOf(t); S.skips[k]=(S.skips[k]||0)+1; }
+  function clearSkip(t){ var k=keyOf(t); delete S.skips[k]; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function advance(flash, flashKind){
+    S.i += 1; S.flash = flash; S.flashKind = flashKind; S.flashN += 1;
+    if(flashKind==='good') S.streak += 1;
+    render();
+    clearTimeout(timers.flash);
+    timers.flash = setTimeout(function(){ S.flash=null; render(); }, 2200);
+    clearTimeout(timers.spont);
+    if(Math.random() < 0.4){
+      timers.spont = setTimeout(function(){ if(!S.tempt && !S.mission){ openTempt('spontaneous'); } }, 2600);
+    }
+  }
+
+  // ---------- ACTIONS ----------
+  function startMission(){
+    S.mission = { task: cur(), phase:'warp' }; S.chest=false; render();
+    clearTimeout(timers.warp);
+    timers.warp = setTimeout(function(){ if(S.mission){ S.mission.phase='brief'; render(); } }, 1300);
+  }
+  function closeMission(){ clearTimeout(timers.warp); S.mission=null; S.chest=false; render(); }
+  function doneRoutine(){ var t=cur(); clearSkip(t); if(t && t.rk==='eau') logWaterGlass(); if(S.mission){ S.mission.phase='loot'; S.chest=false; render(); } }
+  function openChest(){ if(!S.chest){ S.chest=true; render(); } }
+  function collect(){
+    var t = S.mission && S.mission.task;
+    var label = t ? t.reward.replace(/^\+\s*/,'') : 'Butin récupéré';
+    closeMission(); advance('Coffre ouvert ✦ ' + label, 'good');
+  }
+  function launchGame(){ try { window.location.href = GAME_URL; } catch(e){} }
+  function launchMini(){ var t=cur(); try { window.location.href = MINI_URL + '?waves=' + waveCount(t) + '&routine=' + (t.rk||'eau'); } catch(e){} }
+
+  function openTempt(from){
+    var t = cur();
+    var peeved = S.resistStreak >= 3;
+    var line = peeved ? DEPIT[S.resisted % DEPIT.length] : (t.tempt || 'Reste. Repose-toi. Demain est un autre jour…');
+    S.tempt = { line:line, from: from || 'skip', peeved:peeved }; render();
+  }
+  function resist(){
+    var from = S.tempt ? S.tempt.from : 'skip';
+    S.tempt = null; S.resisted += 1; S.resistStreak += 1;
+    if(from==='skip'){ startMission(); } else { render(); }
+  }
+  function giveIn(){
+    var from = S.tempt ? S.tempt.from : 'skip';
+    addSkip(cur()); S.tempt = null; S.resistStreak = 0;
+    if(from==='mission'){ closeMission(); }
+    advance('Tu as cédé… la Procrastination invoque une flemme', 'bad');
+  }
+
+  function openCreate(){ S.creating=true; S.draftTitle=''; S.draftIcon='✦'; S.draftCat=0; render(); }
+  function closeCreate(){ S.creating=false; render(); }
+  function createRoutine(){
+    var title = (S.draftTitle||'').trim(); if(!title) return;
+    var c = CATS[S.draftCat] || CATS[0]; var isAction = c.kind==='action';
+    var task = {
+      kind:c.kind, rk:c.rk, kindLabel:c.kindLabel, icon:S.draftIcon||'✦',
+      title:title, reward:c.reward, custom:true,
+      line: isAction ? 'Tu as inscrit ce front toi-même. La prochaine étape t’attend dans le coffre adverse.'
+                     : 'Tu as forgé cette routine. À toi de tenir parole — une bougie de plus à rallumer.',
+      tempt: 'Cette routine, c’est toi qui l’as voulue… mais rien ne presse, si ?'
+    };
+    S.userTasks = (S.userTasks||[]).concat([task]); persistUser();
+    S.creating=false; S.i = TASKS.length + S.userTasks.length - 1; render();
+  }
+  function deleteCurrent(){
+    var t = cur(); if(!t || !t.custom) return;
+    S.userTasks = (S.userTasks||[]).filter(function(x){ return x.title !== t.title; }); persistUser();
+    S.i = Math.max(0, S.i - 1); render();
+  }
+
+  // ---------- VUE ----------
+  function view(){
+    var t = cur();
+    var m = S.mission, mt = m && m.task;
+    var isAction = mt && mt.kind === 'action';
+    var streakChip = '<div style="display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28);"><span style="font-size:13px;">🔥</span><span style="font-weight:600; font-size:13px; color:#e7c878;">'+S.streak+'</span></div>';
+
+    var h = '';
+    h += '<div class="phone">';
+    h +=   '<div class="ambient-a"></div><div class="ambient-b"></div>';
+
+    // top bar
+    h += '<div style="position:relative; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 4px;">'
+       +   '<div data-act="goDoors" style="display:flex; align-items:center; gap:8px; cursor:pointer;">'
+       +     '<div style="width:26px; height:26px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #ffe6a6, #d6a84a 60%, #8a5a16); box-shadow:0 0 14px rgba(214,168,74,.6);"></div>'
+       +     '<span style="font-family:\'Fraunces\',serif; font-weight:600; font-size:15px; color:#e9dcc2; letter-spacing:.3px;">Ombrelune</span>'
+       +   '</div>' + streakChip
+       + '</div>';
+
+    // companion
+    h += '<div style="position:relative; display:flex; flex-direction:column; align-items:center; padding:18px 24px 6px;">'
+       +   '<div style="position:relative; width:128px; height:128px; display:flex; align-items:center; justify-content:center; animation:floaty 5s ease-in-out infinite;">'
+       +     '<div style="position:absolute; inset:8px; border-radius:50%; background:radial-gradient(circle, rgba(214,168,74,.35), transparent 68%); animation:glowpulse 4s ease-in-out infinite;"></div>'
+       +     '<canvas id="acc-lv" width="208" height="232" style="position:relative; width:104px; height:116px;"></canvas>'
+       +   '</div>'
+       +   '<div style="margin-top:10px; font-weight:600; font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Lampyre, ta veilleuse</div>'
+       + '</div>';
+
+    // speech
+    h += '<div style="position:relative; margin:8px 22px 0; padding:16px 18px; border-radius:18px 18px 18px 6px; background:linear-gradient(180deg, rgba(40,26,60,.9), rgba(28,18,42,.9)); border:1px solid rgba(214,168,74,.22); animation:risein .45s ease both;">'
+       +   '<div style="font-family:\'Fraunces\',serif; font-weight:500; font-size:18px; line-height:1.4; color:#f3e9d3;">'+esc(t.line)+'</div>'
+       + '</div>';
+
+    // action card
+    h += '<div style="position:relative; margin:16px 22px 0; padding:18px; border-radius:20px; background:linear-gradient(180deg, rgba(214,168,74,.12), rgba(214,168,74,.04)); border:1px solid rgba(214,168,74,.3); animation:risein .5s .06s ease both;">'
+       +   '<div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">'
+       +     '<span style="font-size:11px; font-weight:600; letter-spacing:1.4px; text-transform:uppercase; color:#c9a456;">'+esc(t.kindLabel)+'</span>'
+       +     '<span style="flex:1; height:1px; background:linear-gradient(90deg, rgba(214,168,74,.4), transparent);"></span>'
+       +   '</div>'
+       +   '<div style="display:flex; align-items:center; gap:14px;">'
+       +     '<div style="font-size:34px; line-height:1; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));">'+t.icon+'</div>'
+       +     '<div style="flex:1;">'
+       +       '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:21px; color:#fbf3e2; line-height:1.15;">'+esc(t.title)+'</div>'
+       +       '<div style="font-size:13px; color:#b7a7cc; margin-top:3px;">'+esc(t.reward)+'</div>'
+       +     '</div>'
+       +   '</div>'
+       + '</div>';
+
+    // flash
+    if(S.flash){
+      var good = S.flashKind==='good';
+      var fc = good ? 'background:rgba(120,196,140,.14); border:1px solid rgba(120,196,140,.4); color:#9fe0b0;'
+                    : 'background:rgba(150,90,196,.16); border:1px solid rgba(150,90,196,.45); color:#c9a6e8;';
+      h += '<div style="margin:14px 22px 0; padding:12px 16px; border-radius:14px; text-align:center; font-weight:600; font-size:14px; animation:risein .35s ease both;'+fc+'">'+esc(S.flash)+'</div>';
+    }
+
+    h += '<div style="flex:1;"></div>';
+
+    // actions
+    h += '<div style="position:relative; padding:18px 22px 26px; display:flex; flex-direction:column; gap:11px;">'
+       +   '<button class="btn-primary" data-act="doIt">Je le fais ✦</button>'
+       +   '<button class="btn-ghost" data-act="openTempt">Plus tard… j\'ai la flemme</button>'
+       +   '<button class="btn-tiny" data-act="openCreate">✦ Forger une routine</button>'
+       +   '<button data-act="enterManoir" style="width:100%; margin-top:2px; padding:14px; border:1px solid rgba(214,168,74,.35); border-radius:14px; cursor:pointer; font-weight:700; font-size:13px; letter-spacing:.3px; background:rgba(214,168,74,.08); color:#e7c878; display:flex; align-items:center; justify-content:center; gap:8px;"><span style="font-size:15px;">🏚️</span> Entrer dans le manoir</button>'
+       +   (t.custom ? '<button data-act="deleteCurrent" style="width:100%; padding:7px; border:none; border-radius:10px; cursor:pointer; font-weight:500; font-size:11px; background:transparent; color:#6a5a86;">Retirer cette routine perso</button>' : '')
+       + '</div>';
+
+    // ===== MISSION OVERLAY =====
+    if(m){
+      h += '<div style="position:absolute; inset:0; z-index:30; background:radial-gradient(120% 90% at 50% 28%, #2a1840 0%, #160d22 50%, #090611 100%); display:flex; flex-direction:column; overflow:hidden;">';
+
+      if(m.phase==='warp'){
+        h += '<div style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">'
+           +   '<div style="position:absolute; inset:0; background:radial-gradient(circle at 50% 42%, rgba(242,205,114,.6), transparent 60%); animation:flashbg 1.3s ease-out forwards;"></div>'
+           +   '<div style="position:relative; width:120px; height:120px; border-radius:50%; background:radial-gradient(circle, #ffe9b0, #f0b94e 50%, transparent 72%); box-shadow:0 0 60px rgba(242,205,114,.7); animation:warpzoom 1.3s ease-in forwards;"></div>'
+           +   '<div style="position:absolute; bottom:200px; font-family:\'Fraunces\',serif; font-weight:500; font-size:18px; color:#f3e9d3; letter-spacing:.3px; animation:risein .6s ease both;">La veilleuse t\'ouvre la voie…</div>'
+           + '</div>';
+      }
+
+      if(m.phase==='brief'){
+        h += '<div style="position:relative; flex:1; display:flex; flex-direction:column; padding:30px 24px 24px; animation:briefup .5s ease both;">'
+           +   '<div style="font-weight:700; font-size:12px; letter-spacing:2.4px; text-transform:uppercase; color:#c9a456;">'+(isAction?'Mission · Infiltration':'Routine · Fortification')+'</div>'
+           +   '<div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:30px; line-height:1.08; color:#fbf3e2; margin-top:8px;">'+esc(mt.title)+'</div>'
+           +   '<div style="margin-top:24px; padding:18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,26,60,.85), rgba(24,15,36,.85)); border:1px solid rgba(214,168,74,.25);">'
+           +     '<div style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#9a86b8;">🎯 Objectif</div>'
+           +     '<div style="margin-top:8px; font-size:16px; line-height:1.45; color:#ecdfc6;">'+esc(isAction?'Traverse le manoir et force le coffre de l’ennemi. Ce qu’il renferme te révèle ta prochaine étape.':'Une action que tu connais déjà. Accomplis-la et ouvre le coffre pour renforcer ton camp.')+'</div>'
+           +   '</div>'
+           +   '<div style="margin-top:14px; padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(214,168,74,.14), rgba(214,168,74,.04)); border:1px solid rgba(214,168,74,.3); display:flex; align-items:center; gap:14px;">'
+           +     '<div style="font-size:30px;">'+(isAction?'🗝️':mt.icon)+'</div>'
+           +     '<div><div style="font-weight:600; font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#c9a456;">Butin du coffre</div>'
+           +     '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2; margin-top:2px;">'+esc(isAction?'La prochaine étape de ton projet':mt.reward.replace(/^\+\s*/,''))+'</div></div>'
+           +   '</div>'
+           +   '<div style="flex:1;"></div>';
+        if(isAction){
+          h += '<button class="btn-primary" data-act="launchGame" style="padding:18px;">Entrer dans le manoir ⚔</button>'
+             + '<button data-act="closeMission" style="margin-top:8px; width:100%; padding:9px; border:none; border-radius:12px; cursor:pointer; font-weight:500; font-size:12px; background:transparent; color:#6f6088;">Revenir plus tard</button>';
+        } else {
+          h += '<button data-act="doneRoutine" style="width:100%; padding:18px; border:none; border-radius:16px; cursor:pointer; font-weight:700; font-size:16px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e); box-shadow:0 12px 28px rgba(95,184,126,.35), 0 0 0 1px rgba(255,255,255,.2) inset;">Je l\'ai fait ✓</button>'
+             + '<button data-act="launchMini" style="margin-top:10px; width:100%; padding:13px; border:1px solid rgba(214,168,74,.4); border-radius:14px; cursor:pointer; font-weight:600; font-size:13px; background:rgba(214,168,74,.08); color:#e7c878;">Lancer une mini-vague · '+miniLabel(mt)+' ⚔</button>'
+             + '<button data-act="reportTempt" style="margin-top:8px; width:100%; padding:9px; border:none; border-radius:12px; cursor:pointer; font-weight:500; font-size:12px; background:transparent; color:#8a6db0;">Plus tard… (la flemme gagne du terrain)</button>';
+        }
+        h += '</div>';
+      }
+
+      if(m.phase==='loot'){
+        h += '<div style="position:relative; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:30px 24px;">'
+           +   '<div style="font-weight:700; font-size:12px; letter-spacing:2.4px; text-transform:uppercase; color:#c9a456;">Butin de la routine</div>'
+           +   '<div style="position:relative; margin-top:38px; height:170px; display:flex; align-items:flex-end; justify-content:center; perspective:560px;">'
+           +     (S.chest ? '<div style="position:absolute; left:50%; top:36%; width:280px; height:280px; transform:translate(-50%,-50%); background:radial-gradient(circle, rgba(242,205,114,.5), transparent 62%); animation:flashbg .7s ease-out both; pointer-events:none;"></div>' : '')
+           +     '<button data-act="openChest" style="position:relative; width:150px; height:138px; border:none; background:transparent; cursor:pointer; padding:0; animation:chestnudge 1.8s ease-in-out infinite;">'
+           +       '<div style="position:absolute; bottom:0; left:8px; width:134px; height:86px; border-radius:8px 8px 16px 16px; background:linear-gradient(180deg,#7a5320,#553914); border:2px solid #d6a84a; box-shadow:0 16px 32px rgba(0,0,0,.55);"></div>'
+           +       '<div style="position:absolute; bottom:30px; left:50%; transform:translateX(-50%); width:24px; height:28px; border-radius:5px; background:linear-gradient(180deg,#f2cd72,#c9912f); border:1px solid #8a5e18; z-index:3;"></div>'
+           +       (S.chest
+                    ? '<div style="position:absolute; top:18px; left:4px; width:142px; height:56px; border-radius:16px 16px 6px 6px; background:linear-gradient(180deg,#8a5f24,#6a4718); border:2px solid #d6a84a; transform-origin:50% 100%; animation:lidopen .5s cubic-bezier(.2,.8,.3,1) forwards; z-index:2;"></div>'
+                      + '<div style="position:absolute; top:8px; left:50%; transform:translateX(-50%); font-size:34px; animation:rewardpop .55s .15s ease both; z-index:4;">'+(isAction?'🗝️':mt.icon)+'</div>'
+                    : '<div style="position:absolute; top:18px; left:4px; width:142px; height:56px; border-radius:16px 16px 6px 6px; background:linear-gradient(180deg,#8a5f24,#6a4718); border:2px solid #d6a84a; z-index:2;"></div>')
+           +     '</button>'
+           +   '</div>';
+        if(!S.chest){
+          h += '<div style="margin-top:30px; font-size:14px; color:#9a86b8;">Tape le coffre pour l\'ouvrir</div>';
+        } else {
+          var st = mt.stat;
+          if(st){
+            h += '<div style="margin-top:24px; width:100%; padding:20px 18px; border-radius:20px; text-align:center; background:linear-gradient(180deg, rgba(40,26,60,.9), rgba(24,15,36,.92)); border:1px solid rgba(214,168,74,.32); box-shadow:0 16px 40px rgba(0,0,0,.45); animation:rewardpop .5s .15s ease both;">'
+               +   '<div style="font-weight:700; font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Stat débloquée</div>'
+               +   '<div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:42px; line-height:1; color:#f3cd72; margin-top:10px;">'+esc(st.big)+'</div>'
+               +   '<div style="margin-top:6px; font-size:14px; color:#ecdfc6;">'+esc(st.label)+'</div>'
+               +   '<div style="margin-top:8px; font-weight:500; font-size:12px; color:#9fe0b0;">'+esc(st.sub)+'</div>'
+               + '</div>';
+          }
+          h += '<div style="margin-top:14px; display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.26); font-weight:600; font-size:12px; color:#e7c878; animation:risein .4s .3s ease both;">⚔ Effet en jeu · '+esc(mt.reward.replace(/^\+\s*/,''))+'</div>'
+             + '<button class="btn-primary" data-act="collect" style="margin-top:24px; padding:16px; font-size:15px; animation:risein .4s .4s ease both;">Récupérer ✦</button>'
+             + '<button data-act="launchMini" style="margin-top:10px; width:100%; padding:14px; border:1px solid rgba(214,168,74,.4); border-radius:14px; cursor:pointer; font-weight:600; font-size:13px; background:rgba(214,168,74,.08); color:#e7c878; animation:risein .4s .5s ease both;">Lancer une mini-vague · '+miniLabel(mt)+' ⚔</button>';
+        }
+        h += '</div>';
+      }
+
+      h += '</div>';
+    }
+
+    // ===== TENTATRICE =====
+    if(S.tempt){
+      h += '<div style="position:absolute; inset:0; z-index:40; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding:34px 24px 26px; background:radial-gradient(120% 90% at 50% 30%, #1c1233 0%, #100a1e 56%, #060410 100%); animation:temptbg .4s ease both;">'
+         +   '<div style="position:absolute; top:120px; left:34%; width:5px; height:5px; border-radius:50%; background:rgba(154,108,224,.7); animation:drowsy 4.2s ease-in infinite;"></div>'
+         +   '<div style="position:absolute; top:140px; left:58%; width:4px; height:4px; border-radius:50%; background:rgba(154,108,224,.6); animation:drowsy 5s 1.1s ease-in infinite;"></div>'
+         +   '<div style="position:absolute; top:110px; left:48%; width:6px; height:6px; border-radius:50%; background:rgba(154,108,224,.55); animation:drowsy 4.6s .6s ease-in infinite;"></div>'
+         +   '<div style="flex:1;"></div>'
+         +   '<div style="position:relative; width:160px; height:172px; animation:temptrise .55s ease both;">'
+         +     '<div style="position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:158px; height:104px; background:linear-gradient(180deg,#241640,#150c26); border-radius:48% 48% 30% 30% / 64% 64% 30% 30%; box-shadow:0 18px 44px rgba(0,0,0,.55);"></div>'
+         +     '<div style="position:absolute; top:2px; left:50%; width:116px; height:138px; background:linear-gradient(180deg,#2e1d52,#1a1030); border-radius:50% 50% 42% 42% / 62% 62% 40% 40%; border:1px solid rgba(154,108,224,.22); box-shadow:0 14px 34px rgba(0,0,0,.5); animation:swayhood 7s ease-in-out infinite;"></div>'
+         +     '<div style="position:absolute; top:40px; left:50%; transform:translateX(-50%); width:70px; height:86px; background:radial-gradient(ellipse at 50% 38%, #0b0716, #050309); border-radius:50% 50% 46% 46% / 58% 58% 42% 42%;"></div>'
+         +     '<div style="position:absolute; top:74px; left:calc(50% - 14px); width:8px; height:11px; border-radius:50%; background:radial-gradient(circle,#cdb4f5,#7b54c4 62%,transparent); box-shadow:0 0 12px rgba(123,84,196,.85); animation:dimpulse 3.6s ease-in-out infinite;"></div>'
+         +     '<div style="position:absolute; top:74px; left:calc(50% + 6px); width:8px; height:11px; border-radius:50%; background:radial-gradient(circle,#cdb4f5,#7b54c4 62%,transparent); box-shadow:0 0 12px rgba(123,84,196,.85); animation:dimpulse 3.6s .4s ease-in-out infinite;"></div>'
+         +   '</div>'
+         +   '<div style="margin-top:14px; font-weight:700; font-size:11px; letter-spacing:2.6px; text-transform:uppercase; color:#b79ae0; animation:temptrise .55s .05s ease both;">La Procrastination</div>'
+         +   '<div style="margin-top:3px; font-weight:500; font-size:11px; letter-spacing:.4px; color:#6f6088; animation:temptrise .55s .08s ease both;">'+(S.tempt.peeved?'soupire…':'te murmure…')+'</div>'
+         +   '<div style="margin-top:16px; max-width:300px; text-align:center; font-family:\'Fraunces\',serif; font-style:italic; font-weight:500; font-size:20px; line-height:1.42; color:#e7dcf5; animation:temptrise .55s .12s ease both;">'+esc(S.tempt.line)+'</div>'
+         +   (S.resisted>0 ? '<div style="margin-top:16px; display:flex; align-items:center; gap:7px; padding:6px 13px; border-radius:999px; background:rgba(123,84,196,.12); border:1px solid rgba(154,108,224,.3); font-weight:600; font-size:12px; color:#c4a6f0; animation:temptrise .55s .18s ease both;">✦ Tu lui as déjà tenu tête × '+S.resisted+'</div>' : '')
+         +   '<div style="flex:1;"></div>'
+         +   '<div style="width:100%; display:flex; flex-direction:column; gap:11px; animation:temptrise .55s .22s ease both;">'
+         +     '<button class="btn-primary" data-act="resist">Non. Je m\'y mets. ✦</button>'
+         +     '<button data-act="giveIn" style="width:100%; padding:15px; border:1px solid rgba(154,108,224,.32); border-radius:14px; cursor:pointer; font-weight:500; font-size:14px; background:linear-gradient(180deg, rgba(96,68,156,.42), rgba(60,42,110,.4)); color:#d9c8f5;">Tu as raison… plus tard</button>'
+         +   '</div>'
+         + '</div>';
+    }
+
+    // ===== FORGER UNE ROUTINE =====
+    if(S.creating){
+      var on = !!(S.draftTitle||'').trim();
+      var emojiBtns = EMOJIS.map(function(ch){
+        var sel = ch===S.draftIcon;
+        return '<button data-act="pickIcon" data-icon="'+ch+'" style="aspect-ratio:1; border-radius:11px; cursor:pointer; font-size:20px; display:flex; align-items:center; justify-content:center; border:1px solid '+(sel?'#f2cd72':'rgba(214,168,74,.22)')+'; background:'+(sel?'rgba(242,205,114,.22)':'rgba(40,26,60,.5)')+';">'+ch+'</button>';
+      }).join('');
+      var catBtns = CATS.map(function(c,idx){
+        var sel = idx===S.draftCat;
+        return '<button data-act="pickCat" data-cat="'+idx+'" style="padding:9px 14px; border-radius:999px; cursor:pointer; font-weight:600; font-size:13px; border:1px solid '+(sel?'#f2cd72':'rgba(154,134,184,.3)')+'; background:'+(sel?'rgba(242,205,114,.16)':'rgba(40,26,60,.5)')+'; color:'+(sel?'#f3cd72':'#b7a7cc')+';">'+esc(c.name)+'</button>';
+      }).join('');
+      h += '<div style="position:absolute; inset:0; z-index:45; display:flex; flex-direction:column; padding:30px 24px 24px; background:radial-gradient(120% 90% at 50% 16%, #241640 0%, #150c26 54%, #0a0716 100%); animation:briefup .42s ease both; overflow-y:auto;">'
+         +   '<div style="font-weight:700; font-size:12px; letter-spacing:2.4px; text-transform:uppercase; color:#c9a456;">Forger une routine</div>'
+         +   '<div style="font-family:\'Fraunces\',serif; font-weight:700; font-size:26px; line-height:1.1; color:#fbf3e2; margin-top:8px;">Une habitude à graver dans le manoir</div>'
+         +   '<div style="margin-top:24px; font-weight:600; font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#9a86b8;">Que veux-tu accomplir ?</div>'
+         +   '<input id="draftTitle" value="'+esc(S.draftTitle)+'" placeholder="ex. Range ton bureau" maxlength="42" style="margin-top:9px; width:100%; box-sizing:border-box; padding:14px 16px; border:1px solid rgba(214,168,74,.3); border-radius:14px; background:rgba(40,26,60,.6); color:#fbf3e2; font-weight:500; font-size:18px; outline:none;" />'
+         +   '<div style="margin-top:22px; font-weight:600; font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#9a86b8;">Choisis un sceau</div>'
+         +   '<div style="margin-top:10px; display:grid; grid-template-columns:repeat(8, 1fr); gap:7px;">'+emojiBtns+'</div>'
+         +   '<div style="margin-top:22px; font-weight:600; font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:#9a86b8;">Camp — détermine le butin</div>'
+         +   '<div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px;">'+catBtns+'</div>'
+         +   '<div style="flex:1; min-height:24px;"></div>'
+         +   '<button data-act="createRoutine" style="width:100%; padding:17px; border:none; border-radius:16px; cursor:'+(on?'pointer':'default')+'; font-weight:700; font-size:16px; color:'+(on?'#1c1206':'#6f6088')+'; background:'+(on?'linear-gradient(180deg, #f2cd72, #d6a84a)':'rgba(40,26,60,.6)')+'; box-shadow:'+(on?'0 10px 26px rgba(214,168,74,.35)':'none')+'; opacity:'+(on?1:.7)+';">Forger ✦</button>'
+         +   '<button data-act="closeCreate" style="margin-top:9px; width:100%; padding:11px; border:none; border-radius:12px; cursor:pointer; font-weight:500; font-size:12px; background:transparent; color:#6f6088;">Annuler</button>'
+         + '</div>';
+    }
+
+    h += '</div>'; // .phone
+    return h;
+  }
+
+  function miniLabel(t){ var n = waveCount(t); return n + (n>1?' vagues':' vague'); }
+
+  // ---------- ACTIONS MAP ----------
+  var ACTIONS = {
+    goDoors: function(){ window.location.href = './Compagnon - Choix de profil.html'; },
+    enterManoir: function(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} },
+    doIt: startMission,
+    openTempt: function(){ openTempt('skip'); },
+    reportTempt: function(){ openTempt('mission'); },
+    openCreate: openCreate, closeCreate: closeCreate, createRoutine: createRoutine, deleteCurrent: deleteCurrent,
+    enterManoirMission: startMission,
+    closeMission: closeMission, doneRoutine: doneRoutine, openChest: openChest, collect: collect,
+    launchGame: launchGame, launchMini: launchMini,
+    resist: resist, giveIn: giveIn
+  };
+
+  // ---------- BIND + RENDER ----------
+  var app = document.getElementById('app');
+  app.addEventListener('click', function(ev){
+    var el = ev.target.closest('[data-act]'); if(!el) return;
+    var act = el.getAttribute('data-act');
+    if(act==='pickIcon'){ S.draftIcon = el.getAttribute('data-icon'); render(); return; }
+    if(act==='pickCat'){ S.draftCat = parseInt(el.getAttribute('data-cat'),10); render(); return; }
+    if(ACTIONS[act]) ACTIONS[act]();
+  });
+  app.addEventListener('input', function(ev){
+    if(ev.target.id==='draftTitle'){ S.draftTitle = ev.target.value;
+      // mise à jour du bouton Forger sans tout re-rendre (garde le focus de l'input)
+      var on = !!S.draftTitle.trim();
+      var btn = app.querySelector('[data-act="createRoutine"]');
+      if(btn){ btn.style.cursor=on?'pointer':'default'; btn.style.color=on?'#1c1206':'#6f6088'; btn.style.background=on?'linear-gradient(180deg, #f2cd72, #d6a84a)':'rgba(40,26,60,.6)'; btn.style.boxShadow=on?'0 10px 26px rgba(214,168,74,.35)':'none'; btn.style.opacity=on?1:.7; }
+    }
+  });
+
+  function render(){
+    app.innerHTML = view();
+    bootLampyre();
+  }
+
+  // ---------- CANVAS LAMPYRE (compagnon) ----------
+  var L = { cv:null, ctx:null, bitStart:null, bitNext:0, accSmile:0, accPuff:0, accWick:0, accGig:0 };
+  function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  function bootLampyre(){
+    L.cv = document.getElementById('acc-lv');
+    if(!L.cv){ return; }
+    L.ctx = L.cv.getContext('2d');
+    if(L.bitNext===0){ L.bitNext = Date.now()+2600+Math.random()*2600; }
+  }
+  function lampyreLoop(){
+    var now = Date.now();
+    if(L.cv && L.ctx){
+      if(L.bitStart===null && now>L.bitNext) L.bitStart=now;
+      var puff=0,wick=0,smile=0,gig=0;
+      if(L.bitStart!==null){
+        var e=now-L.bitStart;
+        var ss=function(a,b,x){ var t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
+        var pulse=function(c){ return e>=c ? Math.max(0,1-(e-c)/520) : 0; };
+        puff=Math.max(pulse(0), pulse(1750));
+        wick=ss(170,520,e)*(1-ss(1760,2080,e));
+        smile=ss(430,820,e)*(1-ss(1900,2240,e));
+        gig=(e>560&&e<1740)?Math.sin(e/1000*26):0;
+        if(e>2500){ L.bitStart=null; L.bitNext=now+7000+Math.random()*7000; }
+      }
+      L.accPuff=puff; L.accWick=wick; L.accSmile=smile; L.accGig=gig;
+      drawLampyre(L.ctx, now/1000);
+    }
+    requestAnimationFrame(lampyreLoop);
+  }
+  function drawLampyre(ctx,T){
+    var W=L.cv.width, H=L.cv.height; ctx.clearRect(0,0,W,H);
+    var flick=1+Math.sin(T*13)*.07+Math.sin(T*6.7)*.05;
+    var blink=(Math.sin(T*0.7)>0.985)?0.15:1;
+    var bob=Math.sin(T*2.2)*1.3 + (L.accGig||0)*1.2;
+    ctx.save(); ctx.scale(2,2); ctx.translate(52,60); ctx.scale(2.5,2.5); ctx.translate(0,bob);
+    var halo=ctx.createRadialGradient(0,-2,0,0,-2,27); halo.addColorStop(0,'rgba(240,185,78,'+(.34*flick)+')'); halo.addColorStop(1,'rgba(214,168,74,0)'); ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,-2,27,0,7); ctx.fill();
+    ctx.save(); rr(ctx,-11,-15,22,28,10); var lg=ctx.createLinearGradient(0,-15,0,13); lg.addColorStop(0,'#22142f'); lg.addColorStop(1,'#160c22'); ctx.fillStyle=lg; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(214,168,74,.55)'; ctx.stroke();
+    rr(ctx,-11,-15,22,28,10); ctx.clip();
+    var amb=ctx.createRadialGradient(0,3,0,0,3,14); amb.addColorStop(0,'rgba(240,185,78,.45)'); amb.addColorStop(1,'rgba(212,120,30,0)'); ctx.fillStyle=amb; ctx.beginPath(); ctx.arc(0,3,14,0,7); ctx.fill();
+    ctx.restore();
+    var sBlend=L.accSmile||0;
+    var ease=sBlend<0.5?2*sBlend*sBlend:1-Math.pow(-2*sBlend+2,2)/2;
+    ctx.save(); ctx.lineCap='round'; ctx.shadowColor='rgba(255,233,176,.9)';
+    var ey=-5-0.6*ease;
+    ctx.shadowBlur=6; ctx.fillStyle='#ffe9b0';
+    ctx.beginPath(); ctx.ellipse(-4.5,ey,2,(3-0.5*ease)*blink,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(4.5,ey,2,(3-0.5*ease)*blink,0,0,7); ctx.fill();
+    if(ease<0.98){ ctx.save(); ctx.globalAlpha=1-ease; ctx.shadowBlur=9; var sf=ctx.createRadialGradient(0,4,0,0,3,6*flick); sf.addColorStop(0,'#fff3cf'); sf.addColorStop(.5,'#f0b94e'); sf.addColorStop(1,'rgba(212,120,30,.12)'); ctx.fillStyle=sf; ctx.beginPath(); ctx.ellipse(0,4,2.7,4.6*flick,0,0,7); ctx.fill(); ctx.restore(); }
+    if(ease>0.02){ ctx.save(); ctx.globalAlpha=ease; var w=2.7+2.9*ease; var lift=1.2*ease; var topDip=4.0-0.4*ease;
+      ctx.shadowBlur=11; ctx.shadowColor='rgba(255,193,90,.95)';
+      ctx.beginPath(); ctx.moveTo(-w,1.0-lift); ctx.quadraticCurveTo(0,topDip,w,1.0+lift*0.3); ctx.quadraticCurveTo(0,8.6,-w,1.0-lift); ctx.closePath();
+      var fg=ctx.createRadialGradient(0,3.5,0,0,3.5,7*flick); fg.addColorStop(0,'#fff3cf'); fg.addColorStop(.5,'#f0b94e'); fg.addColorStop(1,'rgba(212,120,30,.18)'); ctx.fillStyle=fg; ctx.fill();
+      ctx.shadowBlur=6; ctx.strokeStyle='rgba(255,247,221,'+(0.9*ease)+')'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(-w*0.86,0.8-lift); ctx.quadraticCurveTo(0,topDip-0.6,w*0.86,0.8+lift*0.3); ctx.stroke();
+      ctx.restore(); }
+    ctx.shadowBlur=0; ctx.restore();
+    var wick=L.accWick||0, puff=L.accPuff||0;
+    if(wick>0.02){ var wf=(1+Math.sin(T*16)*0.13)*wick; var wob=Math.sin(T*9)*0.7; var hy=-17;
+      ctx.save(); ctx.globalAlpha=Math.min(1,wick*1.2); ctx.shadowBlur=8; ctx.shadowColor='rgba(255,180,70,.9)';
+      var hg=ctx.createRadialGradient(wob*0.4,hy-2.5*wf,0,wob*0.2,hy-1,5.2*wf); hg.addColorStop(0,'#fff6da'); hg.addColorStop(.5,'#f4b24a'); hg.addColorStop(1,'rgba(214,110,30,0)');
+      ctx.fillStyle=hg; ctx.beginPath(); ctx.moveTo(-2.3*wick,hy); ctx.quadraticCurveTo(-2.6+wob,hy-4.5*wf,wob*0.6,hy-7.5*wf); ctx.quadraticCurveTo(2.6+wob,hy-4.5*wf,2.3*wick,hy); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(wob*0.35,hy-2.6*wf,0.85,2.5*wf,0,0,7); ctx.fillStyle='rgba(255,247,221,.92)'; ctx.fill();
+      ctx.restore();
+    }
+    if(puff>0.05){ var hy2=-17; var rise=(1-puff)*20; var py=hy2-9-rise; var pr=3+(1-puff)*4.5;
+      ctx.save(); ctx.globalAlpha=puff*0.85; var pg=ctx.createRadialGradient(0,py,0,0,py,pr); pg.addColorStop(0,'rgba(255,235,170,.75)'); pg.addColorStop(.5,'rgba(240,150,60,.4)'); pg.addColorStop(1,'rgba(214,80,30,0)'); ctx.fillStyle=pg; ctx.beginPath(); ctx.ellipse(Math.sin(T*8)*1.6,py,pr*0.7,pr,0,0,7); ctx.fill(); ctx.restore();
+    }
+    ctx.strokeStyle='rgba(214,168,74,.7)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(0,-15); ctx.lineTo(0,-17); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---------- GO ----------
+  render();
+  requestAnimationFrame(lampyreLoop);
+})();
+</script>
+</body>
+</html>

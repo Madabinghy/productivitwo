@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — La Galerie des ombres (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#070510; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes risein { from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform:none } }
+  @keyframes bannerin { from{ opacity:0; transform: translateY(22px) } to{ opacity:1; transform:none } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">
+  <!-- HUD -->
+  <div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 8px;">
+    <div id="inf-goback" style="display:flex; flex-direction:column; cursor:pointer;">
+      <span style="font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:#e9dcc2;">La Galerie des ombres</span>
+      <span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">‹ Salle 3 · infiltration</span>
+    </div>
+    <button id="inf-reset" style="background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28); border-radius:999px; padding:6px 13px; cursor:pointer; font-weight:600; font-size:11px; color:#e7c878;">↺ Reprendre</button>
+  </div>
+  <!-- detection meter -->
+  <div style="position:relative; z-index:30; padding:2px 24px 10px;">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <span id="inf-label" style="font-weight:700; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:#5fb87e; min-width:96px;">Discret</span>
+      <div style="flex:1; height:7px; border-radius:999px; background:rgba(154,134,184,.16); overflow:hidden;"><div id="inf-meter" style="width:0%; height:100%; border-radius:999px; background:#5fb87e;"></div></div>
+      <span id="inf-key" style="font-size:14px; opacity:.3;">🗝️</span>
+    </div>
+    <div id="inf-obj" style="margin-top:7px; font-size:11.5px; line-height:1.45; color:#a796c0;">Trouve la clé cachée dans la salle, puis file jusqu'à la porte. Reste derrière les meubles.</div>
+  </div>
+  <!-- viewport -->
+  <div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:4px;">
+    <div style="position:relative; width:300px; height:404px; border-radius:8px; overflow:hidden; border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">
+      <canvas id="inf-cv" width="300" height="404" style="position:absolute; inset:0; width:300px; height:404px; cursor:crosshair;"></canvas>
+      <div id="inf-stick" style="position:absolute; right:16px; bottom:16px; width:96px; height:96px; border-radius:50%; background:radial-gradient(circle, rgba(40,30,58,.55), rgba(18,12,28,.45)); border:1.5px solid rgba(214,168,74,.3); touch-action:none; z-index:20;">
+        <div id="inf-thumb" style="position:absolute; left:50%; top:50%; width:42px; height:42px; margin:-21px 0 0 -21px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #5a4a72, #2a1d3e); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 4px 10px rgba(0,0,0,.5);"></div>
+      </div>
+    </div>
+  </div>
+  <!-- footer -->
+  <div id="inf-footer" style="position:relative; z-index:30; padding:10px 24px 24px;"></div>
+</div>
+
+<script>
+/* OMBRELUNE — La Galerie des ombres (infiltration), 100% VANILLA JS */
+(function(){
+  'use strict';
+
+  var VPW=300, VPH=404, WORLD_W=560, WORLD_H=820;
+  var START={ x:120, y:600 }, KEY={ x:486, y:120 }, DOOR={ x:60, y:70 };
+  var GUARDS=[
+    { x:300, y:150, dir:Math.PI/2, sweep:0.7, phase:0,   range:240, half:0.42, patrol:120 },
+    { x:470, y:430, dir:Math.PI,   sweep:0.6, phase:1.7, range:240, half:0.42, patrol:0 },
+    { x:150, y:430, dir:0,         sweep:0.6, phase:3.1, range:240, half:0.42, patrol:0 }
+  ];
+  var FURN=[
+    { x:120, y:175, w:96, h:46 }, { x:360, y:250, w:70, h:96 }, { x:220, y:320, w:96, h:46 },
+    { x:430, y:560, w:84, h:46 }, { x:130, y:560, w:96, h:46 }, { x:300, y:650, w:84, h:46 },
+    { x:470, y:210, w:60, h:84 }, { x:60,  y:330, w:60, h:80 }
+  ];
+
+  // UI state (drives footer)
+  var S = { status:'play', hasKey:false, dimmed:false, actState:'none' };
+  // game state
+  var G = {};
+
+  function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+
+  function goBack(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+  function reset(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.hasKey=false; G.flash=0; S.status='play'; S.hasKey=false; renderFooter(); }
+  function toggleLamp(){ S.dimmed=!S.dimmed; renderFooter(); }
+  function interact(){
+    if(S.status!=='play') return;
+    if(G.nearKey){ G.hasKey=true; G.nearKey=false; S.hasKey=true; renderFooter(); }
+    else if(G.nearDoor){ S.status='win'; renderFooter(); }
+  }
+
+  function jsDown(e){ if(S.status!=='play') return; e.preventDefault(); G.stickActive=true; window.addEventListener('pointermove', G._jsMove); window.addEventListener('pointerup', G._jsUp); jsMove(e); }
+  function jsMove(e){ var base=document.getElementById('inf-stick'); if(!base) return; var r=base.getBoundingClientRect(); var cx=r.left+r.width/2, cy=r.top+r.height/2; var dx=e.clientX-cx, dy=e.clientY-cy; var R=34, len=Math.hypot(dx,dy); if(len>R){ dx=dx/len*R; dy=dy/len*R; } G.move={ x:dx/R, y:dy/R }; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate('+dx+'px,'+dy+'px)'; }
+  function jsUp(){ G.stickActive=false; G.move={x:0,y:0}; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate(0,0)'; window.removeEventListener('pointermove', G._jsMove); window.removeEventListener('pointerup', G._jsUp); }
+  function onFloor(e){ if(S.status!=='play') return; var r=G.cv.getBoundingClientRect(); var sx=VPW/r.width, sy=VPH/r.height; G.tgt={ x:(e.clientX-r.left)*sx + G.cam.x, y:(e.clientY-r.top)*sy + G.cam.y }; }
+
+  function inRect(x,y,c,m){ m=m||0; return x>=c.x-m && x<=c.x+c.w+m && y>=c.y-m && y<=c.y+c.h+m; }
+  function occluded(gx,gy,bx,by){ for(var t=0.1; t<=0.9; t+=0.05){ var px=gx+(bx-gx)*t, py=gy+(by-gy)*t; if(FURN.some(function(c){ return inRect(px,py,c,2); })) return true; } return false; }
+  function guardAngle(g){ return g.dir + g.sweep*Math.sin(G.t*0.9 + g.phase); }
+  function guardPos(g){ return { x: g.x + (g.patrol ? g.patrol*Math.sin(G.t*0.5 + g.phase) : 0), y: g.y }; }
+
+  function loop(){
+    var dt=1/60; G.t+=dt;
+    var playing = S.status==='play';
+    if(playing && !G.flash){
+      var mag=Math.hypot(G.move.x, G.move.y);
+      if(G.stickActive && mag>0.06){ var spd=2.9; G.bx+=G.move.x*spd; G.by+=G.move.y*spd; G.tgt={x:G.bx,y:G.by}; }
+      else { var dx=G.tgt.x-G.bx, dy=G.tgt.y-G.by, d=Math.hypot(dx,dy), spd2=2.6; if(d>spd2){ G.bx+=dx/d*spd2; G.by+=dy/d*spd2; } else { G.bx=G.tgt.x; G.by=G.tgt.y; } }
+      G.bx=Math.max(12, Math.min(WORLD_W-12, G.bx)); G.by=Math.max(12, Math.min(WORLD_H-12, G.by));
+    }
+    G.cam.x=Math.max(0, Math.min(WORLD_W-VPW, G.bx-VPW/2));
+    G.cam.y=Math.max(0, Math.min(WORLD_H-VPH, G.by-VPH/2));
+
+    var seen=false;
+    for(var i=0;i<GUARDS.length;i++){ var g=GUARDS[i]; var gp=guardPos(g); var ang=guardAngle(g); var vx=G.bx-gp.x, vy=G.by-gp.y, dist=Math.hypot(vx,vy); if(dist>g.range) continue; var look=Math.atan2(vy,vx); var diff=Math.abs(Math.atan2(Math.sin(look-ang),Math.cos(look-ang))); if(diff<g.half && !occluded(gp.x,gp.y,G.bx,G.by)){ seen=true; break; } }
+    if(playing && !G.flash){
+      G.det += seen ? (S.dimmed?2.4:4.0) : -3.2; G.det=Math.max(0,Math.min(100,G.det));
+      G.nearKey = !G.hasKey && Math.hypot(G.bx-KEY.x, G.by-KEY.y) < 34;
+      G.nearDoor = G.hasKey && Math.hypot(G.bx-DOOR.x, G.by-DOOR.y) < 36;
+      var aSt = G.nearKey?'key':G.nearDoor?'door':'none'; if(aSt!==S.actState){ S.actState=aSt; renderFooter(); }
+      if(G.det>=100){ G.flash=1; G.det=100; setTimeout(function(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.flash=0; }, 620); }
+    }
+    draw(seen); updateHud();
+    G._raf=requestAnimationFrame(loop);
+  }
+
+  function shadowPoly(c,lx,ly,rect,range){
+    var cs=[[rect.x,rect.y],[rect.x+rect.w,rect.y],[rect.x+rect.w,rect.y+rect.h],[rect.x,rect.y+rect.h]];
+    var mn=Infinity, mx=-Infinity, cmn=cs[0], cmx=cs[0], base=Math.atan2(cs[0][1]-ly, cs[0][0]-lx);
+    for(var i=0;i<cs.length;i++){ var p=cs[i]; var a=Math.atan2(p[1]-ly,p[0]-lx); a=Math.atan2(Math.sin(a-base),Math.cos(a-base)); if(a<mn){mn=a;cmn=p;} if(a>mx){mx=a;cmx=p;} }
+    var proj=function(p){ var dx=p[0]-lx, dy=p[1]-ly, m=Math.hypot(dx,dy); return [p[0]+dx/m*range*1.8, p[1]+dy/m*range*1.8]; };
+    var pmn=proj(cmn), pmx=proj(cmx);
+    c.beginPath(); c.moveTo(cmn[0],cmn[1]); c.lineTo(pmn[0],pmn[1]); c.lineTo(pmx[0],pmx[1]); c.lineTo(cmx[0],cmx[1]); c.closePath();
+  }
+
+  function draw(seen){
+    var ctx=G.ctx, f=G.fctx, cam=G.cam, W=VPW, H=VPH;
+    ctx.clearRect(0,0,W,H);
+    ctx.save(); ctx.translate(-cam.x,-cam.y);
+    ctx.fillStyle='#17111f'; ctx.fillRect(cam.x,cam.y,W,H);
+    ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2;
+    for(var y=Math.floor(cam.y/40)*40; y<cam.y+H; y+=40){ ctx.beginPath(); ctx.moveTo(cam.x,y); ctx.lineTo(cam.x+W,y); ctx.stroke(); }
+    for(var i=0;i<GUARDS.length;i++){ var g=GUARDS[i]; var gp=guardPos(g), a=guardAngle(g); var grd=ctx.createRadialGradient(gp.x,gp.y,0,gp.x,gp.y,g.range); grd.addColorStop(0,'rgba(170,120,255,.30)'); grd.addColorStop(1,'rgba(150,90,230,0)'); ctx.fillStyle=grd; ctx.beginPath(); ctx.moveTo(gp.x,gp.y); ctx.arc(gp.x,gp.y,g.range,a-g.half,a+g.half); ctx.closePath(); ctx.fill(); }
+    for(var j=0;j<FURN.length;j++){ var c=FURN[j]; ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(c.x+3,c.y+5,c.w,c.h); ctx.fillStyle='#3a2c20'; ctx.strokeStyle='rgba(150,110,70,.55)'; ctx.lineWidth=1.4; rr(ctx,c.x,c.y,c.w,c.h,7); ctx.fill(); ctx.stroke(); ctx.fillStyle='rgba(255,210,150,.10)'; rr(ctx,c.x+3,c.y+3,c.w-6,8,4); ctx.fill(); }
+    if(!G.hasKey){ var k=KEY; var gl=ctx.createRadialGradient(k.x,k.y,0,k.x,k.y,28); gl.addColorStop(0,'rgba(242,205,114,.7)'); gl.addColorStop(1,'rgba(242,205,114,0)'); ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(k.x,k.y,28,0,7); ctx.fill(); ctx.font='20px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🗝️',k.x,k.y); }
+    var dr=DOOR; ctx.fillStyle=G.hasKey?'#11331f':'#1a1326'; rr(ctx,dr.x-17,dr.y-22,34,44,6); ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=G.hasKey?'rgba(159,224,176,.85)':'rgba(120,100,150,.5)'; ctx.stroke(); if(G.hasKey){ var dg=ctx.createRadialGradient(dr.x,dr.y,0,dr.x,dr.y,40); dg.addColorStop(0,'rgba(95,184,126,.5)'); dg.addColorStop(1,'rgba(95,184,126,0)'); ctx.fillStyle=dg; ctx.beginPath(); ctx.arc(dr.x,dr.y,40,0,7); ctx.fill(); }
+    ctx.restore();
+
+    var lx=G.lctx, gx=G.gtx;
+    lx.setTransform(1,0,0,1,0,0); lx.globalCompositeOperation='source-over'; lx.clearRect(0,0,W,H);
+    for(var gi=0;gi<GUARDS.length;gi++){ var g2=GUARDS[gi]; var gp2=guardPos(g2), a2=guardAngle(g2);
+      gx.setTransform(1,0,0,1,0,0); gx.globalCompositeOperation='source-over'; gx.clearRect(0,0,W,H); gx.translate(-cam.x,-cam.y);
+      var grd2=gx.createRadialGradient(gp2.x,gp2.y,0,gp2.x,gp2.y,g2.range); grd2.addColorStop(0,'rgba(255,255,255,1)'); grd2.addColorStop(.78,'rgba(255,255,255,1)'); grd2.addColorStop(1,'rgba(255,255,255,0)');
+      gx.fillStyle=grd2; gx.beginPath(); gx.moveTo(gp2.x,gp2.y); gx.arc(gp2.x,gp2.y,g2.range,a2-g2.half,a2+g2.half); gx.closePath(); gx.fill();
+      gx.globalCompositeOperation='destination-out';
+      for(var fi=0;fi<FURN.length;fi++){ var cc=FURN[fi]; var ccx=cc.x+cc.w/2, ccy=cc.y+cc.h/2; var da=Math.atan2(ccy-gp2.y,ccx-gp2.x); var diff2=Math.abs(Math.atan2(Math.sin(da-a2),Math.cos(da-a2))); if(diff2>g2.half+0.6) continue; if(Math.hypot(ccx-gp2.x,ccy-gp2.y)>g2.range) continue; shadowPoly(gx,gp2.x,gp2.y,cc,g2.range); gx.fill(); }
+      lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0);
+    }
+    gx.setTransform(1,0,0,1,0,0); gx.globalCompositeOperation='source-over'; gx.clearRect(0,0,W,H); gx.translate(-cam.x,-cam.y);
+    var haloR=S.dimmed?34:60; var hg=gx.createRadialGradient(G.bx,G.by,0,G.bx,G.by,haloR); hg.addColorStop(0,'rgba(255,255,255,1)'); hg.addColorStop(.7,'rgba(255,255,255,1)'); hg.addColorStop(1,'rgba(255,255,255,0)'); gx.fillStyle=hg; gx.beginPath(); gx.arc(G.bx,G.by,haloR,0,7); gx.fill();
+    lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0);
+    f.setTransform(1,0,0,1,0,0); f.globalCompositeOperation='source-over'; f.fillStyle='rgba(9,6,16,.95)'; f.fillRect(0,0,W,H);
+    f.globalCompositeOperation='destination-out'; f.drawImage(G.lightC,0,0);
+    f.globalCompositeOperation='source-over';
+    ctx.drawImage(G.fog,0,0);
+
+    for(var gk=0;gk<GUARDS.length;gk++){ var gp3=guardPos(GUARDS[gk]); drawGuard(ctx, gp3.x-cam.x, gp3.y-cam.y, seen); }
+    drawButler(ctx, G.bx-cam.x, G.by-cam.y);
+    if(G.flash){ ctx.fillStyle='rgba(150,70,200,.42)'; ctx.fillRect(0,0,W,H); }
+  }
+
+  function drawGuard(ctx,x,y,seen){ ctx.save(); ctx.translate(x,y); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(0,14,14,5,0,0,7); ctx.fill(); ctx.beginPath(); ctx.moveTo(0,-18); ctx.quadraticCurveTo(15,-14,13,8); ctx.quadraticCurveTo(0,14,-13,8); ctx.quadraticCurveTo(-15,-14,0,-18); ctx.closePath(); var g=ctx.createLinearGradient(0,-18,0,14); g.addColorStop(0,'#3a2c52'); g.addColorStop(1,'#1d1330'); ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle='rgba(154,120,200,.6)'; ctx.lineWidth=1.4; ctx.stroke(); ctx.fillStyle=seen?'#ff9d6e':'#d9b3ff'; ctx.beginPath(); ctx.ellipse(0,-3,4.5,2.4,0,0,7); ctx.fill(); ctx.restore(); }
+  function drawButler(ctx,x,y){ ctx.save(); ctx.translate(x,y); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(0,12,11,4,0,0,7); ctx.fill(); rr(ctx,-10,-12,20,22,9); var g=ctx.createLinearGradient(0,-12,0,10); g.addColorStop(0,'#2a1d3e'); g.addColorStop(1,'#181026'); ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle='rgba(214,168,74,.6)'; ctx.lineWidth=1.4; ctx.stroke(); var fg=ctx.createRadialGradient(0,-2,0,0,-2,7); fg.addColorStop(0,'#ffe9b0'); fg.addColorStop(.5,'#f0b94e'); fg.addColorStop(1,'#d4781e'); ctx.fillStyle=fg; ctx.beginPath(); ctx.ellipse(0,-2,3.5,5,0,0,7); ctx.fill(); ctx.restore(); }
+
+  function updateHud(){
+    var m=document.getElementById('inf-meter'), l=document.getElementById('inf-label'), k=document.getElementById('inf-key'), o=document.getElementById('inf-obj');
+    if(m){ var col=G.det>66?'#e0556a':G.det>33?'#e6a24e':'#5fb87e'; m.style.width=G.det+'%'; m.style.background=col; if(l){ l.style.color=col; l.textContent=G.det>66?'Repérage imminent':G.det>33?'Elle te cherche':'Discret'; } }
+    if(k){ k.style.opacity=G.hasKey?'1':'.3'; }
+    if(o){ o.textContent = G.nearKey ? 'Le bouton du bas s\u2019allume — ramasse la clé.' : G.nearDoor ? 'Le bouton du bas s\u2019allume — ouvre la porte.' : G.hasKey ? 'Clé en poche — rejoins la porte (en haut à gauche).' : 'Trouve la clé, reste derrière les meubles, évite les regards.'; }
+  }
+
+  function renderFooter(){
+    var foot=document.getElementById('inf-footer');
+    if(S.status==='win'){
+      foot.innerHTML = '<div style="padding:15px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(20,40,28,.92), rgba(12,26,18,.95)); border:1px solid rgba(95,184,126,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;">'
+        + '<div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#9fe0b0;">Évasion réussie</div>'
+        + '<div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">Clé en poche, tu as filé sous leurs regards.</div>'
+        + '<button id="inf-next" style="margin-top:12px; width:100%; padding:14px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e);">Salle suivante ✦</button>'
+        + '</div>';
+      document.getElementById('inf-next').onclick = goBack;
+      return;
+    }
+    var a=S.actState;
+    var lampLabel = S.dimmed ? '🔦 Rallumer la lampe (tu vois plus loin)' : '🌑 Voiler la lampe (ils te voient moins)';
+    var lampStyle = 'width:100%; padding:14px; border-radius:14px; cursor:pointer; border:1px solid '+(S.dimmed?'rgba(154,134,184,.4)':'rgba(214,168,74,.4)')+'; background:'+(S.dimmed?'rgba(40,30,58,.7)':'rgba(214,168,74,.1)')+'; color:'+(S.dimmed?'#b79ae0':'#e7c878')+'; font-weight:600; font-size:13px;';
+    var actStyle = 'width:100%; padding:15px; border-radius:14px; cursor:pointer; border:1px solid rgba(242,205,114,.85); background:linear-gradient(180deg, #f2cd72, #d6a84a); color:#1c1206; font-weight:800; font-size:14px; box-shadow:0 10px 24px rgba(214,168,74,.35);';
+    var label = a==='key' ? '🗝️ Ramasser la clé' : a==='door' ? '🚪 Ouvrir la porte' : lampLabel;
+    foot.innerHTML = '<button id="inf-act" style="'+(a==='none'?lampStyle:actStyle)+'">'+label+'</button>';
+    document.getElementById('inf-act').onclick = (a==='none') ? toggleLamp : interact;
+  }
+
+  function boot(){
+    G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.cam={x:0,y:0}; G.t=0; G.det=0; G.hasKey=false; G.flash=0;
+    G.move={x:0,y:0}; G.stickActive=false; G.nearKey=false; G.nearDoor=false;
+    G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(){ jsUp(); };
+    G.fog=document.createElement('canvas'); G.fog.width=VPW; G.fog.height=VPH;
+    G.lightC=document.createElement('canvas'); G.lightC.width=VPW; G.lightC.height=VPH; G.lctx=G.lightC.getContext('2d');
+    G.gtmp=document.createElement('canvas'); G.gtmp.width=VPW; G.gtmp.height=VPH; G.gtx=G.gtmp.getContext('2d');
+    G.cv=document.getElementById('inf-cv'); G.ctx=G.cv.getContext('2d'); G.fctx=G.fog.getContext('2d');
+    G.cv.addEventListener('click', onFloor);
+    document.getElementById('inf-stick').addEventListener('pointerdown', jsDown);
+    document.getElementById('inf-goback').addEventListener('click', goBack);
+    document.getElementById('inf-reset').addEventListener('click', reset);
+    renderFooter();
+    G._raf=requestAnimationFrame(loop);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
