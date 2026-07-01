@@ -39,7 +39,7 @@
   var S = { phase:'plea' };
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function pick(key){ S.phase = key; render(); }
-  function back(){ try { window.location.href = './index.html'; } catch(e){} }
+  function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
 
   function pleaHTML(){
     var choices = CHOICES.map(function(c){

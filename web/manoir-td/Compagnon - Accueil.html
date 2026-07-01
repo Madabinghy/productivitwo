@@ -71,7 +71,7 @@
   ];
 
   var MAX_WAVES = 5;
-  var GAME_URL = './index.html';
+  var GAME_URL = './' + encodeURIComponent('Manoir - Exploration.html');
   var MINI_URL = './index.html';
 
   // ---------- ÉTAT ----------
@@ -85,6 +85,19 @@
 
   try { var raw = localStorage.getItem('ombrelune_user_tasks'); if(raw) S.userTasks = JSON.parse(raw) || []; } catch(e){}
   function persistUser(){ try { localStorage.setItem('ombrelune_user_tasks', JSON.stringify(S.userTasks)); } catch(e){} }
+
+  // —— Lien IRL : boire un verre d'eau ici incrémente le compteur journalier partagé
+  //    `ombrelune_water` → le bar du manoir (Exploration) retire un verre en direct.
+  function logWaterGlass(){
+    try {
+      var today = new Date().toISOString().slice(0,10);
+      var w = { d:today, n:0 };
+      try { w = JSON.parse(localStorage.getItem('ombrelune_water')||'null') || w; } catch(e){}
+      if(w.d !== today) w = { d:today, n:0 };
+      w.n = Math.min(10, (w.n||0) + 1);
+      localStorage.setItem('ombrelune_water', JSON.stringify(w));
+    } catch(e){}
+  }
 
   // ---------- HELPERS ÉTAT ----------
   function allTasks(){ return TASKS.concat(S.userTasks || []); }
@@ -115,7 +128,7 @@
     timers.warp = setTimeout(function(){ if(S.mission){ S.mission.phase='brief'; render(); } }, 1300);
   }
   function closeMission(){ clearTimeout(timers.warp); S.mission=null; S.chest=false; render(); }
-  function doneRoutine(){ clearSkip(cur()); if(S.mission){ S.mission.phase='loot'; S.chest=false; render(); } }
+  function doneRoutine(){ var t=cur(); clearSkip(t); if(t && t.rk==='eau') logWaterGlass(); if(S.mission){ S.mission.phase='loot'; S.chest=false; render(); } }
   function openChest(){ if(!S.chest){ S.chest=true; render(); } }
   function collect(){
     var t = S.mission && S.mission.task;
@@ -365,7 +378,7 @@
   // ---------- ACTIONS MAP ----------
   var ACTIONS = {
     goDoors: function(){ window.location.href = './Compagnon - Choix de profil.html'; },
-    enterManoir: function(){ try { window.location.href = './index.html'; } catch(e){} },
+    enterManoir: function(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} },
     doIt: startMission,
     openTempt: function(){ openTempt('skip'); },
     reportTempt: function(){ openTempt('mission'); },

@@ -71,7 +71,7 @@
 
   function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 
-  function goBack(){ try { window.location.href = './index.html'; } catch(e){} }
+  function goBack(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
   function reset(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.hasKey=false; G.flash=0; S.status='play'; S.hasKey=false; renderFooter(); }
   function toggleLamp(){ S.dimmed=!S.dimmed; renderFooter(); }
   function interact(){

@@ -45,7 +45,7 @@
   function gather(key){ if(S.collected[key]) return; S.collected[key]=true; render(); }
   function select(key){ if(!allDone()) return; S.sel=key; S.wrong=null; render(); }
   function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; } else { S.wrong=S.sel; } render(); }
-  function back(){ try { window.location.href = './index.html'; } catch(e){} }
+  function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
 
   function playHTML(){
     var done = allDone();
