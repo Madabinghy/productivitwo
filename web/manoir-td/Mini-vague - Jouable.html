@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — Mini-vague (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html,body{ margin:0; }
+  *{ box-sizing:border-box; }
+  @keyframes flick { 0%,100%{ transform: scaleY(1); opacity:1 } 50%{ transform: scaleY(.82); opacity:.8 } }
+  @keyframes risein { from{ opacity:0; transform: translateY(14px) } to{ opacity:1; transform:none } }
+  @keyframes rewardpop { 0%{ opacity:0; transform: translateY(20px) scale(.7) } 60%{ opacity:1; transform: translateY(-4px) scale(1.06) } 100%{ opacity:1; transform:none } }
+  #beat { display:inline-block; width:9px; height:9px; border-radius:50%; background:#c9a6e8; animation:flick 1s infinite; }
+  .frame { position:relative; width:390px; height:780px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 80% at 50% -10%, #2a1840 0%, #160d22 46%, #0c0814 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column; }
+  @media (max-width:430px){
+    body > .wrap{ padding:0 !important; min-height:100dvh !important; }
+    .frame{ width:100vw !important; height:100dvh !important; border-radius:0 !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0b0710; font-family:'Outfit',sans-serif; padding:24px;">
+  <div class="frame">
+
+    <!-- HUD -->
+    <div style="position:relative; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:18px 20px 12px;">
+      <div style="display:flex; align-items:center; gap:7px; padding:6px 12px; border-radius:999px; background:rgba(214,168,74,.12); border:1px solid rgba(214,168,74,.3);">
+        <div style="width:13px; height:13px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #ffe6a6, #d6a84a 65%, #8a5a16); box-shadow:0 0 8px rgba(214,168,74,.7);"></div>
+        <span id="mass" style="font-family:'Outfit'; font-weight:700; font-size:14px; color:#f2cd72;">150</span>
+        <span style="font-family:'Outfit'; font-weight:500; font-size:11px; color:#9a86b8;">masse</span>
+      </div>
+      <div id="waveLabel" style="font-family:'Outfit'; font-weight:700; font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Préparation</div>
+      <div id="candles" style="display:flex; align-items:center; gap:4px;"></div>
+    </div>
+
+    <!-- FIELD (canvas) -->
+    <div style="position:relative; flex:1; margin:4px 16px 0; border-radius:22px; overflow:hidden; border:1px solid rgba(214,168,74,.14);">
+      <canvas id="field" style="position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none;"></canvas>
+      <div id="prepHint" style="position:absolute; left:0; right:0; bottom:14px; text-align:center; font-family:'Outfit'; font-weight:500; font-size:13px; color:#b7a7cc; pointer-events:none; animation:risein .5s ease both;">Choisis une tourelle, pose-la sur un socle</div>
+    </div>
+
+    <!-- BOTTOM BAR -->
+    <div style="position:relative; z-index:20; padding:12px 18px 22px;">
+      <div id="prepBar">
+        <div id="palette" style="display:flex; gap:10px; margin-bottom:11px;"></div>
+        <button id="startBtn" style="width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-family:'Outfit'; font-weight:700; font-size:16px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 10px 24px rgba(214,168,74,.35), 0 0 0 1px rgba(255,255,255,.15) inset;">Lancer la vague ⚔</button>
+      </div>
+      <div id="runBar" style="display:none; align-items:center; justify-content:center; gap:10px; padding:15px; border-radius:16px; background:rgba(150,90,196,.1); border:1px solid rgba(150,90,196,.28); font-family:'Outfit'; font-weight:600; font-size:14px; color:#c9a6e8;">
+        <span id="beat"></span>
+        <span id="runStatus">Les flemmes attaquent</span>
+      </div>
+    </div>
+
+    <!-- WIN -->
+    <div id="winScreen" style="display:none; position:absolute; inset:0; z-index:40; flex-direction:column; align-items:center; justify-content:center; padding:32px 26px; background:radial-gradient(120% 90% at 50% 30%, rgba(42,24,64,.96), rgba(12,8,20,.98));">
+      <div style="font-family:'Outfit'; font-weight:700; font-size:12px; letter-spacing:2.4px; text-transform:uppercase; color:#9fe0b0;">Manoir tenu</div>
+      <div id="lootIcon" style="margin-top:14px; font-size:54px; animation:rewardpop .55s ease both;">💧</div>
+      <div style="margin-top:18px; width:100%; padding:20px 18px; border-radius:20px; text-align:center; background:linear-gradient(180deg, rgba(40,26,60,.9), rgba(24,15,36,.92)); border:1px solid rgba(214,168,74,.32); box-shadow:0 16px 40px rgba(0,0,0,.45); animation:rewardpop .5s .12s ease both;">
+        <div style="font-family:'Outfit'; font-weight:700; font-size:10px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Butin de la vague</div>
+        <div id="lootTitle" style="margin-top:10px; font-family:'Fraunces',serif; font-weight:700; font-size:26px; line-height:1.1; color:#fbf3e2;"></div>
+        <div style="margin-top:10px; display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.26); font-family:'Outfit'; font-weight:600; font-size:12px; color:#e7c878;">⚔ <span id="lootEffect"></span></div>
+      </div>
+      <button class="restart" style="margin-top:24px; width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-family:'Outfit'; font-weight:700; font-size:15px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.4), 0 0 0 1px rgba(255,255,255,.15) inset;">Récupérer ✦</button>
+    </div>
+
+    <!-- FAIL -->
+    <div id="failScreen" style="display:none; position:absolute; inset:0; z-index:40; flex-direction:column; align-items:center; justify-content:center; padding:32px 26px; background:radial-gradient(120% 90% at 50% 30%, rgba(34,16,40,.96), rgba(10,6,16,.98));">
+      <div style="font-size:46px; opacity:.85;">🌑</div>
+      <div style="margin-top:16px; font-family:'Fraunces',serif; font-weight:600; font-size:23px; line-height:1.3; color:#e9dcc2; text-align:center;">Les flemmes ont soufflé les bougies…</div>
+      <div style="margin-top:10px; font-family:'Outfit'; font-size:14px; line-height:1.5; color:#9a86b8; text-align:center;">Pas grave. La veilleuse rallume tout — on retente cette routine quand tu veux.</div>
+      <button class="restart" style="margin-top:26px; width:100%; padding:16px; border:none; border-radius:16px; cursor:pointer; font-family:'Outfit'; font-weight:700; font-size:15px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.4), 0 0 0 1px rgba(255,255,255,.15) inset;">Réessayer</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===== coordinate space = field pixel size =====
+  var FIELD_W = 358, FIELD_H = 540;
+
+  // ===== game constants (ported verbatim from proto) =====
+  var TYPES = {
+    brasier: { name:'Brasier', el:'Feu · projectile', col:'#ff6b3d', cost:50, dmg:14, rate:600,  range:120, mode:'proj' },
+    sniper:  { name:'Sniper',  el:'Tir long · rayon', col:'#cfe7ff', cost:85, dmg:42, rate:1700, range:210, mode:'beam' },
+  };
+  var TICK = 40, CENTER = 163;
+  var COFFRE_Y = FIELD_H - 64;               // 476
+  var COFFRE_CX = FIELD_W / 2;               // 179 (coffre = left:50%)
+  var PAD_DEFS = [
+    { x:58, y:150 }, { x:268, y:150 },
+    { x:58, y:280 }, { x:268, y:280 },
+  ];
+
+  var LOOTS = {
+    eau:       { icon:'💧', title:'Première bougie rallumée', effect:'Renforce tes tourelles' },
+    vaisselle: { icon:'🍽️', title:'Antre rangé', effect:'Bonus de défense' },
+    lecture:   { icon:'📖', title:'Manoir éclairci', effect:'Vision étendue' },
+    meditation:{ icon:'🧘', title:'Souffle retrouvé', effect:'Régénère Lampyre' },
+  };
+
+  // ===== state =====
+  var S = {
+    mass:150, lives:4, phase:'prep', waveIndex:0, selType:'brasier',
+    flemmes:[], turrets:[], shots:[], beams:[], deaths:[], motes:[],
+  };
+  var totalWaves = 2, routine = 'eau', LOOT = LOOTS.eau;
+  var waveQuota = 0, spawned = 0, spawnTimer = 0, _id = 0;
+  function nid(){ return ++_id; }
+
+  (function initParams(){
+    var p = new URLSearchParams(location.search);
+    totalWaves = Math.max(1, Math.min(5, parseInt(p.get('waves')||'2',10) || 2));
+    routine = p.get('routine') || 'eau';
+    LOOT = LOOTS[routine] || LOOTS.eau;
+  })();
+
+  // ===== actions =====
+  function selectType(key){ S.selType = key; renderChrome(); }
+  function placeTurret(px, py){
+    if (S.phase !== 'prep' && S.phase !== 'breather') return;
+    var type = S.selType, cost = TYPES[type].cost;
+    if (S.mass < cost) return;
+    if (S.turrets.some(function(t){ return t.px === px && t.py === py; })) return;
+    S.mass -= cost;
+    S.turrets.push({ id:nid(), px:px, py:py, cd:0, ang:-90, type:type });
+    renderChrome();
+  }
+  function startWave(){
+    var w = S.waveIndex + 1;
+    waveQuota = 3 + w * 2; spawned = 0; spawnTimer = 0;
+    S.phase = 'wave'; S.waveIndex = w;
+    renderChrome();
+  }
+  function restart(){ try { window.location.href = './' + encodeURIComponent('Compagnon - Accueil.html'); } catch(e){} }
+
+  // ===== main loop (ported verbatim) =====
+  function tick(){
+    if (S.phase !== 'wave') return;
+    var dt = TICK;
+    var flemmes = S.flemmes, turrets = S.turrets, shots = S.shots;
+    var beams = S.beams.filter(function(b){ b.life -= dt; return b.life > 0; });
+    var deaths = S.deaths.filter(function(d){ d.t -= dt; return d.t > 0; });
+    var motes = S.motes.filter(function(m){ m.t -= dt; return m.t > 0; });
+    var mass = S.mass, lives = S.lives;
+
+    var w = S.waveIndex;
+    if (spawned < waveQuota) {
+      spawnTimer -= dt;
+      if (spawnTimer <= 0) {
+        spawnTimer = 560;
+        var isMecha = w >= 2 && spawned % 3 === 2;
+        spawned++;
+        var lane = CENTER + (Math.random() * 56 - 28);
+        var base = 44 + (w - 1) * 16;
+        var hp = isMecha ? Math.round(base * 1.6) : base;
+        var spd = (isMecha ? 0.42 : 0.55) + w * 0.045 + Math.random() * 0.1;
+        var col = isMecha ? '#c9a6ff' : '#b06cff';
+        flemmes.push({ id:nid(), x:lane, y:-24, hp:hp, max:hp, spd:spd, hit:0, kind:isMecha?'mecha':'spider', col:col });
+      }
+    }
+
+    var reached = [];
+    flemmes.forEach(function(f){
+      f.y += f.spd * (dt / 16.7);
+      if (f.hit > 0) f.hit -= dt;
+      if (f.y >= COFFRE_Y) reached.push(f.id);
+    });
+    if (reached.length) {
+      lives -= reached.length;
+      flemmes = flemmes.filter(function(f){ return reached.indexOf(f.id) < 0; });
+    }
+
+    var fById = {}; flemmes.forEach(function(f){ fById[f.id] = f; });
+
+    turrets.forEach(function(t){
+      var ty = TYPES[t.type], tx = t.px, tyy = t.py;
+      var best = null, bd = ty.range;
+      flemmes.forEach(function(f){
+        var d = Math.hypot(f.x - tx, f.y - tyy);
+        if (d < bd) { bd = d; best = f; }
+      });
+      if (best) {
+        t.ang = Math.atan2(best.y - tyy, best.x - tx) * 180 / Math.PI;
+        t.cd -= dt;
+        if (t.cd <= 0) {
+          t.cd = ty.rate;
+          if (ty.mode === 'beam') {
+            best.hp -= ty.dmg; best.hit = 160;
+            beams.push({ id:nid(), x1:tx, y1:tyy, x2:best.x, y2:best.y, col:ty.col, life:150, max:150 });
+          } else {
+            shots.push({ id:nid(), x:tx, y:tyy - 6, target:best.id, dmg:ty.dmg, col:ty.col });
+          }
+        }
+      } else {
+        t.cd = Math.min(t.cd, 150);
+      }
+    });
+
+    var aliveShots = [];
+    shots.forEach(function(s){
+      var tgt = fById[s.target];
+      if (!tgt) return;
+      var dx = tgt.x - s.x, dy = tgt.y - s.y, d = Math.hypot(dx, dy);
+      if (d < 13) { tgt.hp -= s.dmg; tgt.hit = 160; }
+      else { s.x += (dx / d) * 7.5; s.y += (dy / d) * 7.5; aliveShots.push(s); }
+    });
+    shots = aliveShots;
+
+    var survivors = [];
+    flemmes.forEach(function(f){
+      if (f.hp <= 0) {
+        var val = Math.round(6 + f.max / 14);
+        mass += val;
+        deaths.push({ id:nid(), x:f.x, y:f.y, t:360, max:360 });
+        motes.push({ id:nid(), x:f.x, y:f.y, val:val, t:900, max:900 });
+      } else survivors.push(f);
+    });
+    flemmes = survivors;
+
+    var phase = 'wave';
+    var waveDone = spawned >= waveQuota && flemmes.length === 0;
+    if (lives <= 0) { phase = 'fail'; flemmes = []; shots = []; beams = []; }
+    else if (waveDone) { phase = (S.waveIndex >= totalWaves) ? 'win' : 'breather'; }
+
+    S.flemmes = flemmes; S.turrets = turrets; S.shots = shots; S.beams = beams;
+    S.deaths = deaths; S.motes = motes; S.mass = mass; S.lives = lives;
+    var changed = phase !== S.phase; S.phase = phase;
+    if (changed) renderChrome(); else { document.getElementById('mass').textContent = S.mass; syncCandles(); document.getElementById('runStatus').textContent = 'Les flemmes attaquent — ' + S.flemmes.length + ' en jeu'; }
+  }
+
+  // ===== HTML chrome sync =====
+  var elMass = document.getElementById('mass');
+  var elWaveLabel = document.getElementById('waveLabel');
+  var elCandles = document.getElementById('candles');
+  var elPalette = document.getElementById('palette');
+  var elPrepBar = document.getElementById('prepBar');
+  var elRunBar = document.getElementById('runBar');
+  var elStart = document.getElementById('startBtn');
+  var elPrepHint = document.getElementById('prepHint');
+  var elWin = document.getElementById('winScreen');
+  var elFail = document.getElementById('failScreen');
+  var elRunStatus = document.getElementById('runStatus');
+
+  function syncCandles(){
+    var html = '';
+    for (var i = 0; i < 4; i++) {
+      var on = i < S.lives;
+      html += '<div style="width:14px;height:18px;border-radius:50% 50% 40% 40%;'
+        + (on
+          ? 'background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 60%, #d4781e);box-shadow:0 0 10px rgba(240,185,78,.8);animation:flick 1.4s ease-in-out ' + (i*0.2) + 's infinite;'
+          : 'background:#2a1f38;box-shadow:none;opacity:.5;')
+        + '"></div>';
+    }
+    elCandles.innerHTML = html;
+  }
+
+  function renderChrome(){
+    var phase = S.phase;
+    elMass.textContent = S.mass;
+    elWaveLabel.textContent = phase === 'prep' ? 'Préparation' : 'Vague ' + S.waveIndex + ' / ' + totalWaves;
+    syncCandles();
+
+    var canBuild = phase === 'prep' || phase === 'breather';
+    // palette
+    var ph = '';
+    Object.keys(TYPES).forEach(function(key){
+      var ty = TYPES[key], sel = S.selType === key, afford = S.mass >= ty.cost;
+      var nameCol = sel ? '#fbf3e2' : (afford ? '#e7dcf5' : '#6f6088');
+      ph += '<button data-type="' + key + '" style="flex:1;display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:14px;cursor:pointer;text-align:left;'
+        + 'background:' + (sel ? 'rgba(214,168,74,.14)' : 'rgba(255,255,255,.03)') + ';'
+        + 'border:1.5px solid ' + (sel ? ty.col : 'rgba(154,134,184,.25)') + ';'
+        + 'opacity:' + (afford ? 1 : .5) + ';">'
+        + '<div style="width:13px;height:13px;border-radius:50%;flex:none;background:radial-gradient(circle at 38% 32%, #fff, ' + ty.col + ' 70%);box-shadow:0 0 9px ' + ty.col + ';"></div>'
+        + '<div style="display:flex; flex-direction:column; align-items:flex-start; line-height:1.15;">'
+        + '<span style="font-family:\'Outfit\'; font-weight:700; font-size:13px; color:' + nameCol + ';">' + ty.name + '</span>'
+        + '<span style="font-family:\'Outfit\'; font-weight:500; font-size:11px; color:#9a86b8;">' + ty.cost + ' · ' + ty.el + '</span>'
+        + '</div></button>';
+    });
+    elPalette.innerHTML = ph;
+    Array.prototype.forEach.call(elPalette.querySelectorAll('button'), function(b){
+      b.addEventListener('click', function(){ selectType(b.getAttribute('data-type')); });
+    });
+
+    var showStart = phase === 'prep' || phase === 'breather';
+    elPrepBar.style.display = showStart ? 'block' : 'none';
+    elRunBar.style.display = phase === 'wave' ? 'flex' : 'none';
+    elStart.textContent = phase === 'prep' ? 'Lancer la vague ⚔' : 'Vague suivante ⚔';
+    elRunStatus.textContent = 'Les flemmes attaquent — ' + S.flemmes.length + ' en jeu';
+    elPrepHint.style.display = phase === 'prep' ? 'block' : 'none';
+
+    elWin.style.display = phase === 'win' ? 'flex' : 'none';
+    elFail.style.display = phase === 'fail' ? 'flex' : 'none';
+    if (phase === 'win') {
+      document.getElementById('lootIcon').textContent = LOOT.icon;
+      document.getElementById('lootTitle').textContent = LOOT.title;
+      document.getElementById('lootEffect').textContent = LOOT.effect;
+    }
+  }
+
+  elStart.addEventListener('click', startWave);
+  Array.prototype.forEach.call(document.querySelectorAll('.restart'), function(b){ b.addEventListener('click', restart); });
+
+  // ===== canvas rendering =====
+  var canvas = document.getElementById('field');
+  var ctx = canvas.getContext('2d');
+  var VW = FIELD_W, VH = FIELD_H;   // actual field pixel size (1:1, no stretch — matches proto's absolute divs)
+  function resize(){
+    var dpr = window.devicePixelRatio || 1;
+    VW = canvas.clientWidth || FIELD_W;
+    VH = canvas.clientHeight || FIELD_H;
+    canvas.width = Math.round(VW * dpr);
+    canvas.height = Math.round(VH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+
+  function rgba(hex, a){
+    hex = hex.replace('#',''); if (hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+    var n = parseInt(hex,16);
+    return 'rgba(' + ((n>>16)&255) + ',' + ((n>>8)&255) + ',' + (n&255) + ',' + a + ')';
+  }
+
+  function drawField(now){
+    ctx.clearRect(0, 0, VW, VH);
+
+    // field background
+    var bg = ctx.createRadialGradient(VW/2, 0, 0, VW/2, 0, VH*1.05);
+    bg.addColorStop(0, '#241636'); bg.addColorStop(0.6, '#160d22'); bg.addColorStop(1, '#0c0814');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, VW, VH);
+
+    // floor path strip (center, from top to bottom:64)
+    var stripW = 96, sx = VW/2 - stripW/2, stripBot = VH - 64;
+    var strip = ctx.createLinearGradient(0, 0, 0, stripBot);
+    strip.addColorStop(0, 'rgba(123,84,196,.16)'); strip.addColorStop(1, 'rgba(123,84,196,.05)');
+    ctx.fillStyle = strip; ctx.fillRect(sx, 0, stripW, stripBot);
+    ctx.save(); ctx.setLineDash([5,5]); ctx.strokeStyle = 'rgba(170,140,210,.2)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(sx+.5, 0); ctx.lineTo(sx+.5, stripBot); ctx.moveTo(sx+stripW-.5, 0); ctx.lineTo(sx+stripW-.5, stripBot); ctx.stroke(); ctx.restore();
+
+    // spawn portal (top center)
+    var pg = ctx.createRadialGradient(VW/2, 4, 0, VW/2, 4, 60);
+    pg.addColorStop(0, 'rgba(150,90,196,.5)'); pg.addColorStop(0.7, 'rgba(150,90,196,0)');
+    ctx.save(); ctx.filter = 'blur(2px)'; ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.ellipse(VW/2, 4, 60, 30, 0, 0, Math.PI*2); ctx.fill(); ctx.restore();
+
+    // build pads
+    var canBuild = S.phase === 'prep' || S.phase === 'breather';
+    var cost = TYPES[S.selType].cost;
+    var placeable = canBuild && S.mass >= cost;
+    if (canBuild) {
+      PAD_DEFS.forEach(function(d){
+        if (S.turrets.some(function(t){ return t.px === d.x && t.py === d.y; })) return;
+        var pulse = placeable ? (0.65 + 0.3 * (0.5 + 0.5*Math.sin(now/900))) : 1;
+        ctx.save();
+        ctx.globalAlpha = placeable ? pulse : 1;
+        ctx.beginPath(); ctx.arc(d.x, d.y, 26, 0, Math.PI*2);
+        ctx.fillStyle = placeable ? 'rgba(214,168,74,.12)' : 'rgba(214,168,74,.05)';
+        ctx.fill();
+        ctx.setLineDash([5,4]); ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(214,168,74,' + (placeable ? '.55' : '.25') + ')';
+        ctx.stroke();
+        ctx.restore();
+        if (placeable) {
+          ctx.save(); ctx.globalAlpha = pulse;
+          ctx.fillStyle = '#f2cd72'; ctx.font = '700 22px Outfit, sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText('+', d.x, d.y + 1); ctx.restore();
+        }
+      });
+    }
+
+    // turrets
+    S.turrets.forEach(function(t){
+      var ty = TYPES[t.type], col = ty.col, R = ty.range, a = t.ang * Math.PI/180;
+      // cone (sector centered on aim, inner hole)
+      ctx.save();
+      var cg = ctx.createRadialGradient(t.px, t.py, R*0.3, t.px, t.py, R);
+      cg.addColorStop(0, rgba(col, .15)); cg.addColorStop(1, rgba(col, 0));
+      ctx.fillStyle = cg;
+      ctx.beginPath();
+      ctx.arc(t.px, t.py, R, a - Math.PI/4, a + Math.PI/4);
+      ctx.arc(t.px, t.py, R*0.3, a + Math.PI/4, a - Math.PI/4, true);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      // base (rotated rounded square)
+      ctx.save(); ctx.translate(t.px, t.py); ctx.rotate(Math.PI/4);
+      var bgr = ctx.createLinearGradient(-19, -19, 19, 19);
+      bgr.addColorStop(0, '#3a2752'); bgr.addColorStop(1, '#241636');
+      roundRect(ctx, -19, -19, 38, 38, 10); ctx.fillStyle = bgr; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = col;
+      ctx.shadowColor = rgba(col, .5); ctx.shadowBlur = 12; ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.restore();
+      // barrel (points at aim)
+      ctx.save(); ctx.translate(t.px, t.py); ctx.rotate(a);
+      var br = ctx.createLinearGradient(0, 0, 24, 0);
+      br.addColorStop(0, col); br.addColorStop(1, '#fff6dd');
+      roundRect(ctx, 0, -3.5, 24, 7, 3.5); ctx.fillStyle = br; ctx.fill();
+      ctx.restore();
+      // core
+      ctx.save();
+      var core = ctx.createRadialGradient(t.px, t.py, 0, t.px, t.py, 6);
+      core.addColorStop(0, '#fff6dd'); core.addColorStop(1, col);
+      ctx.fillStyle = core; ctx.shadowColor = col; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(t.px, t.py, 6, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // beams
+    S.beams.forEach(function(b){
+      var op = Math.max(0, b.life / b.max);
+      ctx.save(); ctx.globalAlpha = op; ctx.lineCap = 'round'; ctx.lineWidth = 3;
+      var g = ctx.createLinearGradient(b.x1, b.y1, b.x2, b.y2);
+      g.addColorStop(0, b.col); g.addColorStop(1, rgba(b.col, .33));
+      ctx.strokeStyle = g; ctx.shadowColor = b.col; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo(b.x2, b.y2); ctx.stroke();
+      ctx.restore();
+    });
+
+    // flemmes
+    S.flemmes.forEach(function(f){
+      var wob = 1 + 0.06 * Math.sin(now/350 + f.id);
+      if (f.kind === 'mecha') drawMecha(f, wob); else drawSpider(f, wob);
+      // hp bar
+      var pct = Math.max(0, f.hp / f.max);
+      ctx.fillStyle = 'rgba(0,0,0,.5)';
+      roundRect(ctx, f.x - 15, f.y - 26, 30, 4, 2); ctx.fill();
+      ctx.fillStyle = pct > .5 ? '#9fe0b0' : (pct > .25 ? '#f2cd72' : '#e0746a');
+      roundRect(ctx, f.x - 15, f.y - 26, 30 * pct, 4, 2); ctx.fill();
+    });
+
+    // deaths (poof)
+    S.deaths.forEach(function(d){
+      var k = 1 - d.t / d.max;            // 0→1
+      var scale = 1 + 0.9 * k, op = 0.9 * (1 - k), r = 18 * scale;
+      ctx.save(); ctx.globalAlpha = op;
+      var g = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, r);
+      g.addColorStop(0, 'rgba(201,166,232,.7)'); g.addColorStop(0.7, 'rgba(201,166,232,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // motes
+    S.motes.forEach(function(m){
+      var age = 1 - m.t / m.max;
+      var scale = age < 0.4 ? (0.3 + (1.15-0.3)*(age/0.4)) : (1.15 - 0.15*Math.min(1,(age-0.4)/0.1));
+      scale = Math.max(0.3, Math.min(1.15, scale));
+      ctx.save(); ctx.shadowColor = 'rgba(242,205,114,.9)'; ctx.shadowBlur = 8;
+      var g = ctx.createRadialGradient(m.x - 2, m.y - 2.5, 0, m.x, m.y, 5*scale);
+      g.addColorStop(0, '#fff6dd'); g.addColorStop(0.6, '#f2cd72'); g.addColorStop(1, '#c9912f');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(m.x, m.y, 5*scale, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // shots
+    S.shots.forEach(function(s){
+      ctx.save(); ctx.shadowColor = s.col; ctx.shadowBlur = 8;
+      var g = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, 4);
+      g.addColorStop(0, '#fff6dd'); g.addColorStop(1, s.col);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // coffre (objective)
+    drawCoffre();
+  }
+
+  function roundRect(ctx, x, y, w, h, r){
+    if (w < 2*r) r = w/2; if (h < 2*r) r = h/2;
+    ctx.beginPath();
+    ctx.moveTo(x+r, y); ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r); ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r); ctx.closePath();
+  }
+
+  function drawCoffre(){
+    var cx = VW / 2, bottom = VH - 8;   // coffre left:50%, bottom:8
+    ctx.save();
+    // glow
+    var g = ctx.createRadialGradient(cx, bottom - 31, 0, cx, bottom - 31, 60);
+    g.addColorStop(0, 'rgba(214,168,74,.3)'); g.addColorStop(0.7, 'rgba(214,168,74,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(cx, bottom - 31, 60, 44, 0, 0, Math.PI*2); ctx.fill();
+    // chest body (bottom rect)
+    var bodyX = cx - 42, bodyY = bottom - 42, bodyG = ctx.createLinearGradient(0, bodyY, 0, bottom);
+    bodyG.addColorStop(0, '#7a5320'); bodyG.addColorStop(1, '#4f330f');
+    roundRect(ctx, bodyX, bodyY, 84, 42, 8); ctx.fillStyle = bodyG; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#d6a84a'; ctx.stroke();
+    // chest lid (top rounded)
+    var lidY = bottom - 42 - 22, lidG = ctx.createLinearGradient(0, lidY, 0, lidY + 30);
+    lidG.addColorStop(0, '#8a5f24'); lidG.addColorStop(1, '#624114');
+    roundRect(ctx, cx - 45, lidY, 90, 30, 8); ctx.fillStyle = lidG; ctx.fill();
+    ctx.strokeStyle = '#d6a84a'; ctx.stroke();
+    // lock
+    var lockG = ctx.createLinearGradient(0, lidY + 16, 0, lidY + 36);
+    lockG.addColorStop(0, '#f2cd72'); lockG.addColorStop(1, '#c9912f');
+    roundRect(ctx, cx - 8, lidY + 16, 16, 20, 4); ctx.fillStyle = lockG; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = '#8a5e18'; ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSpider(f, wob){
+    var b = f.col, S30 = 30;
+    ctx.save(); ctx.translate(f.x, f.y); ctx.scale(wob, 2 - wob);
+    // legs
+    ctx.lineCap = 'round';
+    [58,82,106,130].forEach(function(a){
+      [1,-1].forEach(function(sgn){
+        var th = sgn * a * Math.PI/180, L = S30 * 0.52;
+        var ex = -L * Math.sin(th), ey = L * Math.cos(th);
+        var g = ctx.createLinearGradient(0, 0, ex, ey);
+        g.addColorStop(0, b); g.addColorStop(1, rgba(b, .4));
+        ctx.strokeStyle = g; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(ex, ey); ctx.stroke();
+      });
+    });
+    // body glow
+    ctx.shadowColor = rgba(b, .67); ctx.shadowBlur = 10;
+    var bg = ctx.createRadialGradient(0, 2 - S30*0.09, 0, 0, 2, S30*0.29);
+    bg.addColorStop(0, b); bg.addColorStop(0.7, rgba(b, .27)); bg.addColorStop(0.86, 'rgba(0,0,0,0)');
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(0, 2, S30*0.29, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    // head
+    var hy = -S30*0.2;
+    var hg = ctx.createRadialGradient(0, hy - S30*0.03, 0, 0, hy, S30*0.17);
+    hg.addColorStop(0, b); hg.addColorStop(0.75, rgba(b, .33));
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, hy, S30*0.17, 0, Math.PI*2); ctx.fill();
+    // eyes
+    ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 5;
+    [-3, 3].forEach(function(ex){ ctx.beginPath(); ctx.arc(ex, -S30*0.22, 1.5, 0, Math.PI*2); ctx.fill(); });
+    ctx.restore();
+  }
+
+  function drawMecha(f, wob){
+    var eye = f.col, S30 = 30, m1 = '#454d5e', m2 = '#1b2130', edge = '#828fa6';
+    ctx.save(); ctx.translate(f.x, f.y); ctx.scale(wob, 2 - wob);
+    // legs
+    ctx.lineCap = 'round';
+    [-1,1].forEach(function(dx){
+      var g = ctx.createLinearGradient(0, 0, 0, 11);
+      g.addColorStop(0, m1); g.addColorStop(1, m2);
+      ctx.strokeStyle = g; ctx.lineWidth = 3;
+      ctx.save(); ctx.translate(dx*7, 4); ctx.rotate(dx*20*Math.PI/180);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,11); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.translate(dx*11, 1); ctx.rotate(dx*46*Math.PI/180);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,9); ctx.stroke(); ctx.restore();
+    });
+    // hexagon body
+    var hs = S30*0.64, hr = hs/2;
+    ctx.save(); ctx.shadowColor = rgba(eye, .33); ctx.shadowBlur = 8;
+    ctx.beginPath();
+    // polygon(50% 0,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%) mapped to [-hr..hr]
+    var pts = [[0,-hr],[0.43*hs,-0.25*hs],[0.43*hs,0.25*hs],[0,hr],[-0.43*hs,0.25*hs],[-0.43*hs,-0.25*hs]];
+    pts.forEach(function(p,i){ i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); }); ctx.closePath();
+    var bgr = ctx.createLinearGradient(-hr, -hr, hr, hr);
+    bgr.addColorStop(0, m1); bgr.addColorStop(1, m2);
+    ctx.fillStyle = bgr; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = edge; ctx.stroke();
+    ctx.restore();
+    // eye slit
+    ctx.save(); ctx.shadowColor = eye; ctx.shadowBlur = 9;
+    ctx.fillStyle = eye; roundRect(ctx, -S30*0.22, -3, S30*0.44, 4, 2); ctx.fill();
+    ctx.restore();
+    // antenna
+    ctx.strokeStyle = edge; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -S30*0.42); ctx.lineTo(0, -S30*0.42 - 6); ctx.stroke();
+    ctx.save(); ctx.shadowColor = eye; ctx.shadowBlur = 7; ctx.fillStyle = eye;
+    ctx.beginPath(); ctx.arc(0, -S30*0.42 - 8.5, 2.5, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    ctx.restore();
+  }
+
+  // ===== pointer (place turrets by tapping pads) =====
+  function padHit(clientX, clientY){
+    var r = canvas.getBoundingClientRect();
+    var x = (clientX - r.left) * (VW / r.width);
+    var y = (clientY - r.top) * (VH / r.height);
+    var canBuild = S.phase === 'prep' || S.phase === 'breather';
+    if (!canBuild) return;
+    for (var i = 0; i < PAD_DEFS.length; i++) {
+      var d = PAD_DEFS[i];
+      if (S.turrets.some(function(t){ return t.px === d.x && t.py === d.y; })) continue;
+      if (Math.hypot(x - d.x, y - d.y) <= 36) { placeTurret(d.x, d.y); return; }
+    }
+  }
+  // Tap detection that works for mouse AND touch (a plain 'click' can be swallowed
+  // on touch devices, especially with touch-action:none) — use pointer down/up.
+  var tapStart = null;
+  function onDown(e){ tapStart = { x: e.clientX, y: e.clientY, t: Date.now() }; }
+  function onUp(e){
+    if (!tapStart) { padHit(e.clientX, e.clientY); return; }
+    var moved = Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y);
+    var quick = Date.now() - tapStart.t < 700;
+    tapStart = null;
+    if (moved <= 16 && quick) padHit(e.clientX, e.clientY);
+  }
+  if (window.PointerEvent) {
+    canvas.addEventListener('pointerdown', onDown);
+    canvas.addEventListener('pointerup', onUp);
+  } else {
+    canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mouseup', onUp);
+    canvas.addEventListener('touchstart', function(e){ var t=e.changedTouches[0]; onDown({clientX:t.clientX, clientY:t.clientY}); }, {passive:true});
+    canvas.addEventListener('touchend', function(e){ var t=e.changedTouches[0]; onUp({clientX:t.clientX, clientY:t.clientY}); e.preventDefault(); });
+  }
+
+  // ===== boot =====
+  var raf, booted = false;
+  function frame(now){ drawField(now || 0); raf = requestAnimationFrame(frame); }
+  function boot(){
+    if (booted) return; booted = true;
+    resize(); renderChrome();
+    setInterval(tick, TICK);
+    raf = requestAnimationFrame(frame);
+  }
+  if (document.fonts && document.fonts.ready) { document.fonts.ready.then(boot); setTimeout(boot, 500); }
+  else boot();
+})();
+</script>
+</body>
+</html>

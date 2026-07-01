@@ -313,7 +313,6 @@
     triggerStair(){ if(!this.nearStair) return; if(this.nearStair.back) this.exitSubScene(); else this.enterStair(this.nearStair); }
     triggerPoi(){ const p=this.curPoi; if(!p) return;
       if(p.kind==='stair') this.triggerStair();
-      else if(p.kind==='drink') this.drink();
       else if(p.kind==='realize') this.solveWaterQuest(); }
     saveWater(){ try{ localStorage.setItem('ombrelune_water', JSON.stringify({d:this._wdate, n:this.drunk})); }catch(e){} }
     saveQuest(){ try{ localStorage.setItem('ombrelune_water_quest', JSON.stringify({s:this.quest, n:this.noticedCount})); }catch(e){} }
@@ -331,7 +330,8 @@
       this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=0.5;
       this.updateHud(); }
     // boire DANS le manoir — débloqué seulement après l'enquête résolue
-    drink(){ if(this.quest!=='solved' || !this.barRow || this.drunk>=this.barRow.n) return;
+    drink(){ return; /* choix B : jamais de gorgée dans le manoir — la gorgée réelle se fait sur la page de validation des routines ; le bar reste OBSERVATION seule. */
+      if(this.quest!=='solved' || !this.barRow || this.drunk>=this.barRow.n) return;
       this.drunk++; this.saveWater();
       this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=1;
       if(this.drunk>=this.barRow.n) this.toast={t:'Dix verres bus aujourd\u2019hui. Mission accomplie\u2014\u00e0 demain.', t0:performance.now()};
@@ -342,7 +342,7 @@
         lines:[
           {who:'Toi', t:'Il manque un verre depuis tout \u00e0 l\u2019heure\u2026 et c\u2019est moi qui ai bu, dehors.'},
           {who:'Toi', t:'J\u2019ai compris\u00a0: le manoir compte mes vrais verres d\u2019eau.'},
-          {who:'Lampyre', mood:'smile', t:'Voil\u00e0 ta premi\u00e8re mission : dix verres dans la journ\u00e9e. Et d\u00e9sormais, tu peux boire ici m\u00eame.'},
+          {who:'Lampyre', mood:'smile', t:'Voil\u00e0 ta premi\u00e8re mission : dix verres dans la journ\u00e9e. Bois-les pour de vrai\u2014le manoir, lui, tient le compte.'},
         ]};
       this.updateHud(); }
     advanceDialogue(){ if(!this.dialogue) return; this.dialogue.i++;
@@ -420,7 +420,7 @@
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
         if(atBar){
-          if(this.quest==='solved'){ if(this.drunk<this.barRow.n) poi={kind:'drink', text:'Boire un verre d\u2019eau', color:'#9fd4ee', glyph:'\u25D3', dwell:false, hint:'clic'}; }
+          if(false){ /* choix B : observation seule */ if(this.drunk<this.barRow.n) poi={kind:'drink', text:'Boire un verre d\u2019eau', color:'#9fd4ee', glyph:'\u25D3', dwell:false, hint:'clic'}; }
           else if(this.quest==='noticed' && this.drunk>this.noticedCount){ poi={kind:'realize', text:'\u00ab J\u2019ai compris\u2026 \u00bb', color:'#f2cd72', glyph:'\u2605', dwell:false, hint:'clic'}; }
         }
       }
