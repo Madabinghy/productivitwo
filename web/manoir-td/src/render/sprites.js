@@ -1,6 +1,5 @@
 // Sprites dessinés au canvas (pas de formes CSS empilées) : flemmes, coffre, cristaux, héros.
 // Vue de dessus stricte ; chaque sprite est dessiné dans son repère local puis transformé.
-import { drawArt } from './art.js';
 
 function hpBar(ctx, x, y, w, f) {
   ctx.save();
@@ -100,24 +99,20 @@ export function drawCoffre(ctx, coffre, th, danger, t) {
   ctx.globalAlpha = 1;
   // ombre
   ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(0, 26, 26, 6, 0, 0, 7); ctx.fill();
-  // caisson : sprite PNG designé, sinon fallback canvas
-  if (danger) { ctx.shadowColor = acc; ctx.shadowBlur = 16; }
-  if (!drawArt(ctx, 'coffre', 0.38, 0, { center: true })) {
-    const S = 58;
-    ctx.save();
-    const bg = ctx.createLinearGradient(-S / 2, -S / 2, S / 2, S / 2);
-    bg.addColorStop(0, '#3a4150'); bg.addColorStop(1, '#171c27');
-    ctx.fillStyle = bg; ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.shadowColor = acc; ctx.shadowBlur = 14;
-    ctx.beginPath(); ctx.rect(-S / 2, -S / 2, S, S); ctx.fill(); ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#10141d'; ctx.strokeStyle = acc; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, S * 0.25, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = acc + 'aa'; ctx.lineWidth = 2;
-    for (const a of [0, 45, 90, 135]) { const r = a * Math.PI / 180; ctx.beginPath(); ctx.moveTo(-Math.sin(r) * S * 0.23, Math.cos(r) * S * 0.23); ctx.lineTo(Math.sin(r) * S * 0.23, -Math.cos(r) * S * 0.23); ctx.stroke(); }
-    ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, 7); ctx.fill();
-    ctx.restore();
-  }
+  // caisson (canvas)
+  const S = 58;
+  ctx.save();
+  const bg = ctx.createLinearGradient(-S / 2, -S / 2, S / 2, S / 2);
+  bg.addColorStop(0, '#3a4150'); bg.addColorStop(1, '#171c27');
+  ctx.fillStyle = bg; ctx.strokeStyle = acc; ctx.lineWidth = 2; ctx.shadowColor = acc; ctx.shadowBlur = danger ? 16 : 14;
+  ctx.beginPath(); ctx.rect(-S / 2, -S / 2, S, S); ctx.fill(); ctx.stroke();
   ctx.shadowBlur = 0;
+  ctx.fillStyle = '#10141d'; ctx.strokeStyle = acc; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, S * 0.25, 0, 7); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = acc + 'aa'; ctx.lineWidth = 2;
+  for (const a of [0, 45, 90, 135]) { const r = a * Math.PI / 180; ctx.beginPath(); ctx.moveTo(-Math.sin(r) * S * 0.23, Math.cos(r) * S * 0.23); ctx.lineTo(Math.sin(r) * S * 0.23, -Math.cos(r) * S * 0.23); ctx.stroke(); }
+  ctx.fillStyle = acc; ctx.shadowColor = acc; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(0, 0, 3.5, 0, 7); ctx.fill();
+  ctx.restore();
   ctx.restore();
 
   // libellé
@@ -138,10 +133,7 @@ export function drawCrystal(ctx, cr, t) {
   const g = ctx.createRadialGradient(0, -6, 0, 0, -6, gr);
   g.addColorStop(0, 'rgba(150,200,255,' + (0.14 + f * 0.22).toFixed(2) + ')'); g.addColorStop(1, 'transparent');
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -6, gr, 0, 7); ctx.fill();
-  ctx.globalAlpha = 0.6 + f * 0.4;
-  // sprite PNG designé (brille selon le remplissage), sinon fallback canvas
-  if (drawArt(ctx, 'gisement', 0.32 + f * 0.12, 0, { center: true })) { ctx.restore(); return; }
-  const sc = 0.72 + f * 0.5; ctx.scale(sc, sc);
+  const sc = 0.72 + f * 0.5; ctx.globalAlpha = 0.5 + f * 0.5; ctx.scale(sc, sc);
   // socle
   ctx.fillStyle = 'rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0, 10, 18, 5, 0, 0, 7); ctx.fill();
   const base = ctx.createLinearGradient(0, 0, 0, 12); base.addColorStop(0, '#3a3550'); base.addColorStop(1, '#1b1730');

@@ -4,31 +4,18 @@ import { TCOL, GRID, turretStats, radarRadius, VIS, costOf } from '../config.js'
 import { rayDist, compass } from '../geometry.js';
 import { visionSources, canPlaceAt } from '../systems/vision.js';
 import { armMuzzle } from '../systems/hero.js';
-import { drawArt } from './art.js';
+import { drawTurret as drawTurretPack } from './canvas-ready/turrets.js';
 
 const isBuilt = (t) => t.built !== false;
 
-// ── Sprites PNG designés (fidèles au handoff) ─────────────────────────────────
-// Échelle commune (px écran / px natif) ; chaque sprite est dimensionné pour son rôle.
-const ART_SCALE = 0.64;
-function turretArtName(p) {
-  const lv = p.level || 1;
-  if (MUZZLE[p.key]) return { name: `tourelle-${p.key}-niv${lv}`, rot: 'face' };
-  if (p.key === 'bercail') return { name: `bercail-niv${lv}`, rot: 0 };
-  if (p.key === 'radar') return { name: 'radar', rot: 'spin' };
-  if (p.key === 'satellite') return { name: 'satellite', rot: 0 };
-  if (p.key === 'bouclier') return { name: 'bouclier', rot: 'face' };
-  return null;
-}
-// Tente le sprite PNG (orienté pour les offensives + bouclier, balayage pour le radar).
-// Renvoie false si pas encore chargé → fallback canvas (turretSprite).
-function drawTurretArt(ctx, p, facing, t) {
-  const a = turretArtName(p); if (!a) return false;
-  const rot = a.rot === 'face' ? facing : a.rot === 'spin' ? (t * 50) % 360 : 0;
-  return drawArt(ctx, a.name, ART_SCALE, rot);
-}
+// ── Rendu 100% Canvas (pack canvas-ready) ─────────────────────────────────────
+// Les tourelles offensives couvertes par le pack se dessinent avec drawTurretPack
+// (embase + fûts orientés + cœur, niveaux 1→4). Les autres (spectre/calice + soutien)
+// gardent le rendu canvas local (turretSprite). Plus aucun PNG.
+const PACK_TURRETS = new Set(['brasier', 'givre', 'fulgur', 'venin', 'arcane', 'sniper']);
+function turretPackSize(level) { return 60 + ((level || 1) - 1) * 7; }  // niv1 ~60 → niv4 ~81 px
 
-// Échelle d'affichage de la tourelle : plus grosse, et grandit nettement avec le niveau.
+// Échelle d'affichage de la tourelle (rendu canvas local, soutien + spectre/calice).
 function turretScale(key, level) {
   const lv = level || 1;
   const base = key === 'sniper' ? 1.45 : 1.6;
@@ -268,8 +255,10 @@ export function drawPlaced(game, ctx, th, t) {
 
     ctx.save(); ctx.translate(p.x, p.y);
     if (building) { ctx.globalAlpha = 0.28 + bprog * 0.42; }
-    if (!drawTurretArt(ctx, p, facing, t)) {     // sprite PNG, sinon fallback canvas
-      const sc = turretScale(p.key, p.level);     // plus grosses, surtout niv 3/4
+    if (PACK_TURRETS.has(p.key)) {               // rendu canvas du pack (fûts orientés)
+      drawTurretPack(ctx, 0, 0, p.key, p.level, t, { size: turretPackSize(p.level), angle: facing });
+    } else {                                     // soutien + spectre/calice : canvas local
+      const sc = turretScale(p.key, p.level);
       ctx.scale(sc, sc);
       turretSprite(ctx, p.key, facing, p.level, p, t);
     }
@@ -326,7 +315,9 @@ export function drawGhost(game, ctx, th, t) {
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(0, 0, 40, 0, 7); ctx.stroke();
   ctx.setLineDash([]); ctx.shadowBlur = 0;
   // silhouette (même échelle qu'une tourelle posée niv 1)
-  if (!drawTurretArt(ctx, { key, level: 1 }, face, t)) {
+  if (PACK_TURRETS.has(key)) {
+    drawTurretPack(ctx, 0, 0, key, 1, t, { size: turretPackSize(1), angle: face });
+  } else {
     const sc = turretScale(key, 1); ctx.scale(sc, sc);
     turretSprite(ctx, key, face, 1, { key, level: 1 }, t);
   }
