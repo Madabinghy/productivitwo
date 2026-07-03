@@ -5497,18 +5497,19 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
               ),
-              // Manoir d'Ombrelune — bascule vers le jeu (WebView)
+              // Manoir d'Ombrelune — bascule vers le jeu (WebView pontée : les
+              // routines/chronos réels de Productivitwo rallument le manoir).
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.castle_outlined),
                 title: const Text("Manoir d'Ombrelune"),
-                subtitle: const Text('Ouvrir le jeu (bêta)'),
+                subtitle: const Text('Entrer dans le manoir (bêta)'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                        builder: (_) => const ManoirScreen()),
+                        builder: (_) => ManoirScreen(logic: logic)),
                   );
                 },
               ),
