@@ -61,6 +61,7 @@
     { kind:'routine', rk:'vaisselle', kindLabel:'Environnement · quotidien', icon:'🍽️', title:'Fais la vaisselle', reward:'+ Bonus de défense', line:'Range ton antre. Évier vide, c’est un rempart de plus contre les flemmes.', tempt:'La vaisselle ? Tu la feras demain. Ce soir, tu mérites de te reposer.', stat:{ big:'23', label:'fois ce mois-ci', sub:'82 % des soirs — ton meilleur mois' } },
     { kind:'routine', rk:'lecture', kindLabel:'Apprentissage · quotidien', icon:'📖', title:'Lis 30 minutes', reward:'+ Vision étendue', line:'Trente minutes de lecture éclaircissent le manoir. Juste une page pour commencer ?', tempt:'Ce livre ne s’envolera pas. Ferme les yeux, juste un instant…', stat:{ big:'2 h 50', label:'de lecture cette semaine', sub:'+25 min vs la semaine passée' } },
     { kind:'action', kindLabel:'Au front · projet', icon:'🗝️', title:'Avance sur ton projet : 1 pas', reward:'Ouvre le coffre de l’ennemi', line:'La prochaine étape t’attend dans le coffre adverse. Un seul pas suffit pour aujourd’hui.', tempt:'Un si grand projet… demain tu seras plus frais. Ce soir, repose-toi.' },
+    { kind:'routine', rk:'rangement', kindLabel:'Environnement · quotidien', icon:'🧹', title:'Range un coin', reward:'+ Le jardin refleurit', line:'Un seul coin. Le jardin du manoir se souvient de chaque geste.', tempt:'Ce coin est très bien comme il est. Personne ne le regarde, de toute façon.', stat:{ big:'4 coins', label:'rangés cette semaine', sub:'Vétch approuve' } },
     { kind:'routine', rk:'meditation', kindLabel:'Bien-être · quotidien', icon:'🧘', title:'Médite 1 minute', reward:'+ Régénère le héros', line:'Avant la prochaine vague : une minute, juste pour souffler.', tempt:'Tu es déjà immobile, déjà si calme. Pourquoi en faire plus ?', stat:{ big:'9 jours', label:'de méditation d’affilée', sub:'série de calme +1' } }
   ];
 
@@ -99,6 +100,30 @@
     } catch(e){}
   }
 
+  // —— Lien IRL générique : toute routine accomplie est comptée dans `ombrelune_sync`
+  //    (les salles du manoir s'éclairent en Exploration), et remontée à l'app
+  //    Productivitwo — la Console du Commander — via le pont ManoirBridge quand
+  //    le jeu tourne en WebView (un vrai HabitHit y est alors loggué).
+  function readSync(){
+    var today = new Date().toISOString().slice(0,10);
+    var s = { d:today, routines:{}, focusMin:0 };
+    try { s = JSON.parse(localStorage.getItem('ombrelune_sync')||'null') || s; } catch(e){}
+    if(s.d !== today) s = { d:today, routines:{}, focusMin:0 };
+    s.routines = s.routines || {};
+    return s;
+  }
+  function logRoutineDone(rk){
+    if(!rk) return;
+    try {
+      var s = readSync();
+      var r = s.routines[rk] || { n:0, t:1 };
+      r.n = (r.n||0) + 1;
+      s.routines[rk] = r;
+      localStorage.setItem('ombrelune_sync', JSON.stringify(s));
+    } catch(e){}
+    try { if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'routine_done', rk:rk })); } catch(e){}
+  }
+
   // ---------- HELPERS ÉTAT ----------
   function allTasks(){ return TASKS.concat(S.userTasks || []); }
   function cur(){ var a = allTasks(); return a[S.i % a.length]; }
@@ -128,7 +153,7 @@
     timers.warp = setTimeout(function(){ if(S.mission){ S.mission.phase='brief'; render(); } }, 1300);
   }
   function closeMission(){ clearTimeout(timers.warp); S.mission=null; S.chest=false; render(); }
-  function doneRoutine(){ var t=cur(); clearSkip(t); if(t && t.rk==='eau') logWaterGlass(); if(S.mission){ S.mission.phase='loot'; S.chest=false; render(); } }
+  function doneRoutine(){ var t=cur(); clearSkip(t); if(t && t.rk==='eau') logWaterGlass(); if(t) logRoutineDone(t.rk); if(S.mission){ S.mission.phase='loot'; S.chest=false; render(); } }
   function openChest(){ if(!S.chest){ S.chest=true; render(); } }
   function collect(){
     var t = S.mission && S.mission.task;
@@ -377,7 +402,7 @@
 
   // ---------- ACTIONS MAP ----------
   var ACTIONS = {
-    goDoors: function(){ window.location.href = './Compagnon - Choix de profil.html'; },
+    goDoors: function(){ window.location.href = './Compagnon - Choix de profil.html?choose=1'; },
     enterManoir: function(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} },
     doIt: startMission,
     openTempt: function(){ openTempt('skip'); },

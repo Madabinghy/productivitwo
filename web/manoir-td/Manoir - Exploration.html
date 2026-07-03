@@ -230,6 +230,42 @@
         {room:'cabinet', fx:0.5, fy:0.5, kind:'look', glyph:'✧', label:'Admirer les trophées',
          lines:['Une vitrine de trophées poussiéreux. Chacun raconte une habitude tenue jusqu’au bout.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
+      // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
+      { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
+          x:at.x+at.w*0.5, y:at.y+at.h*0.30, ph:1.7, lines:[]}); }
+
+      // —— Missions du jour : une action RÉELLE (enregistrée dans la Console — l'app
+      // Productivitwo — ou sur l'écran d'accueil) rallume la salle de son PNJ.
+      // L'état vient d'`ombrelune_sync` (écrit par le pont app ou par l'Accueil).
+      this.MISSIONS=[
+        {room:'office',    npc:'Sylvain',  rk:'vaisselle',  title:'L’office impeccable', irl:'Fais la vaisselle',
+         ask:['« L’évier déborde et l’Office s’éteint à mesure. Je n’y arrive plus seul. »','« Fais la vaisselle — pour de vrai, dans ton antre. La Console tiendra le compte, et l’Office se rallumera. »'],
+         wait:'« L’évier t’attend toujours. Fais-le en vrai — je le saurai, et l’Office brillera. »',
+         thanks:'« Un évier vide… Monsieur me sauve. Regarde comme l’Office brille à nouveau. »'},
+        {room:'biblio',    npc:'Doria',    rk:'lecture',    title:'Les pages perdues', irl:'Lis quelques pages',
+         ask:['« Les mots s’effacent des livres quand personne ne lit. La Bibliothèque s’assombrit. »','« Lis quelques pages — de ton côté du miroir. Chaque page rallume un rayonnage. »'],
+         wait:'« Toujours rien lu ? Les étagères patientent, mais pas la lumière. »',
+         thanks:'« Tu as lu. Les mots sont revenus se poser sur les pages — et la lumière avec. »'},
+        {room:'jardin',    npc:'Vétch',    rk:'rangement',  title:'Le coin oublié', irl:'Range un coin',
+         ask:['« Le désordre de ton monde fait pousser les ronces ici. Le jardin étouffe. »','« Range un coin — un seul. Le jardin s’en souviendra et refleurira. »'],
+         wait:'« Le coin est toujours en friche, pas vrai ? Un geste, et le jardin respire. »',
+         thanks:'« Tu sens ? L’air est plus léger. Ton coin rangé a fait refleurir le mien. »'},
+        {room:'vestibule', npc:'Ombeline', rk:'meditation', title:'La veillée sereine', irl:'Médite 1 minute',
+         ask:['« Le Vestibule tremble de tous tes soucis. Ma lanterne refuse de s’allumer là-dedans. »','« Offre-moi une minute de calme — médite, respire. Le Vestibule s’apaisera avec toi. »'],
+         wait:'« Toujours cette agitation… Une minute, les yeux fermés. C’est tout ce que je demande. »',
+         thanks:'« Là… le calme est revenu. Ma lanterne brûle à nouveau. Merci pour cette minute. »'},
+        {room:'atelier',   npc:null,       rk:'focus', target:25, title:'La Forge du temps', irl:'25 min de travail concentré',
+         ask:['La Forge est froide. Elle ne s’allume qu’au temps réellement forgé — lance un chrono dans la Console et travaille.'],
+         wait:'La Forge chauffe doucement…',
+         thanks:'La Forge rugit ! 25 minutes forgées aujourd’hui — l’Atelier est incandescent.'},
+      ];
+      this.misByRoom={}; for(const m of this.MISSIONS) this.misByRoom[m.room]=m;
+      this.reloadSync(true);
+      let ms={d:today,proposed:[],celebrated:[]};
+      try{ ms=JSON.parse(localStorage.getItem('ombrelune_missions')||'null')||ms; }catch(e){}
+      if(ms.d!==today) ms={d:today,proposed:[],celebrated:[]};
+      this.mProposed=new Set(ms.proposed||[]); this.mCelebrated=new Set(ms.celebrated||[]);
+      this.checkCelebrations();
 
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
@@ -258,7 +294,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -359,10 +395,40 @@
       else if(p.kind==='realize') this.solveWaterQuest();
       else if(p.kind==='fragment') this.collectFragment(p.frag);
       else if(p.kind==='mirror_enter') this.enterMirrorPuzzle();
-      else if(p.kind==='spot') this.talkSpot(p.spot); }
+      else if(p.kind==='spot') this.talkSpot(p.spot);
+      else if(p.kind==='console') this.openConsole(); }
     talkSpot(sp){ if(!sp || this.dialogue) return;
+      // PNJ ou point porteur d'une mission du jour → dialogue selon l'état réel
+      const m=this.misByRoom && this.misByRoom[sp.room];
+      const owns = m && ((sp.kind==='npc' && m.npc && sp.name.startsWith(m.npc)) || (sp.kind==='look' && !m.npc && sp.label===m.title));
+      if(owns){
+        const who=m.npc||'Lampyre';
+        if(this.missionDone(m)){
+          this.dialogue={ i:0, endLabel:'✨', lines:[{who, mood:'smile', t:m.thanks}] }; }
+        else if(this.mProposed.has(m.room)){
+          let t=m.wait; if(m.rk==='focus') t='La Forge chauffe… '+Math.min(m.target,(this.sync.focusMin||0))+'/'+m.target+' min forgées aujourd’hui.';
+          this.dialogue={ i:0, endLabel:'J’y vais', lines:[{who, mood:'doubt', t}] }; }
+        else {
+          this.mProposed.add(m.room); this.saveMissions();
+          this.dialogue={ i:0, endLabel:'Mission acceptée',
+            onEnd:()=>{ this.toast={t:'Mission : '+m.title+' — '+m.irl+' (pour de vrai).', t0:performance.now()}; },
+            lines: m.ask.map((t,i)=>({who, mood: i===0?'doubt':'idle', t})) }; }
+        this.updateHud(); return;
+      }
       this.dialogue={ i:0, endLabel:'Fermer',
         lines: sp.lines.map((t,i)=>({who:'Lampyre', mood: i===0?'idle':'smile', t})) };
+      this.updateHud(); }
+    // La Console du Commander = l'app Productivitwo (l'interface technique du manoir).
+    // En WebView le pont ferme le jeu et ramène à l'app ; en web pur, simple explication.
+    openConsole(){ if(this.dialogue) return;
+      const bridged=!!window.ManoirBridge;
+      this.dialogue={ i:0, endLabel: bridged?'Ouvrir la Console':'Compris',
+        onEnd:()=>{ if(bridged){ try{ window.ManoirBridge.postMessage(JSON.stringify({type:'open_console'})); }catch(e){} }
+          else this.toast={t:'La Console = l’app Productivitwo. Tes actions réelles y sont enregistrées.', t0:performance.now()}; },
+        lines:[
+          {who:'Lampyre', mood:'idle', t:'Le coffre du manoir cache la Console du Commander — la salle des machines de ta vie réelle.'},
+          {who:'Lampyre', mood:'smile', t:'Routines, chronos, projets : tout s’y règle. Le manoir, lui, reflète ce que tu y accomplis.'},
+        ] };
       this.updateHud(); }
     saveWater(){ try{ localStorage.setItem('ombrelune_water', JSON.stringify({d:this._wdate, n:this.drunk})); }catch(e){} }
     saveQuest(){ try{ localStorage.setItem('ombrelune_water_quest', JSON.stringify({s:this.quest, n:this.noticedCount})); }catch(e){} }
@@ -395,13 +461,27 @@
       this.drunk++; this.saveWater();
       this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=0.5;
       this.updateHud(); }
-    // boire DANS le manoir — débloqué seulement après l'enquête résolue
-    drink(){ return; /* choix B : jamais de gorgée dans le manoir — la gorgée réelle se fait sur la page de validation des routines ; le bar reste OBSERVATION seule. */
-      if(this.quest!=='solved' || !this.barRow || this.drunk>=this.barRow.n) return;
-      this.drunk++; this.saveWater();
-      this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=1;
-      if(this.drunk>=this.barRow.n) this.toast={t:'Dix verres bus aujourd\u2019hui. Mission accomplie\u2014\u00e0 demain.', t0:performance.now()};
-      this.updateHud(); }
+    // —— Missions du jour : état lu depuis `ombrelune_sync` (pont app / Accueil).
+    reloadSync(initial){
+      const today=new Date().toISOString().slice(0,10);
+      let s={d:today,routines:{},focusMin:0};
+      try{ s=JSON.parse(localStorage.getItem('ombrelune_sync')||'null')||s; }catch(e){}
+      if(s.d!==today) s={d:today,routines:{},focusMin:0};
+      s.routines=s.routines||{}; this.sync=s;
+      if(!initial){ this.checkCelebrations(); this.updateHud(); } }
+    missionDone(m){ if(!this.sync||!m) return false;
+      if(m.rk==='focus') return (this.sync.focusMin||0)>=(m.target||25);
+      const r=this.sync.routines[m.rk]; return !!r && (r.n||0)>=(r.t||1); }
+    missionsDoneCount(){ return this.MISSIONS.filter(m=>this.missionDone(m)).length; }
+    saveMissions(){ try{ localStorage.setItem('ombrelune_missions', JSON.stringify({d:this._wdate, proposed:[...this.mProposed], celebrated:[...this.mCelebrated]})); }catch(e){} }
+    // une salle vient de se rallumer (action réelle détectée) → flash + toast, une fois par jour
+    checkCelebrations(){ if(!this.MISSIONS||!this.mCelebrated) return; let changed=false;
+      for(const m of this.MISSIONS){ if(!this.missionDone(m) || this.mCelebrated.has(m.room)) continue;
+        this.mCelebrated.add(m.room); changed=true;
+        const r=this.byk[m.room]; this.flash=Math.max(this.flash,0.6);
+        this.toast={t:'✨ '+r.label+' se rallume — '+m.irl+' : fait.', t0:performance.now()};
+        this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); }
+      if(changed) this.saveMissions(); }
     solveWaterQuest(){ if(this.quest==='solved'||this.dialogue) return;
       this.dialogue={ i:0, endLabel:'C\u2019est compris', onEnd:()=>{ this.quest='solved'; this.saveQuest();
           this.toast={t:'Mission re\u00e7ue : boire 10 verres d\u2019eau dans la journ\u00e9e.', t0:performance.now()}; },
@@ -484,14 +564,13 @@
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
       else if(this.mquest!=='solved' && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
+      else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
+        if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
-        if(atBar){
-          if(false){ /* choix B : observation seule */ if(this.drunk<this.barRow.n) poi={kind:'drink', text:'Boire un verre d\u2019eau', color:'#9fd4ee', glyph:'\u25D3', dwell:false, hint:'clic'}; }
-          else if(this.quest==='noticed' && this.drunk>this.noticedCount){ poi={kind:'realize', text:'\u00ab J\u2019ai compris\u2026 \u00bb', color:'#f2cd72', glyph:'\u2605', dwell:false, hint:'clic'}; }
-        }
+        if(atBar && this.quest==='noticed' && this.drunk>this.noticedCount){ poi={kind:'realize', text:'\u00ab J\u2019ai compris\u2026 \u00bb', color:'#f2cd72', glyph:'\u2605', dwell:false, hint:'clic'}; }
       }
       if(atBar && this.quest==='none' && !this.dialogue){ this.quest='noticed'; this.noticedCount=this.drunk; this.saveQuest();
         this.dialogue={ i:0, endLabel:'Hmm\u2026', lines:[{who:'Lampyre', mood:'doubt', t:'Tiens\u2026 un verre d\u2019eau, \u00e0 moiti\u00e9 vide. Qui a bien pu le laisser l\u00e0\u00a0?'}] }; this.updateHud(); }
@@ -512,13 +591,16 @@
       const dl=this.dialogue?this.dialogue.lines[this.dialogue.i]:null;
       h.showDlg=!!dl; h.dlgWho=dl?dl.who:''; h.dlgText=dl?dl.t:''; h.dlgColor=dl?(dl.who==='Lampyre'?'#9fd4ee':'#f2cd72'):'#f2cd72';
       h.dlgBtn=this.dialogue?(this.dialogue.i>=this.dialogue.lines.length-1?(this.dialogue.endLabel||'Fermer'):'Suivant \u25b8'):'';
-      const FT=this.FRAGS.length; const waterTxt=this.drunk>=10?'Mission accomplie \u2014 10 verres bus':('Boire 10 verres d\u2019eau \u00b7 '+this.drunk+'/10');
+      const FT=this.FRAGS.length;
       if(this.mquest!=='solved'){ h.showMission=true;
         h.missText = this.mquest==='found' ? 'R\u00e9parer le miroir \u00b7 Salle des miroirs'
           : (this.mgot.size>=2 ? 'Trouver la Salle des miroirs \u00b7 '+this.mgot.size+'/'+FT+' \u00e9clats'
           : 'Retrouver les \u00e9clats de miroir \u00b7 '+this.mgot.size+'/'+FT); }
-      else if(this.quest==='solved'){ h.showMission=true; h.missText=waterTxt; }
-      else { h.showMission=true; h.missText='Lumi\u00e8re r\u00e9tablie \u2014 le Grand Hall suit tes verres d\u2019eau'; }
+      else { // miroirs r\u00e9solus \u2192 objectif quotidien : rallumer le manoir par ses actions r\u00e9elles
+        const lit=this.missionsDoneCount() + (this.drunk>=10?1:0); const tot=this.MISSIONS.length+1;
+        h.showMission=true;
+        h.missText = lit>=tot ? 'Manoir rallum\u00e9 \u2014 '+tot+'/'+tot+' salles \u00b7 \u00e0 demain'
+          : 'Rallumer le manoir \u00b7 '+lit+'/'+tot+' salles \u00b7 eau '+this.drunk+'/10'; }
       const o=this._hud;
       if(o.room!==h.room||o.scene!==h.scene||o.prompt!==h.prompt||o.showPrompt!==h.showPrompt||o.inSub!==h.inSub||o.showToast!==h.showToast||o.toast!==h.toast||o.showDlg!==h.showDlg||o.dlgText!==h.dlgText||o.showMission!==h.showMission||o.missText!==h.missText){ this._hud={...o,...h}; this.updateHud(); }
       else this._hud=Object.assign(o,h);
@@ -843,6 +925,7 @@
       const vx0=this.cam.x-(this.W/2)/this.Z-90, vx1=this.cam.x+(this.W/2)/this.Z+90, vy0=this.cam.y-(this.H/2)/this.Z-90, vy1=this.cam.y+(this.H/2)/this.Z+90;
       for(const r of this.ROOMS){ if(r.x>vx1||r.x+r.w<vx0||r.y>vy1||r.y+r.h<vy0) continue; const D=this.DOM[r.dom];
         let ramb=amb; if(!day && r.k==='hall' && this.mirrorSolved) ramb=Math.min(1.6, 0.6+(this.drunk||0)/10*1.0);
+        else if(!day && this.misByRoom && this.missionDone(this.misByRoom[r.k])) ramb=1.2; // mission du jour accomplie → la salle brille
         this.floorPlate(ctx,r.x,r.y,r.w,r.h,D.glow,ramb);
         this.drawFurniture(ctx,r);
         this.rr(ctx,r.x,r.y,r.w,r.h,14);
@@ -984,6 +1067,11 @@
         const rad=(Math.max(gh.w,gh.h)*(0.55+0.5*(this.drunk/10)))*this.Z;
         const hg=f.createRadialGradient(hx2,hy2,4,hx2,hy2,rad); hg.addColorStop(0,'rgba(0,0,0,1)'); hg.addColorStop(0.6,'rgba(0,0,0,.75)'); hg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=hg; f.beginPath(); f.arc(hx2,hy2,rad,0,7); f.fill(); }
+      // missions du jour accomplies : la salle du PNJ sort du noir (action réelle → lumière)
+      if(this.MISSIONS && this.scene.type!=='sub'){ for(const m of this.MISSIONS){ if(!this.missionDone(m)) continue;
+        const r=this.byk[m.room]; const [mx,my]=toS(r.x+r.w/2, r.y+r.h/2); const mr=(Math.max(r.w,r.h)*0.72)*this.Z;
+        const mg=f.createRadialGradient(mx,my,4,mx,my,mr); mg.addColorStop(0,'rgba(0,0,0,1)'); mg.addColorStop(0.6,'rgba(0,0,0,.72)'); mg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=mg; f.beginPath(); f.arc(mx,my,mr,0,7); f.fill(); } }
       f.globalCompositeOperation='source-over';
       ctx.drawImage(this.fog,0,0,W,H);
     }
