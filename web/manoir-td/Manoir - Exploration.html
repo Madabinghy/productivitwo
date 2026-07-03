@@ -461,6 +461,8 @@
       this._wdate=today; const nn=Math.max(0,Math.min(10,wsv.n||0));
       if(nn!==this.drunk){ const up=nn>this.drunk; this.drunk=nn;
         if(up && this.barPos){ this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=0.5; }
+        if(up){ this.drinkAnim={t0:performance.now()}; this.laughUntil=performance.now()+1500;
+          this.toast={t:'Lampyre boit avec toi 💧 ('+this.drunk+'/10)', t0:performance.now()}; }
         this.updateHud(); } }
     // gorgée bue HORS du manoir (saisie ailleurs dans l'appli) — la routine vide un verre ici
     simExternalDrink(){ if(!this.barRow || this.drunk>=this.barRow.n) return;
@@ -600,8 +602,9 @@
       }
       const cl=dt>0?1-Math.pow(1-0.14,dt*60):0.14; this.cam.x+=(this.hero.x-this.cam.x)*cl; this.cam.y+=(this.hero.y-this.cam.y)*cl;
       // Lampyre s'esclaffe de temps en temps
-      { const nm=performance.now(); if(this.laughNext==null) this.laughNext=nm+7000+Math.random()*9000;
-        if(nm>this.laughNext){ this.laughUntil=nm+1500; this.laughNext=nm+9000+Math.random()*13000; } }
+      { const nm=performance.now(); const mood=1.8-0.9*(this._vital||0.6); // rayonnant → rit souvent
+        if(this.laughNext==null) this.laughNext=nm+(7000+Math.random()*9000)*mood;
+        if(nm>this.laughNext){ this.laughUntil=nm+1500; this.laughNext=nm+(9000+Math.random()*13000)*mood; } }
       if(this.fadeA>0) this.fadeA=Math.max(0,this.fadeA-0.06);
       if(this.flash>0) this.flash=Math.max(0,this.flash-0.045);
       if(this.pulses&&this.pulses.length){ const np=performance.now(); this.pulses=this.pulses.filter(p=>np-p.t0<900); }
@@ -1059,17 +1062,28 @@
     }
 
     drawHero(ctx){ const h=this.hero; const T=Date.now()/1000; const t=Date.now()/600;
+      // —— Lampyre-tamagotchi : sa vitalité REFLÈTE tes soins réels du jour.
+      // Boire (eau 0→10) l'hydrate, les missions accomplies l'égaient. Négligé,
+      // il devient somnolent (flamme basse, paupières lourdes) — jamais malade.
+      const hyd=Math.max(0,Math.min(1,(this.drunk||0)/10));
+      const care=(this.MISSIONS&&this.MISSIONS.length)?this.missionsDoneCount()/this.MISSIONS.length:0;
+      const vital=0.35+0.45*hyd+0.20*care; this._vital=vital;
+      const nm=performance.now();
+      const dk=this.drinkAnim?Math.min(1,(nm-this.drinkAnim.t0)/1400):1; if(dk>=1) this.drinkAnim=null;
+      const gulp=dk<1?Math.sin(dk*Math.PI):0;       // la flamme « boit » la gorgée
       const flick=1+Math.sin(T*13)*.07+Math.sin(T*6.7)*.05;
-      const nm=performance.now(); const laughing=this.laughUntil && nm<this.laughUntil;
+      const laughing=this.laughUntil && nm<this.laughUntil;
       const lp=laughing ? 1-(this.laughUntil-nm)/1500 : 0;
       const giggle=laughing ? Math.abs(Math.sin(lp*Math.PI*6))*3.2 : 0;
-      const blink=laughing?1:((Math.sin(T*0.7)>0.985)?0.15:1);
+      const sleepy=vital<0.5 && !laughing && !gulp;  // paupières lourdes, bob lent
+      const blink=laughing?1:((Math.sin(T*0.7)>0.985)?0.15:(sleepy?0.5:1));
+      const vGlow=0.5+0.6*vital+0.4*gulp;            // éclat général
       ctx.save(); ctx.translate(h.x,h.y);
-      this.lightPool(ctx,0,0,44,'255,225,150',0.18*flick*(laughing?1.2:1));
+      this.lightPool(ctx,0,0,44,'255,225,150',0.18*flick*vGlow*(laughing?1.2:1));
       ctx.fillStyle='rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0,7,10,5,0,0,7); ctx.fill();
-      const bob=Math.sin(T*2.2)*1.3 - giggle;
+      const bob=Math.sin(T*(1.2+1.1*vital))*1.3 - giggle;
       ctx.scale(0.62,0.62); ctx.translate(0,bob-2);
-      const halo=ctx.createRadialGradient(0,-2,0,0,-2,27); halo.addColorStop(0,'rgba(240,185,78,'+(.34*flick)+')'); halo.addColorStop(1,'rgba(214,168,74,0)'); ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,-2,27,0,7); ctx.fill();
+      const halo=ctx.createRadialGradient(0,-2,0,0,-2,27); halo.addColorStop(0,'rgba(240,185,78,'+(.34*flick*vGlow)+')'); halo.addColorStop(1,'rgba(214,168,74,0)'); ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,-2,27,0,7); ctx.fill();
       ctx.save(); this.rr(ctx,-11,-15,22,28,10); const lg=ctx.createLinearGradient(0,-15,0,13); lg.addColorStop(0,'#22142f'); lg.addColorStop(1,'#160c22'); ctx.fillStyle=lg; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(214,168,74,.55)'; ctx.stroke();
       this.rr(ctx,-11,-15,22,28,10); ctx.clip();
       const amb=ctx.createRadialGradient(0,3,0,0,3,14); amb.addColorStop(0,'rgba(240,185,78,.45)'); amb.addColorStop(1,'rgba(212,120,30,0)'); ctx.fillStyle=amb; ctx.beginPath(); ctx.arc(0,3,14,0,7); ctx.fill();
@@ -1077,9 +1091,11 @@
       ctx.save(); ctx.lineCap='round'; ctx.shadowColor='rgba(255,233,176,.9)';
       ctx.shadowBlur=6; ctx.fillStyle='#ffe9b0';
       const ease=laughing?Math.sin(lp*Math.PI):0;
-      ctx.beginPath(); ctx.ellipse(-4.5,-5,2,3*blink,0,0,7); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(4.5,-5,2,3*blink,0,0,7); ctx.fill();
-      ctx.save(); ctx.globalAlpha=1-ease*0.9; ctx.shadowBlur=9; const sf=ctx.createRadialGradient(0,4,0,0,3,6*flick); sf.addColorStop(0,'#fff3cf'); sf.addColorStop(.5,'#f0b94e'); sf.addColorStop(1,'rgba(212,120,30,.12)'); ctx.fillStyle=sf; ctx.beginPath(); ctx.ellipse(0,4,2.7,4.6*flick,0,0,7); ctx.fill(); ctx.restore();
+      const eyeY=sleepy?-4.4:-5;
+      ctx.beginPath(); ctx.ellipse(-4.5,eyeY,2,3*blink,0,0,7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(4.5,eyeY,2,3*blink,0,0,7); ctx.fill();
+      const fsz=(0.55+0.55*vital)+gulp*0.45;         // flamme : basse si négligé, bond à la gorgée
+      ctx.save(); ctx.globalAlpha=1-ease*0.9; ctx.shadowBlur=9*fsz; const sf=ctx.createRadialGradient(0,4,0,0,3,6*flick*fsz); sf.addColorStop(0,'#fff3cf'); sf.addColorStop(.5,'#f0b94e'); sf.addColorStop(1,'rgba(212,120,30,.12)'); ctx.fillStyle=sf; ctx.beginPath(); ctx.ellipse(0,4,2.7*(0.75+0.35*fsz),4.6*flick*fsz,0,0,7); ctx.fill(); ctx.restore();
       if(ease>0.02){ const w=2.7+2.9*ease; const lift=1.2*ease; const topDip=4.0-0.4*ease;
         ctx.save(); ctx.globalAlpha=ease; ctx.shadowBlur=11; ctx.shadowColor='rgba(255,193,90,.95)';
         ctx.beginPath(); ctx.moveTo(-w,1.0-lift); ctx.quadraticCurveTo(0,topDip,w,1.0+lift*0.3); ctx.quadraticCurveTo(0,8.6,-w,1.0-lift); ctx.closePath();
@@ -1087,6 +1103,9 @@
         ctx.shadowBlur=6; ctx.strokeStyle='rgba(255,247,221,'+(0.9*ease)+')'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(-w*0.86,0.8-lift); ctx.quadraticCurveTo(0,topDip-0.6,w*0.86,0.8+lift*0.3); ctx.stroke();
         ctx.restore(); }
       ctx.shadowBlur=0; ctx.restore();
+      if(gulp>0){ const dyy=-26+dk*26; ctx.save(); ctx.globalAlpha=Math.min(1,(1-dk)*2.5);
+        ctx.fillStyle='#9fd4ee'; ctx.shadowColor='#9fd4ee'; ctx.shadowBlur=7;
+        ctx.beginPath(); ctx.ellipse(5-dk*4,dyy,1.7,2.5,0,0,7); ctx.fill(); ctx.restore(); }
       ctx.strokeStyle='rgba(214,168,74,.7)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(0,-15); ctx.lineTo(0,-17); ctx.stroke();
       if(laughing){ const gr=Math.sin(lp*Math.PI); const fh=5+gr*4; const wob=Math.sin(T*22)*0.6;
         ctx.save(); ctx.translate(wob,-17); ctx.shadowColor='rgba(255,196,90,.95)'; ctx.shadowBlur=8;

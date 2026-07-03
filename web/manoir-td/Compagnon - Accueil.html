@@ -158,7 +158,9 @@
   function collect(){
     var t = S.mission && S.mission.task;
     var label = t ? t.reward.replace(/^\+\s*/,'') : 'Butin récupéré';
-    closeMission(); advance('Coffre ouvert ✦ ' + label, 'good');
+    closeMission();
+    if(t && t.rk==='eau') advance('Lampyre boit avec toi 💧', 'good'); // tamagotchi : ta gorgée est la sienne
+    else advance('Coffre ouvert ✦ ' + label, 'good');
   }
   function launchGame(){ try { window.location.href = GAME_URL; } catch(e){} }
   function launchMini(){ var t=cur(); try { window.location.href = MINI_URL + '?waves=' + waveCount(t) + '&routine=' + (t.rk||'eau'); } catch(e){} }

@@ -127,6 +127,24 @@ raid = projets « exécution » (heuristique simple, ou aléatoire V1).
 
 ---
 
+## 5bis. Lampyre-tamagotchi : le soin réfléchi
+
+**Principe (validé).** Lampyre est un tamagotchi dont on prend soin — mais on ne le nourrit
+pas directement : **prendre soin de soi, C'EST prendre soin de lui**. Boire un verre d'eau
+réel → il boit avec toi (gorgée animée). Accomplir ses missions du jour → il rayonne.
+
+- **Vitalité** = f(hydratation 0→10, missions du jour accomplies). Rayonnant : flamme haute,
+  halo ample, bob vif, rit souvent. Négligé : **somnolent** (flamme basse, paupières lourdes,
+  bob lent, rires rares) — **jamais malade, jamais mourant** (ton Soft Pop, pas de chantage).
+- **Moments de lien** : chaque verre réel déclenche « Lampyre boit avec toi 💧 » (goutte +
+  flamme qui bondit + petit rire), dans l'Exploration comme à l'Accueil.
+- **V1 implémentée** (Exploration + Accueil) : vitalité dérivée de `ombrelune_water` +
+  `ombrelune_sync` (aucun nouveau stockage). Extensions possibles : lecture → il raconte des
+  histoires (variété de dialogues), méditation → flamme stable, sommeil, humeurs persistantes,
+  soin du portrait dans les Accueils.
+
+---
+
 ## 5. Garde-fous (hérités des missions V1)
 
 - Jamais punitif : échec = retour au portail, rien de perdu.
