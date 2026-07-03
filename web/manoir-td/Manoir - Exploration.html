@@ -493,7 +493,9 @@
     roomOn(k){ const st=this.stageForXp(this._stageXp||0);
       for(let i=0;i<=st && i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(k)>=0) return true; } return false; }
     roomLvl(k){ if(!this.roomOn(k)) return -1; const e=this.manor&&this.manor.rooms[k]; const n=(e&&e.n)||0; return n>=7?2:(n>=3?1:0); }
-    roomFactor(k){ const l=this.roomLvl(k); return l<0?0.55:[0.7,0.85,1][l]; }
+    // le Hall garde un plancher plus haut : le bar à 10 verres (offsets fixes) casse sous 70 %
+    roomFactor(k){ const l=this.roomLvl(k); if(l<0) return 0.45;
+      return (k==='hall'?[0.7,0.85,1]:[0.5,0.75,1])[l]; }
     applyGrowth(){ for(const r of this.ROOMS){ const f=this.roomFactor(r.k);
         r.w=Math.round(r.bw*f); r.h=Math.round(r.bh*f);
         r.x=Math.round(r.bx+(r.bw-r.w)/2); r.y=Math.round(r.by+(r.bh-r.h)/2); }
@@ -979,8 +981,10 @@
       }
       // Croissance : niv.0 = mobilier clairsemé (préfixe essentiel), niv.1 = complet, niv.2 = butin/opulence en plus
       const lvl=Math.max(0,this.roomLvl(r.k));
-      const SPARSE={hall:6,coffre:2,vestibule:2,office:2,galerie:2,miroirs:3,biblio:3,atelier:2,observatoire:2,cabinet:3,jardin:2,dependances:2,crypte:3,sanctuaire:2};
-      let out=(lvl===0 && SPARSE[r.k]!=null)?L.slice(0,SPARSE[r.k]):L;
+      // nombre = préfixe conservé ; tableau = indices conservés (salles étroites à 50 % : on écarte les pièces qui déborderaient)
+      const SPARSE={hall:6,coffre:[1,2],vestibule:2,office:2,galerie:2,miroirs:[0,2,3],biblio:[0,1],atelier:2,observatoire:[1],cabinet:[0,2],jardin:2,dependances:2,crypte:3,sanctuaire:[0]};
+      let out=L; if(lvl===0){ const sp=SPARSE[r.k];
+        if(Array.isArray(sp)) out=sp.map(i=>L[i]).filter(Boolean); else if(sp!=null) out=L.slice(0,sp); }
       if(lvl>=2){ switch(r.k){
         case 'hall': out.push({t:'plant',x:X+70,y:Y+70,r:PLT},{t:'brazier',x:cx-150,y:cy+10,r:BRZ},{t:'pedestal',x:cx-150,y:cy-70,r:PED,c:'#f2cd72',glow:'242,205,114'}); break;
         case 'coffre': out.push({t:'crate',x:X+60,y:Y+H-60,w:CRT,h:CRT},{t:'barrel',x:X+W-60,y:Y+H-60,r:BAR}); break;
