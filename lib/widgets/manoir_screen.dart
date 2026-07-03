@@ -44,7 +44,67 @@ int seedManoirRoutines(AppLogic logic) {
   return added;
 }
 
-/// Écran plein écran embarquant le jeu Manoir d'Ombrelune (WebView).
+WebViewController _buildController() => WebViewController()
+  ..setJavaScriptMode(JavaScriptMode.unrestricted)
+  ..setBackgroundColor(const Color(0xFF0B0710))
+  ..loadRequest(Uri.parse(kManoirUrl));
+
+/// Onglet Manoir — WebView embarquée (sans barre : elle vit sous l'app bar
+/// principale et la barre d'onglets). Chargement paresseux : la WebView ne
+/// démarre qu'à la première ouverture de l'onglet.
+class ManoirTab extends StatefulWidget {
+  final bool active;
+  const ManoirTab({super.key, this.active = false});
+
+  @override
+  State<ManoirTab> createState() => _ManoirTabState();
+}
+
+class _ManoirTabState extends State<ManoirTab> {
+  WebViewController? _ctrl;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _start();
+  }
+
+  @override
+  void didUpdateWidget(covariant ManoirTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && _ctrl == null) _start();
+  }
+
+  void _start() {
+    if (kIsWeb || _ctrl != null) return;
+    _ctrl = _buildController()
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageFinished: (_) {
+          if (mounted) setState(() => _ready = true);
+        },
+      ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return const Center(
+          child: Text("Ouvre le Manoir depuis l'app mobile.",
+              style: TextStyle(color: Colors.white54)));
+    }
+    return ColoredBox(
+      color: const Color(0xFF0B0710),
+      child: Stack(children: [
+        if (_ctrl != null) WebViewWidget(controller: _ctrl!),
+        if (_ctrl == null || !_ready)
+          const Center(child: CircularProgressIndicator()),
+      ]),
+    );
+  }
+}
+
+/// Écran plein écran embarquant le jeu (ouvert depuis un bouton/route).
 class ManoirScreen extends StatefulWidget {
   const ManoirScreen({super.key});
 
@@ -60,15 +120,12 @@ class _ManoirScreenState extends State<ManoirScreen> {
   void initState() {
     super.initState();
     if (!kIsWeb) {
-      _ctrl = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0xFF0B0710))
+      _ctrl = _buildController()
         ..setNavigationDelegate(NavigationDelegate(
           onPageFinished: (_) {
             if (mounted) setState(() => _ready = true);
           },
-        ))
-        ..loadRequest(Uri.parse(kManoirUrl));
+        ));
     }
   }
 
@@ -78,10 +135,8 @@ class _ManoirScreenState extends State<ManoirScreen> {
         appBar: AppBar(
           backgroundColor: const Color(0xFF160D22),
           foregroundColor: Colors.white,
-          title: const Text(
-            "Manoir d'Ombrelune",
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
+          title: const Text("Manoir d'Ombrelune",
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
           elevation: 0,
           actions: [
             IconButton(

@@ -63,7 +63,6 @@ import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
-import 'package:productivitwo_v1/widgets/fluo_mobile_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -3029,7 +3028,7 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
-          FluoMobileScreen(logic: logic),
+          ManoirTab(active: _tab == _Tab.monde),
         ],
       ),
     );
@@ -5376,9 +5375,9 @@ class _AppRootState extends State<AppRoot>
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
           const BottomNavigationBarItem(
-              icon: Icon(Icons.bubble_chart_outlined),
-              activeIcon: Icon(Icons.bubble_chart),
-              label: 'Galaxie'),
+              icon: Icon(Icons.castle_outlined),
+              activeIcon: Icon(Icons.castle),
+              label: 'Manoir'),
         ],
       ),
 
