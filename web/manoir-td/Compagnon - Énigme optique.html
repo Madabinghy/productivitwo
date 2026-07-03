@@ -26,12 +26,21 @@
   'use strict';
 
   var CELL=42, COLS=7, ROWS=9;
-  var SOURCE={ r:7, c:0, dir:'E' };
-  var TARGET={ r:2, c:6, enter:'E' };
-  var MPOS={ A:{r:7,c:3}, B:{r:2,c:3}, D:{r:5,c:5} };
-  var DEFAULT={ A:'\\', B:'\\', D:'/' };
+  // Mode récompense (mission du portail) : ?reward=action&seed=N → variante de
+  // plateau tirée du seed ; la victoire révèle l'action Gantt (et ne touche PAS
+  // à la quête des miroirs de l'Exploration).
+  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  var SEED = parseInt((window.location.search.match(/seed=(\d+)/)||[])[1]||'0',10);
+  var VARIANTS=[
+    { SOURCE:{r:7,c:0,dir:'E'}, TARGET:{r:2,c:6,enter:'E'}, MPOS:{A:{r:7,c:3},B:{r:2,c:3},D:{r:5,c:5}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'en haut à droite' },
+    { SOURCE:{r:1,c:0,dir:'E'}, TARGET:{r:6,c:6,enter:'E'}, MPOS:{A:{r:1,c:4},B:{r:6,c:4},D:{r:3,c:2}}, DEFAULT:{A:'/',B:'\\',D:'/'}, hint:'en bas à droite' },
+    { SOURCE:{r:8,c:3,dir:'N'}, TARGET:{r:1,c:5,enter:'N'}, MPOS:{A:{r:4,c:3},B:{r:4,c:5},D:{r:6,c:1}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'tout en haut' },
+    { SOURCE:{r:3,c:6,dir:'W'}, TARGET:{r:6,c:1,enter:'W'}, MPOS:{A:{r:3,c:4},B:{r:6,c:4},D:{r:1,c:2}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'en bas à gauche' }
+  ];
+  var V = REWARD ? VARIANTS[SEED%VARIANTS.length] : VARIANTS[0];
+  var SOURCE=V.SOURCE, TARGET=V.TARGET, MPOS=V.MPOS, DEFAULT=V.DEFAULT;
 
-  var S = { orient: { A:'\\', B:'\\', D:'/' } };
+  var S = { orient: { A:DEFAULT.A, B:DEFAULT.B, D:DEFAULT.D } };
 
   function reset(){ S.orient = { A:DEFAULT.A, B:DEFAULT.B, D:DEFAULT.D }; render(); }
   function rotate(id){ S.orient[id] = S.orient[id]==='/' ? '\\' : '/'; render(); }
@@ -89,9 +98,12 @@
       : 'position:absolute; left:50%; top:50%; width:38px; height:38px; transform:translate(-50%,-50%); border-radius:50%; border:2px dashed rgba(154,134,184,.4);';
     var seal='<div style="position:absolute; left:'+(tc.x-19)+'px; top:'+(tc.y-19)+'px; width:38px; height:38px; z-index:7;"><div style="'+sealRing+'"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:18px; filter:'+(solved?'drop-shadow(0 0 8px rgba(242,205,114,1))':'grayscale(1) opacity(.45)')+';">✶</div></div>';
 
+    if(solved && REWARD) revealAsk();
     var footer = solved
-      ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La lumière renaît — le Grand Hall s’éclairera au fil de tes verres d’eau.</div><button data-act="win" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Rétablir la lumière ✦</button></div>'
-      : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">Deux miroirs comptent, un troisième te distrait. Trouve l\u2019angle qui renvoie la flamme vers le sceau, en haut à droite.</span></div>';
+      ? (REWARD
+        ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau — le butin est à toi.</div>'+rewardHTML()+'<button data-act="back" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Retour au manoir ✦</button></div>'
+        : '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La lumière renaît — le Grand Hall s’éclairera au fil de tes verres d’eau.</div><button data-act="win" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Rétablir la lumière ✦</button></div>')
+      : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">Deux miroirs comptent, un troisième te distrait. Trouve l\u2019angle qui renvoie la flamme vers le sceau, '+V.hint+'.</span></div>';
 
     return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
       + '<div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 12px;">'
@@ -115,13 +127,34 @@
   // sceau (cf. render) pour que le flag survive à TOUT chemin de sortie (bouton, en-tête, ✕ app).
   function saveSolved(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} }
   function win(){ saveSolved(); back(); }
+  // Mode récompense : révèle l'action Gantt (même flux que la Salle des Ombres)
+  var revealSent=false;
+  function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
+  function revealAsk(){ if(revealSent) return; revealSent=true;
+    try{ var na=readNextAction(); if(na && na.actionId){
+      var rev=[]; try{ rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]'); }catch(e){}
+      if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
+    try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'reveal_action' })); }catch(e){}
+  }
+  window.addEventListener('storage', function(e){ if(REWARD && e.key==='ombrelune_next_action' && trace().solved) render(); });
+  function rewardHTML(){
+    var na=readNextAction();
+    var revealed = na && na.title && na.sealed===false;
+    return '<div style="margin-top:11px; padding:12px 14px; border-radius:13px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.35);">'
+      + '<div style="font-weight:700; font-size:8.5px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Butin — prochaine étape'+(na&&na.projectName?(' · '+String(na.projectName).replace(/[&<>"]/g,'')):'')+'</div>'
+      + (revealed
+        ? '<div style="margin-top:5px; font-family:\'Fraunces\',serif; font-weight:600; font-size:15px; color:#fbf3e2;">« '+String(na.title).replace(/[&<>"]/g,'')+' »</div>'
+          + '<div style="margin-top:4px; font-size:11px; color:#a796c0;">Fais-la pour de vrai, puis coche-la dans la Console.</div>'
+        : '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#d8c8a8;">Le sceau se dissout… ouvre la Console (l’app) pour lire ta prochaine étape.</div>')
+      + '</div>';
+  }
 
   var app=document.getElementById('app');
   app.addEventListener('click', function(ev){
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
     var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); }
   });
-  function render(){ if(trace().solved) saveSolved(); app.innerHTML = view(); }
+  function render(){ if(!REWARD && trace().solved) saveSolved(); app.innerHTML = view(); }
   render();
 })();
 </script>
