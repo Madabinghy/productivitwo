@@ -12,10 +12,17 @@
   @keyframes risein { from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform:none } }
   @keyframes bannerin { from{ opacity:0; transform: translateY(22px) } to{ opacity:1; transform:none } }
   button{ font-family:'Outfit',sans-serif; }
+  /* Plein écran sur mobile : la carte et le hublot remplissent l'écran (WebView de l'app) */
+  @media (max-width:520px){
+    body{ padding:0; }
+    #inf-card{ width:100vw !important; height:100dvh !important; border-radius:0 !important; }
+    #inf-vp{ width:100% !important; height:100% !important; border-radius:0 !important; border:none !important; }
+    #inf-cv{ width:100% !important; height:100% !important; }
+  }
 </style>
 </head>
 <body>
-<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">
+<div id="inf-card" style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">
   <!-- HUD -->
   <div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 8px;">
     <div id="inf-goback" style="display:flex; flex-direction:column; cursor:pointer;">
@@ -35,7 +42,7 @@
   </div>
   <!-- viewport -->
   <div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:4px;">
-    <div style="position:relative; width:300px; height:404px; border-radius:8px; overflow:hidden; border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">
+    <div id="inf-vp" style="position:relative; width:300px; height:404px; border-radius:8px; overflow:hidden; border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">
       <canvas id="inf-cv" width="300" height="404" style="position:absolute; inset:0; width:300px; height:404px; cursor:crosshair;"></canvas>
       <div id="inf-stick" style="position:absolute; right:16px; bottom:16px; width:96px; height:96px; border-radius:50%; background:radial-gradient(circle, rgba(40,30,58,.55), rgba(18,12,28,.45)); border:1.5px solid rgba(214,168,74,.3); touch-action:none; z-index:20;">
         <div id="inf-thumb" style="position:absolute; left:50%; top:50%; width:42px; height:42px; margin:-21px 0 0 -21px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #5a4a72, #2a1d3e); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 4px 10px rgba(0,0,0,.5);"></div>
@@ -94,9 +101,18 @@
     else if(G.nearDoor){ S.status='win'; if(REWARD) revealAsk(); renderFooter(); }
   }
 
-  function jsDown(e){ if(S.status!=='play') return; e.preventDefault(); G.stickActive=true; window.addEventListener('pointermove', G._jsMove); window.addEventListener('pointerup', G._jsUp); jsMove(e); }
-  function jsMove(e){ var base=document.getElementById('inf-stick'); if(!base) return; var r=base.getBoundingClientRect(); var cx=r.left+r.width/2, cy=r.top+r.height/2; var dx=e.clientX-cx, dy=e.clientY-cy; var R=34, len=Math.hypot(dx,dy); if(len>R){ dx=dx/len*R; dy=dy/len*R; } G.move={ x:dx/R, y:dy/R }; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate('+dx+'px,'+dy+'px)'; }
-  function jsUp(){ G.stickActive=false; G.move={x:0,y:0}; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate(0,0)'; window.removeEventListener('pointermove', G._jsMove); window.removeEventListener('pointerup', G._jsUp); }
+  // Joystick : suit UN doigt (pointerId), capture le pointeur, et relâche aussi sur
+  // pointercancel (iOS l'émet quand le système interrompt le geste — sinon le stick
+  // reste bloqué dans la dernière direction).
+  function jsDown(e){ if(S.status!=='play') return; e.preventDefault();
+    G.stickActive=true; G.stickId=e.pointerId;
+    try{ e.currentTarget.setPointerCapture(e.pointerId); }catch(err){}
+    window.addEventListener('pointermove', G._jsMove); window.addEventListener('pointerup', G._jsUp); window.addEventListener('pointercancel', G._jsUp);
+    jsMove(e); }
+  function jsMove(e){ if(G.stickId!=null && e.pointerId!==G.stickId) return;
+    var base=document.getElementById('inf-stick'); if(!base) return; var r=base.getBoundingClientRect(); var cx=r.left+r.width/2, cy=r.top+r.height/2; var dx=e.clientX-cx, dy=e.clientY-cy; var R=34, len=Math.hypot(dx,dy); if(len>R){ dx=dx/len*R; dy=dy/len*R; } G.move={ x:dx/R, y:dy/R }; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate('+dx+'px,'+dy+'px)'; }
+  function jsUp(e){ if(e && G.stickId!=null && e.pointerId!==G.stickId) return;
+    G.stickActive=false; G.stickId=null; G.move={x:0,y:0}; var th=document.getElementById('inf-thumb'); if(th) th.style.transform='translate(0,0)'; window.removeEventListener('pointermove', G._jsMove); window.removeEventListener('pointerup', G._jsUp); window.removeEventListener('pointercancel', G._jsUp); }
   function onFloor(e){ if(S.status!=='play') return; var r=G.cv.getBoundingClientRect(); var sx=VPW/r.width, sy=VPH/r.height; G.tgt={ x:(e.clientX-r.left)*sx + G.cam.x, y:(e.clientY-r.top)*sy + G.cam.y }; }
 
   function inRect(x,y,c,m){ m=m||0; return x>=c.x-m && x<=c.x+c.w+m && y>=c.y-m && y<=c.y+c.h+m; }
@@ -221,16 +237,22 @@
   function boot(){
     G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.cam={x:0,y:0}; G.t=0; G.det=0; G.hasKey=false; G.flash=0;
     G.move={x:0,y:0}; G.stickActive=false; G.nearKey=false; G.nearDoor=false;
-    G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(){ jsUp(); };
+    G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(e){ jsUp(e); };
+    renderFooter(); // rendu AVANT la mesure : le footer change la hauteur du hublot
+    // plein écran : le hublot suit la taille CSS réelle (mobile = tout l'écran)
+    G.cv=document.getElementById('inf-cv');
+    { var vr=G.cv.getBoundingClientRect();
+      if(vr.width>50 && vr.height>50 && (Math.round(vr.width)!==VPW || Math.round(vr.height)!==VPH)){
+        VPW=Math.round(vr.width); VPH=Math.round(vr.height); }
+      G.cv.width=VPW; G.cv.height=VPH; }
     G.fog=document.createElement('canvas'); G.fog.width=VPW; G.fog.height=VPH;
     G.lightC=document.createElement('canvas'); G.lightC.width=VPW; G.lightC.height=VPH; G.lctx=G.lightC.getContext('2d');
     G.gtmp=document.createElement('canvas'); G.gtmp.width=VPW; G.gtmp.height=VPH; G.gtx=G.gtmp.getContext('2d');
-    G.cv=document.getElementById('inf-cv'); G.ctx=G.cv.getContext('2d'); G.fctx=G.fog.getContext('2d');
+    G.ctx=G.cv.getContext('2d'); G.fctx=G.fog.getContext('2d');
     G.cv.addEventListener('click', onFloor);
     document.getElementById('inf-stick').addEventListener('pointerdown', jsDown);
     document.getElementById('inf-goback').addEventListener('click', goBack);
     document.getElementById('inf-reset').addEventListener('click', reset);
-    renderFooter();
     G._raf=requestAnimationFrame(loop);
     window.__infiltration = { S:S, G:G, interact:interact }; // pour debug / tests headless
   }
