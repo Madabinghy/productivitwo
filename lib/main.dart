@@ -63,6 +63,7 @@ import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
 import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
+import 'package:productivitwo_v1/widgets/fluo_mobile_screen.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -3028,7 +3029,7 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
-          ManoirTab(active: _tab == _Tab.monde),
+          FluoMobileScreen(logic: logic),
         ],
       ),
     );
@@ -5375,9 +5376,9 @@ class _AppRootState extends State<AppRoot>
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
           const BottomNavigationBarItem(
-              icon: Icon(Icons.castle_outlined),
-              activeIcon: Icon(Icons.castle),
-              label: 'Manoir'),
+              icon: Icon(Icons.bubble_chart_outlined),
+              activeIcon: Icon(Icons.bubble_chart),
+              label: 'Galaxie'),
         ],
       ),
 
@@ -5496,18 +5497,19 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
               ),
-              // Manoir d'Ombrelune — bascule vers le jeu (WebView)
+              // Manoir d'Ombrelune — bascule vers le jeu (WebView pontée : les
+              // routines/chronos réels de Productivitwo rallument le manoir).
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.castle_outlined),
                 title: const Text("Manoir d'Ombrelune"),
-                subtitle: const Text('Ouvrir le jeu (bêta)'),
+                subtitle: const Text('Entrer dans le manoir (bêta)'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                        builder: (_) => const ManoirScreen()),
+                        builder: (_) => ManoirScreen(logic: logic)),
                   );
                 },
               ),
