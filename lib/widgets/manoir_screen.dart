@@ -129,31 +129,46 @@ class _ManoirScreenState extends State<ManoirScreen> {
     }
   }
 
+  // Petit bouton flottant translucide (contrôles superposés au jeu plein écran).
+  Widget _roundBtn(IconData icon, String tip, VoidCallback onTap) => Material(
+        color: Colors.black54,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: IconButton(
+          tooltip: tip,
+          iconSize: 20,
+          icon: Icon(icon, color: Colors.white),
+          onPressed: onTap,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) => Scaffold(
         backgroundColor: const Color(0xFF0B0710),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF160D22),
-          foregroundColor: Colors.white,
-          title: const Text("Manoir d'Ombrelune",
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-          elevation: 0,
-          actions: [
-            IconButton(
-              tooltip: 'Recharger',
-              icon: const Icon(Icons.refresh),
-              onPressed: () => _ctrl?.loadRequest(Uri.parse(kManoirUrl)),
-            ),
-          ],
-        ),
+        // Plein écran : pas d'app bar. Contrôles superposés (quitter / recharger).
         body: kIsWeb
             ? const Center(
                 child: Text("Ouvre le Manoir depuis l'app mobile.",
                     style: TextStyle(color: Colors.white54)))
-            : Stack(children: [
-                if (_ctrl != null) WebViewWidget(controller: _ctrl!),
-                if (!_ready)
-                  const Center(child: CircularProgressIndicator()),
-              ]),
+            : SafeArea(
+                child: Stack(children: [
+                  if (_ctrl != null)
+                    Positioned.fill(child: WebViewWidget(controller: _ctrl!)),
+                  if (!_ready)
+                    const Center(child: CircularProgressIndicator()),
+                  Positioned(
+                    top: 6,
+                    left: 6,
+                    child: _roundBtn(Icons.close, 'Quitter le Manoir',
+                        () => Navigator.of(context).maybePop()),
+                  ),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: _roundBtn(Icons.refresh, 'Recharger',
+                        () => _ctrl?.loadRequest(Uri.parse(kManoirUrl))),
+                  ),
+                ]),
+              ),
       );
 }
