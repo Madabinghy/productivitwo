@@ -267,6 +267,11 @@
       this.mProposed=new Set(ms.proposed||[]); this.mCelebrated=new Set(ms.celebrated||[]);
       this.checkCelebrations();
 
+      // —— Portail du Sanctuaire : la prochaine action Gantt, scellée par la Console
+      // (docs/manoir_missions_v2.md §1 et §3 — V2.1 : mène à la Galerie des ombres).
+      { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
+      this.reloadNextAction(true);
+
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
 
@@ -294,7 +299,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -396,7 +401,8 @@
       else if(p.kind==='fragment') this.collectFragment(p.frag);
       else if(p.kind==='mirror_enter') this.enterMirrorPuzzle();
       else if(p.kind==='spot') this.talkSpot(p.spot);
-      else if(p.kind==='console') this.openConsole(); }
+      else if(p.kind==='console') this.openConsole();
+      else if(p.kind==='portal') this.openPortal(); }
     talkSpot(sp){ if(!sp || this.dialogue) return;
       // PNJ ou point porteur d'une mission du jour → dialogue selon l'état réel
       const m=this.misByRoom && this.misByRoom[sp.room];
@@ -482,6 +488,45 @@
         this.toast={t:'✨ '+r.label+' se rallume — '+m.irl+' : fait.', t0:performance.now()};
         this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); }
       if(changed) this.saveMissions(); }
+    // —— Portail du Sanctuaire : prochaine action Gantt scellée (pont app).
+    portalState(){ const na=this.nextAction; return !na ? 'off' : (na.sealed===false && na.title ? 'revealed' : 'sealed'); }
+    reloadNextAction(initial){
+      let na=null; try{ na=JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){}
+      this.nextAction=na;
+      // re-révélation auto : cette action a déjà été gagnée (persisté côté jeu) →
+      // on redemande le titre au pont sans refaire l'infiltration.
+      try{ if(na && na.sealed!==false && window.ManoirBridge && !this._revealAsked){
+        const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
+        if(rev.indexOf(na.actionId)>=0){ this._revealAsked=true; window.ManoirBridge.postMessage(JSON.stringify({type:'reveal_action'})); } } }catch(e){}
+      if(!initial) this.updateHud(); }
+    openPortal(){ if(this.dialogue) return; const na=this.nextAction; const st=this.portalState();
+      if(st==='sealed'){
+        this.dialogue={ i:0, endLabel:'Infiltrer',
+          onEnd:()=>{ window.location.href='./'+encodeURIComponent('Compagnon - Infiltration.html')+'?reward=action'; },
+          lines:[
+            {who:'Lampyre', mood:'doubt', t:'Derrière ce portail, l’ennemi garde le prochain pas de ton projet « '+((na&&na.projectName)||'…')+' ». Tu ne sauras pas lequel sans aller le prendre.'},
+            {who:'Lampyre', mood:'idle', t:'Infiltre la Galerie des ombres : la clé, puis la porte — sans te faire voir. L’étape sera à toi.'} ]}; }
+      else if(st==='revealed'){
+        this.dialogue={ i:0, endLabel:'Compris', lines:[
+          {who:'Lampyre', mood:'smile', t:'Ta prochaine étape, gagnée : « '+na.title+' ».'},
+          {who:'Lampyre', mood:'idle', t:'Fais-la pour de vrai, puis coche-la dans la Console — le portail scellera la suivante.'} ]}; }
+      else {
+        this.dialogue={ i:0, endLabel:'Fermer', lines:[
+          {who:'Lampyre', mood:'idle', t:'Un portail éteint… Seule la Console peut sceller ici le prochain pas d’un projet. Ouvre le Manoir depuis l’app.'} ]}; }
+      this.updateHud(); }
+    drawPortal(ctx,t){ const p=this.portalPos; if(!p) return; const st=this.portalState();
+      const col= st==='sealed' ? '#b79ae0' : (st==='revealed' ? '#f2cd72' : '#5a5470');
+      const glow= st==='sealed' ? '183,154,224' : '242,205,114';
+      const pulse= st==='sealed' ? 0.6+0.4*Math.sin(t*2.2) : 0.4;
+      ctx.save(); ctx.translate(p.x,p.y);
+      if(st!=='off') this.lightPool(ctx,0,0,58,glow,0.30*pulse);
+      ctx.strokeStyle=col; ctx.globalAlpha=st==='off'?0.35:0.9; ctx.lineWidth=2.4;
+      ctx.shadowColor=col; ctx.shadowBlur=st==='off'?0:12*pulse;
+      ctx.beginPath(); ctx.arc(0,0,26,0,7); ctx.stroke();
+      ctx.lineWidth=1.2; ctx.beginPath(); ctx.arc(0,0,18,0,7); ctx.stroke();
+      ctx.rotate(t*0.4); ctx.fillStyle=col;
+      for(let i=0;i<6;i++){ const an=i/6*Math.PI*2; ctx.beginPath(); ctx.arc(Math.cos(an)*22,Math.sin(an)*22,2.2,0,7); ctx.fill(); }
+      ctx.restore(); ctx.globalAlpha=1; }
     solveWaterQuest(){ if(this.quest==='solved'||this.dialogue) return;
       this.dialogue={ i:0, endLabel:'C\u2019est compris', onEnd:()=>{ this.quest='solved'; this.saveQuest();
           this.toast={t:'Mission re\u00e7ue : boire 10 verres d\u2019eau dans la journ\u00e9e.', t0:performance.now()}; },
@@ -566,6 +611,10 @@
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
         if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      else if(this.portalPos && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);
+        if(d<46){ const st=this.portalState();
+          poi={kind:'portal', text: st==='sealed'?'Franchir le portail':(st==='revealed'?'Le portail sommeille':'Portail éteint'),
+            color: st==='sealed'?'#b79ae0':(st==='revealed'?'#f2cd72':'#8a7aa6'), glyph:'◉', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
@@ -939,6 +988,7 @@
         const fl=0.75+0.25*Math.sin(t*3+c.x); ctx.save(); ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=8*fl; ctx.beginPath(); ctx.arc(c.x,c.y,c.big?3:2,0,7); ctx.fill(); ctx.restore(); }
       if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
       if(this.SPOTS){ for(const s of this.SPOTS){ if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
+      this.drawPortal(ctx,t);
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -1061,6 +1111,10 @@
       if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
         const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
+      // portail du Sanctuaire : visible dans le noir quand une action est scellée
+      if(this.portalPos && this.scene.type!=='sub' && this.portalState()!=='off'){ const [px2,py2]=toS(this.portalPos.x,this.portalPos.y); const pr=70*this.Z*0.5;
+        const pg=f.createRadialGradient(px2,py2,2,px2,py2,pr); pg.addColorStop(0,'rgba(0,0,0,.9)'); pg.addColorStop(0.6,'rgba(0,0,0,.5)'); pg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=pg; f.beginPath(); f.arc(px2,py2,pr,0,7); f.fill(); }
       // récompense : dès la Salle des miroirs résolue, le Grand Hall sort du noir (baseline
       // nette), et chaque verre d'eau l'agrandit/l'avive jusqu'à un Hall pleinement lumineux.
       if(this.mirrorSolved && this.scene.type!=='sub'){ const gh=this.byk.hall; const [hx2,hy2]=toS(gh.x+gh.w/2, gh.y+gh.h/2);
