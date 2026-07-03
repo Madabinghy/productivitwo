@@ -162,6 +162,17 @@
         ['vestibule','observatoire'],['office','galerie'],['biblio','atelier'],['office','miroirs'],
         ['observatoire','cabinet'],['atelier','jardin'],['miroirs','dependances'],['biblio','crypte'],['galerie','sanctuaire']];
 
+      // —— Le manoir s'éveille : salles débloquées par palier d'XP de Lampyre
+      // (même moteur que le tamagotchi), et chaque salle GRANDIT (70→85→100 % de
+      // sa taille max) avec les jours où sa mission est réellement accomplie.
+      this.STAGE_XP=[0,30,100,250,450];
+      this.UNLOCKS=[
+        ['hall','vestibule','biblio','coffre'],
+        ['office','sanctuaire'],
+        ['atelier','galerie','miroirs'],
+        ['jardin','cabinet'],
+        ['crypte','dependances','observatoire']];
+
       this.SUB={x:300,y:300,w:340,h:250};
       this.CORW=27;
 
@@ -170,10 +181,18 @@
 
     init(){
       // scale the manor up so it's a large space to walk (Sims-like), hero/lighting keep their size
-      if(!this._scaled){ const S=this.S; for(const r of this.ROOMS){ r.x*=S; r.y*=S; r.w*=S; r.h*=S; } this._scaled=true; }
+      if(!this._scaled){ const S=this.S; for(const r of this.ROOMS){ r.x*=S; r.y*=S; r.w*=S; r.h*=S;
+        r.bx=r.x; r.by=r.y; r.bw=r.w; r.bh=r.h; } this._scaled=true; }
       this.byk={}; for(const r of this.ROOMS) this.byk[r.k]=r;
+      // état de croissance du manoir (jours de mission par salle) + XP pour les paliers,
+      // chargés AVANT le layout : les rects dépendent de l'éveil et du niveau des salles
+      let mn={rooms:{}}; try{ mn=JSON.parse(localStorage.getItem('ombrelune_manor')||'null')||mn; }catch(e){}
+      mn.rooms=mn.rooms||{}; this.manor=mn;
+      this._stageXp=0; try{ const lp0=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null'); if(lp0) this._stageXp=lp0.xp||0; }catch(e){}
+      this.applyGrowth();
+      // bbox sur les dimensions PLEINES : minimap stable — on voit ce qu'on conquerra
       let mnx=1e9,mny=1e9,mxx=-1e9,mxy=-1e9;
-      for(const r of this.ROOMS){ mnx=Math.min(mnx,r.x); mny=Math.min(mny,r.y); mxx=Math.max(mxx,r.x+r.w); mxy=Math.max(mxy,r.y+r.h); }
+      for(const r of this.ROOMS){ mnx=Math.min(mnx,r.bx); mny=Math.min(mny,r.by); mxx=Math.max(mxx,r.bx+r.bw); mxy=Math.max(mxy,r.by+r.bh); }
       this.bbox={mnx:mnx-30,mny:mny-30,mxx:mxx+30,mxy:mxy+30};
       this.buildObstacles();
 
@@ -196,12 +215,12 @@
       let mq={s:'dark',frags:0,got:[]}; try{ mq=JSON.parse(localStorage.getItem('ombrelune_mirror_quest')||'null')||mq; }catch(e){}
       this.mquest=mq.s||'dark'; this.mgot=new Set(mq.got||[]); this.mirrorSolved=this.mquest==='solved';
       this.FRAGS=[ {id:0,room:'biblio',fx:0.34,fy:0.66}, {id:1,room:'galerie',fx:0.70,fy:0.58}, {id:2,room:'atelier',fx:0.50,fy:0.44} ]
-        .map(f=>{ const r=this.byk[f.room]; return {id:f.id, x:r.x+r.w*f.fx, y:r.y+r.h*f.fy}; });
+        .map(f=>{ const r=this.byk[f.room]; return {...f, x:r.x+r.w*f.fx, y:r.y+r.h*f.fy}; });
       this._fragLines=[
         'Un éclat de miroir… il brille encore, tout seul dans le noir.',
         'Encore un fragment. Quelqu’un a brisé un grand miroir… il en manque.',
         'Le dernier éclat. Ils viennent tous de la Salle des miroirs — allons la réparer.' ];
-      if(this.mquest==='dark') this.dialogue={ i:0, endLabel:'Explorer', lines:[
+      if(this.mquest==='dark' && this.roomOn('miroirs')) this.dialogue={ i:0, endLabel:'Explorer', lines:[
         {who:'Lampyre', mood:'doubt', t:'Le manoir est plongé dans le noir… toutes les lumières se sont éteintes.'},
         {who:'Lampyre', mood:'idle', t:'Reste près de moi. Ces éclats brillants dans le noir… ramassons-les.'} ]};
       // Confirmation (1re fois) : au retour de l'énigme résolue, on réapparaît dans le Hall —
@@ -232,7 +251,7 @@
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
-          x:at.x+at.w*0.5, y:at.y+at.h*0.30, ph:1.7, lines:[]}); }
+          fx:0.5, fy:0.30, x:at.x+at.w*0.5, y:at.y+at.h*0.30, ph:1.7, lines:[]}); }
 
       // —— Missions du jour : une action RÉELLE (enregistrée dans la Console — l'app
       // Productivitwo — ou sur l'écran d'accueil) rallume la salle de son PNJ.
@@ -345,7 +364,7 @@
     }
 
     buildCandles(){ this.candles=[];
-      for(const r of this.ROOMS){ if(r.k==='coffre') continue;
+      for(const r of this.ROOMS){ if(r.k==='coffre' || !this.roomOn(r.k)) continue;
         const cx=r.x+r.w/2, cy=r.y+r.h/2; const R=Math.min(120, Math.max(50, Math.min(r.w,r.h)*0.26));
         this.candles.push({x:cx,y:cy,r:R*0.9});
         const ix=r.w*0.3, iy=r.h*0.3;
@@ -360,7 +379,7 @@
 
     isWalk(px,py){
       if(this.scene.type==='sub'){ const s=this.SUB; return px>=s.x+12 && px<=s.x+s.w-12 && py>=s.y+12 && py<=s.y+s.h-12; }
-      for(const r of this.ROOMS){ if(px>=r.x+4 && px<=r.x+r.w-4 && py>=r.y+4 && py<=r.y+r.h-4) return !this.isBlocked(px,py); }
+      for(const r of this.ROOMS){ if(px>=r.x+4 && px<=r.x+r.w-4 && py>=r.y+4 && py<=r.y+r.h-4) return this.roomOn(r.k) && !this.isBlocked(px,py); }
       for(const [a,b] of this.LINKS){ const ra=this.byk[a],rb=this.byk[b];
         if(this.distSeg(px,py, ra.x+ra.w/2,ra.y+ra.h/2, rb.x+rb.w/2,rb.y+rb.h/2) < this.CORW) return true; }
       return false;
@@ -368,8 +387,9 @@
 
     roomAt(x,y){ for(const r of this.ROOMS){ if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h) return r; } return null; }
     nearestRoom(x,y){ let best=this.ROOMS[0],bd=1e9; for(const r of this.ROOMS){ const d=Math.hypot(r.x+r.w/2-x,r.y+r.h/2-y); if(d<bd){bd=d;best=r;} } return best; }
-    bfs(ak,bk){ if(ak===bk) return [ak]; const adj={}; for(const r of this.ROOMS) adj[r.k]=[];
-      for(const [a,b] of this.LINKS){ adj[a].push(b); adj[b].push(a); }
+    bfs(ak,bk){ if(!this.roomOn(bk)) return null;
+      if(ak===bk) return [ak]; const adj={}; for(const r of this.ROOMS) adj[r.k]=[];
+      for(const [a,b] of this.LINKS){ if(!this.roomOn(a)||!this.roomOn(b)) continue; adj[a].push(b); adj[b].push(a); }
       const q=[ak], prev={}; prev[ak]=null;
       while(q.length){ const c=q.shift(); if(c===bk) break; for(const n of adj[c]){ if(!(n in prev)){ prev[n]=c; q.push(n); } } }
       if(!(bk in prev)) return null; const path=[]; let c=bk; while(c!==null&&c!==undefined){ path.unshift(c); c=prev[c]; } return path; }
@@ -393,6 +413,9 @@
       const wx=(sx-this.W/2)/this.Z + this.cam.x; const wy=(sy-this.H/2)/this.Z + this.cam.y;
       if(this.scene.type==='sub'){ this.path=[]; this.moveTarget={x:wx,y:wy}; return; }
       let tr=this.roomAt(wx,wy); let tpt={x:wx,y:wy}; if(!tr){ tr=this.nearestRoom(wx,wy); tpt={x:tr.x+tr.w/2,y:tr.y+tr.h/2}; }
+      if(!this.roomOn(tr.k)){ let best=null,bd=1e9; for(const r of this.ROOMS){ if(!this.roomOn(r.k)) continue;
+          const d=Math.hypot(r.x+r.w/2-wx,r.y+r.h/2-wy); if(d<bd){bd=d;best=r;} }
+        tr=best||this.byk.hall; tpt={x:tr.x+tr.w/2,y:tr.y+tr.h/2}; }
       const hr=this.roomAt(this.hero.x,this.hero.y)||this.nearestRoom(this.hero.x,this.hero.y);
       const path=this.bfs(hr.k,tr.k); const wps=[];
       if(path){ for(let i=1;i<path.length;i++){ const rr=this.byk[path[i]]; wps.push({x:rr.x+rr.w/2,y:rr.y+rr.h/2}); } }
@@ -429,7 +452,7 @@
     talkSpot(sp){ if(!sp || this.dialogue) return;
       // PNJ ou point porteur d'une mission du jour → dialogue selon l'état réel
       const m=this.misByRoom && this.misByRoom[sp.room];
-      const owns = m && ((sp.kind==='npc' && m.npc && sp.name.startsWith(m.npc)) || (sp.kind==='look' && !m.npc && sp.label===m.title));
+      const owns = m && this.missionOn(m) && ((sp.kind==='npc' && m.npc && sp.name.startsWith(m.npc)) || (sp.kind==='look' && !m.npc && sp.label===m.title));
       if(owns){
         const who=m.npc||'Lampyre';
         if(this.missionDone(m)){
@@ -465,6 +488,40 @@
           {who:'Lampyre', mood:'smile', t:'Routines, chronos, projets : tout s’y règle. Le manoir, lui, reflète ce que tu y accomplis.'},
         ] };
       this.updateHud(); }
+    // —— Le manoir s'éveille : helpers d'éveil (palier) et de croissance (niveau).
+    stageForXp(xp){ let st=0; for(let i=0;i<this.STAGE_XP.length;i++){ if(xp>=this.STAGE_XP[i]) st=i; } return st; }
+    roomOn(k){ const st=this.stageForXp(this._stageXp||0);
+      for(let i=0;i<=st && i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(k)>=0) return true; } return false; }
+    roomLvl(k){ if(!this.roomOn(k)) return -1; const e=this.manor&&this.manor.rooms[k]; const n=(e&&e.n)||0; return n>=7?2:(n>=3?1:0); }
+    roomFactor(k){ const l=this.roomLvl(k); return l<0?0.55:[0.7,0.85,1][l]; }
+    applyGrowth(){ for(const r of this.ROOMS){ const f=this.roomFactor(r.k);
+        r.w=Math.round(r.bw*f); r.h=Math.round(r.bh*f);
+        r.x=Math.round(r.bx+(r.bw-r.w)/2); r.y=Math.round(r.by+(r.bh-r.h)/2); }
+      this._furn={}; this._part={}; }
+    saveManor(){ try{ localStorage.setItem('ombrelune_manor', JSON.stringify(this.manor)); }catch(e){} }
+    creditRoom(k,inc){ if(!this.manor) return; const e=this.manor.rooms[k]=this.manor.rooms[k]||{n:0};
+      const before=this.roomLvl(k); e.n=(e.n||0)+(inc||1); this.saveManor();
+      const after=this.roomLvl(k);
+      if(after>before && before>=0){ this.relayout(); const r=this.byk[k];
+        this.flash=Math.max(this.flash||0,0.6);
+        this.toast={t:'🏛️ '+r.label+' s’agrandit — le manoir prospère.', t0:performance.now()};
+        this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); } }
+    setRoomCount(k,n){ if(!this.manor) return; const e=this.manor.rooms[k]=this.manor.rooms[k]||{n:0};
+      if(n>(e.n||0)) this.creditRoom(k, n-(e.n||0)); }
+    // repositionne tout ce qui dérive des rects (après une croissance en cours de session)
+    relayout(){ this.applyGrowth();
+      { const gh=this.byk.hall; const x0=gh.x+gh.w/2+52; const rowW=((gh.x+gh.w-72)-(gh.x+gh.w/2+40))-24;
+        this.barRow={x0, y:gh.y+50, n:10, step:rowW/9}; this.barPos={x:x0+rowW/2, y:gh.y+50}; }
+      if(this.SPOTS) for(const sp of this.SPOTS){ if(sp.fx==null) continue; const r=this.byk[sp.room]; sp.x=r.x+r.w*sp.fx; sp.y=r.y+r.h*sp.fy; }
+      if(this.FRAGS) for(const fg of this.FRAGS){ const r=this.byk[fg.room]; fg.x=r.x+r.w*fg.fx; fg.y=r.y+r.h*fg.fy; }
+      { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
+      this.buildObstacles(); this.buildCandles(); }
+    // montée de palier : des salles s'éveillent — cascade de célébration
+    onStageUp(ns){ this._stageXp=this.lamp?this.lamp.xp:this._stageXp;
+      const fresh=(this.UNLOCKS[ns]||[]).map(k=>this.byk[k]).filter(Boolean);
+      if(fresh.length){ this.relayout();
+        this.toast={t:'🏛️ Le manoir grandit : '+fresh.map(r=>r.label).join(', ')+' s’éveille'+(fresh.length>1?'nt':'')+' !', t0:performance.now()};
+        for(const r of fresh) this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); } }
     saveWater(){ try{ localStorage.setItem('ombrelune_water', JSON.stringify({d:this._wdate, n:this.drunk})); }catch(e){} }
     saveQuest(){ try{ localStorage.setItem('ombrelune_water_quest', JSON.stringify({s:this.quest, n:this.noticedCount})); }catch(e){} }
     // —— Mission 2 : persistance + collecte des éclats + entrée de l'énigme
@@ -492,6 +549,8 @@
         if(up && this.barPos){ this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=0.5; }
         if(up){ this.drinkAnim={t0:performance.now()}; this.laughUntil=performance.now()+1500;
           this.toast={t:'Lampyre boit avec toi 💧 ('+this.drunk+'/10)', t0:performance.now()}; }
+        if(this.drunk>=10 && this.manor){ const hh=this.manor.rooms.hall=this.manor.rooms.hall||{n:0};
+          if(hh.d!==this._wdate){ hh.d=this._wdate; this.creditRoom('hall',1); } }
         this.creditCare();
         this.updateHud(); } }
     // gorgée bue HORS du manoir (saisie ailleurs dans l'appli) — la routine vide un verre ici
@@ -507,15 +566,17 @@
       if(s.d!==today) s={d:today,routines:{},focusMin:0};
       s.routines=s.routines||{}; this.sync=s;
       if(!initial){ this.checkCelebrations(); this.creditCare(); this.updateHud(); } }
+    missionOn(m){ return !!m && this.roomOn(m.room); }
     missionDone(m){ if(!this.sync||!m) return false;
       if(m.rk==='focus') return (this.sync.focusMin||0)>=(m.target||25);
       const r=this.sync.routines[m.rk]; return !!r && (r.n||0)>=(r.t||1); }
-    missionsDoneCount(){ return this.MISSIONS.filter(m=>this.missionDone(m)).length; }
+    missionsDoneCount(){ return this.MISSIONS.filter(m=>this.missionOn(m)&&this.missionDone(m)).length; }
+    missionsOnCount(){ return this.MISSIONS.filter(m=>this.missionOn(m)).length; }
     saveMissions(){ try{ localStorage.setItem('ombrelune_missions', JSON.stringify({d:this._wdate, proposed:[...this.mProposed], celebrated:[...this.mCelebrated]})); }catch(e){} }
     // une salle vient de se rallumer (action réelle détectée) → flash + toast, une fois par jour
     checkCelebrations(){ if(!this.MISSIONS||!this.mCelebrated) return; let changed=false;
-      for(const m of this.MISSIONS){ if(!this.missionDone(m) || this.mCelebrated.has(m.room)) continue;
-        this.mCelebrated.add(m.room); changed=true;
+      for(const m of this.MISSIONS){ if(!this.missionOn(m) || !this.missionDone(m) || this.mCelebrated.has(m.room)) continue;
+        this.mCelebrated.add(m.room); changed=true; this.creditRoom(m.room,1);
         const r=this.byk[m.room]; this.flash=Math.max(this.flash,0.6);
         this.toast={t:'✨ '+r.label+' se rallume — '+m.irl+' : fait.', t0:performance.now()};
         this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); }
@@ -531,9 +592,10 @@
       for(const m of this.MISSIONS){ if(this.missionDone(m) && L.credited.missions.indexOf(m.room)<0){ L.credited.missions.push(m.room); gained+=5; } }
       const chunks=Math.floor((this.sync.focusMin||0)/25);
       if(chunks>L.credited.focus){ gained+=(chunks-L.credited.focus)*5; L.credited.focus=chunks; }
-      if(gained>0){ L.xp+=gained; const ns=this.stageFor(L.xp);
+      if(gained>0){ L.xp+=gained; this._stageXp=L.xp; const ns=this.stageFor(L.xp);
         if(ns>(L.stage||0)){ L.stage=ns; this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
-          this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()}; }
+          this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()};
+          this.onStageUp(ns); }
         this.saveLamp(); if(this.el) this.updateHud(); } }
     // —— Trophées du Cabinet : lecture + célébration des nouveaux (une fois chacun).
     reloadTrophies(initial){
@@ -541,6 +603,7 @@
       this.trophies=tr.items||[];
       let seen=[]; try{ seen=JSON.parse(localStorage.getItem('ombrelune_trophies_seen')||'[]'); }catch(e){}
       const fresh=this.trophies.filter(t=>seen.indexOf(t.id)<0);
+      this.setRoomCount('cabinet', this.trophies.length);
       if(fresh.length){
         for(const t of fresh) seen.push(t.id);
         try{ localStorage.setItem('ombrelune_trophies_seen', JSON.stringify(seen)); }catch(e){}
@@ -548,9 +611,10 @@
         this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
         this.toast={t:'🏆 Accompli pour de vrai : « '+fresh[fresh.length-1].title+' » — un trophée rejoint le Cabinet.', t0:performance.now()};
         this.pulses.push({x:cab.x+cab.w/2, y:cab.y+cab.h/2, t0:performance.now()});
-        if(this.lamp){ this.lamp.xp+=10*fresh.length; const ns=this.stageFor(this.lamp.xp);
+        if(this.lamp){ this.lamp.xp+=10*fresh.length; this._stageXp=this.lamp.xp; const ns=this.stageFor(this.lamp.xp);
           if(ns>(this.lamp.stage||0)){ this.lamp.stage=ns;
-            this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' ! (trophée accompli)', t0:performance.now()}; }
+            this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' ! (trophée accompli)', t0:performance.now()};
+            this.onStageUp(ns); }
           this.saveLamp(); } }
       if(!initial && this.el) this.updateHud(); }
     drawTrophies(ctx,t){ if(!this.trophies||!this.trophies.length) return;
@@ -570,6 +634,7 @@
     reloadNextAction(initial){
       let na=null; try{ na=JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){}
       this.nextAction=na;
+      try{ const rv=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]'); this.setRoomCount('sanctuaire', rv.length); }catch(e){}
       // re-révélation auto : cette action a déjà été gagnée (persisté côté jeu) →
       // on redemande le titre au pont sans refaire l'infiltration.
       try{ if(na && na.sealed!==false && window.ManoirBridge && !this._revealAsked){
@@ -712,15 +777,15 @@
       this.nearStair=near;
       let poi=null; let atBar=false;
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
-      else if(this.mquest!=='solved' && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      else if(this.mquest!=='solved' && this.roomOn('miroirs') && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
         if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
-      else if(this.portalPos && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);
+      else if(this.portalPos && this.roomOn('sanctuaire') && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);
         if(d<46){ const st=this.portalState();
           poi={kind:'portal', text: st==='sealed'?'Franchir le portail':(st==='revealed'?'Le portail sommeille':'Portail éteint'),
             color: st==='sealed'?'#b79ae0':(st==='revealed'?'#f2cd72':'#8a7aa6'), glyph:'◉', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
-      else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
@@ -746,12 +811,12 @@
       h.showDlg=!!dl; h.dlgWho=dl?dl.who:''; h.dlgText=dl?dl.t:''; h.dlgColor=dl?(dl.who==='Lampyre'?'#9fd4ee':'#f2cd72'):'#f2cd72';
       h.dlgBtn=this.dialogue?(this.dialogue.i>=this.dialogue.lines.length-1?(this.dialogue.endLabel||'Fermer'):'Suivant \u25b8'):'';
       const FT=this.FRAGS.length;
-      if(this.mquest!=='solved'){ h.showMission=true;
+      if(this.mquest!=='solved' && this.roomOn('miroirs')){ h.showMission=true;
         h.missText = this.mquest==='found' ? 'R\u00e9parer le miroir \u00b7 Salle des miroirs'
           : (this.mgot.size>=2 ? 'Trouver la Salle des miroirs \u00b7 '+this.mgot.size+'/'+FT+' \u00e9clats'
           : 'Retrouver les \u00e9clats de miroir \u00b7 '+this.mgot.size+'/'+FT); }
-      else { // miroirs r\u00e9solus \u2192 objectif quotidien : rallumer le manoir par ses actions r\u00e9elles
-        const lit=this.missionsDoneCount() + (this.drunk>=10?1:0); const tot=this.MISSIONS.length+1;
+      else { // objectif quotidien : rallumer le manoir (éveillé) par ses actions réelles
+        const lit=this.missionsDoneCount() + (this.drunk>=10?1:0); const tot=this.missionsOnCount()+1;
         h.showMission=true;
         h.missText = lit>=tot ? 'Manoir rallum\u00e9 \u2014 '+tot+'/'+tot+' salles \u00b7 \u00e0 demain'
           : 'Rallumer le manoir \u00b7 '+lit+'/'+tot+' salles \u00b7 eau '+this.drunk+'/10'; }
@@ -912,7 +977,27 @@
           L.push({t:'brazier',x:cx-92,y:cy,r:BRZ});
           L.push({t:'brazier',x:cx+92,y:cy,r:BRZ}); break; }
       }
-      this._furn[r.k]=L; return L;
+      // Croissance : niv.0 = mobilier clairsemé (préfixe essentiel), niv.1 = complet, niv.2 = butin/opulence en plus
+      const lvl=Math.max(0,this.roomLvl(r.k));
+      const SPARSE={hall:6,coffre:2,vestibule:2,office:2,galerie:2,miroirs:3,biblio:3,atelier:2,observatoire:2,cabinet:3,jardin:2,dependances:2,crypte:3,sanctuaire:2};
+      let out=(lvl===0 && SPARSE[r.k]!=null)?L.slice(0,SPARSE[r.k]):L;
+      if(lvl>=2){ switch(r.k){
+        case 'hall': out.push({t:'plant',x:X+70,y:Y+70,r:PLT},{t:'brazier',x:cx-150,y:cy+10,r:BRZ},{t:'pedestal',x:cx-150,y:cy-70,r:PED,c:'#f2cd72',glow:'242,205,114'}); break;
+        case 'coffre': out.push({t:'crate',x:X+60,y:Y+H-60,w:CRT,h:CRT},{t:'barrel',x:X+W-60,y:Y+H-60,r:BAR}); break;
+        case 'vestibule': out.push({t:'plant',x:X+70,y:cy,r:PLT},{t:'plant',x:X+W-70,y:cy,r:PLT}); break;
+        case 'office': out.push({t:'shelf',x:X+W-24-SHD,y:Y+48,w:SHD,h:150,vert:true},{t:'plant',x:X+W-70,y:Y+H-66,r:PLT}); break;
+        case 'galerie': out.push({t:'pedestal',x:X+W*0.3,y:cy+60,r:PED},{t:'pedestal',x:X+W*0.7,y:cy+60,r:PED,c:'#f2cd72',glow:'242,205,114'}); break;
+        case 'miroirs': out.push({t:'brazier',x:X+60,y:Y+H-60,r:BRZ},{t:'brazier',x:X+W-60,y:Y+H-60,r:BRZ}); break;
+        case 'biblio': out.push({t:'shelf',x:X+60,y:Y+H-34-SHD,w:150,h:SHD},{t:'plant',x:X+W-70,y:Y+H-70,r:PLT}); break;
+        case 'atelier': out.push({t:'crate',x:X+132,y:Y+H*0.63,w:CRT,h:CRT},{t:'barrel',x:X+190,y:Y+H*0.72,r:BAR}); break;
+        case 'observatoire': out.push({t:'plant',x:X+70,y:Y+70,r:PLT},{t:'plant',x:X+W-70,y:Y+70,r:PLT}); break;
+        case 'cabinet': out.push({t:'brazier',x:X+64,y:Y+H-64,r:BRZ},{t:'plant',x:X+W-70,y:Y+H-64,r:PLT}); break;
+        case 'jardin': out.push({t:'plant',x:X+80,y:cy,r:BUSH},{t:'plant',x:X+W-80,y:cy,r:BUSH}); break;
+        case 'dependances': out.push({t:'crate',x:X+138,y:Y+70,w:CRT,h:CRT},{t:'barrel',x:X+W*0.5-32,y:cy+24,r:BAR}); break;
+        case 'crypte': out.push({t:'brazier',x:X+60,y:Y+H-60,r:BRZ},{t:'brazier',x:X+W-60,y:Y+60,r:BRZ}); break;
+        case 'sanctuaire': out.push({t:'pedestal',x:cx-92,y:cy+120,r:PED,c:'#f2cd72',glow:'242,205,114'},{t:'pedestal',x:cx+92,y:cy+120,r:PED,c:'#f2cd72',glow:'242,205,114'}); break;
+      } }
+      this._furn[r.k]=out; return out;
     }
 
     partitionsFor(r){ if(!this._part) this._part={}; if(this._part[r.k]) return this._part[r.k];
@@ -1079,8 +1164,19 @@
       ctx.restore();
       const vx0=this.cam.x-(this.W/2)/this.Z-90, vx1=this.cam.x+(this.W/2)/this.Z+90, vy0=this.cam.y-(this.H/2)/this.Z-90, vy1=this.cam.y+(this.H/2)/this.Z+90;
       for(const r of this.ROOMS){ if(r.x>vx1||r.x+r.w<vx0||r.y>vy1||r.y+r.h<vy0) continue; const D=this.DOM[r.dom];
+        if(!this.roomOn(r.k)){ // ruine scellée : silhouette sombre + rune, infranchissable
+          this.rr(ctx,r.x,r.y,r.w,r.h,14); ctx.fillStyle='#0d0a17'; ctx.fill();
+          ctx.lineWidth=10; ctx.strokeStyle='#0a0813'; ctx.globalAlpha=0.9; ctx.stroke();
+          ctx.lineWidth=2; ctx.setLineDash([8,10]); ctx.strokeStyle='rgba(120,100,150,.28)'; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+          const scx=r.x+r.w/2, scy=r.y+r.h/2, pl2=0.5+0.5*Math.sin(t*0.9+r.x);
+          ctx.save(); ctx.globalAlpha=0.25+0.2*pl2; ctx.strokeStyle='#8a7aa6'; ctx.lineWidth=1.6;
+          ctx.beginPath(); ctx.arc(scx,scy,13,0,7); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(scx,scy-13); ctx.lineTo(scx,scy+13); ctx.moveTo(scx-13,scy); ctx.lineTo(scx+13,scy); ctx.stroke();
+          ctx.restore();
+          if(day){ ctx.save(); ctx.globalAlpha=0.4; ctx.fillStyle='#8a7aa6'; ctx.font='600 14px Outfit'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(r.label+' — scellée', r.x+r.w/2, r.y+14); ctx.restore(); }
+          continue; }
         let ramb=amb; if(!day && r.k==='hall' && this.mirrorSolved) ramb=Math.min(1.6, 0.6+(this.drunk||0)/10*1.0);
-        else if(!day && this.misByRoom && this.missionDone(this.misByRoom[r.k])) ramb=1.2; // mission du jour accomplie → la salle brille
+        else if(!day && this.misByRoom && this.missionOn(this.misByRoom[r.k]) && this.missionDone(this.misByRoom[r.k])) ramb=1.2; // mission du jour accomplie → la salle brille
         this.floorPlate(ctx,r.x,r.y,r.w,r.h,D.glow,ramb);
         this.drawFurniture(ctx,r);
         this.rr(ctx,r.x,r.y,r.w,r.h,14);
@@ -1100,10 +1196,10 @@
           ctx.fillStyle='rgba(242,205,114,'+al+')'; ctx.beginPath(); ctx.arc(mx,my,1.1,0,7); ctx.fill(); } }
       ctx.restore();
       this.drawCat(ctx,t);
-      if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
-      if(this.SPOTS){ for(const s of this.SPOTS){ if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
-      this.drawPortal(ctx,t);
-      this.drawTrophies(ctx,t);
+      if(this.mquest!=='solved' && this.roomOn('miroirs')){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; this.drawFragment(ctx,fg,t); } }
+      if(this.SPOTS){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
+      if(this.roomOn('sanctuaire')) this.drawPortal(ctx,t);
+      if(this.roomOn('cabinet')) this.drawTrophies(ctx,t);
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -1144,7 +1240,7 @@
       if(c.state==='nap'){ if(nm>c.until) c.state='wander'; return; }
       if(!c.target){
         // nouvelle destination : une salle au hasard (pas le coffre)
-        const rooms=this.ROOMS.filter(r=>r.k!=='coffre');
+        const rooms=this.ROOMS.filter(r=>r.k!=='coffre' && this.roomOn(r.k));
         const dest=rooms[Math.floor(Math.random()*rooms.length)];
         const from=(this.roomAt(c.x,c.y)||this.nearestRoom(c.x,c.y)).k;
         const path=this.bfs(from,dest.k)||[]; c.path=path.map(k=>{ const r=this.byk[k]; return {x:r.x+r.w/2,y:r.y+r.h/2}; });
@@ -1304,7 +1400,7 @@
           ctx.beginPath(); ctx.ellipse(cx2-2*this.Z*0.5,cy2,1.1,1.4*bl,0,0,7); ctx.fill();
           ctx.beginPath(); ctx.ellipse(cx2+2*this.Z*0.5,cy2,1.1,1.4*bl,0,0,7); ctx.fill(); ctx.restore(); } }
       // lucioles du Jardin clos
-      { const j=this.byk.jardin;
+      if(this.roomOn('jardin')){ const j=this.byk.jardin;
         for(let i=0;i<5;i++){ const ph=i*1.7;
           const fx=j.x+j.w*(0.5+0.4*Math.sin(t*0.21+ph)), fy=j.y+j.h*(0.5+0.38*Math.cos(t*0.17+ph*1.4));
           const [sx2,sy2]=toS(fx,fy); if(sx2<-10||sx2>this.W+10||sy2<-10||sy2>this.H+10) continue;
@@ -1330,15 +1426,21 @@
         const cg=f.createRadialGradient(cx,cy,4,cx,cy,cr); cg.addColorStop(0,'rgba(0,0,0,.92)'); cg.addColorStop(0.55,'rgba(0,0,0,.62)'); cg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=cg; f.beginPath(); f.arc(cx,cy,cr,0,7); f.fill(); }
       // éclats de miroir : petit halo dans le noir pour les repérer en explorant
-      if(this.mquest!=='solved' && this.scene.type!=='sub'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const [fx,fy]=toS(fg.x,fg.y); const fr=64*this.Z*0.5;
+      if(this.mquest!=='solved' && this.roomOn('miroirs') && this.scene.type!=='sub'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; const [fx,fy]=toS(fg.x,fg.y); const fr=64*this.Z*0.5;
         const gg=f.createRadialGradient(fx,fy,2,fx,fy,fr); gg.addColorStop(0,'rgba(0,0,0,.85)'); gg.addColorStop(0.6,'rgba(0,0,0,.5)'); gg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=gg; f.beginPath(); f.arc(fx,fy,fr,0,7); f.fill(); } }
       // PNJ / points d'observation : petit halo pour repérer la vie du manoir dans le noir
-      if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
+      if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
         const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
+      // salles scellées : lueur discrète sur la rune — on devine ce qui dort sans le révéler
+      if(this.scene.type!=='sub'){ for(const r of this.ROOMS){ if(this.roomOn(r.k)) continue;
+        const [sx,sy]=toS(r.x+r.w/2,r.y+r.h/2); if(sx<-80||sx>W+80||sy<-80||sy>H+80) continue;
+        const sr=70*this.Z*0.5;
+        const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.85)'); sg.addColorStop(0.6,'rgba(0,0,0,.4)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
       // portail du Sanctuaire : visible dans le noir quand une action est scellée
-      if(this.portalPos && this.scene.type!=='sub' && this.portalState()!=='off'){ const [px2,py2]=toS(this.portalPos.x,this.portalPos.y); const pr=70*this.Z*0.5;
+      if(this.portalPos && this.roomOn('sanctuaire') && this.scene.type!=='sub' && this.portalState()!=='off'){ const [px2,py2]=toS(this.portalPos.x,this.portalPos.y); const pr=70*this.Z*0.5;
         const pg=f.createRadialGradient(px2,py2,2,px2,py2,pr); pg.addColorStop(0,'rgba(0,0,0,.9)'); pg.addColorStop(0.6,'rgba(0,0,0,.5)'); pg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=pg; f.beginPath(); f.arc(px2,py2,pr,0,7); f.fill(); }
       // récompense : dès la Salle des miroirs résolue, le Grand Hall sort du noir (baseline
@@ -1364,6 +1466,7 @@
       ctx.strokeStyle='rgba(214,168,74,.3)'; ctx.lineWidth=1; for(const [a,b] of this.LINKS){ const ra=this.byk[a],rb=this.byk[b]; ctx.beginPath(); ctx.moveTo(tx(ra.x+ra.w/2),ty(ra.y+ra.h/2)); ctx.lineTo(tx(rb.x+rb.w/2),ty(rb.y+rb.h/2)); ctx.stroke(); }
       const here = this.scene.type==='sub' ? this.scene.room : null;
       for(const r of this.ROOMS){ const D=this.DOM[r.dom]; const x=tx(r.x),y=ty(r.y),w=r.w*sc,h=r.h*sc;
+        if(!this.roomOn(r.k)){ this.rr(ctx,x,y,w,h,2); ctx.setLineDash([2,3]); ctx.lineWidth=0.7; ctx.strokeStyle='rgba(120,100,150,.4)'; ctx.stroke(); ctx.setLineDash([]); continue; }
         this.rr(ctx,x,y,w,h,2); ctx.fillStyle='rgba('+D.glow+',.16)'; ctx.fill(); ctx.lineWidth=(here===r.k)?1.6:0.8; ctx.strokeStyle=D.color; ctx.globalAlpha=(here&&here!==r.k)?0.4:1; ctx.stroke(); ctx.globalAlpha=1; }
       // indice doux : la Salle des miroirs apparaît sur la minimap après ~2 éclats
       if(this.mquest!=='solved' && this.mgot.size>=2){ const rm=this.byk.miroirs; const x=tx(rm.x),y=ty(rm.y),w=rm.w*sc,h=rm.h*sc; const pl=0.5+0.5*Math.sin(Date.now()/380);
