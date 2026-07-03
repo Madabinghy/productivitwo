@@ -90,7 +90,7 @@
     var seal='<div style="position:absolute; left:'+(tc.x-19)+'px; top:'+(tc.y-19)+'px; width:38px; height:38px; z-index:7;"><div style="'+sealRing+'"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:18px; filter:'+(solved?'drop-shadow(0 0 8px rgba(242,205,114,1))':'grayscale(1) opacity(.45)')+';">✶</div></div>';
 
     var footer = solved
-      ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La silhouette encapuchonnée apparaît sur le mur…</div><button data-act="back" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Avancer dans le couloir ✦</button></div>'
+      ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La lumière renaît — le Grand Hall s’éclairera au fil de tes verres d’eau.</div><button data-act="win" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Rétablir la lumière ✦</button></div>'
       : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">Deux miroirs comptent, un troisième te distrait. Trouve l\u2019angle qui renvoie la flamme vers le sceau, en haut à droite.</span></div>';
 
     return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
@@ -110,11 +110,14 @@
   }
 
   function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+  // Énigme résolue : marque la mission « Salle des miroirs » comme accomplie (store partagé),
+  // puis renvoie à l'exploration où le Grand Hall s'indexe alors au compteur d'eau.
+  function win(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} back(); }
 
   var app=document.getElementById('app');
   app.addEventListener('click', function(ev){
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
-    var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='back') back(); }
+    var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); }
   });
   function render(){ app.innerHTML = view(); }
   render();
