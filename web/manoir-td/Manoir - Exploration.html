@@ -204,6 +204,11 @@
       if(this.mquest==='dark') this.dialogue={ i:0, endLabel:'Explorer', lines:[
         {who:'Lampyre', mood:'doubt', t:'Le manoir est plongé dans le noir… toutes les lumières se sont éteintes.'},
         {who:'Lampyre', mood:'idle', t:'Reste près de moi. Ces éclats brillants dans le noir… ramassons-les.'} ]};
+      // Confirmation (1re fois) : au retour de l'énigme résolue, on réapparaît dans le Hall —
+      // signale que la lumière revient et qu'elle suit désormais les verres d'eau.
+      if(this.mirrorSolved){ let seen=false; try{ seen=!!localStorage.getItem('ombrelune_mirror_seen'); }catch(e){}
+        if(!seen){ this.toast={t:'La lumière revient dans le Grand Hall — bois pour l’aviver.', t0:performance.now()}; this.flash=0.7;
+          try{ localStorage.setItem('ombrelune_mirror_seen','1'); }catch(e){} } }
 
       // —— Vie du manoir : PNJ décoratifs (« npc ») + points d'observation (« look »).
       // Purement d'ambiance pour l'instant (Lampyre commente) — pas encore liés aux routines.
@@ -837,7 +842,7 @@
       ctx.restore();
       const vx0=this.cam.x-(this.W/2)/this.Z-90, vx1=this.cam.x+(this.W/2)/this.Z+90, vy0=this.cam.y-(this.H/2)/this.Z-90, vy1=this.cam.y+(this.H/2)/this.Z+90;
       for(const r of this.ROOMS){ if(r.x>vx1||r.x+r.w<vx0||r.y>vy1||r.y+r.h<vy0) continue; const D=this.DOM[r.dom];
-        let ramb=amb; if(!day && r.k==='hall' && this.mirrorSolved) ramb=Math.min(1.6, (this.drunk||0)/10*1.6);
+        let ramb=amb; if(!day && r.k==='hall' && this.mirrorSolved) ramb=Math.min(1.6, 0.6+(this.drunk||0)/10*1.0);
         this.floorPlate(ctx,r.x,r.y,r.w,r.h,D.glow,ramb);
         this.drawFurniture(ctx,r);
         this.rr(ctx,r.x,r.y,r.w,r.h,14);
@@ -973,10 +978,11 @@
       if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
         const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
-      // récompense : le Grand Hall émerge du noir au fil des verres d'eau bus
-      if(this.mirrorSolved && this.drunk>0 && this.scene.type!=='sub'){ const gh=this.byk.hall; const [hx2,hy2]=toS(gh.x+gh.w/2, gh.y+gh.h/2);
-        const rad=(Math.max(gh.w,gh.h)*0.62)*(this.drunk/10)*this.Z;
-        const hg=f.createRadialGradient(hx2,hy2,4,hx2,hy2,rad); hg.addColorStop(0,'rgba(0,0,0,.95)'); hg.addColorStop(0.6,'rgba(0,0,0,.66)'); hg.addColorStop(1,'rgba(0,0,0,0)');
+      // récompense : dès la Salle des miroirs résolue, le Grand Hall sort du noir (baseline
+      // nette), et chaque verre d'eau l'agrandit/l'avive jusqu'à un Hall pleinement lumineux.
+      if(this.mirrorSolved && this.scene.type!=='sub'){ const gh=this.byk.hall; const [hx2,hy2]=toS(gh.x+gh.w/2, gh.y+gh.h/2);
+        const rad=(Math.max(gh.w,gh.h)*(0.55+0.5*(this.drunk/10)))*this.Z;
+        const hg=f.createRadialGradient(hx2,hy2,4,hx2,hy2,rad); hg.addColorStop(0,'rgba(0,0,0,1)'); hg.addColorStop(0.6,'rgba(0,0,0,.75)'); hg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=hg; f.beginPath(); f.arc(hx2,hy2,rad,0,7); f.fill(); }
       f.globalCompositeOperation='source-over';
       ctx.drawImage(this.fog,0,0,W,H);

@@ -111,15 +111,17 @@
 
   function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
   // Énigme résolue : marque la mission « Salle des miroirs » comme accomplie (store partagé),
-  // puis renvoie à l'exploration où le Grand Hall s'indexe alors au compteur d'eau.
-  function win(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} back(); }
+  // d'où le Grand Hall s'indexe ensuite au compteur d'eau. Écrit dès que le faisceau touche le
+  // sceau (cf. render) pour que le flag survive à TOUT chemin de sortie (bouton, en-tête, ✕ app).
+  function saveSolved(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} }
+  function win(){ saveSolved(); back(); }
 
   var app=document.getElementById('app');
   app.addEventListener('click', function(ev){
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
     var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); }
   });
-  function render(){ app.innerHTML = view(); }
+  function render(){ if(trace().solved) saveSolved(); app.innerHTML = view(); }
   render();
 })();
 </script>
