@@ -1,6 +1,7 @@
-// Sauvegarde locale (localStorage, 1 clé JSON) — Lot 1 du flux de jeu.
-// V1 : on persiste surtout seenTutorial + stats + roster (la progression de campagne
-// viendra avec la carte aux lots suivants).
+// Sauvegarde du jeu (1 clé JSON) — persiste seenTutorial + stats + roster + progression.
+// Passe par l'adaptateur store.js (localStorage aujourd'hui, Firestore demain sans
+// changer cette API).
+import { load, save } from './store.js';
 const KEY = 'manoir_save_v1';
 
 export function defaultSave() {
@@ -15,16 +16,10 @@ export function defaultSave() {
 }
 
 export function loadSave() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw);
-    return (s && s.version === 1) ? s : null;
-  } catch (e) { return null; }
+  const s = load(KEY);
+  return (s && s.version === 1) ? s : null;
 }
 
-export function writeSave(s) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* mode privé : on ignore */ }
-}
+export function writeSave(s) { save(KEY, s); }
 
 export function hasSave() { return !!loadSave(); }
