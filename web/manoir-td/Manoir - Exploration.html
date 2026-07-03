@@ -281,6 +281,14 @@
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
       this.reloadNextAction(true);
 
+      // —— Trophées : actions Gantt gagnées en mission PUIS réellement accomplies
+      // (poussées par le pont dans `ombrelune_trophies`). Chaque nouveau trophée est
+      // célébré UNE fois (registre `ombrelune_trophies_seen`) et nourrit Lampyre (+10 XP).
+      this.trophies=[]; this.reloadTrophies(true);
+      // `hello` : donne au pont la liste des actions gagnées (il en déduit les trophées)
+      try{ if(window.ManoirBridge){ const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
+        window.ManoirBridge.postMessage(JSON.stringify({type:'hello', revealed:rev})); } }catch(e){}
+
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
 
@@ -308,7 +316,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -430,6 +438,12 @@
             lines: m.ask.map((t,i)=>({who, mood: i===0?'doubt':'idle', t})) }; }
         this.updateHud(); return;
       }
+      if(sp.room==='cabinet' && sp.kind==='look' && this.trophies && this.trophies.length){
+        const last=this.trophies.slice(-3).map(t=>'« '+t.title+' »').join(', ');
+        this.dialogue={ i:0, endLabel:'Fermer', lines:[
+          {who:'Lampyre', mood:'smile', t:this.trophies.length+' trophée'+(this.trophies.length>1?'s':'')+' — chacun une étape de projet réellement accomplie.'},
+          {who:'Lampyre', mood:'idle', t:'Les derniers : '+last+'. Le Cabinet se souvient de tout.'} ]};
+        this.updateHud(); return; }
       this.dialogue={ i:0, endLabel:'Fermer',
         lines: sp.lines.map((t,i)=>({who:'Lampyre', mood: i===0?'idle':'smile', t})) };
       this.updateHud(); }
@@ -515,6 +529,36 @@
         if(ns>(L.stage||0)){ L.stage=ns; this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
           this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()}; }
         this.saveLamp(); if(this.el) this.updateHud(); } }
+    // —— Trophées du Cabinet : lecture + célébration des nouveaux (une fois chacun).
+    reloadTrophies(initial){
+      let tr={d:'',items:[]}; try{ tr=JSON.parse(localStorage.getItem('ombrelune_trophies')||'null')||tr; }catch(e){}
+      this.trophies=tr.items||[];
+      let seen=[]; try{ seen=JSON.parse(localStorage.getItem('ombrelune_trophies_seen')||'[]'); }catch(e){}
+      const fresh=this.trophies.filter(t=>seen.indexOf(t.id)<0);
+      if(fresh.length){
+        for(const t of fresh) seen.push(t.id);
+        try{ localStorage.setItem('ombrelune_trophies_seen', JSON.stringify(seen)); }catch(e){}
+        const cab=this.byk.cabinet;
+        this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
+        this.toast={t:'🏆 Accompli pour de vrai : « '+fresh[fresh.length-1].title+' » — un trophée rejoint le Cabinet.', t0:performance.now()};
+        this.pulses.push({x:cab.x+cab.w/2, y:cab.y+cab.h/2, t0:performance.now()});
+        if(this.lamp){ this.lamp.xp+=10*fresh.length; const ns=this.stageFor(this.lamp.xp);
+          if(ns>(this.lamp.stage||0)){ this.lamp.stage=ns;
+            this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' ! (trophée accompli)', t0:performance.now()}; }
+          this.saveLamp(); } }
+      if(!initial && this.el) this.updateHud(); }
+    drawTrophies(ctx,t){ if(!this.trophies||!this.trophies.length) return;
+      const cab=this.byk.cabinet; const X=cab.x,Y=cab.y,W=cab.w,cy=cab.y+cab.h/2,cx=cab.x+W/2;
+      // 3 piédestaux existants puis une rangée d'étagère — max 7 visibles
+      const spots=[{x:X+W*0.25,y:cy-26},{x:X+W*0.25,y:cy+54},{x:cx+112,y:cy},
+        {x:X+60,y:Y+42},{x:X+W*0.4,y:Y+42},{x:cx+52,y:Y+42},{x:cx+118,y:Y+42}];
+      const n=Math.min(this.trophies.length, spots.length);
+      for(let i=0;i<n;i++){ const sp2=spots[i]; const pulse=0.7+0.3*Math.sin(t*2+i*1.3);
+        ctx.save(); ctx.translate(sp2.x,sp2.y-10);
+        ctx.shadowColor='#f2cd72'; ctx.shadowBlur=8*pulse; ctx.fillStyle='#f2cd72';
+        ctx.beginPath(); ctx.moveTo(-4,-6); ctx.quadraticCurveTo(-4.5,-1,0,0); ctx.quadraticCurveTo(4.5,-1,4,-6); ctx.closePath(); ctx.fill();
+        ctx.fillRect(-0.9,0,1.8,3); ctx.fillRect(-2.6,3,5.2,1.6);
+        ctx.restore(); } }
     // —— Portail du Sanctuaire : prochaine action Gantt scellée (pont app).
     portalState(){ const na=this.nextAction; return !na ? 'off' : (na.sealed===false && na.title ? 'revealed' : 'sealed'); }
     reloadNextAction(initial){
@@ -1020,6 +1064,7 @@
       if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
       if(this.SPOTS){ for(const s of this.SPOTS){ if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
       this.drawPortal(ctx,t);
+      this.drawTrophies(ctx,t);
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
