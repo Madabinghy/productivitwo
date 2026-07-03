@@ -68,6 +68,12 @@ class _ManoirScreenState extends State<ManoirScreen> {
   WebViewController? _ctrl;
   bool _ready = false;
   int _webNonce = 0; // bump → nouvelle iframe (rechargement web)
+  // Boucle « gagner la prochaine action Gantt » (docs/manoir_missions_v2.md §1) :
+  // l'action est poussée SCELLÉE (sans titre) ; le jeu demande la révélation
+  // après une mission gagnée (reveal_action).
+  final Set<String> _revealedActionIds = {};
+  ({String projectId, String taskId, String actionId, String projectTitle, String actionTitle})?
+      _nextAction;
 
   @override
   void initState() {
@@ -82,6 +88,7 @@ class _ManoirScreenState extends State<ManoirScreen> {
         ..setNavigationDelegate(NavigationDelegate(
           onPageFinished: (_) {
             _pushSync();
+            _pushNextAction();
             if (mounted && !_ready) setState(() => _ready = true);
           },
         ))
@@ -119,7 +126,90 @@ class _ManoirScreenState extends State<ManoirScreen> {
       case 'open_console':
         if (mounted) Navigator.of(context).maybePop();
         break;
+      case 'reveal_action':
+        // Mission gagnée : on descelle l'action courante et on renvoie son titre.
+        final na = _nextAction;
+        if (na != null) {
+          _revealedActionIds.add(na.actionId);
+          _writeNextAction(na);
+        }
+        break;
     }
+  }
+
+  String _todayYmd() {
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
+  // Cherche la « prochaine action » : premier projet actif (racines d'abord),
+  // première tâche pending (par date de début), première sous-action non faite.
+  // Les projets ne vivent pas dans AppState → fetch Firestore à la demande.
+  Future<void> _pushNextAction() async {
+    final sync = widget.logic.sync;
+    if (_ctrl == null || sync == null) return;
+    List<Project> projects;
+    try {
+      projects = await sync.fetchProjects();
+    } catch (_) {
+      return;
+    }
+    final actives = projects.where((p) => p.status == 'active').toList()
+      ..sort((a, b) {
+        final ra = a.parentProjectId == null ? 0 : 1;
+        final rb = b.parentProjectId == null ? 0 : 1;
+        if (ra != rb) return ra - rb;
+        return a.createdAt.compareTo(b.createdAt);
+      });
+    _nextAction = null;
+    for (final p in actives) {
+      final tasks = p.tasks.where((t) => t.status == 'pending').toList()
+        ..sort((a, b) => a.startDate.compareTo(b.startDate));
+      for (final t in tasks) {
+        final a = t.actions.firstWhereOrNull((x) => !x.done);
+        if (a != null) {
+          _nextAction = (
+            projectId: p.id,
+            taskId: t.id,
+            actionId: a.id,
+            projectTitle: p.title,
+            actionTitle: a.title,
+          );
+          break;
+        }
+      }
+      if (_nextAction != null) break;
+    }
+    _writeNextAction(_nextAction);
+  }
+
+  void _writeNextAction(
+      ({String projectId, String taskId, String actionId, String projectTitle, String actionTitle})?
+          na) {
+    final ctrl = _ctrl;
+    if (ctrl == null) return;
+    final String js;
+    if (na == null) {
+      js = "localStorage.removeItem('ombrelune_next_action');";
+    } else {
+      final revealed = _revealedActionIds.contains(na.actionId);
+      final payload = jsonEncode({
+        'd': _todayYmd(),
+        'projectId': na.projectId,
+        'taskId': na.taskId,
+        'actionId': na.actionId,
+        'projectName': na.projectTitle,
+        'sealed': !revealed,
+        'title': revealed ? na.actionTitle : null,
+      });
+      js = "localStorage.setItem('ombrelune_next_action', ${jsonEncode(payload)});";
+    }
+    ctrl.runJavaScript('''
+      try {
+        $js
+        window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_next_action'}));
+      } catch (e) {}
+    ''');
   }
 
   // App → jeu : pousse l'état réel du jour dans le localStorage du jeu

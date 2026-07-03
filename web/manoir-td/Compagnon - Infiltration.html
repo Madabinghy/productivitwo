@@ -72,12 +72,26 @@
   function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
 
   function goBack(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+
+  // —— Mode « récompense = action Gantt » (?reward=action, cf. docs/manoir_missions_v2.md §1) :
+  // gagner l'infiltration révèle la prochaine action du projet, scellée par la Console.
+  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
+  function revealAsk(){
+    // mémorise côté jeu que cette action est gagnée (re-révélation auto au prochain lancement)
+    try{ var na=readNextAction(); if(na && na.actionId){
+      var rev=[]; try{ rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]'); }catch(e){}
+      if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
+    try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'reveal_action' })); }catch(e){}
+  }
+  // le pont répond en réécrivant ombrelune_next_action avec le titre → maj du bandeau
+  window.addEventListener('storage', function(e){ if(e.key==='ombrelune_next_action' && S.status==='win') renderFooter(); });
   function reset(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.hasKey=false; G.flash=0; S.status='play'; S.hasKey=false; renderFooter(); }
   function toggleLamp(){ S.dimmed=!S.dimmed; renderFooter(); }
   function interact(){
     if(S.status!=='play') return;
     if(G.nearKey){ G.hasKey=true; G.nearKey=false; S.hasKey=true; renderFooter(); }
-    else if(G.nearDoor){ S.status='win'; renderFooter(); }
+    else if(G.nearDoor){ S.status='win'; if(REWARD) revealAsk(); renderFooter(); }
   }
 
   function jsDown(e){ if(S.status!=='play') return; e.preventDefault(); G.stickActive=true; window.addEventListener('pointermove', G._jsMove); window.addEventListener('pointerup', G._jsUp); jsMove(e); }
@@ -173,10 +187,24 @@
   function renderFooter(){
     var foot=document.getElementById('inf-footer');
     if(S.status==='win'){
+      // récompense : l'action Gantt gagnée (titre injecté par le pont ; sinon message Console)
+      var rewardHtml='';
+      if(REWARD){
+        var na=readNextAction();
+        var revealed = na && na.title && na.sealed===false;
+        rewardHtml = '<div style="margin-top:11px; padding:12px 14px; border-radius:13px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.35);">'
+          + '<div style="font-weight:700; font-size:8.5px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Butin — prochaine étape'+(na&&na.projectName?(' · '+String(na.projectName).replace(/[&<>"]/g,'')):'')+'</div>'
+          + (revealed
+            ? '<div style="margin-top:5px; font-family:\'Fraunces\',serif; font-weight:600; font-size:15px; color:#fbf3e2;">« '+String(na.title).replace(/[&<>"]/g,'')+' »</div>'
+              + '<div style="margin-top:4px; font-size:11px; color:#a796c0;">Fais-la pour de vrai, puis coche-la dans la Console.</div>'
+            : '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#d8c8a8;">Le sceau se dissout… ouvre la Console (l’app) pour lire ta prochaine étape.</div>')
+          + '</div>';
+      }
       foot.innerHTML = '<div style="padding:15px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(20,40,28,.92), rgba(12,26,18,.95)); border:1px solid rgba(95,184,126,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;">'
         + '<div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#9fe0b0;">Évasion réussie</div>'
         + '<div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">Clé en poche, tu as filé sous leurs regards.</div>'
-        + '<button id="inf-next" style="margin-top:12px; width:100%; padding:14px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e);">Salle suivante ✦</button>'
+        + rewardHtml
+        + '<button id="inf-next" style="margin-top:12px; width:100%; padding:14px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e);">'+(REWARD?'Retour au manoir ✦':'Salle suivante ✦')+'</button>'
         + '</div>';
       document.getElementById('inf-next').onclick = goBack;
       return;
@@ -204,6 +232,7 @@
     document.getElementById('inf-reset').addEventListener('click', reset);
     renderFooter();
     G._raf=requestAnimationFrame(loop);
+    window.__infiltration = { S:S, G:G, interact:interact }; // pour debug / tests headless
   }
   boot();
 })();
