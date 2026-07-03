@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombrelune — La Salle des Ombres (vanilla)</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; background:#070510; font-family:'Outfit',sans-serif; padding:24px; }
+  @keyframes risein { from{ opacity:0; transform: translateY(12px) } to{ opacity:1; transform:none } }
+  @keyframes bannerin { from{ opacity:0; transform: translateY(22px) } to{ opacity:1; transform:none } }
+  button{ font-family:'Outfit',sans-serif; }
+</style>
+</head>
+<body>
+<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">
+  <!-- HUD -->
+  <div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 8px;">
+    <div id="so-goback" style="display:flex; flex-direction:column; cursor:pointer;">
+      <span style="font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:#e9dcc2;">La Salle des Ombres</span>
+      <span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">‹ Sanctuaire · au-delà du portail</span>
+    </div>
+    <button id="so-reset" style="background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28); border-radius:999px; padding:6px 13px; cursor:pointer; font-weight:600; font-size:11px; color:#e7c878;">↺ Reprendre</button>
+  </div>
+  <!-- detection meter + masse -->
+  <div style="position:relative; z-index:30; padding:2px 24px 10px;">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <span id="so-label" style="font-weight:700; font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:#5fb87e; min-width:96px;">Discret</span>
+      <div style="flex:1; height:7px; border-radius:999px; background:rgba(154,134,184,.16); overflow:hidden;"><div id="so-meter" style="width:0%; height:100%; border-radius:999px; background:#5fb87e;"></div></div>
+      <span id="so-masse" style="font-weight:700; font-size:12px; color:#f2cd72;">⚡0</span>
+    </div>
+    <div id="so-obj" style="margin-top:7px; font-size:11.5px; line-height:1.45; color:#a796c0;">Atteins la console du Commander pour déployer tes défenses.</div>
+  </div>
+  <!-- viewport -->
+  <div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:4px;">
+    <div style="position:relative; width:300px; height:404px; border-radius:8px; overflow:hidden; border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">
+      <canvas id="so-cv" width="300" height="404" style="position:absolute; inset:0; width:300px; height:404px; cursor:crosshair;"></canvas>
+      <div id="so-stick" style="position:absolute; right:16px; bottom:16px; width:96px; height:96px; border-radius:50%; background:radial-gradient(circle, rgba(40,30,58,.55), rgba(18,12,28,.45)); border:1.5px solid rgba(214,168,74,.3); touch-action:none; z-index:20;">
+        <div id="so-thumb" style="position:absolute; left:50%; top:50%; width:42px; height:42px; margin:-21px 0 0 -21px; border-radius:50%; background:radial-gradient(circle at 38% 32%, #5a4a72, #2a1d3e); border:1.5px solid rgba(214,168,74,.5); box-shadow:0 4px 10px rgba(0,0,0,.5);"></div>
+      </div>
+    </div>
+  </div>
+  <!-- footer -->
+  <div id="so-footer" style="position:relative; z-index:30; padding:10px 24px 24px;"></div>
+</div>
+
+<script>
+/* =================================================================
+   OMBRELUNE — La Salle des Ombres (mission « 007 »), 100% VANILLA JS
+   docs/manoir_missions_v2.md §3 — mixe les 3 mécaniques :
+   caméras balayantes à éviter · pièges/lanternes à poser (budget ⚡ =
+   missions du jour réellement accomplies, via ombrelune_sync) ·
+   faisceau de miroirs intégré à la map (aveugler la caméra du coffre
+   OU ouvrir la chambre forte — la lanterne résout le dilemme).
+   Moteur porté de « Compagnon - Infiltration.html ».
+   ================================================================= */
+(function(){
+  'use strict';
+
+  var VPW=300, VPH=404, WORLD_W=560, WORLD_H=1100;
+  var START={ x:280, y:1040 };
+  var VAULT={ x:280, y:90 };
+  var CONSOLE={ x:470, y:940 };
+
+  // Caméras murales : pivot fixe, cône balayant. `id` sert au faisceau/lanternes.
+  var CAMS=[
+    { id:'c1', x:60,  y:880, dir:0,        sweep:0.55, phase:0,   range:230, half:0.38 },
+    { id:'c2', x:500, y:760, dir:Math.PI,  sweep:0.5,  phase:2.0, range:230, half:0.38 },
+    { id:'c3', x:60,  y:470, dir:0,        sweep:0.6,  phase:1.0, range:250, half:0.40 },
+    { id:'c4', x:500, y:120, dir:Math.PI,  sweep:0.45, phase:3.1, range:260, half:0.40 }
+  ];
+  // Garde patrouilleur (peut être figé par la glu).
+  var GUARDS=[
+    { x:280, y:600, dir:Math.PI/2, sweep:0.8, phase:0, range:200, half:0.45, patrol:170 }
+  ];
+  var FURN=[
+    { x:150, y:960, w:96, h:46 }, { x:330, y:860, w:70, h:90 }, { x:90,  y:770, w:96, h:46 },
+    { x:420, y:640, w:84, h:46 }, { x:120, y:640, w:84, h:46 }, { x:250, y:730, w:90, h:46 },
+    { x:420, y:470, w:70, h:84 }, { x:180, y:400, w:96, h:46 }, { x:80,  y:300, w:60, h:80 },
+    { x:390, y:220, w:70, h:46 }
+  ];
+  // Socles de pose (activés après la console) — lanterne (aveugle la caméra la
+  // plus proche) ou glu (fige le garde qui passe dessus).
+  var SOCKETS=[
+    { id:'s1', x:150, y:820 }, { id:'s2', x:280, y:520 }, { id:'s3', x:430, y:170 }, { id:'s4', x:120, y:200 }
+  ];
+  // Faisceau : source fixe → M1 → M2 → capteur (ouvre la chambre forte) ou C4 (l'aveugle).
+  var SOURCE={ x:40, y:210, dir:'E' };
+  var MIRRORS=[ { id:'m1', x:300, y:210, o:'\\' }, { id:'m2', x:300, y:120, o:'/' } ];
+  var SENSOR={ x:140, y:120 };
+  var REFLECT={ '/':{E:'N',N:'E',W:'S',S:'W'}, '\\':{E:'S',S:'E',W:'N',N:'W'} };
+  var DVEC={ E:[1,0], W:[-1,0], N:[0,-1], S:[0,1] };
+
+  var S = { status:'play', actState:'none', consoleOn:false };
+  var G = {};
+
+  function rr(c,x,y,w,h,r){ c.beginPath(); c.moveTo(x+r,y); c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r); c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath(); }
+  function goBack(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+
+  // —— Récompense = action Gantt (?reward=action) — même flux que la Galerie des ombres.
+  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
+  function revealAsk(){
+    try{ var na=readNextAction(); if(na && na.actionId){
+      var rev=[]; try{ rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]'); }catch(e){}
+      if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
+    try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'reveal_action' })); }catch(e){}
+  }
+  window.addEventListener('storage', function(e){ if(e.key==='ombrelune_next_action' && S.status==='win') renderFooter(); });
+
+  // —— Budget ⚡ « masse lumineuse » = 1 + missions du jour accomplies (ombrelune_sync), max 4.
+  function readMasse(){
+    var today=new Date().toISOString().slice(0,10); var n=1;
+    try{ var s=JSON.parse(localStorage.getItem('ombrelune_sync')||'null');
+      if(s && s.d===today){ var r=s.routines||{};
+        ['vaisselle','lecture','rangement','meditation'].forEach(function(k){ if(r[k] && (r[k].n||0)>=(r[k].t||1)) n++; });
+        if((s.focusMin||0)>=25) n++; } }catch(e){}
+    return Math.min(4, n);
+  }
+
+  // reset doux (échec ou ↺) : position + détection seulement — poses, miroirs
+  // et chambre forte restent acquis (jamais punitif).
+  function reset(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.flash=0; S.status='play'; renderFooter(); }
+
+  function jsDown(e){ if(S.status!=='play') return; e.preventDefault(); G.stickActive=true; window.addEventListener('pointermove', G._jsMove); window.addEventListener('pointerup', G._jsUp); jsMove(e); }
+  function jsMove(e){ var base=document.getElementById('so-stick'); if(!base) return; var r=base.getBoundingClientRect(); var cx=r.left+r.width/2, cy=r.top+r.height/2; var dx=e.clientX-cx, dy=e.clientY-cy; var R=34, len=Math.hypot(dx,dy); if(len>R){ dx=dx/len*R; dy=dy/len*R; } G.move={ x:dx/R, y:dy/R }; var th=document.getElementById('so-thumb'); if(th) th.style.transform='translate('+dx+'px,'+dy+'px)'; }
+  function jsUp(){ G.stickActive=false; G.move={x:0,y:0}; var th=document.getElementById('so-thumb'); if(th) th.style.transform='translate(0,0)'; window.removeEventListener('pointermove', G._jsMove); window.removeEventListener('pointerup', G._jsUp); }
+  function onFloor(e){ if(S.status!=='play') return; var r=G.cv.getBoundingClientRect(); var sx=VPW/r.width, sy=VPH/r.height;
+    var wx=(e.clientX-r.left)*sx + G.cam.x, wy=(e.clientY-r.top)*sy + G.cam.y;
+    // tap direct sur un miroir proche = pivoter
+    for(var i=0;i<MIRRORS.length;i++){ var m=MIRRORS[i]; if(Math.hypot(wx-m.x,wy-m.y)<26 && Math.hypot(G.bx-m.x,G.by-m.y)<60){ toggleMirror(m); return; } }
+    G.tgt={ x:wx, y:wy };
+  }
+
+  function inRect(x,y,c,m){ m=m||0; return x>=c.x-m && x<=c.x+c.w+m && y>=c.y-m && y<=c.y+c.h+m; }
+  function occluded(gx,gy,bx,by){ for(var t=0.1; t<=0.9; t+=0.05){ var px=gx+(bx-gx)*t, py=gy+(by-gy)*t; if(FURN.some(function(c){ return inRect(px,py,c,2); })) return true; } return false; }
+  function camAngle(c){ return c.dir + c.sweep*Math.sin(G.t*0.8 + c.phase); }
+  function guardAngle(g){ return g.dir + g.sweep*Math.sin(G.t*0.9 + g.phase); }
+  function guardPos(g){ var fro=G.frozen[0]||0; if(fro>0) return G.frozenPos; return { x: g.x + (g.patrol ? g.patrol*Math.sin(G.t*0.5 + g.phase) : 0), y: g.y }; }
+
+  // —— Faisceau : segments + caméras aveuglées + capteur touché.
+  function computeBeam(){
+    var segs=[]; var x=SOURCE.x, y=SOURCE.y, dir=SOURCE.dir;
+    for(var hop=0; hop<5; hop++){
+      var v=DVEC[dir]; var best=null, bestD=1e9, kind=null, obj=null;
+      // miroirs alignés sur la ligne courante
+      for(var i=0;i<MIRRORS.length;i++){ var m=MIRRORS[i];
+        var d = v[0]!==0 ? ((Math.abs(m.y-y)<7 && (m.x-x)*v[0]>4) ? Math.abs(m.x-x) : -1)
+                         : ((Math.abs(m.x-x)<7 && (m.y-y)*v[1]>4) ? Math.abs(m.y-y) : -1);
+        if(d>0 && d<bestD){ bestD=d; best={x:m.x,y:m.y}; kind='mirror'; obj=m; } }
+      // capteur
+      { var sn=SENSOR; var d2 = v[0]!==0 ? ((Math.abs(sn.y-y)<7 && (sn.x-x)*v[0]>4) ? Math.abs(sn.x-x) : -1)
+                                         : ((Math.abs(sn.x-x)<7 && (sn.y-y)*v[1]>4) ? Math.abs(sn.y-y) : -1);
+        if(d2>0 && d2<bestD){ bestD=d2; best={x:sn.x,y:sn.y}; kind='sensor'; obj=sn; } }
+      // le faisceau bute sur les meubles (premier bord rencontré)
+      for(var fi=0; fi<FURN.length; fi++){ var fr=FURN[fi]; var fd=-1;
+        if(v[0]>0 && y>=fr.y && y<=fr.y+fr.h && fr.x>x+4) fd=fr.x-x;
+        else if(v[0]<0 && y>=fr.y && y<=fr.y+fr.h && fr.x+fr.w<x-4) fd=x-(fr.x+fr.w);
+        else if(v[1]>0 && x>=fr.x && x<=fr.x+fr.w && fr.y>y+4) fd=fr.y-y;
+        else if(v[1]<0 && x>=fr.x && x<=fr.x+fr.w && fr.y+fr.h<y-4) fd=y-(fr.y+fr.h);
+        if(fd>0 && fd<bestD){ bestD=fd; best={x:x+v[0]*fd, y:y+v[1]*fd}; kind='furn'; obj=null; } }
+      if(!best){ // jusqu'au mur
+        var ex = v[0]>0?WORLD_W-14 : v[0]<0?14 : x;
+        var ey = v[1]>0?WORLD_H-14 : v[1]<0?14 : y;
+        segs.push({x1:x,y1:y,x2:ex,y2:ey}); break; }
+      segs.push({x1:x,y1:y,x2:best.x,y2:best.y});
+      if(kind==='sensor'){ G.sensorLit=true; break; }
+      if(kind==='furn') break;
+      dir=REFLECT[obj.o][dir]; if(!dir) break; x=best.x; y=best.y;
+    }
+    return segs;
+  }
+  function segDist(px,py,s){ var dx=s.x2-s.x1, dy=s.y2-s.y1; var l2=dx*dx+dy*dy; var t=l2?((px-s.x1)*dx+(py-s.y1)*dy)/l2:0; t=Math.max(0,Math.min(1,t)); var cx=s.x1+t*dx, cy=s.y1+t*dy; return Math.hypot(px-cx,py-cy); }
+  function camBlinded(c, segs){
+    if(G.lanternBlind[c.id]) return true;
+    for(var i=0;i<segs.length;i++){ if(segDist(c.x,c.y,segs[i])<16) return true; }
+    return false;
+  }
+  function toggleMirror(m){ if(S.status!=='play') return; m.o = m.o==='/' ? '\\' : '/'; renderFooter(); }
+
+  // —— Pose : lanterne (aveugle la caméra la plus proche du socle) / glu (fige le garde).
+  function placeItem(sock, type){
+    if(S.status!=='play' || sock.item || G.masse<=0) return;
+    sock.item=type; G.masse--;
+    if(type==='lantern'){ var best=null, bd=1e9; for(var i=0;i<CAMS.length;i++){ var d=Math.hypot(CAMS[i].x-sock.x, CAMS[i].y-sock.y); if(d<bd){ bd=d; best=CAMS[i]; } } if(best) { G.lanternBlind[best.id]=true; sock.camId=best.id; } }
+    renderFooter(); updateHud();
+  }
+
+  function interact(){
+    if(S.status!=='play') return;
+    if(G.nearConsole && !S.consoleOn){ S.consoleOn=true; renderFooter(); return; }
+    if(G.nearVault && G.vaultOpen){ S.status='win'; if(REWARD) revealAsk(); renderFooter(); return; }
+  }
+
+  function loop(){
+    var dt=1/60; G.t+=dt;
+    if(G.frozen[0]>0) G.frozen[0]-=dt;
+    var playing = S.status==='play';
+    if(playing && !G.flash){
+      var mag=Math.hypot(G.move.x, G.move.y);
+      if(G.stickActive && mag>0.06){ var spd=2.9; G.bx+=G.move.x*spd; G.by+=G.move.y*spd; G.tgt={x:G.bx,y:G.by}; }
+      else { var dx=G.tgt.x-G.bx, dy=G.tgt.y-G.by, d=Math.hypot(dx,dy), spd2=2.6; if(d>spd2){ G.bx+=dx/d*spd2; G.by+=dy/d*spd2; } else { G.bx=G.tgt.x; G.by=G.tgt.y; } }
+      G.bx=Math.max(12, Math.min(WORLD_W-12, G.bx)); G.by=Math.max(12, Math.min(WORLD_H-12, G.by));
+    }
+    G.cam.x=Math.max(0, Math.min(WORLD_W-VPW, G.bx-VPW/2));
+    G.cam.y=Math.max(0, Math.min(WORLD_H-VPH, G.by-VPH/2));
+
+    // faisceau (chaque frame : miroirs pivotables à tout moment)
+    G.sensorLit=false;
+    var segs=computeBeam();
+    G.beamSegs=segs;
+    if(G.sensorLit && !G.vaultOpen){ G.vaultOpen=true; renderFooter(); }
+
+    // glu : le garde qui marche dessus est figé ~6 s (glu consommée)
+    for(var gi2=0; gi2<GUARDS.length; gi2++){ var gg=GUARDS[gi2]; var gp0=guardPos(gg);
+      for(var si=0; si<SOCKETS.length; si++){ var sk=SOCKETS[si];
+        if(sk.item==='glue' && Math.hypot(gp0.x-sk.x, gp0.y-sk.y)<20){ G.frozen[gi2]=6; G.frozenPos={x:gp0.x,y:gp0.y}; sk.item='glueUsed'; } } }
+
+    // détection : caméras non aveuglées + garde non figé
+    var seen=false;
+    for(var ci=0; ci<CAMS.length; ci++){ var c=CAMS[ci]; if(camBlinded(c,segs)) continue;
+      var a=camAngle(c); var vx=G.bx-c.x, vy=G.by-c.y, dist=Math.hypot(vx,vy); if(dist>c.range) continue;
+      var look=Math.atan2(vy,vx); var diff=Math.abs(Math.atan2(Math.sin(look-a),Math.cos(look-a)));
+      if(diff<c.half && !occluded(c.x,c.y,G.bx,G.by)){ seen=true; break; } }
+    if(!seen){ for(var gi=0; gi<GUARDS.length; gi++){ if(G.frozen[gi]>0) continue; var g=GUARDS[gi]; var gp=guardPos(g); var ang=guardAngle(g);
+      var vx2=G.bx-gp.x, vy2=G.by-gp.y, dist2=Math.hypot(vx2,vy2); if(dist2>g.range) continue;
+      var look2=Math.atan2(vy2,vx2); var diff2=Math.abs(Math.atan2(Math.sin(look2-ang),Math.cos(look2-ang)));
+      if(diff2<g.half && !occluded(gp.x,gp.y,G.bx,G.by)){ seen=true; break; } } }
+
+    if(playing && !G.flash){
+      G.det += seen ? 3.6 : -3.2; G.det=Math.max(0,Math.min(100,G.det));
+      G.nearConsole = Math.hypot(G.bx-CONSOLE.x, G.by-CONSOLE.y) < 40;
+      G.nearVault = Math.hypot(G.bx-VAULT.x, G.by-VAULT.y) < 40;
+      G.nearMirror = null; for(var mi=0; mi<MIRRORS.length; mi++){ if(Math.hypot(G.bx-MIRRORS[mi].x, G.by-MIRRORS[mi].y)<44){ G.nearMirror=MIRRORS[mi]; break; } }
+      G.nearSocket = null; if(S.consoleOn){ for(var si2=0; si2<SOCKETS.length; si2++){ var sk2=SOCKETS[si2]; if(!sk2.item && Math.hypot(G.bx-sk2.x, G.by-sk2.y)<36){ G.nearSocket=sk2; break; } } }
+      var aSt = (G.nearConsole&&!S.consoleOn)?'console' : (G.nearVault&&G.vaultOpen)?'vault' : G.nearMirror?'mirror' : G.nearSocket?'socket' : 'none';
+      if(aSt!==S.actState){ S.actState=aSt; renderFooter(); }
+      if(G.det>=100){ G.flash=1; G.det=100; setTimeout(function(){ G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.det=0; G.flash=0; }, 620); }
+    }
+    draw(seen); updateHud();
+    G._raf=requestAnimationFrame(loop);
+  }
+
+  function shadowPoly(c,lx,ly,rect,range){
+    var cs=[[rect.x,rect.y],[rect.x+rect.w,rect.y],[rect.x+rect.w,rect.y+rect.h],[rect.x,rect.y+rect.h]];
+    var mn=Infinity, mx=-Infinity, cmn=cs[0], cmx=cs[0], base=Math.atan2(cs[0][1]-ly, cs[0][0]-lx);
+    for(var i=0;i<cs.length;i++){ var p=cs[i]; var a=Math.atan2(p[1]-ly,p[0]-lx); a=Math.atan2(Math.sin(a-base),Math.cos(a-base)); if(a<mn){mn=a;cmn=p;} if(a>mx){mx=a;cmx=p;} }
+    var proj=function(p){ var dx=p[0]-lx, dy=p[1]-ly, m=Math.hypot(dx,dy); return [p[0]+dx/m*range*1.8, p[1]+dy/m*range*1.8]; };
+    var pmn=proj(cmn), pmx=proj(cmx);
+    c.beginPath(); c.moveTo(cmn[0],cmn[1]); c.lineTo(pmn[0],pmn[1]); c.lineTo(pmx[0],pmx[1]); c.lineTo(cmx[0],cmx[1]); c.closePath();
+  }
+
+  function coneLight(gx, px,py, ang, half, range, blocked){
+    gx.setTransform(1,0,0,1,0,0); gx.globalCompositeOperation='source-over'; gx.clearRect(0,0,VPW,VPH); gx.translate(-G.cam.x,-G.cam.y);
+    var grd=gx.createRadialGradient(px,py,0,px,py,range); grd.addColorStop(0,'rgba(255,255,255,1)'); grd.addColorStop(.78,'rgba(255,255,255,1)'); grd.addColorStop(1,'rgba(255,255,255,0)');
+    gx.fillStyle=grd; gx.beginPath(); gx.moveTo(px,py); gx.arc(px,py,range,ang-half,ang+half); gx.closePath(); gx.fill();
+    gx.globalCompositeOperation='destination-out';
+    for(var fi=0;fi<FURN.length;fi++){ var cc=FURN[fi]; var ccx=cc.x+cc.w/2, ccy=cc.y+cc.h/2; var da=Math.atan2(ccy-py,ccx-px); var diff=Math.abs(Math.atan2(Math.sin(da-ang),Math.cos(da-ang))); if(diff>half+0.6) continue; if(Math.hypot(ccx-px,ccy-py)>range) continue; shadowPoly(gx,px,py,cc,range); gx.fill(); }
+  }
+
+  function draw(seen){
+    var ctx=G.ctx, f=G.fctx, cam=G.cam, W=VPW, H=VPH;
+    ctx.clearRect(0,0,W,H);
+    ctx.save(); ctx.translate(-cam.x,-cam.y);
+    ctx.fillStyle='#151022'; ctx.fillRect(cam.x,cam.y,W,H);
+    ctx.strokeStyle='rgba(0,0,0,.28)'; ctx.lineWidth=2;
+    for(var y=Math.floor(cam.y/40)*40; y<cam.y+H; y+=40){ ctx.beginPath(); ctx.moveTo(cam.x,y); ctx.lineTo(cam.x+W,y); ctx.stroke(); }
+    // cônes visibles (caméras violettes / rouges si te voient ; grisés si aveuglées)
+    var segs=G.beamSegs||[];
+    for(var ci=0;ci<CAMS.length;ci++){ var c=CAMS[ci]; var blind=camBlinded(c,segs); if(blind) continue;
+      var a=camAngle(c); var grd=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.range); grd.addColorStop(0, seen?'rgba(255,120,120,.28)':'rgba(170,120,255,.26)'); grd.addColorStop(1,'rgba(150,90,230,0)');
+      ctx.fillStyle=grd; ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.arc(c.x,c.y,c.range,a-c.half,a+c.half); ctx.closePath(); ctx.fill(); }
+    for(var gi=0;gi<GUARDS.length;gi++){ var g=GUARDS[gi]; if(G.frozen[gi]>0) continue; var gp=guardPos(g), ga=guardAngle(g);
+      var grd2=ctx.createRadialGradient(gp.x,gp.y,0,gp.x,gp.y,g.range); grd2.addColorStop(0,'rgba(170,120,255,.30)'); grd2.addColorStop(1,'rgba(150,90,230,0)');
+      ctx.fillStyle=grd2; ctx.beginPath(); ctx.moveTo(gp.x,gp.y); ctx.arc(gp.x,gp.y,g.range,ga-g.half,ga+g.half); ctx.closePath(); ctx.fill(); }
+    // meubles
+    for(var j=0;j<FURN.length;j++){ var cc2=FURN[j]; ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(cc2.x+3,cc2.y+5,cc2.w,cc2.h); ctx.fillStyle='#3a2c20'; ctx.strokeStyle='rgba(150,110,70,.55)'; ctx.lineWidth=1.4; rr(ctx,cc2.x,cc2.y,cc2.w,cc2.h,7); ctx.fill(); ctx.stroke(); ctx.fillStyle='rgba(255,210,150,.10)'; rr(ctx,cc2.x+3,cc2.y+3,cc2.w-6,8,4); ctx.fill(); }
+    // faisceau doré
+    ctx.save(); ctx.lineCap='round';
+    for(var bi=0;bi<segs.length;bi++){ var sgl=segs[bi];
+      ctx.strokeStyle='rgba(242,205,114,.9)'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=10; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(sgl.x1,sgl.y1); ctx.lineTo(sgl.x2,sgl.y2); ctx.stroke();
+      ctx.strokeStyle='rgba(255,245,210,.9)'; ctx.shadowBlur=0; ctx.lineWidth=1.1; ctx.beginPath(); ctx.moveTo(sgl.x1,sgl.y1); ctx.lineTo(sgl.x2,sgl.y2); ctx.stroke(); }
+    ctx.restore();
+    // source (brasero)
+    ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(SOURCE.x,SOURCE.y,6,0,7); ctx.fill(); ctx.shadowBlur=0;
+    // capteur
+    ctx.strokeStyle=G.vaultOpen?'rgba(159,224,176,.9)':'rgba(214,168,74,.6)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(SENSOR.x,SENSOR.y,9,0,7); ctx.stroke();
+    ctx.fillStyle=G.vaultOpen?'#9fe0b0':'#8a7350'; ctx.beginPath(); ctx.arc(SENSOR.x,SENSOR.y,3.4,0,7); ctx.fill();
+    // miroirs (pivotables)
+    for(var mi=0;mi<MIRRORS.length;mi++){ var m=MIRRORS[mi]; var near=G.nearMirror===m;
+      ctx.save(); ctx.translate(m.x,m.y);
+      rr(ctx,-15,-15,30,30,7); ctx.fillStyle='rgba(40,32,56,.85)'; ctx.fill(); ctx.lineWidth=near?2:1.2; ctx.strokeStyle=near?'#f2cd72':'rgba(214,168,74,.45)'; ctx.stroke();
+      ctx.rotate(m.o==='/'? -Math.PI/4 : Math.PI/4);
+      ctx.strokeStyle='#e8eef6'; ctx.lineWidth=4; ctx.shadowColor='rgba(220,235,255,.8)'; ctx.shadowBlur=6; ctx.beginPath(); ctx.moveTo(-11,0); ctx.lineTo(11,0); ctx.stroke();
+      ctx.restore(); }
+    // console de pose
+    ctx.save(); ctx.translate(CONSOLE.x,CONSOLE.y); rr(ctx,-16,-12,32,24,5); ctx.fillStyle=S.consoleOn?'#11331f':'#241a33'; ctx.fill(); ctx.lineWidth=1.6; ctx.strokeStyle=S.consoleOn?'rgba(159,224,176,.85)':'#f2cd72'; ctx.stroke();
+    ctx.fillStyle=S.consoleOn?'#9fe0b0':'#f2cd72'; ctx.font='11px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('⌘',0,1); ctx.restore();
+    // socles + objets posés
+    for(var si=0;si<SOCKETS.length;si++){ var sk=SOCKETS[si]; ctx.save(); ctx.translate(sk.x,sk.y);
+      ctx.strokeStyle=S.consoleOn?'rgba(242,205,114,.55)':'rgba(154,134,184,.25)'; ctx.setLineDash([4,4]); ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(0,0,13,0,7); ctx.stroke(); ctx.setLineDash([]);
+      if(sk.item==='lantern'){ ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(0,0,6,0,7); ctx.fill(); ctx.shadowBlur=0; }
+      else if(sk.item==='glue'){ ctx.fillStyle='rgba(123,191,107,.8)'; ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill(); }
+      else if(sk.item==='glueUsed'){ ctx.fillStyle='rgba(123,191,107,.3)'; ctx.beginPath(); ctx.arc(0,0,5,0,7); ctx.fill(); }
+      ctx.restore();
+      // lien lanterne → caméra aveuglée
+      if(sk.item==='lantern' && sk.camId){ var cb=CAMS.filter(function(c){return c.id===sk.camId;})[0];
+        if(cb){ ctx.strokeStyle='rgba(242,205,114,.35)'; ctx.setLineDash([3,5]); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(sk.x,sk.y); ctx.lineTo(cb.x,cb.y); ctx.stroke(); ctx.setLineDash([]); } } }
+    // chambre forte
+    ctx.save(); ctx.translate(VAULT.x,VAULT.y); rr(ctx,-24,-18,48,36,6); ctx.fillStyle=G.vaultOpen?'#11331f':'#2a2018'; ctx.fill(); ctx.lineWidth=2.2; ctx.strokeStyle=G.vaultOpen?'rgba(159,224,176,.9)':'#f2cd72'; ctx.stroke();
+    ctx.fillStyle=G.vaultOpen?'#9fe0b0':'#f2cd72'; ctx.beginPath(); ctx.arc(0,0,4,0,7); ctx.fill();
+    if(G.vaultOpen){ var vg=ctx.createRadialGradient(0,0,0,0,0,44); vg.addColorStop(0,'rgba(95,184,126,.5)'); vg.addColorStop(1,'rgba(95,184,126,0)'); ctx.fillStyle=vg; ctx.beginPath(); ctx.arc(0,0,44,0,7); ctx.fill(); }
+    ctx.restore();
+    ctx.restore();
+
+    // —— lumière/brouillard : cônes actifs + halo héros + faisceau + lanternes
+    var lx=G.lctx, gx=G.gtx;
+    lx.setTransform(1,0,0,1,0,0); lx.globalCompositeOperation='source-over'; lx.clearRect(0,0,W,H);
+    for(var ci2=0;ci2<CAMS.length;ci2++){ var c2=CAMS[ci2]; if(camBlinded(c2,segs)) continue; coneLight(gx, c2.x,c2.y, camAngle(c2), c2.half, c2.range); lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0); }
+    for(var gi2=0;gi2<GUARDS.length;gi2++){ if(G.frozen[gi2]>0) continue; var g2=GUARDS[gi2]; var gp2=guardPos(g2); coneLight(gx, gp2.x,gp2.y, guardAngle(g2), g2.half, g2.range); lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0); }
+    gx.setTransform(1,0,0,1,0,0); gx.globalCompositeOperation='source-over'; gx.clearRect(0,0,W,H); gx.translate(-cam.x,-cam.y);
+    var hg=gx.createRadialGradient(G.bx,G.by,0,G.bx,G.by,56); hg.addColorStop(0,'rgba(255,255,255,1)'); hg.addColorStop(.7,'rgba(255,255,255,1)'); hg.addColorStop(1,'rgba(255,255,255,0)'); gx.fillStyle=hg; gx.beginPath(); gx.arc(G.bx,G.by,56,0,7); gx.fill();
+    gx.lineCap='round'; gx.strokeStyle='rgba(255,255,255,.9)'; gx.lineWidth=26;
+    for(var bi2=0;bi2<segs.length;bi2++){ var sg2=segs[bi2]; gx.beginPath(); gx.moveTo(sg2.x1,sg2.y1); gx.lineTo(sg2.x2,sg2.y2); gx.stroke(); }
+    for(var si2=0;si2<SOCKETS.length;si2++){ var sk2=SOCKETS[si2]; if(sk2.item!=='lantern') continue; var lg=gx.createRadialGradient(sk2.x,sk2.y,0,sk2.x,sk2.y,64); lg.addColorStop(0,'rgba(255,255,255,.95)'); lg.addColorStop(1,'rgba(255,255,255,0)'); gx.fillStyle=lg; gx.beginPath(); gx.arc(sk2.x,sk2.y,64,0,7); gx.fill(); }
+    lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0);
+    f.setTransform(1,0,0,1,0,0); f.globalCompositeOperation='source-over'; f.fillStyle='rgba(9,6,16,.95)'; f.fillRect(0,0,W,H);
+    f.globalCompositeOperation='destination-out'; f.drawImage(G.lightC,0,0);
+    f.globalCompositeOperation='source-over';
+    ctx.drawImage(G.fog,0,0);
+
+    // entités au-dessus du brouillard
+    for(var ci3=0;ci3<CAMS.length;ci3++){ var c3=CAMS[ci3]; drawCam(ctx, c3, camBlinded(c3,segs), seen); }
+    for(var gk=0;gk<GUARDS.length;gk++){ var gp3=guardPos(GUARDS[gk]); drawGuard(ctx, gp3.x-cam.x, gp3.y-cam.y, seen, G.frozen[gk]>0); }
+    drawButler(ctx, G.bx-cam.x, G.by-cam.y);
+    if(G.flash){ ctx.fillStyle='rgba(150,70,200,.42)'; ctx.fillRect(0,0,W,H); }
+  }
+
+  function drawCam(ctx,c,blind,seen){ var x=c.x-G.cam.x, y=c.y-G.cam.y; if(x<-30||x>VPW+30||y<-30||y>VPH+30) return;
+    ctx.save(); ctx.translate(x,y);
+    rr(ctx,-9,-7,18,14,4); ctx.fillStyle=blind?'#241f30':'#2a2140'; ctx.fill(); ctx.lineWidth=1.4; ctx.strokeStyle=blind?'rgba(120,110,140,.5)':'rgba(183,154,224,.8)'; ctx.stroke();
+    if(blind){ ctx.fillStyle='#8a7aa6'; ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('✕',0,0); }
+    else { var a=camAngle(c); ctx.rotate(a); ctx.fillStyle=seen?'#ff9d6e':'#d9b3ff'; ctx.beginPath(); ctx.arc(5,0,3,0,7); ctx.fill(); }
+    ctx.restore(); }
+  function drawGuard(ctx,x,y,seen,frozen){ ctx.save(); ctx.translate(x,y); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(0,14,14,5,0,0,7); ctx.fill(); ctx.beginPath(); ctx.moveTo(0,-18); ctx.quadraticCurveTo(15,-14,13,8); ctx.quadraticCurveTo(0,14,-13,8); ctx.quadraticCurveTo(-15,-14,0,-18); ctx.closePath(); var g=ctx.createLinearGradient(0,-18,0,14); g.addColorStop(0,frozen?'#2a4636':'#3a2c52'); g.addColorStop(1,frozen?'#16281e':'#1d1330'); ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle=frozen?'rgba(123,191,107,.7)':'rgba(154,120,200,.6)'; ctx.lineWidth=1.4; ctx.stroke(); ctx.fillStyle=frozen?'#7bbf6b':(seen?'#ff9d6e':'#d9b3ff'); ctx.beginPath(); ctx.ellipse(0,-3,4.5,2.4,0,0,7); ctx.fill(); if(frozen){ ctx.fillStyle='#9fe0b0'; ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.fillText('💤',0,-24); } ctx.restore(); }
+  function drawButler(ctx,x,y){ ctx.save(); ctx.translate(x,y); ctx.fillStyle='rgba(0,0,0,.5)'; ctx.beginPath(); ctx.ellipse(0,12,11,4,0,0,7); ctx.fill(); rr(ctx,-10,-12,20,22,9); var g=ctx.createLinearGradient(0,-12,0,10); g.addColorStop(0,'#2a1d3e'); g.addColorStop(1,'#181026'); ctx.fillStyle=g; ctx.fill(); ctx.strokeStyle='rgba(214,168,74,.6)'; ctx.lineWidth=1.4; ctx.stroke(); var fg=ctx.createRadialGradient(0,-2,0,0,-2,7); fg.addColorStop(0,'#ffe9b0'); fg.addColorStop(.5,'#f0b94e'); fg.addColorStop(1,'#d4781e'); ctx.fillStyle=fg; ctx.beginPath(); ctx.ellipse(0,-2,3.5,5,0,0,7); ctx.fill(); ctx.restore(); }
+
+  function updateHud(){
+    var m=document.getElementById('so-meter'), l=document.getElementById('so-label'), ms=document.getElementById('so-masse'), o=document.getElementById('so-obj');
+    if(m){ var col=G.det>66?'#e0556a':G.det>33?'#e6a24e':'#5fb87e'; m.style.width=G.det+'%'; m.style.background=col; if(l){ l.style.color=col; l.textContent=G.det>66?'Repérage imminent':G.det>33?'On te cherche':'Discret'; } }
+    if(ms) ms.textContent='⚡'+G.masse;
+    if(o){ o.textContent = S.status==='win' ? 'Coffre percé. L’ombre n’a rien vu venir.'
+      : !S.consoleOn ? 'Atteins la console du Commander (en bas à droite) pour déployer tes défenses.'
+      : !G.vaultOpen ? 'Guide le faisceau avec les miroirs : il ouvre la chambre forte — ou aveugle une caméra.'
+      : 'La chambre forte est ouverte — atteins le coffre, tout en haut.'; }
+  }
+
+  function renderFooter(){
+    var foot=document.getElementById('so-footer');
+    if(S.status==='win'){
+      var rewardHtml='';
+      if(REWARD){
+        var na=readNextAction();
+        var revealed = na && na.title && na.sealed===false;
+        rewardHtml = '<div style="margin-top:11px; padding:12px 14px; border-radius:13px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.35);">'
+          + '<div style="font-weight:700; font-size:8.5px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Butin — prochaine étape'+(na&&na.projectName?(' · '+String(na.projectName).replace(/[&<>"]/g,'')):'')+'</div>'
+          + (revealed
+            ? '<div style="margin-top:5px; font-family:\'Fraunces\',serif; font-weight:600; font-size:15px; color:#fbf3e2;">« '+String(na.title).replace(/[&<>"]/g,'')+' »</div>'
+              + '<div style="margin-top:4px; font-size:11px; color:#a796c0;">Fais-la pour de vrai, puis coche-la dans la Console.</div>'
+            : '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#d8c8a8;">Le sceau se dissout… ouvre la Console (l’app) pour lire ta prochaine étape.</div>')
+          + '</div>';
+      }
+      foot.innerHTML = '<div style="padding:15px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(20,40,28,.92), rgba(12,26,18,.95)); border:1px solid rgba(95,184,126,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;">'
+        + '<div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#9fe0b0;">Coffre percé</div>'
+        + '<div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">Caméras bernées, faisceau dompté — du travail d’orfèvre.</div>'
+        + rewardHtml
+        + '<button id="so-next" style="margin-top:12px; width:100%; padding:14px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#0f2417; background:linear-gradient(180deg, #9fe0b0, #5fb87e);">Retour au manoir ✦</button>'
+        + '</div>';
+      document.getElementById('so-next').onclick = goBack;
+      return;
+    }
+    var actStyle = 'width:100%; padding:15px; border-radius:14px; cursor:pointer; border:1px solid rgba(242,205,114,.85); background:linear-gradient(180deg, #f2cd72, #d6a84a); color:#1c1206; font-weight:800; font-size:14px; box-shadow:0 10px 24px rgba(214,168,74,.35);';
+    var ghost = 'flex:1; padding:13px; border-radius:13px; cursor:pointer; border:1px solid rgba(154,134,184,.35); background:rgba(30,22,44,.8); color:#d8c8a8; font-weight:700; font-size:12.5px;';
+    var a=S.actState;
+    if(a==='console'){ foot.innerHTML='<button id="so-act" style="'+actStyle+'">⌘ Activer la console de pose</button>'; document.getElementById('so-act').onclick=interact; }
+    else if(a==='vault'){ foot.innerHTML='<button id="so-act" style="'+actStyle+'">🗝️ Percer le coffre</button>'; document.getElementById('so-act').onclick=interact; }
+    else if(a==='mirror'){ foot.innerHTML='<button id="so-act" style="'+actStyle+'">🪞 Pivoter le miroir</button>'; document.getElementById('so-act').onclick=function(){ if(G.nearMirror) toggleMirror(G.nearMirror); }; }
+    else if(a==='socket' && G.masse>0){
+      foot.innerHTML='<div style="display:flex; gap:9px;">'
+        + '<button id="so-lant" style="'+ghost+'">🏮 Lanterne<br><span style="font-weight:500; font-size:10px; color:#a796c0;">aveugle la caméra proche</span></button>'
+        + '<button id="so-glue" style="'+ghost+'">🕸️ Glu<br><span style="font-weight:500; font-size:10px; color:#a796c0;">fige le garde qui passe</span></button>'
+        + '</div>';
+      document.getElementById('so-lant').onclick=function(){ if(G.nearSocket) placeItem(G.nearSocket,'lantern'); };
+      document.getElementById('so-glue').onclick=function(){ if(G.nearSocket) placeItem(G.nearSocket,'glue'); };
+    }
+    else if(a==='socket'){ foot.innerHTML='<div style="padding:12px; border-radius:13px; border:1px solid rgba(154,134,184,.25); background:rgba(26,18,38,.7); font-size:12px; color:#a796c0; text-align:center;">Plus de masse ⚡ — accomplis tes missions du jour pour en regagner.</div>'; }
+    else { foot.innerHTML='<div style="padding:12px; border-radius:13px; border:1px solid rgba(154,134,184,.18); background:rgba(26,18,38,.55); font-size:11.5px; line-height:1.45; color:#8a7aa6; text-align:center;">Évite les cônes. La masse ⚡ vient de tes actions réelles — dépense-la aux socles ◌.</div>'; }
+  }
+
+  function boot(){
+    G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.cam={x:0,y:0}; G.t=0; G.det=0; G.flash=0;
+    G.move={x:0,y:0}; G.stickActive=false; G.nearConsole=false; G.nearVault=false; G.nearMirror=null; G.nearSocket=null;
+    G.vaultOpen=false; G.sensorLit=false; G.beamSegs=[]; G.lanternBlind={}; G.frozen=[0]; G.frozenPos={x:0,y:0};
+    G.masse=readMasse();
+    G.fog=document.createElement('canvas'); G.fog.width=VPW; G.fog.height=VPH;
+    G.lightC=document.createElement('canvas'); G.lightC.width=VPW; G.lightC.height=VPH; G.lctx=G.lightC.getContext('2d');
+    G.gtmp=document.createElement('canvas'); G.gtmp.width=VPW; G.gtmp.height=VPH; G.gtx=G.gtmp.getContext('2d');
+    G.cv=document.getElementById('so-cv'); G.ctx=G.cv.getContext('2d'); G.fctx=G.fog.getContext('2d');
+    G.cv.addEventListener('click', onFloor);
+    document.getElementById('so-stick').addEventListener('pointerdown', jsDown);
+    document.getElementById('so-goback').addEventListener('click', goBack);
+    document.getElementById('so-reset').addEventListener('click', reset);
+    renderFooter(); updateHud();
+    G._raf=requestAnimationFrame(loop);
+    window.__ombres = { S:S, G:G, CAMS:CAMS, GUARDS:GUARDS, MIRRORS:MIRRORS, SOCKETS:SOCKETS, interact:interact, toggleMirror:toggleMirror, placeItem:placeItem, computeBeam:computeBeam }; // debug / tests
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

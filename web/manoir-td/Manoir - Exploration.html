@@ -502,10 +502,10 @@
     openPortal(){ if(this.dialogue) return; const na=this.nextAction; const st=this.portalState();
       if(st==='sealed'){
         this.dialogue={ i:0, endLabel:'Infiltrer',
-          onEnd:()=>{ window.location.href='./'+encodeURIComponent('Compagnon - Infiltration.html')+'?reward=action'; },
+          onEnd:()=>{ window.location.href='./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action'; },
           lines:[
             {who:'Lampyre', mood:'doubt', t:'Derrière ce portail, l’ennemi garde le prochain pas de ton projet « '+((na&&na.projectName)||'…')+' ». Tu ne sauras pas lequel sans aller le prendre.'},
-            {who:'Lampyre', mood:'idle', t:'Infiltre la Galerie des ombres : la clé, puis la porte — sans te faire voir. L’étape sera à toi.'} ]}; }
+            {who:'Lampyre', mood:'idle', t:'La Salle des Ombres : caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera — l’étape sera à toi.'} ]}; }
       else if(st==='revealed'){
         this.dialogue={ i:0, endLabel:'Compris', lines:[
           {who:'Lampyre', mood:'smile', t:'Ta prochaine étape, gagnée : « '+na.title+' ».'},
