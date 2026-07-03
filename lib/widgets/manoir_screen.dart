@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+// Sur le web (dont ?mobilepreview), webview_flutter n'existe pas → repli iframe.
+import 'package:productivitwo_v1/widgets/manoir_iframe_stub.dart'
+    if (dart.library.html) 'package:productivitwo_v1/widgets/manoir_iframe_web.dart';
 
 /// Écran d'entrée du jeu (choix de profil du Compagnon).
 const String kManoirUrl =
@@ -115,6 +118,7 @@ class ManoirScreen extends StatefulWidget {
 class _ManoirScreenState extends State<ManoirScreen> {
   WebViewController? _ctrl;
   bool _ready = false;
+  int _webNonce = 0; // bump → nouvelle iframe (rechargement web)
 
   @override
   void initState() {
@@ -126,6 +130,14 @@ class _ManoirScreenState extends State<ManoirScreen> {
             if (mounted) setState(() => _ready = true);
           },
         ));
+    }
+  }
+
+  void _reload() {
+    if (kIsWeb) {
+      setState(() => _webNonce++);
+    } else {
+      _ctrl?.loadRequest(Uri.parse(kManoirUrl));
     }
   }
 
@@ -143,32 +155,34 @@ class _ManoirScreenState extends State<ManoirScreen> {
       );
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFF0B0710),
-        // Plein écran : pas d'app bar. Contrôles superposés (quitter / recharger).
-        body: kIsWeb
-            ? const Center(
-                child: Text("Ouvre le Manoir depuis l'app mobile.",
-                    style: TextStyle(color: Colors.white54)))
-            : SafeArea(
-                child: Stack(children: [
-                  if (_ctrl != null)
-                    Positioned.fill(child: WebViewWidget(controller: _ctrl!)),
-                  if (!_ready)
-                    const Center(child: CircularProgressIndicator()),
-                  Positioned(
-                    top: 6,
-                    left: 6,
-                    child: _roundBtn(Icons.close, 'Quitter le Manoir',
-                        () => Navigator.of(context).maybePop()),
-                  ),
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: _roundBtn(Icons.refresh, 'Recharger',
-                        () => _ctrl?.loadRequest(Uri.parse(kManoirUrl))),
-                  ),
-                ]),
-              ),
-      );
+  Widget build(BuildContext context) {
+    // Plein écran : pas d'app bar. Sur web (ex. ?mobilepreview) le jeu est rendu
+    // dans une iframe ; sur natif, dans la WebView. Contrôles superposés partagés.
+    final Widget content = kIsWeb
+        ? manoirIframe(kManoirUrl, key: ValueKey(_webNonce))
+        : (_ctrl != null
+            ? WebViewWidget(controller: _ctrl!)
+            : const SizedBox.shrink());
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0710),
+      body: SafeArea(
+        child: Stack(children: [
+          Positioned.fill(child: content),
+          if (!kIsWeb && !_ready)
+            const Center(child: CircularProgressIndicator()),
+          Positioned(
+            top: 6,
+            left: 6,
+            child: _roundBtn(Icons.close, 'Quitter le Manoir',
+                () => Navigator.of(context).maybePop()),
+          ),
+          Positioned(
+            top: 6,
+            right: 6,
+            child: _roundBtn(Icons.refresh, 'Recharger', _reload),
+          ),
+        ]),
+      ),
+    );
+  }
 }
