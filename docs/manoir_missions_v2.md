@@ -138,6 +138,13 @@ réel → il boit avec toi (gorgée animée). Accomplir ses missions du jour →
   bob lent, rires rares) — **jamais malade, jamais mourant** (ton Soft Pop, pas de chantage).
 - **Moments de lien** : chaque verre réel déclenche « Lampyre boit avec toi 💧 » (goutte +
   flamme qui bondit + petit rire), dans l'Exploration comme à l'Accueil.
+- **Croissance (évolutions, implémentée)** : Lampyre naît **Étincelle** (flammèche sans corps)
+  et grandit avec l'**XP des soins réels** — +1/verre, +5/mission du jour, +5/25 min trackées,
+  créditée une fois par jour et par soin (`ombrelune_lampyre` = {xp, stage, credited}).
+  Stades : Étincelle (0) → Lueur (30) → Lampyre (100) → Veilleur (250) → Flamme gardienne (450).
+  Visuels : taille qui monte, **la mèche pousse** (trait → brin courbé → brin fier avec pousse),
+  braises fidèles en orbite aux hauts stades. Montée de niveau = flash + toast + rire.
+  Rythme : ~35 XP/journée pleine → Lueur au 1er jour, Lampyre vers le 3e, Gardienne ≈ 2 semaines.
 - **V1 implémentée** (Exploration + Accueil) : vitalité dérivée de `ombrelune_water` +
   `ombrelune_sync` (aucun nouveau stockage). Extensions possibles : lecture → il raconte des
   histoires (variété de dialogues), méditation → flamme stable, sommeil, humeurs persistantes,
