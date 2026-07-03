@@ -289,6 +289,12 @@
       try{ if(window.ManoirBridge){ const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
         window.ManoirBridge.postMessage(JSON.stringify({type:'hello', revealed:rev})); } }catch(e){}
 
+      // —— Vie ambiante : le chat du manoir (erre, somnole près des bougies, fuit
+      // à l'approche) + ombres fugaces rares. Purement d'ambiance, rien de persisté.
+      { const start=this.byk.biblio; this.cat={ x:start.x+start.w*0.3, y:start.y+start.h*0.3,
+          vx:0, vy:0, path:[], target:null, state:'wander', until:0, face:1 }; }
+      this.shadowNext=performance.now()+18000+Math.random()*20000; this.shadowFx=null;
+
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
 
@@ -688,6 +694,16 @@
       { const nm=performance.now(); const mood=1.8-0.9*(this._vital||0.6); // rayonnant → rit souvent
         if(this.laughNext==null) this.laughNext=nm+(7000+Math.random()*9000)*mood;
         if(nm>this.laughNext){ this.laughUntil=nm+1500; this.laughNext=nm+(9000+Math.random()*13000)*mood; } }
+      this.updateCat(dt);
+      { const nm2=performance.now();
+        if(!this.shadowFx && nm2>this.shadowNext && this.scene.type!=='sub'){
+          // une ombre file en travers, à la lisière du halo — rare et furtif
+          const an=Math.random()*Math.PI*2; const d0=180;
+          const sx=this.hero.x+Math.cos(an)*d0, sy=this.hero.y+Math.sin(an)*d0;
+          const pan=an+Math.PI/2+(Math.random()-0.5)*0.6;
+          this.shadowFx={x1:sx,y1:sy,x2:sx+Math.cos(pan)*230,y2:sy+Math.sin(pan)*230,t0:nm2};
+          this.shadowNext=nm2+25000+Math.random()*35000; }
+        if(this.shadowFx && nm2-this.shadowFx.t0>850) this.shadowFx=null; }
       if(this.fadeA>0) this.fadeA=Math.max(0,this.fadeA-0.06);
       if(this.flash>0) this.flash=Math.max(0,this.flash-0.045);
       if(this.pulses&&this.pulses.length){ const np=performance.now(); this.pulses=this.pulses.filter(p=>np-p.t0<900); }
@@ -759,6 +775,7 @@
       if(this.scene.type==='sub') this.drawSub(ctx,day); else { this.drawGround(ctx,day); this.drawPulses(ctx); }
       ctx.restore();
       if(!day) this.drawFog(ctx);
+      if(this.scene.type!=='sub') this.drawAmbientOverlay(ctx);
       if(this.flash>0){ ctx.save(); ctx.fillStyle='rgba(150,205,238,'+(this.flash*0.16)+')'; ctx.fillRect(0,0,this.W,this.H); ctx.restore(); }
       if(this.fadeA>0){ ctx.save(); ctx.fillStyle='rgba(6,4,13,'+this.fadeA+')'; ctx.fillRect(0,0,this.W,this.H); ctx.restore(); }
     }
@@ -1075,6 +1092,14 @@
         if(day){ ctx.save(); ctx.globalAlpha=0.82; ctx.fillStyle='#ece0c6'; ctx.font='600 15px Outfit'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(r.label, r.x+r.w/2, r.y+16); ctx.restore(); } }
       for(const c of this.candles){ this.lightPool(ctx,c.x,c.y,c.r, c.big?'255,210,120':'255,196,110', 0.42);
         const fl=0.75+0.25*Math.sin(t*3+c.x); ctx.save(); ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=8*fl; ctx.beginPath(); ctx.arc(c.x,c.y,c.big?3:2,0,7); ctx.fill(); ctx.restore(); }
+      // poussières dorées en suspension dans les halos de bougies
+      ctx.save(); for(const c of this.candles){ if(c.x<vx0||c.x>vx1||c.y<vy0||c.y>vy1) continue;
+        for(let mi=0;mi<3;mi++){ const ph=c.x*0.7+mi*2.1; const mr=c.r*0.55;
+          const mx=c.x+Math.sin(t*0.5+ph)*mr, my=c.y+Math.cos(t*0.37+ph*1.3)*mr*0.6 - Math.sin(t*0.8+ph)*4;
+          const al=0.14+0.12*Math.sin(t*1.1+ph);
+          ctx.fillStyle='rgba(242,205,114,'+al+')'; ctx.beginPath(); ctx.arc(mx,my,1.1,0,7); ctx.fill(); } }
+      ctx.restore();
+      this.drawCat(ctx,t);
       if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
       if(this.SPOTS){ for(const s of this.SPOTS){ if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
       this.drawPortal(ctx,t);
@@ -1104,15 +1129,61 @@
       this.drawHero(ctx);
     }
 
+    // —— Le chat du manoir : errance par les centres de salles (mêmes couloirs que
+    // le héros), sieste près des bougies, fuite quand on s'approche.
+    updateCat(dt){ const c=this.cat; if(!c || this.scene.type==='sub') return;
+      const nm=performance.now(); const dh=Math.hypot(this.hero.x-c.x, this.hero.y-c.y);
+      if(c.state!=='flee' && dh<80){ c.state='flee'; c.until=nm+1600; c.path=[]; c.target=null; }
+      if(c.state==='flee'){
+        const away=Math.atan2(c.y-this.hero.y, c.x-this.hero.x); const sp=150*dt;
+        const nx=c.x+Math.cos(away)*sp, ny=c.y+Math.sin(away)*sp;
+        if(this.isWalk(nx,c.y)) c.x=nx; if(this.isWalk(c.x,ny)) c.y=ny;
+        c.face=Math.cos(away)>=0?1:-1;
+        if(nm>c.until && dh>200) c.state='wander';
+        return; }
+      if(c.state==='nap'){ if(nm>c.until) c.state='wander'; return; }
+      if(!c.target){
+        // nouvelle destination : une salle au hasard (pas le coffre)
+        const rooms=this.ROOMS.filter(r=>r.k!=='coffre');
+        const dest=rooms[Math.floor(Math.random()*rooms.length)];
+        const from=(this.roomAt(c.x,c.y)||this.nearestRoom(c.x,c.y)).k;
+        const path=this.bfs(from,dest.k)||[]; c.path=path.map(k=>{ const r=this.byk[k]; return {x:r.x+r.w/2,y:r.y+r.h/2}; });
+        if(c.path.length) c.path[c.path.length-1]={x:dest.x+dest.w*(0.25+Math.random()*0.5), y:dest.y+dest.h*(0.25+Math.random()*0.5)};
+        c.target=c.path.shift()||null; if(!c.target){ c.state='nap'; c.until=nm+6000; return; } }
+      const dx=c.target.x-c.x, dy=c.target.y-c.y, d=Math.hypot(dx,dy); const sp2=42*dt;
+      if(d<6){ c.target=c.path.shift()||null;
+        if(!c.target){ c.state='nap'; c.until=nm+7000+Math.random()*9000; } return; }
+      c.x+=dx/d*sp2; c.y+=dy/d*sp2; c.face=dx>=0?1:-1; }
+    drawCat(ctx,t){ const c=this.cat; if(!c || this.scene.type==='sub') return;
+      const nap=c.state==='nap'; const move=c.state!=='nap';
+      ctx.save(); ctx.translate(c.x,c.y); ctx.scale(c.face,1);
+      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,5,9,3,0,0,7); ctx.fill();
+      ctx.fillStyle='#1e1730'; ctx.strokeStyle='rgba(150,130,190,.5)'; ctx.lineWidth=1;
+      if(nap){ ctx.beginPath(); ctx.ellipse(0,1,9,5.5,0,0,7); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(6,-2,3.6,0,7); ctx.fill(); }
+      else { const wob=Math.sin(t*7)*0.8;
+        ctx.beginPath(); ctx.ellipse(0,0,8,4.5,0,0,7); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(7,-3+wob*0.3,3.4,0,7); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(5.4,-5.6); ctx.lineTo(6.4,-8.4); ctx.lineTo(7.6,-5.9); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(7.2,-5.6); ctx.lineTo(8.6,-8.1); ctx.lineTo(9.4,-5.4); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle='#1e1730'; ctx.lineWidth=1.6; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(-7,-1); ctx.quadraticCurveTo(-12,-4+wob, -13,-9+wob*1.6); ctx.stroke(); }
+      ctx.restore(); }
     drawFragment(ctx,fg,t){ const pulse=0.6+0.4*Math.sin(t*2.4+fg.id*1.7); this.lightPool(ctx,fg.x,fg.y,28,'190,225,255',0.5*pulse);
       ctx.save(); ctx.translate(fg.x,fg.y); ctx.rotate(t*0.5+fg.id);
       ctx.fillStyle='#eaf5ff'; ctx.shadowColor='#bfe3ff'; ctx.shadowBlur=11*pulse;
       ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(5,0); ctx.lineTo(0,8); ctx.lineTo(-5,0); ctx.closePath(); ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,'+(0.5+0.4*pulse)+')'; ctx.lineWidth=0.8; ctx.stroke(); ctx.restore(); }
     // PNJ décoratif : petite silhouette encapuchonnée, halo chaud, idle animé + accessoire de métier.
+    // Chacun fait sa petite ronde autour de son poste (balayage, arrosage…) — le corps
+    // se retourne dans le sens de la marche. Le POI de dialogue reste au poste.
     drawNpc(ctx,npc,t){ const bob=Math.sin(t*1.6+npc.ph)*1.4;
-      this.lightPool(ctx,npc.x,npc.y+4,30,'240,205,150',0.17);
-      ctx.save(); ctx.translate(npc.x,npc.y+bob);
+      const amp = npc.acc==='broom'?24 : npc.acc==='can'?28 : npc.acc==='book'?0 : 12;
+      const px = amp*Math.sin(t*0.42+npc.ph);
+      const face = amp>0 ? (Math.cos(t*0.42+npc.ph)>=0?1:-1) : 1;
+      const wob = amp>0 ? Math.abs(Math.sin(t*3.2+npc.ph))*0.8 : 0;
+      this.lightPool(ctx,npc.x+px,npc.y+4,30,'240,205,150',0.17);
+      ctx.save(); ctx.translate(npc.x+px,npc.y+bob-wob); ctx.scale(face,1);
       ctx.fillStyle='rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0,15,9,4,0,0,7); ctx.fill();
       const bg=ctx.createLinearGradient(0,-8,0,16); bg.addColorStop(0,npc.c1); bg.addColorStop(1,npc.c2);
       ctx.fillStyle=bg; ctx.beginPath(); ctx.moveTo(-8,15); ctx.quadraticCurveTo(-9,-3,0,-7); ctx.quadraticCurveTo(9,-3,8,15); ctx.closePath(); ctx.fill();
@@ -1223,6 +1294,31 @@
       ctx.restore();
     }
 
+    // au-dessus du brouillard : ce qui perce le noir (yeux du chat, lucioles, ombre)
+    drawAmbientOverlay(ctx){ const t=Date.now()/600;
+      const toS=(wx,wy)=>[(wx-this.cam.x)*this.Z + this.W/2, (wy-this.cam.y)*this.Z + this.H/2];
+      // les yeux du chat luisent dans le noir
+      const c=this.cat; if(c && c.state!=='nap'){ const [cx2,cy2]=toS(c.x+7*c.face, c.y-3);
+        if(cx2>-20&&cx2<this.W+20&&cy2>-20&&cy2<this.H+20){ const bl=(Math.sin(t*0.9)>0.97)?0.2:1;
+          ctx.save(); ctx.fillStyle='rgba(210,242,160,.9)'; ctx.shadowColor='rgba(210,242,160,.8)'; ctx.shadowBlur=4;
+          ctx.beginPath(); ctx.ellipse(cx2-2*this.Z*0.5,cy2,1.1,1.4*bl,0,0,7); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(cx2+2*this.Z*0.5,cy2,1.1,1.4*bl,0,0,7); ctx.fill(); ctx.restore(); } }
+      // lucioles du Jardin clos
+      { const j=this.byk.jardin;
+        for(let i=0;i<5;i++){ const ph=i*1.7;
+          const fx=j.x+j.w*(0.5+0.4*Math.sin(t*0.21+ph)), fy=j.y+j.h*(0.5+0.38*Math.cos(t*0.17+ph*1.4));
+          const [sx2,sy2]=toS(fx,fy); if(sx2<-10||sx2>this.W+10||sy2<-10||sy2>this.H+10) continue;
+          const pl=0.35+0.5*Math.max(0,Math.sin(t*1.3+ph*2));
+          ctx.save(); ctx.fillStyle='rgba(190,235,140,'+pl+')'; ctx.shadowColor='rgba(190,235,140,.9)'; ctx.shadowBlur=6;
+          ctx.beginPath(); ctx.arc(sx2,sy2,1.4,0,7); ctx.fill(); ctx.restore(); } }
+      // ombre fugace : une silhouette file à la lisière du halo
+      if(this.shadowFx){ const sfx=this.shadowFx; const pr=(performance.now()-sfx.t0)/850;
+        const wx=sfx.x1+(sfx.x2-sfx.x1)*pr, wy=sfx.y1+(sfx.y2-sfx.y1)*pr;
+        const [sx3,sy3]=toS(wx,wy); const an=Math.atan2(sfx.y2-sfx.y1,sfx.x2-sfx.x1);
+        ctx.save(); ctx.translate(sx3,sy3); ctx.rotate(an);
+        ctx.globalAlpha=0.26*Math.sin(pr*Math.PI);
+        ctx.fillStyle='#000'; ctx.beginPath(); ctx.ellipse(0,0,16,5,0,0,7); ctx.fill();
+        ctx.restore(); } }
     drawFog(ctx){ const f=this.fctx; const W=this.W,H=this.H; f.clearRect(0,0,W,H);
       f.fillStyle='rgba(4,2,9,0.965)'; f.fillRect(0,0,W,H);
       f.globalCompositeOperation='destination-out';
