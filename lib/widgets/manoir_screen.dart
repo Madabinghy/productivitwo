@@ -134,6 +134,14 @@ class _ManoirScreenState extends State<ManoirScreen> {
           _writeNextAction(na);
         }
         break;
+      case 'hello':
+        // Le jeu se présente avec la liste des actions gagnées en mission
+        // (persistée côté jeu) → on en déduit les trophées (celles réellement
+        // accomplies depuis) et l'état du prochain sceau.
+        final rev = (m['revealed'] as List?)?.whereType<String>() ?? const [];
+        _revealedActionIds.addAll(rev);
+        _pushNextAction();
+        break;
     }
   }
 
@@ -198,6 +206,51 @@ class _ManoirScreenState extends State<ManoirScreen> {
       if (_nextAction != null) break;
     }
     _writeNextAction(_nextAction);
+    _pushTrophies(projects);
+  }
+
+  // Trophées : les actions gagnées en mission (`hello`/reveal) qui ont été
+  // RÉELLEMENT accomplies depuis (cochées dans la Console). Le jeu les
+  // matérialise au Cabinet des trophées et les célèbre.
+  void _pushTrophies(List<Project> projects) {
+    final ctrl = _ctrl;
+    if (ctrl == null) return;
+    final items = <Map<String, String>>[];
+    for (final id in _revealedActionIds) {
+      String? title;
+      bool done = false;
+      if (id.startsWith('task:')) {
+        final tid = id.substring(5);
+        for (final p in projects) {
+          final t = p.tasks.firstWhereOrNull((t) => t.id == tid);
+          if (t != null) {
+            title = t.title;
+            done = t.status == 'done';
+            break;
+          }
+        }
+      } else {
+        for (final p in projects) {
+          for (final t in p.tasks) {
+            final a = t.actions.firstWhereOrNull((a) => a.id == id);
+            if (a != null) {
+              title = a.title;
+              done = a.done;
+              break;
+            }
+          }
+          if (title != null) break;
+        }
+      }
+      if (done && title != null) items.add({'id': id, 'title': title});
+    }
+    final payload = jsonEncode({'d': _todayYmd(), 'items': items});
+    ctrl.runJavaScript('''
+      try {
+        localStorage.setItem('ombrelune_trophies', ${jsonEncode(payload)});
+        window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_trophies'}));
+      } catch (e) {}
+    ''');
   }
 
   void _writeNextAction(
