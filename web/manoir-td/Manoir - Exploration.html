@@ -205,6 +205,27 @@
         {who:'Lampyre', mood:'doubt', t:'Le manoir est plongé dans le noir… toutes les lumières se sont éteintes.'},
         {who:'Lampyre', mood:'idle', t:'Reste près de moi. Ces éclats brillants dans le noir… ramassons-les.'} ]};
 
+      // —— Vie du manoir : PNJ décoratifs (« npc ») + points d'observation (« look »).
+      // Purement d'ambiance pour l'instant (Lampyre commente) — pas encore liés aux routines.
+      this.SPOTS=[
+        {room:'office', fx:0.5, fy:0.80, kind:'npc', acc:'broom', c1:'#3a2d4e', c2:'#241a33', name:'Sylvain, le majordome',
+         lines:['Sylvain, le majordome. Il époussette encore… même dans le noir complet.','« Un manoir se tient, Monsieur. La poussière, elle, ne fait jamais grève. »']},
+        {room:'biblio', fx:0.74, fy:0.70, kind:'npc', acc:'book', c1:'#2e3a52', c2:'#1b2233', name:'Doria, la liseuse',
+         lines:['Doria n’a pas levé les yeux de son livre. Elle lit à la lueur d’une bougie.','« Chut. Il me reste trois pages avant que tu ne casses encore quelque chose. »']},
+        {room:'jardin', fx:0.30, fy:0.62, kind:'npc', acc:'can', c1:'#2f4636', c2:'#1c2a22', name:'Vétch, le jardinier',
+         lines:['Vétch arrose ses plantes dans la pénombre, imperturbable.','« Elles poussent quand même. Comme toi, si tu t’y tiens. »']},
+        {room:'vestibule', fx:0.5, fy:0.62, kind:'npc', acc:null, c1:'#4a2f3e', c2:'#301e28', name:'Ombeline, la gouvernante',
+         lines:['Ombeline veille près de l’entrée, une lanterne éteinte à la main.','« Rends-nous la lumière, veux-tu ? On commence à se marcher dessus. »']},
+        {room:'observatoire', fx:0.5, fy:0.5, kind:'look', glyph:'✧', label:'Observer le télescope',
+         lines:['Le grand télescope pointe vers un ciel qu’on ne voit plus. Un jour, on le rallumera.']},
+        {room:'galerie', fx:0.5, fy:0.24, kind:'look', glyph:'✦', label:'Regarder les portraits',
+         lines:['Des ancêtres te fixent depuis leurs cadres. Dans le noir, on jurerait qu’ils bougent.']},
+        {room:'jardin', fx:0.62, fy:0.5, kind:'look', glyph:'❖', label:'Se pencher sur le puits',
+         lines:['Le puits est profond et calme. Ton reflet tremble à peine — bois assez, il se stabilisera.']},
+        {room:'cabinet', fx:0.5, fy:0.5, kind:'look', glyph:'✧', label:'Admirer les trophées',
+         lines:['Une vitrine de trophées poussiéreux. Chacun raconte une habitude tenue jusqu’au bout.']},
+      ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
+
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
 
@@ -332,7 +353,12 @@
       if(p.kind==='stair') this.triggerStair();
       else if(p.kind==='realize') this.solveWaterQuest();
       else if(p.kind==='fragment') this.collectFragment(p.frag);
-      else if(p.kind==='mirror_enter') this.enterMirrorPuzzle(); }
+      else if(p.kind==='mirror_enter') this.enterMirrorPuzzle();
+      else if(p.kind==='spot') this.talkSpot(p.spot); }
+    talkSpot(sp){ if(!sp || this.dialogue) return;
+      this.dialogue={ i:0, endLabel:'Fermer',
+        lines: sp.lines.map((t,i)=>({who:'Lampyre', mood: i===0?'idle':'smile', t})) };
+      this.updateHud(); }
     saveWater(){ try{ localStorage.setItem('ombrelune_water', JSON.stringify({d:this._wdate, n:this.drunk})); }catch(e){} }
     saveQuest(){ try{ localStorage.setItem('ombrelune_water_quest', JSON.stringify({s:this.quest, n:this.noticedCount})); }catch(e){} }
     // —— Mission 2 : persistance + collecte des éclats + entrée de l'énigme
@@ -453,6 +479,7 @@
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
       else if(this.mquest!=='solved' && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
+      else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
@@ -823,6 +850,7 @@
       for(const c of this.candles){ this.lightPool(ctx,c.x,c.y,c.r, c.big?'255,210,120':'255,196,110', 0.42);
         const fl=0.75+0.25*Math.sin(t*3+c.x); ctx.save(); ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=8*fl; ctx.beginPath(); ctx.arc(c.x,c.y,c.big?3:2,0,7); ctx.fill(); ctx.restore(); }
       if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
+      if(this.SPOTS){ for(const s of this.SPOTS){ if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -853,6 +881,25 @@
       ctx.fillStyle='#eaf5ff'; ctx.shadowColor='#bfe3ff'; ctx.shadowBlur=11*pulse;
       ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(5,0); ctx.lineTo(0,8); ctx.lineTo(-5,0); ctx.closePath(); ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,'+(0.5+0.4*pulse)+')'; ctx.lineWidth=0.8; ctx.stroke(); ctx.restore(); }
+    // PNJ décoratif : petite silhouette encapuchonnée, halo chaud, idle animé + accessoire de métier.
+    drawNpc(ctx,npc,t){ const bob=Math.sin(t*1.6+npc.ph)*1.4;
+      this.lightPool(ctx,npc.x,npc.y+4,30,'240,205,150',0.17);
+      ctx.save(); ctx.translate(npc.x,npc.y+bob);
+      ctx.fillStyle='rgba(0,0,0,.4)'; ctx.beginPath(); ctx.ellipse(0,15,9,4,0,0,7); ctx.fill();
+      const bg=ctx.createLinearGradient(0,-8,0,16); bg.addColorStop(0,npc.c1); bg.addColorStop(1,npc.c2);
+      ctx.fillStyle=bg; ctx.beginPath(); ctx.moveTo(-8,15); ctx.quadraticCurveTo(-9,-3,0,-7); ctx.quadraticCurveTo(9,-3,8,15); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='rgba(0,0,0,.3)'; ctx.lineWidth=1; ctx.stroke();
+      if(npc.acc==='broom'){ ctx.strokeStyle='#8a6a3a'; ctx.lineWidth=1.8; ctx.beginPath(); ctx.moveTo(7,-3); ctx.lineTo(12,17); ctx.stroke(); ctx.strokeStyle='#c9a24a'; ctx.lineWidth=1; for(let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(12,17); ctx.lineTo(12+i*1.8,21); ctx.stroke(); } }
+      else if(npc.acc==='book'){ ctx.fillStyle='#7a5a9a'; this.rr(ctx,-6,2,12,7,1.5); ctx.fill(); ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=0.8; ctx.beginPath(); ctx.moveTo(0,2); ctx.lineTo(0,9); ctx.stroke(); }
+      else if(npc.acc==='can'){ ctx.fillStyle='#6b8f7a'; this.rr(ctx,5,3,8,6,1.5); ctx.fill(); ctx.strokeStyle='#6b8f7a'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(13,4); ctx.lineTo(17,2); ctx.stroke(); }
+      ctx.fillStyle='#e8c9a0'; ctx.beginPath(); ctx.arc(0,-9,5,0,7); ctx.fill();
+      ctx.fillStyle=npc.c1; ctx.beginPath(); ctx.arc(0,-10.5,5.6,Math.PI*1.02,Math.PI*1.98); ctx.fill();
+      ctx.strokeStyle='rgba(255,225,160,.55)'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.arc(-1.5,-9,5,Math.PI*0.85,Math.PI*1.45); ctx.stroke();
+      ctx.restore(); }
+    // Point d'observation : léger scintillement sur le mobilier (discret, à repérer).
+    drawLookMark(ctx,s,t){ const p=0.5+0.5*Math.sin(t*1.8+s.ph);
+      ctx.save(); ctx.translate(s.x,s.y); ctx.globalAlpha=0.35+0.4*p;
+      ctx.fillStyle='#d9c6f2'; ctx.shadowColor='#c9b3e6'; ctx.shadowBlur=7*p; ctx.font='700 13px Fraunces, serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(s.glyph||'✧',0,0); ctx.restore(); }
     lightPool(ctx,x,y,r,rgb,a){ ctx.save(); ctx.globalCompositeOperation='lighter';
       const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba('+rgb+','+a+')'); g.addColorStop(1,'rgba('+rgb+',0)');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill(); ctx.restore(); }
@@ -922,6 +969,10 @@
       if(this.mquest!=='solved' && this.scene.type!=='sub'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const [fx,fy]=toS(fg.x,fg.y); const fr=64*this.Z*0.5;
         const gg=f.createRadialGradient(fx,fy,2,fx,fy,fr); gg.addColorStop(0,'rgba(0,0,0,.85)'); gg.addColorStop(0.6,'rgba(0,0,0,.5)'); gg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=gg; f.beginPath(); f.arc(fx,fy,fr,0,7); f.fill(); } }
+      // PNJ / points d'observation : petit halo pour repérer la vie du manoir dans le noir
+      if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
+        const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
       // récompense : le Grand Hall émerge du noir au fil des verres d'eau bus
       if(this.mirrorSolved && this.drunk>0 && this.scene.type!=='sub'){ const gh=this.byk.hall; const [hx2,hy2]=toS(gh.x+gh.w/2, gh.y+gh.h/2);
         const rad=(Math.max(gh.w,gh.h)*0.62)*(this.drunk/10)*this.Z;
