@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/widgets/manoir_screen.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
@@ -5495,6 +5496,41 @@ class _AppRootState extends State<AppRoot>
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
+              ),
+              // Manoir d'Ombrelune — bascule vers le jeu (WebView)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.castle_outlined),
+                title: const Text("Manoir d'Ombrelune"),
+                subtitle: const Text('Ouvrir le jeu (bêta)'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                        builder: (_) => const ManoirScreen()),
+                  );
+                },
+              ),
+              // Importer les routines « scénario » du Manoir dans les vraies routines
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.playlist_add_check_outlined),
+                title: const Text('Importer les routines du Manoir'),
+                subtitle: const Text(
+                    'Ajoute les routines du scénario (eau, vaisselle…) à tes routines'),
+                onTap: () {
+                  final n = seedManoirRoutines(logic);
+                  _saveAndRefresh();
+                  Navigator.pop(sheetCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(n > 0
+                          ? '$n routine(s) du Manoir ajoutée(s)'
+                          : 'Routines du Manoir déjà présentes'),
+                    ),
+                  );
+                },
               ),
               // Affichage : Défis du moment (désactivé par défaut)
               StatefulBuilder(
