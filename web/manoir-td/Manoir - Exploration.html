@@ -192,6 +192,19 @@
       let wq={s:'none',n:0}; try{ wq=JSON.parse(localStorage.getItem('ombrelune_water_quest')||'null')||wq; }catch(e){}
       this.quest=wq.s||'none'; this.noticedCount=wq.n||0;
 
+      // —— Mission 2 « Salle des miroirs » : éclats à retrouver → énigme optique → lumière du Hall indexée à l'eau
+      let mq={s:'dark',frags:0,got:[]}; try{ mq=JSON.parse(localStorage.getItem('ombrelune_mirror_quest')||'null')||mq; }catch(e){}
+      this.mquest=mq.s||'dark'; this.mgot=new Set(mq.got||[]); this.mirrorSolved=this.mquest==='solved';
+      this.FRAGS=[ {id:0,room:'biblio',fx:0.34,fy:0.66}, {id:1,room:'galerie',fx:0.70,fy:0.58}, {id:2,room:'atelier',fx:0.50,fy:0.44} ]
+        .map(f=>{ const r=this.byk[f.room]; return {id:f.id, x:r.x+r.w*f.fx, y:r.y+r.h*f.fy}; });
+      this._fragLines=[
+        'Un éclat de miroir… il brille encore, tout seul dans le noir.',
+        'Encore un fragment. Quelqu’un a brisé un grand miroir… il en manque.',
+        'Le dernier éclat. Ils viennent tous de la Salle des miroirs — allons la réparer.' ];
+      if(this.mquest==='dark') this.dialogue={ i:0, endLabel:'Explorer', lines:[
+        {who:'Lampyre', mood:'doubt', t:'Le manoir est plongé dans le noir… toutes les lumières se sont éteintes.'},
+        {who:'Lampyre', mood:'idle', t:'Reste près de moi. Ces éclats brillants dans le noir… ramassons-les.'} ]};
+
       this.buildCandles();
       this.fog=document.createElement('canvas'); this.fog.width=this.W; this.fog.height=this.H; this.fctx=this.fog.getContext('2d');
 
@@ -219,7 +232,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -317,9 +330,27 @@
     triggerStair(){ if(!this.nearStair) return; if(this.nearStair.back) this.exitSubScene(); else this.enterStair(this.nearStair); }
     triggerPoi(){ const p=this.curPoi; if(!p) return;
       if(p.kind==='stair') this.triggerStair();
-      else if(p.kind==='realize') this.solveWaterQuest(); }
+      else if(p.kind==='realize') this.solveWaterQuest();
+      else if(p.kind==='fragment') this.collectFragment(p.frag);
+      else if(p.kind==='mirror_enter') this.enterMirrorPuzzle(); }
     saveWater(){ try{ localStorage.setItem('ombrelune_water', JSON.stringify({d:this._wdate, n:this.drunk})); }catch(e){} }
     saveQuest(){ try{ localStorage.setItem('ombrelune_water_quest', JSON.stringify({s:this.quest, n:this.noticedCount})); }catch(e){} }
+    // —— Mission 2 : persistance + collecte des éclats + entrée de l'énigme
+    saveMirror(){ try{ localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({s:this.mquest, frags:this.mgot.size, got:[...this.mgot]})); }catch(e){} }
+    reloadMirror(){ let mq={s:'dark',frags:0,got:[]}; try{ mq=JSON.parse(localStorage.getItem('ombrelune_mirror_quest')||'null')||mq; }catch(e){}
+      this.mquest=mq.s||'dark'; this.mgot=new Set(mq.got||[]);
+      const wasSolved=this.mirrorSolved; this.mirrorSolved=this.mquest==='solved';
+      if(!wasSolved && this.mirrorSolved) this.flash=0.6;
+      this.updateHud(); }
+    collectFragment(fg){ if(!fg || this.mgot.has(fg.id)) return; this.mgot.add(fg.id);
+      const total=this.FRAGS.length; if(this.mquest==='dark') this.mquest='seeking';
+      if(this.mgot.size>=total) this.mquest='found'; this.saveMirror();
+      this.flash=0.5; this.pulses.push({x:fg.x,y:fg.y,t0:performance.now()});
+      const idx=Math.min(this.mgot.size-1, this._fragLines.length-1); const done=this.mgot.size>=total;
+      this.dialogue={ i:0, endLabel: done?'À la Salle des miroirs':'Continuer',
+        lines:[{who:'Lampyre', mood: done?'smile':'doubt', t:this._fragLines[idx]}] };
+      this.updateHud(); }
+    enterMirrorPuzzle(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html'); }
     // relit le compteur partagé quand une autre page l'a modifié (boire ailleurs dans l'appli)
     reloadWater(){ const today=new Date().toISOString().slice(0,10); let wsv={d:today,n:0};
       try{ wsv=JSON.parse(localStorage.getItem('ombrelune_water')||'null')||wsv; }catch(e){}
@@ -420,6 +451,8 @@
       this.nearStair=near;
       let poi=null; let atBar=false;
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
+      else if(this.mquest!=='solved' && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
@@ -447,7 +480,13 @@
       const dl=this.dialogue?this.dialogue.lines[this.dialogue.i]:null;
       h.showDlg=!!dl; h.dlgWho=dl?dl.who:''; h.dlgText=dl?dl.t:''; h.dlgColor=dl?(dl.who==='Lampyre'?'#9fd4ee':'#f2cd72'):'#f2cd72';
       h.dlgBtn=this.dialogue?(this.dialogue.i>=this.dialogue.lines.length-1?(this.dialogue.endLabel||'Fermer'):'Suivant \u25b8'):'';
-      h.showMission=this.quest==='solved'; h.missText=this.drunk>=10?'Mission accomplie \u2014 10 verres bus':('Boire 10 verres d\u2019eau \u00b7 '+this.drunk+'/10');
+      const FT=this.FRAGS.length; const waterTxt=this.drunk>=10?'Mission accomplie \u2014 10 verres bus':('Boire 10 verres d\u2019eau \u00b7 '+this.drunk+'/10');
+      if(this.mquest!=='solved'){ h.showMission=true;
+        h.missText = this.mquest==='found' ? 'R\u00e9parer le miroir \u00b7 Salle des miroirs'
+          : (this.mgot.size>=2 ? 'Trouver la Salle des miroirs \u00b7 '+this.mgot.size+'/'+FT+' \u00e9clats'
+          : 'Retrouver les \u00e9clats de miroir \u00b7 '+this.mgot.size+'/'+FT); }
+      else if(this.quest==='solved'){ h.showMission=true; h.missText=waterTxt; }
+      else { h.showMission=true; h.missText='Lumi\u00e8re r\u00e9tablie \u2014 le Grand Hall suit tes verres d\u2019eau'; }
       const o=this._hud;
       if(o.room!==h.room||o.scene!==h.scene||o.prompt!==h.prompt||o.showPrompt!==h.showPrompt||o.inSub!==h.inSub||o.showToast!==h.showToast||o.toast!==h.toast||o.showDlg!==h.showDlg||o.dlgText!==h.dlgText||o.showMission!==h.showMission||o.missText!==h.missText){ this._hud={...o,...h}; this.updateHud(); }
       else this._hud=Object.assign(o,h);
@@ -770,7 +809,9 @@
         ctx.strokeStyle='rgba(214,168,74,'+(0.10+amb*0.1)+')'; ctx.lineWidth=this.CORW*2; ctx.beginPath(); ctx.moveTo(ra.x+ra.w/2,ra.y+ra.h/2); ctx.lineTo(rb.x+rb.w/2,rb.y+rb.h/2); ctx.stroke(); }
       ctx.restore();
       const vx0=this.cam.x-(this.W/2)/this.Z-90, vx1=this.cam.x+(this.W/2)/this.Z+90, vy0=this.cam.y-(this.H/2)/this.Z-90, vy1=this.cam.y+(this.H/2)/this.Z+90;
-      for(const r of this.ROOMS){ if(r.x>vx1||r.x+r.w<vx0||r.y>vy1||r.y+r.h<vy0) continue; const D=this.DOM[r.dom]; this.floorPlate(ctx,r.x,r.y,r.w,r.h,D.glow,amb);
+      for(const r of this.ROOMS){ if(r.x>vx1||r.x+r.w<vx0||r.y>vy1||r.y+r.h<vy0) continue; const D=this.DOM[r.dom];
+        let ramb=amb; if(!day && r.k==='hall' && this.mirrorSolved) ramb=Math.min(1.6, (this.drunk||0)/10*1.6);
+        this.floorPlate(ctx,r.x,r.y,r.w,r.h,D.glow,ramb);
         this.drawFurniture(ctx,r);
         this.rr(ctx,r.x,r.y,r.w,r.h,14);
         ctx.lineWidth=16; ctx.strokeStyle='#0c0916'; ctx.globalAlpha=r.ext?0.5:1; ctx.stroke();
@@ -781,6 +822,7 @@
         if(day){ ctx.save(); ctx.globalAlpha=0.82; ctx.fillStyle='#ece0c6'; ctx.font='600 15px Outfit'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(r.label, r.x+r.w/2, r.y+16); ctx.restore(); } }
       for(const c of this.candles){ this.lightPool(ctx,c.x,c.y,c.r, c.big?'255,210,120':'255,196,110', 0.42);
         const fl=0.75+0.25*Math.sin(t*3+c.x); ctx.save(); ctx.fillStyle='#f2cd72'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=8*fl; ctx.beginPath(); ctx.arc(c.x,c.y,c.big?3:2,0,7); ctx.fill(); ctx.restore(); }
+      if(this.mquest!=='solved'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; this.drawFragment(ctx,fg,t); } }
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -806,6 +848,11 @@
       this.drawHero(ctx);
     }
 
+    drawFragment(ctx,fg,t){ const pulse=0.6+0.4*Math.sin(t*2.4+fg.id*1.7); this.lightPool(ctx,fg.x,fg.y,28,'190,225,255',0.5*pulse);
+      ctx.save(); ctx.translate(fg.x,fg.y); ctx.rotate(t*0.5+fg.id);
+      ctx.fillStyle='#eaf5ff'; ctx.shadowColor='#bfe3ff'; ctx.shadowBlur=11*pulse;
+      ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(5,0); ctx.lineTo(0,8); ctx.lineTo(-5,0); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,'+(0.5+0.4*pulse)+')'; ctx.lineWidth=0.8; ctx.stroke(); ctx.restore(); }
     lightPool(ctx,x,y,r,rgb,a){ ctx.save(); ctx.globalCompositeOperation='lighter';
       const g=ctx.createRadialGradient(x,y,0,x,y,r); g.addColorStop(0,'rgba('+rgb+','+a+')'); g.addColorStop(1,'rgba('+rgb+',0)');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill(); ctx.restore(); }
@@ -871,6 +918,15 @@
       for(const c of this.candleList()){ const [cx,cy]=toS(c.x,c.y); const cr=((c.r||60)+4)*this.Z*0.5;
         const cg=f.createRadialGradient(cx,cy,4,cx,cy,cr); cg.addColorStop(0,'rgba(0,0,0,.92)'); cg.addColorStop(0.55,'rgba(0,0,0,.62)'); cg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=cg; f.beginPath(); f.arc(cx,cy,cr,0,7); f.fill(); }
+      // éclats de miroir : petit halo dans le noir pour les repérer en explorant
+      if(this.mquest!=='solved' && this.scene.type!=='sub'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)) continue; const [fx,fy]=toS(fg.x,fg.y); const fr=64*this.Z*0.5;
+        const gg=f.createRadialGradient(fx,fy,2,fx,fy,fr); gg.addColorStop(0,'rgba(0,0,0,.85)'); gg.addColorStop(0.6,'rgba(0,0,0,.5)'); gg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=gg; f.beginPath(); f.arc(fx,fy,fr,0,7); f.fill(); } }
+      // récompense : le Grand Hall émerge du noir au fil des verres d'eau bus
+      if(this.mirrorSolved && this.drunk>0 && this.scene.type!=='sub'){ const gh=this.byk.hall; const [hx2,hy2]=toS(gh.x+gh.w/2, gh.y+gh.h/2);
+        const rad=(Math.max(gh.w,gh.h)*0.62)*(this.drunk/10)*this.Z;
+        const hg=f.createRadialGradient(hx2,hy2,4,hx2,hy2,rad); hg.addColorStop(0,'rgba(0,0,0,.95)'); hg.addColorStop(0.6,'rgba(0,0,0,.66)'); hg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=hg; f.beginPath(); f.arc(hx2,hy2,rad,0,7); f.fill(); }
       f.globalCompositeOperation='source-over';
       ctx.drawImage(this.fog,0,0,W,H);
     }
@@ -884,6 +940,10 @@
       const here = this.scene.type==='sub' ? this.scene.room : null;
       for(const r of this.ROOMS){ const D=this.DOM[r.dom]; const x=tx(r.x),y=ty(r.y),w=r.w*sc,h=r.h*sc;
         this.rr(ctx,x,y,w,h,2); ctx.fillStyle='rgba('+D.glow+',.16)'; ctx.fill(); ctx.lineWidth=(here===r.k)?1.6:0.8; ctx.strokeStyle=D.color; ctx.globalAlpha=(here&&here!==r.k)?0.4:1; ctx.stroke(); ctx.globalAlpha=1; }
+      // indice doux : la Salle des miroirs apparaît sur la minimap après ~2 éclats
+      if(this.mquest!=='solved' && this.mgot.size>=2){ const rm=this.byk.miroirs; const x=tx(rm.x),y=ty(rm.y),w=rm.w*sc,h=rm.h*sc; const pl=0.5+0.5*Math.sin(Date.now()/380);
+        ctx.save(); this.rr(ctx,x,y,w,h,2); ctx.strokeStyle='rgba(191,227,255,'+(0.55+0.4*pl)+')'; ctx.lineWidth=1.8; ctx.shadowColor='#bfe3ff'; ctx.shadowBlur=7*pl; ctx.stroke();
+        ctx.fillStyle='#eaf5ff'; ctx.beginPath(); ctx.arc(x+w/2,y+h/2,1.9,0,7); ctx.fill(); ctx.restore(); }
       if(this.scene.type==='ground'){ const hx=tx(this.hero.x),hy=ty(this.hero.y);
         ctx.save(); ctx.fillStyle='#fff'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=6; ctx.beginPath(); ctx.arc(hx,hy,2.8,0,7); ctx.fill(); ctx.restore(); }
       else if(here){ const r=this.byk[here]; const hx=tx(r.x+r.w/2),hy=ty(r.y+r.h/2);
