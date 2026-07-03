@@ -64,8 +64,8 @@ ombrelune_next_action = {
 |---|---|---|
 | Infiltration stealth complète (gardes à cônes de vision balayants, patrouilles, jauge de détection, cachettes derrière meubles, clé → porte, lampe à baisser) | `web/manoir-td/Compagnon - Infiltration.html` (« La Galerie des ombres ») | ✅ codée, **orpheline** (aucun lien n'y mène) |
 | Puzzle miroirs (rotation, faisceau, victoire) | `Compagnon - Énigme optique.html` | ✅ en prod (Mission 2) |
-| Moteur TD complet (tourelles, ennemis, éco, brouillard) | `index.html` + `src/` | ✅ codé, hors parcours |
-| Mini-raid paramétrable (`?waves=&routine=`) | `Mini-vague - Jouable.html` | ✅ relié à l'Accueil |
+| **Moteur de raid complet** (Commander jouable, économie de masse, construction occupée, tourelles + soutiens, Cuirassé-tortue, commandant ennemi, campagne, brouillard) | `index.html` + `src/` | ✅ codé, hors parcours — **c'est LE mode raid des missions** |
+| Mini-vague « résister aux vagues » (`?waves=&routine=`) | `Mini-vague - Jouable.html` | ✅ relié à l'Accueil — side-game léger, **PAS le mode raid** |
 | Salle `sanctuaire` (+ escalier « Crypte rituelle ») | `Manoir - Exploration.html` | ✅ en prod |
 | Pont app ⇄ jeu (`ombrelune_sync`, `ManoirBridge`) | `lib/widgets/manoir_screen.dart` (PR #225) | ✅ codé |
 | Écrans annexes : Déduction, Évasion, Choix du soir | `Compagnon - *.html` | ✅ codés, orphelins |
@@ -101,9 +101,14 @@ des ombres) qui **mixe les trois mécaniques** :
 **Échec** (détection pleine) : renvoyé au portail, l'action reste scellée — réessayable à
 volonté (jamais punitif, ton Soft Pop). Les pièges déjà posés persistent pendant la session.
 
-**Alternative « raid »** : certains projets/actions peuvent être gardés par un **raid**
-(Mini-vague paramétrée `?reward=action`) plutôt qu'une infiltration — variété : infiltration
-= projets « réflexion », raid = projets « exécution » (heuristique simple, ou aléatoire V1).
+**Alternative « raid »** : certains projets/actions sont gardés par un **raid** plutôt
+qu'une infiltration. ⚠️ **Le raid = le moteur complet** (`index.html` + `src/`) — le mode
+évolué : Commander jouable, économie de masse, pose de tourelles/soutiens, Cuirassé-tortue,
+**commandant ennemi à vaincre** (objectif offensif : détruire sa base / son coffre, pas
+« résister aux vagues »). La Mini-vague reste un side-game de l'Accueil, elle n'est **pas**
+un type de mission. Lancement : `index.html?raid=1&reward=action` (carte/nœud de campagne
+dédié) ; victoire = `reveal_action`. Variété : infiltration = projets « réflexion »,
+raid = projets « exécution » (heuristique simple, ou aléatoire V1).
 
 ---
 
@@ -115,8 +120,10 @@ volonté (jamais punitif, ton Soft Pop). Les pièges déjà posés persistent pe
   → La boucle Gantt complète tourne avec 0 nouveau gameplay.
 - **V2.2 — la Salle des Ombres** : nouvel écran mixant caméras + pose de pièges (budget =
   missions du jour) ; le portail y mène ; l'Infiltration Galerie reste une mission secondaire.
-- **V2.3 — miroirs dans la map + raids** : puzzle miroirs intégré (acte 3), alternance
-  infiltration/raid, puis variété (Déduction/Évasion réintégrées comme types de missions).
+- **V2.3 — miroirs dans la map + raids** : puzzle miroirs intégré (acte 3), et branchement
+  du **moteur de raid complet** (`index.html?raid=1&reward=action` : mission offensive,
+  vaincre le commandant ennemi → révélation) en alternance avec l'infiltration, puis
+  variété (Déduction/Évasion réintégrées comme types de missions).
 
 ---
 
