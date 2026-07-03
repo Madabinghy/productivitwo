@@ -142,8 +142,10 @@ class _ManoirScreenState extends State<ManoirScreen> {
     return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 
-  // Cherche la « prochaine action » : premier projet actif (racines d'abord),
-  // première tâche pending (par date de début), première sous-action non faite.
+  // Cherche la « prochaine action » : premier projet actif (racines d'abord,
+  // puis brouillons), première tâche pending (par date de début), première
+  // sous-action non faite — ou la TÂCHE elle-même si elle n'a pas de
+  // sous-actions (projets créés à la main sans détail opérationnel).
   // Les projets ne vivent pas dans AppState → fetch Firestore à la demande.
   Future<void> _pushNextAction() async {
     final sync = widget.logic.sync;
@@ -152,17 +154,23 @@ class _ManoirScreenState extends State<ManoirScreen> {
     try {
       projects = await sync.fetchProjects();
     } catch (_) {
+      _writeNextAction(_nextAction); // état connu plutôt que silence
       return;
     }
-    final actives = projects.where((p) => p.status == 'active').toList()
+    final candidates = projects
+        .where((p) => p.status == 'active' || p.status == 'draft')
+        .toList()
       ..sort((a, b) {
+        final sa = a.status == 'active' ? 0 : 1;
+        final sb = b.status == 'active' ? 0 : 1;
+        if (sa != sb) return sa - sb;
         final ra = a.parentProjectId == null ? 0 : 1;
         final rb = b.parentProjectId == null ? 0 : 1;
         if (ra != rb) return ra - rb;
         return a.createdAt.compareTo(b.createdAt);
       });
     _nextAction = null;
-    for (final p in actives) {
+    for (final p in candidates) {
       final tasks = p.tasks.where((t) => t.status == 'pending').toList()
         ..sort((a, b) => a.startDate.compareTo(b.startDate));
       for (final t in tasks) {
@@ -175,8 +183,17 @@ class _ManoirScreenState extends State<ManoirScreen> {
             projectTitle: p.title,
             actionTitle: a.title,
           );
-          break;
+        } else if (t.actions.isEmpty) {
+          // pas de sous-actions : la tâche EST la prochaine étape
+          _nextAction = (
+            projectId: p.id,
+            taskId: t.id,
+            actionId: 'task:${t.id}',
+            projectTitle: p.title,
+            actionTitle: t.title,
+          );
         }
+        if (_nextAction != null) break;
       }
       if (_nextAction != null) break;
     }

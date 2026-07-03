@@ -511,8 +511,11 @@
           {who:'Lampyre', mood:'smile', t:'Ta prochaine étape, gagnée : « '+na.title+' ».'},
           {who:'Lampyre', mood:'idle', t:'Fais-la pour de vrai, puis coche-la dans la Console — le portail scellera la suivante.'} ]}; }
       else {
-        this.dialogue={ i:0, endLabel:'Fermer', lines:[
-          {who:'Lampyre', mood:'idle', t:'Un portail éteint… Seule la Console peut sceller ici le prochain pas d’un projet. Ouvre le Manoir depuis l’app.'} ]}; }
+        // éteint : dire POURQUOI — pont absent (web pur / ancienne app) vs aucun projet éligible
+        const line = window.ManoirBridge
+          ? 'La Console n’a trouvé aucune étape à sceller. Crée un projet (avec au moins une tâche en cours) — le portail s’embrasera à ta prochaine visite.'
+          : 'Un portail éteint… Il ne s’allume que depuis l’app Productivitwo (la Console) — et avec sa version la plus récente.';
+        this.dialogue={ i:0, endLabel:'Fermer', lines:[{who:'Lampyre', mood:'idle', t:line}] }; }
       this.updateHud(); }
     drawPortal(ctx,t){ const p=this.portalPos; if(!p) return; const st=this.portalState();
       const col= st==='sealed' ? '#b79ae0' : (st==='revealed' ? '#f2cd72' : '#5a5470');
