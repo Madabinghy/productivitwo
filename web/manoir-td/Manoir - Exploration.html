@@ -70,7 +70,7 @@
 
     <!-- bottom-right : minimap -->
     <div class="hud" id="hud-mini-wrap" style="top:14px; right:14px; padding:8px; background:rgba(8,5,16,.74); backdrop-filter:blur(7px); border:1px solid rgba(154,134,184,.18); border-radius:12px;">
-      <canvas id="exp-mini" width="320" height="280" style="width:160px; height:140px; display:block; border-radius:7px;"></canvas>
+      <canvas id="exp-mini" width="320" height="280" style="width:118px; height:103px; display:block; border-radius:7px;"></canvas>
     </div>
 
     <!-- center-bottom : prompt escalier -->
@@ -899,8 +899,10 @@
       show(e.exitSub, h.inSub, 'inline-block');
       // mission
       show(e.mission, h.showMission); e.missionText.textContent=h.missText;
-      // contrôles / joystick / minimap
-      show(e.controls, !showJoy); show(e.joy, showJoy, 'block'); show(e.miniWrap, this.cfg.showMinimap??true, 'block');
+      // contrôles / joystick / minimap — on masque le joystick pendant un dialogue
+      // (sinon il recouvre la carte de dialogue centrée en bas)
+      const joyVisible = showJoy && !this.dialogue;
+      show(e.controls, !showJoy); show(e.joy, joyVisible, 'block'); show(e.miniWrap, this.cfg.showMinimap??true, 'block');
       // prompt
       show(e.prompt, h.showPrompt);
       e.prompt.style.border='1.5px solid '+h.promptC;
