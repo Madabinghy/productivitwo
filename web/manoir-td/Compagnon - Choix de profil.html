@@ -58,6 +58,18 @@
   var S = { sel: 1 };
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
+  // Porte déjà choisie → on entre directement (l'app ouvre le jeu sur cet écran).
+  // Repasser volontairement par le choix : lien « ‹ Mode » des accueils (?choose=1).
+  try {
+    var saved = localStorage.getItem('ombrelune.profil');
+    if(saved && DEST[saved] && window.location.search.indexOf('choose') < 0){
+      window.location.replace('./' + encodeURIComponent(DEST[saved]));
+    } else if(saved && DEST[saved]){
+      S.sel = PROFILES.findIndex(function(p){ return p.key === saved; });
+      if(S.sel < 0) S.sel = 1;
+    }
+  } catch(e){}
+
   function doorHTML(p, i){
     var on = i === S.sel;
     var wrap = 'flex:1; display:flex; flex-direction:column; align-items:center; gap:8px; background:transparent; border:none; cursor:pointer; padding:0; opacity:'+(on?1:.5)+'; transform:'+(on?'translateY(-2px)':'none')+'; transition:all .25s ease;';
