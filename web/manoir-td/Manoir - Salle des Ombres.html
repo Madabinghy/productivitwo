@@ -27,7 +27,7 @@
   <div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 8px;">
     <div id="so-goback" style="display:flex; flex-direction:column; cursor:pointer;">
       <span style="font-family:'Fraunces',serif; font-weight:600; font-size:14px; color:#e9dcc2;">La Salle des Ombres</span>
-      <span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">‹ Sanctuaire · au-delà du portail</span>
+      <span id="so-sub" style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">‹ Sanctuaire · au-delà du portail</span>
     </div>
     <button id="so-reset" style="background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28); border-radius:999px; padding:6px 13px; cursor:pointer; font-weight:600; font-size:11px; color:#e7c878;">↺ Reprendre</button>
   </div>
@@ -82,6 +82,14 @@
   var GUARDS=[
     { x:280, y:600, dir:Math.PI/2, sweep:0.8, phase:0, range:200, half:0.45, patrol:170 }
   ];
+  // Difficulté (?difficulty=1..3, choisie par le portail selon tes trophées) :
+  // caméras et patrouilles en plus, détection plus vive.
+  var DIFF=Math.max(1,Math.min(3,parseInt((window.location.search.match(/difficulty=(\d)/)||[])[1]||'1',10)));
+  var DET_RATE=[3.6,4.3,5.0][DIFF-1];
+  var SWEEP_SPEED=[0.8,0.95,1.1][DIFF-1];
+  if(DIFF>=2) CAMS.push({ id:'c5', x:60, y:640, dir:0, sweep:0.5, phase:2.6, range:220, half:0.36 });
+  if(DIFF>=3){ CAMS.push({ id:'c6', x:500, y:420, dir:Math.PI, sweep:0.55, phase:4.2, range:230, half:0.36 });
+    GUARDS.push({ x:280, y:300, dir:0, sweep:0.7, phase:2.2, range:180, half:0.42, patrol:120 }); }
   var FURN=[
     { x:150, y:960, w:96, h:46 }, { x:330, y:860, w:70, h:90 }, { x:90,  y:770, w:96, h:46 },
     { x:420, y:640, w:84, h:46 }, { x:120, y:640, w:84, h:46 }, { x:250, y:730, w:90, h:46 },
@@ -152,9 +160,9 @@
 
   function inRect(x,y,c,m){ m=m||0; return x>=c.x-m && x<=c.x+c.w+m && y>=c.y-m && y<=c.y+c.h+m; }
   function occluded(gx,gy,bx,by){ for(var t=0.1; t<=0.9; t+=0.05){ var px=gx+(bx-gx)*t, py=gy+(by-gy)*t; if(FURN.some(function(c){ return inRect(px,py,c,2); })) return true; } return false; }
-  function camAngle(c){ return c.dir + c.sweep*Math.sin(G.t*0.8 + c.phase); }
+  function camAngle(c){ return c.dir + c.sweep*Math.sin(G.t*SWEEP_SPEED + c.phase); }
   function guardAngle(g){ return g.dir + g.sweep*Math.sin(G.t*0.9 + g.phase); }
-  function guardPos(g){ var fro=G.frozen[0]||0; if(fro>0) return G.frozenPos; return { x: g.x + (g.patrol ? g.patrol*Math.sin(G.t*0.5 + g.phase) : 0), y: g.y }; }
+  function guardPos(g){ if(g.frozen>0) return g.frozenPos; return { x: g.x + (g.patrol ? g.patrol*Math.sin(G.t*0.5 + g.phase) : 0), y: g.y }; }
 
   // —— Faisceau : segments + caméras aveuglées + capteur touché.
   function computeBeam(){
@@ -212,7 +220,7 @@
 
   function loop(){
     var dt=1/60; G.t+=dt;
-    if(G.frozen[0]>0) G.frozen[0]-=dt;
+    for(var fz=0; fz<GUARDS.length; fz++){ if(GUARDS[fz].frozen>0) GUARDS[fz].frozen-=dt; }
     var playing = S.status==='play';
     if(playing && !G.flash){
       var mag=Math.hypot(G.move.x, G.move.y);
@@ -232,7 +240,7 @@
     // glu : le garde qui marche dessus est figé ~6 s (glu consommée)
     for(var gi2=0; gi2<GUARDS.length; gi2++){ var gg=GUARDS[gi2]; var gp0=guardPos(gg);
       for(var si=0; si<SOCKETS.length; si++){ var sk=SOCKETS[si];
-        if(sk.item==='glue' && Math.hypot(gp0.x-sk.x, gp0.y-sk.y)<20){ G.frozen[gi2]=6; G.frozenPos={x:gp0.x,y:gp0.y}; sk.item='glueUsed'; } } }
+        if(sk.item==='glue' && Math.hypot(gp0.x-sk.x, gp0.y-sk.y)<20){ gg.frozen=6; gg.frozenPos={x:gp0.x,y:gp0.y}; sk.item='glueUsed'; } } }
 
     // détection : caméras non aveuglées + garde non figé
     var seen=false;
@@ -240,13 +248,13 @@
       var a=camAngle(c); var vx=G.bx-c.x, vy=G.by-c.y, dist=Math.hypot(vx,vy); if(dist>c.range) continue;
       var look=Math.atan2(vy,vx); var diff=Math.abs(Math.atan2(Math.sin(look-a),Math.cos(look-a)));
       if(diff<c.half && !occluded(c.x,c.y,G.bx,G.by)){ seen=true; break; } }
-    if(!seen){ for(var gi=0; gi<GUARDS.length; gi++){ if(G.frozen[gi]>0) continue; var g=GUARDS[gi]; var gp=guardPos(g); var ang=guardAngle(g);
+    if(!seen){ for(var gi=0; gi<GUARDS.length; gi++){ var g=GUARDS[gi]; if(g.frozen>0) continue; var gp=guardPos(g); var ang=guardAngle(g);
       var vx2=G.bx-gp.x, vy2=G.by-gp.y, dist2=Math.hypot(vx2,vy2); if(dist2>g.range) continue;
       var look2=Math.atan2(vy2,vx2); var diff2=Math.abs(Math.atan2(Math.sin(look2-ang),Math.cos(look2-ang)));
       if(diff2<g.half && !occluded(gp.x,gp.y,G.bx,G.by)){ seen=true; break; } } }
 
     if(playing && !G.flash){
-      G.det += seen ? 3.6 : -3.2; G.det=Math.max(0,Math.min(100,G.det));
+      G.det += seen ? DET_RATE : -3.2; G.det=Math.max(0,Math.min(100,G.det));
       G.nearConsole = Math.hypot(G.bx-CONSOLE.x, G.by-CONSOLE.y) < 40;
       G.nearVault = Math.hypot(G.bx-VAULT.x, G.by-VAULT.y) < 40;
       G.nearMirror = null; for(var mi=0; mi<MIRRORS.length; mi++){ if(Math.hypot(G.bx-MIRRORS[mi].x, G.by-MIRRORS[mi].y)<44){ G.nearMirror=MIRRORS[mi]; break; } }
@@ -288,7 +296,7 @@
     for(var ci=0;ci<CAMS.length;ci++){ var c=CAMS[ci]; var blind=camBlinded(c,segs); if(blind) continue;
       var a=camAngle(c); var grd=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.range); grd.addColorStop(0, seen?'rgba(255,120,120,.28)':'rgba(170,120,255,.26)'); grd.addColorStop(1,'rgba(150,90,230,0)');
       ctx.fillStyle=grd; ctx.beginPath(); ctx.moveTo(c.x,c.y); ctx.arc(c.x,c.y,c.range,a-c.half,a+c.half); ctx.closePath(); ctx.fill(); }
-    for(var gi=0;gi<GUARDS.length;gi++){ var g=GUARDS[gi]; if(G.frozen[gi]>0) continue; var gp=guardPos(g), ga=guardAngle(g);
+    for(var gi=0;gi<GUARDS.length;gi++){ var g=GUARDS[gi]; if(g.frozen>0) continue; var gp=guardPos(g), ga=guardAngle(g);
       var grd2=ctx.createRadialGradient(gp.x,gp.y,0,gp.x,gp.y,g.range); grd2.addColorStop(0,'rgba(170,120,255,.30)'); grd2.addColorStop(1,'rgba(150,90,230,0)');
       ctx.fillStyle=grd2; ctx.beginPath(); ctx.moveTo(gp.x,gp.y); ctx.arc(gp.x,gp.y,g.range,ga-g.half,ga+g.half); ctx.closePath(); ctx.fill(); }
     // meubles
@@ -335,7 +343,7 @@
     var lx=G.lctx, gx=G.gtx;
     lx.setTransform(1,0,0,1,0,0); lx.globalCompositeOperation='source-over'; lx.clearRect(0,0,W,H);
     for(var ci2=0;ci2<CAMS.length;ci2++){ var c2=CAMS[ci2]; if(camBlinded(c2,segs)) continue; coneLight(gx, c2.x,c2.y, camAngle(c2), c2.half, c2.range); lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0); }
-    for(var gi2=0;gi2<GUARDS.length;gi2++){ if(G.frozen[gi2]>0) continue; var g2=GUARDS[gi2]; var gp2=guardPos(g2); coneLight(gx, gp2.x,gp2.y, guardAngle(g2), g2.half, g2.range); lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0); }
+    for(var gi2=0;gi2<GUARDS.length;gi2++){ var g2=GUARDS[gi2]; if(g2.frozen>0) continue; var gp2=guardPos(g2); coneLight(gx, gp2.x,gp2.y, guardAngle(g2), g2.half, g2.range); lx.globalCompositeOperation='lighter'; lx.drawImage(G.gtmp,0,0); }
     gx.setTransform(1,0,0,1,0,0); gx.globalCompositeOperation='source-over'; gx.clearRect(0,0,W,H); gx.translate(-cam.x,-cam.y);
     var hg=gx.createRadialGradient(G.bx,G.by,0,G.bx,G.by,56); hg.addColorStop(0,'rgba(255,255,255,1)'); hg.addColorStop(.7,'rgba(255,255,255,1)'); hg.addColorStop(1,'rgba(255,255,255,0)'); gx.fillStyle=hg; gx.beginPath(); gx.arc(G.bx,G.by,56,0,7); gx.fill();
     gx.lineCap='round'; gx.strokeStyle='rgba(255,255,255,.9)'; gx.lineWidth=26;
@@ -349,7 +357,7 @@
 
     // entités au-dessus du brouillard
     for(var ci3=0;ci3<CAMS.length;ci3++){ var c3=CAMS[ci3]; drawCam(ctx, c3, camBlinded(c3,segs), seen); }
-    for(var gk=0;gk<GUARDS.length;gk++){ var gp3=guardPos(GUARDS[gk]); drawGuard(ctx, gp3.x-cam.x, gp3.y-cam.y, seen, G.frozen[gk]>0); }
+    for(var gk=0;gk<GUARDS.length;gk++){ var gp3=guardPos(GUARDS[gk]); drawGuard(ctx, gp3.x-cam.x, gp3.y-cam.y, seen, GUARDS[gk].frozen>0); }
     drawButler(ctx, G.bx-cam.x, G.by-cam.y);
     if(G.flash){ ctx.fillStyle='rgba(150,70,200,.42)'; ctx.fillRect(0,0,W,H); }
   }
@@ -419,8 +427,9 @@
     G.bx=START.x; G.by=START.y; G.tgt={x:START.x,y:START.y}; G.cam={x:0,y:0}; G.t=0; G.det=0; G.flash=0;
     G.move={x:0,y:0}; G.stickActive=false; G.stickId=null; G.nearConsole=false; G.nearVault=false; G.nearMirror=null; G.nearSocket=null;
     G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(e){ jsUp(e); };
-    G.vaultOpen=false; G.sensorLit=false; G.beamSegs=[]; G.lanternBlind={}; G.frozen=[0]; G.frozenPos={x:0,y:0};
+    G.vaultOpen=false; G.sensorLit=false; G.beamSegs=[]; G.lanternBlind={};
     G.masse=readMasse();
+    if(DIFF>1){ var sub=document.getElementById('so-sub'); if(sub) sub.textContent='‹ Sanctuaire · niveau '+DIFF+' — l\u2019ennemi se méfie'; }
     renderFooter(); updateHud(); // rendus AVANT la mesure : le footer change la hauteur du hublot
     // plein écran : le hublot suit la taille CSS réelle (mobile = tout l'écran)
     G.cv=document.getElementById('so-cv');

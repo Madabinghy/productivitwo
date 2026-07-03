@@ -570,13 +570,27 @@
         const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
         if(rev.indexOf(na.actionId)>=0){ this._revealAsked=true; window.ManoirBridge.postMessage(JSON.stringify({type:'reveal_action'})); } } }catch(e){}
       if(!initial) this.updateHud(); }
+    // Le gardien d'une action est tiré de son id (déterministe) ; la difficulté
+    // de la Salle des Ombres monte avec tes trophées (3 accomplis = niveau 2…).
+    missionGuard(actionId){
+      let h=0; const str=String(actionId||''); for(let i=0;i<str.length;i++){ h=(h*31+str.charCodeAt(i))>>>0; }
+      const diff=1+Math.min(2, Math.floor(((this.trophies||[]).length)/3));
+      const r=h%10;
+      if(r<4) return {name:'la Salle des Ombres', pitch:'Caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera.',
+        href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff};
+      if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, un leurre. Trouve l’angle qui renvoie la flamme.',
+        href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%997)};
+      return {name:'l’Enquête du manoir', pitch:'Trois indices, trois suspects, un seul coupable. Recoupe, puis accuse.',
+        href:'./'+encodeURIComponent('Compagnon - Déduction.html')+'?reward=action'};
+    }
     openPortal(){ if(this.dialogue) return; const na=this.nextAction; const st=this.portalState();
       if(st==='sealed'){
-        this.dialogue={ i:0, endLabel:'Infiltrer',
-          onEnd:()=>{ window.location.href='./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action'; },
+        const guard=this.missionGuard(na&&na.actionId);
+        this.dialogue={ i:0, endLabel:'Y aller',
+          onEnd:()=>{ window.location.href=guard.href; },
           lines:[
             {who:'Lampyre', mood:'doubt', t:'Derrière ce portail, l’ennemi garde le prochain pas de ton projet « '+((na&&na.projectName)||'…')+' ». Tu ne sauras pas lequel sans aller le prendre.'},
-            {who:'Lampyre', mood:'idle', t:'La Salle des Ombres : caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera — l’étape sera à toi.'} ]}; }
+            {who:'Lampyre', mood:'idle', t:'Cette étape est gardée par '+guard.name+'. '+guard.pitch+' L’étape sera à toi.'} ]}; }
       else if(st==='revealed'){
         this.dialogue={ i:0, endLabel:'Compris', lines:[
           {who:'Lampyre', mood:'smile', t:'Ta prochaine étape, gagnée : « '+na.title+' ».'},

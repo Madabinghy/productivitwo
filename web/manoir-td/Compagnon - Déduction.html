@@ -44,8 +44,31 @@
   function allDone(){ return LOCATIONS.every(function(l){ return S.collected[l.key]; }); }
   function gather(key){ if(S.collected[key]) return; S.collected[key]=true; render(); }
   function select(key){ if(!allDone()) return; S.sel=key; S.wrong=null; render(); }
-  function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; } else { S.wrong=S.sel; } render(); }
+  function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; if(REWARD) revealAsk(); } else { S.wrong=S.sel; } render(); }
   function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+
+  // Mode récompense (mission du portail) : la bonne accusation révèle l'action Gantt.
+  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  var revealSent=false;
+  function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
+  function revealAsk(){ if(revealSent) return; revealSent=true;
+    try{ var na=readNextAction(); if(na && na.actionId){
+      var rev=[]; try{ rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]'); }catch(e){}
+      if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
+    try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'reveal_action' })); }catch(e){}
+  }
+  window.addEventListener('storage', function(e){ if(REWARD && e.key==='ombrelune_next_action' && S.phase==='verdict') render(); });
+  function rewardHTML(){
+    var na=readNextAction();
+    var revealed = na && na.title && na.sealed===false;
+    return '<div style="margin-top:14px; width:100%; max-width:300px; padding:12px 14px; border-radius:13px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.35); text-align:left;">'
+      + '<div style="font-weight:700; font-size:8.5px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Butin — prochaine étape'+(na&&na.projectName?(' · '+String(na.projectName).replace(/[&<>"]/g,'')):'')+'</div>'
+      + (revealed
+        ? '<div style="margin-top:5px; font-family:\'Fraunces\',serif; font-weight:600; font-size:15px; color:#fbf3e2;">« '+String(na.title).replace(/[&<>"]/g,'')+' »</div>'
+          + '<div style="margin-top:4px; font-size:11px; color:#a796c0;">Fais-la pour de vrai, puis coche-la dans la Console.</div>'
+        : '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#d8c8a8;">Le sceau se dissout… ouvre la Console (l\u2019app) pour lire ta prochaine étape.</div>')
+      + '</div>';
+  }
 
   function playHTML(){
     var done = allDone();
@@ -89,7 +112,8 @@
       + '<div style="margin-top:18px; font-weight:700; font-size:10px; letter-spacing:2.4px; text-transform:uppercase; color:#f2cd72;">Coupable démasqué</div>'
       + '<div style="margin-top:10px; font-family:\'Fraunces\',serif; font-weight:600; font-size:25px; line-height:1.16; color:#fbf3e2; max-width:300px;">C\'était le Maître.</div>'
       + '<div style="margin-top:13px; font-size:13.5px; line-height:1.56; color:#bcaccf; max-width:300px;">La Gouvernante avait son alibi, l\'Invité fuyait le noir. Restait lui — gants aux mains, il a soufflé ses propres bougies pour s\'effacer du manoir. La porte de la Galerie s\'ouvre.</div>'
-      + '<button data-act="back" style="margin-top:26px; padding:15px 28px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Salle suivante ✦</button>'
+      + (REWARD?rewardHTML():'')
+      + '<button data-act="back" style="margin-top:26px; padding:15px 28px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">'+(REWARD?'Retour au manoir ✦':'Salle suivante ✦')+'</button>'
       + '</div>';
   }
 
