@@ -267,6 +267,15 @@
       this.mProposed=new Set(ms.proposed||[]); this.mCelebrated=new Set(ms.celebrated||[]);
       this.checkCelebrations();
 
+      // —— Croissance de Lampyre (tamagotchi) : il naît Étincelle et grandit avec
+      // l'XP de tes soins RÉELS (+1/verre, +5/mission du jour, +5/25 min trackées),
+      // créditée une seule fois par jour et par soin (`credited`).
+      this.LAMP_STAGES=[{xp:0,name:'Étincelle'},{xp:30,name:'Lueur'},{xp:100,name:'Lampyre'},{xp:250,name:'Veilleur'},{xp:450,name:'Flamme gardienne'}];
+      let lp={xp:0,stage:0,credited:{d:today,water:0,missions:[],focus:0}};
+      try{ lp=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null')||lp; }catch(e){}
+      lp.credited=lp.credited||{d:today,water:0,missions:[],focus:0};
+      this.lamp=lp; this.creditCare();
+
       // —— Portail du Sanctuaire : la prochaine action Gantt, scellée par la Console
       // (docs/manoir_missions_v2.md §1 et §3 — V2.1 : mène à la Galerie des ombres).
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
@@ -463,6 +472,7 @@
         if(up && this.barPos){ this.pulses.push({x:this.barPos.x, y:this.barPos.y+4, t0:performance.now()}); this.flash=0.5; }
         if(up){ this.drinkAnim={t0:performance.now()}; this.laughUntil=performance.now()+1500;
           this.toast={t:'Lampyre boit avec toi 💧 ('+this.drunk+'/10)', t0:performance.now()}; }
+        this.creditCare();
         this.updateHud(); } }
     // gorgée bue HORS du manoir (saisie ailleurs dans l'appli) — la routine vide un verre ici
     simExternalDrink(){ if(!this.barRow || this.drunk>=this.barRow.n) return;
@@ -476,7 +486,7 @@
       try{ s=JSON.parse(localStorage.getItem('ombrelune_sync')||'null')||s; }catch(e){}
       if(s.d!==today) s={d:today,routines:{},focusMin:0};
       s.routines=s.routines||{}; this.sync=s;
-      if(!initial){ this.checkCelebrations(); this.updateHud(); } }
+      if(!initial){ this.checkCelebrations(); this.creditCare(); this.updateHud(); } }
     missionDone(m){ if(!this.sync||!m) return false;
       if(m.rk==='focus') return (this.sync.focusMin||0)>=(m.target||25);
       const r=this.sync.routines[m.rk]; return !!r && (r.n||0)>=(r.t||1); }
@@ -490,6 +500,21 @@
         this.toast={t:'✨ '+r.label+' se rallume — '+m.irl+' : fait.', t0:performance.now()};
         this.pulses.push({x:r.x+r.w/2, y:r.y+r.h/2, t0:performance.now()}); }
       if(changed) this.saveMissions(); }
+    // —— Croissance de Lampyre : crédit d'XP depuis les soins réels du jour.
+    stageFor(xp){ let st=0; for(let i=0;i<this.LAMP_STAGES.length;i++){ if(xp>=this.LAMP_STAGES[i].xp) st=i; } return st; }
+    saveLamp(){ try{ localStorage.setItem('ombrelune_lampyre', JSON.stringify(this.lamp)); }catch(e){} }
+    creditCare(){ const L=this.lamp; if(!L||!this.MISSIONS||!this.sync) return;
+      const today=this._wdate;
+      if(L.credited.d!==today) L.credited={d:today,water:0,missions:[],focus:0};
+      let gained=0;
+      if((this.drunk||0)>L.credited.water){ gained+=(this.drunk-L.credited.water); L.credited.water=this.drunk; }
+      for(const m of this.MISSIONS){ if(this.missionDone(m) && L.credited.missions.indexOf(m.room)<0){ L.credited.missions.push(m.room); gained+=5; } }
+      const chunks=Math.floor((this.sync.focusMin||0)/25);
+      if(chunks>L.credited.focus){ gained+=(chunks-L.credited.focus)*5; L.credited.focus=chunks; }
+      if(gained>0){ L.xp+=gained; const ns=this.stageFor(L.xp);
+        if(ns>(L.stage||0)){ L.stage=ns; this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
+          this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()}; }
+        this.saveLamp(); if(this.el) this.updateHud(); } }
     // —— Portail du Sanctuaire : prochaine action Gantt scellée (pont app).
     portalState(){ const na=this.nextAction; return !na ? 'off' : (na.sealed===false && na.title ? 'revealed' : 'sealed'); }
     reloadNextAction(initial){
@@ -1078,11 +1103,24 @@
       const sleepy=vital<0.5 && !laughing && !gulp;  // paupières lourdes, bob lent
       const blink=laughing?1:((Math.sin(T*0.7)>0.985)?0.15:(sleepy?0.5:1));
       const vGlow=0.5+0.6*vital+0.4*gulp;            // éclat général
+      // stade de croissance (tamagotchi) : échelle + mèche + braises
+      const stg=(this.lamp&&this.lamp.stage)||0;
+      const sc=[0.55,0.8,1,1.12,1.24][stg]||1;
       ctx.save(); ctx.translate(h.x,h.y);
-      this.lightPool(ctx,0,0,44,'255,225,150',0.18*flick*vGlow*(laughing?1.2:1));
-      ctx.fillStyle='rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0,7,10,5,0,0,7); ctx.fill();
+      this.lightPool(ctx,0,0,44*(0.6+0.4*sc),'255,225,150',0.18*flick*vGlow*(laughing?1.2:1));
+      ctx.fillStyle='rgba(0,0,0,.42)'; ctx.beginPath(); ctx.ellipse(0,7,10*sc,5*sc,0,0,7); ctx.fill();
       const bob=Math.sin(T*(1.2+1.1*vital))*1.3 - giggle;
-      ctx.scale(0.62,0.62); ctx.translate(0,bob-2);
+      ctx.scale(0.62*sc,0.62*sc); ctx.translate(0,bob-2);
+      if(stg===0){ // Étincelle : une flammèche flottante avec deux petits yeux — pas encore de corps
+        ctx.save(); ctx.shadowColor='rgba(255,196,90,.95)'; ctx.shadowBlur=12*(0.7+0.6*vital+gulp);
+        const fh=10*(0.7+0.5*vital)+gulp*4;
+        const fl0=ctx.createLinearGradient(0,-fh,0,8); fl0.addColorStop(0,'#fff3cf'); fl0.addColorStop(.45,'#f6c24e'); fl0.addColorStop(1,'rgba(212,120,30,.2)');
+        ctx.fillStyle=fl0; ctx.beginPath(); ctx.moveTo(0,8); ctx.quadraticCurveTo(-6,-fh*0.35,-2,-fh*0.65); ctx.quadraticCurveTo(-0.8,-fh*0.45,0,-fh); ctx.quadraticCurveTo(0.8,-fh*0.45,2,-fh*0.65); ctx.quadraticCurveTo(6,-fh*0.35,0,8); ctx.fill();
+        ctx.shadowBlur=4; ctx.fillStyle='#3a2410';
+        ctx.beginPath(); ctx.ellipse(-2,-1.5,1.1,1.8*blink,0,0,7); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(2,-1.5,1.1,1.8*blink,0,0,7); ctx.fill();
+        if(gulp>0){ const dyy=-18+dk*16; ctx.globalAlpha=Math.min(1,(1-dk)*2.5); ctx.fillStyle='#9fd4ee'; ctx.shadowColor='#9fd4ee'; ctx.shadowBlur=7; ctx.beginPath(); ctx.ellipse(4-dk*3,dyy,1.6,2.3,0,0,7); ctx.fill(); }
+        ctx.restore(); ctx.restore(); return; }
       const halo=ctx.createRadialGradient(0,-2,0,0,-2,27); halo.addColorStop(0,'rgba(240,185,78,'+(.34*flick*vGlow)+')'); halo.addColorStop(1,'rgba(214,168,74,0)'); ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,-2,27,0,7); ctx.fill();
       ctx.save(); this.rr(ctx,-11,-15,22,28,10); const lg=ctx.createLinearGradient(0,-15,0,13); lg.addColorStop(0,'#22142f'); lg.addColorStop(1,'#160c22'); ctx.fillStyle=lg; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle='rgba(214,168,74,.55)'; ctx.stroke();
       this.rr(ctx,-11,-15,22,28,10); ctx.clip();
@@ -1106,12 +1144,23 @@
       if(gulp>0){ const dyy=-26+dk*26; ctx.save(); ctx.globalAlpha=Math.min(1,(1-dk)*2.5);
         ctx.fillStyle='#9fd4ee'; ctx.shadowColor='#9fd4ee'; ctx.shadowBlur=7;
         ctx.beginPath(); ctx.ellipse(5-dk*4,dyy,1.7,2.5,0,0,7); ctx.fill(); ctx.restore(); }
-      ctx.strokeStyle='rgba(214,168,74,.7)'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(0,-15); ctx.lineTo(0,-17); ctx.stroke();
+      // la mèche pousse avec les stades : trait → brin courbé → brin fier avec pousse
+      { const wl=[0,2,3,5.5,8][stg]||2; ctx.strokeStyle='rgba(214,168,74,.75)'; ctx.lineWidth=1.3; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(0,-15);
+        if(stg<=2){ ctx.lineTo(0,-15-wl); }
+        else { const sway=Math.sin(T*1.6)*0.8; ctx.quadraticCurveTo(sway,-15-wl*0.6,1.4+sway,-15-wl); }
+        ctx.stroke();
+        if(stg>=4){ const sway2=Math.sin(T*1.6)*0.8; ctx.beginPath(); ctx.moveTo(0.7+sway2*0.6,-15-wl*0.55); ctx.quadraticCurveTo(-1.6+sway2,-16-wl*0.7,-2.2+sway2,-15-wl*0.9); ctx.stroke(); } }
       if(laughing){ const gr=Math.sin(lp*Math.PI); const fh=5+gr*4; const wob=Math.sin(T*22)*0.6;
         ctx.save(); ctx.translate(wob,-17); ctx.shadowColor='rgba(255,196,90,.95)'; ctx.shadowBlur=8;
         const fl=ctx.createLinearGradient(0,-fh,0,2); fl.addColorStop(0,'#fff3cf'); fl.addColorStop(.45,'#f6c24e'); fl.addColorStop(1,'rgba(212,120,30,.15)');
         ctx.fillStyle=fl; ctx.beginPath(); ctx.moveTo(0,2); ctx.quadraticCurveTo(-3.2,-fh*0.4,-1.1,-fh*0.7); ctx.quadraticCurveTo(-0.4,-fh*0.5,0,-fh); ctx.quadraticCurveTo(0.4,-fh*0.5,1.1,-fh*0.7); ctx.quadraticCurveTo(3.2,-fh*0.4,0,2); ctx.fill();
         ctx.restore(); }
+      if(stg>=3){ const nEmb=stg>=4?3:1; // braises fidèles en orbite
+        for(let ei=0;ei<nEmb;ei++){ const ea=T*1.1+ei*(Math.PI*2/nEmb); const ex=Math.cos(ea)*19, ey=-2+Math.sin(ea)*7;
+          const behind=Math.sin(ea)<0; ctx.save(); ctx.globalAlpha=(behind?0.45:0.85)*(0.6+0.4*vital);
+          ctx.fillStyle='#f6c24e'; ctx.shadowColor='#f2cd72'; ctx.shadowBlur=6;
+          ctx.beginPath(); ctx.arc(ex,ey,1.6+(stg>=4?0.5:0),0,7); ctx.fill(); ctx.restore(); } }
       ctx.restore();
     }
 
