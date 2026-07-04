@@ -99,6 +99,10 @@
     .cnode.current .disc { animation: nodePulse 1.6s ease-in-out infinite; }
     @keyframes nodePulse { 0%,100% { box-shadow: 0 0 8px currentColor; } 50% { box-shadow: 0 0 20px currentColor; } }
     .rew-dot { width: 9px; height: 9px; border-radius: 50%; position: absolute; right: -2px; top: -2px; border: 1px solid #0008; }
+    /* Joystick tactile du Commander (mobile / pointeur grossier uniquement) */
+    .joy { position: absolute; left: 16px; bottom: 16px; width: 104px; height: 104px; border-radius: 50%; z-index: 22; display: none; touch-action: none; background: radial-gradient(circle, rgba(138,108,255,.10), rgba(20,14,34,.55)); border: 1px solid rgba(138,108,255,.4); box-shadow: inset 0 0 18px rgba(0,0,0,.4); }
+    .joy .nub { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #b7a4ff, #6a52c8); border: 1px solid rgba(205,191,255,.7); box-shadow: 0 0 16px rgba(138,108,255,.6); will-change: transform; }
+    @media (pointer: coarse) { .joy { display: block; } }
     /* Mobile (raid depuis le manoir, WebView) : colonne, canvas plein écran zoomé,
        panneau de pose SOUS le jeu. Le viewport logique suit (src/main.js). */
     @media (max-width: 740px) {
@@ -141,6 +145,7 @@
       <div class="left">
         <div class="stage">
           <canvas id="view" width="1080" height="680"></canvas>
+          <div class="joy" id="joy"><div class="nub" id="joy-nub"></div></div>
           <div class="tutbar" id="tutbar" hidden></div>
           <div class="overlay title" id="ov-title">
             <div class="ov-title flame" style="font-size:38px">MANOIR D'OMBRELUNE</div>
