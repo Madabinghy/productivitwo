@@ -94,6 +94,9 @@ btnContinue.onclick = () => { campaign.refresh(); game.screen = 'campaign'; };
 // —— démarrage direct du raid : nœud par difficulté (varié par la graine),
 // roster = récompenses de tous les nœuds précédents (campagne « rendue là »).
 if (RAID) {
+  // L'Établi (branche Tours) muscle l'arsenal de raid — forgé par l'IRL, global.
+  try { const sk = JSON.parse(localStorage.getItem('ombrelune_skills') || 'null');
+    if (sk && sk.spent) game.tourSkills = { inge: sk.spent.tour_inge | 0, build: sk.spent.tour_build | 0, hp: sk.spent.tour_hp | 0 }; } catch (e) {}
   const cands = [['m3', 'm4'], ['m5', 'm6'], ['m7', 'm8']][RAID_DIFF - 1];
   const node = nodeById(cands[RAID_SEED % cands.length]);
   const idx = NODES.indexOf(node);

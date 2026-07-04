@@ -46,6 +46,7 @@ export function createGame() {
 
     // flux de jeu (routeur + tuto)
     screen: 'title',   // 'title' | 'mission'
+    tourSkills: { inge: 0, build: 0, hp: 0 },   // talents « Tours » de l'Établi (raids)
     noSpawn: false,    // suspend l'apparition des flemmes (intro du tuto)
     tutorial: null,
 
