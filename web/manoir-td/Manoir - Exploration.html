@@ -297,8 +297,12 @@
         {room:'sanctuaire', fx:0.5, fy:0.30, kind:'look', glyph:'🎯', label:'Brèche d’entraînement', go:'S’infiltrer',
          hrefFn:()=>'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
          lines:['Une brèche d’entraînement s’ouvre sous le portail — infiltre-toi pour le plaisir. Ton butin de jeu reviendra nourrir tes enquêtes.']},
-        {room:'hall', fx:0.5, fy:0.82, kind:'look', glyph:'⚔️', label:'Brèche d’entraînement — raid', trainraid:true,
+        {room:'hall', fx:0.62, fy:0.82, kind:'look', glyph:'⚔️', label:'Brèche d’entraînement — raid', trainraid:true,
          lines:['Le manoir peut simuler un assaut de la Veilleuse — un raid d’entraînement, sans enjeu, juste pour t’exercer.']},
+        // Infiltration accessible sans le Sanctuaire : jumelle du raid, dans le Grand Hall.
+        {room:'hall', fx:0.34, fy:0.82, kind:'look', glyph:'🌑', label:'Brèche d’entraînement — infiltration', go:'S’infiltrer',
+         hrefFn:()=>'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
+         lines:['Le manoir peut simuler une galerie d’ombres — une infiltration d’entraînement, sans enjeu, juste pour t’exercer. Ton butin de jeu reviendra nourrir tes enquêtes.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
