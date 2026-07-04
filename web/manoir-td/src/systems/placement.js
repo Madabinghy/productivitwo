@@ -1,5 +1,5 @@
 // Pose des items : fantôme de visée, sélection d'une tourelle posée, création d'un chantier.
-import { GRID, baseHp, costOf, TURRET_ITEMS, SUPPORT_ITEMS } from '../config.js';
+import { GRID, baseHp, costOf, upgradeCost, TURRET_ITEMS, SUPPORT_ITEMS } from '../config.js';
 import { compass } from '../geometry.js';
 import { canPlaceAt } from './vision.js';
 
@@ -114,7 +114,13 @@ export function setAim(game) {
 export function upgrade(game) {
   const t = game.ui.placed.find(x => x.id === game.ui.selId); if (!t) return;
   if (t.key === 'sniper' || t.key === 'satellite' || t.key === 'bouclier') return;
-  if (t.level < 4) { t.level++; game.ui.msg = 'Amélioré (niv ' + t.level + ').'; }
+  if (t.built === false) { game.ui.msg = 'Termine d\'abord la construction.'; return; }
+  if (t.upgrading) { game.ui.msg = 'Amélioration déjà en cours…'; return; }
+  if (t.level >= 4) { game.ui.msg = 'Niveau maximum.'; return; }
+  // chantier d'amélioration : masse + temps, drainés par le Commander (updateConstruction)
+  t.upgrading = true; t.upProg = 0;
+  const c = upgradeCost(t.key, t.level);
+  game.ui.msg = '⚒ Amélioration niv ' + t.level + '→' + (t.level + 1) + ' lancée (' + c.mass + ' masse) — amène le Commander à côté.';
 }
 export function upSniper(game, kind) {
   const t = game.ui.placed.find(x => x.id === game.ui.selId); if (!t || t.key !== 'sniper') return;

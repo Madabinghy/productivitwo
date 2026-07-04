@@ -87,6 +87,9 @@ export const COST = {
   tortue: { mass: 95, time: 11 },
 };
 export function costOf(key) { return COST[key] || { mass: 40, time: 5 }; }
+// Améliorer une tourelle EN mission : chantier occupé (masse + temps), coût qui
+// grimpe avec le niveau visé — plus jamais gratuit/instantané.
+export function upgradeCost(key, level) { const c = costOf(key); return { mass: Math.round(c.mass * 0.6 * level), time: c.time * 0.7 }; }
 
 export const DESC = {
   brasier: 'Boule de feu explosive — grosse frappe rapprochée à cadence soutenue.',

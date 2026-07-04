@@ -2,6 +2,7 @@
 // et fiche détail/amélioration de la tourelle sélectionnée.
 import { TURRET_ITEMS, SUPPORT_ITEMS, UNIT_ITEMS, TCOL, DESC, costOf, turretStats } from '../config.js';
 import { setTab, selectItem, upgrade, upSniper, removeSel, setAim, clearSel } from '../systems/placement.js';
+import { upgradeCost } from '../config.js';
 import { deployUnit } from '../systems/units.js';
 
 const TABS = [{ k: 'turret', label: 'Tourelles' }, { k: 'support', label: 'Soutien' }, { k: 'unit', label: 'Unités' }];
@@ -16,7 +17,7 @@ export function createPanel(game) {
   function signature() {
     const s = game.ui;
     const placed = s.placed.map(p => p.id + ':' + p.key + ':' + p.level + ':' + (p.built ? 1 : 0) + ':' + (p.deployed ? 1 : 0)).join(',');
-    const sel = s.selId ? (() => { const t = s.placed.find(p => p.id === s.selId); return t ? t.id + t.key + t.level + (t.bonusR || 0) + (t.bonusD || 0) : ''; })() : '';
+    const sel = s.selId ? (() => { const t = s.placed.find(p => p.id === s.selId); return t ? t.id + t.key + t.level + (t.bonusR || 0) + (t.bonusD || 0) + (t.upgrading ? 'u' + Math.round((t.upProg || 0) * 20) : '') : ''; })() : '';
     const snCd = s.selId ? Math.ceil(Math.max(0, ((s.placed.find(p => p.id === s.selId) || {})._next || 0) - (game.G.time || 0))) : 0;
     const roster = game.save ? game.save.roster.turrets.join(',') : '';
     return [s.tab, s.sel && s.sel.key, s.selId, s.aimMode, placed, sel, snCd, Object.keys(game.STASH).join(''), roster].join('|');
@@ -100,9 +101,12 @@ export function createPanel(game) {
       row.appendChild(br); row.appendChild(bd); card.appendChild(row);
     } else {
       const u = document.createElement('button'); u.className = 'act btn-up' + (maxed ? ' max' : '');
-      u.textContent = t.key === 'satellite' ? 'Révélation totale' : t.key === 'bouclier' ? 'Barrière fixe'
-        : maxed ? 'Niveau maximum' : (t.key === 'radar' ? 'Élargir le rayon (niv ' + t.level + '→' + (t.level + 1) + ')' : 'Améliorer (niv ' + t.level + '→' + (t.level + 1) + ')');
-      if (!maxed) u.onclick = () => upgrade(game);
+      if (t.upgrading) { u.className = 'act btn-up'; u.textContent = '⚒ Amélioration ' + Math.round((t.upProg || 0) * 100) + '%…'; }
+      else if (t.key === 'satellite') u.textContent = 'Révélation totale';
+      else if (t.key === 'bouclier') u.textContent = 'Barrière fixe';
+      else if (maxed) u.textContent = 'Niveau maximum';
+      else { const uc = upgradeCost(t.key, t.level); const label = t.key === 'radar' ? 'Élargir le rayon' : 'Améliorer';
+        u.textContent = label + ' (niv ' + t.level + '→' + (t.level + 1) + ') · ' + uc.mass + ' ✦'; u.onclick = () => upgrade(game); }
       card.appendChild(u);
     }
     const rm = document.createElement('button'); rm.className = 'act btn-rm'; rm.textContent = 'Récupérer'; rm.onclick = () => removeSel(game); card.appendChild(rm);
