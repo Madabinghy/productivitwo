@@ -86,7 +86,9 @@
   // Difficulté (?difficulty=1..3, choisie par le portail selon tes trophées) :
   // caméras et patrouilles en plus, détection plus vive.
   var DIFF=Math.max(1,Math.min(3,parseInt((window.location.search.match(/difficulty=(\d)/)||[])[1]||'1',10)));
-  var DET_RATE=[3.6,4.3,5.0][DIFF-1];
+  // Compétences de l'Établi (ombrelune_skills) : puissance GLOBALE forgée par l'XP/IRL.
+  function skillLvl(k){ try{ var s=JSON.parse(localStorage.getItem('ombrelune_skills')||'null'); return (s&&s.spent?(s.spent[k]|0):0); }catch(e){ return 0; } }
+  var DET_RATE=[3.6,4.3,5.0][DIFF-1] * [1,0.85,0.7][Math.min(2,skillLvl('ombre'))]; // « Pas d'ombre » : détection ralentie
   var SWEEP_SPEED=[0.8,0.95,1.1][DIFF-1];
   // Plan GÉNÉRÉ (?seed=N) : la map entière sort du moteur — segments assemblés,
   // caméras/gardes/socles placés sous budget, faisceau généré, le tout VALIDÉ.
@@ -260,7 +262,7 @@
     // glu : le garde qui marche dessus est figé ~6 s (glu consommée)
     for(var gi2=0; gi2<GUARDS.length; gi2++){ var gg=GUARDS[gi2]; var gp0=guardPos(gg);
       for(var si=0; si<SOCKETS.length; si++){ var sk=SOCKETS[si];
-        if(sk.item==='glue' && Math.hypot(gp0.x-sk.x, gp0.y-sk.y)<20){ gg.frozen=6; gg.frozenPos={x:gp0.x,y:gp0.y}; sk.item='glueUsed'; } } }
+        if(sk.item==='glue' && Math.hypot(gp0.x-sk.x, gp0.y-sk.y)<20){ gg.frozen=6+3*Math.min(2,skillLvl('glu')); gg.frozenPos={x:gp0.x,y:gp0.y}; sk.item='glueUsed'; } } }
 
     // détection : caméras non aveuglées + garde non figé
     var seen=false;
@@ -448,7 +450,7 @@
     G.move={x:0,y:0}; G.stickActive=false; G.stickId=null; G.nearConsole=false; G.nearVault=false; G.nearMirror=null; G.nearSocket=null;
     G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(e){ jsUp(e); };
     G.vaultOpen=false; G.sensorLit=false; G.beamSegs=[]; G.lanternBlind={};
-    G.masse=readMasse();
+    G.masse=Math.min(4, 1 + skillLvl('masse')); // « Masse lumineuse » : ⚡ de départ (Établi)
     { var sub=document.getElementById('so-sub');
       if(sub && GEN) sub.textContent='‹ Sanctuaire · plan n°'+(SEED%1000)+(DIFF>1?' — niveau '+DIFF:'');
       else if(sub && DIFF>1) sub.textContent='‹ Sanctuaire · niveau '+DIFF+' — l\u2019ennemi se méfie'; }
@@ -468,7 +470,7 @@
     document.getElementById('so-goback').addEventListener('click', goBack);
     document.getElementById('so-reset').addEventListener('click', reset);
     G._raf=requestAnimationFrame(loop);
-    window.__ombres = { S:S, G:G, CAMS:CAMS, GUARDS:GUARDS, MIRRORS:MIRRORS, SOCKETS:SOCKETS, SENSOR:SENSOR, SOURCE:SOURCE, VAULT:VAULT, CONSOLE:CONSOLE, FURN:FURN, GEN:GEN, WORLD:{w:WORLD_W,h:WORLD_H}, interact:interact, toggleMirror:toggleMirror, placeItem:placeItem, computeBeam:computeBeam, camBlinded:camBlinded }; // debug / tests
+    window.__ombres = { S:S, G:G, CAMS:CAMS, GUARDS:GUARDS, MIRRORS:MIRRORS, SOCKETS:SOCKETS, SENSOR:SENSOR, SOURCE:SOURCE, VAULT:VAULT, CONSOLE:CONSOLE, FURN:FURN, GEN:GEN, WORLD:{w:WORLD_W,h:WORLD_H}, interact:interact, toggleMirror:toggleMirror, placeItem:placeItem, computeBeam:computeBeam, camBlinded:camBlinded, skillLvl:skillLvl }; // debug / tests
   }
   boot();
 })();

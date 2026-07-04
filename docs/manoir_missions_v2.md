@@ -283,4 +283,13 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   un indice délogé pour l'enquête EN COURS, sinon une nouvelle affaire réveillée au tiroir
   (sinon +3 XP si le manoir est saturé). Jamais bloquant — le loot fait AVANCER, la
   CONCLUSION reste gatée par l'IRL (lumière d'expédition ← focus, révélation ← action réelle).
-- À venir : arbre de talents (« Établi »).
+- **L'Établi des talents** (`Manoir - Exploration.html`) : la PUISSANCE globale forgée par
+  l'XP (donc par l'IRL). **1 point ◆ tous les 25 XP** de Lampyre (`pcTotal/pcSpent/pcAvail`),
+  dépensés dans un arbre (branche Infiltration) persisté dans `ombrelune_skills` {spent:{…}} :
+  ⚡ Masse lumineuse (3 rangs, +1 ⚡ de départ/rang), 🕸️ Glu tenace (2 rangs, gel 6→9→12 s),
+  🌑 Pas d'ombre (2 rangs, détection −15 %/rang). UI = vue de face (POI « L'Établi des talents »
+  dans l'Atelier) ; ligne de rappel dans le Journal ; teaser « branche · Tours » pour les raids.
+- **Consommation** (`Manoir - Salle des Ombres.html`, `skillLvl(k)` sur `ombrelune_skills`) :
+  `G.masse = min(4, 1+masse)` (remplace la masse au goutte-à-goutte des missions du jour),
+  glu `frozen = 6+3·glu`, `DET_RATE ×= [1,.85,.7][ombre]`. Découplage : l'effort quotidien
+  nourrit l'XP → les ◆ → une puissance PERMANENTE, plus un bonus jetable par jour.
