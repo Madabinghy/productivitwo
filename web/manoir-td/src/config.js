@@ -9,8 +9,12 @@ export let VPW = 1080, VPH = 680;            // viewport logique (mobile : épou
 // zoomée 1:1 qui suit le Commander, pan à 2 doigts) — liaisons vives ES modules.
 export function setViewport(w, h) { VPW = Math.round(w); VPH = Math.round(h); }
 
-export const VIS = 200;                       // vision héros
+export const VIS = 200;                       // vision héros (pose de tourelles, laser)
 export const CANDLE_VIS = 140;                // vision bougie
+// Nuit noire : petite bulle personnelle + cône de vision devant le Commander (lampe).
+export const NIGHT_HALO = 92;                 // rayon de la bulle autour du Commander
+export const NIGHT_CONE = 380;                // portée du cône de vision (regard)
+export const NIGHT_CONE_HALF = 33;            // demi-angle du cône, en degrés
 
 export const HERO = { speed: 185, hp: 100, turnRate: 560, laserCd: 0.5, laserDmg: 7 };
 
