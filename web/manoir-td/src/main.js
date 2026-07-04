@@ -2,7 +2,7 @@
 import { VPW, VPH, MASS_START, MASS_CAP } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
-import { nodeById, completeNode } from './campaign.js';
+import { nodeById, completeNode, NODES, applyReward } from './campaign.js';
 import { createCampaign } from './render/map.js';
 import { initEnemyAI, updateEnemyAI } from './systems/enemy_ai.js';
 import { updateUnits } from './systems/units.js';
@@ -21,7 +21,24 @@ import { startTutorial, updateTutorial } from './tutorial.js';
 const game = createGame();
 window.__game = game; // utile pour le débogage / tests
 
-let save = loadSave() || defaultSave();
+// —— Mode RAID DE JALON (?raid=1&reward=action&seed=N&difficulty=D) ——
+// Lancé depuis le portail du manoir quand la prochaine étape est un JALON
+// (une tâche entière). Partie directe sur un nœud choisi par la graine,
+// roster « comme si » la campagne y était rendue — la SAUVEGARDE de campagne
+// n'est jamais touchée (partie transitoire). Victoire → révélation (pont).
+const RAID = /(^|[?&])raid=1/.test(window.location.search);
+const RAID_SEED = (parseInt((window.location.search.match(/seed=(\d+)/) || [])[1] || '0', 10)) >>> 0;
+const RAID_DIFF = Math.max(1, Math.min(3, parseInt((window.location.search.match(/difficulty=(\d)/) || [])[1] || '1', 10)));
+const RAID_REWARD = /(^|[?&])reward=action/.test(window.location.search);
+function goManoir() { try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch (e) {} }
+function raidReveal() {
+  try { const na = JSON.parse(localStorage.getItem('ombrelune_next_action') || 'null');
+    if (na && na.actionId) { const rev = JSON.parse(localStorage.getItem('ombrelune_revealed') || '[]');
+      if (!rev.includes(na.actionId)) { rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } } catch (e) {}
+  try { if (window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type: 'reveal_action' })); } catch (e) {}
+}
+
+let save = RAID ? defaultSave() : (loadSave() || defaultSave());
 game.save = save;
 
 const canvas = document.getElementById('view');
@@ -70,8 +87,24 @@ document.getElementById('btn-new').onclick = () => {
 };
 btnContinue.onclick = () => { campaign.refresh(); game.screen = 'campaign'; };
 
+// —— démarrage direct du raid : nœud par difficulté (varié par la graine),
+// roster = récompenses de tous les nœuds précédents (campagne « rendue là »).
+if (RAID) {
+  const cands = [['m3', 'm4'], ['m5', 'm6'], ['m7', 'm8']][RAID_DIFF - 1];
+  const node = nodeById(cands[RAID_SEED % cands.length]);
+  const idx = NODES.indexOf(node);
+  for (let i = 0; i < idx; i++) applyReward(save, NODES[i]);
+  startMissionNode(node, { tutorial: false });
+  game.ui.msg = 'RAID DE JALON — ' + node.name + ' : anéantis la Veilleuse et ses sanctuaires. Le jalon entier est le butin.';
+  document.getElementById('btn-win-map').textContent = 'Retour au manoir ✦';
+  document.getElementById('btn-down-map').textContent = 'Replier (manoir)';
+  document.getElementById('btn-breach-map').textContent = 'Replier (manoir)';
+  const wt = document.querySelector('#ov-win .ov-title'); if (wt) wt.textContent = 'JALON CONQUIS';
+}
+
 // retour à la carte (depuis résultats) — applique la récompense si victoire
 function backToMap({ won }) {
+  if (RAID) { goManoir(); return; } // raid : on rentre au manoir, la campagne n'est pas touchée
   if (won && game.mission) {
     const node = nodeById(game.mission.nodeId);
     completeNode(save, node); save.currentNode = node.id;
@@ -177,10 +210,18 @@ function paintHud() {
     ov.win.dataset.shown = '1';
     const w = Math.max(0, game.mission ? game.mission.waves : 0);
     ov.winRecap.textContent = (game.mission ? game.mission.waves + ' vagues repoussées · ' : '') + (game.G.kills || 0) + ' flemmes vaincues · masse ' + Math.round(game.G.mass);
-    const node = game.mission ? nodeById(game.mission.nodeId) : null;
-    const rewKey = node && node.reward && (node.reward.turret || node.reward.support);
-    if (rewKey) { ov.winReward.hidden = false; ov.winReward.textContent = '✦ Débloqué : ' + rewKey.charAt(0).toUpperCase() + rewKey.slice(1); }
-    else ov.winReward.hidden = true;
+    if (RAID) {
+      // le butin du raid = le JALON : révélation immédiate (comme les autres gardiens)
+      if (RAID_REWARD && !game._raidRevealed) { game._raidRevealed = true; raidReveal(); }
+      let pn = ''; try { const na = JSON.parse(localStorage.getItem('ombrelune_next_action') || 'null'); if (na && na.projectName) pn = ' · ' + na.projectName; } catch (e) {}
+      ov.winReward.hidden = false;
+      ov.winReward.textContent = '✦ Le jalon se descelle' + pn + ' — ta Console te lira la prochaine étape.';
+    } else {
+      const node = game.mission ? nodeById(game.mission.nodeId) : null;
+      const rewKey = node && node.reward && (node.reward.turret || node.reward.support);
+      if (rewKey) { ov.winReward.hidden = false; ov.winReward.textContent = '✦ Débloqué : ' + rewKey.charAt(0).toUpperCase() + rewKey.slice(1); }
+      else ov.winReward.hidden = true;
+    }
   }
   if (!game.ui.win) ov.win.dataset.shown = '';
 

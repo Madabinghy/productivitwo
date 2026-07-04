@@ -242,4 +242,11 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   (80 tirages max → repli sur le plan historique). Consommation : `?seed=N` (la graine de
   mission voyage dans l'URL du gardien — échec = même plan) ; sans seed = plan fixe.
   ⚠️ application du plan APRÈS toutes les déclarations `var` (hissage).
-- À venir : arbre de talents (« Établi ») ; raid de jalon (moteur TD complet).
+- **Raid de jalon** (`index.html?raid=1&reward=action&seed=N&difficulty=D`) : quand la
+  prochaine étape est une **tâche entière** (sentinelle `task:` = jalon), le gardien du
+  portail est un **RAID avec le moteur TD complet** — mission directe sur un nœud de
+  campagne choisi par la graine (d1 m3/m4, d2 m5/m6, d3 m7/m8), roster « comme si » la
+  campagne y était rendue, **sauvegarde de campagne jamais touchée** (partie transitoire).
+  Victoire (« JALON CONQUIS ») → révélation immédiate (même flux pont/`ombrelune_revealed`),
+  « Retour au manoir ✦ » ; défaite → reprendre à volonté ou se replier au manoir.
+- À venir : arbre de talents (« Établi »).
