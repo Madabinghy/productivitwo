@@ -330,7 +330,7 @@
       let lp={xp:0,stage:0,credited:{d:today,water:0,missions:[],focus:0}};
       try{ lp=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null')||lp; }catch(e){}
       lp.credited=lp.credited||{d:today,water:0,missions:[],focus:0};
-      this.lamp=lp; this.creditCare();
+      this.lamp=lp; this.creditCare(); this.creditSignals();
 
       // —— Portail du Sanctuaire : la prochaine action Gantt, scellée par la Console
       // (docs/manoir_missions_v2.md §1 et §3 — V2.1 : mène à la Galerie des ombres).
@@ -402,7 +402,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_minigame_loot') this.consumeMinigameLoot(); else if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_signals'){ this.creditSignals(); this.updateHud(); } else if(e.key==='ombrelune_minigame_loot') this.consumeMinigameLoot(); else if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -1072,7 +1072,7 @@
       try{ s=JSON.parse(localStorage.getItem('ombrelune_sync')||'null')||s; }catch(e){}
       if(s.d!==today) s={d:today,routines:{},focusMin:0};
       s.routines=s.routines||{}; this.sync=s;
-      if(!initial){ this.checkCelebrations(); this.creditCare(); this.creditOil&&this.oil&&this.creditOil(); this.checkKeys&&this.checkKeys(); this.updateHud(); } }
+      if(!initial){ this.checkCelebrations(); this.creditCare(); this.creditSignals(); this.creditOil&&this.oil&&this.creditOil(); this.checkKeys&&this.checkKeys(); this.updateHud(); } }
     missionOn(m){ return !!m && this.roomOn(m.room); }
     missionDone(m){ if(!this.sync||!m) return false;
       if(m.rk==='focus') return (this.sync.focusMin||0)>=(m.target||25);
@@ -1091,19 +1091,37 @@
     // —— Croissance de Lampyre : crédit d'XP depuis les soins réels du jour.
     stageFor(xp){ let st=0; for(let i=0;i<this.LAMP_STAGES.length;i++){ if(xp>=this.LAMP_STAGES[i].xp) st=i; } return st; }
     saveLamp(){ try{ localStorage.setItem('ombrelune_lampyre', JSON.stringify(this.lamp)); }catch(e){} }
-    creditCare(){ const L=this.lamp; if(!L||!this.MISSIONS||!this.sync) return;
+    // Applique un gain d'XP + montée de stade (partagé par creditCare / creditSignals).
+    _applyXp(gained){ const L=this.lamp; if(!L||gained<=0) return;
+      L.xp+=gained; this._stageXp=L.xp; const ns=this.stageFor(L.xp);
+      if(ns>(L.stage||0)){ L.stage=ns; this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
+        this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()};
+        this.onStageUp(ns); }
+      this.saveLamp(); if(this.el) this.updateHud(); }
+    // creditCare : le SOIN de soi (eau) — hook tamagotchi. Le reste de l'XP passe
+    // désormais par la couche de SIGNAUX (creditSignals), agnostique des domaines.
+    creditCare(){ const L=this.lamp; if(!L) return;
       const today=this._wdate;
-      if(L.credited.d!==today) L.credited={d:today,water:0,missions:[],focus:0};
+      if(L.credited.d!==today) L.credited={d:today,water:0,missions:[],focus:0,sigR:0};
       let gained=0;
-      if((this.drunk||0)>L.credited.water){ gained+=(this.drunk-L.credited.water); L.credited.water=this.drunk; }
-      for(const m of this.MISSIONS){ if(this.missionDone(m) && L.credited.missions.indexOf(m.room)<0){ L.credited.missions.push(m.room); gained+=5; } }
-      const chunks=Math.floor((this.sync.focusMin||0)/25);
-      if(chunks>L.credited.focus){ gained+=(chunks-L.credited.focus)*5; L.credited.focus=chunks; }
-      if(gained>0){ L.xp+=gained; this._stageXp=L.xp; const ns=this.stageFor(L.xp);
-        if(ns>(L.stage||0)){ L.stage=ns; this.flash=Math.max(this.flash||0,0.7); this.laughUntil=performance.now()+1500;
-          this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' !', t0:performance.now()};
-          this.onStageUp(ns); }
-        this.saveLamp(); if(this.el) this.updateHud(); } }
+      if((this.drunk||0)>(L.credited.water||0)){ gained+=(this.drunk-L.credited.water); L.credited.water=this.drunk; }
+      this._applyXp(gained); }
+    // Couche de SIGNAUX : le manoir consomme des métriques GÉNÉRALES (toutes routines,
+    // tous domaines, focus) poussées par l'app (ombrelune_signals) — plus aucun binding
+    // sur des routines spécifiques. Idempotent par jour (accumulateurs sur L.credited).
+    creditSignals(){ const L=this.lamp; if(!L) return;
+      const today=this._wdate;
+      if(L.credited.d!==today) L.credited={d:today,water:0,missions:[],focus:0,sigR:0};
+      let sig=null; try{ sig=JSON.parse(localStorage.getItem('ombrelune_signals')||'null'); }catch(e){}
+      const fresh=sig&&sig.d===today; let gained=0;
+      // régularité : +4 XP par routine tenue aujourd'hui (quel que soit son domaine)
+      if(fresh){ const done=Math.max(0, sig.routinesDone|0);
+        if(done>(L.credited.sigR||0)){ gained+=(done-(L.credited.sigR||0))*4; L.credited.sigR=done; } }
+      // focus : +5 XP par tranche de 25 min réelles (signaux, sinon repli sur sync)
+      const fmin=((fresh?sig.focusMin:(this.sync?this.sync.focusMin:0))||0);
+      const chunks=Math.floor(fmin/25);
+      if(chunks>(L.credited.focus||0)){ gained+=(chunks-(L.credited.focus||0))*5; L.credited.focus=chunks; }
+      this._applyXp(gained); }
     // —— Trophées du Cabinet : lecture + célébration des nouveaux (une fois chacun).
     reloadTrophies(initial){
       let tr={d:'',items:[]}; try{ tr=JSON.parse(localStorage.getItem('ombrelune_trophies')||'null')||tr; }catch(e){}
