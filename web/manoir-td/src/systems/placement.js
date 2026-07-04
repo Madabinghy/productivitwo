@@ -104,6 +104,7 @@ export function setTab(game, t) {
 export function selectItem(game, cat, key, name) {
   game._pendingTap = null; clearGhost(game);
   game.ui.sel = { cat, key }; game.ui.selId = null; game.ui.heroSelected = false;  // pose : on quitte le Commander
+  game.ui.buildSheetOpen = false;  // mobile : le tiroir se replie pour dégager la carte et poser
   game.ui.msg = '« ' + name + ' » prêt — clique (ou touchez) dans ton champ de vision pour le déposer.';
 }
 export function clearSel(game) { game.ui.selId = null; game.ui.aimMode = false; }
