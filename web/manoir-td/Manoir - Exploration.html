@@ -446,6 +446,7 @@
       else if(p.kind==='realize') this.solveWaterQuest();
       else if(p.kind==='fragment') this.collectFragment(p.frag);
       else if(p.kind==='mirror_enter') this.enterMirrorPuzzle();
+      else if(p.kind==='mirror_replay') this.enterMirrorReplay();
       else if(p.kind==='spot') this.talkSpot(p.spot);
       else if(p.kind==='console') this.openConsole();
       else if(p.kind==='portal') this.openPortal(); }
@@ -542,6 +543,8 @@
         lines:[{who:'Lampyre', mood: done?'smile':'doubt', t:this._fragLines[idx]}] };
       this.updateHud(); }
     enterMirrorPuzzle(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html'); }
+    // rejeu libre : énigme générée (graine aléatoire), difficulté selon l'éveil — n'écrit rien côté réel
+    enterMirrorReplay(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(); }
     // relit le compteur partagé quand une autre page l'a modifié (boire ailleurs dans l'appli)
     reloadWater(){ const today=new Date().toISOString().slice(0,10); let wsv={d:today,n:0};
       try{ wsv=JSON.parse(localStorage.getItem('ombrelune_water')||'null')||wsv; }catch(e){}
@@ -643,16 +646,19 @@
         const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
         if(rev.indexOf(na.actionId)>=0){ this._revealAsked=true; window.ManoirBridge.postMessage(JSON.stringify({type:'reveal_action'})); } } }catch(e){}
       if(!initial) this.updateHud(); }
-    // Le gardien d'une action est tiré de son id (déterministe) ; la difficulté
-    // de la Salle des Ombres monte avec tes trophées (3 accomplis = niveau 2…).
+    // La difficulté des gardiens monte avec l'éveil du manoir (palier d'XP),
+    // plus avec le compteur de trophées — la puissance vient de la progression globale.
+    guardDiff(){ return 1+Math.min(2, Math.floor(this.stageForXp(this._stageXp||0)/2)); }
+    // Le gardien d'une action est tiré de son id (déterministe) : même action = même
+    // gardien ET même plateau généré (la graine voyage dans l'URL — pas de re-tirage).
     missionGuard(actionId){
       let h=0; const str=String(actionId||''); for(let i=0;i<str.length;i++){ h=(h*31+str.charCodeAt(i))>>>0; }
-      const diff=1+Math.min(2, Math.floor(((this.trophies||[]).length)/3));
+      const diff=this.guardDiff();
       const r=h%10;
       if(r<4) return {name:'la Salle des Ombres', pitch:'Caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera.',
         href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff};
-      if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, un leurre. Trouve l’angle qui renvoie la flamme.',
-        href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%997)};
+      if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, des leurres. Trouve l’angle qui renvoie la flamme.',
+        href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
       return {name:'l’Enquête du manoir', pitch:'Trois indices, trois suspects, un seul coupable. Recoupe, puis accuse.',
         href:'./'+encodeURIComponent('Compagnon - Déduction.html')+'?reward=action'};
     }
@@ -781,6 +787,8 @@
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
       else if(this.mquest!=='solved' && this.roomOn('miroirs') && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
+      // quête résolue → la table des miroirs propose des énigmes GÉNÉRÉES, sans enjeu
+      else if(this.mquest==='solved' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_replay', text:'Jouer une énigme des miroirs', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
         if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.portalPos && this.roomOn('sanctuaire') && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);

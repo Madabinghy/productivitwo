@@ -159,3 +159,28 @@ réel → il boit avec toi (gorgée animée). Accomplir ses missions du jour →
 - Le RÉEL prime : la révélation donne l'action, mais **la cocher se fait dans la Console**
   (Productivitwo) après l'avoir réellement faite — le jeu ne « fait » jamais le travail.
 - Une mission = 3-5 min max ; réessayable immédiatement.
+
+## 6. Moteur de génération procédurale (`web/manoir-td/js/ombrelune-gen.js`)
+
+Principe : **découpler le contenu de jeu des actions IRL**. On ne rejoue jamais deux fois
+la même partie — le contenu est généré ; l'IRL augmente la puissance/complexité globale
+(éveil du manoir, et bientôt l'arbre de talents), pas au goutte-à-goutte.
+
+- **PRNG à graine** (mulberry32) : même `seed` + même `difficulty` = même partie.
+  - Mission du portail → graine dérivée de l'id de l'action Gantt (reproductible, pas de re-tirage en cas d'échec).
+  - Partie libre → graine aléatoire à chaque lancement.
+- **`genMirror(seed, diff)`** : énigme de miroirs **prouvée résoluble par construction**
+  (on trace le chemin du rayon d'abord, chaque virage pose un miroir, la fin devient le sceau ;
+  puis brouillage des orientations + leurres et murs HORS chemin solution). Difficulté 1/2/3 :
+  2/3/4 miroirs actifs, 1/2/3 leurres, 0/2/4 murs.
+- **Consommation** (`Compagnon - Énigme optique.html`) : `?reward=action|?free=1` + `seed` + `difficulty`
+  → plateau généré. `?free=1` = partie **sans enjeu** : n'écrit NI `ombrelune_mirror_quest` NI
+  `ombrelune_revealed` ; pied de page « Une autre énigme ↺ / Retour au manoir ». La mission 2
+  classique (sans paramètre) garde le plateau historique fixe.
+- **Rejeu diégétique** : la table de la Salle des miroirs (quête résolue) propose « Jouer une
+  énigme des miroirs » → partie libre générée, difficulté = `guardDiff()` (éveil du manoir).
+- La difficulté des gardiens du portail vient désormais de **l'éveil** (`guardDiff()` :
+  palier 0-1 → 1, 2-3 → 2, 4 → 3), plus du compteur de trophées.
+- À venir : `genEnquete` (pools + contraintes logiques, unicité du coupable vérifiée) puis
+  `genOmbres` (segments de map + placement caméras/gardes + validation de faisabilité), et
+  l'arbre de talents (« Établi ») alimenté par l'XP.
