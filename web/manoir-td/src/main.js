@@ -1,5 +1,5 @@
 // Point d'entrée : boucle de jeu (requestAnimationFrame), assemblage des systèmes.
-import { VPW, VPH, MASS_START, MASS_CAP, setViewport } from './config.js';
+import { VPW, VPH, MASS_START, MASS_CAP, setViewport, MAP } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { nodeById, completeNode, NODES, applyReward } from './campaign.js';
@@ -50,6 +50,24 @@ canvas.width = VPW; canvas.height = VPH;
 const ctx = canvas.getContext('2d');
 attachInput(game, canvas);
 const panel = createPanel(game);
+
+// Mobile plein écran : `setViewport` n'est appelé qu'au chargement — on le rejoue quand la
+// taille de l'écran change (rotation, barre d'URL Safari qui se rétracte). On réassigne le
+// backing store ET on reconstruit les clamps caméra (ils capturent VPW/VPH par closure).
+function refitViewport() {
+  if (!game) return;
+  const r = canvas.getBoundingClientRect();
+  if (r.width <= 50 || r.width >= 900) return; // desktop garde son viewport historique
+  setViewport(r.width, r.height);
+  canvas.width = VPW; canvas.height = VPH;
+  game.clampFx = (v) => Math.max(VPW / 2, Math.min(MAP.W - VPW / 2, v));
+  game.clampFy = (v) => Math.max(VPH / 2, Math.min(MAP.H - VPH / 2, v));
+}
+window.addEventListener('resize', refitViewport);
+window.addEventListener('orientationchange', () => setTimeout(refitViewport, 200));
+// au chargement, le canvas plein écran (flex) peut ne pas être mesurable dès l'init du module :
+// on re-fit une fois le layout stabilisé (2e frame) pour caler viewport + backing store.
+requestAnimationFrame(() => requestAnimationFrame(refitViewport));
 
 // ---- routeur d'écrans : titre ⇄ carte ⇄ mission ----
 const titleOv = document.getElementById('ov-title');
