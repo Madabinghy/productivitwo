@@ -99,6 +99,23 @@
     .cnode.current .disc { animation: nodePulse 1.6s ease-in-out infinite; }
     @keyframes nodePulse { 0%,100% { box-shadow: 0 0 8px currentColor; } 50% { box-shadow: 0 0 20px currentColor; } }
     .rew-dot { width: 9px; height: 9px; border-radius: 50%; position: absolute; right: -2px; top: -2px; border: 1px solid #0008; }
+    /* Mobile (raid depuis le manoir, WebView) : colonne, canvas plein écran zoomé,
+       panneau de pose SOUS le jeu. Le viewport logique suit (src/main.js). */
+    @media (max-width: 740px) {
+      #app { padding: 8px; gap: 8px; }
+      .title { font-size: 15px; letter-spacing: 2px; }
+      .tagline { display: none; }
+      .hud { gap: 5px; }
+      .chip { padding: 5px 9px; } .chip .num { font-size: 13px; }
+      .mass { min-width: 108px; padding: 5px 9px; }
+      .body { flex-direction: column; gap: 10px; }
+      .stage { width: 100%; }
+      canvas { width: 100%; height: 56vh; }
+      .msgbar { width: 100%; padding: 8px 12px; }
+      .panel { min-width: 0; width: 100%; }
+      .ov-title { font-size: 24px; }
+      .cmap { height: 300px; }
+    }
   </style>
 </head>
 <body>
