@@ -228,6 +228,16 @@
         .map(function(c){ return TRAITS[c.elim.trait].vals[c.elim.value].tag; }).join(', ');
       spec.VERDICT={ face:culprit.face, name:culprit.name,
         text:'Les indices ne mentaient pas — '+traces+' : tout désignait '+culprit.name+', qui '+crime.deed+' avant de se fondre dans l’ombre. Le manoir respire.' };
+      // Narration : mise en scène d'ouverture, dénégations des suspects,
+      // remarques de déduction de Lampyre à chaque indice.
+      spec.INTRO=[
+        'Cette nuit, quelqu’un '+crime.deed+'. Le manoir l’a senti — les bougies ont frémi.',
+        sus.length+' suspects n’ont pas quitté les lieux, et chacun jure n’y être pour rien. Les indices, eux, n’ont pas eu le temps de s’effacer.',
+        'Fouille, recoupe, puis accuse — le manoir se souvient de tout.' ];
+      var QUOTES=['« Moi ? J’ai bien mieux à faire, crois-moi. »','« Je dormais. Profondément. Trop, peut-être. »','« Demande à qui tu veux — on me connaît ici. »','« Cette nuit-là ? Je comptais les étoiles. Seul·e, hélas. »','« Quelle idée. Je n’ai rien touché… presque rien. »','« Le manoir me fait confiance. Toi, visiblement, moins. »','« Cherche ailleurs. Mais cherche bien. »','« Si j’avais fait ça, tu ne le saurais jamais. »'];
+      sus.forEach(function(sp){ sp.quote=QUOTES[Math.floor(rnd()*QUOTES.length)]; });
+      var NOTES=['Ça réduit le cercle…','Intéressant. Quelqu’un ici correspond.','Le manoir chuchote — on approche.','Note-le : les détails trahissent toujours.','Un suspect vient de perdre son masque.','Garde ça en tête pour la confrontation.'];
+      clues.forEach(function(c){ c.note=NOTES[Math.floor(rnd()*NOTES.length)]; });
       spec.diff=diff; spec.seed=seed>>>0;
       return spec;
     }

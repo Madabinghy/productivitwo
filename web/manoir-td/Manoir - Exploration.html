@@ -59,7 +59,7 @@
     </div>
 
     <!-- bottom-left : contrôles -->
-    <div class="hud" id="hud-lantern" style="top:14px; right:152px; display:flex; align-items:center; gap:7px; padding:8px 13px; background:rgba(8,5,16,.78); backdrop-filter:blur(7px); border:1px solid rgba(214,168,74,.3); border-radius:11px; cursor:pointer; z-index:6;">
+    <div class="hud" id="hud-lantern" style="top:52px; right:12px; display:flex; align-items:center; gap:7px; padding:8px 13px; background:rgba(8,5,16,.78); backdrop-filter:blur(7px); border:1px solid rgba(214,168,74,.3); border-radius:11px; cursor:pointer; z-index:6;">
       <span id="hud-lantern-ico" style="font-size:15px; filter:grayscale(1) opacity(.6);">🏮</span>
       <span id="hud-lantern-txt" style="font-family:'Outfit'; font-weight:700; font-size:11px; color:#9a86b8;">0 min</span>
     </div>
@@ -78,7 +78,7 @@
     </div>
 
     <!-- bottom-right : minimap -->
-    <div class="hud" id="hud-mini-wrap" style="top:14px; right:14px; padding:8px; background:rgba(8,5,16,.74); backdrop-filter:blur(7px); border:1px solid rgba(154,134,184,.18); border-radius:12px;">
+    <div class="hud" id="hud-mini-wrap" style="top:96px; right:12px; padding:8px; background:rgba(8,5,16,.74); backdrop-filter:blur(7px); border:1px solid rgba(154,134,184,.18); border-radius:12px;">
       <canvas id="exp-mini" width="320" height="280" style="width:118px; height:103px; display:block; border-radius:7px;"></canvas>
     </div>
 
@@ -641,7 +641,7 @@
     // noir d'EXPÉDITION : une VARIANTE de mission (~1 enquête difficile sur 3, tirée de
     // la graine) — le halo tombe à une lueur de bougie, la lanterne devient vitale.
     // Pour ne pas dégoûter : le manoir offre une réserve d'huile à l'ouverture.
-    expeditionDark(){ return (this.enqs||[]).some(e=>e.state==='play' && e.exped); }
+    expeditionDark(){ const a=this.enqActiveIdx(); return a>=0 && !!this.enqs[a].exped; }
     checkKeys(){ if(!this.tools) return;
       const grant=(k,label,hint)=>{ if(this.tools[k]) return; this.tools[k]=true; this.saveTools();
         this.flash=Math.max(this.flash||0,0.5);
@@ -743,7 +743,12 @@
       if(window.OmbreluneGen){ for(const e of list){ if(!e || e.state!=='play' || this.enqs.length>=2) continue;
         const spec=window.OmbreluneGen.genEnquete(e.seed, e.diff);
         if(spec){ this.enqs.push(e); this.enqSpecs.push(spec); } } }
+      // une seule ACTIVE à la fois — les autres attendent au tiroir (paused)
+      { let act=this.enqs.findIndex(e=>!e.paused);
+        if(act<0 && this.enqs.length){ act=0; }
+        this.enqs.forEach((e,i)=>{ e.paused=(i!==act); }); }
       this.saveEnquete(); this.placeEnquete(); }
+    enqActiveIdx(){ return (this.enqs||[]).findIndex(e=>!e.paused); }
     saveEnquete(){ try{ localStorage.setItem('ombrelune_enquetes', JSON.stringify((this.enqs||[]).filter(e=>e.state==='play'))); }catch(e){} }
     startEnquete(mode,seed){ if(!window.OmbreluneGen) return;
       if(this.enqs.length>=2){ this.toast={t:'📜 Le manoir ne suit pas plus de deux intrigues à la fois — range-en une depuis le Journal (tape la bannière).', t0:performance.now()}; this.updateHud(); return; }
@@ -751,19 +756,25 @@
       const exped = diff>=2 && ((seed>>>0)%3===0); // ~1 sur 3, déterministe par la graine
       const spec=window.OmbreluneGen.genEnquete((seed>>>0), diff);
       if(!spec) return;
-      this.enqs.push({ v:2, seed:(seed>>>0), diff, mode:mode||'free', exped, collected:[], state:'play' });
+      this.enqs.forEach(e=>{ e.paused=true; }); // la nouvelle devient l'enquête EN COURS
+      this.enqs.push({ v:2, seed:(seed>>>0), diff, mode:mode||'free', exped, paused:false, collected:[], state:'play' });
       this.enqSpecs.push(spec);
       if(exped){ this.oil.n=(this.oil.n||0)+8; this.saveOil(); this.updateLanternHud(); }
       this.saveEnquete(); this.placeEnquete(); this.flash=Math.max(this.flash||0,0.5);
-      this.toast={t:'🔍 '+spec.question+(exped?' 🌑 Expédition nocturne — le manoir te confie +8 min d’huile.':' Suspects et indices sont dans les salles éveillées.'), t0:performance.now()}; }
+      // mise en scène : Lampyre raconte l'affaire (narration générée)
+      const lines=(spec.INTRO||[spec.question]).map((t,i)=>({who:'Lampyre', mood:i===0?'doubt':'idle', t}));
+      if(exped) lines.push({who:'Lampyre', mood:'doubt', t:'Et cette nuit-là, l’obscurité était totale… Elle le redevient. Le manoir te confie +8 min d’huile — ta lanterne sera précieuse. 🌑'});
+      this.dialogue={ i:0, endLabel:'Enquêter', lines };
+      this.updateHud(); }
     enqCollected(q){ return (this.enqs[q]&&this.enqs[q].collected)||[]; }
     enqAllDone(q){ const sp=this.enqSpecs[q]; return sp && this.enqCollected(q).length>=sp.LOCATIONS.length; }
     // positions déterministes (graine) sur des ancres par salle, éveillées seulement
     placeEnquete(){ this.enqActors=[]; this.enqClues=[]; this.enqHidden=[];
       if(!window.OmbreluneGen) return;
       const ANCH=[[0.26,0.32],[0.74,0.62],[0.32,0.72],[0.68,0.26],[0.5,0.82]];
+      const act=this.enqActiveIdx();
       for(let q=0;q<(this.enqs||[]).length;q++){ const enq=this.enqs[q], spec=this.enqSpecs[q];
-        if(!enq || enq.state!=='play' || !spec) continue;
+        if(q!==act || !enq || enq.state!=='play' || !spec) continue;
         const R=window.OmbreluneGen.mulberry32(((enq.seed>>>0)+777)|0);
         let rooms=this.ROOMS.filter(r=>this.roomOn(r.k)&&r.k!=='coffre');
         for(let i=rooms.length-1;i>0;i--){ const j=Math.floor(R()*(i+1)); const t2=rooms[i]; rooms[i]=rooms[j]; rooms[j]=t2; }
@@ -822,9 +833,11 @@
       const ROW=(inner)=>'<div style="display:flex; gap:10px; margin-top:18px;">'+inner+'</div>';
       if(f.type==='clue'){ const l=f.ent.l;
         if(!f.ent.done) return H(l.icon,'Indice · '+this.esc2(l.place),l.action)+P('Approche-toi. Quelque chose accroche l’œil.')+ROW(this.faceBtn('examine','Examiner ›',true)+this.faceBtn('close','Plus tard'));
-        return H(l.icon,'Indice récolté ✓',l.place)+P(l.clue)+ROW(this.faceBtn('close','Noté ✦',true)); }
+        return H(l.icon,'Indice récolté ✓',l.place)+P(l.clue)
+          +(l.note?'<div style="margin-top:9px; font-family:\'Fraunces\',serif; font-style:italic; font-size:12px; color:#9fd4ee;">Lampyre — « '+this.esc2(l.note)+' »</div>':'')
+          +ROW(this.faceBtn('close','Noté ✦',true)); }
       if(f.type==='suspect'){ const sp=f.ent.sp;
-        let body=this.faceTags(sp);
+        let body=(sp.quote?'<div style="margin-top:9px; font-family:\'Fraunces\',serif; font-style:italic; font-size:13px; line-height:1.45; color:#cdbfe0;">'+this.esc2(sp.quote)+'</div>':'')+this.faceTags(sp);
         if(f.rebut) return H(sp.face,'Suspect',sp.name)+body+P(f.rebut)+ROW(this.faceBtn('close','Réfléchir',true));
         const qs=f.ent.q|0;
         if(!this.enqAllDone(qs)){ const n=this.enqCollected(qs).length, N=this.enqSpecs[qs].LOCATIONS.length;
@@ -898,8 +911,18 @@
         return; }
       if(fa && fa.indexOf('abandon')===0 && f.type==='journal'){
         const q=parseInt(fa.slice(7),10)|0;
-        if(this.enqs[q]){ this.enqs[q].state='done'; this.enqs.splice(q,1); this.enqSpecs.splice(q,1); this.saveEnquete(); this.placeEnquete();
-          this.toast={t:'📜 Enquête rangée au tiroir — une autre t’attendra quand tu voudras.', t0:performance.now()}; }
+        if(this.enqs[q]){ this.enqs[q].paused=true; this.saveEnquete(); this.placeEnquete();
+          this.toast={t:'🗄️ Enquête rangée au tiroir — progression conservée, reprends-la quand tu veux.', t0:performance.now()}; }
+        this.showFace({type:'journal', dismiss:true}); this.updateHud(); return; }
+      if(fa && fa.indexOf('resume')===0 && f.type==='journal'){
+        const q=parseInt(fa.slice(6),10)|0;
+        if(this.enqs[q]){ this.enqs.forEach((e,i)=>{ e.paused=(i!==q); }); this.saveEnquete(); this.placeEnquete();
+          this.toast={t:'🔍 Tu reprends : « '+this.enqSpecs[q].question+' »', t0:performance.now()}; }
+        this.showFace({type:'journal', dismiss:true}); this.updateHud(); return; }
+      if(fa && fa.indexOf('burn')===0 && f.type==='journal'){
+        const q=parseInt(fa.slice(4),10)|0;
+        if(this.enqs[q]){ this.enqs.splice(q,1); this.enqSpecs.splice(q,1); this.saveEnquete(); this.placeEnquete();
+          this.toast={t:'📜 Dossier classé sans suite. Le manoir n’en tiendra pas rigueur.', t0:performance.now()}; }
         this.showFace({type:'journal', dismiss:true}); this.updateHud(); return; }
       if(fa==='unlock' && f.type==='chest'){ const c=f.ent, ch=c.ch;
         if(!this.tools[ch.key] || c.opened) return;
@@ -920,13 +943,18 @@
       // enquêtes en cours (jusqu'à deux en parallèle)
       h+=S('Enquête'+(this.enqs.length>1?'s':''));
       if(this.enqs.length){
+        const SB=(fa,label)=>' <button data-fa="'+fa+'" style="margin-left:6px; padding:3px 9px; border-radius:8px; border:1px solid rgba(214,168,74,.35); background:rgba(214,168,74,.12); color:#e7c878; font-family:\'Outfit\'; font-weight:700; font-size:10px; cursor:pointer;">'+label+'</button>';
         for(let q=0;q<this.enqs.length;q++){ const enq=this.enqs[q], spec=this.enqSpecs[q];
           const n=this.enqCollected(q).length, N=spec.LOCATIONS.length;
           const hid=(this.enqHidden||[]).filter(x=>x.q===q && this.enqCollected(q).indexOf(x.l.key)<0).length;
-          h+=L('« '+this.esc2(spec.question)+' »'+(enq.exped?' · 🌑 expédition':'')+(enq.mode==='reward'?' · ⛧ mission du portail':''));
-          h+=L('Indices : <b style="color:#e7c878;">'+n+'/'+N+'</b>'+(hid?' — '+hid+' caché'+(hid>1?'s':'')+' dans les meubles':'')
-            +(n>=N?' — <b style="color:#9fe0b0;">confronte les suspects.</b>':'')
-            +' <button data-fa="abandon'+q+'" style="margin-left:8px; padding:3px 9px; border-radius:8px; border:1px solid rgba(154,134,184,.3); background:rgba(154,134,184,.1); color:#a796c0; font-family:\'Outfit\'; font-weight:700; font-size:10px; cursor:pointer;">Ranger ↩</button>'); }
+          h+=L((enq.paused?'🗄️ <b style="color:#a796c0;">Au tiroir</b> · ':'🔍 <b style="color:#9fe0b0;">En cours</b> · ')
+            +'« '+this.esc2(spec.question)+' »'+(enq.exped?' · 🌑':'')+(enq.mode==='reward'?' · ⛧ portail':''));
+          h+=L('Indices : <b style="color:#e7c878;">'+n+'/'+N+'</b>'
+            +(!enq.paused && hid?' — '+hid+' caché'+(hid>1?'s':'')+' dans les meubles':'')
+            +(!enq.paused && n>=N?' — <b style="color:#9fe0b0;">confronte les suspects.</b>':'')
+            +(enq.paused ? SB('resume'+q,'Reprendre ✦')+SB('burn'+q,'Classer sans suite')
+                         : SB('abandon'+q,'Ranger ↩'))); }
+        if(this.enqs.some(e=>e.paused)) h+=L('<span style="color:#8a7aa6; font-size:11px;">Au tiroir = en pause, progression conservée. « Reprendre » la ramène dans le manoir.</span>');
       } else h+=L('Aucune enquête ouverte. Le Dossier t’attend à la Bibliothèque — et le portail garde parfois la sienne.');
       // missions du jour
       h+=S('Missions du jour');
@@ -1256,9 +1284,10 @@
       h.dlgBtn=this.dialogue?(this.dialogue.i>=this.dialogue.lines.length-1?(this.dialogue.endLabel||'Fermer'):'Suivant \u25b8'):'';
       const FT=this.FRAGS.length;
       if(this.enqs && this.enqs.length){ h.showMission=true;
-        const parts=this.enqs.map((e,q)=>{ const n=this.enqCollected(q).length, N=this.enqSpecs[q].LOCATIONS.length;
-          return n>=N?'accuse !':(n+'/'+N); });
-        h.missText=(this.enqs.length>1?'Enquêtes \u00b7 ':'Enquête \u00b7 ')+parts.join(' & ')+' \u00b7 indices'; }
+        const a=this.enqActiveIdx();
+        if(a>=0){ const n=this.enqCollected(a).length, N=this.enqSpecs[a].LOCATIONS.length;
+          h.missText='Enquête \u00b7 '+(n>=N?'accuse le coupable':(n+'/'+N+' indices'))+(this.enqs.length>1?' \u00b7 +1 au tiroir':''); }
+        else h.missText='Enquête au tiroir \u00b7 ouvre le Journal'; }
       else if(this.mquest!=='solved' && this.roomOn('miroirs')){ h.showMission=true;
         h.missText = this.mquest==='found' ? 'R\u00e9parer le miroir \u00b7 Salle des miroirs'
           : (this.mgot.size>=2 ? 'Trouver la Salle des miroirs \u00b7 '+this.mgot.size+'/'+FT+' \u00e9clats'
