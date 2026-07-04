@@ -130,6 +130,12 @@
 
   // —— Récompense = action Gantt (?reward=action) — même flux que la Galerie des ombres.
   var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  // Mode libre (entraînement, sans reward) : à la victoire, dépose un butin de jeu
+  // dans la boîte partagée — le manoir en tirera un indice d'enquête au retour.
+  var lootSent=false;
+  function depositLoot(){ if(lootSent) return; lootSent=true;
+    try{ var q=JSON.parse(localStorage.getItem('ombrelune_minigame_loot')||'[]'); if(!Array.isArray(q)) q=[];
+      q.push({from:'ombres', seed:Math.floor(Math.random()*1e9)}); localStorage.setItem('ombrelune_minigame_loot', JSON.stringify(q)); }catch(e){} }
   function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
   function revealAsk(){
     try{ var na=readNextAction(); if(na && na.actionId){
@@ -229,7 +235,7 @@
   function interact(){
     if(S.status!=='play') return;
     if(G.nearConsole && !S.consoleOn){ S.consoleOn=true; renderFooter(); return; }
-    if(G.nearVault && G.vaultOpen){ S.status='win'; if(REWARD) revealAsk(); renderFooter(); return; }
+    if(G.nearVault && G.vaultOpen){ S.status='win'; if(REWARD) revealAsk(); else depositLoot(); renderFooter(); return; }
   }
 
   function loop(){

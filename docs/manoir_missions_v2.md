@@ -249,4 +249,10 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   campagne y était rendue, **sauvegarde de campagne jamais touchée** (partie transitoire).
   Victoire (« JALON CONQUIS ») → révélation immédiate (même flux pont/`ombrelune_revealed`),
   « Retour au manoir ✦ » ; défaite → reprendre à volonté ou se replier au manoir.
+- **Butin de jeu → enquêtes** (`ombrelune_minigame_loot`) : les mini-jeux joués en LIBRE
+  (énigme optique `?free=1`, Salle des Ombres sans reward via la « Brèche d'entraînement »
+  du Sanctuaire) déposent un jeton à la victoire. Au retour, l'Exploration le convertit :
+  un indice délogé pour l'enquête EN COURS, sinon une nouvelle affaire réveillée au tiroir
+  (sinon +3 XP si le manoir est saturé). Jamais bloquant — le loot fait AVANCER, la
+  CONCLUSION reste gatée par l'IRL (lumière d'expédition ← focus, révélation ← action réelle).
 - À venir : arbre de talents (« Établi »).

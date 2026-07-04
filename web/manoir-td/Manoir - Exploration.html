@@ -282,6 +282,9 @@
          lines:['Une vitrine de trophées poussiéreux. Chacun raconte une habitude tenue jusqu’au bout.']},
         {room:'biblio', fx:0.30, fy:0.40, kind:'look', glyph:'❓', label:'Dossier d’enquête', go:'Ouvrir le dossier', enqStart:true,
          lines:['Un dossier d’enquête traîne sur la table — une intrigue du soir, sans conséquence. Les suspects et les indices sont dans le manoir.']},
+        {room:'sanctuaire', fx:0.5, fy:0.30, kind:'look', glyph:'🎯', label:'Brèche d’entraînement', go:'S’infiltrer',
+         hrefFn:()=>'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
+         lines:['Une brèche d’entraînement s’ouvre sous le portail — infiltre-toi pour le plaisir. Ton butin de jeu reviendra nourrir tes enquêtes.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
@@ -360,7 +363,7 @@
       this.chests={opened:[]}; try{ const c=JSON.parse(localStorage.getItem('ombrelune_chests')||'null'); if(c&&c.opened) this.chests=c; }catch(e){}
       this.runes={found:[]}; try{ const r=JSON.parse(localStorage.getItem('ombrelune_runes')||'null'); if(r&&r.found) this.runes=r; }catch(e){}
       this.placeKeyItems(); this.checkKeys();
-      this.loadButin(); this.loadEnquete();
+      this.loadButin(); this.loadEnquete(); this.consumeMinigameLoot();
       { const fc=document.getElementById('hud-face');
         if(fc){ fc.addEventListener('click',(e)=>{ const b=e.target.closest('[data-fa]');
           if(b){ this.faceAction(b.getAttribute('data-fa')); }
@@ -399,7 +402,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_minigame_loot') this.consumeMinigameLoot(); else if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -748,6 +751,35 @@
 
     // ═══ Enquête incarnée : suspects (PNJ temporaires) et indices (objets) dans les salles ═══
     esc2(t){ return String(t==null?'':t).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    // Butin de jeu libre : les mini-jeux gagnés (énigme, Salle des Ombres) déposent
+    // un jeton dans ombrelune_minigame_loot. Au retour, le manoir le convertit —
+    // un indice délogé pour l'enquête en cours, ou une nouvelle affaire réveillée.
+    // JAMAIS bloquant, mais le loot fait AVANCER : conclure demande toujours l'IRL.
+    consumeMinigameLoot(){ let q=[]; try{ q=JSON.parse(localStorage.getItem('ombrelune_minigame_loot')||'[]'); }catch(e){}
+      if(!Array.isArray(q)||!q.length) return;
+      try{ localStorage.removeItem('ombrelune_minigame_loot'); }catch(e){}
+      for(const tok of q) this.awardMinigameLoot(tok||{}); }
+    awardMinigameLoot(tok){
+      // 1) enquête EN COURS avec un indice manquant -> le déloger
+      const a=this.enqActiveIdx&&this.enqActiveIdx();
+      if(a>=0 && this.enqSpecs[a]){ const spec=this.enqSpecs[a], col=new Set(this.enqCollected(a));
+        const miss=spec.LOCATIONS.filter(l=>!col.has(l.key));
+        if(miss.length){ this.enqs[a].collected.push(miss[0].key); this.saveEnquete(); this.placeEnquete&&this.placeEnquete();
+          const n=this.enqCollected(a).length, N=spec.LOCATIONS.length;
+          this.toast={t:'🔍 Ta partie déloge un indice ('+n+'/'+N+') — relis-le au Journal'+(n>=N?', puis confronte les suspects.':'.'), t0:performance.now()};
+          this.updateHud&&this.updateHud(); return; } }
+      // 2) sinon, réveiller une NOUVELLE affaire (au tiroir), si le manoir n'est pas saturé
+      if((this.enqs||[]).length<2 && window.OmbreluneGen){
+        const seed=((tok.seed>>>0)||Math.floor(Math.random()*1e9))>>>0, diff=this.guardDiff();
+        const spec=window.OmbreluneGen.genEnquete(seed,diff);
+        if(spec){ this.enqs.push({v:2,seed,diff,mode:'free',exped:false,paused:true,collected:[],state:'play'});
+          this.enqSpecs.push(spec); this.saveEnquete(); this.placeEnquete&&this.placeEnquete();
+          this.toast={t:'📜 Ton butin de jeu réveille une affaire : « '+spec.question+' » — au tiroir du Journal.', t0:performance.now()};
+          this.updateHud&&this.updateHud(); return; } }
+      // 3) rien à faire (manoir saturé) -> le butin nourrit Lampyre
+      this.addXp&&this.addXp(3);
+      this.toast={t:'✨ Ton butin de jeu nourrit Lampyre (+3).', t0:performance.now()}; this.updateHud&&this.updateHud(); }
+
     // Jusqu'à DEUX enquêtes en parallèle (au-delà le manoir sature de suspects).
     loadEnquete(){ this.enqs=[]; this.enqSpecs=[];
       let list=[]; try{ const x=JSON.parse(localStorage.getItem('ombrelune_enquetes')||'null'); if(Array.isArray(x)) list=x; }catch(err){}
