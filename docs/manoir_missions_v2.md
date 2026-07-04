@@ -191,5 +191,18 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   pied de page « Une autre enquête ↺ / Retour au manoir ».
 - **Rejeu diégétique** : « Dossier d'enquête » à la Bibliothèque (éveillée jour 1) → enquête
   libre générée. Patron `talkSpot` : un spot porteur de `href`/`hrefFn` dialogue puis navigue.
+- **Enquête incarnée** (`Manoir - Exploration.html`) : les enquêtes générées se jouent
+  DANS le manoir — suspects = PNJ temporaires (silhouettes teintées + étiquette de nom),
+  indices = objets lumineux posés dans les salles éveillées (positions déterministes par
+  graine, ancres par salle). Interaction = **vue de face** (`#hud-face`, carte plein écran :
+  portrait, traits, examiner/accuser/réfutation/verdict). État persisté `ombrelune_enquete`
+  {seed, diff, mode:free|reward, collected[], state} — le spec est régénéré à chaque
+  chargement (déterminisme). Entrées : « Dossier d'enquête » (biblio) = libre ; gardien
+  Déduction du portail = reward (révèle l'action à la conclusion). La page
+  `Compagnon - Déduction.html` reste pour la chaîne classique (et accepte toujours free/reward).
+- **Butin persistant** (`ombrelune_butin`) : chaque enquête résolue laisse l'objet du crime
+  (clé d'argent, pot de confiture…) posé À DEMEURE dans la salle du coupable — inspectable
+  en vue de face (nom, date, histoire) ; `creditRoom` sur la salle (le butin fait grandir).
+  À étendre aux autres types de missions.
 - À venir : `genOmbres` (segments de map + placement caméras/gardes + validation de
   faisabilité), et l'arbre de talents (« Établi ») alimenté par l'XP.

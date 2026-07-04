@@ -103,11 +103,17 @@
         </div>
       </div>
     </div>
+
+    <!-- vue de face : carte plein écran (suspects, indices, butin) -->
+    <div class="hud" id="hud-face" style="inset:0; display:none; z-index:8; background:rgba(4,2,9,.8); backdrop-filter:blur(5px); align-items:center; justify-content:center;">
+      <div id="hud-face-card" style="width:330px; max-width:88%; max-height:86%; overflow-y:auto; border-radius:22px; background:linear-gradient(180deg,#1b1228,#0d0817); border:1px solid rgba(214,168,74,.38); box-shadow:0 30px 80px rgba(0,0,0,.75); padding:24px 22px; text-align:center; transform-origin:center;"></div>
+    </div>
   </div>
 
   <p class="chrome" style="font-family:'Outfit'; font-size:11.5px; color:#6f6090; margin:0; text-align:center; max-width:680px; line-height:1.5;">Plan fidèle à la carte des domaines — salles agrandies pour accueillir le mobilier et le contenu à venir. Le manoir reste figé&nbsp;; on l'explore, on l'enrichira du butin de mission.</p>
 </section>
 
+<script src="js/ombrelune-gen.js"></script>
 <script>
 /* =================================================================
    OMBRELUNE — Exploration du manoir, 100% VANILLA JS (aucun framework)
@@ -248,9 +254,8 @@
          lines:['Le puits est profond et calme. Ton reflet tremble à peine — bois assez, il se stabilisera.']},
         {room:'cabinet', fx:0.5, fy:0.5, kind:'look', glyph:'✧', label:'Admirer les trophées',
          lines:['Une vitrine de trophées poussiéreux. Chacun raconte une habitude tenue jusqu’au bout.']},
-        {room:'biblio', fx:0.30, fy:0.40, kind:'look', glyph:'❓', label:'Dossier d’enquête', go:'Ouvrir le dossier',
-         hrefFn:()=>'./'+encodeURIComponent('Compagnon - Déduction.html')+'?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
-         lines:['Un dossier d’enquête traîne sur la table — une intrigue du soir, sans conséquence. Juste le plaisir de déduire.']},
+        {room:'biblio', fx:0.30, fy:0.40, kind:'look', glyph:'❓', label:'Dossier d’enquête', go:'Ouvrir le dossier', enqStart:true,
+         lines:['Un dossier d’enquête traîne sur la table — une intrigue du soir, sans conséquence. Les suspects et les indices sont dans le manoir.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
@@ -310,6 +315,14 @@
       // `hello` : donne au pont la liste des actions gagnées (il en déduit les trophées)
       try{ if(window.ManoirBridge){ const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
         window.ManoirBridge.postMessage(JSON.stringify({type:'hello', revealed:rev})); } }catch(e){}
+
+      // —— Enquête incarnée + butin : suspects et indices PHYSIQUEMENT dans les
+      // salles ; chaque enquête résolue laisse un objet permanent dans le manoir.
+      this.loadButin(); this.loadEnquete();
+      { const fc=document.getElementById('hud-face');
+        if(fc){ fc.addEventListener('click',(e)=>{ const b=e.target.closest('[data-fa]');
+          if(b){ this.faceAction(b.getAttribute('data-fa')); }
+          else if(e.target===fc && this.face && this.face.dismiss) this.hideFace(); }); } }
 
       // —— Vie ambiante : le chat du manoir (erre, somnole près des bougies, fuit
       // à l'approche) + ombres fugaces rares. Purement d'ambiance, rien de persisté.
@@ -411,7 +424,7 @@
 
     candleList(){ if(this.scene.type==='sub'){ const s=this.SUB; return [{x:s.x+34,y:s.y+30,r:60},{x:s.x+s.w-34,y:s.y+30,r:60},{x:s.x+34,y:s.y+s.h-44,r:60},{x:s.x+s.w-34,y:s.y+s.h-44,r:60}]; } return this.candles; }
 
-    pd(e){ const r=this.cv.getBoundingClientRect();
+    pd(e){ if(this.face) return; const r=this.cv.getBoundingClientRect();
       const sx=(e.clientX-r.left)*(this.W/r.width); const sy=(e.clientY-r.top)*(this.H/r.height);
       const wx=(sx-this.W/2)/this.Z + this.cam.x; const wy=(sy-this.H/2)/this.Z + this.cam.y;
       if(this.scene.type==='sub'){ this.path=[]; this.moveTarget={x:wx,y:wy}; return; }
@@ -451,6 +464,9 @@
       else if(p.kind==='mirror_enter') this.enterMirrorPuzzle();
       else if(p.kind==='mirror_replay') this.enterMirrorReplay();
       else if(p.kind==='spot') this.talkSpot(p.spot);
+      else if(p.kind==='enq_suspect') this.openFaceSuspect(p.ent);
+      else if(p.kind==='enq_clue') this.openFaceClue(p.ent);
+      else if(p.kind==='butin') this.openFaceButin(p.ent);
       else if(p.kind==='console') this.openConsole();
       else if(p.kind==='portal') this.openPortal(); }
     talkSpot(sp){ if(!sp || this.dialogue) return;
@@ -471,6 +487,15 @@
             lines: m.ask.map((t,i)=>({who, mood: i===0?'doubt':'idle', t})) }; }
         this.updateHud(); return;
       }
+      // dossier d'enquête : ouvre (ou rappelle) une enquête incarnée dans le manoir
+      if(sp.enqStart){
+        if(this.enq && this.enq.state==='play' && this.enqSpec){ const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
+          this.dialogue={ i:0, endLabel:'J’y retourne', lines:[
+            {who:'Lampyre', mood:'idle', t:'« '+this.enqSpec.question+' » — '+n+'/'+N+' indices récoltés. Suspects et indices t’attendent dans les salles éveillées.'}] }; }
+        else { this.dialogue={ i:0, endLabel:sp.go||'Ouvrir le dossier',
+            onEnd:()=>{ this.startEnquete('free', Math.floor(Math.random()*1e9)); },
+            lines: sp.lines.map((t,i)=>({who:'Lampyre', mood: i===0?'idle':'smile', t})) }; }
+        this.updateHud(); return; }
       // point d'accès à un mini-jeu (partie libre générée) : dialogue puis navigation
       if(sp.href || sp.hrefFn){
         this.dialogue={ i:0, endLabel:sp.go||'Y aller',
@@ -527,7 +552,7 @@
       if(this.SPOTS) for(const sp of this.SPOTS){ if(sp.fx==null) continue; const r=this.byk[sp.room]; sp.x=r.x+r.w*sp.fx; sp.y=r.y+r.h*sp.fy; }
       if(this.FRAGS) for(const fg of this.FRAGS){ const r=this.byk[fg.room]; fg.x=r.x+r.w*fg.fx; fg.y=r.y+r.h*fg.fy; }
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
-      this.buildObstacles(); this.buildCandles(); }
+      this.buildObstacles(); this.buildCandles(); this.placeEnquete(); this.placeButin(); }
     // montée de palier : des salles s'éveillent — cascade de célébration
     onStageUp(ns){ this._stageXp=this.lamp?this.lamp.xp:this._stageXp;
       const fresh=(this.UNLOCKS[ns]||[]).map(k=>this.byk[k]).filter(Boolean);
@@ -554,6 +579,112 @@
     enterMirrorPuzzle(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html'); }
     // rejeu libre : énigme générée (graine aléatoire), difficulté selon l'éveil — n'écrit rien côté réel
     enterMirrorReplay(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(); }
+
+    // ═══ Enquête incarnée : suspects (PNJ temporaires) et indices (objets) dans les salles ═══
+    esc2(t){ return String(t==null?'':t).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    loadEnquete(){ this.enq=null; this.enqSpec=null;
+      let e=null; try{ e=JSON.parse(localStorage.getItem('ombrelune_enquete')||'null'); }catch(err){}
+      if(e && e.state==='play' && window.OmbreluneGen){
+        const spec=window.OmbreluneGen.genEnquete(e.seed, e.diff);
+        if(spec){ this.enq=e; this.enqSpec=spec; } }
+      this.placeEnquete(); }
+    saveEnquete(){ try{ localStorage.setItem('ombrelune_enquete', JSON.stringify(this.enq)); }catch(e){} }
+    startEnquete(mode,seed){ if(!window.OmbreluneGen) return;
+      this.enq={ v:1, seed:(seed>>>0), diff:this.guardDiff(), mode:mode||'free', collected:[], state:'play' };
+      this.enqSpec=window.OmbreluneGen.genEnquete(this.enq.seed, this.enq.diff);
+      if(!this.enqSpec){ this.enq=null; return; }
+      this.saveEnquete(); this.placeEnquete(); this.flash=Math.max(this.flash||0,0.5);
+      this.toast={t:'🔍 '+this.enqSpec.question+' Suspects et indices sont dans les salles éveillées.', t0:performance.now()}; }
+    enqCollected(){ return (this.enq&&this.enq.collected)||[]; }
+    enqAllDone(){ return this.enqSpec && this.enqCollected().length>=this.enqSpec.LOCATIONS.length; }
+    // positions déterministes (graine) sur des ancres par salle, éveillées seulement
+    placeEnquete(){ this.enqActors=[]; this.enqClues=[];
+      if(!this.enq || this.enq.state!=='play' || !this.enqSpec || !window.OmbreluneGen) return;
+      const R=window.OmbreluneGen.mulberry32(((this.enq.seed>>>0)+777)|0);
+      const ANCH=[[0.26,0.32],[0.74,0.62],[0.32,0.72],[0.68,0.26],[0.5,0.82]];
+      let rooms=this.ROOMS.filter(r=>this.roomOn(r.k)&&r.k!=='coffre');
+      for(let i=rooms.length-1;i>0;i--){ const j=Math.floor(R()*(i+1)); const t2=rooms[i]; rooms[i]=rooms[j]; rooms[j]=t2; }
+      if(!rooms.length) return;
+      const used={}; const slotOf=(r)=>{ const u=used[r.k]||0; used[r.k]=u+1; return ANCH[u%ANCH.length]; };
+      const col=new Set(this.enqCollected());
+      this.enqSpec.SUSPECTS.forEach((sp,i)=>{ const r=rooms[i%rooms.length]; const a=slotOf(r);
+        this.enqActors.push({ sp, room:r.k, x:r.x+r.w*a[0], y:r.y+r.h*a[1], ph:(i*1.7)%6.28, c1:sp.c1||'#3a2c52', c2:sp.c2||'#241a33' }); });
+      this.enqSpec.LOCATIONS.forEach((l,i)=>{ const r=rooms[(i+this.enqSpec.SUSPECTS.length)%rooms.length]; const a=slotOf(r);
+        this.enqClues.push({ l, room:r.k, x:r.x+r.w*a[0], y:r.y+r.h*a[1], done:col.has(l.key) }); }); }
+    // ═══ Butin persistant : les objets des missions résolues meublent le manoir ═══
+    loadButin(){ let b=[]; try{ b=JSON.parse(localStorage.getItem('ombrelune_butin')||'[]'); }catch(e){}
+      this.butin=Array.isArray(b)?b:[]; this.placeButin(); }
+    saveButin(){ try{ localStorage.setItem('ombrelune_butin', JSON.stringify(this.butin)); }catch(e){} }
+    placeButin(){ this.butinPlaced=[];
+      for(const it of (this.butin||[])){ const r=this.byk[it.room]; if(!r||!this.roomOn(it.room)) continue;
+        this.butinPlaced.push({ it, x:r.x+r.w*it.fx, y:r.y+r.h*it.fy }); } }
+    addButin(icon,name,room,fx,fy,story){
+      this.butin.push({ i:icon, n:name, room, fx, fy, d:this._wdate, s:story||'' });
+      this.saveButin(); this.placeButin(); }
+    finishEnquete(){ if(!this.enq||!this.enqSpec) return;
+      const spec=this.enqSpec, culKey=spec.CULPRIT;
+      const actor=(this.enqActors||[]).find(a=>a.sp.key===culKey);
+      const room=actor?actor.room:(this.roomAt(this.hero.x,this.hero.y)||{k:'hall'}).k;
+      const r=this.byk[room]; const fx=actor?((actor.x-r.x)/r.w):0.5, fy=actor?((actor.y-r.y)/r.h):0.5;
+      if(spec.OBJ) this.addButin(spec.OBJ.icon, spec.OBJ.name, room, fx, fy, spec.VERDICT?spec.VERDICT.text:'');
+      this.creditRoom(room,1);
+      if(this.enq.mode==='reward'){
+        try{ const na=this.nextAction; if(na && na.actionId){
+          const rev=JSON.parse(localStorage.getItem('ombrelune_revealed')||'[]');
+          if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
+        try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({type:'reveal_action'})); }catch(e){} }
+      this.enq.state='done'; this.saveEnquete(); this.enq=null; this.enqSpec=null; this.placeEnquete();
+      this.flash=Math.max(this.flash||0,0.7);
+      this.toast={t:'🏅 '+(spec.OBJ?spec.OBJ.name:'Le butin')+' rejoint le manoir — enquête classée.', t0:performance.now()};
+      this.updateHud(); }
+    // ═══ Vue de face : carte plein écran (interaction rapprochée) ═══
+    showFace(f){ this.face=f; const el=document.getElementById('hud-face'), card=document.getElementById('hud-face-card');
+      if(!el||!card) return; card.innerHTML=this.faceHTML(f); el.style.display='flex'; this.updateHud(); }
+    hideFace(){ this.face=null; const el=document.getElementById('hud-face'); if(el) el.style.display='none'; }
+    faceBtn(fa,label,solid){ return '<button data-fa="'+fa+'" style="flex:1; padding:14px 10px; border-radius:14px; cursor:pointer; font-family:\'Outfit\'; font-weight:800; font-size:13px; '+(solid?'border:none; color:#1c1206; background:linear-gradient(180deg,#f2cd72,#d6a84a); box-shadow:0 10px 26px rgba(214,168,74,.3);':'border:1px solid rgba(214,168,74,.35); color:#e7c878; background:rgba(214,168,74,.1);')+'">'+label+'</button>'; }
+    faceTags(sp){ if(!sp.tags) return '';
+      return '<div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:10px;">'+sp.tags.map(tg=>'<span style="font-family:\'Outfit\'; font-size:10px; font-weight:700; color:#c3b3dd; background:rgba(154,134,184,.14); border:1px solid rgba(154,134,184,.25); border-radius:999px; padding:4px 9px; white-space:nowrap;">'+tg.icon+' '+this.esc2(tg.t)+'</span>').join('')+'</div>'; }
+    faceHTML(f){
+      const H=(icon,kicker,title)=>'<div style="font-size:58px; line-height:1; filter:drop-shadow(0 6px 18px rgba(0,0,0,.5));">'+icon+'</div>'
+        +'<div style="margin-top:12px; font-family:\'Outfit\'; font-weight:700; font-size:9.5px; letter-spacing:2px; text-transform:uppercase; color:#c9a456;">'+kicker+'</div>'
+        +'<div style="margin-top:5px; font-family:\'Fraunces\',serif; font-weight:600; font-size:21px; line-height:1.2; color:#fbf3e2;">'+this.esc2(title)+'</div>';
+      const P=(t)=>'<div style="margin-top:11px; font-family:\'Outfit\'; font-size:12.5px; line-height:1.55; color:#a796c0;">'+this.esc2(t)+'</div>';
+      const ROW=(inner)=>'<div style="display:flex; gap:10px; margin-top:18px;">'+inner+'</div>';
+      if(f.type==='clue'){ const l=f.ent.l;
+        if(!f.ent.done) return H(l.icon,'Indice · '+this.esc2(l.place),l.action)+P('Approche-toi. Quelque chose accroche l’œil.')+ROW(this.faceBtn('examine','Examiner ›',true)+this.faceBtn('close','Plus tard'));
+        return H(l.icon,'Indice récolté ✓',l.place)+P(l.clue)+ROW(this.faceBtn('close','Noté ✦',true)); }
+      if(f.type==='suspect'){ const sp=f.ent.sp;
+        let body=this.faceTags(sp);
+        if(f.rebut) return H(sp.face,'Suspect',sp.name)+body+P(f.rebut)+ROW(this.faceBtn('close','Réfléchir',true));
+        if(!this.enqAllDone()){ const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
+          return H(sp.face,'Suspect',sp.name)+body+P('« Moi ? Reviens quand tu auras tous tes indices ('+n+'/'+N+'). »')+ROW(this.faceBtn('close','Plus tard',true)); }
+        return H(sp.face,'Suspect',sp.name)+body+P('Tous les indices sont réunis. Est-ce '+sp.name+' ?')+ROW(this.faceBtn('accuse','Accuser ✦',true)+this.faceBtn('close','Laisser')); }
+      if(f.type==='verdict'){ const spec=f.spec;
+        let extra='';
+        if(f.mode==='reward'){ const na=this.nextAction; const rev=na&&na.title&&na.sealed===false;
+          extra='<div style="margin-top:13px; text-align:left; padding:11px 13px; border-radius:12px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.35);">'
+            +'<div style="font-family:\'Outfit\'; font-weight:700; font-size:8.5px; letter-spacing:1.6px; text-transform:uppercase; color:#c9a456;">Butin — prochaine étape'+(na&&na.projectName?(' · '+this.esc2(na.projectName)):'')+'</div>'
+            +(rev?'<div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">« '+this.esc2(na.title)+' »</div>'
+                 :'<div style="margin-top:4px; font-family:\'Outfit\'; font-size:11.5px; color:#d8c8a8;">Le sceau se dissout… la Console te lira ta prochaine étape.</div>')+'</div>'; }
+        return H(f.culprit.face,'Coupable démasqué','C’était '+f.culprit.name+'.')+P(spec.VERDICT.text)+extra+ROW(this.faceBtn('conclude','Conclure ✦',true)); }
+      if(f.type==='butin'){ const it=f.ent.it;
+        return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
+      return ''; }
+    faceAction(fa){ const f=this.face; if(!f) return;
+      if(fa==='close'){ this.hideFace(); return; }
+      if(fa==='examine' && f.type==='clue'){ const l=f.ent.l;
+        if(this.enq && this.enq.collected.indexOf(l.key)<0){ this.enq.collected.push(l.key); this.saveEnquete(); f.ent.done=true;
+          const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
+          this.toast={t:'🔍 Indice '+n+'/'+N+(n>=N?' — va confronter les suspects.':''), t0:performance.now()}; }
+        this.showFace(f); return; }
+      if(fa==='accuse' && f.type==='suspect'){ const sp=f.ent.sp;
+        if(sp.key===this.enqSpec.CULPRIT){ this.showFace({type:'verdict', spec:this.enqSpec, culprit:sp, mode:this.enq.mode}); }
+        else { f.rebut=this.enqSpec.WRONG[sp.key]||'Les indices disent le contraire.'; this.showFace(f); }
+        return; }
+      if(fa==='conclude' && f.type==='verdict'){ this.hideFace(); this.finishEnquete(); return; } }
+    openFaceSuspect(a){ if(this.dialogue) return; this.showFace({type:'suspect', ent:a, dismiss:true}); }
+    openFaceClue(c){ if(this.dialogue) return; this.showFace({type:'clue', ent:c, dismiss:true}); }
+    openFaceButin(b){ if(this.dialogue) return; this.showFace({type:'butin', ent:b, dismiss:true}); }
     // relit le compteur partagé quand une autre page l'a modifié (boire ailleurs dans l'appli)
     reloadWater(){ const today=new Date().toISOString().slice(0,10); let wsv={d:today,n:0};
       try{ wsv=JSON.parse(localStorage.getItem('ombrelune_water')||'null')||wsv; }catch(e){}
@@ -668,14 +799,14 @@
         href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff};
       if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, des leurres. Trouve l’angle qui renvoie la flamme.',
         href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
-      return {name:'l’Enquête du manoir', pitch:'Des indices, des suspects, un seul coupable. Recoupe, puis accuse.',
-        href:'./'+encodeURIComponent('Compagnon - Déduction.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
+      return {name:'l’Enquête du manoir', pitch:'Des indices, des suspects, un seul coupable — dispersés dans les salles du manoir. Recoupe, puis accuse.',
+        enq:true, seed:(h%99991)};
     }
     openPortal(){ if(this.dialogue) return; const na=this.nextAction; const st=this.portalState();
       if(st==='sealed'){
         const guard=this.missionGuard(na&&na.actionId);
-        this.dialogue={ i:0, endLabel:'Y aller',
-          onEnd:()=>{ window.location.href=guard.href; },
+        this.dialogue={ i:0, endLabel:guard.enq?'Ouvrir l’enquête':'Y aller',
+          onEnd:()=>{ if(guard.enq) this.startEnquete('reward', guard.seed); else window.location.href=guard.href; },
           lines:[
             {who:'Lampyre', mood:'doubt', t:'Derrière ce portail, l’ennemi garde le prochain pas de ton projet « '+((na&&na.projectName)||'…')+' ». Tu ne sauras pas lequel sans aller le prendre.'},
             {who:'Lampyre', mood:'idle', t:'Cette étape est gardée par '+guard.name+'. '+guard.pitch+' L’étape sera à toi.'} ]}; }
@@ -798,6 +929,17 @@
       else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       // quête résolue → la table des miroirs propose des énigmes GÉNÉRÉES, sans enjeu
       else if(this.mquest==='solved' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_replay', text:'Jouer une énigme des miroirs', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
+      // enquête incarnée : suspect ou indice à portée
+      else if(this.enq && this.enq.state==='play' && this.scene.type!=='sub' && (()=>{ let be=null,bb=34,bt=null;
+        for(const a of (this.enqActors||[])){ const d=Math.hypot(a.x-this.hero.x,a.y-this.hero.y); if(d<bb){bb=d; be=a; bt='s';} }
+        for(const c of (this.enqClues||[])){ const d=Math.hypot(c.x-this.hero.x,c.y-this.hero.y); if(d<bb){bb=d; be=c; bt='c';} }
+        if(be){ poi = bt==='s' ? {kind:'enq_suspect', ent:be, text:'Parler à '+be.sp.name, color:'#e8b4c8', glyph:'❔', dwell:false, hint:'clic'}
+          : {kind:'enq_clue', ent:be, text:(be.done?'Relire l’indice':'Examiner · '+be.l.place), color:'#bfe3ff', glyph:be.l.icon, dwell:false, hint:'clic'};
+          return true; } return false; })()){ /* poi posé */ }
+      // butin : souvenir de mission inspectable
+      else if(this.scene.type!=='sub' && (()=>{ let bi=null,bb2=30;
+        for(const b of (this.butinPlaced||[])){ const d=Math.hypot(b.x-this.hero.x,b.y-this.hero.y); if(d<bb2){bb2=d; bi=b;} }
+        if(bi){ poi={kind:'butin', ent:bi, text:bi.it.n, color:'#f2cd72', glyph:bi.it.i, dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
         if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.portalPos && this.roomOn('sanctuaire') && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);
@@ -830,7 +972,10 @@
       h.showDlg=!!dl; h.dlgWho=dl?dl.who:''; h.dlgText=dl?dl.t:''; h.dlgColor=dl?(dl.who==='Lampyre'?'#9fd4ee':'#f2cd72'):'#f2cd72';
       h.dlgBtn=this.dialogue?(this.dialogue.i>=this.dialogue.lines.length-1?(this.dialogue.endLabel||'Fermer'):'Suivant \u25b8'):'';
       const FT=this.FRAGS.length;
-      if(this.mquest!=='solved' && this.roomOn('miroirs')){ h.showMission=true;
+      if(this.enq && this.enq.state==='play' && this.enqSpec){ h.showMission=true;
+        const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
+        h.missText = n>=N ? 'Enquête \u00b7 accuse le coupable' : 'Enquête \u00b7 '+n+'/'+N+' indices'; }
+      else if(this.mquest!=='solved' && this.roomOn('miroirs')){ h.showMission=true;
         h.missText = this.mquest==='found' ? 'R\u00e9parer le miroir \u00b7 Salle des miroirs'
           : (this.mgot.size>=2 ? 'Trouver la Salle des miroirs \u00b7 '+this.mgot.size+'/'+FT+' \u00e9clats'
           : 'Retrouver les \u00e9clats de miroir \u00b7 '+this.mgot.size+'/'+FT); }
@@ -1221,6 +1366,7 @@
       if(this.SPOTS){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
       if(this.roomOn('sanctuaire')) this.drawPortal(ctx,t);
       if(this.roomOn('cabinet')) this.drawTrophies(ctx,t);
+      this.drawEnquete(ctx,t); this.drawButin(ctx,t);
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -1312,6 +1458,29 @@
       ctx.fillStyle=npc.c1; ctx.beginPath(); ctx.arc(0,-10.5,5.6,Math.PI*1.02,Math.PI*1.98); ctx.fill();
       ctx.strokeStyle='rgba(255,225,160,.55)'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.arc(-1.5,-9,5,Math.PI*0.85,Math.PI*1.45); ctx.stroke();
       ctx.restore(); }
+    // Enquête incarnée : suspects (silhouettes) + indices (objets lumineux) + butin.
+    drawEnquete(ctx,t){ if(!this.enq || this.enq.state!=='play') return;
+      for(const c of (this.enqClues||[])){ const p2=0.5+0.5*Math.sin(t*2+c.x);
+        ctx.save(); ctx.translate(c.x,c.y);
+        ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,7,10,4,0,0,7); ctx.fill();
+        ctx.globalAlpha=c.done?0.45:1;
+        if(!c.done) this.lightPool(ctx,0,0,26,'160,200,255',0.16+0.12*p2);
+        ctx.font='17px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.shadowColor='#bfe3ff'; ctx.shadowBlur=c.done?0:8*p2; ctx.fillText(c.l.icon,0,0);
+        if(c.done){ ctx.shadowBlur=0; ctx.globalAlpha=0.9; ctx.fillStyle='#9fe0b0'; ctx.font='700 9px Outfit'; ctx.fillText('✓',9,-8); }
+        ctx.restore(); }
+      for(const a of (this.enqActors||[])){
+        this.drawNpc(ctx,a,t);
+        ctx.save(); ctx.translate(a.x,a.y-26); ctx.globalAlpha=0.85;
+        ctx.font='700 8.5px Outfit'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        const w=ctx.measureText(a.sp.name).width+10;
+        this.rr(ctx,-w/2,-7,w,14,7); ctx.fillStyle='rgba(8,5,16,.72)'; ctx.fill();
+        ctx.fillStyle='#e8b4c8'; ctx.fillText(a.sp.name,0,0.5); ctx.restore(); } }
+    drawButin(ctx,t){ for(const b of (this.butinPlaced||[])){ const p2=0.5+0.5*Math.sin(t*1.4+b.x);
+        ctx.save(); ctx.translate(b.x,b.y);
+        ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,6,9,3.5,0,0,7); ctx.fill();
+        ctx.strokeStyle='rgba(214,168,74,'+(0.25+0.25*p2)+')'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.arc(0,0,11,0,7); ctx.stroke();
+        ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(b.it.i,0,0); ctx.restore(); } }
     // Point d'observation : léger scintillement sur le mobilier (discret, à repérer).
     drawLookMark(ctx,s,t){ const p=0.5+0.5*Math.sin(t*1.8+s.ph);
       ctx.save(); ctx.translate(s.x,s.y); ctx.globalAlpha=0.35+0.4*p;
@@ -1454,6 +1623,13 @@
       if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
         const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
+      // enquête + butin : petits halos pour repérer suspects, indices et souvenirs
+      if(this.scene.type!=='sub'){
+        const ents=[...(this.enqActors||[]).map(a=>({x:a.x,y:a.y,r:56})), ...(this.enqClues||[]).map(c=>({x:c.x,y:c.y,r:44})), ...(this.butinPlaced||[]).map(b=>({x:b.x,y:b.y,r:34}))];
+        for(const en of ents){ const [ex,ey]=toS(en.x,en.y); if(ex<-80||ex>W+80||ey<-80||ey>H+80) continue;
+          const er=en.r*this.Z*0.5;
+          const eg=f.createRadialGradient(ex,ey,2,ex,ey,er); eg.addColorStop(0,'rgba(0,0,0,.8)'); eg.addColorStop(0.6,'rgba(0,0,0,.45)'); eg.addColorStop(1,'rgba(0,0,0,0)');
+          f.fillStyle=eg; f.beginPath(); f.arc(ex,ey,er,0,7); f.fill(); } }
       // salles scellées : lueur discrète sur la rune — on devine ce qui dort sans le révéler
       if(this.scene.type!=='sub'){ for(const r of this.ROOMS){ if(this.roomOn(r.k)) continue;
         const [sx,sy]=toS(r.x+r.w/2,r.y+r.h/2); if(sx<-80||sx>W+80||sy<-80||sy>H+80) continue;
