@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
@@ -55,7 +56,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 1);
+    // Onglet « Arène » (ancienne gamification) retiré quand le coupe-circuit est off.
+    _mainTabs = TabController(
+        length: kOldGamificationEnabled ? 5 : 4,
+        vsync: this,
+        initialIndex: 1);
     _load();
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
@@ -212,12 +217,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             children: [
               TabBar(
                 controller: _mainTabs,
-                tabs: const [
-                  Tab(text: 'Projets'),
-                  Tab(text: 'Focus'),
-                  Tab(text: 'Arène'),
-                  Tab(text: 'Organisation'),
-                  Tab(text: 'ORION'),
+                tabs: [
+                  const Tab(text: 'Projets'),
+                  const Tab(text: 'Focus'),
+                  if (kOldGamificationEnabled) const Tab(text: 'Arène'),
+                  const Tab(text: 'Organisation'),
+                  const Tab(text: 'ORION'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -276,7 +281,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                         _load();
                       },
                     ),
-                    ArenaView(sync: _sync),
+                    if (kOldGamificationEnabled) ArenaView(sync: _sync),
                     _ArchivesView(sync: _sync),
                     _OrionView(sync: _sync),
                   ],

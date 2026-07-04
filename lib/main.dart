@@ -29,6 +29,7 @@ import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
 import 'package:productivitwo_v1/notifications.dart';
@@ -2990,8 +2991,9 @@ class _AppRootState extends State<AppRoot>
             logic: logic,
             state: st,
             // Quête retirée de « Maintenant » une fois le coffre récupéré.
-            header: logic.state.lastQuestClaimedYmd ==
-                    yyyymmdd(DateTime.now())
+            // Masquée aussi quand l'ancienne gamification est coupée.
+            header: (!kOldGamificationEnabled ||
+                    logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now()))
                 ? null
                 : _buildQuestBanner(context, Theme.of(context).colorScheme),
             focusProject: _focusProject,
@@ -4666,7 +4668,8 @@ class _AppRootState extends State<AppRoot>
                           ],
                         ),
                         ),
-                        if (logic.levelRevealInfo().pending) ...[
+                        if (kOldGamificationEnabled &&
+                            logic.levelRevealInfo().pending) ...[
                           const SizedBox(height: 12),
                           Builder(builder: (_) {
                             final rv = logic.levelRevealInfo();
@@ -5187,7 +5190,8 @@ class _AppRootState extends State<AppRoot>
             ),
             const Spacer(),
             // Indicateur composite gamifié (gains du jour · score · net projeté).
-            _buildGamificationIndicator(context),
+            // Coupé avec l'ancienne gamification (kOldGamificationEnabled).
+            if (kOldGamificationEnabled) _buildGamificationIndicator(context),
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -6120,8 +6124,10 @@ class _AppRootState extends State<AppRoot>
           ),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
           // ── Défis du donjon ──────────────────────────────────────────────────
-          for (final c in donjonChallenges)
-            _buildDonjonChallengeTile(context, cs, c),
+          // Coupés avec l'ancienne gamification (kOldGamificationEnabled).
+          if (kOldGamificationEnabled)
+            for (final c in donjonChallenges)
+              _buildDonjonChallengeTile(context, cs, c),
           // ── Items Gantt ──────────────────────────────────────────────────────
           for (final entry in todayTasks)
             _buildPriorityTaskTile(context, cs, entry.project, entry.task),
