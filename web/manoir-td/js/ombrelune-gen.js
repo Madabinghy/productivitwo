@@ -209,6 +209,11 @@
       }
       if(clues.length<Math.min(nClues,3)) continue;
       clues=shuffle(clues,rnd).map(function(c,i){ c.key='c'+i; return c; });
+      // difficulté 2+ : une partie des indices se CACHE dans les meubles (la Fouille) ;
+      // à 3, l'un d'eux exige la loupe. Purement présentation — la logique ne change pas.
+      var nHide=[0,1,2][diff-1], hid=0;
+      for(var hi=0; hi<clues.length && hid<nHide; hi++){ clues[hi].hidden=true; hid++; }
+      if(diff>=3){ var fh=clues.filter(function(c){ return c.hidden; })[0]; if(fh) fh.needsLoupe=true; }
       var spec={ question:crime.q, deed:crime.deed, OBJ:crime.obj, SUSPECTS:sus, LOCATIONS:clues, CULPRIT:culprit.key };
       var surv=enqueteSurvivors(spec);
       if(surv.length!==1 || surv[0].key!==culprit.key) continue; // vérif force brute
