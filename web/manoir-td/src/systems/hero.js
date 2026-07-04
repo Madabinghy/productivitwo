@@ -29,7 +29,7 @@ export function updateHeroMove(game, dt) {
       else { mx = dx / d; my = dy / d; }
     }
   }
-  game._moveX = mx; game._moveY = my;
+  game._moveX = mx; game._moveY = my; game._heroMoving = false;
 
   if (mx || my) {
     game.freeCam = false;
@@ -39,6 +39,10 @@ export function updateHeroMove(game, dt) {
     nx = Math.max(20, Math.min(MAP.W - 20, nx)); ny = Math.max(20, Math.min(MAP.H - 20, ny));
     if (!blocked(W, H.x, H.y, nx, H.y)) H.x = nx;          // collision axe par axe (glisse le long des murs)
     if (!blocked(W, H.x, H.y, H.x, ny)) H.y = ny;
+    // marche calée sur la distance RÉELLEMENT parcourue : figée à l'arrêt (ou contre un mur),
+    // cadence proportionnelle à la vitesse — plus de jambes/bras qui tournent dans le vide.
+    const moved = Math.hypot(H.x - px, H.y - py);
+    if (moved > 0.05) { game._heroMoving = true; H.stepPhase = (H.stepPhase || 0) + moved * 0.045; }
     if (!H.trail) H.trail = [];
     game._trailT = (game._trailT || 0) + dt;
     if (game._trailT >= 0.045) { game._trailT = 0; H.trail.push({ x: H.x, y: H.y, life: 0.55 }); if (H.trail.length > 14) H.trail.shift(); }

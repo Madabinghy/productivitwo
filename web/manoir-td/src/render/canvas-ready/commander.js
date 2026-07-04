@@ -71,9 +71,12 @@ function drawAction(ctx, s, T, action, Rh, Lh, Rt, Lt) {
   }
 }
 
-export function drawCommander(ctx, s, T, action, facingOverride) {
-  const walk = action === 'move';
-  const ph = T * 4.2;
+export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPhase) {
+  // `moving`/`stepPhase` fournis par le jeu : l'anim de marche ne joue QUE si le héros
+  // se déplace, et sa cadence suit la distance parcourue (pas le temps) → pas de « moonwalk »
+  // ni de jambes/bras qui bougent à l'arrêt. Sans ces args (démo) : ancien comportement.
+  const walk = moving === undefined ? (action === 'move') : !!moving;
+  const ph = (moving !== undefined && stepPhase != null) ? stepPhase : T * 4.2;
   const FACE = { move: 0, build: Math.PI - 0.30, harvest: Math.PI - 0.62, laser: Math.PI + 0.34 };
   const facing = facingOverride != null ? facingOverride : (FACE[action] || 0);
 

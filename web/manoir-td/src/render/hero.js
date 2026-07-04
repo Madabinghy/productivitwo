@@ -44,7 +44,7 @@ export function drawHero(game, ctx, th, t) {
   const hurt = (H.inv || 0) > 0.6;
   ctx.save();
   if (hurt) ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 30);
-  drawCommander(ctx, HERO_SIZE, t, heroAction(game), (H.dir || 0) * Math.PI / 180);
+  drawCommander(ctx, HERO_SIZE, t, heroAction(game), (H.dir || 0) * Math.PI / 180, !!game._heroMoving, H.stepPhase || 0);
   ctx.restore();
 
   drawHpBar(ctx, H);
