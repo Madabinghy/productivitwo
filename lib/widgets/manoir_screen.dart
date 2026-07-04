@@ -18,9 +18,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:productivitwo_v1/widgets/manoir_iframe_stub.dart'
     if (dart.library.html) 'package:productivitwo_v1/widgets/manoir_iframe_web.dart';
 
-/// Écran d'entrée du jeu (choix de profil du Compagnon — auto-skip si déjà choisi).
+/// Écran d'entrée du jeu : directement le mode Exploration (le hub Compagnon
+/// reste accessible via le ✕ de l'Exploration — « le manoir hors exploration »).
 const String kManoirUrl =
-    'https://productivitwo-app.web.app/manoir-td/Compagnon%20-%20Choix%20de%20profil.html';
+    'https://productivitwo-app.web.app/manoir-td/Manoir%20-%20Exploration.html';
 
 /// Domaine sous lequel on range les routines « scénario » du Manoir.
 const String kManoirDomainName = "Manoir d'Ombrelune";
@@ -69,7 +70,10 @@ class ManoirScreen extends StatefulWidget {
 class _ManoirScreenState extends State<ManoirScreen> {
   WebViewController? _ctrl;
   bool _ready = false;
-  bool _onExploration = false; // page courante = Exploration (⟳ affichable)
+  // Page courante = hub Compagnon (Accueil…) : les contrôles Flutter (✕ sortir
+  // du manoir, ⟳ recharger) n'apparaissent QUE là — jamais sur l'Exploration
+  // (elle a son propre ✕ qui ramène au hub) ni sur les mini-jeux.
+  bool _onHub = false;
   int _webNonce = 0; // bump → nouvelle iframe (rechargement web)
   // Boucle « gagner la prochaine action Gantt » (docs/manoir_missions_v2.md §1) :
   // l'action est poussée SCELLÉE (sans titre) ; le jeu demande la révélation
@@ -92,13 +96,15 @@ class _ManoirScreenState extends State<ManoirScreen> {
           onPageFinished: (url) {
             _pushSync();
             _pushNextAction();
-            // Le ⟳ superposé n'apparaît que sur l'Exploration (zone d'en-tête
-            // sûre) — ailleurs il masquerait les boutons propres des pages.
-            final onExp = url.contains('Exploration');
-            if (mounted && (!_ready || onExp != _onExploration)) {
+            final u = Uri.decodeFull(url);
+            final onHub = u.contains('Accueil') ||
+                u.contains('Choix de profil') ||
+                u.contains('Équilibré') ||
+                u.contains('Grinder');
+            if (mounted && (!_ready || onHub != _onHub)) {
               setState(() {
                 _ready = true;
-                _onExploration = onExp;
+                _onHub = onHub;
               });
             }
           },
@@ -372,24 +378,22 @@ class _ManoirScreenState extends State<ManoirScreen> {
           Positioned.fill(child: content),
           if (!kIsWeb && !_ready)
             const Center(child: CircularProgressIndicator()),
-          // Les contrôles superposés (✕ Console, ⟳ Recharger) n'apparaissent
-          // QUE sur la page Exploration : son en-tête leur laisse la place —
-          // ailleurs ils masqueraient les boutons propres des pages du jeu.
-          // Sur les autres pages, la sortie reste le POI « Console du
-          // Commander » (open_console) ou le retour in-game vers l'Exploration.
-          if (_onExploration || kIsWeb) ...[
+          // Deux niveaux de sortie : Exploration → son propre ✕ (jeu) ramène au
+          // hub Compagnon ; hub → le ✕ Flutter (ici) sort du manoir vers l'appli.
+          // Aucun bouton Flutter sur l'Exploration ni sur les mini-jeux.
+          if (_onHub || kIsWeb) ...[
             Positioned(
               top: 6,
-              left: 6,
+              right: 6,
               child: _roundBtn(
                   Icons.close,
-                  'Retour à la Console',
+                  'Quitter le manoir',
                   () => widget.onExit != null
                       ? widget.onExit!()
                       : Navigator.of(context).maybePop()),
             ),
             Positioned(
-              top: 6,
+              top: 54,
               right: 6,
               child: _roundBtn(Icons.refresh, 'Recharger', _reload),
             ),
