@@ -59,6 +59,11 @@
     </div>
 
     <!-- bottom-left : contrôles -->
+    <div class="hud" id="hud-lantern" style="top:14px; right:152px; display:flex; align-items:center; gap:7px; padding:8px 13px; background:rgba(8,5,16,.78); backdrop-filter:blur(7px); border:1px solid rgba(214,168,74,.3); border-radius:11px; cursor:pointer; z-index:6;">
+      <span id="hud-lantern-ico" style="font-size:15px; filter:grayscale(1) opacity(.6);">🏮</span>
+      <span id="hud-lantern-txt" style="font-family:'Outfit'; font-weight:700; font-size:11px; color:#9a86b8;">0 min</span>
+    </div>
+
     <div class="hud" id="hud-controls" style="bottom:14px; left:14px; display:flex; align-items:center; gap:14px; padding:8px 14px; background:rgba(8,5,16,.66); backdrop-filter:blur(6px); border:1px solid rgba(154,134,184,.16); border-radius:10px; font-family:'Outfit'; font-size:11px; color:#9a86b8;">
       <span><strong style="color:#d8c8ec;">ZQSD / flèches</strong> marcher</span>
       <span style="opacity:.4;">·</span>
@@ -180,6 +185,19 @@
         cart:{icon:'🛒',verb:'Soulever la bâche de la charrette'}, wood:{icon:'🪚',verb:'Inspecter l’établi'},
         plant:{icon:'🪴',verb:'Écarter les feuilles'}, frame:{icon:'🖼️',verb:'Regarder derrière le cadre'},
         well:{icon:'⛲',verb:'Scruter le fond du puits'} };
+      // Serrures : coffrets fermés à clé — les clés se GAGNENT par des actions réelles
+      this.CHESTS=[
+        {id:'biblio', room:'biblio', fx:0.85, fy:0.18, key:'cle_cuivre', keyName:'clé de cuivre', name:'Coffret de la Bibliothèque', loot:'uv',
+         how:'Accomplis toutes tes missions du jour pour gagner la clé de cuivre.'},
+        {id:'office', room:'office', fx:0.20, fy:0.55, key:'cle_fer', keyName:'clé de fer', name:'Coffret du majordome', loot:'oil15',
+         how:'Une journée à 10 verres d’eau forge la clé de fer.'},
+        {id:'cabinet', room:'cabinet', fx:0.78, fy:0.78, key:'cle_or', keyName:'clé d’or', name:'Coffret du fondateur', loot:'sceau',
+         how:'Accomplis 3 étapes de projet pour de vrai (trophées) — la clé d’or suivra.'} ];
+      // Runes UV : visibles UNIQUEMENT lampe UV en main ET lanterne éteinte (le noir complet)
+      this.RUNES=[
+        {id:'r1', room:'vestibule', fx:0.14, fy:0.22, lore:'« La lumière ment parfois ; l’ombre, jamais. »'},
+        {id:'r2', room:'galerie',   fx:0.86, fy:0.80, lore:'« Ceux des cadres veillent sur qui éteint sa lampe. »'},
+        {id:'r3', room:'crypte',    fx:0.50, fy:0.08, lore:'« Le manoir se souvient de chaque main qui l’a soigné. »'} ];
       this.UNLOCKS=[
         ['hall','vestibule','biblio','coffre'],
         ['office','sanctuaire'],
@@ -327,8 +345,20 @@
       // —— Enquête incarnée + butin : suspects et indices PHYSIQUEMENT dans les
       // salles ; chaque enquête résolue laisse un objet permanent dans le manoir.
       this.tools={}; try{ this.tools=JSON.parse(localStorage.getItem('ombrelune_tools')||'{}')||{}; }catch(e){}
-      this.oil={n:0}; try{ this.oil=JSON.parse(localStorage.getItem('ombrelune_oil')||'null')||{n:0}; }catch(e){}
+      // huile : don de bienvenue à la première visite (une vieille lanterne, un fond d'huile)
+      this.oil=null; try{ this.oil=JSON.parse(localStorage.getItem('ombrelune_oil')||'null'); }catch(e){}
+      if(!this.oil){ this.oil={n:10, credited:{d:today, focus:0, gift:false}}; this.saveOil();
+        this.toast={t:'🏮 Tu trouves une vieille lanterne — et un fond d’huile (10 min).', t0:performance.now()}; }
+      this.oil.credited=this.oil.credited||{d:today, focus:0, gift:false};
+      if(this.oil.credited.d!==today){ this.oil.credited={d:today, focus:0, gift:false}; this.saveOil(); }
+      this.lantern=false; this.heroDir={x:0,y:-1}; this._oilSaveAt=0;
+      this.creditOil();
+      { const lb=document.getElementById('hud-lantern'); if(lb) lb.addEventListener('click',()=>this.toggleLantern()); }
+      this.updateLanternHud();
       this.caches=this.fouilleCaches(); this.reloadFouille();
+      this.chests={opened:[]}; try{ const c=JSON.parse(localStorage.getItem('ombrelune_chests')||'null'); if(c&&c.opened) this.chests=c; }catch(e){}
+      this.runes={found:[]}; try{ const r=JSON.parse(localStorage.getItem('ombrelune_runes')||'null'); if(r&&r.found) this.runes=r; }catch(e){}
+      this.placeKeyItems(); this.checkKeys();
       this.loadButin(); this.loadEnquete();
       { const fc=document.getElementById('hud-face');
         if(fc){ fc.addEventListener('click',(e)=>{ const b=e.target.closest('[data-fa]');
@@ -479,6 +509,8 @@
       else if(p.kind==='enq_clue') this.openFaceClue(p.ent);
       else if(p.kind==='butin') this.openFaceButin(p.ent);
       else if(p.kind==='fouille') this.openFouille(p.ent);
+      else if(p.kind==='chest') this.openFaceChest(p.ent);
+      else if(p.kind==='rune') this.openFaceRune(p.ent);
       else if(p.kind==='console') this.openConsole();
       else if(p.kind==='portal') this.openPortal(); }
     talkSpot(sp){ if(!sp || this.dialogue) return;
@@ -564,7 +596,7 @@
       if(this.SPOTS) for(const sp of this.SPOTS){ if(sp.fx==null) continue; const r=this.byk[sp.room]; sp.x=r.x+r.w*sp.fx; sp.y=r.y+r.h*sp.fy; }
       if(this.FRAGS) for(const fg of this.FRAGS){ const r=this.byk[fg.room]; fg.x=r.x+r.w*fg.fx; fg.y=r.y+r.h*fg.fy; }
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
-      this.buildObstacles(); this.buildCandles(); this.caches=this.fouilleCaches(); this.reloadFouille(); this.placeEnquete(); this.placeButin(); }
+      this.buildObstacles(); this.buildCandles(); this.caches=this.fouilleCaches(); this.reloadFouille(); this.placeEnquete(); this.placeButin(); this.placeKeyItems&&this.placeKeyItems(); }
     // montée de palier : des salles s'éveillent — cascade de célébration
     onStageUp(ns){ this._stageXp=this.lamp?this.lamp.xp:this._stageXp;
       const fresh=(this.UNLOCKS[ns]||[]).map(k=>this.byk[k]).filter(Boolean);
@@ -595,6 +627,63 @@
     // ═══ La Fouille : objets cachés dans les meubles des salles éveillées ═══
     // Rien n'est affiché sur la carte — on FOUINE (regarder sous le lit, ouvrir la
     // caisse…). Contenu du jour déterministe (graine = date) ; reset quotidien.
+    // ═══ Serrures & clés : coffrets à ouvrir, clés gagnées par le réel ═══
+    saveChests(){ try{ localStorage.setItem('ombrelune_chests', JSON.stringify(this.chests)); }catch(e){} }
+    saveRunes(){ try{ localStorage.setItem('ombrelune_runes', JSON.stringify(this.runes)); }catch(e){} }
+    placeKeyItems(){ this.chestsPlaced=[]; this.runesPlaced=[];
+      for(const ch of this.CHESTS){ const r=this.byk[ch.room]; if(!r||!this.roomOn(ch.room)) continue;
+        this.chestsPlaced.push({ ch, x:r.x+r.w*ch.fx, y:r.y+r.h*ch.fy, opened:this.chests.opened.indexOf(ch.id)>=0 }); }
+      for(const rn of this.RUNES){ const r=this.byk[rn.room]; if(!r||!this.roomOn(rn.room)) continue;
+        this.runesPlaced.push({ rn, x:r.x+r.w*rn.fx, y:r.y+r.h*rn.fy, found:this.runes.found.indexOf(rn.id)>=0 }); } }
+    runesVisible(){ return !!this.tools.uv && !this.lantern; }
+    checkKeys(){ if(!this.tools) return;
+      const grant=(k,label,hint)=>{ if(this.tools[k]) return; this.tools[k]=true; this.saveTools();
+        this.flash=Math.max(this.flash||0,0.5);
+        this.toast={t:'🗝️ '+label+' gagnée — '+hint, t0:performance.now()}; };
+      if(this.MISSIONS && this.missionsOnCount()>0 && this.missionsDoneCount()>=this.missionsOnCount())
+        grant('cle_cuivre','La clé de cuivre','toutes tes missions du jour sont faites. Le coffret de la Bibliothèque t’attend.');
+      if((this.drunk||0)>=10) grant('cle_fer','La clé de fer','une journée à 10 verres. Le coffret du majordome t’attend.');
+      if((this.trophies||[]).length>=3) grant('cle_or','La clé d’or','3 étapes de projet accomplies. Le coffret du fondateur t’attend.'); }
+    openFaceChest(c){ if(this.dialogue) return; this.showFace({type:'chest', ent:c, dismiss:true}); }
+    openFaceRune(r){ if(this.dialogue) return;
+      if(!r.found){ this.runes.found.push(r.rn.id); r.found=true; this.saveRunes(); this.addXp(3);
+        if(this.runes.found.length>=this.RUNES.length){
+          this.addButin('🔮','Le Triptyque des runes','hall',0.5,0.30,'Trois vérités murmurées dans le noir complet, à qui sait éteindre sa lampe.');
+          this.toast={t:'🔮 Les trois runes réunies — le Triptyque rejoint le Grand Hall.', t0:performance.now()}; }
+        else this.toast={t:'✴ Une rune du manoir ('+this.runes.found.length+'/'+this.RUNES.length+') — +3 XP.', t0:performance.now()}; }
+      this.showFace({type:'rune', ent:r, dismiss:true}); }
+
+    // ═══ La Lanterne : cône de lumière directionnel, consomme l'huile (minutes réelles).
+    // L'huile vient du VRAI temps de focus (pont ombrelune_sync) et des fioles de fouille.
+    // Jamais bloqué : circuler, parler, cocher ses routines marchent sans lanterne —
+    // elle n'est requise que pour FOUILLER (et les runes UV demandent au contraire le noir).
+    creditOil(){ if(!this.oil||!this.sync) return;
+      const CHUNK=30, PER=5; // 30 min de focus réel = +5 min d'huile
+      const chunks=Math.floor((this.sync.focusMin||0)/CHUNK);
+      if(chunks>(this.oil.credited.focus||0)){ const d2=chunks-(this.oil.credited.focus||0);
+        this.oil.n=(this.oil.n||0)+PER*d2; this.oil.credited.focus=chunks; this.saveOil();
+        this.toast={t:'🫗 Ton focus réel distille '+(PER*d2)+' min d’huile (réserve : '+Math.floor(this.oil.n)+' min).', t0:performance.now()};
+        this.updateLanternHud(); } }
+    toggleLantern(){
+      if(this.lantern){ this.lantern=false; this.saveOil(); this.updateLanternHud(); return; }
+      if((this.oil.n||0)>=0.2){ this.lantern=true; this.updateLanternHud(); return; }
+      // à sec : Lampyre offre un peu de flamme, une fois par jour — jamais bloqué
+      if(!this.oil.credited.gift){ this.oil.credited.gift=true; this.oil.n=(this.oil.n||0)+3; this.saveOil();
+        this.lantern=true; this.flash=Math.max(this.flash||0,0.4);
+        this.toast={t:'🔥 Lampyre souffle un peu de sa flamme : +3 min d’huile (une fois par jour).', t0:performance.now()}; }
+      else this.toast={t:'🫗 Plus d’huile. Le focus réel en distille (30 min → 5 min), et des fioles dorment dans les meubles.', t0:performance.now()};
+      this.updateLanternHud(); }
+    updateLanternHud(){ const i=document.getElementById('hud-lantern-ico'), x=document.getElementById('hud-lantern-txt');
+      if(!i||!x) return; const n=Math.max(0,Math.floor(this.oil?this.oil.n:0));
+      i.style.filter=this.lantern?'none':'grayscale(1) opacity(.6)';
+      x.textContent=n+' min'; x.style.color=this.lantern?'#f2cd72':'#9a86b8'; }
+    updateOil(dt){ if(!this.lantern||!this.oil) return;
+      this.oil.n-=dt/60;
+      if(this.oil.n<=0){ this.oil.n=0; this.lantern=false; this.saveOil(); this.updateLanternHud();
+        this.toast={t:'🏮 La lanterne s’éteint — plus d’huile.', t0:performance.now()}; return; }
+      const nm=performance.now();
+      if(nm-this._oilSaveAt>5000){ this._oilSaveAt=nm; this.saveOil(); this.updateLanternHud(); } }
+
     fouilleCaches(){ const out=[];
       for(const r of this.ROOMS){ if(!this.roomOn(r.k)) continue;
         const L=this.furnitureFor(r);
@@ -733,6 +822,9 @@
                  :'<div style="margin-top:4px; font-family:\'Outfit\'; font-size:11.5px; color:#d8c8a8;">Le sceau se dissout… la Console te lira ta prochaine étape.</div>')+'</div>'; }
         return H(f.culprit.face,'Coupable démasqué','C’était '+f.culprit.name+'.')+P(spec.VERDICT.text)+extra+ROW(this.faceBtn('conclude','Conclure ✦',true)); }
       if(f.type==='fouille'){ const c=f.ent, m=this.FOUILLE_META[c.t], rl=(this.byk[c.room]||{}).label||'';
+        if(!this.lantern && !f.res) return H('🏮','Fouille · '+this.esc2(rl),'Trop sombre pour fouiller')
+          +P((this.oil.n||0)>=0.2 ? 'Dans ce noir, impossible de distinguer quoi que ce soit. Allume ta lanterne.' : 'Il te faudrait de la lumière — et ta lanterne est à sec. Le focus réel distille de l’huile (30 min → 5 min).')
+          +ROW(((this.oil.n||0)>=0.2||!this.oil.credited.gift ? this.faceBtn('light','Allumer la lanterne 🏮',true) : '')+this.faceBtn('close','Plus tard'));
         if(!f.res) return H(m.icon,'Fouille · '+this.esc2(rl),m.verb)+P('Peut-être que quelque chose s’y cache…')+ROW(this.faceBtn('search','Fouiller ›',true)+this.faceBtn('close','Plus tard'));
         const r2=f.res;
         if(r2.k==='needsLoupe') return H('🔍','Fouille · '+this.esc2(rl),'Des traces trop fines')+P('Quelque chose est gravé là, mais c’est illisible à l’œil nu. Il te faudrait une loupe — elle dort quelque part dans le manoir.')+ROW(this.faceBtn('close','Je la trouverai',true));
@@ -744,12 +836,26 @@
         const FLAVOR=['De la poussière, une toile d’araignée, rien d’utile.','Un courant d’air froid. Rien d’autre.','Des rognures de bougie. Quelqu’un est passé par là, il y a longtemps.','Rien — mais au moins, maintenant, tu sais.','Le vide. Même les souris ont déménagé.','Un vieux journal illisible. Sans intérêt… probablement.'];
         let hsh=0; const str2=c.id+this._wdate; for(let i2=0;i2<str2.length;i2++) hsh=(hsh*31+str2.charCodeAt(i2))>>>0;
         return H(m.icon,'Fouille · '+this.esc2(rl),'Rien par ici')+P(FLAVOR[hsh%FLAVOR.length])+ROW(this.faceBtn('close','Tant pis ✦',true)); }
+      if(f.type==='chest'){ const c=f.ent, ch=c.ch;
+        const LOOT={uv:{icon:'🔦',t:'La lampe ultraviolette',p:'Dans le noir complet (lanterne éteinte), elle révèle ce que la lumière cache. Des runes attendent quelque part…'},
+          oil15:{icon:'🫗',t:'Une grande réserve d’huile',p:'+15 min d’huile pour la lanterne.'},
+          sceau:{icon:'🏵️',t:'Le Sceau du fondateur',p:'L’emblème du manoir, à qui accomplit pour de vrai. +5 XP — il rejoint le butin du Cabinet.'}};
+        if(f.justOpened){ const L2=LOOT[ch.loot];
+          return H(L2.icon,'Coffret ouvert !',L2.t)+P(L2.p)+ROW(this.faceBtn('close','Précieux ✦',true)); }
+        if(c.opened) return H('🧰',this.esc2(ch.name),'Déjà ouvert')+P('Son trésor est à toi depuis le '+this.esc2((this.chests.openedAt&&this.chests.openedAt[ch.id])||'…')+'.')+ROW(this.faceBtn('close','Fermer ✦',true));
+        if(!this.tools[ch.key]) return H('🔒',this.esc2(ch.name),'Fermé à clé')+P('La serrure attend la '+ch.keyName+'. '+ch.how)+ROW(this.faceBtn('close','Je reviendrai',true));
+        return H('🧰',this.esc2(ch.name),'Ta '+ch.keyName+' correspond')+P('La serrure cliquette doucement. On ouvre ?')+ROW(this.faceBtn('unlock','Ouvrir 🗝️',true)+this.faceBtn('close','Pas encore'));
+      }
+      if(f.type==='rune'){ const rn=f.ent.rn;
+        return H('✴','Rune du manoir · '+this.runes.found.length+'/'+this.RUNES.length,'Des signes dans le noir')+P(rn.lore)+ROW(this.faceBtn('close','Retenir ✦',true)); }
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
     faceAction(fa){ const f=this.face; if(!f) return;
       if(fa==='close'){ this.hideFace(); return; }
-      if(fa==='search' && f.type==='fouille'){ const res=this.fouilleResult(f.ent);
+      if(fa==='light' && f.type==='fouille'){ this.toggleLantern(); if(this.lantern) this.showFace(f); return; }
+      if(fa==='search' && f.type==='fouille'){ if(!this.lantern){ this.showFace(f); return; }
+        const res=this.fouilleResult(f.ent);
         if(res.k==='clue'){ const l=res.l;
           if(this.enq && this.enq.collected.indexOf(l.key)<0){ this.enq.collected.push(l.key); this.saveEnquete();
             const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
@@ -770,6 +876,14 @@
         if(sp.key===this.enqSpec.CULPRIT){ this.showFace({type:'verdict', spec:this.enqSpec, culprit:sp, mode:this.enq.mode}); }
         else { f.rebut=this.enqSpec.WRONG[sp.key]||'Les indices disent le contraire.'; this.showFace(f); }
         return; }
+      if(fa==='unlock' && f.type==='chest'){ const c=f.ent, ch=c.ch;
+        if(!this.tools[ch.key] || c.opened) return;
+        this.chests.opened.push(ch.id); this.chests.openedAt=this.chests.openedAt||{}; this.chests.openedAt[ch.id]=this._wdate;
+        this.saveChests(); c.opened=true; this.flash=Math.max(this.flash||0,0.6);
+        if(ch.loot==='uv'){ this.tools.uv=true; this.saveTools(); }
+        else if(ch.loot==='oil15'){ this.oil.n=(this.oil.n||0)+15; this.saveOil(); this.updateLanternHud(); }
+        else if(ch.loot==='sceau'){ this.addXp(5); this.addButin('🏵️','Le Sceau du fondateur','cabinet',0.62,0.62,'Tiré du coffret du fondateur — trois étapes réelles l’ont ouvert.'); }
+        f.justOpened=true; this.showFace(f); return; }
       if(fa==='conclude' && f.type==='verdict'){ this.hideFace(); this.finishEnquete(); return; } }
     openFaceSuspect(a){ if(this.dialogue) return; this.showFace({type:'suspect', ent:a, dismiss:true}); }
     openFaceClue(c){ if(this.dialogue) return; this.showFace({type:'clue', ent:c, dismiss:true}); }
@@ -785,7 +899,7 @@
           this.toast={t:'Lampyre boit avec toi 💧 ('+this.drunk+'/10)', t0:performance.now()}; }
         if(this.drunk>=10 && this.manor){ const hh=this.manor.rooms.hall=this.manor.rooms.hall||{n:0};
           if(hh.d!==this._wdate){ hh.d=this._wdate; this.creditRoom('hall',1); } }
-        this.creditCare();
+        this.creditCare(); this.checkKeys&&this.checkKeys();
         this.updateHud(); } }
     // gorgée bue HORS du manoir (saisie ailleurs dans l'appli) — la routine vide un verre ici
     simExternalDrink(){ if(!this.barRow || this.drunk>=this.barRow.n) return;
@@ -799,7 +913,7 @@
       try{ s=JSON.parse(localStorage.getItem('ombrelune_sync')||'null')||s; }catch(e){}
       if(s.d!==today) s={d:today,routines:{},focusMin:0};
       s.routines=s.routines||{}; this.sync=s;
-      if(!initial){ this.checkCelebrations(); this.creditCare(); this.updateHud(); } }
+      if(!initial){ this.checkCelebrations(); this.creditCare(); this.creditOil&&this.oil&&this.creditOil(); this.checkKeys&&this.checkKeys(); this.updateHud(); } }
     missionOn(m){ return !!m && this.roomOn(m.room); }
     missionDone(m){ if(!this.sync||!m) return false;
       if(m.rk==='focus') return (this.sync.focusMin||0)>=(m.target||25);
@@ -850,7 +964,7 @@
             this.toast={t:'✨ Lampyre grandit : '+this.LAMP_STAGES[ns].name+' ! (trophée accompli)', t0:performance.now()};
             this.onStageUp(ns); }
           this.saveLamp(); } }
-      if(!initial && this.el) this.updateHud(); }
+      if(!initial && this.el){ this.checkKeys&&this.checkKeys(); this.updateHud(); } }
     drawTrophies(ctx,t){ if(!this.trophies||!this.trophies.length) return;
       const cab=this.byk.cabinet; const X=cab.x,Y=cab.y,W=cab.w,cy=cab.y+cab.h/2,cx=cab.x+W/2;
       // 3 piédestaux existants puis une rangée d'étagère — max 7 visibles
@@ -989,6 +1103,8 @@
         if(this.isWalk(this.hero.x+vx, this.hero.y)) this.hero.x+=vx;
         if(this.isWalk(this.hero.x, this.hero.y+vy)) this.hero.y+=vy;
         const moved=Math.abs(this.hero.x-ox)+Math.abs(this.hero.y-oy);
+        if(moved>0.4){ const dl=Math.hypot(this.hero.x-ox,this.hero.y-oy)||1;
+          this.heroDir={x:(this.hero.x-ox)/dl, y:(this.hero.y-oy)/dl}; }
         if(moved<0.5 && this.moveTarget && this.path && this.path.length){ this.moveTarget=this.path.shift(); }
       }
       const cl=dt>0?1-Math.pow(1-0.14,dt*60):0.14; this.cam.x+=(this.hero.x-this.cam.x)*cl; this.cam.y+=(this.hero.y-this.cam.y)*cl;
@@ -996,7 +1112,7 @@
       { const nm=performance.now(); const mood=1.8-0.9*(this._vital||0.6); // rayonnant → rit souvent
         if(this.laughNext==null) this.laughNext=nm+(7000+Math.random()*9000)*mood;
         if(nm>this.laughNext){ this.laughUntil=nm+1500; this.laughNext=nm+(9000+Math.random()*13000)*mood; } }
-      this.updateCat(dt);
+      this.updateCat(dt); this.updateOil(dt);
       { const nm2=performance.now();
         if(!this.shadowFx && nm2>this.shadowNext && this.scene.type!=='sub'){
           // une ombre file en travers, à la lisière du halo — rare et furtif
@@ -1029,6 +1145,14 @@
       else if(this.scene.type!=='sub' && (()=>{ let bi=null,bb2=30;
         for(const b of (this.butinPlaced||[])){ const d=Math.hypot(b.x-this.hero.x,b.y-this.hero.y); if(d<bb2){bb2=d; bi=b;} }
         if(bi){ poi={kind:'butin', ent:bi, text:bi.it.n, color:'#f2cd72', glyph:bi.it.i, dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      // coffret verrouillé / ouvert
+      else if(this.scene.type!=='sub' && (()=>{ let bc2=null,bd2=32;
+        for(const c of (this.chestsPlaced||[])){ const d=Math.hypot(c.x-this.hero.x,c.y-this.hero.y); if(d<bd2){bd2=d; bc2=c;} }
+        if(bc2){ poi={kind:'chest', ent:bc2, text:bc2.opened?bc2.ch.name:'Coffret verrouillé', color:'#f2cd72', glyph:'🧰', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      // rune UV : seulement lampe UV en main, lanterne ÉTEINTE
+      else if(this.runesVisible() && this.scene.type!=='sub' && (()=>{ let br=null,bd3=30;
+        for(const r of (this.runesPlaced||[])){ const d=Math.hypot(r.x-this.hero.x,r.y-this.hero.y); if(d<bd3){bd3=d; br=r;} }
+        if(br){ poi={kind:'rune', ent:br, text:br.found?'Relire la rune':'Une lueur violette…', color:'#b79ae0', glyph:'✴', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.scene.type!=='sub' && (()=>{ const cf=this.byk.coffre; const d=Math.hypot(cf.x+cf.w/2-this.hero.x, cf.y+cf.h/2-this.hero.y);
         if(d<40){ poi={kind:'console', text:'Console du Commander', color:'#f2cd72', glyph:'⌘', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.portalPos && this.roomOn('sanctuaire') && this.scene.type!=='sub' && (()=>{ const d=Math.hypot(this.portalPos.x-this.hero.x, this.portalPos.y-this.hero.y);
@@ -1459,7 +1583,7 @@
       if(this.SPOTS){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; if(s.kind==='npc') this.drawNpc(ctx,s,t); else this.drawLookMark(ctx,s,t); } }
       if(this.roomOn('sanctuaire')) this.drawPortal(ctx,t);
       if(this.roomOn('cabinet')) this.drawTrophies(ctx,t);
-      this.drawEnquete(ctx,t); this.drawButin(ctx,t);
+      this.drawEnquete(ctx,t); this.drawButin(ctx,t); this.drawKeyItems(ctx,t);
       const cf=this.byk.coffre; ctx.save(); this.rr(ctx,cf.x+cf.w/2-22,cf.y+cf.h/2-16,44,32,4); ctx.fillStyle='#2a2018'; ctx.fill(); ctx.strokeStyle='#f2cd72'; ctx.lineWidth=2.2; ctx.stroke();
       ctx.fillStyle='#f2cd72'; ctx.beginPath(); ctx.arc(cf.x+cf.w/2,cf.y+cf.h/2,3.4,0,7); ctx.fill(); ctx.restore();
       for(const st of this.stairList()){ const act=this.nearStair&&this.nearStair.room===st.room&&this.nearStair.dir===st.dir; this.drawStair(ctx,st,act, act?(this.dwell||0)/2:0); }
@@ -1569,6 +1693,21 @@
         const w=ctx.measureText(a.sp.name).width+10;
         this.rr(ctx,-w/2,-7,w,14,7); ctx.fillStyle='rgba(8,5,16,.72)'; ctx.fill();
         ctx.fillStyle='#e8b4c8'; ctx.fillText(a.sp.name,0,0.5); ctx.restore(); } }
+    drawKeyItems(ctx,t){
+      for(const c of (this.chestsPlaced||[])){ const p2=0.5+0.5*Math.sin(t*1.8+c.x);
+        ctx.save(); ctx.translate(c.x,c.y);
+        ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,8,12,4.5,0,0,7); ctx.fill();
+        this.rr(ctx,-11,-7,22,15,3); ctx.fillStyle=c.opened?'#241b12':'#2a2018'; ctx.fill();
+        ctx.strokeStyle=c.opened?'rgba(214,168,74,.4)':'#f2cd72'; ctx.lineWidth=1.6; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-11,-1); ctx.lineTo(11,-1); ctx.stroke();
+        if(c.opened){ ctx.fillStyle='#9fe0b0'; ctx.font='700 9px Outfit'; ctx.textAlign='center'; ctx.fillText('✓',0,5); }
+        else { ctx.save(); ctx.globalAlpha=0.6+0.4*p2; ctx.fillStyle='#f2cd72'; ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('🔒',0,3); ctx.restore(); }
+        ctx.restore(); }
+      if(this.runesVisible()){ for(const r of (this.runesPlaced||[])){ const p3=0.5+0.5*Math.sin(t*2.6+r.y);
+        ctx.save(); ctx.translate(r.x,r.y); ctx.globalAlpha=0.4+0.5*p3;
+        ctx.fillStyle='#b79ae0'; ctx.shadowColor='#8a7af0'; ctx.shadowBlur=12*p3;
+        ctx.font='700 15px Fraunces, serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('✴',0,0);
+        ctx.restore(); } } }
     drawButin(ctx,t){ for(const b of (this.butinPlaced||[])){ const p2=0.5+0.5*Math.sin(t*1.4+b.x);
         ctx.save(); ctx.translate(b.x,b.y);
         ctx.fillStyle='rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(0,6,9,3.5,0,0,7); ctx.fill();
@@ -1702,7 +1841,8 @@
       f.fillStyle='rgba(4,2,9,0.965)'; f.fillRect(0,0,W,H);
       f.globalCompositeOperation='destination-out';
       const toS=(wx,wy)=>[ (wx-this.cam.x)*this.Z + W/2, (wy-this.cam.y)*this.Z + H/2 ];
-      const hr=(this.cfg.haloR??230); const [hx,hy]=toS(this.hero.x,this.hero.y);
+      // noir quasi-total : petit halo de base ; la lanterne allumée déploie un CÔNE
+      const hr=(this.lantern?190:130)*( (this.cfg.haloR??230)/230 ); const [hx,hy]=toS(this.hero.x,this.hero.y);
       let g=f.createRadialGradient(hx,hy,hr*0.32,hx,hy,hr); g.addColorStop(0,'rgba(0,0,0,1)'); g.addColorStop(0.6,'rgba(0,0,0,.78)'); g.addColorStop(1,'rgba(0,0,0,0)');
       f.fillStyle=g; f.beginPath(); f.arc(hx,hy,hr,0,7); f.fill();
       for(const c of this.candleList()){ const [cx,cy]=toS(c.x,c.y); const cr=((c.r||60)+4)*this.Z*0.5;
@@ -1716,9 +1856,18 @@
       if(this.SPOTS && this.scene.type!=='sub'){ for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; const [sx,sy]=toS(s.x,s.y); const sr=(s.kind==='npc'?58:40)*this.Z*0.5;
         const sg=f.createRadialGradient(sx,sy,2,sx,sy,sr); sg.addColorStop(0,'rgba(0,0,0,.8)'); sg.addColorStop(0.6,'rgba(0,0,0,.45)'); sg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=sg; f.beginPath(); f.arc(sx,sy,sr,0,7); f.fill(); } }
+      // lanterne : cône de lumière triangulaire dans la direction de marche
+      if(this.lantern && this.scene.type!=='sub'){
+        const t2=performance.now()/1000; const flick=0.94+0.06*Math.sin(t2*7.3);
+        const ang=Math.atan2(this.heroDir.y,this.heroDir.x), half=0.5;
+        const cr=430*this.Z*0.5*flick;
+        const cg=f.createRadialGradient(hx,hy,10,hx,hy,cr);
+        cg.addColorStop(0,'rgba(0,0,0,.95)'); cg.addColorStop(0.55,'rgba(0,0,0,.75)'); cg.addColorStop(1,'rgba(0,0,0,0)');
+        f.fillStyle=cg; f.beginPath(); f.moveTo(hx,hy); f.arc(hx,hy,cr,ang-half,ang+half); f.closePath(); f.fill(); }
       // enquête + butin : petits halos pour repérer suspects, indices et souvenirs
       if(this.scene.type!=='sub'){
-        const ents=[...(this.enqActors||[]).map(a=>({x:a.x,y:a.y,r:56})), ...(this.enqClues||[]).map(c=>({x:c.x,y:c.y,r:44})), ...(this.butinPlaced||[]).map(b=>({x:b.x,y:b.y,r:34}))];
+        const ents=[...(this.enqActors||[]).map(a=>({x:a.x,y:a.y,r:56})), ...(this.enqClues||[]).map(c=>({x:c.x,y:c.y,r:44})), ...(this.butinPlaced||[]).map(b=>({x:b.x,y:b.y,r:34})),
+          ...(this.chestsPlaced||[]).map(c=>({x:c.x,y:c.y,r:40})), ...(this.runesVisible()?(this.runesPlaced||[]).map(r=>({x:r.x,y:r.y,r:44})):[])];
         for(const en of ents){ const [ex,ey]=toS(en.x,en.y); if(ex<-80||ex>W+80||ey<-80||ey>H+80) continue;
           const er=en.r*this.Z*0.5;
           const eg=f.createRadialGradient(ex,ey,2,ex,ey,er); eg.addColorStop(0,'rgba(0,0,0,.8)'); eg.addColorStop(0.6,'rgba(0,0,0,.45)'); eg.addColorStop(1,'rgba(0,0,0,0)');
