@@ -322,12 +322,30 @@ class _ManoirScreenState extends State<ManoirScreen> {
         't': widget.logic.activeHabitTarget(a),
       };
     }
+    final focusMin = widget.logic.totalForDay(now).inMinutes;
     final sync = jsonEncode({
       'd': today,
       'routines': routines,
-      'focusMin': widget.logic.totalForDay(now).inMinutes,
+      'focusMin': focusMin,
     });
     final water = jsonEncode({'d': today, 'n': routines['eau']?['n'] ?? 0});
+    // Couche de SIGNAUX : métriques GÉNÉRALES, agnostiques des domaines — le manoir
+    // évolue sur l'agrégat de CE QUE LE USER FAIT, pas sur des routines spécifiques.
+    // Régularité = routines tenues / actives (toutes, tous domaines) ; focus = temps réel.
+    var routinesActive = 0, routinesDone = 0;
+    for (final a in widget.logic.state.activeActivities) {
+      if (!a.isHabit) continue;
+      final tgt = widget.logic.activeHabitTarget(a);
+      if (tgt <= 0) continue;
+      routinesActive++;
+      if (widget.logic.habitValueOn(a.id, now) >= tgt) routinesDone++;
+    }
+    final signals = jsonEncode({
+      'd': today,
+      'routinesDone': routinesDone,
+      'routinesActive': routinesActive,
+      'focusMin': focusMin,
+    });
     // Écrit puis émet des StorageEvent synthétiques : les écritures locales ne
     // déclenchent pas l'event `storage` dans la page qui écrit, or le jeu
     // s'appuie dessus pour rafraîchir en direct.
@@ -335,8 +353,10 @@ class _ManoirScreenState extends State<ManoirScreen> {
       try {
         localStorage.setItem('ombrelune_sync', ${jsonEncode(sync)});
         localStorage.setItem('ombrelune_water', ${jsonEncode(water)});
+        localStorage.setItem('ombrelune_signals', ${jsonEncode(signals)});
         window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_sync'}));
         window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_water'}));
+        window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_signals'}));
       } catch (e) {}
     ''');
   }

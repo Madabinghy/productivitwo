@@ -160,6 +160,26 @@ réel → il boit avec toi (gorgée animée). Accomplir ses missions du jour →
   (Productivitwo) après l'avoir réellement faite — le jeu ne « fait » jamais le travail.
 - Une mission = 3-5 min max ; réessayable immédiatement.
 
+## 5ter. Couche de SIGNAUX : le manoir consomme du général, pas du spécifique
+
+**Principe (validé).** On ne binde JAMAIS les routines/actions spécifiques du user sur des
+mécanismes dédiés (impossible à l'échelle, friction). L'app calcule des **métriques
+générales, agnostiques des domaines**, et le manoir évolue sur l'agrégat.
+
+- **`ombrelune_signals`** (poussé par le pont, `lib/widgets/manoir_screen.dart` `_pushSync`) :
+  `{ d, routinesDone, routinesActive, focusMin }` — routines tenues / actives **tous domaines
+  confondus** (pas les 5 du scénario), focus réel du jour.
+- **`creditSignals()`** (`Manoir - Exploration.html`) : XP GÉNÉRALE — +4 / routine tenue,
+  +5 / tranche de 25 min de focus. Idempotent par jour (`L.credited.sigR` / `.focus`).
+  Repli focus sur `ombrelune_sync` en web pur.
+- **`creditCare()`** réduit au **soin de soi** (eau — hook tamagotchi). Le focus et les
+  « missions » spécifiques ne créditent plus d'XP en double : les 5 routines-scénario
+  restent une **couche de saveur** (célébration + croissance de salle via `checkCelebrations`),
+  plus le moteur d'XP. `_applyXp()` factorise la montée de stade.
+- Découplage : ce que le user fait EXACTEMENT (ses domaines, ses routines) ne pilote plus
+  directement le jeu — le manoir consomme un signal normalisé. La personnalisation par
+  domaine passera par le **baptême des salles** (auto-mapping optionnel), non par du binding.
+
 ## 6. Moteur de génération procédurale (`web/manoir-td/js/ombrelune-gen.js`)
 
 Principe : **découpler le contenu de jeu des actions IRL**. On ne rejoue jamais deux fois
