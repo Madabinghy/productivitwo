@@ -91,6 +91,7 @@
 
   function playHTML(){
     var done = allDone();
+    var hasTesti = LOCATIONS.some(function(l){ return l.elim && l.elim.type==='testi'; });
     var clues = LOCATIONS.map(function(l){
       var got = !!S.collected[l.key];
       var style = 'display:flex; align-items:flex-start; gap:11px; width:100%; text-align:left; cursor:'+(got?'default':'pointer')+'; padding:11px 13px; border-radius:13px; border:1px solid '+(got?'rgba(95,184,126,.32)':'rgba(214,168,74,.32)')+'; background:'+(got?'rgba(28,44,32,.45)':'rgba(40,28,60,.5)')+'; animation:'+(got?'pop .4s ease both':'none')+';';
@@ -123,6 +124,7 @@
     return '<div style="position:relative; flex:1; display:flex; flex-direction:column; padding:14px 22px 18px; animation:fadein .5s ease both;">'
       + '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; line-height:1.2; color:#fbf3e2;">'+esc(QUESTION)+'</div>'
       + '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#a796c0;">'+esc(done?'Tous les indices réunis. Écarte les innocents, puis accuse.':'Va récolter les indices dans le manoir, puis recoupe-les.')+'</div>'
+      + (hasTesti ? '<div style="margin-top:11px; padding:9px 12px; border-radius:11px; background:rgba(183,154,224,.12); border:1px solid rgba(183,154,224,.3); font-size:11px; line-height:1.45; color:#c9b8e6;">🗣️ <b>Un témoignage court les couloirs.</b> Ici le coupable ment, les honnêtes disent vrai : un témoignage qui contredit les indices trahit son menteur.</div>' : '')
       + '<div style="margin-top:15px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Les indices</div>'
       + '<div style="margin-top:9px; display:flex; flex-direction:column; gap:8px;">'+clues+'</div>'
       + '<div style="margin-top:16px; display:flex; align-items:baseline; justify-content:space-between; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:'+(done?'#9a86b8':'#5a4f70')+';"><span>Les suspects '+(done?'':'🔒')+'</span><span style="letter-spacing:0; text-transform:none; color:'+(remaining>1?'#8a7aa6':'#9fe0b0')+';">reste '+remaining+'</span></div>'

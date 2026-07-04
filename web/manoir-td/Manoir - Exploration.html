@@ -1170,6 +1170,7 @@
                          : SB('abandon'+q,'Ranger ↩')));
           // le carnet : pour l'affaire EN COURS, chaque indice relu ou à trouver
           if(!enq.paused){ const col=new Set(this.enqCollected(q));
+            if(spec.LOCATIONS.some(l=>l.elim&&l.elim.type==='testi')) h+=L('<span style="color:#c9b8e6; font-size:11px;">🗣️ Un témoignage circule — <b>le coupable ment, les honnêtes disent vrai.</b> Ce qui contredit les indices trahit son menteur.</span>');
             for(const l of spec.LOCATIONS){
               h+= col.has(l.key)
                 ? L('<span style="color:#9fe0b0;">'+l.icon+'</span> '+this.esc2(l.clue))
