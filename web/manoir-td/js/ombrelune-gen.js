@@ -10,108 +10,184 @@
   function mulberry32(a){ a|=0; return function(){ a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
   function hashStr(s){ var h=0; s=String(s||''); for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return h; }
 
-  // ============ Énigme des miroirs ============
-  // Génération PROUVÉE résoluble : on construit le chemin du rayon d'abord (chaque
-  // virage pose un miroir), la fin du chemin devient le sceau. Puis on brouille les
-  // orientations et on ajoute leurres + murs HORS du chemin solution.
-  var ROWS=9, COLS=7;
+  // ============ Énigme des miroirs (multi-faisceaux) ============
+  // Génération PROUVÉE résoluble. On construit d'abord un faisceau libre (chaque virage
+  // pose un miroir), puis — aux difficultés ≥2 — des faisceaux SUPPLÉMENTAIRES forcés de
+  // TRAVERSER un miroir déjà posé : un même miroir sert alors deux flammes (contrainte
+  // croisée, impossible de le régler indépendamment). Grille plus grande et plus dense en
+  // diff 3. On brouille ensuite les orientations, on ajoute leurres + murs hors solution,
+  // et on VÉRIFIE par force brute (solvesAll) que la solution éclaire TOUS les sceaux.
   var DIRS={E:[0,1],W:[0,-1],N:[-1,0],S:[1,0]};
+  var OPP={E:'W',W:'E',N:'S',S:'N'};
   function reflect(dir,o){ return o==='/' ? {E:'N',N:'E',W:'S',S:'W'}[dir] : {E:'S',S:'E',W:'N',N:'W'}[dir]; }
   function orientFor(dir,want){ return reflect(dir,'/')===want ? '/' : '\\'; }
   function key(r,c){ return r+','+c; }
-  function inGrid(r,c){ return r>=0&&r<ROWS&&c>=0&&c<COLS; }
-  // marge disponible depuis (r,c) en direction d
-  function room(r,c,d){ var v=DIRS[d],n=0; while(inGrid(r+v[0],c+v[1])){ r+=v[0]; c+=v[1]; n++; } return n; }
 
-  // trace générique (réplique du moteur de la page, avec murs) — sert à VÉRIFIER
-  function solves(spec,orient){
+  // Solveur générique multi-faisceaux (sert de VALIDATEUR) : tous les rayons doivent
+  // atteindre leur sceau. Réplique exacte du moteur de la page (avec murs).
+  function solvesAll(spec,orient){
+    var ROWS=spec.ROWS, COLS=spec.COLS;
     var wall={}; (spec.WALLS||[]).forEach(function(w){ wall[key(w.r,w.c)]=1; });
     var mAt={}; Object.keys(spec.MPOS).forEach(function(k){ mAt[key(spec.MPOS[k].r,spec.MPOS[k].c)]=k; });
-    var r=spec.SOURCE.r, c=spec.SOURCE.c, dir=spec.SOURCE.dir;
-    for(var i=0;i<60;i++){
-      var v=DIRS[dir], nr=r+v[0], nc=c+v[1];
-      if(!inGrid(nr,nc) || wall[key(nr,nc)]) return false;
-      r=nr; c=nc;
-      if(r===spec.TARGET.r && c===spec.TARGET.c && dir===spec.TARGET.enter) return true;
-      var id=mAt[key(r,c)];
-      if(id) dir=reflect(dir,orient[id]);
+    var inG=function(r,c){ return r>=0&&r<ROWS&&c>=0&&c<COLS; };
+    for(var bi=0;bi<spec.BEAMS.length;bi++){
+      var beam=spec.BEAMS[bi], r=beam.SOURCE.r, c=beam.SOURCE.c, dir=beam.SOURCE.dir, ok=false;
+      for(var i=0;i<200;i++){
+        var v=DIRS[dir], nr=r+v[0], nc=c+v[1];
+        if(!inG(nr,nc) || wall[key(nr,nc)]) break;
+        r=nr; c=nc;
+        if(r===beam.TARGET.r && c===beam.TARGET.c && dir===beam.TARGET.enter){ ok=true; break; }
+        var id=mAt[key(r,c)];
+        if(id) dir=reflect(dir,orient[id]);
+      }
+      if(!ok) return false;
     }
-    return false;
-  }
-
-  function tryBuild(rnd,nTurn){
-    // source sur un bord, rayon vers l'intérieur
-    var side=['W','E','N','S'][Math.floor(rnd()*4)];
-    var r,c,dir;
-    if(side==='W'){ c=0; r=1+Math.floor(rnd()*(ROWS-2)); dir='E'; }
-    else if(side==='E'){ c=COLS-1; r=1+Math.floor(rnd()*(ROWS-2)); dir='W'; }
-    else if(side==='N'){ r=0; c=1+Math.floor(rnd()*(COLS-2)); dir='S'; }
-    else { r=ROWS-1; c=1+Math.floor(rnd()*(COLS-2)); dir='N'; }
-    var SOURCE={r:r,c:c,dir:dir};
-    var path={}; path[key(r,c)]=1;
-    var mirrors=[];
-    var advance=function(min){ // avance de min..min+2 cases en marquant le chemin ; null si bloqué
-      var k=min+Math.floor(rnd()*3), v=DIRS[dir];
-      if(room(r,c,dir)<k) return null;
-      for(var i=0;i<k;i++){ r+=v[0]; c+=v[1]; if(path[key(r,c)]) return null; path[key(r,c)]=1; }
-      return true;
-    };
-    for(var m=0;m<nTurn;m++){
-      if(!advance(2)) return null;
-      // virage perpendiculaire avec au moins 3 cases de marge
-      var opts=(dir==='E'||dir==='W')?['N','S']:['E','W'];
-      if(rnd()<0.5) opts.reverse();
-      var want=null;
-      for(var oi=0;oi<2;oi++){ if(room(r,c,opts[oi])>=3){ want=opts[oi]; break; } }
-      if(!want) return null;
-      mirrors.push({r:r,c:c,o:orientFor(dir,want)});
-      dir=want;
-    }
-    if(!advance(2)) return null;
-    var TARGET={r:r,c:c,enter:dir};
-    return { SOURCE:SOURCE, TARGET:TARGET, mirrors:mirrors, path:path };
+    return true;
   }
 
   function genMirror(seed,diff){
     diff=Math.max(1,Math.min(3,(diff|0)||1));
     var rnd=mulberry32(((seed|0)>>>0)+diff*7919);
-    var nTurn=[2,3,4][diff-1], nDecoy=[1,2,3][diff-1], nWall=[0,2,4][diff-1];
-    var LETTERS='ABCDEFGHI';
-    for(var attempt=0; attempt<120; attempt++){
-      var b=tryBuild(rnd,nTurn); if(!b) continue;
-      var MPOS={}, SOLUTION={}, DEFAULT={};
-      for(var i=0;i<b.mirrors.length;i++){ var id=LETTERS[i];
-        MPOS[id]={r:b.mirrors[i].r, c:b.mirrors[i].c}; SOLUTION[id]=b.mirrors[i].o; }
-      // cases libres = ni chemin, ni source/cible (pour leurres et murs)
-      var used={}; Object.keys(b.path).forEach(function(k){ used[k]=1; });
+    var cfg=[
+      {ROWS:9, COLS:7,  beams:1, minShare:0, extraTurns:1, nDecoy:1, nWall:0},
+      {ROWS:9, COLS:7,  beams:2, minShare:1, extraTurns:1, nDecoy:2, nWall:1},
+      {ROWS:11,COLS:9,  beams:2, minShare:1, extraTurns:2, nDecoy:3, nWall:3}
+    ][diff-1];
+    var ROWS=cfg.ROWS, COLS=cfg.COLS;
+    var inGrid=function(r,c){ return r>=0&&r<ROWS&&c>=0&&c<COLS; };
+    var roomIn=function(r,c,d){ var v=DIRS[d],n=0; while(inGrid(r+v[0],c+v[1])){ r+=v[0];c+=v[1];n++; } return n; };
+    var BEAMCOL=['#f2cd72','#67cfe6','#e88fb0'];
+    var LETTERS='ABCDEFGHIJKLMNOP';
+
+    for(var attempt=0; attempt<600; attempt++){
+      var mir={};            // key(r,c) -> orientation (miroirs réels posés)
+      var beams=[];
+      var sharedTotal=0, fail=false;
+
+      // —— faisceau 0 : chemin libre, un miroir à chaque virage ——
+      (function(){
+        var side=['W','E','N','S'][Math.floor(rnd()*4)], r,c,dir;
+        if(side==='W'){ c=0; r=1+Math.floor(rnd()*(ROWS-2)); dir='E'; }
+        else if(side==='E'){ c=COLS-1; r=1+Math.floor(rnd()*(ROWS-2)); dir='W'; }
+        else if(side==='N'){ r=0; c=1+Math.floor(rnd()*(COLS-2)); dir='S'; }
+        else { r=ROWS-1; c=1+Math.floor(rnd()*(COLS-2)); dir='N'; }
+        var SOURCE={r:r,c:c,dir:dir}, path={}; path[key(r,c)]=1;
+        var nTurn=2+cfg.extraTurns;
+        var advance=function(min){ var k=min+Math.floor(rnd()*2), v=DIRS[dir]; if(roomIn(r,c,dir)<k) return false;
+          for(var i=0;i<k;i++){ r+=v[0];c+=v[1]; if(path[key(r,c)]) return false; path[key(r,c)]=1; } return true; };
+        for(var m=0;m<nTurn;m++){
+          if(!advance(2)){ fail=true; return; }
+          var opts=(dir==='E'||dir==='W')?['N','S']:['E','W']; if(rnd()<0.5) opts.reverse();
+          var want=null; for(var oi=0;oi<2;oi++){ if(roomIn(r,c,opts[oi])>=3){ want=opts[oi]; break; } }
+          if(!want){ fail=true; return; }
+          mir[key(r,c)]=orientFor(dir,want); dir=want;
+        }
+        if(!advance(2)){ fail=true; return; }
+        beams.push({SOURCE:SOURCE, TARGET:{r:r,c:c,enter:dir}});
+      })();
+      if(fail) continue;
+
+      // —— faisceaux suivants : forcés de TRAVERSER un miroir existant ——
+      for(var bi=1; bi<cfg.beams && !fail; bi++){
+        var built=(function(){
+          var mkeys=Object.keys(mir);
+          for(var t=0;t<mkeys.length*3;t++){
+            var xk=mkeys[Math.floor(rnd()*mkeys.length)];
+            var xr=xk.split(',').map(Number)[0], xc=xk.split(',').map(Number)[1], oX=mir[xk];
+            var ins=['E','W','N','S'];
+            for(var s=ins.length-1;s>0;s--){ var j=Math.floor(rnd()*(s+1)); var tmp=ins[s]; ins[s]=ins[j]; ins[j]=tmp; }
+            for(var ii=0;ii<ins.length;ii++){
+              var dIn=ins[ii], leave=reflect(dIn,oX);
+              // recul depuis X, sens -dIn, jusqu'au bord → SOURCE (dir = dIn)
+              var br=xr,bc=xc, okBack=true;
+              while(inGrid(br+DIRS[OPP[dIn]][0], bc+DIRS[OPP[dIn]][1])){
+                br+=DIRS[OPP[dIn]][0]; bc+=DIRS[OPP[dIn]][1];
+                if(mir[key(br,bc)]){ okBack=false; break; }
+                if(!inGrid(br,bc)) { okBack=false; break; }
+              }
+              if(!okBack) continue;
+              var SOURCE={r:br,c:bc,dir:dIn};
+              // avancée depuis X, sens leave : 0-1 virage, puis sceau sur case vide
+              var fr=xr,fc=xc,fdir=leave, fwd={}, steps=0, target=null;
+              var turnsLeft=(rnd()<0.6 && cfg.extraTurns>0)?1:0;
+              while(steps<40){
+                var v=DIRS[fdir], nr=fr+v[0], nc=fc+v[1];
+                if(!inGrid(nr,nc)) break;
+                if(mir[key(nr,nc)]||fwd[key(nr,nc)]) break;
+                fr=nr;fc=nc;steps++;
+                if(turnsLeft>0 && steps>=2 && rnd()<0.5){
+                  var opts2=(fdir==='E'||fdir==='W')?['N','S']:['E','W']; if(rnd()<0.5) opts2.reverse();
+                  var want2=null; for(var o2=0;o2<2;o2++){ if(roomIn(fr,fc,opts2[o2])>=2){ want2=opts2[o2]; break; } }
+                  if(want2){ fwd[key(fr,fc)]=orientFor(fdir,want2); fdir=want2; turnsLeft--; }
+                } else if(steps>=2 && turnsLeft===0 && rnd()<0.4){ target={r:fr,c:fc,enter:fdir}; break; }
+              }
+              if(!target){ if(steps>=2) target={r:fr,c:fc,enter:fdir}; else continue; }
+              var clash=beams.some(function(b){ return (b.SOURCE.r===SOURCE.r&&b.SOURCE.c===SOURCE.c)||(b.TARGET.r===target.r&&b.TARGET.c===target.c); });
+              if(clash || mir[key(target.r,target.c)]) continue;
+              var okSrc = SOURCE.r===0||SOURCE.r===ROWS-1||SOURCE.c===0||SOURCE.c===COLS-1;
+              if(!okSrc) continue;
+              Object.keys(fwd).forEach(function(k){ mir[k]=fwd[k]; });
+              return {SOURCE:SOURCE, TARGET:target, cross:1};
+            }
+          }
+          return null;
+        })();
+        if(!built){ fail=true; break; }
+        sharedTotal+=built.cross;
+        beams.push({SOURCE:built.SOURCE, TARGET:built.TARGET});
+      }
+      if(fail || sharedTotal<cfg.minShare) continue;
+
+      // —— assemblage MPOS / SOLUTION ——
+      var mkeys=Object.keys(mir), MPOS={}, SOLUTION={};
+      mkeys.forEach(function(k,i){ var p=k.split(',').map(Number); MPOS[LETTERS[i]]={r:p[0],c:p[1]}; SOLUTION[LETTERS[i]]=mir[k]; });
+
+      // cases occupées = sources, sceaux, miroirs, et TOUT le trajet solution (pour ne pas
+      // poser un leurre/mur dessus).
+      var used={};
+      beams.forEach(function(b){ used[key(b.SOURCE.r,b.SOURCE.c)]=1; used[key(b.TARGET.r,b.TARGET.c)]=1; });
+      mkeys.forEach(function(k){ used[k]=1; });
+      (function(){ var mAt={}; Object.keys(MPOS).forEach(function(k){ mAt[key(MPOS[k].r,MPOS[k].c)]=k; });
+        beams.forEach(function(b){ var r=b.SOURCE.r,c=b.SOURCE.c,dir=b.SOURCE.dir;
+          for(var i=0;i<200;i++){ used[key(r,c)]=1; var v=DIRS[dir],nr=r+v[0],nc=c+v[1]; if(!inGrid(nr,nc)) break; r=nr;c=nc;
+            if(r===b.TARGET.r&&c===b.TARGET.c&&dir===b.TARGET.enter){ used[key(r,c)]=1; break; }
+            var id=mAt[key(r,c)]; if(id) dir=reflect(dir,SOLUTION[id]); } }); })();
       var free=[];
-      for(var fr=0;fr<ROWS;fr++) for(var fc=0;fc<COLS;fc++){ if(!used[key(fr,fc)]) free.push({r:fr,c:fc}); }
-      // mélange de Fisher-Yates sur les cases libres
-      for(var s=free.length-1;s>0;s--){ var j=Math.floor(rnd()*(s+1)); var tmp=free[s]; free[s]=free[j]; free[j]=tmp; }
-      if(free.length<nDecoy+nWall) continue;
-      var di;
-      for(di=0;di<nDecoy;di++){ var idd=LETTERS[nTurn+di]; var cell=free.pop();
-        MPOS[idd]={r:cell.r,c:cell.c}; SOLUTION[idd]=rnd()<0.5?'/':'\\'; }
-      var WALLS=[];
-      for(di=0;di<nWall;di++){ WALLS.push(free.pop()); }
-      var spec={ SOURCE:b.SOURCE, TARGET:b.TARGET, MPOS:MPOS, WALLS:WALLS };
-      // brouillage : on part de la solution et on retourne des miroirs (≥1), jamais résolu d'entrée
-      var ids=Object.keys(MPOS), flips=0;
-      ids.forEach(function(id){ var f=rnd()<0.5; if(f) flips++; DEFAULT[id]= f ? (SOLUTION[id]==='/'?'\\':'/') : SOLUTION[id]; });
-      if(!flips){ DEFAULT[ids[0]]=SOLUTION[ids[0]]==='/'?'\\':'/'; }
-      if(!solves(spec,SOLUTION)) continue;      // garde-fou (ne devrait jamais arriver)
-      if(solves(spec,DEFAULT)){ var f0=ids[0]; DEFAULT[f0]=DEFAULT[f0]==='/'?'\\':'/'; if(solves(spec,DEFAULT)) continue; }
-      spec.DEFAULT=DEFAULT; spec.SOLUTION=SOLUTION;
-      spec.hint=(b.TARGET.r<ROWS/2?'en haut':'en bas')+' '+(b.TARGET.c<COLS/2?'à gauche':'à droite');
-      var NUMS=['Un','Deux','Trois','Quatre'];
-      spec.intro=NUMS[nTurn-1]+' miroirs comptent, '+NUMS[nDecoy-1].toLowerCase()+(nDecoy>1?' te distraient':' te distrait')+'.';
-      spec.diff=diff; spec.seed=seed>>>0;
+      for(var fr2=0;fr2<ROWS;fr2++) for(var fc2=0;fc2<COLS;fc2++){ if(!used[key(fr2,fc2)]) free.push({r:fr2,c:fc2}); }
+      for(var s2=free.length-1;s2>0;s2--){ var j2=Math.floor(rnd()*(s2+1)); var tm=free[s2]; free[s2]=free[j2]; free[j2]=tm; }
+      if(free.length<cfg.nDecoy+cfg.nWall) continue;
+
+      var li=mkeys.length;
+      for(var d=0;d<cfg.nDecoy;d++){ var cell=free.pop(); MPOS[LETTERS[li]]={r:cell.r,c:cell.c}; SOLUTION[LETTERS[li]]=rnd()<0.5?'/':'\\'; li++; }
+      var WALLS=[]; for(var dw=0;dw<cfg.nWall;dw++){ WALLS.push(free.pop()); }
+
+      var BEAMS=beams.map(function(b,i){ return {SOURCE:b.SOURCE, TARGET:b.TARGET, color:BEAMCOL[i%BEAMCOL.length]}; });
+      var spec={ ROWS:ROWS, COLS:COLS, BEAMS:BEAMS, MPOS:MPOS, WALLS:WALLS, SOLUTION:SOLUTION };
+      if(!solvesAll(spec,SOLUTION)) continue;
+
+      // brouillage : on part de la solution et on retourne des miroirs (≥ minFlip), jamais résolu d'entrée
+      var ids=Object.keys(MPOS), DEFAULT={}, flips=0;
+      ids.forEach(function(id){ var f=rnd()<0.55; if(f) flips++; DEFAULT[id]= f?(SOLUTION[id]==='/'?'\\':'/'):SOLUTION[id]; });
+      var minFlip=diff>=2?2:1, fi=0;
+      while(flips<minFlip && fi<ids.length){ var id0=ids[fi++]; if(DEFAULT[id0]===SOLUTION[id0]){ DEFAULT[id0]=SOLUTION[id0]==='/'?'\\':'/'; flips++; } }
+      if(solvesAll(spec,DEFAULT)){                       // déjà résolu → retourne un miroir RÉEL
+        var realId=ids.find(function(id){ return MPOS[id] && (key(MPOS[id].r,MPOS[id].c) in mir); }) || ids[0];
+        DEFAULT[realId]=DEFAULT[realId]==='/'?'\\':'/';
+        if(solvesAll(spec,DEFAULT)) continue;
+      }
+      spec.DEFAULT=DEFAULT;
+      spec.SOURCE=BEAMS[0].SOURCE; spec.TARGET=BEAMS[0].TARGET;   // rétro-compat
+      spec.shared=sharedTotal; spec.diff=diff; spec.seed=seed>>>0;
+      spec.hint=(BEAMS[0].TARGET.r<ROWS/2?'en haut':'en bas')+' '+(BEAMS[0].TARGET.c<COLS/2?'à gauche':'à droite');
+      spec.intro= BEAMS.length>1 ? (BEAMS.length+' rayons se croisent — un même miroir sert deux flammes.') : 'Guide la flamme jusqu’au sceau.';
       return spec;
     }
-    // repli connu-bon (jamais atteint en pratique — 120 tirages)
-    return { SOURCE:{r:7,c:0,dir:'E'}, TARGET:{r:2,c:6,enter:'E'},
-      MPOS:{A:{r:7,c:3},B:{r:2,c:3},D:{r:5,c:5}}, DEFAULT:{A:'\\',B:'\\',D:'/'},
-      SOLUTION:{A:'\\',B:'/',D:'/'}, WALLS:[], hint:'en haut à droite', diff:diff, seed:seed>>>0 };
+    // repli connu-bon (jamais atteint en pratique) : faisceau unique historique
+    return { ROWS:9, COLS:7,
+      BEAMS:[{SOURCE:{r:7,c:0,dir:'E'}, TARGET:{r:2,c:6,enter:'E'}, color:'#f2cd72'}],
+      MPOS:{A:{r:7,c:3},B:{r:2,c:3},D:{r:5,c:5}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, SOLUTION:{A:'\\',B:'/',D:'/'},
+      WALLS:[], SOURCE:{r:7,c:0,dir:'E'}, TARGET:{r:2,c:6,enter:'E'},
+      hint:'en haut à droite', intro:'Guide la flamme jusqu’au sceau.', shared:0, diff:diff, seed:seed>>>0 };
   }
 
   // ============ Enquête du manoir ============
@@ -457,6 +533,6 @@
     return null; // repli : la page garde son plan historique
   }
 
-  window.OmbreluneGen={ mulberry32:mulberry32, hashStr:hashStr, genMirror:genMirror, solvesMirror:solves,
+  window.OmbreluneGen={ mulberry32:mulberry32, hashStr:hashStr, genMirror:genMirror, solvesMirror:solvesAll,
     genEnquete:genEnquete, enqueteSurvivors:enqueteSurvivors, genOmbres:genOmbres };
 })();
