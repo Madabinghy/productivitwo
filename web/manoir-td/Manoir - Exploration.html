@@ -636,9 +636,10 @@
       for(const rn of this.RUNES){ const r=this.byk[rn.room]; if(!r||!this.roomOn(rn.room)) continue;
         this.runesPlaced.push({ rn, x:r.x+r.w*rn.fx, y:r.y+r.h*rn.fy, found:this.runes.found.indexOf(rn.id)>=0 }); } }
     runesVisible(){ return !!this.tools.uv && !this.lantern; }
-    // noir d'EXPÉDITION : sur certaines missions (enquête incarnée difficulté 2+),
-    // le halo du héros tombe à une lueur de bougie — la lanterne devient vitale.
-    expeditionDark(){ return !!(this.enq && this.enq.state==='play' && (this.enq.diff||1)>=2); }
+    // noir d'EXPÉDITION : une VARIANTE de mission (~1 enquête difficile sur 3, tirée de
+    // la graine) — le halo tombe à une lueur de bougie, la lanterne devient vitale.
+    // Pour ne pas dégoûter : le manoir offre une réserve d'huile à l'ouverture.
+    expeditionDark(){ return !!(this.enq && this.enq.state==='play' && this.enq.exped); }
     checkKeys(){ if(!this.tools) return;
       const grant=(k,label,hint)=>{ if(this.tools[k]) return; this.tools[k]=true; this.saveTools();
         this.flash=Math.max(this.flash||0,0.5);
@@ -739,11 +740,14 @@
       this.placeEnquete(); }
     saveEnquete(){ try{ localStorage.setItem('ombrelune_enquete', JSON.stringify(this.enq)); }catch(e){} }
     startEnquete(mode,seed){ if(!window.OmbreluneGen) return;
-      this.enq={ v:1, seed:(seed>>>0), diff:this.guardDiff(), mode:mode||'free', collected:[], state:'play' };
+      const diff=this.guardDiff();
+      const exped = diff>=2 && ((seed>>>0)%3===0); // ~1 sur 3, déterministe par la graine
+      this.enq={ v:1, seed:(seed>>>0), diff, mode:mode||'free', exped, collected:[], state:'play' };
       this.enqSpec=window.OmbreluneGen.genEnquete(this.enq.seed, this.enq.diff);
       if(!this.enqSpec){ this.enq=null; return; }
+      if(exped){ this.oil.n=(this.oil.n||0)+8; this.saveOil(); this.updateLanternHud(); }
       this.saveEnquete(); this.placeEnquete(); this.flash=Math.max(this.flash||0,0.5);
-      this.toast={t:'🔍 '+this.enqSpec.question+(this.expeditionDark()?' L’obscurité s’épaissit — ta lanterne sera précieuse.':' Suspects et indices sont dans les salles éveillées.'), t0:performance.now()}; }
+      this.toast={t:'🔍 '+this.enqSpec.question+(exped?' 🌑 Expédition nocturne — le manoir te confie +8 min d’huile.':' Suspects et indices sont dans les salles éveillées.'), t0:performance.now()}; }
     enqCollected(){ return (this.enq&&this.enq.collected)||[]; }
     enqAllDone(){ return this.enqSpec && this.enqCollected().length>=this.enqSpec.LOCATIONS.length; }
     // positions déterministes (graine) sur des ancres par salle, éveillées seulement
