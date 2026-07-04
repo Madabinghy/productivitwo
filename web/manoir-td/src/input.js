@@ -41,13 +41,28 @@ export function attachInput(game, canvas) {
     if (e.preventDefault) e.preventDefault();
   }, { passive: false });
 
-  // ---- tactile : tap = pose en 2 temps ; 2 doigts = pan ----
+  // ---- tactile : tap = action (sélectionner, viser, pointer une destination) ; 1 doigt qui
+  // GLISSE = déplace la carte (pan) ; 2 doigts = pan aussi. Aucun ne bouge le Commander
+  // (lui, c'est le joystick). On ne « glisse » pas les unités : on les sélectionne (tap) puis
+  // on tape la direction voulue (flux actAt existant).
   canvas.addEventListener('touchstart', (e) => {
     if (e.touches.length === 2) { game._panT = midpoint(e); game._didPan = false; game._tap = null; game.freeCam = true; e.preventDefault(); }
-    else if (e.touches.length === 1) { game._panT = null; game._tap = { x: e.touches[0].clientX, y: e.touches[0].clientY }; game._tapMoved = false; }
+    else if (e.touches.length === 1) {
+      const t = e.touches[0]; game._panT = null; game._tap = { x: t.clientX, y: t.clientY }; game._tapMoved = false; game._didPan = false; game._dragPan = null;
+    }
   }, { passive: false });
   canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 1 && game._tap) { const t = e.touches[0]; if (Math.hypot(t.clientX - game._tap.x, t.clientY - game._tap.y) > 12) game._tapMoved = true; return; }
+    if (e.touches.length === 1 && game._tap) {
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - game._tap.x, t.clientY - game._tap.y) > 12) game._tapMoved = true;
+      if (game._tapMoved) {                                   // pan à 1 doigt : glisser la carte
+        const prev = game._dragPan || game._tap;
+        game.cam.fx = game.clampFx(game.cam.fx - (t.clientX - prev.x));
+        game.cam.fy = game.clampFy(game.cam.fy - (t.clientY - prev.y));
+        game._dragPan = { x: t.clientX, y: t.clientY }; game._didPan = true; game.freeCam = true; e.preventDefault();
+      }
+      return;
+    }
     if (e.touches.length === 2 && game._panT) {
       const m = midpoint(e); const dx = m.x - game._panT.x, dy = m.y - game._panT.y; game._panT = m;
       game.cam.fx = game.clampFx(game.cam.fx - dx); game.cam.fy = game.clampFy(game.cam.fy - dy);
@@ -60,7 +75,7 @@ export function attachInput(game, canvas) {
       game._suppressClick = true; setTimeout(() => { game._suppressClick = false; }, 500);
       actAt(game, wx, wy, true);
     }
-    game._tap = null; if (e.touches.length < 2) game._panT = null;
+    game._tap = null; game._dragPan = null; if (e.touches.length < 2) game._panT = null;
   };
   canvas.addEventListener('touchend', endTouch, { passive: false });
   canvas.addEventListener('touchcancel', endTouch, { passive: false });
