@@ -636,6 +636,9 @@
       for(const rn of this.RUNES){ const r=this.byk[rn.room]; if(!r||!this.roomOn(rn.room)) continue;
         this.runesPlaced.push({ rn, x:r.x+r.w*rn.fx, y:r.y+r.h*rn.fy, found:this.runes.found.indexOf(rn.id)>=0 }); } }
     runesVisible(){ return !!this.tools.uv && !this.lantern; }
+    // noir d'EXPÉDITION : sur certaines missions (enquête incarnée difficulté 2+),
+    // le halo du héros tombe à une lueur de bougie — la lanterne devient vitale.
+    expeditionDark(){ return !!(this.enq && this.enq.state==='play' && (this.enq.diff||1)>=2); }
     checkKeys(){ if(!this.tools) return;
       const grant=(k,label,hint)=>{ if(this.tools[k]) return; this.tools[k]=true; this.saveTools();
         this.flash=Math.max(this.flash||0,0.5);
@@ -740,7 +743,7 @@
       this.enqSpec=window.OmbreluneGen.genEnquete(this.enq.seed, this.enq.diff);
       if(!this.enqSpec){ this.enq=null; return; }
       this.saveEnquete(); this.placeEnquete(); this.flash=Math.max(this.flash||0,0.5);
-      this.toast={t:'🔍 '+this.enqSpec.question+' Suspects et indices sont dans les salles éveillées.', t0:performance.now()}; }
+      this.toast={t:'🔍 '+this.enqSpec.question+(this.expeditionDark()?' L’obscurité s’épaissit — ta lanterne sera précieuse.':' Suspects et indices sont dans les salles éveillées.'), t0:performance.now()}; }
     enqCollected(){ return (this.enq&&this.enq.collected)||[]; }
     enqAllDone(){ return this.enqSpec && this.enqCollected().length>=this.enqSpec.LOCATIONS.length; }
     // positions déterministes (graine) sur des ancres par salle, éveillées seulement
@@ -1842,7 +1845,7 @@
       f.globalCompositeOperation='destination-out';
       const toS=(wx,wy)=>[ (wx-this.cam.x)*this.Z + W/2, (wy-this.cam.y)*this.Z + H/2 ];
       // noir quasi-total : petit halo de base ; la lanterne allumée déploie un CÔNE
-      const hr=(this.lantern?210:85)*( (this.cfg.haloR??230)/230 ); const [hx,hy]=toS(this.hero.x,this.hero.y);
+      const hr=(this.lantern?210:(this.expeditionDark()?36:85))*( (this.cfg.haloR??230)/230 ); const [hx,hy]=toS(this.hero.x,this.hero.y);
       let g=f.createRadialGradient(hx,hy,hr*0.32,hx,hy,hr); g.addColorStop(0,'rgba(0,0,0,1)'); g.addColorStop(0.6,'rgba(0,0,0,.78)'); g.addColorStop(1,'rgba(0,0,0,0)');
       f.fillStyle=g; f.beginPath(); f.arc(hx,hy,hr,0,7); f.fill();
       // bougies : simples repères lumineux — elles ne révèlent plus le sol (le noir
