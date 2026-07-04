@@ -1,5 +1,5 @@
 // Point d'entrée : boucle de jeu (requestAnimationFrame), assemblage des systèmes.
-import { VPW, VPH, MASS_START, MASS_CAP } from './config.js';
+import { VPW, VPH, MASS_START, MASS_CAP, setViewport } from './config.js';
 import { createGame } from './state.js';
 import { spawnEnemies, updateEnemies } from './systems/enemies.js';
 import { nodeById, completeNode, NODES, applyReward } from './campaign.js';
@@ -42,6 +42,10 @@ let save = RAID ? defaultSave() : (loadSave() || defaultSave());
 game.save = save;
 
 const canvas = document.getElementById('view');
+// mobile : le viewport logique épouse la taille CSS réelle (vue zoomée + pan) ;
+// desktop (fenêtre ≥ 900 css px) : viewport historique 1080×680 mis à l'échelle.
+{ const r0 = canvas.getBoundingClientRect();
+  if (r0.width > 50 && r0.width < 900) setViewport(r0.width, r0.height); }
 canvas.width = VPW; canvas.height = VPH;
 const ctx = canvas.getContext('2d');
 attachInput(game, canvas);

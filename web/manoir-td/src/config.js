@@ -4,7 +4,10 @@
 
 export const MAP = { W: 2900, H: 1760, L: 40, T: 40, R: 2860, B: 1720 };
 export const GRID = 46;
-export const VPW = 1080, VPH = 680;          // viewport logique
+export let VPW = 1080, VPH = 680;            // viewport logique (mobile : épouse l'écran)
+// Mobile : la fenêtre de caméra devient la taille CSS réelle du canvas (vue
+// zoomée 1:1 qui suit le Commander, pan à 2 doigts) — liaisons vives ES modules.
+export function setViewport(w, h) { VPW = Math.round(w); VPH = Math.round(h); }
 
 export const VIS = 200;                       // vision héros
 export const CANDLE_VIS = 140;                // vision bougie
