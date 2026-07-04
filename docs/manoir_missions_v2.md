@@ -177,8 +177,16 @@ générales, agnostiques des domaines**, et le manoir évolue sur l'agrégat.
   restent une **couche de saveur** (célébration + croissance de salle via `checkCelebrations`),
   plus le moteur d'XP. `_applyXp()` factorise la montée de stade.
 - Découplage : ce que le user fait EXACTEMENT (ses domaines, ses routines) ne pilote plus
-  directement le jeu — le manoir consomme un signal normalisé. La personnalisation par
-  domaine passera par le **baptême des salles** (auto-mapping optionnel), non par du binding.
+  directement le jeu — le manoir consomme un signal normalisé.
+
+**Baptême des salles — auto-mapping (socle, sans friction).** L'app pousse `ombrelune_domains`
+(`[{name,color}]`, domaines réels non supprimés). Le manoir (`applyConsecration()`) mappe chaque
+domaine sur sa salle par **affinité de mots-clés** (`DOM_KEYWORDS` par méta-domaine : « muscu »
+→ Atelier, « guitare » → Bibliothèque…), affiche le vrai nom du user comme sous-titre de salle
+(`consecratedName`) et le récapitule dans le Journal (« Tes domaines dans le manoir »). Un
+override manuel (`ombrelune_consecration`, roomK→nom) est prioritaire — le **baptême explicite**
+(dialogue Lampyre à l'éveil) viendra l'éditer ; d'ici là, auto-mapping intelligent, zéro config.
+Domaines non reconnus : simplement pas consacrés (la salle garde son méta-domaine générique).
 
 ## 6. Moteur de génération procédurale (`web/manoir-td/js/ombrelune-gen.js`)
 
