@@ -52,11 +52,13 @@
   var VERDICT = GEN ? GEN.VERDICT : { face:'🎩', name:'Le Maître',
     text:"La Gouvernante avait son alibi, l'Invité fuyait le noir. Restait lui — gants aux mains, il a soufflé ses propres bougies pour s'effacer du manoir. La porte de la Galerie s'ouvre." };
 
-  var S = { collected:{}, sel:null, wrong:null, phase:'play' };
+  var S = { collected:{}, sel:null, wrong:null, phase:'play', ruledOut:{} };
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function allDone(){ return LOCATIONS.every(function(l){ return S.collected[l.key]; }); }
   function gather(key){ if(S.collected[key]) return; S.collected[key]=true; render(); }
   function select(key){ if(!allDone()) return; S.sel=key; S.wrong=null; render(); }
+  // carnet d'écartement : bloc-notes du joueur, ne résout jamais à sa place
+  function ruleOut(key){ if(S.ruledOut[key]) delete S.ruledOut[key]; else S.ruledOut[key]=true; render(); }
   function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; if(REWARD) revealAsk(); } else { S.wrong=S.sel; } render(); }
   function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
   // partie libre suivante : nouvelle graine aléatoire, même difficulté
@@ -103,11 +105,18 @@
     var suspects = SUSPECTS.map(function(sp){
       var on = S.sel===sp.key;
       var isWrong = S.wrong===sp.key;
-      var style = 'flex:1 1 30%; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 5px; border-radius:14px; cursor:'+(done?'pointer':'default')+'; border:1.5px solid '+(on?'rgba(214,168,74,.8)':'rgba(154,134,184,.18)')+'; background:'+(on?'linear-gradient(180deg, rgba(48,34,16,.7), rgba(28,18,8,.7))':'rgba(30,22,44,.45)')+'; box-shadow:'+(on?'0 0 18px rgba(214,168,74,.3)':'none')+'; opacity:'+(done?1:.7)+'; animation:'+(isWrong?'shake .4s ease':'none')+';';
-      return '<button data-suspect="'+sp.key+'" style="'+style+'">'
-        + '<span style="font-size:28px; filter:'+((on||done)?'none':'grayscale(.7) opacity(.45)')+';">'+sp.face+'</span>'
-        + '<span style="font-weight:700; font-size:11px; color:'+(on?'#f3cd72':(done?'#cdbfe0':'#6f6088'))+'; text-align:center; line-height:1.2;">'+esc(sp.name)+'</span>'+tagsHTML(sp)+'</button>';
+      var out = !!S.ruledOut[sp.key];
+      var style = 'width:100%; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 5px; border-radius:14px 14px 0 0; cursor:'+(done?'pointer':'default')+'; border:1.5px solid '+(on?'rgba(214,168,74,.8)':'rgba(154,134,184,.18)')+'; border-bottom:none; background:'+(on?'linear-gradient(180deg, rgba(48,34,16,.7), rgba(28,18,8,.7))':'rgba(30,22,44,.45)')+'; box-shadow:'+(on?'0 0 18px rgba(214,168,74,.3)':'none')+'; opacity:'+(out?.42:(done?1:.7))+'; animation:'+(isWrong?'shake .4s ease':'none')+';';
+      var ruleStyle = 'width:100%; padding:6px 5px; border-radius:0 0 14px 14px; cursor:pointer; font-weight:700; font-size:9.5px; letter-spacing:.3px; border:1.5px solid '+(out?'rgba(224,133,154,.5)':'rgba(154,134,184,.18)')+'; border-top:none; color:'+(out?'#e0859a':'#8a7aa6')+'; background:'+(out?'rgba(224,133,154,.12)':'rgba(30,22,44,.3)')+';';
+      return '<div style="flex:1 1 30%; display:flex; flex-direction:column;">'
+        + '<button data-suspect="'+sp.key+'" style="'+style+'">'
+        +   '<span style="font-size:28px; filter:'+(out?'grayscale(1) opacity(.4)':((on||done)?'none':'grayscale(.7) opacity(.45)'))+';">'+sp.face+'</span>'
+        +   '<span style="'+(out?'text-decoration:line-through; ':'')+'font-weight:700; font-size:11px; color:'+(on?'#f3cd72':(done?'#cdbfe0':'#6f6088'))+'; text-align:center; line-height:1.2;">'+esc(sp.name)+'</span>'+tagsHTML(sp)
+        + '</button>'
+        + '<button data-rule="'+sp.key+'" style="'+ruleStyle+'">'+(out?'↩ rétablir':'✕ écarter')+'</button>'
+        + '</div>';
     }).join('');
+    var remaining = SUSPECTS.filter(function(sp){ return !S.ruledOut[sp.key]; }).length;
     var aOn = done && S.sel;
     var accuseStyle = 'margin-top:auto; width:100%; padding:15px; border-radius:15px; border:none; cursor:'+(aOn?'pointer':'default')+'; font-weight:800; font-size:14px; color:'+(aOn?'#1c1206':'#6f6088')+'; background:'+(aOn?'linear-gradient(180deg, #f2cd72, #d6a84a)':'rgba(40,30,58,.6)')+'; box-shadow:'+(aOn?'0 12px 28px rgba(214,168,74,.3)':'none')+';';
     var accuseLabel = !done ? 'Récolte les '+LOCATIONS.length+' indices d\u2019abord' : (S.sel?'Accuser ✦':'Choisis un suspect');
@@ -116,7 +125,7 @@
       + '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#a796c0;">'+esc(done?'Tous les indices réunis. Écarte les innocents, puis accuse.':'Va récolter les indices dans le manoir, puis recoupe-les.')+'</div>'
       + '<div style="margin-top:15px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Les indices</div>'
       + '<div style="margin-top:9px; display:flex; flex-direction:column; gap:8px;">'+clues+'</div>'
-      + '<div style="margin-top:16px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:'+(done?'#9a86b8':'#5a4f70')+';">Les suspects '+(done?'':'🔒')+'</div>'
+      + '<div style="margin-top:16px; display:flex; align-items:baseline; justify-content:space-between; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:'+(done?'#9a86b8':'#5a4f70')+';"><span>Les suspects '+(done?'':'🔒')+'</span><span style="letter-spacing:0; text-transform:none; color:'+(remaining>1?'#8a7aa6':'#9fe0b0')+';">reste '+remaining+'</span></div>'
       + '<div style="margin-top:9px; display:flex; gap:9px; flex-wrap:wrap;">'+suspects+'</div>'
       + '<div style="min-height:16px; margin-top:10px; text-align:center; font-weight:600; font-size:11.5px; line-height:1.4; color:#e0859a;">'+esc(S.wrong?(WRONG[S.wrong]||'Les indices disent le contraire.'):'')+'</div>'
       + '<button data-act="accuse" style="'+accuseStyle+'">'+accuseLabel+'</button>'
@@ -151,6 +160,7 @@
   var app = document.getElementById('app');
   app.addEventListener('click', function(ev){
     var g = ev.target.closest('[data-gather]'); if(g){ gather(g.getAttribute('data-gather')); return; }
+    var rl = ev.target.closest('[data-rule]'); if(rl){ ruleOut(rl.getAttribute('data-rule')); return; }
     var s = ev.target.closest('[data-suspect]'); if(s){ select(s.getAttribute('data-suspect')); return; }
     var a = ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='accuse') accuse(); else if(k==='back') back(); else if(k==='replay') replay(); }
   });
