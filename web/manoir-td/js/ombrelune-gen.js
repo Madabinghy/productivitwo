@@ -181,6 +181,9 @@
     if(e.type==='cmp'){ var ref=null; for(var i=0;i<SUS.length;i++){ if(SUS[i].key===e.ref){ ref=SUS[i]; break; } } if(!ref) return true;
       return e.op==='>' ? taRank(sp)>taRank(ref) : taRank(sp)<taRank(ref); }
     if(e.type==='alibi') return sp.key!==e.suspect;
+    // témoignage : « le coupable ment, les honnêtes disent vrai ». Si le témoin EST le
+    // candidat coupable, sa parole est un mensonge (négation) ; sinon elle est vraie.
+    if(e.type==='testi'){ var ct=matchCond(sp,e.claim); return sp.key===e.witness ? !ct : ct; }
     return true; }
   function survOf(list,clues,SUS){ return list.filter(function(sp){ return clues.every(function(l){ return keepClue(sp,l,SUS); }); }); }
   function isCombo(l){ return !!(l.elim && (l.elim.type==='or' || (l.elim.type==='trait'&&l.elim.neg))); }
@@ -205,6 +208,12 @@
       obs:'Une marque fraîche à la toise, plus '+dir2+' que la stature de '+ref.name+'.' }; }
   function mkAlibi(sp,al){ var s=al.t(sp.name);
     return { icon:al.icon, place:al.place, action:al.action, elim:{type:'alibi', suspect:sp.key}, alibi:true, exp:s, obs:s }; }
+  // témoignage entre suspects : W accuse le coupable de porter un trait. Vrai si W est
+  // honnête, MENSONGE si W est le coupable (à recouper avec les indices physiques).
+  function mkTesti(W,claim){ var t=TRAITS[claim.trait].vals[claim.value];
+    var q=W.name+' jure : « le coupable a '+t.tag+'. »';
+    return { icon:'🗣️', place:'Un témoin · '+W.name, action:'Recueillir le témoignage',
+      elim:{type:'testi', witness:W.key, claim:claim}, exp:q, obs:q }; }
 
   function genEnquete(seed,diff){
     diff=Math.max(1,Math.min(3,(diff|0)||1));
@@ -212,6 +221,7 @@
     var nSus=[3,4,5][diff-1], nClues=[3,3,4][diff-1];
     var useObs=diff>=2;                       // diff 2+ : observations à interpréter
     var maxChosen=diff>=3 ? nClues-1 : nClues; // à diff 3, on garde une place pour le leurre
+    var useTesti=diff>=2 && Math.floor(rnd()*3)===0; // ~1 enquête sur 3 (diff 2+) : témoignages entre suspects
     var tks=['mains','parfum','pas'];
     for(var attempt=0; attempt<400; attempt++){
       var crime=CRIMES[Math.floor(rnd()*CRIMES.length)];
@@ -236,13 +246,24 @@
       if(diff>=3){ sus.forEach(function(ref){ if(ref.key===culprit.key) return;
         if(taRank(ref)<taRank(culprit)){ var c=mkCmp('>',ref); if(survOf(sus,[c],sus).length<sus.length) cand.push(c); }
         else if(taRank(ref)>taRank(culprit)){ var c2=mkCmp('<',ref); if(survOf(sus,[c2],sus).length<sus.length) cand.push(c2); } }); }
+      // témoignages (~1 enquête sur 3) : un innocent dit vrai sur le coupable ; le coupable
+      // se dénonce en mentant (claim FAUSSE sur lui-même) — à recouper avec les indices.
+      if(useTesti){ sus.forEach(function(W){
+        if(W.key!==culprit.key){ tks.forEach(function(tk){ var c=mkTesti(W,{trait:tk, value:culprit.attrs[tk]});
+          if(survOf(sus,[c],sus).length<sus.length) cand.push(c); }); }
+        else { tks.forEach(function(tk){ Object.keys(TRAITS[tk].vals).forEach(function(v){ if(v===culprit.attrs[tk]) return;
+          var c=mkTesti(W,{trait:tk, value:v}); if(survOf(sus,[c],sus).length<sus.length) cand.push(c); }); }); }
+      }); }
       var alibiPool=shuffle(ALIBIS,rnd), aIdx=0, alibiCand=[];
       sus.forEach(function(sp){ if(sp.key===culprit.key) return; alibiCand.push(mkAlibi(sp, alibiPool[(aIdx++)%alibiPool.length])); });
 
       // ordre : mettre les types requis par la difficulté en tête (biais du greedy)
-      var priority=shuffle(cand,rnd);
-      if(diff>=3) priority.sort(function(x,y){ return (y.elim.type==='cmp'?1:0)-(x.elim.type==='cmp'?1:0); });
-      else if(diff>=2) priority.sort(function(x,y){ return (isCombo(y)?1:0)-(isCombo(x)?1:0); });
+      var rankOf=function(l){ var t=l.elim.type;
+        if(useTesti && t==='testi') return 3;
+        if(diff>=3 && t==='cmp') return 2;
+        if(diff>=2 && isCombo(l)) return 1;
+        return 0; };
+      var priority=shuffle(cand,rnd).sort(function(x,y){ return rankOf(y)-rankOf(x); });
       var pool=priority.concat(shuffle(alibiCand,rnd));
 
       // —— sélection greedy : réduit à {coupable} ; à diff 2+, aucun indice n'est décisif seul ;
@@ -266,8 +287,10 @@
       }
       if(surv.length!==1 || surv[0].key!==culprit.key) continue;
       if(chosen.length<1) continue;
-      if(diff===2 && !chosen.some(isCombo)) continue;
-      if(diff===3 && !chosen.some(function(l){ return l.elim.type==='cmp'; })) continue;
+      // le témoignage tient lieu de « raisonnement spécial » quand il est présent
+      if(diff===2 && !useTesti && !chosen.some(isCombo)) continue;
+      if(diff===3 && !useTesti && !chosen.some(function(l){ return l.elim.type==='cmp'; })) continue;
+      if(useTesti && !chosen.some(function(l){ return l.elim.type==='testi'; })) continue;
 
       // leurre (diff 3) : un indice VRAI sur le coupable, non retenu, qui ne change rien
       var herring=null;
@@ -311,7 +334,8 @@
       clues.forEach(function(l){ if(l.redHerring||!l.elim) return; var e=l.elim;
         if(e.type==='trait'&&!e.neg){ var tg=TRAITS[e.trait].vals[e.value].tag; if(traces.indexOf(tg)<0) traces.push(tg); }
         else if(e.type==='cmp'){ if(traces.indexOf('la toise')<0) traces.push('la toise'); }
-        else if(e.type==='or'){ if(traces.indexOf('un recoupement')<0) traces.push('un recoupement'); } });
+        else if(e.type==='or'){ if(traces.indexOf('un recoupement')<0) traces.push('un recoupement'); }
+        else if(e.type==='testi'){ if(traces.indexOf('un témoignage')<0) traces.push('un témoignage'); } });
       var tr=traces.length?traces.join(', '):'les indices';
       spec.VERDICT={ face:culprit.face, name:culprit.name,
         text:'Tout convergeait — '+tr+' : '+culprit.name+', qui '+crime.deed+' avant de se fondre dans l’ombre. Le manoir respire.' };
@@ -328,6 +352,7 @@
           sus.length+' visages, autant d’alibis trop lisses. La vérité tient dans les détails.',
           'Rassemble les traces, recoupe-les, puis démasque.' ] ];
       spec.INTRO=INTROS[Math.floor(rnd()*INTROS.length)];
+      if(useTesti) spec.INTRO=spec.INTRO.concat(['Cette nuit-là, certains se sont mis à parler. Souviens-toi : le coupable ment, les honnêtes disent vrai. Un témoignage qui contredit les indices trahit son menteur…']);
       var QUOTES=['« Moi ? J’ai bien mieux à faire, crois-moi. »','« Je dormais. Profondément. Trop, peut-être. »','« Demande à qui tu veux — on me connaît ici. »','« Cette nuit-là ? Je comptais les étoiles. Seul·e, hélas. »','« Quelle idée. Je n’ai rien touché… presque rien. »','« Le manoir me fait confiance. Toi, visiblement, moins. »','« Cherche ailleurs. Mais cherche bien. »','« Si j’avais fait ça, tu ne le saurais jamais. »'];
       sus.forEach(function(sp){ sp.quote=QUOTES[Math.floor(rnd()*QUOTES.length)]; });
       var NOTES=['Ça réduit le cercle…','Intéressant. Quelqu’un ici correspond.','Le manoir chuchote — on approche.','Note-le : les détails trahissent toujours.','Un suspect vient de perdre son masque.','Garde ça en tête pour la confrontation.','Deux indices valent mieux qu’un — recoupe-les.','Ce détail seul ne suffit pas ; croise-le.','Un nom s’efface doucement de la liste.','La toise, l’odeur, la trace… tout finit par parler.'];
