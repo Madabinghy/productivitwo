@@ -55,10 +55,12 @@ int seedManoirRoutines(AppLogic logic) {
   return added;
 }
 
-/// Écran plein écran embarquant le jeu (ouvert depuis Paramètres → Manoir).
+/// Écran plein écran embarquant le jeu — onglet « Manoir » de l'app (ou poussé
+/// depuis Paramètres). En mode onglet, `onExit` bascule vers la Console (Accueil).
 class ManoirScreen extends StatefulWidget {
   final AppLogic logic;
-  const ManoirScreen({super.key, required this.logic});
+  final VoidCallback? onExit;
+  const ManoirScreen({super.key, required this.logic, this.onExit});
 
   @override
   State<ManoirScreen> createState() => _ManoirScreenState();
@@ -67,6 +69,7 @@ class ManoirScreen extends StatefulWidget {
 class _ManoirScreenState extends State<ManoirScreen> {
   WebViewController? _ctrl;
   bool _ready = false;
+  bool _onExploration = false; // page courante = Exploration (⟳ affichable)
   int _webNonce = 0; // bump → nouvelle iframe (rechargement web)
   // Boucle « gagner la prochaine action Gantt » (docs/manoir_missions_v2.md §1) :
   // l'action est poussée SCELLÉE (sans titre) ; le jeu demande la révélation
@@ -86,10 +89,18 @@ class _ManoirScreenState extends State<ManoirScreen> {
         ..setBackgroundColor(const Color(0xFF0B0710))
         ..addJavaScriptChannel('ManoirBridge', onMessageReceived: _onBridge)
         ..setNavigationDelegate(NavigationDelegate(
-          onPageFinished: (_) {
+          onPageFinished: (url) {
             _pushSync();
             _pushNextAction();
-            if (mounted && !_ready) setState(() => _ready = true);
+            // Le ⟳ superposé n'apparaît que sur l'Exploration (zone d'en-tête
+            // sûre) — ailleurs il masquerait les boutons propres des pages.
+            final onExp = url.contains('Exploration');
+            if (mounted && (!_ready || onExp != _onExploration)) {
+              setState(() {
+                _ready = true;
+                _onExploration = onExp;
+              });
+            }
           },
         ))
         ..loadRequest(Uri.parse(kManoirUrl));
@@ -124,7 +135,13 @@ class _ManoirScreenState extends State<ManoirScreen> {
         }
         break;
       case 'open_console':
-        if (mounted) Navigator.of(context).maybePop();
+        if (mounted) {
+          if (widget.onExit != null) {
+            widget.onExit!();
+          } else {
+            Navigator.of(context).maybePop();
+          }
+        }
         break;
       case 'reveal_action':
         // Mission gagnée : on descelle l'action courante et on renvoie son titre.
@@ -355,17 +372,16 @@ class _ManoirScreenState extends State<ManoirScreen> {
           Positioned.fill(child: content),
           if (!kIsWeb && !_ready)
             const Center(child: CircularProgressIndicator()),
-          Positioned(
-            top: 6,
-            left: 6,
-            child: _roundBtn(Icons.close, 'Retour à la Console',
-                () => Navigator.of(context).maybePop()),
-          ),
-          Positioned(
-            top: 6,
-            right: 6,
-            child: _roundBtn(Icons.refresh, 'Recharger', _reload),
-          ),
+          // Pas de ✕ superposé : la sortie passe par l'onglet Console (barre du
+          // bas) ou le POI « Console du Commander » dans le jeu — le bouton
+          // masquait les boutons de retour des pages hors Exploration.
+          // Le ⟳ n'apparaît que sur l'Exploration (son en-tête laisse la place).
+          if (_onExploration || kIsWeb)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: _roundBtn(Icons.refresh, 'Recharger', _reload),
+            ),
         ]),
       ),
     );
