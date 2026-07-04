@@ -233,4 +233,13 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   son index `q` ; progressions, verdicts et butins indépendants. Une seule mission du portail
   à la fois ; le portail ne peut jamais écraser une enquête en cours. Le noir d'expédition
   s'applique si l'une des enquêtes actives est une expédition.
-- À venir : `genOmbres` (segments + validation) ; arbre de talents (« Établi »).
+- **`genOmbres(seed, diff)`** : génération de MAP pour la Salle des Ombres — assemblage
+  vertical de **segments dessinés à la main** (6 gabarits 560×200, mélangés + miroir
+  gauche/droite), budget caméras/gardes par difficulté (3/4/6 cams, 1/1/2 gardes,
+  3/4/5 bandes), **puzzle de faisceau généré** avec son dilemme préservé (capteur → coffre
+  OU aveugler la caméra du coffre), et **validation avant de servir** : faisceau-solution
+  dégagé, un abri par caméra, un socle de glu sur chaque ronde, points clés hors meubles
+  (80 tirages max → repli sur le plan historique). Consommation : `?seed=N` (la graine de
+  mission voyage dans l'URL du gardien — échec = même plan) ; sans seed = plan fixe.
+  ⚠️ application du plan APRÈS toutes les déclarations `var` (hissage).
+- À venir : arbre de talents (« Établi ») ; raid de jalon (moteur TD complet).

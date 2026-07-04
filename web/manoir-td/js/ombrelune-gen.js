@@ -244,6 +244,100 @@
     return null; // jamais atteint en pratique (200 tirages) ; la page retombe sur le cas historique
   }
 
+  // ============ Salle des Ombres ============
+  // Génération de MAP par assemblage de segments dessinés à la main (mélangés,
+  // miroir gauche/droite aléatoire) + placement caméras/gardes/socles sous budget
+  // + puzzle de faisceau généré (avec son dilemme : capteur OU caméra du coffre)
+  // + VALIDATION avant de servir (couverture par caméra, glu sur ronde, faisceau
+  // résoluble, points clés dégagés). Échec après 80 tirages → null (plan fixe).
+  var OW=560, MB=200, VB=280, EB=170;
+  // Segments (coordonnées locales 560×200) : meubles = couverture, cam murale
+  // optionnelle (side L/R + y local), ronde de garde optionnelle (y local), socle.
+  var SEGS=[
+    { furn:[[60,80,96,46],[300,40,70,90],[380,140,84,46]], cam:{side:'L',y:110,range:240}, sock:[210,150] },
+    { furn:[[230,60,90,46],[110,140,84,46],[420,120,70,84]], guard:{y:100,patrol:150}, sock:[400,100] },
+    { furn:[[80,40,60,80],[440,60,60,80],[240,150,96,46]], cam:{side:'R',y:70,range:230}, sock:[160,70] },
+    { furn:[[180,90,200,40]], cam:{side:'L',y:40,range:250}, guard:{y:160,patrol:120}, sock:[280,160] },
+    { furn:[[60,140,96,46],[404,20,96,46]], cam:{side:'R',y:150,range:240}, sock:[120,60] },
+    { furn:[[140,60,70,46],[330,110,70,46],[240,20,60,46]], sock:[280,170] }
+  ];
+  function segRectHit(x1,y1,x2,y2,r,m){ // segment axial vs rect gonflé
+    var lo={x:Math.min(x1,x2)-m, y:Math.min(y1,y2)-m}, hi={x:Math.max(x1,x2)+m, y:Math.max(y1,y2)+m};
+    return !(r.x+r.w<lo.x || r.x>hi.x || r.y+r.h<lo.y || r.y>hi.y);
+  }
+  function genOmbres(seed,diff){
+    diff=Math.max(1,Math.min(3,(diff|0)||1));
+    var rnd=mulberry32(((seed|0)>>>0)+diff*31337+7);
+    var nMid=[3,4,5][diff-1], camBudget=[3,4,6][diff-1], guardBudget=[1,1,2][diff-1];
+    var H=VB+nMid*MB+EB;
+    for(var attempt=0; attempt<80; attempt++){
+      var FURN=[], CAMS=[], GUARDS=[], SOCKETS=[], cn=1, sn=1;
+      // —— chambre forte + faisceau (bande du haut, sans meubles) ——
+      var flip=rnd()<0.5;
+      var y1=210+Math.floor(rnd()*3)*14, y2=120;
+      var mx=240+Math.floor(rnd()*7)*20, sx=110+Math.floor(rnd()*4)*14;
+      var X=function(x){ return flip? OW-x : x; };
+      var SOURCE={ x:X(40), y:y1, dir:flip?'W':'E' };
+      var sol1=flip?'\\':'/', sol2=flip?'/':'\\';
+      var o1=rnd()<0.5?'/':'\\', o2=rnd()<0.5?'/':'\\';
+      if(o1===sol1 && o2===sol2) o2 = o2==='/'?'\\':'/';
+      var MIRRORS=[ { id:'m1', x:X(mx), y:y1, o:o1 }, { id:'m2', x:X(mx), y:y2, o:o2 } ];
+      var SENSOR={ x:X(sx), y:y2 };
+      var VAULT={ x:280, y:90 };
+      CAMS.push({ id:'c'+(cn++), x:flip?60:500, y:y2, dir:flip?0:Math.PI, sweep:0.45, phase:rnd()*6.28, range:260, half:0.40 });
+      SOCKETS.push({ id:'s'+(sn++), x:flip?130:430, y:170 });
+      FURN.push({ x:flip?30:470, y:140, w:60, h:46 }); // abri sous la caméra du coffre (entre les rangées du faisceau)
+      // —— bandes du milieu : segments mélangés, miroir aléatoire ——
+      var camSlots=[], guardSlots=[];
+      for(var b=0;b<nMid;b++){ var y0=VB+b*MB;
+        var t=SEGS[Math.floor(rnd()*SEGS.length)], mir=rnd()<0.5;
+        var TX=function(x,w){ return mir? OW-x-(w||0) : x; };
+        t.furn.forEach(function(f){ FURN.push({ x:TX(f[0],f[2]), y:y0+f[1], w:f[2], h:f[3] }); });
+        if(t.sock) SOCKETS.push({ id:'s'+(sn++), x:TX(t.sock[0]), y:y0+t.sock[1] });
+        if(t.cam){ var side=mir?(t.cam.side==='L'?'R':'L'):t.cam.side;
+          camSlots.push({ x:side==='L'?60:500, y:y0+t.cam.y, dir:side==='L'?0:Math.PI, range:t.cam.range }); }
+        if(t.guard) guardSlots.push({ y:y0+t.guard.y, patrol:t.guard.patrol });
+      }
+      // budgets : compléter ou élaguer (mélange déterministe)
+      for(var i2=camSlots.length-1;i2>0;i2--){ var j2=Math.floor(rnd()*(i2+1)); var tt=camSlots[i2]; camSlots[i2]=camSlots[j2]; camSlots[j2]=tt; }
+      while(camSlots.length<camBudget-1){ var b2=Math.floor(rnd()*nMid), sd=rnd()<0.5;
+        camSlots.push({ x:sd?60:500, y:VB+b2*MB+60+Math.floor(rnd()*80), dir:sd?0:Math.PI, range:230 }); }
+      camSlots.slice(0,camBudget-1).forEach(function(c){
+        CAMS.push({ id:'c'+(cn++), x:c.x, y:c.y, dir:c.dir, sweep:0.45+rnd()*0.2, phase:rnd()*6.28, range:c.range, half:0.36+rnd()*0.05 }); });
+      for(var i3=guardSlots.length-1;i3>0;i3--){ var j3=Math.floor(rnd()*(i3+1)); var t3=guardSlots[i3]; guardSlots[i3]=guardSlots[j3]; guardSlots[j3]=t3; }
+      while(guardSlots.length<guardBudget){ var b3=Math.floor(rnd()*nMid);
+        guardSlots.push({ y:VB+b3*MB+100, patrol:120+Math.floor(rnd()*3)*20 }); }
+      guardSlots.slice(0,guardBudget).forEach(function(g){
+        GUARDS.push({ x:280, y:g.y, dir:rnd()<0.5?0:Math.PI/2, sweep:0.7+rnd()*0.15, phase:rnd()*6.28, range:180+Math.floor(rnd()*3)*10, half:0.42, patrol:g.patrol });
+        // la glu doit pouvoir prendre : un socle SUR la ronde
+        var has=SOCKETS.some(function(s){ return Math.abs(s.y-g.y)<=22 && Math.abs(s.x-280)<=g.patrol+10; });
+        if(!has) SOCKETS.push({ id:'s'+(sn++), x:280-40+Math.floor(rnd()*5)*20, y:g.y }); });
+      // —— bande d'entrée ——
+      var START={ x:280, y:H-60 }, CONSOLE={ x:flip?90:470, y:H-160 };
+      FURN.push({ x:150+Math.floor(rnd()*8)*20, y:H-EB+30, w:96, h:46 });
+      // —— VALIDATION ——
+      var ok=true;
+      // faisceau : solution dégagée, dilemme (aveugler la cam du coffre) dégagé
+      var beam=[ [SOURCE.x,y1,MIRRORS[0].x,y1], [MIRRORS[0].x,y1,MIRRORS[0].x,y2], [MIRRORS[1].x,y2,SENSOR.x,y2],
+                 [MIRRORS[1].x,y2,flip?60:500,y2] ];
+      beam.forEach(function(sg){ if(FURN.some(function(r){ return segRectHit(sg[0],sg[1],sg[2],sg[3],r,6); })) ok=false; });
+      // couverture : chaque caméra a un meuble-abri à portée
+      CAMS.forEach(function(c){ if(!FURN.some(function(r){ var fx=r.x+r.w/2, fy=r.y+r.h/2;
+        return Math.hypot(fx-c.x,fy-c.y)<c.range*0.9 && Math.abs(fy-c.y)<140; })) ok=false; });
+      // points clés dégagés (personne ne spawn/interagit dans un meuble)
+      [[START.x,START.y],[CONSOLE.x,CONSOLE.y],[VAULT.x,VAULT.y],[SENSOR.x,SENSOR.y],[MIRRORS[0].x,y1],[MIRRORS[1].x,y2]].forEach(function(pt){
+        if(FURN.some(function(r){ return pt[0]>=r.x-24 && pt[0]<=r.x+r.w+24 && pt[1]>=r.y-24 && pt[1]<=r.y+r.h+24; })) ok=false; });
+      // socles : jamais dans un meuble
+      SOCKETS.forEach(function(s){ if(FURN.some(function(r){ return s.x>=r.x-14 && s.x<=r.x+r.w+14 && s.y>=r.y-14 && s.y<=r.y+r.h+14; })) ok=false; });
+      if(!ok) continue;
+      return { WORLD_W:OW, WORLD_H:H, START:START, VAULT:VAULT, CONSOLE:CONSOLE,
+        CAMS:CAMS, GUARDS:GUARDS, FURN:FURN, SOCKETS:SOCKETS,
+        SOURCE:SOURCE, MIRRORS:MIRRORS, SENSOR:SENSOR,
+        SOLUTION:{ m1:sol1, m2:sol2 }, diff:diff, seed:seed>>>0 };
+    }
+    return null; // repli : la page garde son plan historique
+  }
+
   window.OmbreluneGen={ mulberry32:mulberry32, hashStr:hashStr, genMirror:genMirror, solvesMirror:solves,
-    genEnquete:genEnquete, enqueteSurvivors:enqueteSurvivors };
+    genEnquete:genEnquete, enqueteSurvivors:enqueteSurvivors, genOmbres:genOmbres };
 })();
