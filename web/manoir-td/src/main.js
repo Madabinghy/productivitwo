@@ -231,13 +231,25 @@ function paintHud() {
   panelEl.style.visibility = inMission ? 'visible' : 'hidden';
   msgbarEl.style.visibility = inMission ? 'visible' : 'hidden';
 
-  // tiroir de tourelles (mobile) : ouvert si on détaille une tourelle posée, fermé si une
-  // tourelle est en attente de pose, sinon suit l'intention manuelle. Fermé hors mission.
-  const sheetOpen = inMission && (!!game.ui.selId || (!game.ui.sel && !!game.ui.buildSheetOpen));
+  // tiroir mobile : sélectionner une tourelle/unité NE force PAS l'ouverture — on la vise
+  // (tap sur la carte) ou on la déplace (tortue) directement ; le menu (améliorer/viser/
+  // déployer/récupérer) s'ouvre à la demande via le bouton ⚙ Options. Sinon la carte serait
+  // masquée pile quand on veut agir dessus.
+  const selObj = game.ui.selId ? game.ui.placed.find(p => p.id === game.ui.selId) : null;
+  if (game.ui.selId !== game._prevSelId) {
+    game._prevSelId = game.ui.selId;
+    if (selObj) {
+      game.ui.buildSheetOpen = false; // nouvelle sélection → tiroir fermé, carte libre
+      game.ui.msg = selObj.cat === 'unit'
+        ? 'Cuirassé-tortue sélectionné — touche la carte pour le déplacer · ⚙ Options pour déployer/récupérer.'
+        : 'Tourelle sélectionnée — touche la carte pour viser · ⚙ Options pour améliorer/récupérer.';
+    }
+  }
+  const sheetOpen = inMission && !game.ui.sel && !!game.ui.buildSheetOpen;
   appEl.classList.toggle('sheet-open', sheetOpen);
   if (panelToggle) {
     panelToggle.style.display = inMission ? '' : 'none';
-    panelToggle.textContent = sheetOpen ? '▾ Fermer' : '🏗 Tourelles';
+    panelToggle.textContent = sheetOpen ? '▾ Fermer' : (game.ui.selId ? '⚙ Options' : '🏗 Tourelles');
   }
 
   // bandeau de tuto (Veilleuse)
