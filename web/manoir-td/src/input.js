@@ -64,6 +64,35 @@ export function attachInput(game, canvas) {
   };
   canvas.addEventListener('touchend', endTouch, { passive: false });
   canvas.addEventListener('touchcancel', endTouch, { passive: false });
+
+  attachJoystick(game);
+}
+
+// Joystick tactile (mobile) : déplace le Commander en continu — alimente game.joy
+// (vecteur unitaire), lu par updateHeroMove. Sur pointeur fin (souris) il reste caché (CSS).
+function attachJoystick(game) {
+  const joy = document.getElementById('joy'), nub = document.getElementById('joy-nub');
+  if (!joy || !nub) return;
+  const R = 40, DEAD = 7; let jid = null;
+  const apply = (dx, dy) => {
+    const len = Math.hypot(dx, dy), cl = Math.min(len, R);
+    const ux = len ? dx / len : 0, uy = len ? dy / len : 0;
+    nub.style.transform = 'translate(' + (ux * cl).toFixed(1) + 'px,' + (uy * cl).toFixed(1) + 'px)';
+    game.joy = len > DEAD ? { x: ux, y: uy } : { x: 0, y: 0 };
+  };
+  const reset = () => { jid = null; game.joy = { x: 0, y: 0 }; nub.style.transform = 'translate(0,0)'; };
+  const center = () => { const r = joy.getBoundingClientRect(); return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 }; };
+  joy.addEventListener('touchstart', (e) => {
+    const t = e.changedTouches[0]; jid = t.identifier; const { cx, cy } = center();
+    apply(t.clientX - cx, t.clientY - cy); e.preventDefault(); e.stopPropagation();
+  }, { passive: false });
+  joy.addEventListener('touchmove', (e) => {
+    const { cx, cy } = center();
+    for (const t of e.changedTouches) if (t.identifier === jid) { apply(t.clientX - cx, t.clientY - cy); e.preventDefault(); e.stopPropagation(); break; }
+  }, { passive: false });
+  const jend = (e) => { for (const t of e.changedTouches) if (t.identifier === jid) { reset(); e.preventDefault(); break; } };
+  joy.addEventListener('touchend', jend, { passive: false });
+  joy.addEventListener('touchcancel', jend, { passive: false });
 }
 
 function midpoint(e) { return { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 }; }

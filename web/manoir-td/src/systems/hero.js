@@ -17,6 +17,8 @@ export function updateHeroMove(game, dt) {
   if (K['d'] || K['arrowright']) mx += 1;
   if (K['w'] || K['z'] || K['arrowup']) my -= 1;
   if (K['s'] || K['arrowdown']) my += 1;
+  // joystick tactile (mobile) : prioritaire sur le clavier quand il est poussé
+  if (game.joy && (game.joy.x || game.joy.y)) { mx = game.joy.x; my = game.joy.y; }
 
   // ordre de déplacement (clic) : suivi tant qu'aucune touche n'est pressée
   if (game.heroTarget) {
