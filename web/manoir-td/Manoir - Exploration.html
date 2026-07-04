@@ -1096,6 +1096,10 @@
     missionGuard(actionId){
       let h=0; const str=String(actionId||''); for(let i=0;i<str.length;i++){ h=(h*31+str.charCodeAt(i))>>>0; }
       const diff=this.guardDiff();
+      // JALON : la prochaine étape est une TÂCHE ENTIÈRE (sentinelle task:) →
+      // la Veilleuse la garde en personne — RAID avec le moteur complet.
+      if(str.indexOf('task:')===0) return {name:'un RAID de jalon', pitch:'La prochaine étape est un jalon — une tâche entière. La Veilleuse le garde en personne : Commander, tourelles, plein assaut sur ses sanctuaires.',
+        href:'./index.html?raid=1&reward=action&seed='+(h%99991)+'&difficulty='+diff};
       const r=h%10;
       if(r<4) return {name:'la Salle des Ombres', pitch:'Un plan inédit à chaque affaire — caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera.',
         href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff+'&seed='+(h%99991)};
