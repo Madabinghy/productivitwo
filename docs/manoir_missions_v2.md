@@ -225,4 +225,12 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
 - **Runes UV** : 3 runes visibles UNIQUEMENT lampe UV en main ET lanterne éteinte (le noir
   complet, geste inverse de la fouille). +3 XP chacune ; les 3 → butin « Triptyque des
   runes » au Grand Hall (`ombrelune_runes`).
+- **Journal de bord** : tap sur la bannière → vue de face consolidée (enquêtes en cours avec
+  progression + bouton « Ranger ↩ » sans pénalité, missions du jour, état du portail, besace
+  huile/outils/clés).
+- **Multi-enquêtes** : jusqu'à **2 enquêtes en parallèle** (`ombrelune_enquetes`, liste ;
+  migration auto de l'ancien slot unique). Chaque entité (suspect/indice/indice caché) porte
+  son index `q` ; progressions, verdicts et butins indépendants. Une seule mission du portail
+  à la fois ; le portail ne peut jamais écraser une enquête en cours. Le noir d'expédition
+  s'applique si l'une des enquêtes actives est une expédition.
 - À venir : `genOmbres` (segments + validation) ; arbre de talents (« Établi »).
