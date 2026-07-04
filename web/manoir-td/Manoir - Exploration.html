@@ -246,8 +246,7 @@
       this.cam={...this.hero}; this.face=Math.PI/2;
       this.keys={}; this.moveTarget=null; this.path=[]; this.fadeA=0; this.dwell=0; this.dwellLock=false; this.joy={x:0,y:0};
       // —— Lien IRL : 10 verres d'eau sur le bar du Grand Hall (boire IRL ⇒ 1 verre disparaît)
-      { const gh=this.byk.hall; const x0=gh.x+gh.w/2+52; const rowW=((gh.x+gh.w-72)-(gh.x+gh.w/2+40))-24;
-        this.barRow={x0, y:gh.y+50, n:10, step:rowW/9}; this.barPos={x:x0+rowW/2, y:gh.y+50}; }
+      { const hb=this.hallBar(); this.barRow={x0:hb.gx0, y:hb.gy, n:10, step:hb.step}; this.barPos={x:hb.gx0+hb.span/2, y:hb.gy}; }
       const today=new Date().toISOString().slice(0,10); let wsv={d:today,n:0};
       try{ wsv=JSON.parse(localStorage.getItem('ombrelune_water')||'null')||wsv; }catch(e){}
       if(wsv.d!==today) wsv={d:today,n:0};
@@ -684,13 +683,21 @@
     roomOn(k){ const st=this.stageForXp(this._stageXp||0);
       for(let i=0;i<=st && i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(k)>=0) return true; } return false; }
     roomLvl(k){ if(!this.roomOn(k)) return -1; const e=this.manor&&this.manor.rooms[k]; const n=(e&&e.n)||0; return n>=7?2:(n>=3?1:0); }
-    // le Hall garde un plancher plus haut : le bar à 10 verres (offsets fixes) casse sous 70 %
+    // le Hall démarre un peu plus grand par choix esthétique (le bar est désormais proportionnel)
     roomFactor(k){ const l=this.roomLvl(k); if(l<0) return 0.45;
       return (k==='hall'?[0.7,0.85,1]:[0.5,0.75,1])[l]; }
     applyGrowth(){ for(const r of this.ROOMS){ const f=this.roomFactor(r.k);
         r.w=Math.round(r.bw*f); r.h=Math.round(r.bh*f);
         r.x=Math.round(r.bx+(r.bw-r.w)/2); r.y=Math.round(r.by+(r.bh-r.h)/2); }
       this._furn={}; this._part={}; }
+    // Géométrie du bar du Grand Hall, PROPORTIONNELLE à la taille courante de la salle :
+    // bar large, 10 verres alignés dessus, 3 tabourets en face. Partagée entre le dessin
+    // et la détection IRL (barRow) pour rester synchronisés à toute échelle (plus d'offsets fixes).
+    hallBar(){ const r=this.byk.hall, X=r.x, Y=r.y, W=r.w, H=r.h;
+      const barX=X+W*0.40, barW=W*0.50, barY=Y+H*0.15, barH=Math.max(15,Math.round(H*0.085));
+      const inset=barW*0.08, span=barW-2*inset, step=span/9, gx0=barX+inset, gy=barY+barH*0.5;
+      const stoolY=barY+barH+Math.max(14,H*0.10);
+      return {barX, barW, barY, barH, span, step, gx0, gy, stoolY}; }
     saveManor(){ try{ localStorage.setItem('ombrelune_manor', JSON.stringify(this.manor)); }catch(e){} }
     creditRoom(k,inc){ if(!this.manor) return; const e=this.manor.rooms[k]=this.manor.rooms[k]||{n:0};
       const before=this.roomLvl(k); e.n=(e.n||0)+(inc||1); this.saveManor();
@@ -703,8 +710,7 @@
       if(n>(e.n||0)) this.creditRoom(k, n-(e.n||0)); }
     // repositionne tout ce qui dérive des rects (après une croissance en cours de session)
     relayout(){ this.applyGrowth();
-      { const gh=this.byk.hall; const x0=gh.x+gh.w/2+52; const rowW=((gh.x+gh.w-72)-(gh.x+gh.w/2+40))-24;
-        this.barRow={x0, y:gh.y+50, n:10, step:rowW/9}; this.barPos={x:x0+rowW/2, y:gh.y+50}; }
+      { const hb=this.hallBar(); this.barRow={x0:hb.gx0, y:hb.gy, n:10, step:hb.step}; this.barPos={x:hb.gx0+hb.span/2, y:hb.gy}; }
       if(this.SPOTS) for(const sp of this.SPOTS){ if(sp.fx==null) continue; const r=this.byk[sp.room]; sp.x=r.x+r.w*sp.fx; sp.y=r.y+r.h*sp.fy; }
       if(this.FRAGS) for(const fg of this.FRAGS){ const r=this.byk[fg.room]; fg.x=r.x+r.w*fg.fx; fg.y=r.y+r.h*fg.fy; }
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
@@ -1622,13 +1628,13 @@
       const X=r.x,Y=r.y,W=r.w,H=r.h,cx=X+W/2,cy=Y+H/2; const L=[];
       const BENCH=18, BL=46, TBL=18, OTT=16, DESK_W=92, DESK_H=26, SHD=16, PLT=15, BUSH=22, CRT=22, BAR=13, PED=12, BRZ=11, PIL=12, TMBW=30, TMBL=64, WELL=27, TEL=18, MIR=9, FRW=34, FRH=15;
       switch(r.k){
-        case 'hall':
+        case 'hall': { const hb=this.hallBar();
           L.push({t:'rug',round:true,x:cx-130,y:cy-90,w:260,h:200});
-          L.push({t:'bar',x:cx+40,y:Y+38,w:(X+W-72)-(cx+40),h:24});
-          L.push({t:'stool',x:cx+92,y:Y+80});
-          L.push({t:'stool',x:cx+140,y:Y+80});
-          L.push({t:'stool',x:cx+188,y:Y+80});
-          L.push({t:'glasses',x0:cx+52,y:Y+50,n:10,step:(((X+W-72)-(cx+40))-24)/9}); // 10 verres d'eau — lien IRL (boire IRL ⇒ 1 verre disparaît)
+          L.push({t:'bar',x:hb.barX,y:hb.barY,w:hb.barW,h:hb.barH});
+          L.push({t:'stool',x:hb.barX+hb.barW*0.22,y:hb.stoolY});
+          L.push({t:'stool',x:hb.barX+hb.barW*0.50,y:hb.stoolY});
+          L.push({t:'stool',x:hb.barX+hb.barW*0.78,y:hb.stoolY});
+          L.push({t:'glasses',x0:hb.gx0,y:hb.gy,n:10,step:hb.step}); } // 10 verres d'eau — lien IRL (boire IRL ⇒ 1 verre disparaît)
           L.push({t:'plant',x:X+70,y:Y+H-70,r:PLT});
           L.push({t:'plant',x:X+W-70,y:Y+H-70,r:PLT}); break;
         case 'coffre':
