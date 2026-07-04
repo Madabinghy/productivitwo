@@ -26,7 +26,8 @@
 (function(){
   'use strict';
 
-  var CELL=42, COLS=7, ROWS=9;
+  var CELL=42, COLS=7, ROWS=9, OX=0, OY=0, BEAMS=[];
+  function hexa(h,a){ h=String(h||"#f2cd72").replace("#",""); var n=parseInt(h,16); return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")"; }
   // Mode récompense (mission du portail) : ?reward=action&seed=N → variante de
   // plateau tirée du seed ; la victoire révèle l'action Gantt (et ne touche PAS
   // à la quête des miroirs de l'Exploration).
@@ -46,70 +47,70 @@
   var GEN = (REWARD||FREE) && window.OmbreluneGen ? window.OmbreluneGen.genMirror(SEED,DIFF) : null;
   var V = GEN || (REWARD ? VARIANTS[SEED%VARIANTS.length] : VARIANTS[0]);
   var SOURCE=V.SOURCE, TARGET=V.TARGET, MPOS=V.MPOS, DEFAULT=V.DEFAULT, WALLS=V.WALLS||[];
+  COLS=V.COLS||7; ROWS=V.ROWS||9; CELL=Math.floor(Math.min(294/COLS, 378/ROWS));
+  OX=Math.round((294-COLS*CELL)/2); OY=Math.round((378-ROWS*CELL)/2);
+  BEAMS = (V.BEAMS && V.BEAMS.length) ? V.BEAMS : [{SOURCE:V.SOURCE, TARGET:V.TARGET, color:'#f2cd72'}];
 
   function freshOrient(){ var o={}; Object.keys(DEFAULT).forEach(function(k){ o[k]=DEFAULT[k]; }); return o; }
   var S = { orient: freshOrient() };
 
   function reset(){ S.orient = freshOrient(); render(); }
   function rotate(id){ S.orient[id] = S.orient[id]==='/' ? '\\' : '/'; render(); }
-  function center(r,c){ return { x: c*CELL + CELL/2, y: r*CELL + CELL/2 }; }
+  function center(r,c){ return { x: OX + c*CELL + CELL/2, y: OY + r*CELL + CELL/2 }; }
   function reflect(dir,o){ if(o==='/') return { E:'N', N:'E', W:'S', S:'W' }[dir]; return { E:'S', S:'E', W:'N', N:'W' }[dir]; }
   function step(r,c,dir){ return dir==='E'?{r:r,c:c+1}:dir==='W'?{r:r,c:c-1}:dir==='N'?{r:r-1,c:c}:{r:r+1,c:c}; }
 
   function wallAt(r,c){ for(var i=0;i<WALLS.length;i++){ if(WALLS[i].r===r&&WALLS[i].c===c) return true; } return false; }
-  function trace(){
+  function traceBeam(beam){
     var o=S.orient;
     var mAt=function(r,c){ return Object.keys(MPOS).find(function(k){ return MPOS[k].r===r && MPOS[k].c===c; }); };
-    var r=SOURCE.r, c=SOURCE.c, dir=SOURCE.dir;
+    var r=beam.SOURCE.r, c=beam.SOURCE.c, dir=beam.SOURCE.dir;
     var pts=[ center(r,c) ]; var solved=false;
-    for(var i=0;i<60;i++){
+    for(var i=0;i<160;i++){
       var nx=step(r,c,dir);
       if(nx.r<0||nx.r>=ROWS||nx.c<0||nx.c>=COLS||wallAt(nx.r,nx.c)){ var cc=center(r,c); var d=dir==='E'?{x:1,y:0}:dir==='W'?{x:-1,y:0}:dir==='N'?{x:0,y:-1}:{x:0,y:1}; pts.push({ x:cc.x+d.x*CELL/2, y:cc.y+d.y*CELL/2 }); break; }
       r=nx.r; c=nx.c;
-      if(r===TARGET.r && c===TARGET.c && dir===TARGET.enter){ pts.push(center(r,c)); solved=true; break; }
+      if(r===beam.TARGET.r && c===beam.TARGET.c && dir===beam.TARGET.enter){ pts.push(center(r,c)); solved=true; break; }
       var id=mAt(r,c);
       if(id){ dir=reflect(dir,o[id]); pts.push(center(r,c)); }
     }
     return { pts:pts, solved:solved };
   }
+  function allSolved(){ for(var i=0;i<BEAMS.length;i++){ if(!traceBeam(BEAMS[i]).solved) return false; } return true; }
 
   function view(){
-    var res=trace(), pts=res.pts, solved=res.solved;
-    // beams
-    var beam='';
-    for(var i=0;i<pts.length-1;i++){
-      var a=pts[i], b=pts[i+1];
-      var horiz=Math.abs(a.y-b.y)<1;
-      var col=solved?'linear-gradient(90deg,#fff3d0,#f2cd72)':'linear-gradient(90deg,#ffd98a,#f0a64e)';
-      var glow=solved?'0 0 16px 3px rgba(242,205,114,.8)':'0 0 12px 2px rgba(240,166,78,.6)';
-      if(horiz){ beam+='<div style="position:absolute; left:'+Math.min(a.x,b.x)+'px; top:'+(a.y-2)+'px; width:'+Math.abs(b.x-a.x)+'px; height:4px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
-      else { beam+='<div style="position:absolute; left:'+(a.x-2)+'px; top:'+Math.min(a.y,b.y)+'px; width:4px; height:'+Math.abs(b.y-a.y)+'px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
-    }
-    // source
-    var sc=center(SOURCE.r,SOURCE.c);
-    var source='<div style="position:absolute; left:'+(sc.x-16)+'px; top:'+(sc.y-16)+'px; width:32px; height:32px; z-index:7;">'
-      + '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:22px; height:26px; border-radius:13px 13px 10px 10px; background:linear-gradient(180deg,#22142f,#160c22); border:1.4px solid rgba(214,168,74,.55);"></div>'
-      + '<div style="position:absolute; left:50%; top:50%; width:11px; height:16px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, #f0b94e 55%, #d4781e); box-shadow:0 0 16px rgba(240,185,78,.9); animation:flick 1.5s ease-in-out infinite;"></div></div>';
-    // mirrors
+    var solved=true, beamHTML='', sourceHTML='', sealHTML='';
+    BEAMS.forEach(function(beam){
+      var res=traceBeam(beam), pts=res.pts, bs=res.solved; if(!bs) solved=false;
+      var col=beam.color||'#f2cd72';
+      for(var i=0;i<pts.length-1;i++){
+        var a=pts[i], b=pts[i+1], horiz=Math.abs(a.y-b.y)<1;
+        var glow=bs?('0 0 16px 3px '+hexa(col,.85)):('0 0 11px 2px '+hexa(col,.55));
+        if(horiz){ beamHTML+='<div style="position:absolute; left:'+Math.min(a.x,b.x)+'px; top:'+(a.y-2)+'px; width:'+Math.abs(b.x-a.x)+'px; height:4px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
+        else { beamHTML+='<div style="position:absolute; left:'+(a.x-2)+'px; top:'+Math.min(a.y,b.y)+'px; width:4px; height:'+Math.abs(b.y-a.y)+'px; border-radius:3px; background:'+col+'; box-shadow:'+glow+'; animation:beampulse 2s ease-in-out infinite; pointer-events:none; z-index:6;"></div>'; }
+      }
+      var sc=center(beam.SOURCE.r,beam.SOURCE.c);
+      sourceHTML+='<div style="position:absolute; left:'+(sc.x-16)+'px; top:'+(sc.y-16)+'px; width:32px; height:32px; z-index:7;">'
+        + '<div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:22px; height:26px; border-radius:13px 13px 10px 10px; background:linear-gradient(180deg,#22142f,#160c22); border:1.4px solid '+hexa(col,.55)+';"></div>'
+        + '<div style="position:absolute; left:50%; top:50%; width:11px; height:16px; border-radius:50% 50% 50% 50% / 64% 64% 36% 36%; background:radial-gradient(circle at 50% 70%, #ffe9b0, '+col+' 60%, #d4781e); box-shadow:0 0 16px '+hexa(col,.9)+'; animation:flick 1.5s ease-in-out infinite;"></div></div>';
+      var tc=center(beam.TARGET.r,beam.TARGET.c); var sz=Math.round(Math.min(38,CELL-4)*1.0), off=Math.round(sz/2);
+      var ring=bs
+        ? 'position:absolute; left:50%; top:50%; width:'+sz+'px; height:'+sz+'px; transform:translate(-50%,-50%); border-radius:50%; border:2px solid '+hexa(col,.9)+'; animation:sealglow 1.6s ease-in-out infinite, sealspin 8s linear infinite;'
+        : 'position:absolute; left:50%; top:50%; width:'+sz+'px; height:'+sz+'px; transform:translate(-50%,-50%); border-radius:50%; border:2px dashed rgba(154,134,184,.4);';
+      sealHTML+='<div style="position:absolute; left:'+(tc.x-off)+'px; top:'+(tc.y-off)+'px; width:'+sz+'px; height:'+sz+'px; z-index:7;"><div style="'+ring+'"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:'+Math.round(sz*0.47)+'px; filter:'+(bs?'drop-shadow(0 0 8px '+hexa(col,1)+')':'grayscale(1) opacity(.45)')+';">\u2726</div></div>';
+    });
+    var msz=Math.min(38,CELL-4), bl=Math.round(msz*0.79);
     var mirrors=Object.keys(MPOS).map(function(id){
-      var p=center(MPOS[id].r, MPOS[id].c);
-      var o=S.orient[id];
-      var rot=o==='/'?'-45deg':'45deg';
-      var wrap='position:absolute; left:'+p.x+'px; top:'+p.y+'px; width:38px; height:38px; border-radius:9px; cursor:pointer; border:1px solid rgba(214,168,74,.3); background:radial-gradient(circle at 38% 32%, rgba(60,52,72,.7), rgba(28,22,38,.7)); box-shadow:0 4px 12px rgba(0,0,0,.45); padding:0; z-index:8; animation:mirrornudge 2.6s ease-in-out infinite;';
-      var bar='position:absolute; left:50%; top:50%; width:30px; height:5px; border-radius:3px; transform:translate(-50%,-50%) rotate('+rot+'); background:linear-gradient(90deg,#e8eef6,#aeb9cc); box-shadow:0 0 10px rgba(220,235,255,.55);';
-      var shine='position:absolute; left:50%; top:50%; width:30px; height:1.5px; transform:translate(-50%,-50%) rotate('+rot+'); background:rgba(255,255,255,.9);';
+      var p=center(MPOS[id].r, MPOS[id].c); var o=S.orient[id]; var rot=o==='/'?'-45deg':'45deg';
+      var wrap='position:absolute; left:'+p.x+'px; top:'+p.y+'px; width:'+msz+'px; height:'+msz+'px; border-radius:9px; cursor:pointer; border:1px solid rgba(214,168,74,.3); background:radial-gradient(circle at 38% 32%, rgba(60,52,72,.7), rgba(28,22,38,.7)); box-shadow:0 4px 12px rgba(0,0,0,.45); padding:0; z-index:8; animation:mirrornudge 2.6s ease-in-out infinite; transform:translate(-50%,-50%);';
+      var bar='position:absolute; left:50%; top:50%; width:'+bl+'px; height:5px; border-radius:3px; transform:translate(-50%,-50%) rotate('+rot+'); background:linear-gradient(90deg,#e8eef6,#aeb9cc); box-shadow:0 0 10px rgba(220,235,255,.55);';
+      var shine='position:absolute; left:50%; top:50%; width:'+bl+'px; height:1.5px; transform:translate(-50%,-50%) rotate('+rot+'); background:rgba(255,255,255,.9);';
       return '<button data-mirror="'+id+'" style="'+wrap+'"><div style="'+bar+'"></div><div style="'+shine+'"></div></button>';
     }).join('');
-    // murs (plateaux générés) : blocs qui arrêtent le rayon
+    var wsz=Math.min(34,CELL-2);
     var walls=WALLS.map(function(w){ var p=center(w.r,w.c);
-      return '<div style="position:absolute; left:'+(p.x-17)+'px; top:'+(p.y-17)+'px; width:34px; height:34px; border-radius:7px; background:linear-gradient(180deg,#241a33,#140d20); border:1px solid rgba(154,134,184,.28); box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05); z-index:5;"></div>';
+      return '<div style="position:absolute; left:'+p.x+'px; top:'+p.y+'px; width:'+wsz+'px; height:'+wsz+'px; border-radius:7px; background:linear-gradient(180deg,#241a33,#140d20); border:1px solid rgba(154,134,184,.28); box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05); z-index:5; transform:translate(-50%,-50%);"></div>';
     }).join('');
-    // seal
-    var tc=center(TARGET.r,TARGET.c);
-    var sealRing=solved
-      ? 'position:absolute; left:50%; top:50%; width:38px; height:38px; transform:translate(-50%,-50%); border-radius:50%; border:2px solid rgba(242,205,114,.9); animation:sealglow 1.6s ease-in-out infinite, sealspin 8s linear infinite;'
-      : 'position:absolute; left:50%; top:50%; width:38px; height:38px; transform:translate(-50%,-50%); border-radius:50%; border:2px dashed rgba(154,134,184,.4);';
-    var seal='<div style="position:absolute; left:'+(tc.x-19)+'px; top:'+(tc.y-19)+'px; width:38px; height:38px; z-index:7;"><div style="'+sealRing+'"></div><div style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:18px; filter:'+(solved?'drop-shadow(0 0 8px rgba(242,205,114,1))':'grayscale(1) opacity(.45)')+';">✶</div></div>';
 
     if(solved && REWARD) revealAsk();
     var footer = solved
@@ -129,7 +130,7 @@
       + '<div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:6px;">'
       +   '<div style="position:relative; width:294px; height:378px; border-radius:8px; overflow:hidden; background:radial-gradient(ellipse at 24% 76%, #2a2030 0%, #1a1422 46%, #110b19 100%); border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">'
       +     '<div style="position:absolute; inset:0; opacity:.42; background:repeating-linear-gradient(0deg, transparent 0, transparent 40px, rgba(0,0,0,.3) 40px, rgba(0,0,0,.3) 42px);"></div>'
-      +     walls + beam + source + mirrors + seal
+      +     walls + beamHTML + sourceHTML + mirrors + sealHTML
       +   '</div>'
       + '</div>'
       + '<div style="position:relative; z-index:30; padding:10px 24px 26px;">'+footer+'</div>'
@@ -159,7 +160,7 @@
       if(rev.indexOf(na.actionId)<0){ rev.push(na.actionId); localStorage.setItem('ombrelune_revealed', JSON.stringify(rev)); } } }catch(e){}
     try{ if(window.ManoirBridge) window.ManoirBridge.postMessage(JSON.stringify({ type:'reveal_action' })); }catch(e){}
   }
-  window.addEventListener('storage', function(e){ if(REWARD && e.key==='ombrelune_next_action' && trace().solved) render(); });
+  window.addEventListener('storage', function(e){ if(REWARD && e.key==='ombrelune_next_action' && allSolved()) render(); });
   function rewardHTML(){
     var na=readNextAction();
     var revealed = na && na.title && na.sealed===false;
@@ -177,8 +178,8 @@
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
     var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); else if(k==='replay') replay(); }
   });
-  function render(){ if(!REWARD && !FREE && trace().solved) saveSolved(); if(FREE && trace().solved) depositLoot(); app.innerHTML = view(); }
-  window.__enigme={ S:S, V:V, MPOS:MPOS, DEFAULT:DEFAULT, WALLS:WALLS, trace:trace, rotate:rotate };
+  function render(){ if(!REWARD && !FREE && allSolved()) saveSolved(); if(FREE && allSolved()) depositLoot(); app.innerHTML = view(); }
+  window.__enigme={ S:S, V:V, MPOS:MPOS, DEFAULT:DEFAULT, WALLS:WALLS, BEAMS:BEAMS, traceBeam:traceBeam, allSolved:allSolved, rotate:rotate };
   render();
 })();
 </script>
