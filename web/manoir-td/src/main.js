@@ -65,9 +65,11 @@ function refitViewport() {
 }
 window.addEventListener('resize', refitViewport);
 window.addEventListener('orientationchange', () => setTimeout(refitViewport, 200));
-// au chargement, le canvas plein écran (flex) peut ne pas être mesurable dès l'init du module :
-// on re-fit une fois le layout stabilisé (2e frame) pour caler viewport + backing store.
-requestAnimationFrame(() => requestAnimationFrame(refitViewport));
+// Verrou anti-étirement : le backing store suit TOUJOURS la taille CSS réelle du canvas.
+// Le ResizeObserver se déclenche au premier layout ET à chaque changement (barre d'URL
+// Safari, rotation) → jamais de décalage backing/boîte (= jamais d'étirement).
+if (window.ResizeObserver) { new ResizeObserver(() => refitViewport()).observe(canvas); }
+else { requestAnimationFrame(() => requestAnimationFrame(refitViewport)); }
 
 // ---- routeur d'écrans : titre ⇄ carte ⇄ mission ----
 const titleOv = document.getElementById('ov-title');
