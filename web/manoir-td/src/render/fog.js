@@ -34,7 +34,8 @@ export function drawFog(game, ctx, th, tx, ty) {
 // Minimap « PLAN » en haut à droite du viewport.
 export function drawMinimap(game, ctx, th) {
   const s = game.ui; const sat = hasSatellite(game);
-  const W = 176, mxs = W / MAP.W, Hm = MAP.H * mxs;
+  // mobile : le plan se fait discret (≤ 26 % de l'écran) ; desktop : 176 px
+  const W = Math.min(176, Math.round(VPW * 0.26)), mxs = W / MAP.W, Hm = MAP.H * mxs;
   const PX = VPW - W - 14, PY = 14, pad = 7;
 
   ctx.save();
