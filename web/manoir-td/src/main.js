@@ -186,6 +186,9 @@ const hud = {
 const hudWrap = document.querySelector('.hud');
 const panelEl = document.getElementById('panel');
 const msgbarEl = document.querySelector('.msgbar');
+const appEl = document.getElementById('app');
+const panelToggle = document.getElementById('panel-toggle');
+if (panelToggle) panelToggle.onclick = () => { game.ui.buildSheetOpen = !game.ui.buildSheetOpen; };
 function paintHud() {
   if (hud.alive) hud.alive.textContent = game.G.enemies.length;
   if (hud.lit) hud.lit.textContent = game.G.lit.size + '/' + game.CANDLES.length;
@@ -207,6 +210,15 @@ function paintHud() {
   hudWrap.style.visibility = inMission ? 'visible' : 'hidden';
   panelEl.style.visibility = inMission ? 'visible' : 'hidden';
   msgbarEl.style.visibility = inMission ? 'visible' : 'hidden';
+
+  // tiroir de tourelles (mobile) : ouvert si on détaille une tourelle posée, fermé si une
+  // tourelle est en attente de pose, sinon suit l'intention manuelle. Fermé hors mission.
+  const sheetOpen = inMission && (!!game.ui.selId || (!game.ui.sel && !!game.ui.buildSheetOpen));
+  appEl.classList.toggle('sheet-open', sheetOpen);
+  if (panelToggle) {
+    panelToggle.style.display = inMission ? '' : 'none';
+    panelToggle.textContent = sheetOpen ? '▾ Fermer' : '🏗 Tourelles';
+  }
 
   // bandeau de tuto (Veilleuse)
   const tut = game.tutorial;
