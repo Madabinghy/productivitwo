@@ -85,10 +85,12 @@ export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPha
 
   ctx.save(); ctx.rotate(facing); // s'oriente vers sa cible — tête en avant
 
-  // pieds (cycle de marche)
+  // pieds (cycle de marche) : le pied AVANT se lève et s'estompe (vrai pas), l'autre reste au
+  // sol — pas de va-et-vient symétrique qui donnait un effet « glisse/reculons ».
   for (const side of [-1, 1]) {
-    const sw = walk ? Math.sin(ph + (side < 0 ? 0 : Math.PI)) : 0; const fy = s * 0.30 + sw * s * 0.07; const fx = side * s * 0.14;
-    ctx.save(); ctx.fillStyle = DARK; rr(ctx, fx - s * 0.05, fy - s * 0.05, s * 0.10, s * 0.13, 3); ctx.fill();
+    const sw = walk ? Math.sin(ph + (side < 0 ? 0 : Math.PI)) : 0; const lift = Math.max(0, sw);
+    const fy = s * 0.30 - lift * s * 0.09; const fx = side * s * 0.14;
+    ctx.save(); ctx.globalAlpha = 1 - lift * 0.3; ctx.fillStyle = DARK; rr(ctx, fx - s * 0.05, fy - s * 0.05, s * 0.10, s * 0.13, 3); ctx.fill();
     ctx.fillStyle = hexA(STEEL_HI, 0.5); rr(ctx, fx - s * 0.05, fy - s * 0.05, s * 0.10, s * 0.045, 2); ctx.fill(); ctx.restore();
   }
 
