@@ -20,6 +20,7 @@
 </head>
 <body>
 <div id="app"></div>
+<script src="js/ombrelune-gen.js"></script>
 <script>
 /* OMBRELUNE — L'énigme du miroir (optique), 100% VANILLA JS */
 (function(){
@@ -31,23 +32,31 @@
   // à la quête des miroirs de l'Exploration).
   var REWARD = /(^|[?&])reward=action/.test(window.location.search);
   var SEED = parseInt((window.location.search.match(/seed=(\d+)/)||[])[1]||'0',10);
+  // Mode libre (?free=1) : partie générée, juste pour jouer — n'écrit RIEN côté réel.
+  var FREE = /(^|[?&])free=1/.test(window.location.search);
+  var DIFF = Math.max(1,Math.min(3,parseInt((window.location.search.match(/difficulty=(\d)/)||[])[1]||'1',10)));
   var VARIANTS=[
     { SOURCE:{r:7,c:0,dir:'E'}, TARGET:{r:2,c:6,enter:'E'}, MPOS:{A:{r:7,c:3},B:{r:2,c:3},D:{r:5,c:5}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'en haut à droite' },
     { SOURCE:{r:1,c:0,dir:'E'}, TARGET:{r:6,c:6,enter:'E'}, MPOS:{A:{r:1,c:4},B:{r:6,c:4},D:{r:3,c:2}}, DEFAULT:{A:'/',B:'\\',D:'/'}, hint:'en bas à droite' },
     { SOURCE:{r:8,c:3,dir:'N'}, TARGET:{r:1,c:5,enter:'N'}, MPOS:{A:{r:4,c:3},B:{r:4,c:5},D:{r:6,c:1}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'tout en haut' },
     { SOURCE:{r:3,c:6,dir:'W'}, TARGET:{r:6,c:1,enter:'W'}, MPOS:{A:{r:3,c:4},B:{r:6,c:4},D:{r:1,c:2}}, DEFAULT:{A:'\\',B:'\\',D:'/'}, hint:'en bas à gauche' }
   ];
-  var V = REWARD ? VARIANTS[SEED%VARIANTS.length] : VARIANTS[0];
-  var SOURCE=V.SOURCE, TARGET=V.TARGET, MPOS=V.MPOS, DEFAULT=V.DEFAULT;
+  // Reward & libre : plateau GÉNÉRÉ (graine + difficulté, résoluble par construction).
+  // Mission 2 classique : plateau historique fixe (VARIANTS[0]).
+  var GEN = (REWARD||FREE) && window.OmbreluneGen ? window.OmbreluneGen.genMirror(SEED,DIFF) : null;
+  var V = GEN || (REWARD ? VARIANTS[SEED%VARIANTS.length] : VARIANTS[0]);
+  var SOURCE=V.SOURCE, TARGET=V.TARGET, MPOS=V.MPOS, DEFAULT=V.DEFAULT, WALLS=V.WALLS||[];
 
-  var S = { orient: { A:DEFAULT.A, B:DEFAULT.B, D:DEFAULT.D } };
+  function freshOrient(){ var o={}; Object.keys(DEFAULT).forEach(function(k){ o[k]=DEFAULT[k]; }); return o; }
+  var S = { orient: freshOrient() };
 
-  function reset(){ S.orient = { A:DEFAULT.A, B:DEFAULT.B, D:DEFAULT.D }; render(); }
+  function reset(){ S.orient = freshOrient(); render(); }
   function rotate(id){ S.orient[id] = S.orient[id]==='/' ? '\\' : '/'; render(); }
   function center(r,c){ return { x: c*CELL + CELL/2, y: r*CELL + CELL/2 }; }
   function reflect(dir,o){ if(o==='/') return { E:'N', N:'E', W:'S', S:'W' }[dir]; return { E:'S', S:'E', W:'N', N:'W' }[dir]; }
   function step(r,c,dir){ return dir==='E'?{r:r,c:c+1}:dir==='W'?{r:r,c:c-1}:dir==='N'?{r:r-1,c:c}:{r:r+1,c:c}; }
 
+  function wallAt(r,c){ for(var i=0;i<WALLS.length;i++){ if(WALLS[i].r===r&&WALLS[i].c===c) return true; } return false; }
   function trace(){
     var o=S.orient;
     var mAt=function(r,c){ return Object.keys(MPOS).find(function(k){ return MPOS[k].r===r && MPOS[k].c===c; }); };
@@ -55,7 +64,7 @@
     var pts=[ center(r,c) ]; var solved=false;
     for(var i=0;i<60;i++){
       var nx=step(r,c,dir);
-      if(nx.r<0||nx.r>=ROWS||nx.c<0||nx.c>=COLS){ var cc=center(r,c); var d=dir==='E'?{x:1,y:0}:dir==='W'?{x:-1,y:0}:dir==='N'?{x:0,y:-1}:{x:0,y:1}; pts.push({ x:cc.x+d.x*CELL/2, y:cc.y+d.y*CELL/2 }); break; }
+      if(nx.r<0||nx.r>=ROWS||nx.c<0||nx.c>=COLS||wallAt(nx.r,nx.c)){ var cc=center(r,c); var d=dir==='E'?{x:1,y:0}:dir==='W'?{x:-1,y:0}:dir==='N'?{x:0,y:-1}:{x:0,y:1}; pts.push({ x:cc.x+d.x*CELL/2, y:cc.y+d.y*CELL/2 }); break; }
       r=nx.r; c=nx.c;
       if(r===TARGET.r && c===TARGET.c && dir===TARGET.enter){ pts.push(center(r,c)); solved=true; break; }
       var id=mAt(r,c);
@@ -91,6 +100,10 @@
       var shine='position:absolute; left:50%; top:50%; width:30px; height:1.5px; transform:translate(-50%,-50%) rotate('+rot+'); background:rgba(255,255,255,.9);';
       return '<button data-mirror="'+id+'" style="'+wrap+'"><div style="'+bar+'"></div><div style="'+shine+'"></div></button>';
     }).join('');
+    // murs (plateaux générés) : blocs qui arrêtent le rayon
+    var walls=WALLS.map(function(w){ var p=center(w.r,w.c);
+      return '<div style="position:absolute; left:'+(p.x-17)+'px; top:'+(p.y-17)+'px; width:34px; height:34px; border-radius:7px; background:linear-gradient(180deg,#241a33,#140d20); border:1px solid rgba(154,134,184,.28); box-shadow:0 4px 10px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.05); z-index:5;"></div>';
+    }).join('');
     // seal
     var tc=center(TARGET.r,TARGET.c);
     var sealRing=solved
@@ -100,10 +113,12 @@
 
     if(solved && REWARD) revealAsk();
     var footer = solved
-      ? (REWARD
+      ? (FREE
+        ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau — juste pour le plaisir.</div><div style="display:flex; gap:10px; margin-top:13px;"><button data-act="replay" style="flex:1; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Une autre énigme ↺</button><button data-act="back" style="flex:1; padding:15px; border:1px solid rgba(214,168,74,.35); border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#e7c878; background:rgba(214,168,74,.1);">Retour au manoir ✦</button></div></div>'
+        : REWARD
         ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau — le butin est à toi.</div>'+rewardHTML()+'<button data-act="back" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Retour au manoir ✦</button></div>'
         : '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La lumière renaît — le Grand Hall s’éclairera au fil de tes verres d’eau.</div><button data-act="win" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Rétablir la lumière ✦</button></div>')
-      : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">Deux miroirs comptent, un troisième te distrait. Trouve l\u2019angle qui renvoie la flamme vers le sceau, '+V.hint+'.</span></div>';
+      : '<div style="display:flex; align-items:center; gap:10px; padding:13px 16px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);"><span style="font-size:16px;">🕯️</span><span style="font-size:12.5px; line-height:1.45; color:#a796c0;">'+(V.intro||'Deux miroirs comptent, un troisième te distrait.')+' Trouve l\u2019angle qui renvoie la flamme vers le sceau, '+V.hint+'.</span></div>';
 
     return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:#0a0712; box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
       + '<div style="position:relative; z-index:30; display:flex; align-items:center; justify-content:space-between; padding:20px 22px 12px;">'
@@ -114,7 +129,7 @@
       + '<div style="position:relative; flex:1; display:flex; align-items:flex-start; justify-content:center; padding-top:6px;">'
       +   '<div style="position:relative; width:294px; height:378px; border-radius:8px; overflow:hidden; background:radial-gradient(ellipse at 24% 76%, #2a2030 0%, #1a1422 46%, #110b19 100%); border:3px solid #0e0a16; box-shadow:inset 0 0 46px rgba(0,0,0,.72);">'
       +     '<div style="position:absolute; inset:0; opacity:.42; background:repeating-linear-gradient(0deg, transparent 0, transparent 40px, rgba(0,0,0,.3) 40px, rgba(0,0,0,.3) 42px);"></div>'
-      +     beam + source + mirrors + seal
+      +     walls + beam + source + mirrors + seal
       +   '</div>'
       + '</div>'
       + '<div style="position:relative; z-index:30; padding:10px 24px 26px;">'+footer+'</div>'
@@ -126,7 +141,9 @@
   // d'où le Grand Hall s'indexe ensuite au compteur d'eau. Écrit dès que le faisceau touche le
   // sceau (cf. render) pour que le flag survive à TOUT chemin de sortie (bouton, en-tête, ✕ app).
   function saveSolved(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} }
-  function win(){ saveSolved(); back(); }
+  function win(){ if(!FREE) saveSolved(); back(); }
+  // partie libre suivante : nouvelle graine aléatoire, même difficulté
+  function replay(){ try{ window.location.href='?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+DIFF; }catch(e){} }
   // Mode récompense : révèle l'action Gantt (même flux que la Salle des Ombres)
   var revealSent=false;
   function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
@@ -152,9 +169,10 @@
   var app=document.getElementById('app');
   app.addEventListener('click', function(ev){
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
-    var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); }
+    var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); else if(k==='replay') replay(); }
   });
-  function render(){ if(!REWARD && trace().solved) saveSolved(); app.innerHTML = view(); }
+  function render(){ if(!REWARD && !FREE && trace().solved) saveSolved(); app.innerHTML = view(); }
+  window.__enigme={ S:S, V:V, MPOS:MPOS, DEFAULT:DEFAULT, WALLS:WALLS, trace:trace, rotate:rotate };
   render();
 })();
 </script>
