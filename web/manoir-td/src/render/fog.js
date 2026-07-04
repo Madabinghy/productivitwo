@@ -1,34 +1,57 @@
 // Brouillard de nuit (veil) + minimap tactique. Dessinés en repère écran (après la caméra).
-import { VPW, VPH, VIS, CANDLE_VIS, MAP, COFFRE, TCOL, radarRadius, turretStats } from '../config.js';
+import { VPW, VPH, CANDLE_VIS, NIGHT_HALO, NIGHT_CONE, NIGHT_CONE_HALF, MAP, COFFRE, TCOL, radarRadius, turretStats } from '../config.js';
 import { hasSatellite, enemyRevealed } from '../systems/vision.js';
 
 const isBuilt = (t) => t.built !== false;
 
-// Voile de nuit : sombre partout, troué par les sources de vision (destination-out).
+// Voile de nuit : sombre partout, troué par les sources de vision (destination-out), puis
+// éclairé chaudement dans la bulle + le cône du Commander (pour VOIR, pas juste dévoiler du noir).
 export function drawFog(game, ctx, th, tx, ty) {
   if (!game.ui.darkMode) return;                 // de jour : pas de brouillard
   if (hasSatellite(game)) return;                // œil-satellite : révélation totale
   const H = game.HERO;
+  // orientation du cône (H.dir : 0 = haut) → angle en repère écran
+  const dir = H ? Math.atan2(-Math.cos((H.dir || 0) * Math.PI / 180), Math.sin((H.dir || 0) * Math.PI / 180)) : 0;
+  const half = NIGHT_CONE_HALF * Math.PI / 180;
+
   ctx.save();
-  ctx.fillStyle = 'rgba(5,4,11,.86)'; ctx.fillRect(0, 0, VPW, VPH);
+  ctx.fillStyle = 'rgba(4,3,10,.93)'; ctx.fillRect(0, 0, VPW, VPH);
   ctx.globalCompositeOperation = 'destination-out';
-  const punch = (wx, wy, r) => {
+  const punch = (wx, wy, r, hard) => {
     const sx = wx + tx, sy = wy + ty;
     if (sx < -r || sy < -r || sx > VPW + r || sy > VPH + r) return;
     const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.72, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(hard || 0.72, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7); ctx.fill();
   };
-  if (H) punch(H.x, H.y, VIS);                                   // halo du Commander
+  if (H) {
+    const sx = H.x + tx, sy = H.y + ty;
+    punch(H.x, H.y, NIGHT_HALO, 0.5);                              // petite bulle personnelle
+    const cg = ctx.createRadialGradient(sx, sy, 0, sx, sy, NIGHT_CONE); // cône de vision
+    cg.addColorStop(0, 'rgba(0,0,0,1)'); cg.addColorStop(0.8, 'rgba(0,0,0,1)'); cg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.arc(sx, sy, NIGHT_CONE, dir - half, dir + half); ctx.closePath(); ctx.fill();
+  }
   for (const idx of game.G.lit) { const c = game.CANDLES[idx]; punch(c.x, c.y, CANDLE_VIS); } // bougies
-  // champ de vision des bâtiments : tourelles (leur portée), radar, soin/bouclier
-  for (const t of game.ui.placed) {
+  for (const t of game.ui.placed) {                                // tourelles / radar : leur portée
     if (t.cat !== 'turret' || !isBuilt(t)) continue;
     const ts = turretStats(t);
-    const r = t.key === 'radar' ? radarRadius(t) : (ts.range > 0 ? ts.range : 170);
-    punch(t.x, t.y, r);
+    punch(t.x, t.y, t.key === 'radar' ? radarRadius(t) : (ts.range > 0 ? ts.range : 170));
   }
   ctx.restore();
+
+  // lumière chaude (additive) : la bulle + le cône sont ÉCLAIRÉS, façon lampe
+  if (H) {
+    const sx = H.x + tx, sy = H.y + ty;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const hr = NIGHT_HALO * 1.1;
+    const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, hr);
+    halo.addColorStop(0, 'rgba(255,209,134,.36)'); halo.addColorStop(0.6, 'rgba(255,185,98,.13)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(sx, sy, hr, 0, 7); ctx.fill();
+    const cone = ctx.createRadialGradient(sx, sy, 0, sx, sy, NIGHT_CONE);
+    cone.addColorStop(0, 'rgba(255,209,134,.24)'); cone.addColorStop(0.7, 'rgba(255,185,98,.08)'); cone.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.arc(sx, sy, NIGHT_CONE, dir - half, dir + half); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
 }
 
 // Minimap « PLAN » en haut à droite du viewport.
