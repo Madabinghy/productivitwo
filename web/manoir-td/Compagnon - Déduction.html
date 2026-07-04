@@ -18,26 +18,39 @@
 </head>
 <body>
 <div id="app"></div>
+<script src="js/ombrelune-gen.js"></script>
 <script>
 /* OMBRELUNE — L'enquête du manoir (déduction), 100% VANILLA JS */
 (function(){
   'use strict';
 
-  var LOCATIONS = [
+  // Reward (mission du portail) & libre (?free=1, sans enjeu) : enquête GÉNÉRÉE
+  // (graine + difficulté, coupable unique vérifié). Classique : cas historique fixe.
+  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
+  var FREE = /(^|[?&])free=1/.test(window.location.search);
+  var SEED = parseInt((window.location.search.match(/seed=(\d+)/)||[])[1]||'0',10);
+  var DIFF = Math.max(1,Math.min(3,parseInt((window.location.search.match(/difficulty=(\d)/)||[])[1]||'1',10)));
+  var GEN = (REWARD||FREE) && window.OmbreluneGen ? window.OmbreluneGen.genEnquete(SEED,DIFF) : null;
+
+  var LOCATIONS = GEN ? GEN.LOCATIONS : [
     { key:'gants',    icon:'🧤', place:'3ᵉ étage · le boudoir', action:'Relever la cire gantée', clue:'De la cire gantée sur chaque bougeoir : le coupable portait des gants.' },
     { key:'registre', icon:'📓', place:'Rez-de-chaussée · la cave', action:'Consulter le registre', clue:'Le registre place la Gouvernante à la cave toute la nuit.' },
     { key:'invite',   icon:'🕯️', place:'Hall · un souvenir', action:"Te rappeler l'arrivée de l'Invité", clue:"L'Invité réclamait une chambre éclairée : il fuyait le noir." }
   ];
-  var SUSPECTS = [
+  var SUSPECTS = GEN ? GEN.SUSPECTS : [
     { key:'gouvernante', face:'👩\u200d🦳', name:'La Gouvernante' },
     { key:'maitre',      face:'🎩', name:'Le Maître' },
     { key:'invite',      face:'🧐', name:"L'Invité" }
   ];
-  var CULPRIT = 'maitre';
-  var WRONG = {
+  var CULPRIT = GEN ? GEN.CULPRIT : 'maitre';
+  var WRONG = GEN ? GEN.WRONG : {
     gouvernante: 'Le registre la place à la cave toute la nuit. Elle n\u2019a pas pu.',
     invite: "Il fuyait le noir — l'accuser, c'est ignorer ton propre indice."
   };
+
+  var QUESTION = GEN ? GEN.question : 'Qui a éteint les bougies ?';
+  var VERDICT = GEN ? GEN.VERDICT : { face:'🎩', name:'Le Maître',
+    text:"La Gouvernante avait son alibi, l'Invité fuyait le noir. Restait lui — gants aux mains, il a soufflé ses propres bougies pour s'effacer du manoir. La porte de la Galerie s'ouvre." };
 
   var S = { collected:{}, sel:null, wrong:null, phase:'play' };
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -46,9 +59,10 @@
   function select(key){ if(!allDone()) return; S.sel=key; S.wrong=null; render(); }
   function accuse(){ if(!allDone()||!S.sel) return; if(S.sel===CULPRIT){ S.phase='verdict'; if(REWARD) revealAsk(); } else { S.wrong=S.sel; } render(); }
   function back(){ try { window.location.href = './' + encodeURIComponent('Manoir - Exploration.html'); } catch(e){} }
+  // partie libre suivante : nouvelle graine aléatoire, même difficulté
+  function replay(){ try{ window.location.href='?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+DIFF; }catch(e){} }
 
   // Mode récompense (mission du portail) : la bonne accusation révèle l'action Gantt.
-  var REWARD = /(^|[?&])reward=action/.test(window.location.search);
   var revealSent=false;
   function readNextAction(){ try{ return JSON.parse(localStorage.getItem('ombrelune_next_action')||'null'); }catch(e){ return null; } }
   function revealAsk(){ if(revealSent) return; revealSent=true;
@@ -70,6 +84,9 @@
       + '</div>';
   }
 
+  function tagsHTML(sp){ if(!sp.tags) return '';
+    return '<span style="display:flex; flex-wrap:wrap; gap:3px; justify-content:center;">'+sp.tags.map(function(tg){ return '<span style="font-size:8px; font-weight:700; color:#a796c0; background:rgba(154,134,184,.12); border:1px solid rgba(154,134,184,.22); border-radius:999px; padding:2px 5px; white-space:nowrap;">'+tg.icon+' '+esc(tg.t)+'</span>'; }).join('')+'</span>'; }
+
   function playHTML(){
     var done = allDone();
     var clues = LOCATIONS.map(function(l){
@@ -86,21 +103,21 @@
     var suspects = SUSPECTS.map(function(sp){
       var on = S.sel===sp.key;
       var isWrong = S.wrong===sp.key;
-      var style = 'flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; padding:13px 6px; border-radius:14px; cursor:'+(done?'pointer':'default')+'; border:1.5px solid '+(on?'rgba(214,168,74,.8)':'rgba(154,134,184,.18)')+'; background:'+(on?'linear-gradient(180deg, rgba(48,34,16,.7), rgba(28,18,8,.7))':'rgba(30,22,44,.45)')+'; box-shadow:'+(on?'0 0 18px rgba(214,168,74,.3)':'none')+'; opacity:'+(done?1:.7)+'; animation:'+(isWrong?'shake .4s ease':'none')+';';
+      var style = 'flex:1 1 30%; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 5px; border-radius:14px; cursor:'+(done?'pointer':'default')+'; border:1.5px solid '+(on?'rgba(214,168,74,.8)':'rgba(154,134,184,.18)')+'; background:'+(on?'linear-gradient(180deg, rgba(48,34,16,.7), rgba(28,18,8,.7))':'rgba(30,22,44,.45)')+'; box-shadow:'+(on?'0 0 18px rgba(214,168,74,.3)':'none')+'; opacity:'+(done?1:.7)+'; animation:'+(isWrong?'shake .4s ease':'none')+';';
       return '<button data-suspect="'+sp.key+'" style="'+style+'">'
         + '<span style="font-size:28px; filter:'+((on||done)?'none':'grayscale(.7) opacity(.45)')+';">'+sp.face+'</span>'
-        + '<span style="font-weight:700; font-size:11px; color:'+(on?'#f3cd72':(done?'#cdbfe0':'#6f6088'))+'; text-align:center; line-height:1.2;">'+esc(sp.name)+'</span></button>';
+        + '<span style="font-weight:700; font-size:11px; color:'+(on?'#f3cd72':(done?'#cdbfe0':'#6f6088'))+'; text-align:center; line-height:1.2;">'+esc(sp.name)+'</span>'+tagsHTML(sp)+'</button>';
     }).join('');
     var aOn = done && S.sel;
     var accuseStyle = 'margin-top:auto; width:100%; padding:15px; border-radius:15px; border:none; cursor:'+(aOn?'pointer':'default')+'; font-weight:800; font-size:14px; color:'+(aOn?'#1c1206':'#6f6088')+'; background:'+(aOn?'linear-gradient(180deg, #f2cd72, #d6a84a)':'rgba(40,30,58,.6)')+'; box-shadow:'+(aOn?'0 12px 28px rgba(214,168,74,.3)':'none')+';';
-    var accuseLabel = !done ? 'Récolte les 3 indices d\u2019abord' : (S.sel?'Accuser ✦':'Choisis un suspect');
+    var accuseLabel = !done ? 'Récolte les '+LOCATIONS.length+' indices d\u2019abord' : (S.sel?'Accuser ✦':'Choisis un suspect');
     return '<div style="position:relative; flex:1; display:flex; flex-direction:column; padding:14px 22px 18px; animation:fadein .5s ease both;">'
-      + '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; line-height:1.2; color:#fbf3e2;">Qui a éteint les bougies ?</div>'
-      + '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#a796c0;">'+esc(done?'Trois indices réunis. Écarte les innocents, puis accuse.':'Va récolter les indices dans le manoir, puis recoupe-les.')+'</div>'
+      + '<div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:20px; line-height:1.2; color:#fbf3e2;">'+esc(QUESTION)+'</div>'
+      + '<div style="margin-top:5px; font-size:12px; line-height:1.5; color:#a796c0;">'+esc(done?'Tous les indices réunis. Écarte les innocents, puis accuse.':'Va récolter les indices dans le manoir, puis recoupe-les.')+'</div>'
       + '<div style="margin-top:15px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:#9a86b8;">Les indices</div>'
       + '<div style="margin-top:9px; display:flex; flex-direction:column; gap:8px;">'+clues+'</div>'
       + '<div style="margin-top:16px; font-weight:700; font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:'+(done?'#9a86b8':'#5a4f70')+';">Les suspects '+(done?'':'🔒')+'</div>'
-      + '<div style="margin-top:9px; display:flex; gap:9px;">'+suspects+'</div>'
+      + '<div style="margin-top:9px; display:flex; gap:9px; flex-wrap:wrap;">'+suspects+'</div>'
       + '<div style="min-height:16px; margin-top:10px; text-align:center; font-weight:600; font-size:11.5px; line-height:1.4; color:#e0859a;">'+esc(S.wrong?(WRONG[S.wrong]||'Les indices disent le contraire.'):'')+'</div>'
       + '<button data-act="accuse" style="'+accuseStyle+'">'+accuseLabel+'</button>'
       + '</div>';
@@ -108,12 +125,14 @@
 
   function verdictHTML(){
     return '<div style="position:relative; flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px 28px; text-align:center; animation:fadein .55s ease both;">'
-      + '<div style="position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center;"><div style="position:absolute; left:50%; top:50%; width:180px; height:180px; transform:translate(-50%,-50%); background:radial-gradient(circle, rgba(214,168,74,.5), transparent 64%); animation:glowpulse 3.5s ease-in-out infinite;"></div><span style="font-size:60px;">🎩</span></div>'
+      + '<div style="position:relative; width:120px; height:120px; display:flex; align-items:center; justify-content:center;"><div style="position:absolute; left:50%; top:50%; width:180px; height:180px; transform:translate(-50%,-50%); background:radial-gradient(circle, rgba(214,168,74,.5), transparent 64%); animation:glowpulse 3.5s ease-in-out infinite;"></div><span style="font-size:60px;">'+VERDICT.face+'</span></div>'
       + '<div style="margin-top:18px; font-weight:700; font-size:10px; letter-spacing:2.4px; text-transform:uppercase; color:#f2cd72;">Coupable démasqué</div>'
-      + '<div style="margin-top:10px; font-family:\'Fraunces\',serif; font-weight:600; font-size:25px; line-height:1.16; color:#fbf3e2; max-width:300px;">C\'était le Maître.</div>'
-      + '<div style="margin-top:13px; font-size:13.5px; line-height:1.56; color:#bcaccf; max-width:300px;">La Gouvernante avait son alibi, l\'Invité fuyait le noir. Restait lui — gants aux mains, il a soufflé ses propres bougies pour s\'effacer du manoir. La porte de la Galerie s\'ouvre.</div>'
+      + '<div style="margin-top:10px; font-family:\'Fraunces\',serif; font-weight:600; font-size:25px; line-height:1.16; color:#fbf3e2; max-width:300px;">C\'était '+esc(VERDICT.name)+'.</div>'
+      + '<div style="margin-top:13px; font-size:13.5px; line-height:1.56; color:#bcaccf; max-width:300px;">'+esc(VERDICT.text)+'</div>'
       + (REWARD?rewardHTML():'')
-      + '<button data-act="back" style="margin-top:26px; padding:15px 28px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">'+(REWARD?'Retour au manoir ✦':'Salle suivante ✦')+'</button>'
+      + (FREE
+        ? '<div style="display:flex; gap:10px; margin-top:26px; width:100%; max-width:300px;"><button data-act="replay" style="flex:1; padding:15px 8px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:13px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Une autre enquête ↺</button><button data-act="back" style="flex:1; padding:15px 8px; border:1px solid rgba(214,168,74,.35); border-radius:15px; cursor:pointer; font-weight:800; font-size:13px; color:#e7c878; background:rgba(214,168,74,.1);">Retour au manoir ✦</button></div>'
+        : '<button data-act="back" style="margin-top:26px; padding:15px 28px; border:none; border-radius:15px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">'+(REWARD?'Retour au manoir ✦':'Salle suivante ✦')+'</button>')
       + '</div>';
   }
 
@@ -123,7 +142,7 @@
     return '<div style="position:relative; width:390px; height:820px; border-radius:40px; overflow:hidden; background:radial-gradient(120% 70% at 50% 14%, #241a3a 0%, #140d20 52%, #0a0712 100%); box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(196,160,84,.18) inset; display:flex; flex-direction:column;">'
       + '<div style="position:relative; z-index:20; display:flex; align-items:center; justify-content:space-between; padding:20px 24px 0;">'
       +   '<div style="display:flex; flex-direction:column;"><span style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#e9dcc2;">L\'enquête du manoir</span><span style="font-weight:700; font-size:8.5px; letter-spacing:1.8px; text-transform:uppercase; color:#b79ae0; margin-top:2px;">Salle 2 · déduction</span></div>'
-      +   '<div style="display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28);"><span style="font-size:11px;">🔍</span><span style="font-weight:700; font-size:12px; color:#f2cd72;">'+n+'/3</span></div>'
+      +   '<div style="display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:rgba(214,168,74,.1); border:1px solid rgba(214,168,74,.28);"><span style="font-size:11px;">🔍</span><span style="font-weight:700; font-size:12px; color:#f2cd72;">'+n+'/'+LOCATIONS.length+'</span></div>'
       + '</div>'
       + body
       + '</div>';
@@ -133,9 +152,10 @@
   app.addEventListener('click', function(ev){
     var g = ev.target.closest('[data-gather]'); if(g){ gather(g.getAttribute('data-gather')); return; }
     var s = ev.target.closest('[data-suspect]'); if(s){ select(s.getAttribute('data-suspect')); return; }
-    var a = ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='accuse') accuse(); else if(k==='back') back(); }
+    var a = ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='accuse') accuse(); else if(k==='back') back(); else if(k==='replay') replay(); }
   });
   function render(){ app.innerHTML = view(); }
+  window.__enquete={ S:S, LOCATIONS:LOCATIONS, SUSPECTS:SUSPECTS, CULPRIT:CULPRIT, GEN:GEN };
   render();
 })();
 </script>
