@@ -119,14 +119,14 @@
   // ou alibi nominatif) ; on vérifie par force brute que l'intersection des
   // filtres désigne EXACTEMENT un coupable. Crimes doux, ton Soft Pop.
   var POOL=[
-    { key:'gouvernante', face:'👩‍🦳', name:'La Gouvernante' },
-    { key:'maitre',      face:'🎩', name:'Le Maître' },
-    { key:'invite',      face:'🧐', name:'L’Invité' },
-    { key:'cuisiniere',  face:'👩‍🍳', name:'La Cuisinière' },
-    { key:'apprenti',    face:'🌱', name:'L’Apprenti jardinier' },
-    { key:'precepteur',  face:'📖', name:'Le Précepteur' },
-    { key:'modiste',     face:'🎀', name:'La Modiste' },
-    { key:'retameur',    face:'🔧', name:'Le Rétameur' }
+    { key:'gouvernante', face:'👩‍🦳', name:'La Gouvernante',       c1:'#4a2f3e', c2:'#301e28' },
+    { key:'maitre',      face:'🎩', name:'Le Maître',              c1:'#3a2c52', c2:'#241a33' },
+    { key:'invite',      face:'🧐', name:'L’Invité',               c1:'#2e3a52', c2:'#1b2233' },
+    { key:'cuisiniere',  face:'👩‍🍳', name:'La Cuisinière',         c1:'#5a3a2a', c2:'#38241a' },
+    { key:'apprenti',    face:'🌱', name:'L’Apprenti jardinier',   c1:'#2f4636', c2:'#1c2a22' },
+    { key:'precepteur',  face:'📖', name:'Le Précepteur',          c1:'#33395a', c2:'#1f2338' },
+    { key:'modiste',     face:'🎀', name:'La Modiste',             c1:'#5a2f4e', c2:'#381e30' },
+    { key:'retameur',    face:'🔧', name:'Le Rétameur',            c1:'#4a3a2a', c2:'#2e241a' }
   ];
   var TRAITS={
     mains:{ icon:'🖐', vals:{
@@ -149,11 +149,11 @@
     { icon:'🍵', place:'Les cuisines · une tasse',action:'Tâter la théière',       t:function(n){ return 'Une tisane partagée aux cuisines : '+n+' n’a pas quitté la table.'; } }
   ];
   var CRIMES=[
-    { q:'Qui a éteint toutes les bougies ?',        deed:'a soufflé les bougies du manoir, une à une' },
-    { q:'Qui a emprunté la clé d’argent ?',         deed:'a décroché la clé d’argent de son clou' },
-    { q:'Qui a retourné le portrait du fondateur ?',deed:'a retourné le portrait face au mur' },
-    { q:'Qui a pillé le pot de confiture ?',        deed:'a raflé la confiture de la réserve' },
-    { q:'Qui a déréglé la grande horloge ?',        deed:'a avancé la grande horloge d’une heure' }
+    { q:'Qui a éteint toutes les bougies ?',        deed:'a soufflé les bougies du manoir, une à une', obj:{icon:'🕯️', name:'Le bougeoir du fondateur'} },
+    { q:'Qui a emprunté la clé d’argent ?',         deed:'a décroché la clé d’argent de son clou',     obj:{icon:'🗝️', name:'La clé d’argent'} },
+    { q:'Qui a retourné le portrait du fondateur ?',deed:'a retourné le portrait face au mur',         obj:{icon:'🖼️', name:'Le portrait redressé'} },
+    { q:'Qui a pillé le pot de confiture ?',        deed:'a raflé la confiture de la réserve',         obj:{icon:'🫙', name:'Le pot de confiture'} },
+    { q:'Qui a déréglé la grande horloge ?',        deed:'a avancé la grande horloge d’une heure',     obj:{icon:'🕰️', name:'La petite horloge'} }
   ];
   function shuffle(arr,rnd){ arr=arr.slice(); for(var i=arr.length-1;i>0;i--){ var j=Math.floor(rnd()*(i+1)); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
   // survivants après application des filtres machine (sert aussi aux tests)
@@ -175,7 +175,7 @@
         var attrs={}, tags=[];
         traitKeys.forEach(function(tk){ var vs=Object.keys(TRAITS[tk].vals); var v=vs[Math.floor(rnd()*vs.length)];
           attrs[tk]=v; tags.push({ icon:TRAITS[tk].vals[v].icon, t:TRAITS[tk].vals[v].tag }); });
-        return { key:p.key, face:p.face, name:p.name, attrs:attrs, tags:tags };
+        return { key:p.key, face:p.face, name:p.name, c1:p.c1, c2:p.c2, attrs:attrs, tags:tags };
       });
       var culprit=sus[Math.floor(rnd()*sus.length)];
       // indices de trace (traits du coupable), dans un ordre aléatoire
@@ -209,7 +209,7 @@
       }
       if(clues.length<Math.min(nClues,3)) continue;
       clues=shuffle(clues,rnd).map(function(c,i){ c.key='c'+i; return c; });
-      var spec={ question:crime.q, deed:crime.deed, SUSPECTS:sus, LOCATIONS:clues, CULPRIT:culprit.key };
+      var spec={ question:crime.q, deed:crime.deed, OBJ:crime.obj, SUSPECTS:sus, LOCATIONS:clues, CULPRIT:culprit.key };
       var surv=enqueteSurvivors(spec);
       if(surv.length!==1 || surv[0].key!==culprit.key) continue; // vérif force brute
       // réfutations pour chaque innocent + verdict
