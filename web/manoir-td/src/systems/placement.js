@@ -110,7 +110,8 @@ export function selectItem(game, cat, key, name) {
 export function clearSel(game) { game.ui.selId = null; game.ui.aimMode = false; }
 export function setAim(game) {
   game.ui.aimMode = !game.ui.aimMode;
-  game.ui.msg = game.ui.aimMode ? 'Clique un point dans la portée pour orienter la visée de la tourelle.' : 'Visée annulée.';
+  if (game.ui.aimMode) game.ui.buildSheetOpen = false; // mobile : referme le tiroir → la carte devient tapable pour viser
+  game.ui.msg = game.ui.aimMode ? 'Touche un point dans la portée pour orienter la tourelle.' : 'Visée annulée.';
 }
 export function upgrade(game) {
   const t = game.ui.placed.find(x => x.id === game.ui.selId); if (!t) return;
