@@ -364,7 +364,7 @@
       { const fc=document.getElementById('hud-face');
         if(fc){ fc.addEventListener('click',(e)=>{ const b=e.target.closest('[data-fa]');
           if(b){ this.faceAction(b.getAttribute('data-fa')); }
-          else if(e.target===fc && this.face && this.face.dismiss) this.hideFace(); }); } }
+          else if(e.target===fc && this.faceCard && this.faceCard.dismiss) this.hideFace(); }); } }
 
       // —— Vie ambiante : le chat du manoir (erre, somnole près des bougies, fuit
       // à l'approche) + ombres fugaces rares. Purement d'ambiance, rien de persisté.
@@ -466,11 +466,13 @@
 
     candleList(){ if(this.scene.type==='sub'){ const s=this.SUB; return [{x:s.x+34,y:s.y+30,r:60},{x:s.x+s.w-34,y:s.y+30,r:60},{x:s.x+34,y:s.y+s.h-44,r:60},{x:s.x+s.w-34,y:s.y+s.h-44,r:60}]; } return this.candles; }
 
-    pd(e){ if(this.face) return; const r=this.cv.getBoundingClientRect();
+    pd(e){ if(this.faceCard) return; const r=this.cv.getBoundingClientRect();
       const sx=(e.clientX-r.left)*(this.W/r.width); const sy=(e.clientY-r.top)*(this.H/r.height);
       const wx=(sx-this.W/2)/this.Z + this.cam.x; const wy=(sy-this.H/2)/this.Z + this.cam.y;
       if(this.scene.type==='sub'){ this.path=[]; this.moveTarget={x:wx,y:wy}; return; }
       let tr=this.roomAt(wx,wy); let tpt={x:wx,y:wy}; if(!tr){ tr=this.nearestRoom(wx,wy); tpt={x:tr.x+tr.w/2,y:tr.y+tr.h/2}; }
+      // clic DIRECT sur une ruine scellée : dire comment l'éveiller (au lieu de recaler en silence)
+      if(tr && this.roomAt(wx,wy)===tr && !this.roomOn(tr.k) && !this.dialogue){ this.explainSealed(tr); return; }
       if(!this.roomOn(tr.k)){ let best=null,bd=1e9; for(const r of this.ROOMS){ if(!this.roomOn(r.k)) continue;
           const d=Math.hypot(r.x+r.w/2-wx,r.y+r.h/2-wy); if(d<bd){bd=d;best=r;} }
         tr=best||this.byk.hall; tpt={x:tr.x+tr.w/2,y:tr.y+tr.h/2}; }
@@ -571,6 +573,18 @@
       this.updateHud(); }
     // —— Le manoir s'éveille : helpers d'éveil (palier) et de croissance (niveau).
     stageForXp(xp){ let st=0; for(let i=0;i<this.STAGE_XP.length;i++){ if(xp>=this.STAGE_XP[i]) st=i; } return st; }
+    // clic sur une salle scellée : Lampyre explique comment l'éveiller
+    explainSealed(tr){ const xp=Math.floor(this._stageXp||0), st=this.stageForXp(xp);
+      let tier=st+1; for(let i=st+1;i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(tr.k)>=0){ tier=i; break; } }
+      const need=this.STAGE_XP[Math.min(tier,this.STAGE_XP.length-1)];
+      const soon=(this.UNLOCKS[st+1]||[]).map(k=>(this.byk[k]||{}).label).filter(Boolean).join(', ');
+      const isNext=(this.UNLOCKS[st+1]||[]).indexOf(tr.k)>=0;
+      this.dialogue={ i:0, endLabel:'Compris', lines:[
+        {who:'Lampyre', mood:'idle', t:'« '+tr.label+' » dort encore, scellée. Elle s’éveillera quand ma lueur atteindra '+need+' ✨ (j’en suis à '+xp+').'},
+        {who:'Lampyre', mood:'smile', t: isNext
+          ? 'C’est la prochaine à s’ouvrir ! Bois, tiens tes routines, avance un projet pour de vrai — chaque action me nourrit.'
+          : 'D’autres s’éveilleront avant elle'+(soon?' ('+soon+')':'')+'. Agis dans la vraie vie, et le manoir grandira jusqu’à elle.'} ]};
+      this.updateHud(); }
     roomOn(k){ const st=this.stageForXp(this._stageXp||0);
       for(let i=0;i<=st && i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(k)>=0) return true; } return false; }
     roomLvl(k){ if(!this.roomOn(k)) return -1; const e=this.manor&&this.manor.rooms[k]; const n=(e&&e.n)||0; return n>=7?2:(n>=3?1:0); }
@@ -819,9 +833,9 @@
       this.toast={t:'🏅 '+(spec.OBJ?spec.OBJ.name:'Le butin')+' rejoint le manoir — enquête classée.', t0:performance.now()};
       this.updateHud(); }
     // ═══ Vue de face : carte plein écran (interaction rapprochée) ═══
-    showFace(f){ this.face=f; const el=document.getElementById('hud-face'), card=document.getElementById('hud-face-card');
+    showFace(f){ this.faceCard=f; const el=document.getElementById('hud-face'), card=document.getElementById('hud-face-card');
       if(!el||!card) return; card.innerHTML=this.faceHTML(f); el.style.display='flex'; this.updateHud(); }
-    hideFace(){ this.face=null; const el=document.getElementById('hud-face'); if(el) el.style.display='none'; }
+    hideFace(){ this.faceCard=null; const el=document.getElementById('hud-face'); if(el) el.style.display='none'; }
     faceBtn(fa,label,solid){ return '<button data-fa="'+fa+'" style="flex:1; padding:14px 10px; border-radius:14px; cursor:pointer; font-family:\'Outfit\'; font-weight:800; font-size:13px; '+(solid?'border:none; color:#1c1206; background:linear-gradient(180deg,#f2cd72,#d6a84a); box-shadow:0 10px 26px rgba(214,168,74,.3);':'border:1px solid rgba(214,168,74,.35); color:#e7c878; background:rgba(214,168,74,.1);')+'">'+label+'</button>'; }
     faceTags(sp){ if(!sp.tags) return '';
       return '<div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:10px;">'+sp.tags.map(tg=>'<span style="font-family:\'Outfit\'; font-size:10px; font-weight:700; color:#c3b3dd; background:rgba(154,134,184,.14); border:1px solid rgba(154,134,184,.25); border-radius:999px; padding:4px 9px; white-space:nowrap;">'+tg.icon+' '+this.esc2(tg.t)+'</span>').join('')+'</div>'; }
@@ -888,7 +902,7 @@
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
-    faceAction(fa){ const f=this.face; if(!f) return;
+    faceAction(fa){ const f=this.faceCard; if(!f) return;
       if(fa==='close'){ this.hideFace(); return; }
       if(fa==='light' && f.type==='fouille'){ this.toggleLantern(); if(this.lantern) this.showFace(f); return; }
       if(fa==='search' && f.type==='fouille'){ if(!this.lantern){ this.showFace(f); return; }
@@ -983,6 +997,20 @@
       { const tk=[]; if(this.tools.loupe) tk.push('🔍 loupe'); if(this.tools.uv) tk.push('🔦 lampe UV');
         if(this.tools.cle_cuivre) tk.push('🗝️ cuivre'); if(this.tools.cle_fer) tk.push('🗝️ fer'); if(this.tools.cle_or) tk.push('🗝️ or');
         h+=L('🫗 Huile : <b style="color:#e7c878;">'+Math.max(0,Math.floor(this.oil.n))+' min</b>'+(tk.length?' · '+tk.join(' · '):' · rien d’autre pour l’instant')); }
+      // réveil du manoir : jauge vers la prochaine salle + comment agir dessus
+      h+=S('Réveil du manoir');
+      { const xp=Math.floor(this._stageXp||0), st=this.stageForXp(xp);
+        const onRooms=this.ROOMS.filter(r=>this.roomOn(r.k)).length;
+        if(st>=this.STAGE_XP.length-1){
+          h+=L('🏛️ Le manoir est <b style="color:#9fe0b0;">entièrement éveillé</b> — '+onRooms+' salles. Tes actions le font désormais grandir salle par salle.');
+        } else {
+          const need=this.STAGE_XP[st+1], prev=this.STAGE_XP[st];
+          const pct=Math.max(0,Math.min(100,Math.round((xp-prev)/(need-prev)*100)));
+          const next=(this.UNLOCKS[st+1]||[]).map(k=>(this.byk[k]||{}).label).filter(Boolean).join(', ');
+          h+='<div style="margin-top:6px;"><div style="display:flex; justify-content:space-between; font-family:\'Outfit\'; font-size:11px; color:#a796c0;"><span>Prochaine salle : <b style="color:#e7c878;">'+this.esc2(next)+'</b></span><span>'+xp+' / '+need+' ✨</span></div>'
+            +'<div style="margin-top:5px; height:7px; border-radius:5px; background:rgba(154,134,184,.18); overflow:hidden;"><div style="width:'+pct+'%; height:100%; border-radius:5px; background:linear-gradient(90deg,#d6a84a,#f2cd72);"></div></div></div>';
+          h+=L('<span style="color:#8a7aa6; font-size:11px;">Chaque action réelle nourrit Lampyre : un verre d’eau, une routine, du focus, une étape de projet accomplie. Sa lueur grandit — et le manoir s’éveille avec elle.</span>');
+        } }
       return h; }
     openFaceSuspect(a){ if(this.dialogue) return; this.showFace({type:'suspect', ent:a, dismiss:true}); }
     openFaceClue(c){ if(this.dialogue) return; this.showFace({type:'clue', ent:c, dismiss:true}); }
