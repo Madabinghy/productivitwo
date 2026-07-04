@@ -80,10 +80,14 @@ export function doPlace(game, wx, wy) {
   if (s.sel.cat === 'turret') { let bd = 1e9; for (const en of game.ENTRY) { const p = game.NODES[en]; const d = Math.hypot(p.x - gx, p.y - gy); if (d < bd) { bd = d; face = compass(p.x - gx, p.y - gy); } } }
   const key = s.sel.key;
   const sv = (s.sel.cat === 'turret' && game.STASH[key]) ? game.STASH[key] : null; if (sv) delete game.STASH[key];
-  const mhp = baseHp(key); const buildable = s.sel.cat === 'turret' || s.sel.cat === 'unit'; const chantier = buildable && !sv; const c = costOf(key);
+  const ts = game.tourSkills || { inge: 0, build: 0, hp: 0 };
+  // Blindage : +20 % PV/rang ; Ingénierie : niveau de départ +1/rang (hors sniper, plafond 4).
+  const mhp = Math.round(baseHp(key) * (1 + 0.2 * (ts.hp || 0)));
+  const startLvl = (s.sel.cat === 'turret' && key !== 'sniper') ? Math.min(4, 1 + (ts.inge || 0)) : 1;
+  const buildable = s.sel.cat === 'turret' || s.sel.cat === 'unit'; const chantier = buildable && !sv; const c = costOf(key);
   s.placed.push({
     id: game.G.nextId++, cat: s.sel.cat, key, x: gx, y: gy, face,
-    level: sv ? sv.level : 1, bonusR: sv ? sv.bonusR : 0, bonusD: sv ? sv.bonusD : 0,
+    level: sv ? sv.level : startLvl, bonusR: sv ? sv.bonusR : 0, bonusD: sv ? sv.bonusD : 0,
     maxHp: sv ? (sv.maxHp || mhp) : mhp, hp: sv ? sv.hp : mhp,
     built: chantier ? false : true, prog: chantier ? 0 : 1,
     deployed: false, moveTarget: null,

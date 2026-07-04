@@ -288,7 +288,13 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   dépensés dans un arbre (branche Infiltration) persisté dans `ombrelune_skills` {spent:{…}} :
   ⚡ Masse lumineuse (3 rangs, +1 ⚡ de départ/rang), 🕸️ Glu tenace (2 rangs, gel 6→9→12 s),
   🌑 Pas d'ombre (2 rangs, détection −15 %/rang). UI = vue de face (POI « L'Établi des talents »
-  dans l'Atelier) ; ligne de rappel dans le Journal ; teaser « branche · Tours » pour les raids.
+  dans l'Atelier) ; ligne de rappel dans le Journal.
+- **Branche · Tours (raids)** : ⚙️ Ingénierie (2 rangs, tourelles au niveau de départ +1/rang),
+  🏗️ Chantier rapide (2 rangs, −15 % coût & temps de chantier/rang), 🛡️ Blindage (2 rangs,
+  +20 % PV/rang). Consommée par le moteur TD UNIQUEMENT en mode raid (game.tourSkills lu depuis
+  ombrelune_skills au boot ; placement.js pour niveau de départ/PV, construction.js pour
+  coût/vitesse) — la campagne autonome n'est pas affectée (« une feature = une source »). Le
+  tactique (améliorer niv 1→4 sur la map) reste inchangé.
 - **Consommation** (`Manoir - Salle des Ombres.html`, `skillLvl(k)` sur `ombrelune_skills`) :
   `G.masse = min(4, 1+masse)` (remplace la masse au goutte-à-goutte des missions du jour),
   glu `frozen = 6+3·glu`, `DET_RATE ×= [1,.85,.7][ombre]`. Découplage : l'effort quotidien

@@ -15,11 +15,13 @@ export function updateConstruction(game, dt) {
   if (!near) return;
   game._buildId = near.id;
   const cost = costOf(near.key);
-  const want = (cost.mass / cost.time) * dt;
+  const bd = 1 - 0.15 * ((game.tourSkills && game.tourSkills.build) || 0); // « Chantier rapide »
+  const cMass = cost.mass * bd, cTime = cost.time * bd;
+  const want = (cMass / cTime) * dt;
   const avail = Math.min(want, G.mass);
   const frac = want > 0 ? avail / want : 1;
   game._buildStall = frac < 0.999;
   G.mass -= avail;
-  near.prog = Math.min(1, (near.prog || 0) + (dt / cost.time) * frac);
+  near.prog = Math.min(1, (near.prog || 0) + (dt / cTime) * frac);
   if (near.prog >= 1) { near.built = true; near.prog = 1; game.ui.msg = '✦ ' + nameOf(near.key) + ' achevé(e) — opérationnel.'; }
 }

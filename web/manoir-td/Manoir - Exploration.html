@@ -347,12 +347,19 @@
       // Infiltration), consommés par la Salle des Ombres. Découplé du goutte-à-goutte.
       this.PC_PER=25;
       this.SKILLS=[
-        {k:'masse', icon:'⚡', name:'Masse lumineuse', max:3, costs:[1,2,3],
+        {k:'masse', branch:'infil', icon:'⚡', name:'Masse lumineuse', max:3, costs:[1,2,3],
          desc:'Pars en infiltration avec +1 ⚡ de départ par rang — plus de lanternes et de glu à poser.'},
-        {k:'glu', icon:'🕸️', name:'Glu tenace', max:2, costs:[1,2],
+        {k:'glu', branch:'infil', icon:'🕸️', name:'Glu tenace', max:2, costs:[1,2],
          desc:'La glu fige les gardes plus longtemps : 6 s → 9 s → 12 s.'},
-        {k:'ombre', icon:'🌑', name:'Pas d’ombre', max:2, costs:[1,2],
-         desc:'Caméras et gardes te repèrent plus lentement (−15 % par rang).'} ];
+        {k:'ombre', branch:'infil', icon:'🌑', name:'Pas d’ombre', max:2, costs:[1,2],
+         desc:'Caméras et gardes te repèrent plus lentement (−15 % par rang).'},
+        {k:'tour_inge', branch:'tour', icon:'⚙️', name:'Ingénierie', max:2, costs:[2,3],
+         desc:'Tes tourelles de raid sortent de terre au niveau +1 par rang — construites déjà aguerries.'},
+        {k:'tour_build', branch:'tour', icon:'🏗️', name:'Chantier rapide', max:2, costs:[1,2],
+         desc:'Chantiers 15 % moins chers ET plus rapides par rang.'},
+        {k:'tour_hp', branch:'tour', icon:'🛡️', name:'Blindage', max:2, costs:[1,2],
+         desc:'+20 % de PV sur toutes tes tourelles de raid, par rang.'} ];
+      this.SKILL_BRANCHES=[{id:'infil', name:'Infiltration'},{id:'tour', name:'Tours (raids)'}];
       let lp={xp:0,stage:0,credited:{d:today,water:0,missions:[],focus:0}};
       try{ lp=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null')||lp; }catch(e){}
       lp.credited=lp.credited||{d:today,water:0,missions:[],focus:0};
@@ -1004,21 +1011,24 @@
       if(f.type==='etabli'){
         const avail=this.pcAvail(), total=this.pcTotal();
         let body='<div style="margin-top:14px; text-align:left;">';
-        for(const sk of this.SKILLS){ const l=this.skillLvl(sk.k), maxed=l>=sk.max, cost=maxed?null:sk.costs[l], can=!maxed&&avail>=cost;
-          let pips=''; for(let i=0;i<sk.max;i++) pips+='<span style="display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; background:'+(i<l?'#f2cd72':'rgba(154,134,184,.22)')+';"></span>';
-          body+='<div style="margin-top:11px; padding:12px 13px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);">'
-            +'<div style="display:flex; align-items:center; gap:9px;"><span style="font-size:18px;">'+sk.icon+'</span>'
-            +'<div style="flex:1;"><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">'+this.esc2(sk.name)+'</div><div style="margin-top:3px;">'+pips+'</div></div>'
-            +(maxed?'<span style="font-family:\'Outfit\'; font-weight:700; font-size:9px; letter-spacing:1px; text-transform:uppercase; color:#c9a456;">Maîtrisé</span>'
-              :'<button data-fa="buy:'+sk.k+'" '+(can?'':'disabled')+' style="padding:8px 12px; border:none; border-radius:11px; font-family:\'Outfit\'; font-weight:800; font-size:12px; cursor:'+(can?'pointer':'default')+'; color:'+(can?'#1c1206':'#6b5f80')+'; background:'+(can?'linear-gradient(180deg,#f2cd72,#d6a84a)':'rgba(154,134,184,.14)')+';">'+cost+' ◆</button>')
-            +'</div><div style="margin-top:7px; font-family:\'Outfit\'; font-size:11.5px; line-height:1.5; color:#a796c0;">'+this.esc2(sk.desc)+'</div></div>';
-        }
-        body+='<div style="margin-top:12px; padding:11px 13px; border-radius:13px; border:1px dashed rgba(154,134,184,.25); font-family:\'Outfit\'; font-size:11px; color:#6b5f80;"><b style="color:#a796c0;">Branche · Tours</b> — l’arbre des tourelles pour les raids se forgera bientôt ici.</div></div>';
+        for(const br of this.SKILL_BRANCHES){
+          body+='<div style="margin-top:14px; font-family:\'Outfit\'; font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Branche · '+this.esc2(br.name)+'</div>';
+          for(const sk of this.SKILLS){ if(sk.branch!==br.id) continue;
+            const l=this.skillLvl(sk.k), maxed=l>=sk.max, cost=maxed?null:sk.costs[l], can=!maxed&&avail>=cost;
+            let pips=''; for(let i=0;i<sk.max;i++) pips+='<span style="display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; background:'+(i<l?'#f2cd72':'rgba(154,134,184,.22)')+';"></span>';
+            body+='<div style="margin-top:9px; padding:12px 13px; border-radius:14px; background:rgba(26,18,38,.7); border:1px solid rgba(154,134,184,.18);">'
+              +'<div style="display:flex; align-items:center; gap:9px;"><span style="font-size:18px;">'+sk.icon+'</span>'
+              +'<div style="flex:1;"><div style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">'+this.esc2(sk.name)+'</div><div style="margin-top:3px;">'+pips+'</div></div>'
+              +(maxed?'<span style="font-family:\'Outfit\'; font-weight:700; font-size:9px; letter-spacing:1px; text-transform:uppercase; color:#c9a456;">Maîtrisé</span>'
+                :'<button data-fa="buy:'+sk.k+'" '+(can?'':'disabled')+' style="padding:8px 12px; border:none; border-radius:11px; font-family:\'Outfit\'; font-weight:800; font-size:12px; cursor:'+(can?'pointer':'default')+'; color:'+(can?'#1c1206':'#6b5f80')+'; background:'+(can?'linear-gradient(180deg,#f2cd72,#d6a84a)':'rgba(154,134,184,.14)')+';">'+cost+' ◆</button>')
+              +'</div><div style="margin-top:7px; font-family:\'Outfit\'; font-size:11.5px; line-height:1.5; color:#a796c0;">'+this.esc2(sk.desc)+'</div></div>';
+          } }
+        body+='</div>';
         const H2='<div style="font-size:46px; line-height:1;">⚒</div>'
           +'<div style="margin-top:8px; font-family:\'Fraunces\',serif; font-weight:600; font-size:19px; color:#fbf3e2;">L’Établi des talents</div>'
           +'<div style="margin-top:6px; font-family:\'Outfit\'; font-weight:800; font-size:15px; color:#f2cd72;">'+avail+' ◆ <span style="font-weight:600; font-size:10px; color:#a796c0; text-transform:uppercase; letter-spacing:1px;">à forger</span></div>'
           +'<div style="margin-top:3px; font-family:\'Outfit\'; font-size:10.5px; color:#6b5f80;">'+total+' point'+(total>1?'s':'')+' forgé'+(total>1?'s':'')+' · 1 ◆ tous les '+this.PC_PER+' XP · XP : '+(this.lamp?this.lamp.xp:0)+'</div>';
-        return H2+P('Branche · Infiltration — la puissance gagnée vaut pour TOUTES tes missions.')+body+ROW(this.faceBtn('close','Fermer ✦',true)); }
+        return H2+P('La puissance forgée ici vaut pour TOUTES tes missions — infiltrations et raids.')+body+ROW(this.faceBtn('close','Fermer ✦',true)); }
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
