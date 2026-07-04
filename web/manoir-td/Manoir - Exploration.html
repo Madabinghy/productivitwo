@@ -297,6 +297,8 @@
         {room:'sanctuaire', fx:0.5, fy:0.30, kind:'look', glyph:'🎯', label:'Brèche d’entraînement', go:'S’infiltrer',
          hrefFn:()=>'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
          lines:['Une brèche d’entraînement s’ouvre sous le portail — infiltre-toi pour le plaisir. Ton butin de jeu reviendra nourrir tes enquêtes.']},
+        {room:'hall', fx:0.5, fy:0.82, kind:'look', glyph:'⚔️', label:'Brèche d’entraînement — raid', trainraid:true,
+         lines:['Le manoir peut simuler un assaut de la Veilleuse — un raid d’entraînement, sans enjeu, juste pour t’exercer.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
@@ -575,6 +577,7 @@
       // dossier d'enquête : ouvre (ou rappelle) une enquête incarnée dans le manoir
       if(sp.etabli){ this.openEtabli(); return; }
       if(sp.bapteme){ this.openBapteme(); return; }
+      if(sp.trainraid){ this.openTrainRaid(); return; }
       if(sp.enqStart){
         if(this.enqs.length>=2){
           this.dialogue={ i:0, endLabel:'Compris', lines:[
@@ -654,6 +657,8 @@
     // —— Le baptême : réassigner manuellement un domaine de vie à une salle.
     // Écrit dans ombrelune_consecration (override prioritaire lu par applyConsecration).
     openBapteme(){ if(this.dialogue) return; this.showFace({type:'bapteme', pickRoom:null, dismiss:true}); }
+    // Raid d'entraînement : lance le moteur TD (index.html) en mode libre, choix de difficulté.
+    openTrainRaid(){ if(this.dialogue) return; this.showFace({type:'trainraid', dismiss:true}); }
     setBapteme(roomK, domainName){ let saved={}; try{ saved=JSON.parse(localStorage.getItem('ombrelune_consecration')||'{}')||{}; }catch(e){}
       for(const k of Object.keys(saved)){ if(saved[k]===domainName) delete saved[k]; }
       saved[roomK]=domainName;
@@ -1084,12 +1089,20 @@
         }
         body+='</div>';
         return HB+P('Chaque salle éveillée porte le nom d’un de tes domaines. Touche-la pour la rebaptiser.')+body+ROW(this.faceBtn('close','Fermer ✦',true)); }
+      if(f.type==='trainraid'){
+        const rb=(d,label,solid)=>'<button data-fa="raid:'+d+'" style="width:100%; padding:13px 12px; border-radius:13px; cursor:pointer; font-family:\'Outfit\'; font-weight:800; font-size:13px; '+(solid?'border:none; color:#1c1206; background:linear-gradient(180deg,#f2cd72,#d6a84a); box-shadow:0 8px 22px rgba(214,168,74,.28);':'border:1px solid rgba(214,168,74,.35); color:#e7c878; background:rgba(214,168,74,.1);')+'">'+label+'</button>';
+        return '<div style="font-size:46px; line-height:1;">⚔️</div>'
+          +'<div style="margin-top:8px; font-family:\'Fraunces\',serif; font-weight:600; font-size:19px; color:#fbf3e2;">Raid d’entraînement</div>'
+          +P('Un assaut simulé de la Veilleuse — sans enjeu, juste pour t’exercer. Commander, tourelles, plein assaut. Choisis l’intensité :')
+          +'<div style="display:flex; flex-direction:column; gap:9px; margin-top:16px;">'+rb(1,'① Reconnaissance — facile',true)+rb(2,'② Assaut — normal')+rb(3,'③ Grand siège — difficile')+'</div>'
+          +ROW(this.faceBtn('close','Plus tard')); }
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
     faceAction(fa){ const f=this.faceCard; if(!f) return;
       if(fa==='close'){ this.hideFace(); return; }
       if(fa==='open-bapteme'){ this.showFace({type:'bapteme', pickRoom:null, dismiss:true}); return; }
+      if(fa && fa.indexOf('raid:')===0){ const d=fa.slice(5); window.location.href='./index.html?raid=1&seed='+Math.floor(Math.random()*99991)+'&difficulty='+d; return; }
       if(f.type==='bapteme'){
         if(fa.indexOf('bapt-room:')===0){ f.pickRoom=fa.slice(10); this.showFace(f); return; }
         if(fa==='bapt-back'){ f.pickRoom=null; this.showFace(f); return; }
