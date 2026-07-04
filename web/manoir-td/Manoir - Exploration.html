@@ -1842,11 +1842,13 @@
       f.globalCompositeOperation='destination-out';
       const toS=(wx,wy)=>[ (wx-this.cam.x)*this.Z + W/2, (wy-this.cam.y)*this.Z + H/2 ];
       // noir quasi-total : petit halo de base ; la lanterne allumée déploie un CÔNE
-      const hr=(this.lantern?190:130)*( (this.cfg.haloR??230)/230 ); const [hx,hy]=toS(this.hero.x,this.hero.y);
+      const hr=(this.lantern?210:85)*( (this.cfg.haloR??230)/230 ); const [hx,hy]=toS(this.hero.x,this.hero.y);
       let g=f.createRadialGradient(hx,hy,hr*0.32,hx,hy,hr); g.addColorStop(0,'rgba(0,0,0,1)'); g.addColorStop(0.6,'rgba(0,0,0,.78)'); g.addColorStop(1,'rgba(0,0,0,0)');
       f.fillStyle=g; f.beginPath(); f.arc(hx,hy,hr,0,7); f.fill();
-      for(const c of this.candleList()){ const [cx,cy]=toS(c.x,c.y); const cr=((c.r||60)+4)*this.Z*0.5;
-        const cg=f.createRadialGradient(cx,cy,4,cx,cy,cr); cg.addColorStop(0,'rgba(0,0,0,.92)'); cg.addColorStop(0.55,'rgba(0,0,0,.62)'); cg.addColorStop(1,'rgba(0,0,0,0)');
+      // bougies : simples repères lumineux — elles ne révèlent plus le sol (le noir
+      // total rend la lanterne indispensable pour VOIR ; on ne fait que se repérer)
+      for(const c of this.candleList()){ const [cx,cy]=toS(c.x,c.y); const cr=((c.r||60)*(this.lantern?0.7:0.34)+4)*this.Z*0.5;
+        const cg=f.createRadialGradient(cx,cy,3,cx,cy,cr); cg.addColorStop(0,'rgba(0,0,0,.85)'); cg.addColorStop(0.55,'rgba(0,0,0,.5)'); cg.addColorStop(1,'rgba(0,0,0,0)');
         f.fillStyle=cg; f.beginPath(); f.arc(cx,cy,cr,0,7); f.fill(); }
       // éclats de miroir : petit halo dans le noir pour les repérer en explorant
       if(this.mquest!=='solved' && this.roomOn('miroirs') && this.scene.type!=='sub'){ for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; const [fx,fy]=toS(fg.x,fg.y); const fr=64*this.Z*0.5;
