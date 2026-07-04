@@ -832,12 +832,17 @@
       const P=(t)=>'<div style="margin-top:11px; font-family:\'Outfit\'; font-size:12.5px; line-height:1.55; color:#a796c0;">'+this.esc2(t)+'</div>';
       const ROW=(inner)=>'<div style="display:flex; gap:10px; margin-top:18px;">'+inner+'</div>';
       if(f.type==='clue'){ const l=f.ent.l;
-        if(!f.ent.done) return H(l.icon,'Indice · '+this.esc2(l.place),l.action)+P('Approche-toi. Quelque chose accroche l’œil.')+ROW(this.faceBtn('examine','Examiner ›',true)+this.faceBtn('close','Plus tard'));
-        return H(l.icon,'Indice récolté ✓',l.place)+P(l.clue)
+        const qq=(f.ent.q!=null && this.enqSpecs[f.ent.q]) ? this.enqSpecs[f.ent.q] : (this.enqSpecs[this.enqActiveIdx()]||null);
+        const AFF=qq?'<div style="margin-top:7px; font-family:\'Outfit\'; font-size:10.5px; color:#8a7aa6;">Affaire : « '+this.esc2(qq.question)+' »</div>':'';
+        if(!f.ent.done) return H(l.icon,'Indice · '+this.esc2(l.place),l.action)+AFF+P('Approche-toi. Quelque chose accroche l’œil.')+ROW(this.faceBtn('examine','Examiner ›',true)+this.faceBtn('close','Plus tard'));
+        return H(l.icon,'Indice récolté ✓',l.place)+AFF+P(l.clue)
           +(l.note?'<div style="margin-top:9px; font-family:\'Fraunces\',serif; font-style:italic; font-size:12px; color:#9fd4ee;">Lampyre — « '+this.esc2(l.note)+' »</div>':'')
           +ROW(this.faceBtn('close','Noté ✦',true)); }
       if(f.type==='suspect'){ const sp=f.ent.sp;
-        let body=(sp.quote?'<div style="margin-top:9px; font-family:\'Fraunces\',serif; font-style:italic; font-size:13px; line-height:1.45; color:#cdbfe0;">'+this.esc2(sp.quote)+'</div>':'')+this.faceTags(sp);
+        const qs0=f.ent.q|0, spq=this.enqSpecs[qs0];
+        let body=(sp.quote?'<div style="margin-top:9px; font-family:\'Fraunces\',serif; font-style:italic; font-size:13px; line-height:1.45; color:#cdbfe0;">'+this.esc2(sp.quote)+'</div>':'')
+          +(spq?'<div style="margin-top:6px; font-family:\'Outfit\'; font-size:10.5px; color:#8a7aa6;">Affaire : « '+this.esc2(spq.question)+' »</div>':'')
+          +this.faceTags(sp);
         if(f.rebut) return H(sp.face,'Suspect',sp.name)+body+P(f.rebut)+ROW(this.faceBtn('close','Réfléchir',true));
         const qs=f.ent.q|0;
         if(!this.enqAllDone(qs)){ const n=this.enqCollected(qs).length, N=this.enqSpecs[qs].LOCATIONS.length;
@@ -950,10 +955,15 @@
           h+=L((enq.paused?'🗄️ <b style="color:#a796c0;">Au tiroir</b> · ':'🔍 <b style="color:#9fe0b0;">En cours</b> · ')
             +'« '+this.esc2(spec.question)+' »'+(enq.exped?' · 🌑':'')+(enq.mode==='reward'?' · ⛧ portail':''));
           h+=L('Indices : <b style="color:#e7c878;">'+n+'/'+N+'</b>'
-            +(!enq.paused && hid?' — '+hid+' caché'+(hid>1?'s':'')+' dans les meubles':'')
             +(!enq.paused && n>=N?' — <b style="color:#9fe0b0;">confronte les suspects.</b>':'')
             +(enq.paused ? SB('resume'+q,'Reprendre ✦')+SB('burn'+q,'Classer sans suite')
-                         : SB('abandon'+q,'Ranger ↩'))); }
+                         : SB('abandon'+q,'Ranger ↩')));
+          // le carnet : pour l'affaire EN COURS, chaque indice relu ou à trouver
+          if(!enq.paused){ const col=new Set(this.enqCollected(q));
+            for(const l of spec.LOCATIONS){
+              h+= col.has(l.key)
+                ? L('<span style="color:#9fe0b0;">'+l.icon+'</span> '+this.esc2(l.clue))
+                : L('<span style="color:#6b5f80;">❓ À trouver — '+(l.hidden?'caché dans un meuble (fouille'+(l.needsLoupe?', loupe requise':'')+')':this.esc2(l.place))+'</span>'); } } }
         if(this.enqs.some(e=>e.paused)) h+=L('<span style="color:#8a7aa6; font-size:11px;">Au tiroir = en pause, progression conservée. « Reprendre » la ramène dans le manoir.</span>');
       } else h+=L('Aucune enquête ouverte. Le Dossier t’attend à la Bibliothèque — et le portail garde parfois la sienne.');
       // missions du jour
