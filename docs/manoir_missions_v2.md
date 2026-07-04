@@ -213,6 +213,16 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   des indices sont CACHÉS dans les meubles (`l.hidden`, assignés par la graine d'enquête) ;
   à 3, l'un exige la loupe (`l.needsLoupe`). Décision : la fouille opère DANS l'espace
   éveillé (l'éveil = macro-gating ; la croissance ajoute des meubles = des caches).
-- À venir : couche 2 « noir + lanterne » (cône de lumière directionnel consommant l'huile,
-  fouille exigeant la lanterne, indices UV exigeant le noir), couche 3 « serrures + clés
-  IRL + inventaire d'outils » ; `genOmbres` ; arbre de talents (« Établi »).
+- **La Lanterne** (couche 2) : noir quasi-total (halo de base 130) mais TOUJOURS traversable
+  — la lanterne (bouton HUD 🏮) déploie un cône directionnel (suivant la marche) et consomme
+  l'**huile en minutes réelles** (`ombrelune_oil`). Sources : don de bienvenue (10 min),
+  fioles de fouille (+5), **focus réel** (30 min → +5, crédité via `ombrelune_sync`), don
+  quotidien de Lampyre à sec (+3, jamais bloqué). **Fouiller exige la lanterne allumée.**
+- **Serrures & clés** (couche 3) : 3 coffrets verrouillés (biblio/office/cabinet,
+  `ombrelune_chests`) — les clés se GAGNENT par le réel : cuivre = missions du jour toutes
+  faites, fer = journée à 10 verres, or = 3 trophées (`checkKeys` sur les reloads).
+  Butins : **lampe UV 🔦**, +15 min d'huile, Sceau du fondateur (+5 XP + butin).
+- **Runes UV** : 3 runes visibles UNIQUEMENT lampe UV en main ET lanterne éteinte (le noir
+  complet, geste inverse de la fouille). +3 XP chacune ; les 3 → butin « Triptyque des
+  runes » au Grand Hall (`ombrelune_runes`).
+- À venir : `genOmbres` (segments + validation) ; arbre de talents (« Établi »).
