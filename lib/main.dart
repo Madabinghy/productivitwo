@@ -1836,6 +1836,10 @@ class _AppRootState extends State<AppRoot>
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
   _Tab _tab = _Tab.dashboard;
+  // « Deux jeux en un » : mode Manoir 100 % plein écran (zéro chrome Flutter),
+  // la Console devient le mode secondaire. Persisté entre les sessions.
+  bool _manoirMode = false;
+  static const String _kManoirModePref = 'ui.manoir_mode';
 // affiché une seule fois tant que l'app reste ouverte
 
   Timer? _saveDebounce;
@@ -1894,6 +1898,13 @@ class _AppRootState extends State<AppRoot>
       value: 1.0,
     );
     _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
+
+    // Rouvrir l'app dans le mode où on l'a quittée (jeu ou console).
+    SharedPreferences.getInstance().then((p) {
+      if (mounted && (p.getBool(_kManoirModePref) ?? false)) {
+        setState(() => _manoirMode = true);
+      }
+    });
 
     _startMinuteHeartbeat();
     _startConnectivityListener();
@@ -3028,15 +3039,28 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
-          // Onglet Manoir : le jeu plein écran remplace la Galaxie — la barre
-          // d'onglets reste la « sortie » vers la Console (open_console → Accueil).
-          ManoirScreen(
-            logic: logic,
-            onExit: () => setState(() => _tab = _Tab.dashboard),
-          ),
+          // Emplacement de l'ancien onglet Galaxie : l'item « Manoir » de la
+          // barre bascule en mode jeu plein écran (voir onTap) — jamais rendu ici.
+          const SizedBox.shrink(),
         ],
       ),
     );
+  }
+
+  // Bascules « deux jeux en un » (persistées — l'app rouvre dans le même mode).
+  void _enterManoir() {
+    setState(() => _manoirMode = true);
+    SharedPreferences.getInstance()
+        .then((p) => p.setBool(_kManoirModePref, true));
+  }
+
+  void _exitManoir() {
+    setState(() {
+      _manoirMode = false;
+      _tab = _Tab.dashboard;
+    });
+    SharedPreferences.getInstance()
+        .then((p) => p.setBool(_kManoirModePref, false));
   }
 
   void _handleAssistantAction(AssistantActionData action) {
@@ -4378,6 +4402,13 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
+    // « Deux jeux en un » : en mode Manoir, le jeu occupe TOUT l'écran — zéro
+    // chrome Flutter. Sorties : le POI « Console du Commander » (open_console)
+    // ou le ✕ superposé sur la page Exploration. Mode persisté (_kManoirModePref).
+    if (_manoirMode) {
+      return ManoirScreen(logic: logic, onExit: _exitManoir);
+    }
+
     final filtersOn = logic.state.filters.isActive;
 
     void _openFullStats(BuildContext ctx) {
@@ -5359,6 +5390,10 @@ class _AppRootState extends State<AppRoot>
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex(_tab),
         onTap: (i) {
+          if (i == 3) {
+            _enterManoir(); // l'item « Manoir » bascule en mode jeu plein écran
+            return;
+          }
           final tapped = _tabFromIndex(i);
           _tabFadeController.forward(from: 0);
           setState(() => _tab = tapped);
@@ -5511,7 +5546,7 @@ class _AppRootState extends State<AppRoot>
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () {
                   Navigator.pop(sheetCtx);
-                  setState(() => _tab = _Tab.monde);
+                  _enterManoir();
                 },
               ),
               // Importer les routines « scénario » du Manoir dans les vraies routines

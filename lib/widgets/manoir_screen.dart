@@ -372,16 +372,28 @@ class _ManoirScreenState extends State<ManoirScreen> {
           Positioned.fill(child: content),
           if (!kIsWeb && !_ready)
             const Center(child: CircularProgressIndicator()),
-          // Pas de ✕ superposé : la sortie passe par l'onglet Console (barre du
-          // bas) ou le POI « Console du Commander » dans le jeu — le bouton
-          // masquait les boutons de retour des pages hors Exploration.
-          // Le ⟳ n'apparaît que sur l'Exploration (son en-tête laisse la place).
-          if (_onExploration || kIsWeb)
+          // Les contrôles superposés (✕ Console, ⟳ Recharger) n'apparaissent
+          // QUE sur la page Exploration : son en-tête leur laisse la place —
+          // ailleurs ils masqueraient les boutons propres des pages du jeu.
+          // Sur les autres pages, la sortie reste le POI « Console du
+          // Commander » (open_console) ou le retour in-game vers l'Exploration.
+          if (_onExploration || kIsWeb) ...[
+            Positioned(
+              top: 6,
+              left: 6,
+              child: _roundBtn(
+                  Icons.close,
+                  'Retour à la Console',
+                  () => widget.onExit != null
+                      ? widget.onExit!()
+                      : Navigator.of(context).maybePop()),
+            ),
             Positioned(
               top: 6,
               right: 6,
               child: _roundBtn(Icons.refresh, 'Recharger', _reload),
             ),
+          ],
         ]),
       ),
     );
