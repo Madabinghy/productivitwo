@@ -152,6 +152,19 @@
         raid:{name:'Sanctuaire', color:'#f2cd72', glow:'242,205,114'},
         coffre:{name:'Objectif central', color:'#f2cd72', glow:'242,205,114'},
       };
+      // Affinité domaine-user ↔ salle : mots-clés par méta-domaine (auto-mapping du baptême).
+      this.DOM_KEYWORDS={
+        sante:['santé','sante','health','forme','bien-être','bienetre','médical','medical','soin'],
+        sport:['sport','muscu','musculation','fitness','gym','course','running','vélo','velo','yoga','marche','cardio','tennis','foot','natation'],
+        env:['environnement','maison','ménage','menage','écolo','ecolo','nettoyage','logement','jardinage','bricolage'],
+        spi:['spiritualité','spiritualite','méditation','meditation','religion','foi','conscience','mindfulness','gratitude'],
+        org:['organisation','productivité','productivite','travail','boulot','job','admin','gestion','carrière','carriere','pro','business','entreprise'],
+        savoir:['savoir','étude','etude','etudier','apprentissage','lecture','langue','cours','école','ecole','formation','connaissance','esprit','écriture','ecriture','musique','piano','guitare','code','dev'],
+        rel:['relation','famille','ami','amis','social','couple','amour','proches','enfants'],
+        perso:['perso','développement','developpement','habitude','objectif','mindset','soi'],
+        alim:['alimentation','nutrition','cuisine','manger','repas','régime','regime','diète','diete','hydratation'],
+        fin:['finance','argent','budget','épargne','epargne','invest','économie','economie','compta','patrimoine'],
+        repos:['repos','sommeil','dormir','sieste','détente','detente','récupération','recuperation','pause'] };
 
       this.ROOMS=[
         {k:'hall', x:210,y:210,w:100,h:70, dom:'sante', label:'Grand Hall', lv:{up:'Grand Palier — Coursive d\u2019honneur'}},
@@ -330,7 +343,7 @@
       let lp={xp:0,stage:0,credited:{d:today,water:0,missions:[],focus:0}};
       try{ lp=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null')||lp; }catch(e){}
       lp.credited=lp.credited||{d:today,water:0,missions:[],focus:0};
-      this.lamp=lp; this.creditCare(); this.creditSignals();
+      this.lamp=lp; this.creditCare(); this.creditSignals(); this.applyConsecration();
 
       // —— Portail du Sanctuaire : la prochaine action Gantt, scellée par la Console
       // (docs/manoir_missions_v2.md §1 et §3 — V2.1 : mène à la Galerie des ombres).
@@ -402,7 +415,7 @@
       window.addEventListener('touchstart',this._ts,{passive:true});
 
       // —— lien IRL live : une autre page (Accueil) a bu un verre → maj immédiate du bar
-      this._ws=(e)=>{ if(e.key==='ombrelune_signals'){ this.creditSignals(); this.updateHud(); } else if(e.key==='ombrelune_minigame_loot') this.consumeMinigameLoot(); else if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
+      this._ws=(e)=>{ if(e.key==='ombrelune_domains'||e.key==='ombrelune_consecration'){ this.applyConsecration(); this.updateHud(); } else if(e.key==='ombrelune_signals'){ this.creditSignals(); this.updateHud(); } else if(e.key==='ombrelune_minigame_loot') this.consumeMinigameLoot(); else if(e.key==='ombrelune_water') this.reloadWater(); else if(e.key==='ombrelune_mirror_quest') this.reloadMirror(); else if(e.key==='ombrelune_sync') this.reloadSync(); else if(e.key==='ombrelune_next_action') this.reloadNextAction(); else if(e.key==='ombrelune_trophies') this.reloadTrophies(); };
       window.addEventListener('storage',this._ws);
 
       // —— HUD clic
@@ -576,6 +589,27 @@
       this.updateHud(); }
     // —— Le manoir s'éveille : helpers d'éveil (palier) et de croissance (niveau).
     stageForXp(xp){ let st=0; for(let i=0;i<this.STAGE_XP.length;i++){ if(xp>=this.STAGE_XP[i]) st=i; } return st; }
+    // Baptême sans friction : mappe les DOMAINES RÉELS du user sur les salles (par affinité),
+    // affiché comme sous-titre de salle. Un override manuel (ombrelune_consecration) est
+    // prioritaire — le baptême explicite viendra l'éditer ; ici, auto-mapping intelligent.
+    applyConsecration(){ this.consecration={};
+      let ds=[]; try{ ds=JSON.parse(localStorage.getItem('ombrelune_domains')||'[]'); }catch(e){}
+      if(!Array.isArray(ds)||!ds.length) return;
+      let saved={}; try{ saved=JSON.parse(localStorage.getItem('ombrelune_consecration')||'{}')||{}; }catch(e){}
+      const usedDom=new Set(), usedRoom=new Set();
+      // 1) overrides manuels (baptême explicite)
+      for(const k of Object.keys(saved)){ const r=this.byk[k], d=ds.find(x=>x.name===saved[k]);
+        if(r&&d){ this.consecration[k]={name:d.name, color:d.color||this.DOM[r.dom].color}; usedDom.add(d.name); usedRoom.add(k); } }
+      // 2) auto-map par affinité (meilleur mot-clé gagne)
+      const scored=[];
+      for(const d of ds){ if(usedDom.has(d.name)) continue; const nm=String(d.name||'').toLowerCase();
+        for(const r of this.ROOMS){ if(usedRoom.has(r.k)) continue; const kws=this.DOM_KEYWORDS[r.dom]; if(!kws) continue;
+          let sc=0; for(const kw of kws){ if(nm.indexOf(kw)>=0) sc=Math.max(sc,kw.length); }
+          if(sc>0) scored.push({d,r,sc}); } }
+      scored.sort((a,b)=>b.sc-a.sc);
+      for(const it of scored){ if(usedDom.has(it.d.name)||usedRoom.has(it.r.k)) continue;
+        this.consecration[it.r.k]={name:it.d.name, color:it.d.color||this.DOM[it.r.dom].color}; usedDom.add(it.d.name); usedRoom.add(it.r.k); } }
+    consecratedName(roomK, fallback){ const c=this.consecration&&this.consecration[roomK]; return c?c.name:fallback; }
     // clic sur une salle scellée : Lampyre explique comment l'éveiller
     explainSealed(tr){ const xp=Math.floor(this._stageXp||0), st=this.stageForXp(xp);
       let tier=st+1; for(let i=st+1;i<this.UNLOCKS.length;i++){ if(this.UNLOCKS[i].indexOf(tr.k)>=0){ tier=i; break; } }
@@ -1029,6 +1063,12 @@
       { const tk=[]; if(this.tools.loupe) tk.push('🔍 loupe'); if(this.tools.uv) tk.push('🔦 lampe UV');
         if(this.tools.cle_cuivre) tk.push('🗝️ cuivre'); if(this.tools.cle_fer) tk.push('🗝️ fer'); if(this.tools.cle_or) tk.push('🗝️ or');
         h+=L('🫗 Huile : <b style="color:#e7c878;">'+Math.max(0,Math.floor(this.oil.n))+' min</b>'+(tk.length?' · '+tk.join(' · '):' · rien d’autre pour l’instant')); }
+      // tes domaines dans le manoir (auto-mapping, rassurant)
+      { const cs=this.consecration||{}; const ks=Object.keys(cs);
+        if(ks.length){ h+=S('Tes domaines dans le manoir');
+          for(const k of ks){ const r=this.byk[k]; if(!r) continue;
+            h+=L('<span style="color:'+(cs[k].color||'#e7c878')+';">●</span> '+this.esc2(cs[k].name)+' <span style="color:#8a7aa6;">· '+this.esc2(r.label)+'</span>'); }
+          h+=L('<span style="color:#8a7aa6; font-size:11px;">Le manoir a relié tes domaines à ses salles. Le baptême te laissera les réassigner.</span>'); } }
       // réveil du manoir : jauge vers la prochaine salle + comment agir dessus
       h+=S('Réveil du manoir');
       { const xp=Math.floor(this._stageXp||0), st=this.stageForXp(xp);
@@ -1366,7 +1406,7 @@
         h={room:'', dom:'', color:D.color, scene:this.scene.name, glyph:this.scene.dir==='up'?'⤒':'⤓', inSub:true}; }
       else { let cur=null; for(const r of this.ROOMS){ if(this.hero.x>=r.x&&this.hero.x<=r.x+r.w&&this.hero.y>=r.y&&this.hero.y<=r.y+r.h){ cur=r; break; } }
         const D=cur?this.DOM[cur.dom]:null;
-        h={room:cur?cur.label:'Couloirs', dom:cur?D.name:'En transit', color:cur?D.color:'#9a86b8', scene:'Rez-de-chaussée', glyph:'⌂', inSub:false}; }
+        h={room:cur?cur.label:'Couloirs', dom:cur?this.consecratedName(cur.k,D.name):'En transit', color:cur?D.color:'#9a86b8', scene:'Rez-de-chaussée', glyph:'⌂', inSub:false}; }
       const poi2=this.curPoi;
       h.prompt=poi2?poi2.text:''; h.showPrompt=!!poi2 && !this.dialogue;
       h.promptC=poi2?poi2.color:'#f2cd72'; h.promptG=poi2?poi2.glyph:'⤒'; h.promptH=poi2?poi2.hint:'';

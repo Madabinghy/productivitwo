@@ -346,6 +346,18 @@ class _ManoirScreenState extends State<ManoirScreen> {
       'routinesActive': routinesActive,
       'focusMin': focusMin,
     });
+    // Baptême des salles (auto-mapping) : la liste des domaines RÉELS du user —
+    // le jeu les mappe sur ses salles par affinité et les affiche. Zéro config.
+    final domains = jsonEncode([
+      for (final d in widget.logic.state.domains)
+        if (!d.deleted)
+          {
+            'name': d.name,
+            if (d.colorValue != null)
+              'color':
+                  '#${(d.colorValue! & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}',
+          }
+    ]);
     // Écrit puis émet des StorageEvent synthétiques : les écritures locales ne
     // déclenchent pas l'event `storage` dans la page qui écrit, or le jeu
     // s'appuie dessus pour rafraîchir en direct.
@@ -354,9 +366,11 @@ class _ManoirScreenState extends State<ManoirScreen> {
         localStorage.setItem('ombrelune_sync', ${jsonEncode(sync)});
         localStorage.setItem('ombrelune_water', ${jsonEncode(water)});
         localStorage.setItem('ombrelune_signals', ${jsonEncode(signals)});
+        localStorage.setItem('ombrelune_domains', ${jsonEncode(domains)});
         window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_sync'}));
         window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_water'}));
         window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_signals'}));
+        window.dispatchEvent(new StorageEvent('storage', {key:'ombrelune_domains'}));
       } catch (e) {}
     ''');
   }
