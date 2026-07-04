@@ -887,7 +887,7 @@
         if(old && old.state==='play'){ list.push(old); } localStorage.removeItem('ombrelune_enquete'); }catch(err){}
       if(window.OmbreluneGen){ for(const e of list){ if(!e || e.state!=='play' || this.enqs.length>=2) continue;
         const spec=window.OmbreluneGen.genEnquete(e.seed, e.diff);
-        if(spec){ this.enqs.push(e); this.enqSpecs.push(spec); } } }
+        if(spec){ e.ruledOut=e.ruledOut||[]; this.enqs.push(e); this.enqSpecs.push(spec); } } }
       // une seule ACTIVE à la fois — les autres attendent au tiroir (paused)
       { let act=this.enqs.findIndex(e=>!e.paused);
         if(act<0 && this.enqs.length){ act=0; }
@@ -902,7 +902,7 @@
       const spec=window.OmbreluneGen.genEnquete((seed>>>0), diff);
       if(!spec) return;
       this.enqs.forEach(e=>{ e.paused=true; }); // la nouvelle devient l'enquête EN COURS
-      this.enqs.push({ v:2, seed:(seed>>>0), diff, mode:mode||'free', exped, paused:false, collected:[], state:'play' });
+      this.enqs.push({ v:2, seed:(seed>>>0), diff, mode:mode||'free', exped, paused:false, collected:[], ruledOut:[], state:'play' });
       this.enqSpecs.push(spec);
       if(exped){ this.oil.n=(this.oil.n||0)+8; this.saveOil(); this.updateLanternHud(); }
       this.saveEnquete(); this.placeEnquete(); this.flash=Math.max(this.flash||0,0.5);
@@ -912,6 +912,9 @@
       this.dialogue={ i:0, endLabel:'Enquêter', lines };
       this.updateHud(); }
     enqCollected(q){ return (this.enqs[q]&&this.enqs[q].collected)||[]; }
+    // carnet d'écartement : bloc-notes du joueur (persisté), ne résout jamais à sa place
+    enqRuledOut(q){ const e=this.enqs[q]; if(!e) return []; if(!e.ruledOut) e.ruledOut=[]; return e.ruledOut; }
+    toggleRuleOut(q,key){ const arr=this.enqRuledOut(q); const i=arr.indexOf(key); if(i>=0) arr.splice(i,1); else arr.push(key); this.saveEnquete(); }
     enqAllDone(q){ const sp=this.enqSpecs[q]; return sp && this.enqCollected(q).length>=sp.LOCATIONS.length; }
     // positions déterministes (graine) sur des ancres par salle, éveillées seulement
     placeEnquete(){ this.enqActors=[]; this.enqClues=[]; this.enqHidden=[];
@@ -990,9 +993,11 @@
           +this.faceTags(sp);
         if(f.rebut) return H(sp.face,'Suspect',sp.name)+body+P(f.rebut)+ROW(this.faceBtn('close','Réfléchir',true));
         const qs=f.ent.q|0;
+        const outR=this.enqRuledOut(qs).indexOf(sp.key)>=0;
+        const ruleRow=ROW(this.faceBtn('rule', outR?'↩ Rétablir ce suspect':'✕ Écarter ce suspect'));
         if(!this.enqAllDone(qs)){ const n=this.enqCollected(qs).length, N=this.enqSpecs[qs].LOCATIONS.length;
-          return H(sp.face,'Suspect',sp.name)+body+P('« Moi ? Reviens quand tu auras tous tes indices ('+n+'/'+N+'). »')+ROW(this.faceBtn('close','Plus tard',true)); }
-        return H(sp.face,'Suspect',sp.name)+body+P('Tous les indices sont réunis. Est-ce '+sp.name+' ?')+ROW(this.faceBtn('accuse','Accuser ✦',true)+this.faceBtn('close','Laisser')); }
+          return H(sp.face,'Suspect',sp.name)+body+(outR?P('Tu l’as écarté·e dans ton carnet.'):'')+P('« Moi ? Reviens quand tu auras tous tes indices ('+n+'/'+N+'). »')+ROW(this.faceBtn('close','Plus tard',true))+ruleRow; }
+        return H(sp.face,'Suspect',sp.name)+body+(outR?P('Tu l’as écarté·e dans ton carnet — sûr·e de vouloir l’accuser ?'):'')+P('Tous les indices sont réunis. Est-ce '+sp.name+' ?')+ROW(this.faceBtn('accuse','Accuser ✦',true)+this.faceBtn('close','Laisser'))+ruleRow; }
       if(f.type==='verdict'){ const spec=f.spec;
         let extra='';
         if(f.mode==='reward'){ const na=this.nextAction; const rev=na&&na.title&&na.sealed===false;
@@ -1113,6 +1118,7 @@
           const n=this.enqCollected(q).length, N=this.enqSpecs[q].LOCATIONS.length;
           this.toast={t:'🔍 Indice '+n+'/'+N+(n>=N?' — va confronter les suspects.':''), t0:performance.now()}; }
         this.showFace(f); return; }
+      if(fa==='rule' && f.type==='suspect'){ this.toggleRuleOut(f.ent.q|0, f.ent.sp.key); this.showFace(f); return; }
       if(fa==='accuse' && f.type==='suspect'){ const sp=f.ent.sp;
         const q2=f.ent.q|0, spec2=this.enqSpecs[q2];
         if(sp.key===spec2.CULPRIT){ this.showFace({type:'verdict', q:q2, spec:spec2, culprit:sp, mode:this.enqs[q2].mode}); }
@@ -1167,7 +1173,10 @@
             for(const l of spec.LOCATIONS){
               h+= col.has(l.key)
                 ? L('<span style="color:#9fe0b0;">'+l.icon+'</span> '+this.esc2(l.clue))
-                : L('<span style="color:#6b5f80;">❓ À trouver — '+(l.hidden?'caché dans un meuble (fouille'+(l.needsLoupe?', loupe requise':'')+')':this.esc2(l.place))+'</span>'); } } }
+                : L('<span style="color:#6b5f80;">❓ À trouver — '+(l.hidden?'caché dans un meuble (fouille'+(l.needsLoupe?', loupe requise':'')+')':this.esc2(l.place))+'</span>'); }
+            const ro=new Set(this.enqRuledOut(q)); const rem=spec.SUSPECTS.filter(sp=>!ro.has(sp.key)).length;
+            h+=L('<span style="color:#8a7aa6;">Suspects</span> · reste <b style="color:'+(rem>1?'#e7c878':'#9fe0b0')+';">'+rem+'</b>'
+              +(ro.size?' — écartés : '+spec.SUSPECTS.filter(sp=>ro.has(sp.key)).map(sp=>'<span style="text-decoration:line-through; color:#9a8a92;">'+this.esc2(sp.name)+'</span>').join(', '):'')); } }
         if(this.enqs.some(e=>e.paused)) h+=L('<span style="color:#8a7aa6; font-size:11px;">Au tiroir = en pause, progression conservée. « Reprendre » la ramène dans le manoir.</span>');
       } else h+=L('Aucune enquête ouverte. Le Dossier t’attend à la Bibliothèque — et le portail garde parfois la sienne.');
       // missions du jour
@@ -2043,12 +2052,15 @@
         if(c.done){ ctx.shadowBlur=0; ctx.globalAlpha=0.9; ctx.fillStyle='#9fe0b0'; ctx.font='700 9px Outfit'; ctx.fillText('✓',9,-8); }
         ctx.restore(); }
       for(const a of (this.enqActors||[])){
-        this.drawNpc(ctx,a,t);
-        ctx.save(); ctx.translate(a.x,a.y-26); ctx.globalAlpha=0.85;
+        const outR=this.enqRuledOut(a.q).indexOf(a.sp.key)>=0;
+        ctx.save(); if(outR) ctx.globalAlpha=0.4; this.drawNpc(ctx,a,t); ctx.restore();
+        ctx.save(); ctx.translate(a.x,a.y-26); ctx.globalAlpha=outR?0.6:0.85;
         ctx.font='700 8.5px Outfit'; ctx.textAlign='center'; ctx.textBaseline='middle';
         const w=ctx.measureText(a.sp.name).width+10;
         this.rr(ctx,-w/2,-7,w,14,7); ctx.fillStyle='rgba(8,5,16,.72)'; ctx.fill();
-        ctx.fillStyle='#e8b4c8'; ctx.fillText(a.sp.name,0,0.5); ctx.restore(); } }
+        ctx.fillStyle=outR?'#9a8a92':'#e8b4c8'; ctx.fillText(a.sp.name,0,0.5);
+        if(outR){ ctx.strokeStyle='#e0859a'; ctx.lineWidth=1.3; ctx.beginPath(); ctx.moveTo(-w/2+2,0.5); ctx.lineTo(w/2-2,0.5); ctx.stroke(); }
+        ctx.restore(); } }
     drawKeyItems(ctx,t){
       for(const c of (this.chestsPlaced||[])){ const p2=0.5+0.5*Math.sin(t*1.8+c.x);
         ctx.save(); ctx.translate(c.x,c.y);
