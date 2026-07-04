@@ -1508,16 +1508,18 @@
       let poi=null; let atBar=false;
       if(near){ poi={kind:'stair', text:near.text, color:near.dir==='up'?'#f2cd72':'#9fb0d8', glyph:near.dir==='up'?'⤒':'⤓', dwell:true, hint:'reste 2 s'}; }
       else if(this.mquest!=='solved' && this.roomOn('miroirs') && this.scene.type!=='sub' && (()=>{ let fr=null,fb=36; for(const fg of this.FRAGS){ if(this.mgot.has(fg.id)||!this.roomOn(fg.room)) continue; const d=Math.hypot(fg.x-this.hero.x,fg.y-this.hero.y); if(d<fb){fb=d; fr=fg;} } if(fr){ poi={kind:'fragment', frag:fr, text:'Ramasser l’éclat de miroir', color:'#bfe3ff', glyph:'◆', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
-      else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
-      // quête résolue → la table des miroirs propose des énigmes GÉNÉRÉES, sans enjeu
-      else if(this.mquest==='solved' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_replay', text:'Jouer une énigme des miroirs', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
-      // enquête incarnée : suspect ou indice à portée
+      // enquête incarnée : un suspect / indice À PORTÉE prime sur les options de SALLE
+      // (réparer / rejouer l'énigme des miroirs) — sinon un PNJ debout dans la Salle des
+      // miroirs est masqué par la table d'énigmes et devient injoignable.
       else if(((this.enqActors||[]).length||(this.enqClues||[]).length) && this.scene.type!=='sub' && (()=>{ let be=null,bb=34,bt=null;
         for(const a of (this.enqActors||[])){ const d=Math.hypot(a.x-this.hero.x,a.y-this.hero.y); if(d<bb){bb=d; be=a; bt='s';} }
         for(const c of (this.enqClues||[])){ const d=Math.hypot(c.x-this.hero.x,c.y-this.hero.y); if(d<bb){bb=d; be=c; bt='c';} }
         if(be){ poi = bt==='s' ? {kind:'enq_suspect', ent:be, text:'Parler à '+be.sp.name, color:'#e8b4c8', glyph:'❔', dwell:false, hint:'clic'}
           : {kind:'enq_clue', ent:be, text:(be.done?'Relire l’indice':'Examiner · '+be.l.place), color:'#bfe3ff', glyph:be.l.icon, dwell:false, hint:'clic'};
           return true; } return false; })()){ /* poi posé */ }
+      else if(this.mquest==='found' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_enter', text:'Réparer le grand miroir', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
+      // quête résolue → la table des miroirs propose des énigmes GÉNÉRÉES, sans enjeu
+      else if(this.mquest==='solved' && this.scene.type!=='sub' && (this.roomAt(this.hero.x,this.hero.y)||{}).k==='miroirs'){ poi={kind:'mirror_replay', text:'Jouer une énigme des miroirs', color:'#bfe3ff', glyph:'◈', dwell:false, hint:'clic'}; }
       // butin : souvenir de mission inspectable
       else if(this.scene.type!=='sub' && (()=>{ let bi=null,bb2=30;
         for(const b of (this.butinPlaced||[])){ const d=Math.hypot(b.x-this.hero.x,b.y-this.hero.y); if(d<bb2){bb2=d; bi=b;} }
