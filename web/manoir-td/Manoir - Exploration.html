@@ -308,6 +308,9 @@
       // —— Missions du jour : une action RÉELLE (enregistrée dans la Console — l'app
       // Productivitwo — ou sur l'écran d'accueil) rallume la salle de son PNJ.
       // L'état vient d'`ombrelune_sync` (écrit par le pont app ou par l'Accueil).
+      { const ve=this.byk.vestibule; this.SPOTS.push({room:'vestibule', kind:'look', glyph:'📖', label:'Le Registre du manoir', bapteme:true,
+          fx:0.5, fy:0.5, x:ve.x+ve.w*0.5, y:ve.y+ve.h*0.5, ph:2.0, lines:[]}); }
+
       this.MISSIONS=[
         {room:'office',    npc:'Sylvain',  rk:'vaisselle',  title:'L’office impeccable', irl:'Fais la vaisselle',
          ask:['« L’évier déborde et l’Office s’éteint à mesure. Je n’y arrive plus seul. »','« Fais la vaisselle — pour de vrai, dans ton antre. La Console tiendra le compte, et l’Office se rallumera. »'],
@@ -572,6 +575,7 @@
       }
       // dossier d'enquête : ouvre (ou rappelle) une enquête incarnée dans le manoir
       if(sp.etabli){ this.openEtabli(); return; }
+      if(sp.bapteme){ this.openBapteme(); return; }
       if(sp.enqStart){
         if(this.enqs.length>=2){
           this.dialogue={ i:0, endLabel:'Compris', lines:[
@@ -648,6 +652,18 @@
     pcSpent(){ let t=0; for(const sk of this.SKILLS){ const l=this.skillLvl(sk.k); for(let i=0;i<l&&i<sk.costs.length;i++) t+=sk.costs[i]; } return t; }
     pcAvail(){ return Math.max(0, this.pcTotal()-this.pcSpent()); }
     openEtabli(){ if(this.dialogue) return; this.showFace({type:'etabli', dismiss:true}); }
+    // —— Le baptême : réassigner manuellement un domaine de vie à une salle.
+    // Écrit dans ombrelune_consecration (override prioritaire lu par applyConsecration).
+    openBapteme(){ if(this.dialogue) return; this.showFace({type:'bapteme', pickRoom:null, dismiss:true}); }
+    setBapteme(roomK, domainName){ let saved={}; try{ saved=JSON.parse(localStorage.getItem('ombrelune_consecration')||'{}')||{}; }catch(e){}
+      for(const k of Object.keys(saved)){ if(saved[k]===domainName) delete saved[k]; }
+      saved[roomK]=domainName;
+      try{ localStorage.setItem('ombrelune_consecration', JSON.stringify(saved)); window.dispatchEvent(new StorageEvent('storage',{key:'ombrelune_consecration'})); }catch(e){}
+      this.applyConsecration(); this.updateHud(); }
+    clearBapteme(roomK){ let saved={}; try{ saved=JSON.parse(localStorage.getItem('ombrelune_consecration')||'{}')||{}; }catch(e){}
+      delete saved[roomK];
+      try{ localStorage.setItem('ombrelune_consecration', JSON.stringify(saved)); window.dispatchEvent(new StorageEvent('storage',{key:'ombrelune_consecration'})); }catch(e){}
+      this.applyConsecration(); this.updateHud(); }
     buySkill(k){ const sk=this.SKILLS.find(x=>x.k===k); if(!sk) return; const l=this.skillLvl(k);
       if(l>=sk.max || this.pcAvail()<sk.costs[l]) return;
       this.skills.spent=this.skills.spent||{}; this.skills.spent[k]=l+1; this.saveSkills();
@@ -1029,11 +1045,48 @@
           +'<div style="margin-top:6px; font-family:\'Outfit\'; font-weight:800; font-size:15px; color:#f2cd72;">'+avail+' ◆ <span style="font-weight:600; font-size:10px; color:#a796c0; text-transform:uppercase; letter-spacing:1px;">à forger</span></div>'
           +'<div style="margin-top:3px; font-family:\'Outfit\'; font-size:10.5px; color:#6b5f80;">'+total+' point'+(total>1?'s':'')+' forgé'+(total>1?'s':'')+' · 1 ◆ tous les '+this.PC_PER+' XP · XP : '+(this.lamp?this.lamp.xp:0)+'</div>';
         return H2+P('La puissance forgée ici vaut pour TOUTES tes missions — infiltrations et raids.')+body+ROW(this.faceBtn('close','Fermer ✦',true)); }
+      if(f.type==='bapteme'){
+        let ds=[]; try{ ds=JSON.parse(localStorage.getItem('ombrelune_domains')||'[]')||[]; }catch(e){}
+        const HB='<div style="font-size:46px; line-height:1;">📖</div>'
+          +'<div style="margin-top:8px; font-family:\'Fraunces\',serif; font-weight:600; font-size:19px; color:#fbf3e2;">Le Registre du manoir</div>';
+        if(!Array.isArray(ds)||!ds.length) return HB+P('Tu n’as pas encore de domaines de vie. Crée-les dans la Console (l’app Productivitwo) et le manoir baptisera ses salles à leur nom.')+ROW(this.faceBtn('close','Fermer ✦',true));
+        if(f.pickRoom){ const r=this.byk[f.pickRoom]||{}; const cur=(this.consecration[f.pickRoom]||{}).name;
+          let body='<div style="margin-top:14px; text-align:left;">';
+          for(let i=0;i<ds.length;i++){ const d=ds[i], on=d.name===cur; let other='';
+            for(const k of Object.keys(this.consecration)){ if(k!==f.pickRoom && this.consecration[k].name===d.name){ other=(this.byk[k]||{}).label||''; break; } }
+            body+='<button data-fa="bapt-set:'+f.pickRoom+'|'+i+'" style="display:flex; align-items:center; gap:9px; width:100%; margin-top:8px; padding:11px 13px; border-radius:13px; cursor:pointer; text-align:left; border:1px solid '+(on?'rgba(214,168,74,.5)':'rgba(154,134,184,.18)')+'; background:'+(on?'rgba(214,168,74,.12)':'rgba(26,18,38,.7)')+';">'
+              +'<span style="width:11px; height:11px; border-radius:50%; flex:none; background:'+(d.color||'#9a86b8')+'; box-shadow:0 0 8px '+(d.color||'#9a86b8')+';"></span>'
+              +'<span style="flex:1; font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">'+this.esc2(d.name)+(other?' <span style="font-family:\'Outfit\'; font-weight:600; font-size:10px; color:#8a7aa6;">· déjà sur '+this.esc2(other)+'</span>':'')+'</span>'
+              +(on?'<span style="color:#f2cd72; font-size:15px;">✓</span>':'')+'</button>';
+          }
+          body+='</div>';
+          return HB+'<div style="margin-top:8px; font-family:\'Outfit\'; font-size:12px; color:#c9a456;">Baptiser « '+this.esc2(r.label||'')+' »</div>'+body
+            +ROW(this.faceBtn('bapt-back','← Retour',true)+(cur?this.faceBtn('bapt-clear:'+f.pickRoom,'Laisser au manoir'):this.faceBtn('close','Fermer'))); }
+        const rooms=this.ROOMS.filter(r=>this.DOM_KEYWORDS[r.dom] && this.roomOn(r.k));
+        if(!rooms.length) return HB+P('Aucune salle éveillée pour l’instant. Agis pour de vrai : le manoir s’éveillera, et tu pourras baptiser ses salles.')+ROW(this.faceBtn('close','Fermer ✦',true));
+        let body='<div style="margin-top:14px; text-align:left;">';
+        for(const r of rooms){ const c2=this.consecration[r.k]||null, nm=c2&&c2.name, col=(c2&&c2.color)||'#8a7aa6';
+          body+='<button data-fa="bapt-room:'+r.k+'" style="display:flex; align-items:center; gap:10px; width:100%; margin-top:8px; padding:11px 13px; border-radius:13px; cursor:pointer; text-align:left; border:1px solid rgba(154,134,184,.18); background:rgba(26,18,38,.7);">'
+            +'<span style="width:10px; height:10px; border-radius:50%; flex:none; background:'+(nm?col:'rgba(154,134,184,.3)')+';'+(nm?' box-shadow:0 0 8px '+col+';':'')+'"></span>'
+            +'<span style="flex:1;"><span style="font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">'+this.esc2(r.label)+'</span><br><span style="font-family:\'Outfit\'; font-size:11px; color:'+(nm?'#c9b3e6':'#6b5f80')+';">'+(nm?this.esc2(nm):'— libre, le manoir choisit')+'</span></span>'
+            +'<span style="color:#8a7aa6; font-size:16px;">›</span></button>';
+        }
+        body+='</div>';
+        return HB+P('Chaque salle éveillée porte le nom d’un de tes domaines. Touche-la pour la rebaptiser.')+body+ROW(this.faceBtn('close','Fermer ✦',true)); }
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
     faceAction(fa){ const f=this.faceCard; if(!f) return;
       if(fa==='close'){ this.hideFace(); return; }
+      if(fa==='open-bapteme'){ this.showFace({type:'bapteme', pickRoom:null, dismiss:true}); return; }
+      if(f.type==='bapteme'){
+        if(fa.indexOf('bapt-room:')===0){ f.pickRoom=fa.slice(10); this.showFace(f); return; }
+        if(fa==='bapt-back'){ f.pickRoom=null; this.showFace(f); return; }
+        if(fa.indexOf('bapt-clear:')===0){ this.clearBapteme(fa.slice(11)); f.pickRoom=null; this.showFace(f); return; }
+        if(fa.indexOf('bapt-set:')===0){ const parts=fa.slice(9).split('|'), rk=parts[0], idx=+parts[1];
+          let ds=[]; try{ ds=JSON.parse(localStorage.getItem('ombrelune_domains')||'[]')||[]; }catch(e){}
+          const d=ds[idx]; if(d){ this.setBapteme(rk,d.name); this.toast={t:'✦ '+((this.byk[rk]||{}).label||'Salle')+' baptisée « '+d.name+' ».', t0:performance.now()}; }
+          f.pickRoom=null; this.showFace(f); return; } }
       if(fa && fa.indexOf('buy:')===0 && f.type==='etabli'){ this.buySkill(fa.slice(4)); this.showFace(f); return; }
       if(fa==='light' && f.type==='fouille'){ this.toggleLantern(); if(this.lantern) this.showFace(f); return; }
       if(fa==='search' && f.type==='fouille'){ if(!this.lantern){ this.showFace(f); return; }
@@ -1136,7 +1189,8 @@
         if(ks.length){ h+=S('Tes domaines dans le manoir');
           for(const k of ks){ const r=this.byk[k]; if(!r) continue;
             h+=L('<span style="color:'+(cs[k].color||'#e7c878')+';">●</span> '+this.esc2(cs[k].name)+' <span style="color:#8a7aa6;">· '+this.esc2(r.label)+'</span>'); }
-          h+=L('<span style="color:#8a7aa6; font-size:11px;">Le manoir a relié tes domaines à ses salles. Le baptême te laissera les réassigner.</span>'); } }
+          h+=L('<span style="color:#8a7aa6; font-size:11px;">Le manoir a relié tes domaines à ses salles. À toi de les rebaptiser.</span>');
+          h+='<div style="margin-top:9px;"><button data-fa="open-bapteme" style="width:100%; padding:11px; border-radius:12px; cursor:pointer; border:1px solid rgba(214,168,74,.35); background:rgba(214,168,74,.1); color:#e7c878; font-family:\'Outfit\'; font-weight:800; font-size:12.5px;">📖 Baptiser mes salles ✦</button></div>'; } }
       // réveil du manoir : jauge vers la prochaine salle + comment agir dessus
       h+=S('Réveil du manoir');
       { const xp=Math.floor(this._stageXp||0), st=this.stageForXp(xp);
