@@ -204,5 +204,15 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   (clé d'argent, pot de confiture…) posé À DEMEURE dans la salle du coupable — inspectable
   en vue de face (nom, date, histoire) ; `creditRoom` sur la salle (le butin fait grandir).
   À étendre aux autres types de missions.
-- À venir : `genOmbres` (segments de map + placement caméras/gardes + validation de
-  faisabilité), et l'arbre de talents (« Établi ») alimenté par l'XP.
+- **La Fouille** (couche 1 « escape game ») : les meubles des salles ÉVEILLÉES se
+  fouillent en vue de face (« Regarder sous le lit », « Ouvrir la caisse »…) — rien n'est
+  affiché sur la carte, on fouine. Butin du jour déterministe (graine = date, reset
+  quotidien, `ombrelune_fouille`) : la **loupe 🔍** (une fois — `ombrelune_tools`), une
+  fiole d'huile (+5 min, `ombrelune_oil` — réserve pour la lanterne à venir), une poussière
+  de lumière (+2 XP), une breloque (`creditRoom`). Enquêtes : à partir de la difficulté 2,
+  des indices sont CACHÉS dans les meubles (`l.hidden`, assignés par la graine d'enquête) ;
+  à 3, l'un exige la loupe (`l.needsLoupe`). Décision : la fouille opère DANS l'espace
+  éveillé (l'éveil = macro-gating ; la croissance ajoute des meubles = des caches).
+- À venir : couche 2 « noir + lanterne » (cône de lumière directionnel consommant l'huile,
+  fouille exigeant la lanterne, indices UV exigeant le noir), couche 3 « serrures + clés
+  IRL + inventaire d'outils » ; `genOmbres` ; arbre de talents (« Établi »).

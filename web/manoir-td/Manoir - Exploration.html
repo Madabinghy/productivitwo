@@ -172,6 +172,14 @@
       // (même moteur que le tamagotchi), et chaque salle GRANDIT (70→85→100 % de
       // sa taille max) avec les jours où sa mission est réellement accomplie.
       this.STAGE_XP=[0,30,100,250,450];
+      // La Fouille : quels meubles se fouillent, avec quel geste (vue de face)
+      this.FOUILLE_META={
+        bed:{icon:'🛏️',verb:'Regarder sous le lit'}, shelf:{icon:'📚',verb:'Fouiller l’étagère'},
+        crate:{icon:'📦',verb:'Ouvrir la caisse'}, barrel:{icon:'🛢️',verb:'Sonder le tonneau'},
+        desk:{icon:'🗄️',verb:'Ouvrir le tiroir du bureau'}, tableR:{icon:'🪵',verb:'Regarder sous la table'},
+        cart:{icon:'🛒',verb:'Soulever la bâche de la charrette'}, wood:{icon:'🪚',verb:'Inspecter l’établi'},
+        plant:{icon:'🪴',verb:'Écarter les feuilles'}, frame:{icon:'🖼️',verb:'Regarder derrière le cadre'},
+        well:{icon:'⛲',verb:'Scruter le fond du puits'} };
       this.UNLOCKS=[
         ['hall','vestibule','biblio','coffre'],
         ['office','sanctuaire'],
@@ -318,6 +326,9 @@
 
       // —— Enquête incarnée + butin : suspects et indices PHYSIQUEMENT dans les
       // salles ; chaque enquête résolue laisse un objet permanent dans le manoir.
+      this.tools={}; try{ this.tools=JSON.parse(localStorage.getItem('ombrelune_tools')||'{}')||{}; }catch(e){}
+      this.oil={n:0}; try{ this.oil=JSON.parse(localStorage.getItem('ombrelune_oil')||'null')||{n:0}; }catch(e){}
+      this.caches=this.fouilleCaches(); this.reloadFouille();
       this.loadButin(); this.loadEnquete();
       { const fc=document.getElementById('hud-face');
         if(fc){ fc.addEventListener('click',(e)=>{ const b=e.target.closest('[data-fa]');
@@ -467,6 +478,7 @@
       else if(p.kind==='enq_suspect') this.openFaceSuspect(p.ent);
       else if(p.kind==='enq_clue') this.openFaceClue(p.ent);
       else if(p.kind==='butin') this.openFaceButin(p.ent);
+      else if(p.kind==='fouille') this.openFouille(p.ent);
       else if(p.kind==='console') this.openConsole();
       else if(p.kind==='portal') this.openPortal(); }
     talkSpot(sp){ if(!sp || this.dialogue) return;
@@ -552,7 +564,7 @@
       if(this.SPOTS) for(const sp of this.SPOTS){ if(sp.fx==null) continue; const r=this.byk[sp.room]; sp.x=r.x+r.w*sp.fx; sp.y=r.y+r.h*sp.fy; }
       if(this.FRAGS) for(const fg of this.FRAGS){ const r=this.byk[fg.room]; fg.x=r.x+r.w*fg.fx; fg.y=r.y+r.h*fg.fy; }
       { const sr=this.byk.sanctuaire; this.portalPos={x:sr.x+sr.w/2, y:sr.y+sr.h/2}; }
-      this.buildObstacles(); this.buildCandles(); this.placeEnquete(); this.placeButin(); }
+      this.buildObstacles(); this.buildCandles(); this.caches=this.fouilleCaches(); this.reloadFouille(); this.placeEnquete(); this.placeButin(); }
     // montée de palier : des salles s'éveillent — cascade de célébration
     onStageUp(ns){ this._stageXp=this.lamp?this.lamp.xp:this._stageXp;
       const fresh=(this.UNLOCKS[ns]||[]).map(k=>this.byk[k]).filter(Boolean);
@@ -579,6 +591,51 @@
     enterMirrorPuzzle(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html'); }
     // rejeu libre : énigme générée (graine aléatoire), difficulté selon l'éveil — n'écrit rien côté réel
     enterMirrorReplay(){ window.location.href='./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(); }
+
+    // ═══ La Fouille : objets cachés dans les meubles des salles éveillées ═══
+    // Rien n'est affiché sur la carte — on FOUINE (regarder sous le lit, ouvrir la
+    // caisse…). Contenu du jour déterministe (graine = date) ; reset quotidien.
+    fouilleCaches(){ const out=[];
+      for(const r of this.ROOMS){ if(!this.roomOn(r.k)) continue;
+        const L=this.furnitureFor(r);
+        L.forEach((pc,i)=>{ const m=this.FOUILLE_META[pc.t]; if(!m) return;
+          const cx2=pc.r!=null?pc.x:pc.x+(pc.w||0)/2, cy2=pc.r!=null?pc.y:pc.y+(pc.h||0)/2;
+          const rad=pc.r!=null?pc.r+20:Math.max(26, Math.min(60, Math.max(pc.w||0,pc.h||0)/2+12));
+          out.push({ id:r.k+':'+pc.t+':'+i, room:r.k, t:pc.t, x:cx2, y:cy2, rad }); }); }
+      return out; }
+    saveFouille(){ try{ localStorage.setItem('ombrelune_fouille', JSON.stringify(this.fouille)); }catch(e){} }
+    saveTools(){ try{ localStorage.setItem('ombrelune_tools', JSON.stringify(this.tools)); }catch(e){} }
+    saveOil(){ try{ localStorage.setItem('ombrelune_oil', JSON.stringify(this.oil)); }catch(e){} }
+    reloadFouille(){ const d=this._wdate;
+      let f={d,found:[]}; try{ const x=JSON.parse(localStorage.getItem('ombrelune_fouille')||'null'); if(x&&x.d===d) f=x; }catch(e){}
+      this.fouille=f;
+      // butin du jour : la loupe (tant qu'on ne l'a pas), une fiole d'huile, une
+      // poussière de lumière, une breloque — dispersées au hasard (déterministe).
+      this._loot={};
+      if(!window.OmbreluneGen || !this.caches.length) return;
+      const R=window.OmbreluneGen.mulberry32(window.OmbreluneGen.hashStr(d+'-fouille'));
+      const list=this.caches.slice();
+      for(let i=list.length-1;i>0;i--){ const j=Math.floor(R()*(i+1)); const t2=list[i]; list[i]=list[j]; list[j]=t2; }
+      const TRINKETS=['Un dé en ivoire','Une plume taillée','Un bouton d’uniforme','Un petit soldat de plomb','Un ruban fané','Une bille de verre bleu'];
+      let slot=0;
+      if(!this.tools.loupe && list[slot]) this._loot[list[slot++].id]={k:'loupe'};
+      if(list[slot]) this._loot[list[slot++].id]={k:'oil'};
+      if(list[slot]) this._loot[list[slot++].id]={k:'dust'};
+      if(list[slot]) this._loot[list[slot++].id]={k:'trinket', n:TRINKETS[Math.floor(R()*TRINKETS.length)]}; }
+    addXp(n){ if(!this.lamp) return; const os=this.stageForXp(this.lamp.xp||0);
+      this.lamp.xp=(this.lamp.xp||0)+n; this.saveLamp();
+      this._stageXp=this.lamp.xp; const ns=this.stageForXp(this.lamp.xp);
+      if(ns>os) this.onStageUp(ns); }
+    openFouille(c){ if(this.dialogue) return; this.showFace({type:'fouille', ent:c, dismiss:true}); }
+    fouilleResult(c){
+      // indice d'enquête caché ici ? (prioritaire, non consommé par le quotidien)
+      const eh=(this.enqHidden||[]).find(h=>h.cache===c.id && this.enqCollected().indexOf(h.l.key)<0);
+      if(eh){ if(eh.l.needsLoupe && !this.tools.loupe) return {k:'needsLoupe'};
+        return {k:'clue', l:eh.l}; }
+      if(this.fouille.found.indexOf(c.id)>=0) return {k:'already'};
+      this.fouille.found.push(c.id); this.saveFouille();
+      return this._loot[c.id] || {k:'nothing'};
+    }
 
     // ═══ Enquête incarnée : suspects (PNJ temporaires) et indices (objets) dans les salles ═══
     esc2(t){ return String(t==null?'':t).replace(/[&<>"]/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -609,8 +666,16 @@
       const col=new Set(this.enqCollected());
       this.enqSpec.SUSPECTS.forEach((sp,i)=>{ const r=rooms[i%rooms.length]; const a=slotOf(r);
         this.enqActors.push({ sp, room:r.k, x:r.x+r.w*a[0], y:r.y+r.h*a[1], ph:(i*1.7)%6.28, c1:sp.c1||'#3a2c52', c2:sp.c2||'#241a33' }); });
-      this.enqSpec.LOCATIONS.forEach((l,i)=>{ const r=rooms[(i+this.enqSpec.SUSPECTS.length)%rooms.length]; const a=slotOf(r);
-        this.enqClues.push({ l, room:r.k, x:r.x+r.w*a[0], y:r.y+r.h*a[1], done:col.has(l.key) }); }); }
+      this.enqSpec.LOCATIONS.filter(l=>!l.hidden).forEach((l,i)=>{ const r=rooms[(i+this.enqSpec.SUSPECTS.length)%rooms.length]; const a=slotOf(r);
+        this.enqClues.push({ l, room:r.k, x:r.x+r.w*a[0], y:r.y+r.h*a[1], done:col.has(l.key) }); });
+      // indices CACHÉS dans les meubles : il faut fouiner pour les trouver
+      this.enqHidden=[];
+      { const hid=this.enqSpec.LOCATIONS.filter(l=>l.hidden);
+        if(hid.length && (this.caches||[]).length){
+          const R2=window.OmbreluneGen.mulberry32(((this.enq.seed>>>0)+55)|0);
+          const cl=this.caches.slice();
+          for(let i=cl.length-1;i>0;i--){ const j=Math.floor(R2()*(i+1)); const t2=cl[i]; cl[i]=cl[j]; cl[j]=t2; }
+          hid.forEach((l,i)=>{ this.enqHidden.push({ l, cache:cl[i%cl.length].id }); }); } } }
     // ═══ Butin persistant : les objets des missions résolues meublent le manoir ═══
     loadButin(){ let b=[]; try{ b=JSON.parse(localStorage.getItem('ombrelune_butin')||'[]'); }catch(e){}
       this.butin=Array.isArray(b)?b:[]; this.placeButin(); }
@@ -667,11 +732,35 @@
             +(rev?'<div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:14px; color:#fbf3e2;">« '+this.esc2(na.title)+' »</div>'
                  :'<div style="margin-top:4px; font-family:\'Outfit\'; font-size:11.5px; color:#d8c8a8;">Le sceau se dissout… la Console te lira ta prochaine étape.</div>')+'</div>'; }
         return H(f.culprit.face,'Coupable démasqué','C’était '+f.culprit.name+'.')+P(spec.VERDICT.text)+extra+ROW(this.faceBtn('conclude','Conclure ✦',true)); }
+      if(f.type==='fouille'){ const c=f.ent, m=this.FOUILLE_META[c.t], rl=(this.byk[c.room]||{}).label||'';
+        if(!f.res) return H(m.icon,'Fouille · '+this.esc2(rl),m.verb)+P('Peut-être que quelque chose s’y cache…')+ROW(this.faceBtn('search','Fouiller ›',true)+this.faceBtn('close','Plus tard'));
+        const r2=f.res;
+        if(r2.k==='needsLoupe') return H('🔍','Fouille · '+this.esc2(rl),'Des traces trop fines')+P('Quelque chose est gravé là, mais c’est illisible à l’œil nu. Il te faudrait une loupe — elle dort quelque part dans le manoir.')+ROW(this.faceBtn('close','Je la trouverai',true));
+        if(r2.k==='already') return H(m.icon,'Fouille · '+this.esc2(rl),'Déjà fouillé')+P('Tu as déjà regardé ici aujourd’hui. Le manoir se renouvelle chaque nuit.')+ROW(this.faceBtn('close','Bien vu',true));
+        if(r2.k==='loupe') return H('🔍','Trouvaille !','La loupe du manoir')+P('Enfin ! Les traces fines, les gravures minuscules, les indices discrets — plus rien ne t’échappera.')+ROW(this.faceBtn('close','Précieuse ✦',true));
+        if(r2.k==='oil') return H('🫗','Trouvaille','Une fiole d’huile')+P('+5 min d’huile en réserve ('+((this.oil&&this.oil.n)||0)+' min). Elle attend une lanterne — les expéditions dans le noir, c’est pour bientôt.')+ROW(this.faceBtn('close','En réserve ✦',true));
+        if(r2.k==='dust') return H('✨','Trouvaille','Poussière de lumière')+P('Lampyre l’absorbe en frémissant. +2 XP.')+ROW(this.faceBtn('close','Merci ✦',true));
+        if(r2.k==='trinket') return H('🧸','Trouvaille',r2.n||'Une breloque')+P('Une petite chose oubliée. Tu la remets en évidence — la salle semble contente qu’on s’occupe d’elle.')+ROW(this.faceBtn('close','Joli ✦',true));
+        const FLAVOR=['De la poussière, une toile d’araignée, rien d’utile.','Un courant d’air froid. Rien d’autre.','Des rognures de bougie. Quelqu’un est passé par là, il y a longtemps.','Rien — mais au moins, maintenant, tu sais.','Le vide. Même les souris ont déménagé.','Un vieux journal illisible. Sans intérêt… probablement.'];
+        let hsh=0; const str2=c.id+this._wdate; for(let i2=0;i2<str2.length;i2++) hsh=(hsh*31+str2.charCodeAt(i2))>>>0;
+        return H(m.icon,'Fouille · '+this.esc2(rl),'Rien par ici')+P(FLAVOR[hsh%FLAVOR.length])+ROW(this.faceBtn('close','Tant pis ✦',true)); }
       if(f.type==='butin'){ const it=f.ent.it;
         return H(it.i,'Butin du manoir · '+this.esc2(it.d),it.n)+P(it.s||'Un souvenir de mission, bien à sa place ici.')+ROW(this.faceBtn('close','Fermer ✦',true)); }
       return ''; }
     faceAction(fa){ const f=this.face; if(!f) return;
       if(fa==='close'){ this.hideFace(); return; }
+      if(fa==='search' && f.type==='fouille'){ const res=this.fouilleResult(f.ent);
+        if(res.k==='clue'){ const l=res.l;
+          if(this.enq && this.enq.collected.indexOf(l.key)<0){ this.enq.collected.push(l.key); this.saveEnquete();
+            const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
+            this.toast={t:'🔍 Indice caché découvert ! '+n+'/'+N+(n>=N?' — va confronter les suspects.':''), t0:performance.now()}; }
+          this.showFace({type:'clue', ent:{l, done:true}, dismiss:true}); return; }
+        if(res.k==='loupe'){ this.tools.loupe=true; this.saveTools(); this.flash=Math.max(this.flash||0,0.5);
+          this.toast={t:'🔍 La loupe du manoir est à toi — les traces fines parleront.', t0:performance.now()}; }
+        else if(res.k==='oil'){ this.oil.n=(this.oil.n||0)+5; this.saveOil(); }
+        else if(res.k==='dust'){ this.addXp(2); }
+        else if(res.k==='trinket'){ this.creditRoom(f.ent.room,1); }
+        f.res=res; this.showFace(f); return; }
       if(fa==='examine' && f.type==='clue'){ const l=f.ent.l;
         if(this.enq && this.enq.collected.indexOf(l.key)<0){ this.enq.collected.push(l.key); this.saveEnquete(); f.ent.done=true;
           const n=this.enqCollected().length, N=this.enqSpec.LOCATIONS.length;
@@ -947,6 +1036,10 @@
           poi={kind:'portal', text: st==='sealed'?'Franchir le portail':(st==='revealed'?'Le portail sommeille':'Portail éteint'),
             color: st==='sealed'?'#b79ae0':(st==='revealed'?'#f2cd72':'#8a7aa6'), glyph:'◉', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.SPOTS && this.scene.type!=='sub' && (()=>{ let sp=null,sb=34; for(const s of this.SPOTS){ if(!this.roomOn(s.room)) continue; const d=Math.hypot(s.x-this.hero.x,s.y-this.hero.y); if(d<sb){sb=d; sp=s;} } if(sp){ const npc=sp.kind==='npc'; poi={kind:'spot', spot:sp, text: npc?('Parler à '+sp.name.split(',')[0]):sp.label, color: npc?'#f2cd72':'#c9b3e6', glyph: npc?'💬':(sp.glyph||'✧'), dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
+      // la Fouille : un meuble à portée (priorité basse — PNJ et quêtes d'abord)
+      else if(this.scene.type!=='sub' && (()=>{ let bc=null,bd=1e9;
+        for(const c of (this.caches||[])){ const d=Math.hypot(c.x-this.hero.x,c.y-this.hero.y)-c.rad; if(d<0 && d<bd){ bd=d; bc=c; } }
+        if(bc){ const m=this.FOUILLE_META[bc.t]; poi={kind:'fouille', ent:bc, text:m.verb, color:'#c9b3e6', glyph:'✋', dwell:false, hint:'clic'}; return true; } return false; })()){ /* poi posé */ }
       else if(this.barRow && this.scene.type!=='sub'){
         const bx=Math.max(this.barRow.x0, Math.min(this.barRow.x0+this.barRow.step*9, this.hero.x));
         atBar=Math.hypot(bx-this.hero.x, this.barRow.y-this.hero.y)<34;
@@ -1144,7 +1237,7 @@
       // Croissance : niv.0 = mobilier clairsemé (préfixe essentiel), niv.1 = complet, niv.2 = butin/opulence en plus
       const lvl=Math.max(0,this.roomLvl(r.k));
       // nombre = préfixe conservé ; tableau = indices conservés (salles étroites à 50 % : on écarte les pièces qui déborderaient)
-      const SPARSE={hall:6,coffre:[1,2],vestibule:2,office:2,galerie:2,miroirs:[0,2,3],biblio:[0,1],atelier:2,observatoire:[1],cabinet:[0,2],jardin:2,dependances:2,crypte:3,sanctuaire:[0]};
+      const SPARSE={hall:8,coffre:[1,2],vestibule:4,office:2,galerie:2,miroirs:[0,2,3],biblio:[0,1],atelier:2,observatoire:[1],cabinet:[0,2],jardin:2,dependances:2,crypte:3,sanctuaire:[0]};
       let out=L; if(lvl===0){ const sp=SPARSE[r.k];
         if(Array.isArray(sp)) out=sp.map(i=>L[i]).filter(Boolean); else if(sp!=null) out=L.slice(0,sp); }
       if(lvl>=2){ switch(r.k){
