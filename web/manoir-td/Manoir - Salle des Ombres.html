@@ -53,6 +53,7 @@
   <div id="so-footer" style="position:relative; z-index:30; padding:10px 24px 24px;"></div>
 </div>
 
+<script src="js/ombrelune-gen.js"></script>
 <script>
 /* =================================================================
    OMBRELUNE — La Salle des Ombres (mission « 007 »), 100% VANILLA JS
@@ -87,9 +88,14 @@
   var DIFF=Math.max(1,Math.min(3,parseInt((window.location.search.match(/difficulty=(\d)/)||[])[1]||'1',10)));
   var DET_RATE=[3.6,4.3,5.0][DIFF-1];
   var SWEEP_SPEED=[0.8,0.95,1.1][DIFF-1];
-  if(DIFF>=2) CAMS.push({ id:'c5', x:60, y:640, dir:0, sweep:0.5, phase:2.6, range:220, half:0.36 });
-  if(DIFF>=3){ CAMS.push({ id:'c6', x:500, y:420, dir:Math.PI, sweep:0.55, phase:4.2, range:230, half:0.36 });
-    GUARDS.push({ x:280, y:300, dir:0, sweep:0.7, phase:2.2, range:180, half:0.42, patrol:120 }); }
+  // Plan GÉNÉRÉ (?seed=N) : la map entière sort du moteur — segments assemblés,
+  // caméras/gardes/socles placés sous budget, faisceau généré, le tout VALIDÉ.
+  // Même graine = même plan (échec au portail → on retrouve la même salle).
+  // Sans seed (ou génération refusée) : plan historique fixe.
+  var SEED=parseInt((window.location.search.match(/seed=(\d+)/)||[])[1]||'0',10);
+  var GEN=(SEED>0 && window.OmbreluneGen && window.OmbreluneGen.genOmbres) ? window.OmbreluneGen.genOmbres(SEED,DIFF) : null;
+  // ⚠️ l'application du plan généré se fait APRÈS toutes les déclarations de map
+  // (hissage des var : les initialiseurs suivants écraseraient les valeurs GEN).
   var FURN=[
     { x:150, y:960, w:96, h:46 }, { x:330, y:860, w:70, h:90 }, { x:90,  y:770, w:96, h:46 },
     { x:420, y:640, w:84, h:46 }, { x:120, y:640, w:84, h:46 }, { x:250, y:730, w:90, h:46 },
@@ -107,6 +113,14 @@
   var SENSOR={ x:140, y:120 };
   var REFLECT={ '/':{E:'N',N:'E',W:'S',S:'W'}, '\\':{E:'S',S:'E',W:'N',N:'W'} };
   var DVEC={ E:[1,0], W:[-1,0], N:[0,-1], S:[0,1] };
+
+  if(GEN){ WORLD_W=GEN.WORLD_W; WORLD_H=GEN.WORLD_H; START=GEN.START; VAULT=GEN.VAULT; CONSOLE=GEN.CONSOLE;
+    CAMS=GEN.CAMS; GUARDS=GEN.GUARDS; FURN=GEN.FURN; SOCKETS=GEN.SOCKETS;
+    SOURCE=GEN.SOURCE; MIRRORS=GEN.MIRRORS; SENSOR=GEN.SENSOR; }
+  else {
+    if(DIFF>=2) CAMS.push({ id:'c5', x:60, y:640, dir:0, sweep:0.5, phase:2.6, range:220, half:0.36 });
+    if(DIFF>=3){ CAMS.push({ id:'c6', x:500, y:420, dir:Math.PI, sweep:0.55, phase:4.2, range:230, half:0.36 });
+      GUARDS.push({ x:280, y:300, dir:0, sweep:0.7, phase:2.2, range:180, half:0.42, patrol:120 }); } }
 
   var S = { status:'play', actState:'none', consoleOn:false };
   var G = {};
@@ -376,7 +390,7 @@
     if(m){ var col=G.det>66?'#e0556a':G.det>33?'#e6a24e':'#5fb87e'; m.style.width=G.det+'%'; m.style.background=col; if(l){ l.style.color=col; l.textContent=G.det>66?'Repérage imminent':G.det>33?'On te cherche':'Discret'; } }
     if(ms) ms.textContent='⚡'+G.masse;
     if(o){ o.textContent = S.status==='win' ? 'Coffre percé. L’ombre n’a rien vu venir.'
-      : !S.consoleOn ? 'Atteins la console du Commander (en bas à droite) pour déployer tes défenses.'
+      : !S.consoleOn ? 'Atteins la console du Commander (en bas '+(CONSOLE.x>WORLD_W/2?'à droite':'à gauche')+') pour déployer tes défenses.'
       : !G.vaultOpen ? 'Guide le faisceau avec les miroirs : il ouvre la chambre forte — ou aveugle une caméra.'
       : 'La chambre forte est ouverte — atteins le coffre, tout en haut.'; }
   }
@@ -429,7 +443,9 @@
     G._jsMove=function(e){ jsMove(e); }; G._jsUp=function(e){ jsUp(e); };
     G.vaultOpen=false; G.sensorLit=false; G.beamSegs=[]; G.lanternBlind={};
     G.masse=readMasse();
-    if(DIFF>1){ var sub=document.getElementById('so-sub'); if(sub) sub.textContent='‹ Sanctuaire · niveau '+DIFF+' — l\u2019ennemi se méfie'; }
+    { var sub=document.getElementById('so-sub');
+      if(sub && GEN) sub.textContent='‹ Sanctuaire · plan n°'+(SEED%1000)+(DIFF>1?' — niveau '+DIFF:'');
+      else if(sub && DIFF>1) sub.textContent='‹ Sanctuaire · niveau '+DIFF+' — l\u2019ennemi se méfie'; }
     renderFooter(); updateHud(); // rendus AVANT la mesure : le footer change la hauteur du hublot
     // plein écran : le hublot suit la taille CSS réelle (mobile = tout l'écran)
     G.cv=document.getElementById('so-cv');
@@ -446,7 +462,7 @@
     document.getElementById('so-goback').addEventListener('click', goBack);
     document.getElementById('so-reset').addEventListener('click', reset);
     G._raf=requestAnimationFrame(loop);
-    window.__ombres = { S:S, G:G, CAMS:CAMS, GUARDS:GUARDS, MIRRORS:MIRRORS, SOCKETS:SOCKETS, interact:interact, toggleMirror:toggleMirror, placeItem:placeItem, computeBeam:computeBeam }; // debug / tests
+    window.__ombres = { S:S, G:G, CAMS:CAMS, GUARDS:GUARDS, MIRRORS:MIRRORS, SOCKETS:SOCKETS, SENSOR:SENSOR, SOURCE:SOURCE, VAULT:VAULT, CONSOLE:CONSOLE, FURN:FURN, GEN:GEN, WORLD:{w:WORLD_W,h:WORLD_H}, interact:interact, toggleMirror:toggleMirror, placeItem:placeItem, computeBeam:computeBeam, camBlinded:camBlinded }; // debug / tests
   }
   boot();
 })();

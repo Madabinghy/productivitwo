@@ -1097,8 +1097,8 @@
       let h=0; const str=String(actionId||''); for(let i=0;i<str.length;i++){ h=(h*31+str.charCodeAt(i))>>>0; }
       const diff=this.guardDiff();
       const r=h%10;
-      if(r<4) return {name:'la Salle des Ombres', pitch:'Caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera.',
-        href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff};
+      if(r<4) return {name:'la Salle des Ombres', pitch:'Un plan inédit à chaque affaire — caméras, patrouilles, et un faisceau à dompter. Ta masse ⚡ du jour t’équipera.',
+        href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff+'&seed='+(h%99991)};
       if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, des leurres. Trouve l’angle qui renvoie la flamme.',
         href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
       return {name:'l’Enquête du manoir', pitch:'Des indices, des suspects, un seul coupable — dispersés dans les salles du manoir. Recoupe, puis accuse.',
