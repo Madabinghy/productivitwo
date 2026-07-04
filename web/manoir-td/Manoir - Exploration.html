@@ -600,11 +600,20 @@
       // 1) overrides manuels (baptême explicite)
       for(const k of Object.keys(saved)){ const r=this.byk[k], d=ds.find(x=>x.name===saved[k]);
         if(r&&d){ this.consecration[k]={name:d.name, color:d.color||this.DOM[r.dom].color}; usedDom.add(d.name); usedRoom.add(k); } }
-      // 2) auto-map par affinité (meilleur mot-clé gagne)
+      // 2) auto-map par affinité — matching MOT ENTIER (plus de faux positifs de
+      // sous-chaîne type « impro » → « pro »). On découpe le nom en mots (accents
+      // et casse normalisés) ; un mot-clé matche s'il est un mot, ou son préfixe
+      // (couvre pluriels/variantes : « amis » couvre « ami », « courses » → « course »).
+      const norm=(t)=>String(t||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       const scored=[];
-      for(const d of ds){ if(usedDom.has(d.name)) continue; const nm=String(d.name||'').toLowerCase();
+      for(const d of ds){ if(usedDom.has(d.name)) continue;
+        const words=norm(d.name).split(/[^a-z0-9]+/).filter(Boolean);
         for(const r of this.ROOMS){ if(usedRoom.has(r.k)) continue; const kws=this.DOM_KEYWORDS[r.dom]; if(!kws) continue;
-          let sc=0; for(const kw of kws){ if(nm.indexOf(kw)>=0) sc=Math.max(sc,kw.length); }
+          let sc=0; for(const kw of kws){ const k=norm(kw);
+            // préfixe autorisé seulement pour les mots-clés >= 4 lettres (couvre pluriels/
+            // variantes : course->courses, foot->football) ; les courts (dev, ami, pro...)
+            // exigent le mot EXACT — sinon « developper » matcherait « dev ».
+            for(const w of words){ if(w===k || (k.length>=4 && w.length>k.length && w.indexOf(k)===0)){ sc=Math.max(sc,k.length); break; } } }
           if(sc>0) scored.push({d,r,sc}); } }
       scored.sort((a,b)=>b.sc-a.sc);
       for(const it of scored){ if(usedDom.has(it.d.name)||usedRoom.has(it.r.k)) continue;
