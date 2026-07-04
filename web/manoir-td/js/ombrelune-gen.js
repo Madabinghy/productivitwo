@@ -114,5 +114,121 @@
       SOLUTION:{A:'\\',B:'/',D:'/'}, WALLS:[], hint:'en haut à droite', diff:diff, seed:seed>>>0 };
   }
 
-  window.OmbreluneGen={ mulberry32:mulberry32, hashStr:hashStr, genMirror:genMirror, solvesMirror:solves };
+  // ============ Enquête du manoir ============
+  // Génération LOGIQUE vérifiée : chaque indice est un filtre (trait du coupable
+  // ou alibi nominatif) ; on vérifie par force brute que l'intersection des
+  // filtres désigne EXACTEMENT un coupable. Crimes doux, ton Soft Pop.
+  var POOL=[
+    { key:'gouvernante', face:'👩‍🦳', name:'La Gouvernante' },
+    { key:'maitre',      face:'🎩', name:'Le Maître' },
+    { key:'invite',      face:'🧐', name:'L’Invité' },
+    { key:'cuisiniere',  face:'👩‍🍳', name:'La Cuisinière' },
+    { key:'apprenti',    face:'🌱', name:'L’Apprenti jardinier' },
+    { key:'precepteur',  face:'📖', name:'Le Précepteur' },
+    { key:'modiste',     face:'🎀', name:'La Modiste' },
+    { key:'retameur',    face:'🔧', name:'Le Rétameur' }
+  ];
+  var TRAITS={
+    mains:{ icon:'🖐', vals:{
+      gants:  { tag:'gants fins',    icon:'🧤', place:'Le boudoir · les bougeoirs', action:'Relever la cire',        clue:'De la cire lissée sans la moindre empreinte : le coupable portait des gants fins.' },
+      encre:  { tag:'doigts d’encre',icon:'✒️', place:'Le bureau · la poignée',     action:'Examiner la poignée',    clue:'Des traces d’encre fraîche sur la poignée : le coupable a les doigts d’encre.' },
+      farine: { tag:'mains farinées',icon:'🥖', place:'L’office · le passe-plat',   action:'Suivre la trace blanche',clue:'Une fine poussière de farine mène à la scène : le coupable a les mains farinées.' } } },
+    parfum:{ icon:'👃', vals:{
+      tabac:  { tag:'tabac de pipe', icon:'💨', place:'Le couloir · un sillage',    action:'Humer l’air',            clue:'Une odeur de tabac de pipe flotte encore : le coupable en est imprégné.' },
+      lavande:{ tag:'lavande',       icon:'🌸', place:'La scène · un sillage',      action:'Humer l’air',            clue:'Un sillage de lavande s’attarde : le coupable en porte toujours.' },
+      cirage: { tag:'cirage frais',  icon:'🥾', place:'Le seuil · une empreinte',   action:'Inspecter le seuil',     clue:'Ça sent le cirage frais : le coupable soigne ses bottes.' } } },
+    pas:{ icon:'👣', vals:{
+      lourds: { tag:'pas lourds',    icon:'🪵', place:'L’escalier · le parquet',    action:'Écouter le parquet',     clue:'Le parquet a gémi cette nuit-là : des pas lourds, dit l’écho.' },
+      feutres:{ tag:'pas feutrés',   icon:'🤫', place:'Le palier · le silence',     action:'Interroger le silence',  clue:'Personne n’a rien entendu passer : des pas feutrés, à coup sûr.' },
+      traines:{ tag:'pas traînants', icon:'🩴', place:'La galerie · une rayure',    action:'Suivre la rayure',       clue:'Une semelle traînée a rayé le parquet : le coupable traîne les pieds.' } } }
+  };
+  var ALIBIS=[
+    { icon:'📓', place:'La loge · le registre',   action:'Consulter le registre',  t:function(n){ return 'Le registre est formel : '+n+' est resté·e à la cave toute la nuit.'; } },
+    { icon:'🕯️', place:'Le veilleur · un témoin', action:'Interroger le veilleur', t:function(n){ return 'Le veilleur l’assure : '+n+' veillait au salon jusqu’à l’aube.'; } },
+    { icon:'✉️', place:'Le vestibule · un billet',action:'Lire le billet',         t:function(n){ return 'Un billet daté le prouve : '+n+' était hors du manoir ce soir-là.'; } },
+    { icon:'🍵', place:'Les cuisines · une tasse',action:'Tâter la théière',       t:function(n){ return 'Une tisane partagée aux cuisines : '+n+' n’a pas quitté la table.'; } }
+  ];
+  var CRIMES=[
+    { q:'Qui a éteint toutes les bougies ?',        deed:'a soufflé les bougies du manoir, une à une' },
+    { q:'Qui a emprunté la clé d’argent ?',         deed:'a décroché la clé d’argent de son clou' },
+    { q:'Qui a retourné le portrait du fondateur ?',deed:'a retourné le portrait face au mur' },
+    { q:'Qui a pillé le pot de confiture ?',        deed:'a raflé la confiture de la réserve' },
+    { q:'Qui a déréglé la grande horloge ?',        deed:'a avancé la grande horloge d’une heure' }
+  ];
+  function shuffle(arr,rnd){ arr=arr.slice(); for(var i=arr.length-1;i>0;i--){ var j=Math.floor(rnd()*(i+1)); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+  // survivants après application des filtres machine (sert aussi aux tests)
+  function enqueteSurvivors(spec){
+    return spec.SUSPECTS.filter(function(sp){
+      return spec.LOCATIONS.every(function(l){ if(!l.elim) return true;
+        if(l.elim.type==='trait') return sp.attrs[l.elim.trait]===l.elim.value;
+        return sp.key!==l.elim.suspect; });
+    });
+  }
+  function genEnquete(seed,diff){
+    diff=Math.max(1,Math.min(3,(diff|0)||1));
+    var rnd=mulberry32(((seed|0)>>>0)+diff*104729+13);
+    var nSus=[3,4,5][diff-1], nClues=[3,3,4][diff-1];
+    var traitKeys=Object.keys(TRAITS);
+    for(var attempt=0; attempt<200; attempt++){
+      var crime=CRIMES[Math.floor(rnd()*CRIMES.length)];
+      var sus=shuffle(POOL,rnd).slice(0,nSus).map(function(p){
+        var attrs={}, tags=[];
+        traitKeys.forEach(function(tk){ var vs=Object.keys(TRAITS[tk].vals); var v=vs[Math.floor(rnd()*vs.length)];
+          attrs[tk]=v; tags.push({ icon:TRAITS[tk].vals[v].icon, t:TRAITS[tk].vals[v].tag }); });
+        return { key:p.key, face:p.face, name:p.name, attrs:attrs, tags:tags };
+      });
+      var culprit=sus[Math.floor(rnd()*sus.length)];
+      // indices de trace (traits du coupable), dans un ordre aléatoire
+      var clues=[]; var remaining=sus.slice();
+      var order=shuffle(traitKeys,rnd);
+      for(var ti=0; ti<order.length && remaining.length>1 && clues.length<nClues; ti++){
+        var tk2=order[ti], val=culprit.attrs[tk2];
+        var after=remaining.filter(function(sp){ return sp.attrs[tk2]===val; });
+        if(after.length===remaining.length) continue; // n'élimine personne → sans intérêt
+        var tpl=TRAITS[tk2].vals[val];
+        clues.push({ key:'c'+clues.length, icon:tpl.icon, place:tpl.place, action:tpl.action, clue:tpl.clue,
+          elim:{type:'trait', trait:tk2, value:val} });
+        remaining=after;
+      }
+      // alibis nominaux pour les égalités restantes (jamais pour le coupable)
+      var alibiPool=shuffle(ALIBIS,rnd), ai=0;
+      while(remaining.length>1 && clues.length<nClues && ai<alibiPool.length){
+        var tie=remaining.filter(function(sp){ return sp.key!==culprit.key; })[0]; if(!tie) break;
+        var al=alibiPool[ai++];
+        clues.push({ key:'c'+clues.length, icon:al.icon, place:al.place, action:al.action, clue:al.t(tie.name),
+          elim:{type:'alibi', suspect:tie.key}, alibi:true });
+        remaining=remaining.filter(function(sp){ return sp.key!==tie.key; });
+      }
+      if(remaining.length!==1 || remaining[0].key!==culprit.key) continue;
+      // compléter à nClues avec des alibis d'innocents déjà écartés (texture, jamais trompeur)
+      var others=sus.filter(function(sp){ return sp.key!==culprit.key && !clues.some(function(c){ return c.elim.type==='alibi'&&c.elim.suspect===sp.key; }) });
+      while(clues.length<nClues && ai<alibiPool.length && others.length){
+        var ex=others.shift(), al2=alibiPool[ai++];
+        clues.push({ key:'c'+clues.length, icon:al2.icon, place:al2.place, action:al2.action, clue:al2.t(ex.name),
+          elim:{type:'alibi', suspect:ex.key}, alibi:true });
+      }
+      if(clues.length<Math.min(nClues,3)) continue;
+      clues=shuffle(clues,rnd).map(function(c,i){ c.key='c'+i; return c; });
+      var spec={ question:crime.q, deed:crime.deed, SUSPECTS:sus, LOCATIONS:clues, CULPRIT:culprit.key };
+      var surv=enqueteSurvivors(spec);
+      if(surv.length!==1 || surv[0].key!==culprit.key) continue; // vérif force brute
+      // réfutations pour chaque innocent + verdict
+      spec.WRONG={};
+      sus.forEach(function(sp){ if(sp.key===culprit.key) return;
+        var byAlibi=clues.filter(function(c){ return c.elim.type==='alibi'&&c.elim.suspect===sp.key; })[0];
+        if(byAlibi){ spec.WRONG[sp.key]=byAlibi.clue+' Ce n’est pas '+sp.name+'.'; return; }
+        var byTrait=clues.filter(function(c){ return c.elim.type==='trait'&&sp.attrs[c.elim.trait]!==c.elim.value; })[0];
+        spec.WRONG[sp.key]=sp.name+' n’a pas « '+TRAITS[byTrait.elim.trait].vals[byTrait.elim.value].tag+' » — relis tes indices.'; });
+      var traces=clues.filter(function(c){ return c.elim.type==='trait'; })
+        .map(function(c){ return TRAITS[c.elim.trait].vals[c.elim.value].tag; }).join(', ');
+      spec.VERDICT={ face:culprit.face, name:culprit.name,
+        text:'Les indices ne mentaient pas — '+traces+' : tout désignait '+culprit.name+', qui '+crime.deed+' avant de se fondre dans l’ombre. Le manoir respire.' };
+      spec.diff=diff; spec.seed=seed>>>0;
+      return spec;
+    }
+    return null; // jamais atteint en pratique (200 tirages) ; la page retombe sur le cas historique
+  }
+
+  window.OmbreluneGen={ mulberry32:mulberry32, hashStr:hashStr, genMirror:genMirror, solvesMirror:solves,
+    genEnquete:genEnquete, enqueteSurvivors:enqueteSurvivors };
 })();

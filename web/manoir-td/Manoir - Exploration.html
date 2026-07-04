@@ -248,6 +248,9 @@
          lines:['Le puits est profond et calme. Ton reflet tremble à peine — bois assez, il se stabilisera.']},
         {room:'cabinet', fx:0.5, fy:0.5, kind:'look', glyph:'✧', label:'Admirer les trophées',
          lines:['Une vitrine de trophées poussiéreux. Chacun raconte une habitude tenue jusqu’au bout.']},
+        {room:'biblio', fx:0.30, fy:0.40, kind:'look', glyph:'❓', label:'Dossier d’enquête', go:'Ouvrir le dossier',
+         hrefFn:()=>'./'+encodeURIComponent('Compagnon - Déduction.html')+'?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+this.guardDiff(),
+         lines:['Un dossier d’enquête traîne sur la table — une intrigue du soir, sans conséquence. Juste le plaisir de déduire.']},
       ].map(s=>{ const r=this.byk[s.room]; return {...s, x:r.x+r.w*s.fx, y:r.y+r.h*s.fy, ph:Math.abs((r.x+r.y))%6.28}; });
       // La Forge du temps : point de mission dans l'Atelier (pas de PNJ — l'établi).
       { const at=this.byk.atelier; this.SPOTS.push({room:'atelier', kind:'look', glyph:'⚒', label:'La Forge du temps',
@@ -468,6 +471,12 @@
             lines: m.ask.map((t,i)=>({who, mood: i===0?'doubt':'idle', t})) }; }
         this.updateHud(); return;
       }
+      // point d'accès à un mini-jeu (partie libre générée) : dialogue puis navigation
+      if(sp.href || sp.hrefFn){
+        this.dialogue={ i:0, endLabel:sp.go||'Y aller',
+          onEnd:()=>{ window.location.href=(sp.hrefFn?sp.hrefFn():sp.href); },
+          lines: sp.lines.map((t,i)=>({who:'Lampyre', mood: i===0?'idle':'smile', t})) };
+        this.updateHud(); return; }
       if(sp.room==='cabinet' && sp.kind==='look' && this.trophies && this.trophies.length){
         const last=this.trophies.slice(-3).map(t=>'« '+t.title+' »').join(', ');
         this.dialogue={ i:0, endLabel:'Fermer', lines:[
@@ -659,8 +668,8 @@
         href:'./'+encodeURIComponent('Manoir - Salle des Ombres.html')+'?reward=action&difficulty='+diff};
       if(r<7) return {name:'l’Énigme des miroirs', pitch:'Un sceau, des miroirs, des leurres. Trouve l’angle qui renvoie la flamme.',
         href:'./'+encodeURIComponent('Compagnon - Énigme optique.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
-      return {name:'l’Enquête du manoir', pitch:'Trois indices, trois suspects, un seul coupable. Recoupe, puis accuse.',
-        href:'./'+encodeURIComponent('Compagnon - Déduction.html')+'?reward=action'};
+      return {name:'l’Enquête du manoir', pitch:'Des indices, des suspects, un seul coupable. Recoupe, puis accuse.',
+        href:'./'+encodeURIComponent('Compagnon - Déduction.html')+'?reward=action&seed='+(h%99991)+'&difficulty='+diff};
     }
     openPortal(){ if(this.dialogue) return; const na=this.nextAction; const st=this.portalState();
       if(st==='sealed'){

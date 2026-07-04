@@ -181,6 +181,15 @@ la même partie — le contenu est généré ; l'IRL augmente la puissance/compl
   énigme des miroirs » → partie libre générée, difficulté = `guardDiff()` (éveil du manoir).
 - La difficulté des gardiens du portail vient désormais de **l'éveil** (`guardDiff()` :
   palier 0-1 → 1, 2-3 → 2, 4 → 3), plus du compteur de trophées.
-- À venir : `genEnquete` (pools + contraintes logiques, unicité du coupable vérifiée) puis
-  `genOmbres` (segments de map + placement caméras/gardes + validation de faisabilité), et
-  l'arbre de talents (« Établi ») alimenté par l'XP.
+- **`genEnquete(seed, diff)`** : enquête à contraintes logiques — suspects tirés d'un pool
+  avec **traits visibles** (mains/parfum/pas, étiquettes sur les cartes), indices = filtres
+  machine (`elim: {type:'trait'|'alibi'}`), **unicité du coupable vérifiée par force brute**
+  (`enqueteSurvivors`). Difficulté 1/2/3 : 3/4/5 suspects, 3/3/4 indices. Crimes doux
+  (bougies, clé d'argent, confiture…), réfutations et verdict générés.
+- **Consommation** (`Compagnon - Déduction.html`) : reward/`?free=1` + `seed` + `difficulty`
+  → enquête générée ; classique (chaîne Compagnon) = cas historique fixe. `?free=1` :
+  pied de page « Une autre enquête ↺ / Retour au manoir ».
+- **Rejeu diégétique** : « Dossier d'enquête » à la Bibliothèque (éveillée jour 1) → enquête
+  libre générée. Patron `talkSpot` : un spot porteur de `href`/`hrefFn` dialogue puis navigue.
+- À venir : `genOmbres` (segments de map + placement caméras/gardes + validation de
+  faisabilité), et l'arbre de talents (« Établi ») alimenté par l'XP.
