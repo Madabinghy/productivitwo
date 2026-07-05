@@ -110,12 +110,16 @@ export function draw(game, ctx, t) {
   }
 
   drawBuildBeam(game, ctx, t);
-  drawHero(game, ctx, th, t);
   drawGhost(game, ctx, th, t);
 
   ctx.restore();
 
-  // surcouches en repère écran
+  // brouillard de nuit (repère écran) AVANT le Commander
   drawFog(game, ctx, th, tx, ty);
+
+  // Le Commander est dessiné PAR-DESSUS le brouillard → toujours visible (sinon la lumière
+  // chaude, la plus intense pile sur lui, le noyait). On repasse en repère monde pour lui.
+  ctx.save(); ctx.translate(tx, ty); drawHero(game, ctx, th, t); ctx.restore();
+
   drawMinimap(game, ctx, th);
 }
