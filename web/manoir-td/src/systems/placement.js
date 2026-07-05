@@ -59,10 +59,11 @@ export function actAt(game, wx, wy, touch) {
     s.msg = 'Hors de ton champ de vision — approche le héros, allume une bougie proche, ou couvre la zone avec une tourelle / un radar.';
     return;
   }
-  if (s.sel.cat === 'turret') {
-    const cnt = s.placed.filter(p => p.cat === 'turret' && p.key === s.sel.key).length;
-    const max = s.sel.key === 'bouclier' ? 3 : 1;
-    if (cnt >= max) { s.msg = s.sel.key === 'bouclier' ? "Maximum 3 boucliers — récupères-en un d'abord (Espace dessus)." : "Une seule de ce type — récupère-la d'abord (Espace dessus)."; return; }
+  // Plus de limite par type : on pose autant de tourelles qu'on veut (frein = masse + place).
+  // Seul l'Œil-satellite reste unique (il révèle déjà toute la carte).
+  if (s.sel.cat === 'turret' && s.sel.key === 'satellite') {
+    const cnt = s.placed.filter(p => p.cat === 'turret' && p.key === 'satellite').length;
+    if (cnt >= 1) { s.msg = "Un seul Œil-satellite suffit — il révèle déjà toute la carte."; return; }
   }
   if (touch) {
     const pend = game._pendingTap;

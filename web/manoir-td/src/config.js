@@ -107,7 +107,7 @@ export const DESC = {
   bercail: 'Soin : régénère le héros et les tourelles dans son aura. Ne tire pas.',
   radar: 'Détection : révèle les flemmes proches sur le plan. Son rayon grandit à chaque niveau.',
   satellite: 'Révélation : dévoile toutes les flemmes de la carte, sur le plan et à l\'écran.',
-  bouclier: 'Barrière orientable : encaisse les tirs ennemis et laisse passer les vôtres. 3 maximum.',
+  bouclier: 'Barrière orientable : encaisse les tirs ennemis et laisse passer les vôtres.',
   tortue: 'Cuirassé-tortue : artillerie blindée. Mobile, sa carapace pivote et ses 4 canons fauchent les flemmes. Déployée : increvable & aura de soin, mais désarmée (au choix : tirer ou soigner).',
 };
 

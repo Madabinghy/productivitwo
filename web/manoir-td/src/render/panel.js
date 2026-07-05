@@ -43,7 +43,7 @@ export function createPanel(game) {
     for (const it of items) {
       const locked = roster ? !roster.includes(it.key) : false;
       const cnt = s.placed.filter(p => p.cat === cat && p.key === it.key).length;
-      const max = isUnit ? Infinity : it.key === 'bouclier' ? 3 : 1; const dep = cnt >= max;
+      const max = it.key === 'satellite' ? 1 : Infinity; const dep = cnt >= max;
       const c = costOf(it.key); const col = UCOL[it.key] || TCOL[it.key] || '#8a6cff';
       const card = document.createElement('div');
       card.className = 'card' + (s.sel && s.sel.key === it.key ? ' on' : '') + ((dep || locked) ? ' dim' : '');
@@ -53,7 +53,7 @@ export function createPanel(game) {
       const mt = document.createElement('div'); mt.className = 'mt';
       mt.textContent = locked ? 'À débloquer en campagne'
                      : dep ? (max > 1 ? cnt + '/' + max + ' déployés · ⎵ pour récupérer' : 'Déployée · ⎵ pour récupérer')
-                           : ('✦' + c.mass + ' · ' + c.time + 's · ' + (it.key === 'bouclier' ? cnt + '/3 — ' : '') + (DESC[it.key] || ''));
+                           : ('✦' + c.mass + ' · ' + c.time + 's · ' + (DESC[it.key] || ''));
       txt.appendChild(nm); txt.appendChild(mt);
       card.appendChild(ico); card.appendChild(txt);
       if (locked) card.onclick = () => { game.ui.msg = '🔒 « ' + it.name + ' » se débloque en gagnant une mission de campagne.'; };
@@ -67,7 +67,7 @@ export function createPanel(game) {
       ? "Pose un Cuirassé-tortue dans ta lumière, le Commander le bâtit. Clique-le pour le sélectionner : clic = déplacement (artillerie qui tire en roulant), bouton Déployer = increvable + aura de soin (désarmé)."
       : s.tab === 'turret'
       ? "Sélectionne une tourelle puis clique dans le halo du héros (ou d'une bougie) pour poser un chantier. Le Commander le bâtit en restant à portée de vision."
-      : 'Bercail : soigne héros & tourelles. Bouclier (3 max) : oriente-le pour encaisser les tirs ennemis. Radar : révèle les flemmes voisines. Œil-satellite : révèle toute la carte.';
+      : 'Bercail : soigne héros & tourelles. Bouclier : oriente-le pour encaisser les tirs ennemis. Radar : révèle les flemmes voisines. Œil-satellite : révèle toute la carte (un seul).';
     root.appendChild(hint);
   }
 
