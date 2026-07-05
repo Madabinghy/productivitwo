@@ -474,6 +474,36 @@
         if(!blocked(ncx*STEP, ncy*STEP)) q.push({cx:ncx,cy:ncy}); } }
     return false;
   }
+  // —— Faisceau d'infiltration (repère monde, rectiligne) : réplique du moteur de la page ——
+  var OMB_DVEC={ E:[1,0], W:[-1,0], N:[0,-1], S:[0,1] };
+  var OMB_REFLECT={ '/':{E:'N',N:'E',W:'S',S:'W'}, '\\':{E:'S',S:'E',W:'N',N:'W'} };
+  function ombresOrient(inDir,outDir){ if(OMB_REFLECT['/'][inDir]===outDir) return '/'; if(OMB_REFLECT['\\'][inDir]===outDir) return '\\'; return null; }
+  // Trace le faisceau (orientations portées par MIRRORS) → { segs, hit } (capteur atteint ?).
+  function ombresTrace(SOURCE, MIRRORS, SENSOR, FURN, W, H){
+    var segs=[], x=SOURCE.x, y=SOURCE.y, dir=SOURCE.dir, hit=false;
+    for(var hop=0; hop<64; hop++){
+      var v=OMB_DVEC[dir], best=null, bestD=1e9, kind=null, obj=null, i;
+      for(i=0;i<MIRRORS.length;i++){ var m=MIRRORS[i];
+        var d = v[0]!==0 ? ((Math.abs(m.y-y)<7 && (m.x-x)*v[0]>4)?Math.abs(m.x-x):-1)
+                         : ((Math.abs(m.x-x)<7 && (m.y-y)*v[1]>4)?Math.abs(m.y-y):-1);
+        if(d>0 && d<bestD){ bestD=d; best={x:m.x,y:m.y}; kind='mirror'; obj=m; } }
+      var d2 = v[0]!==0 ? ((Math.abs(SENSOR.y-y)<7 && (SENSOR.x-x)*v[0]>4)?Math.abs(SENSOR.x-x):-1)
+                        : ((Math.abs(SENSOR.x-x)<7 && (SENSOR.y-y)*v[1]>4)?Math.abs(SENSOR.y-y):-1);
+      if(d2>0 && d2<bestD){ bestD=d2; best={x:SENSOR.x,y:SENSOR.y}; kind='sensor'; obj=null; }
+      if(FURN) for(i=0;i<FURN.length;i++){ var fr=FURN[i], fd=-1;
+        if(v[0]>0 && y>=fr.y && y<=fr.y+fr.h && fr.x>x+4) fd=fr.x-x;
+        else if(v[0]<0 && y>=fr.y && y<=fr.y+fr.h && fr.x+fr.w<x-4) fd=x-(fr.x+fr.w);
+        else if(v[1]>0 && x>=fr.x && x<=fr.x+fr.w && fr.y>y+4) fd=fr.y-y;
+        else if(v[1]<0 && x>=fr.x && x<=fr.x+fr.w && fr.y+fr.h<y-4) fd=y-(fr.y+fr.h);
+        if(fd>0 && fd<bestD){ bestD=fd; best={x:x+v[0]*fd,y:y+v[1]*fd}; kind='furn'; obj=null; } }
+      if(!best) break;
+      segs.push({x1:x,y1:y,x2:best.x,y2:best.y});
+      if(kind==='sensor'){ hit=true; break; }
+      if(kind==='furn') break;
+      dir=OMB_REFLECT[obj.o][dir]; if(!dir) break; x=best.x; y=best.y;
+    }
+    return { segs:segs, hit:hit };
+  }
   function genOmbres(seed,diff){
     diff=Math.max(1,Math.min(3,(diff|0)||1));
     var rnd=mulberry32(((seed|0)>>>0)+diff*31337+7);
@@ -482,27 +512,38 @@
     var H=VB+nMid*MB+EB;
     for(var attempt=0; attempt<80; attempt++){
       var FURN=[], CAMS=[], GUARDS=[], SOCKETS=[], cn=1, sn=1;
-      // —— chambre forte + faisceau (bande du haut, sans meubles) ——
+      // —— GRANDE ÉNIGME DES MIROIRS : faisceau qui SERPENTE toute la carte ——
+      // Escalier rectiligne de 6-8 miroirs ÉPARPILLÉS (segments longs = hors d'un seul écran). Le
+      // joueur se fait l'image de la solution, puis pivote chaque miroir en se faufilant entre gardes/caméras.
       var flip=rnd()<0.5;
-      var y1=210+Math.floor(rnd()*3)*14, y2=120;
-      var mx=240+Math.floor(rnd()*7)*20, sx=110+Math.floor(rnd()*4)*14;
-      var X=function(x){ return flip? OW-x : x; };
-      var SOURCE={ x:X(40), y:y1, dir:flip?'W':'E' };
-      var sol1=flip?'\\':'/', sol2=flip?'/':'\\';
-      var o1=rnd()<0.5?'/':'\\', o2=rnd()<0.5?'/':'\\';
-      if(o1===sol1 && o2===sol2) o2 = o2==='/'?'\\':'/';
-      var MIRRORS=[ { id:'m1', x:X(mx), y:y1, o:o1 }, { id:'m2', x:X(mx), y:y2, o:o2 } ];
-      var SENSOR={ x:X(sx), y:y2 };
       var VAULT={ x:280, y:90 };
-      CAMS.push({ id:'c'+(cn++), x:flip?60:500, y:y2, dir:flip?0:Math.PI, sweep:0.45, phase:rnd()*6.28, range:260, half:0.40 });
-      SOCKETS.push({ id:'s'+(sn++), x:flip?130:430, y:170 });
-      FURN.push({ x:flip?30:470, y:140, w:60, h:46 }); // abri sous la caméra du coffre (entre les rangées du faisceau)
+      var nPairs=3+Math.floor(rnd()*2);              // 3-4 paires → 6-8 miroirs
+      var topY=VB-70, botY=H-EB-70;                  // capteur en haut · 1re paire au-dessus de l'entrée
+      var startLeft=rnd()<0.5, cols=[];
+      for(var ci=0; ci<=nPairs; ci++){ var isL=((ci%2===0)===startLeft);
+        cols.push(isL ? 90+Math.floor(rnd()*3)*22 : OW-90-Math.floor(rnd()*3)*22); }
+      var rows=[]; for(var ri=0; ri<nPairs; ri++){ rows.push(Math.round(botY + (topY-botY)*((ri+0.5)/nPairs))); }
+      var SOURCE={ x:cols[0], y:botY, dir:'N' };
+      var MIRRORS=[], mid=1;
+      for(var kp=0; kp<nPairs; kp++){ var inC=cols[kp], outC=cols[kp+1], ry=rows[kp], aOut=(outC>inC?'E':'W');
+        MIRRORS.push({ id:'m'+(mid++), x:inC,  y:ry, o:ombresOrient('N',aOut) });    // A : N → horizontal vers B
+        MIRRORS.push({ id:'m'+(mid++), x:outC, y:ry, o:ombresOrient(aOut,'N') }); }   // B : horizontal → N (monte)
+      var SENSOR={ x:cols[nPairs], y:topY };
+      // segments de la SOLUTION (géométrie) → on empêchera tout meuble de les traverser
+      var solSegs = ombresTrace(SOURCE, MIRRORS, SENSOR, null, OW, H).segs;
+      // caméra du coffre (dilemme d'aveuglement) + socle + abri, près du capteur, HORS du faisceau
+      var vcx = cols[nPairs]<OW/2 ? 60 : OW-60;
+      CAMS.push({ id:'c'+(cn++), x:vcx, y:topY, dir:vcx<OW/2?0:Math.PI, sweep:0.45, phase:rnd()*6.28, range:260, half:0.40 });
+      SOCKETS.push({ id:'s'+(sn++), x:vcx<OW/2?vcx+70:vcx-70, y:topY });
+      var shel={ x:vcx<OW/2?vcx+30:vcx-90, y:topY-23, w:60, h:46 };
+      if(!solSegs.some(function(s){ return segRectHit(s.x1,s.y1,s.x2,s.y2,shel,16); })) FURN.push(shel);
       // —— bandes du milieu : segments mélangés, miroir aléatoire ——
       var camSlots=[], guardSlots=[];
       for(var b=0;b<nMid;b++){ var y0=VB+b*MB;
         var t=SEGS[Math.floor(rnd()*SEGS.length)], mir=rnd()<0.5;
         var TX=function(x,w){ return mir? OW-x-(w||0) : x; };
-        t.furn.forEach(function(f){ FURN.push({ x:TX(f[0],f[2]), y:y0+f[1], w:f[2], h:f[3] }); });
+        t.furn.forEach(function(f){ var fr={ x:TX(f[0],f[2]), y:y0+f[1], w:f[2], h:f[3] };
+          if(!solSegs.some(function(s){ return segRectHit(s.x1,s.y1,s.x2,s.y2,fr,16); })) FURN.push(fr); });
         if(t.sock) SOCKETS.push({ id:'s'+(sn++), x:TX(t.sock[0]), y:y0+t.sock[1] });
         if(t.cam){ var side=mir?(t.cam.side==='L'?'R':'L'):t.cam.side;
           camSlots.push({ x:side==='L'?60:500, y:y0+t.cam.y, dir:side==='L'?0:Math.PI, range:t.cam.range }); }
@@ -527,18 +568,17 @@
         if(!has) SOCKETS.push({ id:'s'+(sn++), x:280-40+Math.floor(rnd()*5)*20, y:g.y }); });
       // —— bande d'entrée ——
       var START={ x:280, y:H-60 }, CONSOLE={ x:flip?90:470, y:H-160 };
-      FURN.push({ x:150+Math.floor(rnd()*8)*20, y:H-EB+30, w:96, h:46 });
+      var efr={ x:150+Math.floor(rnd()*8)*20, y:H-EB+30, w:96, h:46 };
+      if(!solSegs.some(function(s){ return segRectHit(s.x1,s.y1,s.x2,s.y2,efr,16); })) FURN.push(efr);
       // —— VALIDATION ——
       var ok=true;
-      // faisceau : solution dégagée, dilemme (aveugler la cam du coffre) dégagé
-      var beam=[ [SOURCE.x,y1,MIRRORS[0].x,y1], [MIRRORS[0].x,y1,MIRRORS[0].x,y2], [MIRRORS[1].x,y2,SENSOR.x,y2],
-                 [MIRRORS[1].x,y2,flip?60:500,y2] ];
-      beam.forEach(function(sg){ if(FURN.some(function(r){ return segRectHit(sg[0],sg[1],sg[2],sg[3],r,6); })) ok=false; });
-      // couverture : chaque caméra (hors sentinelle de couloir) a un meuble-abri à portée
-      CAMS.forEach(function(c){ if(c.sentinel) return; if(!FURN.some(function(r){ var fx=r.x+r.w/2, fy=r.y+r.h/2;
-        return Math.hypot(fx-c.x,fy-c.y)<c.range*0.9 && Math.abs(fy-c.y)<140; })) ok=false; });
-      // points clés dégagés (personne ne spawn/interagit dans un meuble)
-      [[START.x,START.y],[CONSOLE.x,CONSOLE.y],[VAULT.x,VAULT.y],[SENSOR.x,SENSOR.y],[MIRRORS[0].x,y1],[MIRRORS[1].x,y2]].forEach(function(pt){
+      // faisceau : la SOLUTION (miroirs corrects) atteint le capteur sans être bouchée par un meuble
+      if(!ombresTrace(SOURCE, MIRRORS, SENSOR, FURN, OW, H).hit) ok=false;
+      // (l'ancien invariant « un abri-meuble par caméra » est levé : l'énigme éparpillée dégage
+      //  les corridors du faisceau ; la couverture reste fournie par les meubles, la glu, les
+      //  lanternes et le timing — plus de garantie par caméra, sinon la génération n'aboutit pas.)
+      // points clés + miroirs dégagés (personne ne spawn/interagit/pivote dans un meuble)
+      [[START.x,START.y],[CONSOLE.x,CONSOLE.y],[VAULT.x,VAULT.y],[SENSOR.x,SENSOR.y]].concat(MIRRORS.map(function(m){ return [m.x,m.y]; })).forEach(function(pt){
         if(FURN.some(function(r){ return pt[0]>=r.x-24 && pt[0]<=r.x+r.w+24 && pt[1]>=r.y-24 && pt[1]<=r.y+r.h+24; })) ok=false; });
       // socles : jamais dans un meuble
       SOCKETS.forEach(function(s){ if(FURN.some(function(r){ return s.x>=r.x-14 && s.x<=r.x+r.w+14 && s.y>=r.y-14 && s.y<=r.y+r.h+14; })) ok=false; });
@@ -546,10 +586,15 @@
       if(ok && !ombresPathClear(FURN, OW, H, START, CONSOLE, 12)) ok=false;
       if(ok && !ombresPathClear(FURN, OW, H, CONSOLE, VAULT, 12)) ok=false;
       if(!ok) continue;
+      // Brouillage : on retourne des miroirs (≥2) — le joueur reconstruit la solution de tête.
+      var SOL={}; MIRRORS.forEach(function(m){ SOL[m.id]=m.o; });
+      var flips=0; MIRRORS.forEach(function(m){ if(rnd()<0.55){ m.o=(m.o==='/'?'\\':'/'); flips++; } });
+      for(var ff=0; flips<2 && ff<MIRRORS.length; ff++){ if(MIRRORS[ff].o===SOL[MIRRORS[ff].id]){ MIRRORS[ff].o=(MIRRORS[ff].o==='/'?'\\':'/'); flips++; } }
+      if(ombresTrace(SOURCE, MIRRORS, SENSOR, FURN, OW, H).hit){ MIRRORS[0].o=(MIRRORS[0].o==='/'?'\\':'/'); }  // jamais résolu d'entrée
       return { WORLD_W:OW, WORLD_H:H, START:START, VAULT:VAULT, CONSOLE:CONSOLE,
         CAMS:CAMS, GUARDS:GUARDS, FURN:FURN, SOCKETS:SOCKETS,
         SOURCE:SOURCE, MIRRORS:MIRRORS, SENSOR:SENSOR,
-        SOLUTION:{ m1:sol1, m2:sol2 }, diff:diff, seed:seed>>>0 };
+        SOLUTION:SOL, diff:diff, seed:seed>>>0 };
     }
     return null; // repli : la page garde son plan historique
   }
