@@ -201,7 +201,7 @@
   // —— Faisceau : segments + caméras aveuglées + capteur touché.
   function computeBeam(){
     var segs=[]; var x=SOURCE.x, y=SOURCE.y, dir=SOURCE.dir;
-    for(var hop=0; hop<5; hop++){
+    for(var hop=0; hop<64; hop++){   // énigme éparpillée : jusqu'à ~8 miroirs (+ capteur)
       var v=DVEC[dir]; var best=null, bestD=1e9, kind=null, obj=null;
       // miroirs alignés sur la ligne courante
       for(var i=0;i<MIRRORS.length;i++){ var m=MIRRORS[i];
