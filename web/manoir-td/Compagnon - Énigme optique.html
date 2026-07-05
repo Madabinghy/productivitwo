@@ -115,7 +115,7 @@
     if(solved && REWARD) revealAsk();
     var footer = solved
       ? (FREE
-        ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau — un butin t’attend au manoir.</div><div style="display:flex; gap:10px; margin-top:13px;"><button data-act="replay" style="flex:1; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Une autre énigme ↺</button><button data-act="back" style="flex:1; padding:15px; border:1px solid rgba(214,168,74,.35); border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#e7c878; background:rgba(214,168,74,.1);">Retour au manoir ✦</button></div></div>'
+        ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau. ✦ +1 XP</div><div style="display:flex; gap:10px; margin-top:13px;"><button data-act="replay" style="flex:1; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Une autre énigme ↺</button><button data-act="back" style="flex:1; padding:15px; border:1px solid rgba(214,168,74,.35); border-radius:14px; cursor:pointer; font-weight:800; font-size:13px; color:#e7c878; background:rgba(214,168,74,.1);">Retour au manoir ✦</button></div></div>'
         : REWARD
         ? '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La flamme a trouvé le sceau — le butin est à toi.</div>'+rewardHTML()+'<button data-act="back" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Retour au manoir ✦</button></div>'
         : '<div style="padding:16px 18px; border-radius:18px; background:linear-gradient(180deg, rgba(40,30,16,.92), rgba(24,16,8,.95)); border:1px solid rgba(214,168,74,.4); box-shadow:0 16px 40px rgba(0,0,0,.5); animation:bannerin .5s ease both;"><div style="font-weight:700; font-size:9px; letter-spacing:1.8px; text-transform:uppercase; color:#c9a456;">Sceau descellé</div><div style="margin-top:4px; font-family:\'Fraunces\',serif; font-weight:600; font-size:17px; color:#fbf3e2;">La lumière renaît — le Grand Hall s’éclairera au fil de tes verres d’eau.</div><button data-act="win" style="margin-top:13px; width:100%; padding:15px; border:none; border-radius:14px; cursor:pointer; font-weight:800; font-size:14px; color:#1c1206; background:linear-gradient(180deg, #f2cd72, #d6a84a); box-shadow:0 12px 28px rgba(214,168,74,.3);">Rétablir la lumière ✦</button></div>')
@@ -142,12 +142,13 @@
   // d'où le Grand Hall s'indexe ensuite au compteur d'eau. Écrit dès que le faisceau touche le
   // sceau (cf. render) pour que le flag survive à TOUT chemin de sortie (bouton, en-tête, ✕ app).
   function saveSolved(){ try { localStorage.setItem('ombrelune_mirror_quest', JSON.stringify({ s:'solved', frags:3 })); } catch(e){} }
-  // Butin de jeu libre : dépose un jeton dans la boîte partagée — au retour, le
-  // manoir en tire un indice pour l'enquête en cours, ou réveille une nouvelle affaire.
-  var lootSent=false;
-  function depositLoot(){ if(lootSent) return; lootSent=true;
-    try{ var q=JSON.parse(localStorage.getItem('ombrelune_minigame_loot')||'[]'); if(!Array.isArray(q)) q=[];
-      q.push({from:'enigme', seed:Math.floor(Math.random()*1e9)}); localStorage.setItem('ombrelune_minigame_loot', JSON.stringify(q)); }catch(e){} }
+  // Récompense d'énigme miroir : simplement +1 XP de Lampyre (une seule fois par énigme
+  // résolue). Remplace l'ancien « jeton de butin ». L'XP est créditée dans la même clé que
+  // l'IRL (`ombrelune_lampyre`) ; le manoir la relit au retour.
+  var xpCredited=false;
+  function creditXpOnce(){ if(xpCredited) return; xpCredited=true;
+    try{ var L=JSON.parse(localStorage.getItem('ombrelune_lampyre')||'null')||{xp:0,stage:0,credited:{}};
+      L.xp=(L.xp||0)+1; localStorage.setItem('ombrelune_lampyre', JSON.stringify(L)); }catch(e){} }
   function win(){ if(!FREE) saveSolved(); back(); }
   // partie libre suivante : nouvelle graine aléatoire, même difficulté
   function replay(){ try{ window.location.href='?free=1&seed='+Math.floor(Math.random()*1e9)+'&difficulty='+DIFF; }catch(e){} }
@@ -178,7 +179,7 @@
     var m=ev.target.closest('[data-mirror]'); if(m){ rotate(m.getAttribute('data-mirror')); return; }
     var a=ev.target.closest('[data-act]'); if(a){ var k=a.getAttribute('data-act'); if(k==='reset') reset(); else if(k==='win') win(); else if(k==='back') back(); else if(k==='replay') replay(); }
   });
-  function render(){ if(!REWARD && !FREE && allSolved()) saveSolved(); if(FREE && allSolved()) depositLoot(); app.innerHTML = view(); }
+  function render(){ if(!REWARD && !FREE && allSolved()) saveSolved(); if(!REWARD && allSolved()) creditXpOnce(); app.innerHTML = view(); }
   window.__enigme={ S:S, V:V, MPOS:MPOS, DEFAULT:DEFAULT, WALLS:WALLS, BEAMS:BEAMS, traceBeam:traceBeam, allSolved:allSolved, rotate:rotate };
   render();
 })();
