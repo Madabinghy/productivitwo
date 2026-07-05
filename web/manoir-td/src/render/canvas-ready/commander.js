@@ -85,16 +85,24 @@ export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPha
 
   ctx.save(); ctx.rotate(facing); // s'oriente vers sa cible — tête en avant
 
-  // pieds (cycle de marche complet) : le pied AU SOL balaie vers l'ARRIÈRE (+y, derrière la
-  // tête = propulsion), l'AUTRE se lève et revient vers l'avant en s'estompant. La tête étant
-  // orientée vers le déplacement, ce balayage arrière se lit « vers l'avant » (fin du reculons).
+  // pieds — cycle de marche à rapport cyclique asymétrique (stance/swing), tête orientée vers
+  // l'avant (−y). STANCE (60 % du cycle) : pied POSÉ, opaque, balaie AVANT→ARRIÈRE (0.21→0.39,
+  // propulsion). SWING (40 %) : pied LEVÉ, fortement estompé + réduit, revient vite ARRIÈRE→AVANT.
+  // Estompage fort (le pied de retour disparaît presque) → plus de « glissé » ambigu qui lisait
+  // « à reculons ». Les deux pieds sont déphasés d'un demi-cycle : l'un pousse pendant que l'autre
+  // revient. FRONT/REAR en repère sprite : −y = avant (haut), +y = arrière (bas).
+  const FRONT = s * 0.21, REAR = s * 0.39;
   for (const side of [-1, 1]) {
-    const phase = side < 0 ? 0 : Math.PI;
-    const sw = walk ? Math.sin(ph + phase) : 0;                       // +1 = pied avant (-y), -1 = pied arrière (+y)
-    const lift = walk ? Math.max(0, Math.cos(ph + phase)) : 0;        // levé pendant le retour vers l'avant
-    const fy = s * 0.30 - sw * s * 0.10; const fx = side * s * 0.14;
-    ctx.save(); ctx.globalAlpha = 1 - lift * 0.35; ctx.fillStyle = DARK; rr(ctx, fx - s * 0.05, fy - s * 0.05, s * 0.10, s * 0.13, 3); ctx.fill();
-    ctx.fillStyle = hexA(STEEL_HI, 0.5); rr(ctx, fx - s * 0.05, fy - s * 0.05, s * 0.10, s * 0.045, 2); ctx.fill(); ctx.restore();
+    const u = walk ? (((ph / (Math.PI * 2)) + (side < 0 ? 0 : 0.5)) % 1 + 1) % 1 : (side < 0 ? 0.3 : 0.8);
+    const stance = u < 0.6;
+    const frac = stance ? (u / 0.6) : (1 - (u - 0.6) / 0.4);          // 0 = avant, 1 = arrière
+    const fy = FRONT + frac * (REAR - FRONT);
+    const fx = side * s * 0.14;
+    const sc = stance ? 1 : 0.78;                                     // pied levé = plus petit
+    const fw = s * 0.10 * sc, fh = s * 0.13 * sc;
+    ctx.save(); ctx.globalAlpha = stance ? 1 : 0.22; ctx.fillStyle = DARK;
+    rr(ctx, fx - fw / 2, fy - fh / 2, fw, fh, 3); ctx.fill();
+    ctx.fillStyle = hexA(STEEL_HI, 0.5); rr(ctx, fx - fw / 2, fy - fh / 2, fw, fh * 0.35, 2); ctx.fill(); ctx.restore();
   }
 
   // épaules + mains (extrémités d'avant-bras) — faisceaux/tirs sortent des mains
@@ -167,8 +175,17 @@ export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPha
   ctx.strokeStyle = BRASS_HI; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-s * 0.07, -s * 0.11, s * 0.035, 0, 7); ctx.stroke();
   ctx.restore();
 
-  // flammèche de crête (à l'avant)
-  flame(ctx, 0, -s * 0.24, s * 0.12, s * 0.16, T, 0);
+  // flammèche de crête. Au repos : dressée vers l'avant (−y). En MARCHE : rabattue vers
+  // l'ARRIÈRE (+y) façon traînée de réacteur / flamme balayée par le vent de la course — c'est
+  // le repère de direction le plus lisible (on avance à l'OPPOSÉ de la traînée), qui lève enfin
+  // l'ambiguïté « à reculons » : la mèche part bien derrière, la tête mène.
+  if (walk) {
+    ctx.save(); ctx.translate(0, s * 0.16); ctx.scale(1, -1);        // pointe rabattue vers +y (arrière)
+    flame(ctx, 0, -s * 0.06, s * 0.135, s * 0.30, T, 0);
+    ctx.restore();
+  } else {
+    flame(ctx, 0, -s * 0.24, s * 0.12, s * 0.16, T, 0);
+  }
   ctx.restore(); // fin rotation facing
 }
 

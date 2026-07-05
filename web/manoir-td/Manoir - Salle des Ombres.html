@@ -187,9 +187,10 @@
     G.stickActive=false; G.stickId=null; G.move={x:0,y:0}; var th=document.getElementById('so-thumb'); if(th) th.style.transform='translate(0,0)'; window.removeEventListener('pointermove', G._jsMove); window.removeEventListener('pointerup', G._jsUp); window.removeEventListener('pointercancel', G._jsUp); }
   function onFloor(e){ if(S.status!=='play') return; var r=G.cv.getBoundingClientRect(); var sx=VPW/r.width, sy=VPH/r.height;
     var wx=(e.clientX-r.left)*sx + G.cam.x, wy=(e.clientY-r.top)*sy + G.cam.y;
-    // tap direct sur un miroir proche = pivoter
+    // tap direct sur un miroir proche = pivoter (SEULE action du tap sur le sol)
     for(var i=0;i<MIRRORS.length;i++){ var m=MIRRORS[i]; if(Math.hypot(wx-m.x,wy-m.y)<26 && Math.hypot(G.bx-m.x,G.by-m.y)<60){ toggleMirror(m); return; } }
-    G.tgt={ x:wx, y:wy };
+    // Déplacement au tap DÉSACTIVÉ en infiltration : un clic malencontreux ne doit plus faire
+    // marcher le joueur dans un cône (= repérage). On ne bouge qu'au joystick.
   }
 
   function inRect(x,y,c,m){ m=m||0; return x>=c.x-m && x<=c.x+c.w+m && y>=c.y-m && y<=c.y+c.h+m; }
