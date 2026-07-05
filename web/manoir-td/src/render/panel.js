@@ -69,7 +69,7 @@ export function createPanel(game) {
     hint.textContent = isUnit
       ? "Pose un Cuirassé-tortue dans ta lumière, le Commander le bâtit. Clique-le pour le sélectionner : clic = déplacement (artillerie qui tire en roulant), bouton Déployer = increvable + aura de soin (désarmé)."
       : isBuilding
-      ? "Pose un Atelier dans ta lumière, le Commander le bâtit. Sélectionne-le ensuite pour fabriquer des tourelles mobiles (chars à chenilles) — chaque char coûte de la masse, puis se commande comme une unité."
+      ? "Pose un bâtiment (Atelier → chars à chenilles, Caserne → infanterie) dans ta lumière ; le Commander le bâtit. Sélectionne-le ensuite pour fabriquer des unités à la demande (chaque unité coûte de la masse, puis se commande au clic)."
       : s.tab === 'turret'
       ? "Sélectionne une tourelle puis clique dans le halo du héros (ou d'une bougie) pour poser un chantier. Le Commander le bâtit en restant à portée de vision."
       : 'Bercail : soigne héros & tourelles. Bouclier : oriente-le pour encaisser les tirs ennemis. Radar : révèle les flemmes voisines. Œil-satellite : révèle toute la carte (un seul).';
@@ -81,8 +81,9 @@ export function createPanel(game) {
     const card = document.createElement('div'); card.className = 'detail'; card.style.borderColor = col + '88';
     const h = document.createElement('div'); h.className = 'dh'; h.textContent = it ? it.name : t.key; card.appendChild(h);
     const st = document.createElement('div'); st.className = 'ds';
+    const role = t.key === 'caserne' ? '⚔ Entraîne de l\'infanterie' : '⚙ Fabrique des tourelles mobiles';
     st.textContent = t.built === false ? '⚒ En construction… ' + Math.round((t.prog || 0) * 100) + '%'
-      : '⚙ Fabrique des tourelles mobiles   ♥ ' + Math.round(t.hp || 0) + '/' + (t.maxHp || 0);
+      : role + '   ♥ ' + Math.round(t.hp || 0) + '/' + (t.maxHp || 0);
     card.appendChild(st);
     const dd = document.createElement('div'); dd.className = 'dd'; dd.textContent = DESC[t.key] || ''; card.appendChild(dd);
     if (t.built !== false) {
@@ -90,7 +91,7 @@ export function createPanel(game) {
       for (const uk of (PRODUCES[t.key] || [])) {
         const u = UNITS[uk], cost = costOf(uk).mass, busy = cd > 0.05, poor = (game.G.mass || 0) < cost;
         const b = document.createElement('button'); b.className = 'act btn-up' + (busy || poor ? ' max' : '');
-        b.textContent = busy ? ('⏳ Atelier occupé (' + cd.toFixed(1) + 's)') : ((u ? u.name : uk) + ' · ' + cost + ' ✦');
+        b.textContent = busy ? ('⏳ Occupé (' + cd.toFixed(1) + 's)') : ((u ? u.name : uk) + ' · ' + cost + ' ✦');
         b.onclick = () => trainUnit(game, t, uk);
         card.appendChild(b);
       }
@@ -151,7 +152,8 @@ export function createPanel(game) {
     const h = document.createElement('div'); h.className = 'dh'; h.textContent = ud ? ud.name : 'Cuirassé-tortue'; card.appendChild(h);
     const st = document.createElement('div'); st.className = 'ds';
     if (ud) {
-      st.textContent = (u.built === false ? '⚒ En construction…' : '⚔ Tourelle mobile · clique pour la déplacer') + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
+      const kindLabel = ud.kind === 'infantry' ? '⚔ Infanterie · clique pour la déplacer' : '⚔ Tourelle mobile · clique pour la déplacer';
+      st.textContent = (u.built === false ? '⚒ En construction…' : kindLabel) + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
     } else {
       st.textContent = u.built === false ? '⚒ En construction…' : (u.deployed ? '⛨ Déployé — increvable · aura de soin · désarmé' : '⚔ Artillerie mobile · 4 canons · clique pour le déplacer') + '   ♥ ' + Math.round(u.hp || 0) + '/' + (u.maxHp || 0);
     }

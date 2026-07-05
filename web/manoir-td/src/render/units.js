@@ -5,6 +5,7 @@
 import { TORTUE, unitStats } from '../config.js';
 import { drawTortue, drawTortueAura } from './canvas-ready/tortue.js';
 import { drawMobileTurret } from './canvas-ready/turrets-mobiles.js';
+import { drawInfantry } from './canvas-ready/commander.js';
 
 const GOLD = '#ffce5e', GREEN = '#6effa8';
 const TORTUE_SCALE = 1.25;
@@ -13,8 +14,31 @@ export function drawUnits(game, ctx, th, t) {
   for (const u of game.ui.placed) {
     if (u.cat !== 'unit') continue;
     if (u.key === 'tortue') { drawTortueUnit(game, ctx, th, t, u); continue; }
-    const st = unitStats(u.key); if (st && st.kind === 'mobile') drawMobileUnit(game, ctx, th, t, u, st);
+    const st = unitStats(u.key); if (!st) continue;
+    if (st.kind === 'mobile') drawMobileUnit(game, ctx, th, t, u, st);
+    else if (st.kind === 'infantry') drawInfantryUnit(game, ctx, th, t, u, st);
   }
+}
+
+// Fantassin : jambes orientées vers la marche, torse vers la visée (le sprite tire vers son
+// +y → on ajoute 180° pour convertir l'angle compass en rotation canvas).
+function drawInfantryUnit(game, ctx, th, t, u, st) {
+  const built = u.built !== false, sel = game.ui.selId === u.id, col = st.color || '#7fd8ff';
+  if (built && sel) {
+    ctx.save(); ctx.strokeStyle = col + '44'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.arc(u.x, u.y, st.range, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+  ctx.save(); ctx.translate(u.x, u.y);
+  if (!built) ctx.globalAlpha = 0.3 + (u.prog || 0) * 0.5;
+  const bodyAng = ((u.aim || 0) + 180) * Math.PI / 180, legAng = ((u.bodyDir || u.aim || 0) + 180) * Math.PI / 180;
+  drawInfantry(ctx, st.size || 30, t, st.variant, bodyAng, legAng, !!u.walking, (u.firing || 0) > 0);
+  ctx.restore();
+  if (sel) {
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    ctx.translate(u.x, u.y); ctx.rotate(t * 0.6); ctx.beginPath(); ctx.arc(0, 0, 22, 0, 7); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+  }
+  const f = Math.max(0, Math.min(1, (u.hp == null ? u.maxHp : u.hp) / (u.maxHp || st.hp)));
+  if (built && f < 1) { ctx.save(); ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(u.x - 16, u.y - 26, 32, 3.5); ctx.fillStyle = f > 0.5 ? col : f > 0.25 ? '#ffd66e' : '#ff5d7a'; ctx.fillRect(u.x - 16, u.y - 26, 32 * f, 3.5); ctx.restore(); }
 }
 
 // Tourelle mobile (char à chenilles) : châssis orienté vers la marche + tête qui vise.

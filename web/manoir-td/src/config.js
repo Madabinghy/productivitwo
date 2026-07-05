@@ -47,7 +47,7 @@ export const TCOL = {
   brasier: '#ff6b3d', givre: '#3df0ff', fulgur: '#ffe14d', venin: '#6fff5a',
   arcane: '#c77dff', spectre: '#7d9bff', calice: '#ff3d6e', sniper: '#cfe7ff',
   bercail: '#7bff9b', radar: '#46e6b4', satellite: '#ffce5e', bouclier: '#6fa8ff',
-  atelier: '#e0a24a',
+  atelier: '#e0a24a', caserne: '#8fb0d8',
 };
 
 export const TURRET_ITEMS = [
@@ -81,18 +81,25 @@ export const TORTUE = {
 // ils FABRIQUENT des unités à la demande, cf. systems/production.js).
 export const BUILDING_ITEMS = [
   { key: 'atelier', name: 'Atelier', el: 'Production' },
+  { key: 'caserne', name: 'Caserne', el: 'Recrutement' },
 ];
-// Ce que chaque bâtiment producteur peut fabriquer (la Caserne / infanterie viendra ensuite).
+// Ce que chaque bâtiment producteur peut fabriquer.
 export const PRODUCES = {
   atelier: ['char_brasier', 'char_givre', 'char_fulgur', 'char_arcane'],
+  caserne: ['soldat', 'lance', 'lampe', 'elite'],
 };
-// Registre des unités NON-tortue (tourelles mobiles à chenilles, puis infanterie).
-// `kind` : 'mobile' (char : tire des projectiles) — 'infantry' arrive au lot suivant.
+// Registre des unités NON-tortue. `kind` :
+//   'mobile'   = tourelle mobile à chenilles (tire des projectiles, rendu drawMobileTurret)
+//   'infantry' = fantassin (tir instantané type fusil, rendu drawInfantry)
 export const UNITS = {
   char_brasier: { kind: 'mobile', name: 'Char Brasier', type: 'brasier', color: '#ff6b3d', hp: 240, speed: 78, range: 250, dmg: 16, interval: 1.0, turnRate: 210, shot: 'fireball', projSpeed: 340, size: 60 },
   char_givre:   { kind: 'mobile', name: 'Char Givre',   type: 'givre',   color: '#3df0ff', hp: 220, speed: 84, range: 270, dmg: 12, interval: 0.8, turnRate: 220, shot: 'ball',     projSpeed: 380, size: 60 },
   char_fulgur:  { kind: 'mobile', name: 'Char Fulgur',  type: 'fulgur',  color: '#ffe14d', hp: 200, speed: 82, range: 300, dmg: 10, interval: 0.6, turnRate: 240, shot: 'ball',     projSpeed: 440, size: 60 },
   char_arcane:  { kind: 'mobile', name: 'Char Arcane',  type: 'arcane',  color: '#c77dff', hp: 260, speed: 72, range: 260, dmg: 22, interval: 1.3, turnRate: 200, shot: 'sigil',    projSpeed: 300, size: 60 },
+  soldat: { kind: 'infantry', name: 'Soldat',    variant: 'soldat', color: '#7fd8ff', hp: 70,  speed: 104, range: 175, dmg: 9,  interval: 0.7,  turnRate: 320, size: 30 },
+  lance:  { kind: 'infantry', name: 'Lancier',   variant: 'lance',  color: '#b98cff', hp: 95,  speed: 96,  range: 120, dmg: 16, interval: 0.9,  turnRate: 300, size: 30 },
+  lampe:  { kind: 'infantry', name: 'Éclaireur', variant: 'lampe',  color: '#ffce5e', hp: 60,  speed: 122, range: 150, dmg: 6,  interval: 0.55, turnRate: 360, size: 29 },
+  elite:  { kind: 'infantry', name: 'Élite',     variant: 'elite',  color: '#9fe9ff', hp: 110, speed: 98,  range: 210, dmg: 14, interval: 0.8,  turnRate: 320, size: 31 },
 };
 export function unitStats(key) { return UNITS[key] || null; }
 export const TRAIN_CD = 2.4;   // cadence min entre deux fabrications d'un même bâtiment (s)
@@ -110,9 +117,10 @@ export const COST = {
   calice: { mass: 58, time: 7 },   sniper: { mass: 80, time: 9 },   bercail: { mass: 50, time: 6 },
   bouclier: { mass: 40, time: 5 }, radar: { mass: 46, time: 5.5 },  satellite: { mass: 110, time: 12 },
   tortue: { mass: 95, time: 11 },
-  // bâtiment producteur (coût de construction) + coût d'ENTRAÎNEMENT de chaque char (time ignoré)
-  atelier: { mass: 70, time: 8 },
+  // bâtiments producteurs (coût de construction) + coût d'ENTRAÎNEMENT de chaque unité (time ignoré)
+  atelier: { mass: 70, time: 8 }, caserne: { mass: 55, time: 6.5 },
   char_brasier: { mass: 40, time: 0 }, char_givre: { mass: 34, time: 0 }, char_fulgur: { mass: 32, time: 0 }, char_arcane: { mass: 46, time: 0 },
+  soldat: { mass: 20, time: 0 }, lance: { mass: 26, time: 0 }, lampe: { mass: 22, time: 0 }, elite: { mass: 34, time: 0 },
 };
 export function costOf(key) { return COST[key] || { mass: 40, time: 5 }; }
 // Améliorer une tourelle EN mission : chantier occupé (masse + temps), coût qui
@@ -134,6 +142,7 @@ export const DESC = {
   bouclier: 'Barrière orientable : encaisse les tirs ennemis et laisse passer les vôtres.',
   tortue: 'Cuirassé-tortue : artillerie blindée. Mobile, sa carapace pivote et ses 4 canons fauchent les flemmes. Déployée : increvable & aura de soin, mais désarmée (au choix : tirer ou soigner).',
   atelier: 'Atelier : fabrique des tourelles mobiles (chars à chenilles) à la demande. Sélectionne-le, choisis un char — chaque fabrication coûte de la masse.',
+  caserne: 'Caserne : entraîne de l\'infanterie à la demande (soldat, lancier, éclaireur, élite). Sélectionne-la, choisis une recrue — chaque unité coûte de la masse, puis se commande au clic.',
 };
 
 // 3 thèmes d'ambiance — couleurs principales pour le rendu canvas
@@ -145,14 +154,14 @@ export const THEMES = {
 
 export function baseHp(key) {
   if (UNITS[key]) return UNITS[key].hp;
-  return key === 'tortue' ? TORTUE.hp : key === 'atelier' ? 150 : key === 'sniper' ? 45 : key === 'bercail' ? 90 : key === 'radar' ? 75
+  return key === 'tortue' ? TORTUE.hp : key === 'atelier' ? 150 : key === 'caserne' ? 130 : key === 'sniper' ? 45 : key === 'bercail' ? 90 : key === 'radar' ? 75
        : key === 'satellite' ? 85 : key === 'bouclier' ? 160 : 120;
 }
 export function radarRadius(t) { return 360 + (((t && t.level) || 1) - 1) * 200; }
 
 // Stats d'une tourelle selon son type et son niveau
 export function turretStats(t) {
-  if (t.key === 'atelier') return { range: 0, dmg: 0, interval: 0, half: 0, support: true, producer: 'atelier' };
+  if (t.key === 'atelier' || t.key === 'caserne') return { range: 0, dmg: 0, interval: 0, half: 0, support: true, producer: t.key };
   if (t.key === 'radar') return { range: radarRadius(t), dmg: 0, interval: 0, half: 0, support: true };
   if (t.key === 'satellite') return { range: 0, dmg: 0, interval: 0, half: 0, support: true, sat: true };
   if (t.key === 'bouclier') return { range: 0, dmg: 0, interval: 0, half: 0, support: true, shield: true };
