@@ -6,6 +6,7 @@ import { nodeById, completeNode, NODES, applyReward } from './campaign.js';
 import { createCampaign } from './render/map.js';
 import { initEnemyAI, updateEnemyAI } from './systems/enemy_ai.js';
 import { updateUnits } from './systems/units.js';
+import { updateProduction } from './systems/production.js';
 import { updateHeroMove, heroLaser, orientHero } from './systems/hero.js';
 import { updateEconomy } from './systems/economy.js';
 import { updateTurrets } from './systems/turrets.js';
@@ -157,6 +158,7 @@ function tick(dt) {
   updateTurrets(game, dt);
   updateUnits(game, dt);
   updateConstruction(game, dt);
+  updateProduction(game, dt);
   updateEconomy(game, dt);
   heroLaser(game, dt);
   orientHero(game, dt);

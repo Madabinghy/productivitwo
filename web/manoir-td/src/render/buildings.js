@@ -203,6 +203,19 @@ function turretSprite(ctx, key, facing, level, t, time) {
     ctx.beginPath(); ctx.ellipse(0, -8, 30, 9, 0, Math.PI, 0); ctx.fill(); ctx.stroke();
     ctx.restore(); return;
   }
+  if (key === 'atelier') {
+    // bâtiment de production : atelier (socle + toit + engrenage tournant), pas de canon.
+    ctx.save();
+    ctx.fillStyle = '#2a2231'; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.rect(-13, -8, 26, 20); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-15, -8); ctx.lineTo(0, -19); ctx.lineTo(15, -8); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.translate(0, 2); ctx.rotate((time || 0) * 0.8);
+    ctx.fillStyle = '#1a1622'; ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.lineTo(Math.cos(a) * 6, Math.sin(a) * 6); ctx.lineTo(Math.cos(a + Math.PI / 8) * 3.6, Math.sin(a + Math.PI / 8) * 3.6); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, 7); ctx.fill();
+    ctx.restore(); ctx.restore(); return;
+  }
 
   // tourelle offensive : socle + canon orienté + cœur + badge niveau
   basePlate(ctx, col);

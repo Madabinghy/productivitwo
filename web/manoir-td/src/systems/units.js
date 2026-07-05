@@ -5,7 +5,7 @@
 //   vise EN PLUS indépendamment l'ennemi le plus proche de lui, avec recul au tir.
 // DÉPLOYÉE (t>0.9) = soin : increvable, immobile, DÉSARMÉE, aura de soin (façon Bercail).
 // Pendant la transition (0<t<1) : figée, ne tire pas, ne soigne pas (canons/pattes/tête rentrent).
-import { TORTUE, baseHp, MAP } from '../config.js';
+import { TORTUE, baseHp, MAP, unitStats } from '../config.js';
 import { blocked, compass, angDiff } from '../geometry.js';
 import { killTarget, targets } from './enemies.js';
 
@@ -26,6 +26,53 @@ function initCannons(u) {
 export function updateUnits(game, dt) {
   for (const u of game.ui.placed) {
     if (u.cat !== 'unit' || u.built === false) continue;
+    if (u.key === 'tortue') { updateTortue(game, u, dt); continue; }
+    const st = unitStats(u.key); if (st) updateCombatUnit(game, u, dt, st);
+  }
+}
+
+// Unité de combat générique (tourelle mobile ; l'infanterie réutilisera cette boucle) :
+// déplacement sur ordre (clic), une tête qui vise l'ennemi le plus proche, tir sur cooldown.
+function updateCombatUnit(game, u, dt, st) {
+  if (u.hp == null) { u.hp = st.hp; u.maxHp = st.hp; }
+  if (u.aim == null) u.aim = u.bodyDir || 0;
+  if (u.fireCd == null) u.fireCd = Math.random() * st.interval;
+  u.fireCd -= dt; if (u.firing > 0) u.firing -= dt;
+  u.walking = false;
+
+  // déplacement lent sur ordre (clic) — collision murs séparée par axe
+  if (u.moveTarget) {
+    const dx = u.moveTarget.x - u.x, dy = u.moveTarget.y - u.y, d = Math.hypot(dx, dy);
+    if (d < 8) u.moveTarget = null;
+    else {
+      const sp = st.speed * dt; let nx = u.x + dx / d * sp, ny = u.y + dy / d * sp;
+      nx = Math.max(20, Math.min(MAP.W - 20, nx)); ny = Math.max(20, Math.min(MAP.H - 20, ny));
+      if (!blocked(game.WALLS, u.x, u.y, nx, u.y)) u.x = nx;
+      if (!blocked(game.WALLS, u.x, u.y, u.x, ny)) u.y = ny;
+      u.bodyDir = compass(dx, dy); u.walking = true;
+    }
+  }
+
+  // acquisition : ennemi le plus proche à portée + LOS
+  let best = null, bd = 1e9;
+  for (const e of targets(game)) { const d = Math.hypot(e.x - u.x, e.y - u.y); if (d <= st.range && d < bd && !blocked(game.WALLS, u.x, u.y, e.x, e.y)) { bd = d; best = e; } }
+  const aimTgt = best ? compass(best.x - u.x, best.y - u.y) : (u.walking ? u.bodyDir : u.aim);
+  u.aim = approach(u.aim, aimTgt, st.turnRate * dt);
+
+  // tir quand aligné et cooldown écoulé
+  if (best && u.fireCd <= 0 && Math.abs(angDiff(aimTgt, u.aim)) < 10) {
+    u.fireCd = st.interval; u.firing = 0.12;
+    if (st.kind === 'infantry') {                                   // tir instantané (fusil)
+      best.hp -= st.dmg; if (best.hp <= 0) killTarget(game, best);
+    } else {                                                        // projectile (char mobile)
+      const rad = u.aim * Math.PI / 180, mx = u.x + Math.sin(rad) * 20, my = u.y - Math.cos(rad) * 20;
+      game.G.projectiles.push({ x: mx, y: my, tgt: best, color: st.color || '#ffce5e', shot: st.shot, dmg: st.dmg, speed: st.projSpeed, ang: u.aim });
+    }
+  }
+}
+
+function updateTortue(game, u, dt) {
+  {
     if (u.hp == null) { u.hp = baseHp('tortue'); u.maxHp = u.hp; }
     if (!u.cannons) initCannons(u);
 
@@ -47,9 +94,9 @@ export function updateUnits(game, dt) {
         if (o === u || o.built === false || (o.cat !== 'turret' && o.cat !== 'unit')) continue;
         if (Math.hypot(o.x - u.x, o.y - u.y) < TORTUE.healRadius) { const om = o.maxHp || baseHp(o.key); o.hp = Math.min(om, (o.hp == null ? om : o.hp) + TORTUE.healTurret * dt); }
       }
-      continue;
+      return;
     }
-    if (!mobile) continue;   // en pleine transition : figée (ni tir, ni soin, ni déplacement)
+    if (!mobile) return;   // en pleine transition : figée (ni tir, ni soin, ni déplacement)
 
     // déplacement lent (ordre au clic) — le corps NE tourne PAS pour viser
     if (u.moveTarget) {
