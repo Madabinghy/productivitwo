@@ -216,6 +216,17 @@ function turretSprite(ctx, key, facing, level, t, time) {
     ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 6; ctx.beginPath(); ctx.arc(0, 0, 1.8, 0, 7); ctx.fill();
     ctx.restore(); ctx.restore(); return;
   }
+  if (key === 'caserne') {
+    // caserne : tente militaire (double pente) + fanion + entrée sombre.
+    ctx.save();
+    ctx.fillStyle = '#252b36'; ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.moveTo(-16, 12); ctx.lineTo(-11, -12); ctx.lineTo(11, -12); ctx.lineTo(16, 12); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(-13, -12); ctx.lineTo(0, -20); ctx.lineTo(13, -12); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#070510'; ctx.beginPath(); ctx.moveTo(-4, 12); ctx.lineTo(0, -6); ctx.lineTo(4, 12); ctx.closePath(); ctx.fill(); // entrée
+    ctx.strokeStyle = '#8a96b3'; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(0, -20); ctx.lineTo(0, -30); ctx.stroke(); // mât
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(11, -27); ctx.lineTo(0, -24); ctx.closePath(); ctx.fill(); // fanion
+    ctx.restore(); return;
+  }
 
   // tourelle offensive : socle + canon orienté + cœur + badge niveau
   basePlate(ctx, col);
