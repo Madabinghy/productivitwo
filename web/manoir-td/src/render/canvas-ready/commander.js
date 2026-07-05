@@ -85,18 +85,17 @@ export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPha
 
   ctx.save(); ctx.rotate(facing); // s'oriente vers sa cible — tête en avant
 
-  // pieds — cycle de marche à rapport cyclique asymétrique (stance/swing), tête orientée vers
-  // l'avant (−y). STANCE (60 % du cycle) : pied POSÉ, opaque, balaie AVANT→ARRIÈRE (0.21→0.39,
-  // propulsion). SWING (40 %) : pied LEVÉ, fortement estompé + réduit, revient vite ARRIÈRE→AVANT.
-  // Estompage fort (le pied de retour disparaît presque) → plus de « glissé » ambigu qui lisait
-  // « à reculons ». Les deux pieds sont déphasés d'un demi-cycle : l'un pousse pendant que l'autre
-  // revient. FRONT/REAR en repère sprite : −y = avant (haut), +y = arrière (bas).
+  // pieds — cycle de marche à rapport cyclique asymétrique (stance/swing). Sens INVERSÉ à la
+  // demande : STANCE (60 %) le pied POSÉ balaie ARRIÈRE→AVANT (0.39→0.21), SWING (40 %) le pied
+  // LEVÉ (fortement estompé + réduit) revient AVANT→ARRIÈRE. La tête et la flamme ne changent
+  // pas (facing inchangé) — seul le cycle des jambes tourne dans l'autre sens.
+  // FRONT/REAR en repère sprite : −y = avant (haut), +y = arrière (bas).
   const FRONT = s * 0.21, REAR = s * 0.39;
   for (const side of [-1, 1]) {
     const u = walk ? (((ph / (Math.PI * 2)) + (side < 0 ? 0 : 0.5)) % 1 + 1) % 1 : (side < 0 ? 0.3 : 0.8);
     const stance = u < 0.6;
-    const frac = stance ? (u / 0.6) : (1 - (u - 0.6) / 0.4);          // 0 = avant, 1 = arrière
-    const fy = FRONT + frac * (REAR - FRONT);
+    const frac = stance ? (u / 0.6) : (1 - (u - 0.6) / 0.4);          // 0 → 1 sur la phase
+    const fy = REAR - frac * (REAR - FRONT);                          // stance : ARRIÈRE→AVANT (sens inversé)
     const fx = side * s * 0.14;
     const sc = stance ? 1 : 0.78;                                     // pied levé = plus petit
     const fw = s * 0.10 * sc, fh = s * 0.13 * sc;
@@ -175,17 +174,9 @@ export function drawCommander(ctx, s, T, action, facingOverride, moving, stepPha
   ctx.strokeStyle = BRASS_HI; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(-s * 0.07, -s * 0.11, s * 0.035, 0, 7); ctx.stroke();
   ctx.restore();
 
-  // flammèche de crête. Au repos : dressée vers l'avant (−y). En MARCHE : rabattue vers
-  // l'ARRIÈRE (+y) façon traînée de réacteur / flamme balayée par le vent de la course — c'est
-  // le repère de direction le plus lisible (on avance à l'OPPOSÉ de la traînée), qui lève enfin
-  // l'ambiguïté « à reculons » : la mèche part bien derrière, la tête mène.
-  if (walk) {
-    ctx.save(); ctx.translate(0, s * 0.16); ctx.scale(1, -1);        // pointe rabattue vers +y (arrière)
-    flame(ctx, 0, -s * 0.06, s * 0.135, s * 0.30, T, 0);
-    ctx.restore();
-  } else {
-    flame(ctx, 0, -s * 0.24, s * 0.12, s * 0.16, T, 0);
-  }
+  // flammèche de crête (à l'avant) — la flamme ne s'inverse PAS selon la marche : c'est un
+  // repère fixe de la tête.
+  flame(ctx, 0, -s * 0.24, s * 0.12, s * 0.16, T, 0);
   ctx.restore(); // fin rotation facing
 }
 
