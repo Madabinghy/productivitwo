@@ -90,6 +90,7 @@
   function skillLvl(k){ try{ var s=JSON.parse(localStorage.getItem('ombrelune_skills')||'null'); return (s&&s.spent?(s.spent[k]|0):0); }catch(e){ return 0; } }
   var DET_RATE=[3.6,4.3,5.0][DIFF-1] * [1,0.85,0.7][Math.min(2,skillLvl('ombre'))]; // « Pas d'ombre » : détection ralentie
   var SWEEP_SPEED=[0.8,0.95,1.1][DIFF-1];
+  var PROX_R=[40,48,56][DIFF-1];   // vigilance de proximité : repéré si on FRÔLE un détecteur (hors cône)
   // Plan GÉNÉRÉ (?seed=N) : la map entière sort du moteur — segments assemblés,
   // caméras/gardes/socles placés sous budget, faisceau généré, le tout VALIDÉ.
   // Même graine = même plan (échec au portail → on retrouve la même salle).
@@ -122,7 +123,18 @@
   else {
     if(DIFF>=2) CAMS.push({ id:'c5', x:60, y:640, dir:0, sweep:0.5, phase:2.6, range:220, half:0.36 });
     if(DIFF>=3){ CAMS.push({ id:'c6', x:500, y:420, dir:Math.PI, sweep:0.55, phase:4.2, range:230, half:0.36 });
-      GUARDS.push({ x:280, y:300, dir:0, sweep:0.7, phase:2.2, range:180, half:0.42, patrol:120 }); } }
+      GUARDS.push({ x:280, y:300, dir:0, sweep:0.7, phase:2.2, range:180, half:0.42, patrol:120 }); }
+    // Sentinelles de couloir : cônes qui balaient LE LONG des murs → plus de voie libre au ras des bords.
+    if(DIFF>=2) CAMS.push({ id:'sen1', x:40,  y:520, dir:Math.PI/2, sweep:0.34, phase:0.7, range:360, half:0.30, sentinel:true });
+    if(DIFF>=3) CAMS.push({ id:'sen2', x:520, y:300, dir:Math.PI/2, sweep:0.34, phase:2.3, range:360, half:0.30, sentinel:true }); }
+
+  // Durcir la géométrie des cônes avec la difficulté (portée + angle) — généré comme fixe.
+  var CONE_R=[1,1.12,1.26][DIFF-1], CONE_A=[1,1.10,1.22][DIFF-1];
+  CAMS.forEach(function(c){ c.range*=CONE_R; c.half*=CONE_A; });
+  GUARDS.forEach(function(g){ g.range*=CONE_R; g.half*=CONE_A; });
+  // Meubles SOLIDES : rayon du joueur pour la collision (séparée par axe dans loop()).
+  var PLAYER_R=12;
+  function hitsFurn(x,y){ for(var i=0;i<FURN.length;i++){ var r=FURN[i]; if(x>r.x-PLAYER_R && x<r.x+r.w+PLAYER_R && y>r.y-PLAYER_R && y<r.y+r.h+PLAYER_R) return true; } return false; }
 
   var S = { status:'play', actState:'none', consoleOn:false };
   var G = {};
@@ -246,9 +258,13 @@
     var playing = S.status==='play';
     if(playing && !G.flash){
       var mag=Math.hypot(G.move.x, G.move.y);
-      if(G.stickActive && mag>0.06){ var spd=2.9; G.bx+=G.move.x*spd; G.by+=G.move.y*spd; G.tgt={x:G.bx,y:G.by}; }
-      else { var dx=G.tgt.x-G.bx, dy=G.tgt.y-G.by, d=Math.hypot(dx,dy), spd2=2.6; if(d>spd2){ G.bx+=dx/d*spd2; G.by+=dy/d*spd2; } else { G.bx=G.tgt.x; G.by=G.tgt.y; } }
-      G.bx=Math.max(12, Math.min(WORLD_W-12, G.bx)); G.by=Math.max(12, Math.min(WORLD_H-12, G.by));
+      var nx=G.bx, ny=G.by;
+      if(G.stickActive && mag>0.06){ var spd=2.9; nx=G.bx+G.move.x*spd; ny=G.by+G.move.y*spd; }
+      else { var dx=G.tgt.x-G.bx, dy=G.tgt.y-G.by, d=Math.hypot(dx,dy), spd2=2.6; if(d>spd2){ nx=G.bx+dx/d*spd2; ny=G.by+dy/d*spd2; } else { nx=G.tgt.x; ny=G.tgt.y; } }
+      nx=Math.max(12, Math.min(WORLD_W-12, nx)); ny=Math.max(12, Math.min(WORLD_H-12, ny));
+      // meubles solides : collision séparée par axe (on LONGE le meuble mais on ne le traverse pas)
+      if(!hitsFurn(nx, G.by)) G.bx=nx; if(!hitsFurn(G.bx, ny)) G.by=ny;
+      if(G.stickActive && mag>0.06) G.tgt={x:G.bx,y:G.by};
     }
     G.cam.x=Math.max(0, Math.min(WORLD_W-VPW, G.bx-VPW/2));
     G.cam.y=Math.max(0, Math.min(WORLD_H-VPH, G.by-VPH/2));
@@ -269,11 +285,11 @@
     for(var ci=0; ci<CAMS.length; ci++){ var c=CAMS[ci]; if(camBlinded(c,segs)) continue;
       var a=camAngle(c); var vx=G.bx-c.x, vy=G.by-c.y, dist=Math.hypot(vx,vy); if(dist>c.range) continue;
       var look=Math.atan2(vy,vx); var diff=Math.abs(Math.atan2(Math.sin(look-a),Math.cos(look-a)));
-      if(diff<c.half && !occluded(c.x,c.y,G.bx,G.by)){ seen=true; break; } }
+      if((dist<=PROX_R || diff<c.half) && !occluded(c.x,c.y,G.bx,G.by)){ seen=true; break; } }
     if(!seen){ for(var gi=0; gi<GUARDS.length; gi++){ var g=GUARDS[gi]; if(g.frozen>0) continue; var gp=guardPos(g); var ang=guardAngle(g);
       var vx2=G.bx-gp.x, vy2=G.by-gp.y, dist2=Math.hypot(vx2,vy2); if(dist2>g.range) continue;
       var look2=Math.atan2(vy2,vx2); var diff2=Math.abs(Math.atan2(Math.sin(look2-ang),Math.cos(look2-ang)));
-      if(diff2<g.half && !occluded(gp.x,gp.y,G.bx,G.by)){ seen=true; break; } } }
+      if((dist2<=PROX_R || diff2<g.half) && !occluded(gp.x,gp.y,G.bx,G.by)){ seen=true; break; } } }
 
     if(playing && !G.flash){
       G.det += seen ? DET_RATE : -3.2; G.det=Math.max(0,Math.min(100,G.det));

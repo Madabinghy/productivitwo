@@ -460,10 +460,25 @@
     var lo={x:Math.min(x1,x2)-m, y:Math.min(y1,y2)-m}, hi={x:Math.max(x1,x2)+m, y:Math.max(y1,y2)+m};
     return !(r.x+r.w<lo.x || r.x>hi.x || r.y+r.h<lo.y || r.y>hi.y);
   }
+  // BFS grille grossière : existe-t-il un chemin a→b en contournant les meubles solides (gonflés de pr) ?
+  function ombresPathClear(FURN, W, H, a, b, pr){
+    var STEP=28, cols=Math.max(1,Math.ceil(W/STEP)), rows=Math.max(1,Math.ceil(H/STEP));
+    var blocked=function(wx,wy){ for(var i=0;i<FURN.length;i++){ var r=FURN[i];
+      if(wx>r.x-pr && wx<r.x+r.w+pr && wy>r.y-pr && wy<r.y+r.h+pr) return true; } return false; };
+    var toC=function(p){ return { cx:Math.max(0,Math.min(cols-1,Math.round(p.x/STEP))), cy:Math.max(0,Math.min(rows-1,Math.round(p.y/STEP))) }; };
+    var sA=toC(a), sB=toC(b), seen={}, q=[sA]; seen[sA.cy*cols+sA.cx]=1;
+    var D=[[1,0],[-1,0],[0,1],[0,-1]], head=0;
+    while(head<q.length){ var c=q[head++]; if(c.cx===sB.cx && c.cy===sB.cy) return true;
+      for(var d=0;d<4;d++){ var ncx=c.cx+D[d][0], ncy=c.cy+D[d][1];
+        if(ncx<0||ncy<0||ncx>=cols||ncy>=rows) continue; var k=ncy*cols+ncx; if(seen[k]) continue; seen[k]=1;
+        if(!blocked(ncx*STEP, ncy*STEP)) q.push({cx:ncx,cy:ncy}); } }
+    return false;
+  }
   function genOmbres(seed,diff){
     diff=Math.max(1,Math.min(3,(diff|0)||1));
     var rnd=mulberry32(((seed|0)>>>0)+diff*31337+7);
-    var nMid=[3,4,5][diff-1], camBudget=[3,4,6][diff-1], guardBudget=[1,1,2][diff-1];
+    // Cartes plus grandes (vraies missions) : plus de bandes + plus de détecteurs avec la difficulté.
+    var nMid=[4,6,8][diff-1], camBudget=[4,6,9][diff-1], guardBudget=[1,2,3][diff-1], nSentinel=[1,2,3][diff-1];
     var H=VB+nMid*MB+EB;
     for(var attempt=0; attempt<80; attempt++){
       var FURN=[], CAMS=[], GUARDS=[], SOCKETS=[], cn=1, sn=1;
@@ -499,6 +514,9 @@
         camSlots.push({ x:sd?60:500, y:VB+b2*MB+60+Math.floor(rnd()*80), dir:sd?0:Math.PI, range:230 }); }
       camSlots.slice(0,camBudget-1).forEach(function(c){
         CAMS.push({ id:'c'+(cn++), x:c.x, y:c.y, dir:c.dir, sweep:0.45+rnd()*0.2, phase:rnd()*6.28, range:c.range, half:0.36+rnd()*0.05 }); });
+      // Sentinelles de couloir : montées au mur, cône visant LE LONG du bord (anti longe-mur).
+      for(var sv=0; sv<nSentinel; sv++){ var swall=(sv%2===0), sb=1+Math.floor(rnd()*Math.max(1,nMid-1));
+        CAMS.push({ id:'c'+(cn++), x:swall?40:OW-40, y:VB+sb*MB, dir:Math.PI/2, sweep:0.32, phase:rnd()*6.28, range:340, half:0.30, sentinel:true }); }
       for(var i3=guardSlots.length-1;i3>0;i3--){ var j3=Math.floor(rnd()*(i3+1)); var t3=guardSlots[i3]; guardSlots[i3]=guardSlots[j3]; guardSlots[j3]=t3; }
       while(guardSlots.length<guardBudget){ var b3=Math.floor(rnd()*nMid);
         guardSlots.push({ y:VB+b3*MB+100, patrol:120+Math.floor(rnd()*3)*20 }); }
@@ -516,14 +534,17 @@
       var beam=[ [SOURCE.x,y1,MIRRORS[0].x,y1], [MIRRORS[0].x,y1,MIRRORS[0].x,y2], [MIRRORS[1].x,y2,SENSOR.x,y2],
                  [MIRRORS[1].x,y2,flip?60:500,y2] ];
       beam.forEach(function(sg){ if(FURN.some(function(r){ return segRectHit(sg[0],sg[1],sg[2],sg[3],r,6); })) ok=false; });
-      // couverture : chaque caméra a un meuble-abri à portée
-      CAMS.forEach(function(c){ if(!FURN.some(function(r){ var fx=r.x+r.w/2, fy=r.y+r.h/2;
+      // couverture : chaque caméra (hors sentinelle de couloir) a un meuble-abri à portée
+      CAMS.forEach(function(c){ if(c.sentinel) return; if(!FURN.some(function(r){ var fx=r.x+r.w/2, fy=r.y+r.h/2;
         return Math.hypot(fx-c.x,fy-c.y)<c.range*0.9 && Math.abs(fy-c.y)<140; })) ok=false; });
       // points clés dégagés (personne ne spawn/interagit dans un meuble)
       [[START.x,START.y],[CONSOLE.x,CONSOLE.y],[VAULT.x,VAULT.y],[SENSOR.x,SENSOR.y],[MIRRORS[0].x,y1],[MIRRORS[1].x,y2]].forEach(function(pt){
         if(FURN.some(function(r){ return pt[0]>=r.x-24 && pt[0]<=r.x+r.w+24 && pt[1]>=r.y-24 && pt[1]<=r.y+r.h+24; })) ok=false; });
       // socles : jamais dans un meuble
       SOCKETS.forEach(function(s){ if(FURN.some(function(r){ return s.x>=r.x-14 && s.x<=r.x+r.w+14 && s.y>=r.y-14 && s.y<=r.y+r.h+14; })) ok=false; });
+      // meubles SOLIDES : un chemin doit rester praticable (sinon un meuble mure le passage)
+      if(ok && !ombresPathClear(FURN, OW, H, START, CONSOLE, 12)) ok=false;
+      if(ok && !ombresPathClear(FURN, OW, H, CONSOLE, VAULT, 12)) ok=false;
       if(!ok) continue;
       return { WORLD_W:OW, WORLD_H:H, START:START, VAULT:VAULT, CONSOLE:CONSOLE,
         CAMS:CAMS, GUARDS:GUARDS, FURN:FURN, SOCKETS:SOCKETS,
