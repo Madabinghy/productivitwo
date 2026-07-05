@@ -16,9 +16,10 @@ export function drawWorld(game, ctx, th, t) {
   const { EDGES, WALLS, CANDLES } = game; const ui = game.ui;
   const A = th.accent;
 
-  // texture de grille de fond
+  // texture de grille de fond — un peu plus marquée pour que le SOL reste lisible une fois
+  // éclairé de nuit (le cône du Commander révèle alors une vraie grille, pas du noir uni).
   ctx.save();
-  ctx.globalAlpha = 0.18; ctx.strokeStyle = A; ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.30; ctx.strokeStyle = A; ctx.lineWidth = 1;
   for (let x = 0; x <= MAP.W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, MAP.H); ctx.stroke(); }
   for (let y = 0; y <= MAP.H; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(MAP.W, y); ctx.stroke(); }
   ctx.restore();

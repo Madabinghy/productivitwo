@@ -39,16 +39,18 @@ export function drawFog(game, ctx, th, tx, ty) {
   }
   ctx.restore();
 
-  // lumière chaude (additive) : la bulle + le cône sont ÉCLAIRÉS, façon lampe
+  // Lumière chaude (additive, façon lampe) : le sol du manoir est TRÈS sombre, alors dévoiler
+  // (destination-out) ne suffit pas — on ÉCLAIRE réellement la bulle + le cône pour que le sol,
+  // la grille et les salles deviennent lisibles. Lumière blanc-chaud, dégradé du centre au bord.
   if (H) {
     const sx = H.x + tx, sy = H.y + ty;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const hr = NIGHT_HALO * 1.1;
+    const hr = NIGHT_HALO * 1.15;
     const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, hr);
-    halo.addColorStop(0, 'rgba(255,209,134,.36)'); halo.addColorStop(0.6, 'rgba(255,185,98,.13)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
+    halo.addColorStop(0, 'rgba(255,238,205,.42)'); halo.addColorStop(0.55, 'rgba(255,214,150,.22)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(sx, sy, hr, 0, 7); ctx.fill();
     const cone = ctx.createRadialGradient(sx, sy, 0, sx, sy, NIGHT_CONE);
-    cone.addColorStop(0, 'rgba(255,209,134,.24)'); cone.addColorStop(0.7, 'rgba(255,185,98,.08)'); cone.addColorStop(1, 'rgba(0,0,0,0)');
+    cone.addColorStop(0, 'rgba(255,236,200,.34)'); cone.addColorStop(0.45, 'rgba(255,210,150,.18)'); cone.addColorStop(0.78, 'rgba(255,192,112,.07)'); cone.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.arc(sx, sy, NIGHT_CONE, dir - half, dir + half); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
