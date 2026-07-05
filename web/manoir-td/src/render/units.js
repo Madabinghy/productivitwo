@@ -79,11 +79,16 @@ function drawTortueUnit(game, ctx, th, t, u) {
     ctx.save(); ctx.translate(u.x, u.y);
     if (!built) ctx.globalAlpha = 0.3 + (u.prog || 0) * 0.5;
     const cannons = u.cannons || [];
+    // La logique jeu calcule les angles en repère BOUSSOLE (0 = haut, via compass()/sin,-cos).
+    // drawTortue attend shellRot/aim en repère math STANDARD (0 = droite, via cos/sin) :
+    // standard = boussole − 90. (face fonctionne tel quel : une tête en -y tournée d'un angle
+    // boussole retombe juste ; les canons, eux, utilisent cos/sin → il FAUT convertir, sinon
+    // les fûts pointent à 90° de la cible — « les canons tirent mais ne visent pas ».)
     drawTortue(ctx, t, {
       t: tt,
       face: ((u.bodyDir || 0)) * Math.PI / 180,      // orientation du corps (marche)
-      shellRot: (u.carapace != null ? u.carapace : 180),
-      aim: cannons.length ? cannons.map(c => c.angle) : null,
+      shellRot: (u.carapace != null ? u.carapace : 180) - 90,
+      aim: cannons.length ? cannons.map(c => c.angle - 90) : null,
       recoil: cannons.length ? cannons.map(c => c.recoil || 0) : [0, 0, 0, 0],
       gaitAmp: u.moveTarget ? 1 : 0,
       clock: t,
