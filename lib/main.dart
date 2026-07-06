@@ -6584,9 +6584,9 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
-        // Compteur global de nuisibles (transposé du HUD web « Le Monde »).
-        // Coupé avec la couche jeu (kGameLayerEnabled).
-        if (kGameLayerEnabled) PestCounterCard(logic: logic),
+        // Compteur global de retards (version neutre du compteur de nuisibles
+        // du jeu — mêmes données, présentation productivité).
+        PestCounterCard(logic: logic),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

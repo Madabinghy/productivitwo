@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 
-/// Compteur global de nuisibles (transposé du HUD web « Le Monde ») :
-/// 🕷️ routines · 🦂 activités-temps · 🐍 tâches en retard, tous domaines.
+/// Compteur global de retards (données du moteur monde, présentation neutre) :
+/// routines · activités-temps · tâches en retard, tous domaines.
 /// Tap → panneau de stats avec comparatif hebdomadaire (jours tenus).
 class PestCounterCard extends StatelessWidget {
   final AppLogic logic;
   const PestCounterCard({super.key, required this.logic});
+
+  // Icônes neutres à la place des nuisibles du jeu (🕷️/🦂/🐍).
+  static const IconData _routineIcon = Icons.loop;
+  static const IconData _timeIcon = Icons.timer_outlined;
+  static const IconData _taskIcon = Icons.check_box_outlined;
 
   @override
   Widget build(BuildContext context) {
@@ -25,17 +30,17 @@ class PestCounterCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                Text('Nuisibles',
+                Text('Retards',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                         color: cs.onSurface.withOpacity(.7))),
                 const Spacer(),
-                _chip(context, '🕷️', t.spiders),
+                _chip(context, _routineIcon, t.spiders),
                 const SizedBox(width: 14),
-                _chip(context, '🦂', t.scorpions),
+                _chip(context, _timeIcon, t.scorpions),
                 const SizedBox(width: 14),
-                _chip(context, '🐍', t.snakes),
+                _chip(context, _taskIcon, t.snakes),
                 const SizedBox(width: 6),
                 Icon(Icons.chevron_right,
                     size: 18, color: cs.onSurface.withOpacity(.35)),
@@ -47,10 +52,10 @@ class PestCounterCard extends StatelessWidget {
     );
   }
 
-  Widget _chip(BuildContext context, String emoji, int n) {
+  Widget _chip(BuildContext context, IconData icon, int n) {
     final cs = Theme.of(context).colorScheme;
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Text(emoji, style: const TextStyle(fontSize: 16)),
+      Icon(icon, size: 17, color: cs.onSurface.withOpacity(.55)),
       const SizedBox(width: 4),
       Text('$n',
           style: TextStyle(
@@ -71,22 +76,22 @@ class PestCounterCard extends StatelessWidget {
       builder: (ctx) {
         final cs = Theme.of(ctx).colorScheme;
         return AlertDialog(
-          title: const Text('Nuisibles', style: TextStyle(fontSize: 17)),
+          title: const Text('Retards', style: TextStyle(fontSize: 17)),
           content: SizedBox(
             width: 320,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _statRow(ctx, '🕷️', 'Routines', totals.spiders,
+                _statRow(ctx, _routineIcon, 'Routines', totals.spiders,
                     thisWk.routineDays,
                     thisWk.routineDays - lastWk.routineDays, 'jours tenus'),
                 const Divider(height: 18),
-                _statRow(ctx, '🦂', 'Activités-temps', totals.scorpions,
+                _statRow(ctx, _timeIcon, 'Activités-temps', totals.scorpions,
                     thisWk.activityDays,
                     thisWk.activityDays - lastWk.activityDays, 'jours sur cible'),
                 const Divider(height: 18),
-                _statRow(ctx, '🐍', 'Tâches en retard', totals.snakes, null,
+                _statRow(ctx, _taskIcon, 'Tâches en retard', totals.snakes, null,
                     null, null),
                 const SizedBox(height: 10),
                 Text(
@@ -106,7 +111,7 @@ class PestCounterCard extends StatelessWidget {
     );
   }
 
-  Widget _statRow(BuildContext context, String emoji, String label, int alive,
+  Widget _statRow(BuildContext context, IconData icon, String label, int alive,
       int? weekWins, int? delta, String? winsLabel) {
     final cs = Theme.of(context).colorScheme;
     final deltaStr = delta == null ? null : (delta >= 0 ? '+$delta' : '$delta');
@@ -114,7 +119,7 @@ class PestCounterCard extends StatelessWidget {
         ? cs.onSurface.withOpacity(.5)
         : (delta > 0 ? const Color(0xFF22C55E) : const Color(0xFFEF4444));
     return Row(children: [
-      Text(emoji, style: const TextStyle(fontSize: 24)),
+      Icon(icon, size: 24, color: cs.onSurface.withOpacity(.6)),
       const SizedBox(width: 12),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -131,7 +136,7 @@ class PestCounterCard extends StatelessWidget {
         Text('$alive',
             style:
                 const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
-        Text('vivants',
+        Text('en retard',
             style:
                 TextStyle(fontSize: 9, color: cs.onSurface.withOpacity(.45))),
         if (deltaStr != null)
