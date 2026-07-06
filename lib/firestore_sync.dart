@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
@@ -138,11 +138,60 @@ class FirestoreSync {
   }
 
   // ── Push ────────────────────────────────────────────────────────────────────
+  //
+  // Push DELTA réel : on garde en mémoire l'empreinte JSON du dernier état
+  // poussé (ou lu du remote) par doc, et on n'écrit QUE les docs nouveaux ou
+  // modifiés. Avant : chaque save débouncé réécrivait les 8 collections
+  // ENTIÈRES (sessions + activités + routines + hits…) → des dizaines de
+  // milliers d'écritures Firestore par jour pour de simples coches.
+  //
+  // Au premier push d'une session (cache vide), la collection distante est lue
+  // une fois : elle sert à la réconciliation des hard-deletes ET à amorcer le
+  // cache (un doc identique au remote n'est pas réécrit — les lectures coûtent
+  // ~10× moins cher que les écritures).
 
-  Future<void> pushAll(AppState st) => pushDeltas(st);
+  final Map<String, Map<String, String>> _pushedJson = {};
+  final Set<String> _reconciledCollections = {};
+  String? _pushedMetaJson;
+  String? _pushCacheUid;
+
+  /// Encodage canonique (clés triées récursivement) pour comparer deux
+  /// versions d'un doc — l'ordre des clés du remote peut différer du toJson.
+  static Object? _canon(Object? v) {
+    if (v is Map) {
+      final keys = v.keys.map((k) => k.toString()).toList()..sort();
+      return {for (final k in keys) k: _canon(v[k])};
+    }
+    if (v is List) return v.map(_canon).toList();
+    if (v is num || v is bool || v is String || v == null) return v;
+    return v.toString(); // DateTime, Timestamp… — seule l'égalité compte
+  }
+
+  @visibleForTesting
+  static String stableJson(Map m) => jsonEncode(_canon(m));
+
+  static String _stableJson(Map m) => stableJson(m);
+
+  void _resetPushCacheIfUserChanged() {
+    if (_pushCacheUid == uid) return;
+    _pushedJson.clear();
+    _reconciledCollections.clear();
+    _pushedMetaJson = null;
+    _pushCacheUid = uid;
+  }
+
+  /// Push complet forcé (connexion, seed de compte) : invalide le cache delta
+  /// puis re-diffe tout contre le remote.
+  Future<void> pushAll(AppState st) {
+    _pushedJson.clear();
+    _reconciledCollections.clear();
+    _pushedMetaJson = null;
+    return pushDeltas(st);
+  }
 
   Future<void> pushDeltas(AppState st) async {
     if (uid == null) return;
+    _resetPushCacheIfUserChanged();
     try {
       await Future.wait([
         _pushCollection(st.domains.map((e) => e.toJson()).toList(), 'domains'),
@@ -153,32 +202,88 @@ class FirestoreSync {
         _pushCollection(st.redemptions.map((e) => e.toJson()).toList(), 'redemptions'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
-        _meta().set(_encodeMeta(st), SetOptions(merge: true)),
+        _pushMeta(st),
       ]);
     } catch (_) {}
+  }
+
+  /// Le doc meta n'est réécrit que si son contenu a changé. `lastSync`
+  /// (serverTimestamp, jamais lu nulle part) est exclu de l'empreinte.
+  Future<void> _pushMeta(AppState st) async {
+    final metaMap = _encodeMeta(st);
+    final probe = Map<String, dynamic>.from(metaMap)..remove('lastSync');
+    final json = _stableJson(probe);
+    if (json == _pushedMetaJson) return;
+    await _meta().set(metaMap, SetOptions(merge: true));
+    _pushedMetaJson = json;
   }
 
   Future<void> _pushCollection(
       List<Map<String, dynamic>> items, String name) async {
     final col = _col(name);
-    final batch = _db.batch();
-    final existing = await col.get();
-    final localIds = items.map((e) => e['id'] as String).toSet();
-    for (final doc in existing.docs) {
-      if (!localIds.contains(doc.id)) {
+    final cache = _pushedJson.putIfAbsent(name, () => <String, String>{});
+
+    // Premier push de la session : lecture unique du remote pour (1) réconcilier
+    // les hard-deletes, (2) amorcer le cache — un doc local identique au remote
+    // ne sera pas réécrit. Ensuite, plus aucune lecture : les suppressions
+    // passent par le soft-delete (deleted:true), qui est un delta normal.
+    final deletes = <DocumentReference>[];
+    if (!_reconciledCollections.contains(name)) {
+      final existing = await col.get();
+      final localIds = items.map((e) => e['id'] as String).toSet();
+      for (final doc in existing.docs) {
         final data = doc.data() as Map<String, dynamic>?;
-        final isDeleted = data?['deleted'] == true;
-        if (isDeleted) {
-          // Item soft-deleted : on peut hard-delete maintenant que le local ne l'a plus
-          batch.delete(doc.reference);
+        if (localIds.contains(doc.id)) {
+          if (data != null) cache[doc.id] = _stableJson(data);
+        } else if (data?['deleted'] == true) {
+          // Item soft-deleted que le local n'a plus : hard-delete. Sinon (créé
+          // par MCP pendant que l'app tournait) : laisser, mergé au prochain pull.
+          deletes.add(doc.reference);
         }
-        // Sinon : item créé par MCP pendant que l'app tournait → laisser, sera mergé au prochain pull
       }
+      _reconciledCollections.add(name);
     }
+
+    // Ne garde que les docs nouveaux ou réellement modifiés.
+    final changed = <String, Map<String, dynamic>>{};
+    final encoded = <String, String>{};
     for (final item in items) {
-      batch.set(col.doc(item['id'] as String), item);
+      final id = item['id'] as String;
+      final json = _stableJson(item);
+      if (cache[id] == json) continue;
+      changed[id] = item;
+      encoded[id] = json;
     }
-    await batch.commit();
+    if (deletes.isEmpty && changed.isEmpty) return;
+
+    // Batches ≤ 450 opérations (limite Firestore : 500 — l'ancien code plantait
+    // silencieusement au-delà). Le cache n'est mis à jour qu'après commit réussi.
+    var batch = _db.batch();
+    var ops = 0;
+    var pendingIds = <String>[];
+    Future<void> flush() async {
+      if (ops == 0) return;
+      await batch.commit();
+      for (final id in pendingIds) {
+        cache[id] = encoded[id]!;
+      }
+      pendingIds = <String>[];
+      batch = _db.batch();
+      ops = 0;
+    }
+
+    for (final ref in deletes) {
+      batch.delete(ref);
+      ops++;
+      if (ops >= 450) await flush();
+    }
+    for (final entry in changed.entries) {
+      batch.set(col.doc(entry.key), entry.value);
+      pendingIds.add(entry.key);
+      ops++;
+      if (ops >= 450) await flush();
+    }
+    await flush();
   }
 
   // ── Pull ────────────────────────────────────────────────────────────────────
