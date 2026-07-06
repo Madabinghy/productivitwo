@@ -12,15 +12,11 @@ import 'package:productivitwo_v1/web/world_test_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
-import 'package:productivitwo_v1/web/flame_proto_screen.dart';
-import 'package:productivitwo_v1/web/flame_proto2_screen.dart';
 import 'package:productivitwo_v1/prototypes/td_prototype.dart';
 import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
 import 'package:productivitwo_v1/prototypes/level_prototype.dart';
-import 'package:productivitwo_v1/prototypes/rive_poc_screen.dart';
 import 'package:productivitwo_v1/prototypes/expedition_prototype.dart';
 import 'package:productivitwo_v1/web/fluo_data_screen.dart';
-import 'package:productivitwo_v1/web/flame_data_proto_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_routine_types_screen.dart';
@@ -192,18 +188,12 @@ class _AuthGateState extends State<_AuthGate> {
       final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
 
       if (isLocalHost) {
-        // Prototypes moteur de jeu Flame (isolés, sans auth) — évaluation « Le Monde ».
-        if (params['flame'] == '1') return const FlameProtoScreen();
-        if (params['flame'] == '2') return const FlameProto2Screen();
-
         // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
         if (params['proto'] == 'td') return const TdGameScreen();
         // Proto Overworld fluo (héros déplaçable) — sans auth.
         if (params['proto'] == 'world') return const OverworldScreen();
         // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
         if (params['proto'] == 'level') return const LevelScreen();
-        // POC Rive (perso animé chargé depuis le réseau) — sans auth.
-        if (params['proto'] == 'rive') return const RivePocScreen();
         // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
         if (params['proto'] == 'expedition') return const ExpeditionScreen();
         // Aperçus refonte « Soft Pop » (sans auth ni données). Les écrans sont des
@@ -298,7 +288,7 @@ class _AuthGateState extends State<_AuthGate> {
           );
         }
         if (snapshot.hasError || snapshot.data == null) {
-          // En localhost, les pages de DÉV (worldtest / mobilepreview / flame=3)
+          // En localhost, les pages de DÉV (worldtest / mobilepreview)
           // exigent une vraie session → on bascule direct sur le dev-login (token
           // pré‑rempli depuis l'URL ou le localStorage) plutôt que l'auth publique.
           final p = Uri.base.queryParameters;
@@ -308,7 +298,6 @@ class _AuthGateState extends State<_AuthGate> {
               localhost &&
               (p['worldtest'] == 'true' ||
                   p['mobilepreview'] == 'true' ||
-                  p['flame'] == '3' ||
                   p['devauth'] == '1')) {
             return DevAuthScreen(
                 onSignedIn: () {
@@ -338,10 +327,6 @@ class _AuthGateState extends State<_AuthGate> {
         if (kIsWeb &&
             Uri.base.queryParameters['worldtest'] == 'true') {
           return WorldTestScreen(sync: FirestoreSync());
-        }
-        // Proto Flame AVEC TES DONNÉES : rend ton vrai WorldLayout en Flame.
-        if (kIsWeb && Uri.base.queryParameters['flame'] == '3') {
-          return FlameDataProtoScreen(sync: FirestoreSync());
         }
         // Protos « avec tes données » (galaxie, RPG, compagnon, défense,
         // village, iso, carte organique) : DEV LOCAL UNIQUEMENT depuis le
