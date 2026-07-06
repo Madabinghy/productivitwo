@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - "lib/**"
+      - "test/**"
       - "pubspec.yaml"
       - "pubspec.lock"
       - ".github/workflows/pr-build.yml"
@@ -33,6 +34,18 @@ jobs:
 
       - name: flutter pub get
         run: flutter pub get
+
+      # Échoue sur les ERREURS d'analyse seulement (les warnings hérités ne
+      # bloquent pas — durcir en retirant le filtre quand ils seront purgés).
+      - name: flutter analyze (erreurs seulement)
+        run: |
+          flutter analyze --no-pub 2>&1 | tee analyze.log
+          if grep -q "error •" analyze.log; then
+            echo "::error::flutter analyze a trouvé des erreurs"; exit 1
+          fi
+
+      - name: flutter test
+        run: flutter test
 
       - name: Build web (compile only, no deploy)
         run: flutter build web --release --no-tree-shake-icons

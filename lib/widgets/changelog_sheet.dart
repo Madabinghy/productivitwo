@@ -10,6 +10,11 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.42', '6 juillet 2026', [
+    (Icons.today_outlined, 'Nouvel onglet « Aujourd\'hui » : ton programme horaire du jour, avec une bascule « Demain » pour préparer la journée suivante la veille (ajoute des blocs à la main, ou demande à Claude/ORION de planifier)'),
+    (Icons.play_circle_outline, 'L\'onglet « Maintenant » (chrono, focus, programme en cours) prend la place de l\'onglet Manoir — retour à une vraie app de productivité'),
+    (Icons.videogame_asset_off_outlined, 'Couche jeu mise en veille : Manoir d\'Ombrelune, compteur de nuisibles et mise du jour sont retirés de l\'interface (tes données sont conservées — rien n\'est perdu)'),
+  ]),
   _Entry('6.41', '19 juin 2026', [
     (Icons.bug_report, 'Combat (web + mobile) : on ne tape plus un jour précis du calendrier — les libellés de jours sont retirés et le canon vise la PREMIÈRE araignée (le jour manqué le plus ancien). Tirer la tue et fait avancer la vague'),
     (Icons.cleaning_services, 'Rattrapage : valider une routine rattrape le jour manqué le plus ancien, et tu peux enchaîner pour nettoyer toute la ligne par l\'effort (même mécanique pour les scorpions des activités). Le bandeau de pastilles reste comme repère de régularité'),

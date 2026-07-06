@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
 
@@ -92,7 +93,9 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           const SizedBox(height: 20),
 
           // ── Or provisoire du jour (crédité au total ce soir) ──────────────
-          Builder(builder: (_) {
+          // Coupé avec l'ancienne gamification (kOldGamificationEnabled).
+          if (kOldGamificationEnabled)
+            Builder(builder: (_) {
             final todayXp = logic.provisionalGoldToday();
             if (todayXp <= 0) return const SizedBox.shrink();
             return Padding(
@@ -180,56 +183,59 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           const SizedBox(height: 20),
 
           // ── Badges ────────────────────────────────────────────────────────
-          _sectionHeader(cs, icon: Icons.emoji_events_outlined, title: 'Badges & XP'),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                Icon(Icons.star, size: 16, color: cs.primary),
-                const SizedBox(width: 6),
-                Text(
-                  '${lv.xp} XP — Niveau ${lv.level} ${lv.title}',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: cs.primary),
-                ),
-              ],
+          // Section coupée avec l'ancienne gamification (kOldGamificationEnabled).
+          if (kOldGamificationEnabled) ...[
+            _sectionHeader(cs, icon: Icons.emoji_events_outlined, title: 'Badges & XP'),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.star, size: 16, color: cs.primary),
+                  const SizedBox(width: 6),
+                  Text(
+                    '${lv.xp} XP — Niveau ${lv.level} ${lv.title}',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (todayBadges.isEmpty)
-            _emptyHint(cs, 'Pas de nouveau badge aujourd\'hui.')
-          else
-            ...todayBadges.map((b) {
-              final meta = badgeMeta(b.id);
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(
-                  children: [
-                    Text(meta.emoji,
-                        style: const TextStyle(fontSize: 18)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(meta.label,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13)),
-                          Text(meta.description,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color:
-                                      cs.onSurface.withOpacity(.5))),
-                        ],
+            if (todayBadges.isEmpty)
+              _emptyHint(cs, 'Pas de nouveau badge aujourd\'hui.')
+            else
+              ...todayBadges.map((b) {
+                final meta = badgeMeta(b.id);
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    children: [
+                      Text(meta.emoji,
+                          style: const TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(meta.label,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13)),
+                            Text(meta.description,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color:
+                                        cs.onSurface.withOpacity(.5))),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }),
+                    ],
+                  ),
+                );
+              }),
+          ],
         ],
       ),
     );

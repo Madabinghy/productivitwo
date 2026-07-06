@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetDemoData = exports.getDemoToken = exports.resolveInvasion = exports.deployDefense = exports.engageInvasion = exports.releaseInvasion = exports.resolveBattle = exports.deployUnit = exports.joinBattle = exports.createBattle = exports.followNuisible = exports.releaseNuisible = exports.superOrionCron = exports.subscribeChallenge = exports.submitChallenge = exports.recomputeLeaderboards = exports.claimPseudo = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.markPlanItemDone = exports.pushGantt = void 0;
+exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -90,47 +90,10 @@ exports.pushGantt = (0, https_1.onRequest)({ cors: true, invoker: "public" }, as
     }
     res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId !== null && strategicObjectiveId !== void 0 ? strategicObjectiveId : null });
 });
-// ── markPlanItemDone ─────────────────────────────────────────────────────────
-//
-// POST https://markplanitemdone-dzos75b65q-uc.a.run.app
-// Headers: Authorization: Bearer <widget_token>
-// Body: { uid, planItemId, done }
-// Utilisé par le widget iOS interactif pour cocher/décocher une action sans ouvrir l'app.
-exports.markPlanItemDone = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a;
-    if (req.method === "OPTIONS") {
-        res.status(204).send("");
-        return;
-    }
-    if (req.method !== "POST") {
-        res.status(405).json({ error: "Method Not Allowed" });
-        return;
-    }
-    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
-    if (!authHeader.startsWith("Bearer ")) {
-        res.status(401).json({ error: "Missing Authorization header" });
-        return;
-    }
-    const rawToken = authHeader.slice(7).trim();
-    const { uid, planItemId, done } = req.body;
-    if (!uid || !planItemId || typeof done !== "boolean") {
-        res.status(400).json({ error: "Missing required fields: uid, planItemId, done" });
-        return;
-    }
-    const valid = await (0, execute_1.validateToken)(uid, rawToken);
-    if (!valid) {
-        res.status(401).json({ error: "Invalid or revoked token" });
-        return;
-    }
-    const ref = db_1.db.collection(`users/${uid}/dayPlan`).doc(planItemId);
-    const snap = await ref.get();
-    if (!snap.exists) {
-        res.status(404).json({ error: "Plan item not found" });
-        return;
-    }
-    await ref.update({ done, updatedAt: db_1.FieldValue.serverTimestamp() });
-    res.status(200).json({ ok: true });
-});
+// ── markPlanItemDone : SUPPRIMÉ ──────────────────────────────────────────────
+// Écrivait users/{uid}/dayPlan, collection morte depuis la suppression de
+// DayPlanItem (le widget iOS ne l'appelle plus — vérifié dans ios/). Le
+// scheduling passe par daily_schedules + mark_block_done.
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage
@@ -319,18 +282,23 @@ exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", 
 });
 // ── mcpHandler ────────────────────────────────────────────────────────────────
 //
-// URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
+// URL : /mcp/{uid} + header `Authorization: Bearer <token>` (recommandé — un
+// token dans l'URL finit dans les logs proxy/CDN), OU /mcp/{uid}/{token}
+// (legacy, conservé pour les connecteurs déjà configurés).
+// Protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless).
 exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
     }
     const parts = (req.path || "").replace(/^\/+mcp\/*/, "").split("/");
     const uid = parts[0] || "";
-    const token = parts[1] || "";
+    const authHeader = (_a = req.headers["authorization"]) === null || _a === void 0 ? void 0 : _a.trim();
+    const headerToken = (authHeader === null || authHeader === void 0 ? void 0 : authHeader.startsWith("Bearer ")) ? authHeader.slice(7).trim() : "";
+    const token = headerToken || parts[1] || "";
     if (!uid || !token) {
-        res.status(401).json({ error: "URL invalide — format attendu : /mcp/{uid}/{token}" });
+        res.status(401).json({ error: "Auth requise — /mcp/{uid} + header Authorization: Bearer <token> (ou /mcp/{uid}/{token})" });
         return;
     }
     const valid = await (0, execute_1.validateToken)(uid, token);
@@ -342,8 +310,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
     const requests = Array.isArray(body) ? body : [body];
     const responses = [];
     for (const rpc of requests) {
-        const id = (_a = rpc.id) !== null && _a !== void 0 ? _a : null;
-        const method = (_b = rpc.method) !== null && _b !== void 0 ? _b : "";
+        const id = (_b = rpc.id) !== null && _b !== void 0 ? _b : null;
+        const method = (_c = rpc.method) !== null && _c !== void 0 ? _c : "";
         if (id === null && method.startsWith("notifications/"))
             continue;
         if (method === "initialize") {
@@ -363,8 +331,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
             responses.push({ jsonrpc: "2.0", id, result: { prompts: prompts_1.MCP_PROMPTS } });
         }
         else if (method === "prompts/get") {
-            const promptName = (_d = (_c = rpc.params) === null || _c === void 0 ? void 0 : _c.name) !== null && _d !== void 0 ? _d : "";
-            const promptArgs = (_f = (_e = rpc.params) === null || _e === void 0 ? void 0 : _e.arguments) !== null && _f !== void 0 ? _f : {};
+            const promptName = (_e = (_d = rpc.params) === null || _d === void 0 ? void 0 : _d.name) !== null && _e !== void 0 ? _e : "";
+            const promptArgs = (_g = (_f = rpc.params) === null || _f === void 0 ? void 0 : _f.arguments) !== null && _g !== void 0 ? _g : {};
             const prompt = prompts_1.MCP_PROMPTS.find((p) => p.name === promptName);
             if (!prompt) {
                 responses.push({ jsonrpc: "2.0", id, error: { code: -32601, message: `Prompt inconnu : ${promptName}` } });
@@ -408,8 +376,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 responses.push({ jsonrpc: "2.0", id, error: { code: -32000, message: `Rate limit dépassé — réessaie dans ${rl.retryAfterSecs}s` } });
                 continue;
             }
-            const toolName = (_h = (_g = rpc.params) === null || _g === void 0 ? void 0 : _g.name) !== null && _h !== void 0 ? _h : "";
-            const args = (_l = (_j = rpc.params) === null || _j === void 0 ? void 0 : _j.arguments) !== null && _l !== void 0 ? _l : {};
+            const toolName = (_j = (_h = rpc.params) === null || _h === void 0 ? void 0 : _h.name) !== null && _j !== void 0 ? _j : "";
+            const args = (_m = (_l = rpc.params) === null || _l === void 0 ? void 0 : _l.arguments) !== null && _m !== void 0 ? _m : {};
             try {
                 let text = "";
                 if (toolName === "get_user_context") {
@@ -434,10 +402,10 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeUpdateTaskStatus)(uid, args.projectId, args.taskId, args.status);
                 }
                 else if (toolName === "archive_project") {
-                    text = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_m = args.restore) !== null && _m !== void 0 ? _m : false);
+                    text = await (0, execute_1.executeArchiveProject)(uid, args.projectId, (_o = args.restore) !== null && _o !== void 0 ? _o : false);
                 }
                 else if (toolName === "delete_project") {
-                    text = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_o = args.deleteObjective) !== null && _o !== void 0 ? _o : false);
+                    text = await (0, execute_1.executeDeleteProject)(uid, args.projectId, (_p = args.deleteObjective) !== null && _p !== void 0 ? _p : false);
                 }
                 else if (toolName === "create_activity") {
                     text = await (0, execute_1.executeCreateActivity)(uid, args);
@@ -495,7 +463,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         text = `Document introuvable : ${args.documentId}`;
                     }
                     else {
-                        const title = (_q = (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.title) !== null && _q !== void 0 ? _q : args.documentId;
+                        const title = (_r = (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.title) !== null && _r !== void 0 ? _r : args.documentId;
                         await ref.update({ deleted: true });
                         text = `✅ Document "${title}" supprimé.`;
                     }
@@ -627,6 +595,18 @@ function verifyGithubSignature(raw, header, secret) {
     const a = Buffer.from(header);
     const b = Buffer.from(expected);
     return a.length === b.length && (0, crypto_1.timingSafeEqual)(a, b);
+}
+/// Comparaison de secrets en temps constant (via digest sha256 : gère les
+/// longueurs différentes sans fuite de timing). À utiliser pour TOUTE
+/// vérification de secret partagé — jamais `===` sur le secret brut.
+function secretsMatch(provided, expected) {
+    const p = (provided !== null && provided !== void 0 ? provided : "").trim();
+    const e = (expected !== null && expected !== void 0 ? expected : "").trim();
+    if (!p || !e)
+        return false;
+    const hp = (0, crypto_1.createHash)("sha256").update(p).digest();
+    const he = (0, crypto_1.createHash)("sha256").update(e).digest();
+    return (0, crypto_1.timingSafeEqual)(hp, he);
 }
 exports.githubWebhook = (0, https_1.onRequest)({ invoker: "public", secrets: ["GITHUB_WEBHOOK_SECRET"] }, async (req, res) => {
     var _a, _b, _c, _d, _e, _f, _g;
@@ -1800,6 +1780,7 @@ async function extractStructurePreview(client, prevStructure, userMessage, assis
                 "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
             messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
         });
+        (0, models_1.logTokenUsage)("structure_preview", (0, models_1.getModel)("structure_project"), r.usage);
         const txt = r.content.filter((b) => b.type === "text").map((b) => b.text).join("");
         const m = txt.match(/\{[\s\S]*\}/);
         if (!m)
@@ -1933,7 +1914,10 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
         ];
         const revNotifications = [];
         let revComplete = false;
-        while (true) {
+        // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn
+        // boucle jusqu'au timeout de la fonction (coût non borné).
+        const REV_MAX_TURNS = 10;
+        for (let revTurn = 0; revTurn < REV_MAX_TURNS; revTurn++) {
             const response = await client2.messages.create({
                 model: (0, models_1.getModel)("onboarding"),
                 max_tokens: 1536,
@@ -1941,6 +1925,7 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 tools: REVISION_TOOLS,
                 messages: revMessages,
             });
+            (0, models_1.logTokenUsage)("onboarding_revision", (0, models_1.getModel)("onboarding"), response.usage);
             if (response.stop_reason === "end_turn") {
                 const text2 = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
                 // Sauvegarde session révision
@@ -2020,8 +2005,12 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     let onboardingComplete = false;
     let structurePreview = null;
     let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
-    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale)
-    while (true) {
+    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale).
+    // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn boucle
+    // jusqu'au timeout de la fonction (coût non borné) ; au-delà on renvoie le
+    // texte accumulé (fallthrough gracieux ci-dessous).
+    const ONBOARDING_MAX_TURNS = 12;
+    for (let obTurn = 0; obTurn < ONBOARDING_MAX_TURNS; obTurn++) {
         const response = await client.messages.create({
             model: (0, models_1.getModel)("onboarding"),
             max_tokens: 8192, // create_workspace = un gros payload unique (≈40 activités + projet)
@@ -2029,6 +2018,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
             tools: ONBOARDING_TOOLS,
             messages: messages,
         });
+        (0, models_1.logTokenUsage)("onboarding", (0, models_1.getModel)("onboarding"), response.usage);
         if (response.stop_reason === "end_turn") {
             assistantText += response.content
                 .filter((b) => b.type === "text")
@@ -2136,26 +2126,26 @@ const kEntitlementPro = "pro";
 // Firebase uid (on appelle Purchases.logIn(uid) côté app). Pas de logique par
 // type d'event : on stocke expiration_at, la comparaison > now fait le reste.
 exports.revenueCatWebhook = (0, https_1.onRequest)({ invoker: "public", secrets: ["REVENUECAT_WEBHOOK_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     if (req.method !== "POST") {
         res.status(405).json({ error: "Method Not Allowed" });
         return;
     }
-    const expected = ((_a = process.env.REVENUECAT_WEBHOOK_SECRET) !== null && _a !== void 0 ? _a : "").trim();
-    const auth = (_b = req.headers["authorization"]) === null || _b === void 0 ? void 0 : _b.trim();
-    if (!expected || auth !== `Bearer ${expected}`) {
+    const auth = (_a = req.headers["authorization"]) === null || _a === void 0 ? void 0 : _a.trim();
+    const bearer = (auth === null || auth === void 0 ? void 0 : auth.startsWith("Bearer ")) ? auth.slice(7) : undefined;
+    if (!secretsMatch(bearer, process.env.REVENUECAT_WEBHOOK_SECRET)) {
         res.status(401).json({ error: "Unauthorized" });
         return;
     }
     try {
-        const event = ((_d = (_c = req.body) === null || _c === void 0 ? void 0 : _c.event) !== null && _d !== void 0 ? _d : {});
-        const uid = (_e = event.app_user_id) === null || _e === void 0 ? void 0 : _e.trim();
-        const type = (_f = event.type) !== null && _f !== void 0 ? _f : "UNKNOWN";
+        const event = ((_c = (_b = req.body) === null || _b === void 0 ? void 0 : _b.event) !== null && _c !== void 0 ? _c : {});
+        const uid = (_d = event.app_user_id) === null || _d === void 0 ? void 0 : _d.trim();
+        const type = (_e = event.type) !== null && _e !== void 0 ? _e : "UNKNOWN";
         if (!uid) {
             res.status(200).json({ ok: true, skipped: "no app_user_id" });
             return;
         }
-        const entitlements = (_g = event.entitlement_ids) !== null && _g !== void 0 ? _g : null;
+        const entitlements = (_f = event.entitlement_ids) !== null && _f !== void 0 ? _f : null;
         const concernsPro = entitlements === null || entitlements.includes(kEntitlementPro);
         const expMs = event.expiration_at_ms;
         const patch = {
@@ -2164,8 +2154,8 @@ exports.revenueCatWebhook = (0, https_1.onRequest)({ invoker: "public", secrets:
         };
         if (concernsPro && typeof expMs === "number") {
             patch.subscriptionUntil = admin.firestore.Timestamp.fromMillis(expMs);
-            patch.subscriptionStore = (_h = event.store) !== null && _h !== void 0 ? _h : null;
-            patch.subscriptionProductId = (_j = event.product_id) !== null && _j !== void 0 ? _j : null;
+            patch.subscriptionStore = (_g = event.store) !== null && _g !== void 0 ? _g : null;
+            patch.subscriptionProductId = (_h = event.product_id) !== null && _h !== void 0 ? _h : null;
         }
         await db_1.db.collection("formation_access").doc(uid).set(patch, { merge: true });
         res.status(200).json({ ok: true });
@@ -2176,6 +2166,14 @@ exports.revenueCatWebhook = (0, https_1.onRequest)({ invoker: "public", secrets:
         res.status(500).json({ error: "fail" });
     }
 });
+// Throttle anti-brute-force du secret admin : au-delà de N échecs d'auth dans
+// la fenêtre, l'instance répond 429 à tout le monde jusqu'à la fin de la
+// fenêtre. En mémoire (par instance) — pas parfait, mais l'endpoint donne
+// deleteUser/setPro/dump des emails : mieux vaut un garde-fou simple que rien.
+let _adminFailWindowStart = 0;
+let _adminFailCount = 0;
+const _ADMIN_FAIL_MAX = 10;
+const _ADMIN_FAIL_WINDOW_MS = 10 * 60 * 1000;
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     if (req.method === "OPTIONS") {
@@ -2187,7 +2185,18 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         return;
     }
     const { adminSecret, uid, action, payload } = req.body;
-    if (!adminSecret || adminSecret.trim() !== ((_a = process.env.ADMIN_PUSH_SECRET) !== null && _a !== void 0 ? _a : "").trim()) {
+    const now = Date.now();
+    if (now - _adminFailWindowStart > _ADMIN_FAIL_WINDOW_MS) {
+        _adminFailWindowStart = now;
+        _adminFailCount = 0;
+    }
+    if (_adminFailCount >= _ADMIN_FAIL_MAX) {
+        res.status(429).json({ error: "Trop de tentatives — réessaie plus tard" });
+        return;
+    }
+    if (!secretsMatch(adminSecret, process.env.ADMIN_PUSH_SECRET)) {
+        _adminFailCount++;
+        console.warn(`adminProductivitwo: échec d'auth (${_adminFailCount}/${_ADMIN_FAIL_MAX} dans la fenêtre), ip=${(_a = req.ip) !== null && _a !== void 0 ? _a : "?"}`);
         res.status(401).json({ error: "Secret invalide" });
         return;
     }
@@ -2657,11 +2666,12 @@ function hexToColorValue(hex) {
 // ── generateFormationAccess ───────────────────────────────────────────────────
 //
 // POST — appelé par systeme.io après un achat.
-// Secret accepté : header x-webhook-secret OU query param ?secret=xxx OU body.webhookSecret
+// Secret accepté : header x-webhook-secret OU body.webhookSecret (le query
+// param ?secret= n'est plus accepté — fuite dans les logs d'URL)
 // Email accepté : body.email OU body.contact_email OU body.contact.email
 // Retourne { accessUrl } à inclure dans l'email de confirmation systeme.io.
 exports.generateFormationAccess = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["FORMATION_JWT_SECRET", "SYSTEME_IO_WEBHOOK_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -2670,16 +2680,18 @@ exports.generateFormationAccess = (0, https_1.onRequest)({ cors: true, invoker: 
         res.status(405).json({ error: "Method Not Allowed" });
         return;
     }
-    // Secret : header, query param ou body (compatible systeme.io qui ne supporte pas les headers custom)
+    // Secret : header ou body (compatible systeme.io qui ne supporte pas les
+    // headers custom). Le query param `?secret=` n'est PLUS accepté : une URL
+    // finit dans les logs proxy/CDN/referer — l'endpoint crée des comptes.
     const body = req.body;
-    const providedSecret = (_c = (_a = req.headers["x-webhook-secret"]) !== null && _a !== void 0 ? _a : (_b = req.query) === null || _b === void 0 ? void 0 : _b.secret) !== null && _c !== void 0 ? _c : body === null || body === void 0 ? void 0 : body.webhookSecret;
-    if (!providedSecret || providedSecret.trim() !== ((_d = process.env.SYSTEME_IO_WEBHOOK_SECRET) !== null && _d !== void 0 ? _d : "").trim()) {
+    const providedSecret = (_a = req.headers["x-webhook-secret"]) !== null && _a !== void 0 ? _a : body === null || body === void 0 ? void 0 : body.webhookSecret;
+    if (!secretsMatch(providedSecret, process.env.SYSTEME_IO_WEBHOOK_SECRET)) {
         res.status(401).json({ error: "Secret invalide" });
         return;
     }
     // Email : essaie les différents formats que systeme.io peut envoyer
     const contact = body === null || body === void 0 ? void 0 : body.contact;
-    const rawEmail = (_g = (_f = (_e = body === null || body === void 0 ? void 0 : body.email) !== null && _e !== void 0 ? _e : body === null || body === void 0 ? void 0 : body.contact_email) !== null && _f !== void 0 ? _f : contact === null || contact === void 0 ? void 0 : contact.email) !== null && _g !== void 0 ? _g : "";
+    const rawEmail = (_d = (_c = (_b = body === null || body === void 0 ? void 0 : body.email) !== null && _b !== void 0 ? _b : body === null || body === void 0 ? void 0 : body.contact_email) !== null && _c !== void 0 ? _c : contact === null || contact === void 0 ? void 0 : contact.email) !== null && _d !== void 0 ? _d : "";
     const email = rawEmail.trim().toLowerCase();
     if (!email || !email.includes("@")) {
         res.status(400).json({ error: "email requis", received: body });
@@ -2690,7 +2702,7 @@ exports.generateFormationAccess = (0, https_1.onRequest)({ cors: true, invoker: 
         const existing = await admin.auth().getUserByEmail(email);
         uid = existing.uid;
     }
-    catch (_h) {
+    catch (_e) {
         const created = await admin.auth().createUser({ email });
         uid = created.uid;
     }
@@ -2851,27 +2863,12 @@ exports.applyFormationProfile = (0, https_1.onRequest)({ cors: true, invoker: "p
     });
     res.status(200).json({ success: true, uid });
 });
-// ── Couche sociale (Phase 1) ────────────────────────────────────────────────
-var social_1 = require("./social");
-Object.defineProperty(exports, "claimPseudo", { enumerable: true, get: function () { return social_1.claimPseudo; } });
-Object.defineProperty(exports, "recomputeLeaderboards", { enumerable: true, get: function () { return social_1.recomputeLeaderboards; } });
-Object.defineProperty(exports, "submitChallenge", { enumerable: true, get: function () { return social_1.submitChallenge; } });
-Object.defineProperty(exports, "subscribeChallenge", { enumerable: true, get: function () { return social_1.subscribeChallenge; } });
-Object.defineProperty(exports, "superOrionCron", { enumerable: true, get: function () { return social_1.superOrionCron; } });
-Object.defineProperty(exports, "releaseNuisible", { enumerable: true, get: function () { return social_1.releaseNuisible; } });
-Object.defineProperty(exports, "followNuisible", { enumerable: true, get: function () { return social_1.followNuisible; } });
-// ── Bataille de nuisibles (PvP async 1v1) ───────────────────────────────────
-var social_2 = require("./social");
-Object.defineProperty(exports, "createBattle", { enumerable: true, get: function () { return social_2.createBattle; } });
-Object.defineProperty(exports, "joinBattle", { enumerable: true, get: function () { return social_2.joinBattle; } });
-Object.defineProperty(exports, "deployUnit", { enumerable: true, get: function () { return social_2.deployUnit; } });
-Object.defineProperty(exports, "resolveBattle", { enumerable: true, get: function () { return social_2.resolveBattle; } });
-// ── Invasion / Territoires (tower-defense asymétrique + ladder) ──────────────
-var social_3 = require("./social");
-Object.defineProperty(exports, "releaseInvasion", { enumerable: true, get: function () { return social_3.releaseInvasion; } });
-Object.defineProperty(exports, "engageInvasion", { enumerable: true, get: function () { return social_3.engageInvasion; } });
-Object.defineProperty(exports, "deployDefense", { enumerable: true, get: function () { return social_3.deployDefense; } });
-Object.defineProperty(exports, "resolveInvasion", { enumerable: true, get: function () { return social_3.resolveInvasion; } });
+// ── Couche sociale/jeu supprimée (pivot productivité) ────────────────────────
+// Les 16 fonctions de social.ts (leaderboards, défis partagés, batailles,
+// invasions, crons superOrion/recomputeLeaderboards) ont été retirées.
+// Code récupérable sur la branche archive/couche-jeu-complete-2026-07.
+// Au prochain `firebase deploy --only functions`, la CLI proposera de
+// supprimer ces fonctions du projet — accepter.
 // ── Mode démo ────────────────────────────────────────────────────────────────
 const DEMO_UID = "demo-productivitwo";
 async function _seedDemoData(uid) {

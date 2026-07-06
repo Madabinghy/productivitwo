@@ -9,82 +9,11 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
 
-    // ── Couche sociale (Phase 1) ─────────────────────────────────────────────
-    // Lecture publique des profils/classements opt-in ; écriture serveur only.
-    match /profiles/{uid} {
-      allow read: if resource.data.optedIn == true;
-      allow write: if false;
-    }
-    match /pseudos/{p} {
-      allow read: if true;   // vérifier la dispo d'un pseudo
-      allow write: if false;
-    }
-    match /leaderboard_entries/{uid} {
-      allow read: if resource.data.optedIn == true;
-      allow write: if false;
-    }
-    // Bibliothèque de challenges (Phase 2) : lecture publique des approuvés ;
-    // écriture serveur only (super-Orion). Soumissions : créées par l'auteur.
-    match /challenge_library/{id} {
-      allow read: if resource.data.status == 'approved';
-      allow write: if false;
-    }
-    match /challenge_submissions/{id} {
-      allow read: if request.auth != null && request.auth.uid == resource.data.uid;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
-    }
-    // « Le Monde » : routines relâchées en nuisibles publics. Lecture publique
-    // (feed + suivi) ; écriture serveur only (releaseNuisible/followNuisible).
-    // Les combats engagés et suivis vivent sous users/{uid}/world_combats|world_follows
-    // (déjà couverts par la règle self plus haut).
-    match /world_nuisibles/{id} {
-      allow read: if true;
-      allow write: if false;
-    }
-    // Bataille de nuisibles : la partie + son journal d'events sont lisibles par
-    // ses 2 joueurs ; toute écriture passe par les Cloud Functions (create/join/
-    // deploy/resolve via admin → bypass des rules). Aucune écriture cliente.
-    match /battles/{bid} {
-      allow read: if request.auth != null
-        && request.auth.uid in resource.data.players;
-      allow write: if false;
-      match /events/{eid} {
-        allow read: if request.auth != null
-          && request.auth.uid in
-             get(/databases/$(database)/documents/battles/$(bid)).data.players;
-        allow write: if false;
-      }
-    }
-    // Invasion / Territoires : tower-defense asymétrique. Le doc + son journal
-    // d'events sont lisibles par l'envahisseur ET le défenseur (l'envahisseur est
-    // spectateur live ; le défenseur ne voit l'identité de l'attaquant qu'à la
-    // victoire — masquage côté UI tant que revealedToDefender==false, v1). Toute
-    // écriture passe par les Cloud Functions (release/engage/deploy/resolve).
-    match /invasions/{iid} {
-      allow read: if request.auth != null
-        && (request.auth.uid == resource.data.invaderUid
-            || request.auth.uid == resource.data.defenderUid);
-      allow write: if false;
-      match /events/{eid} {
-        allow read: if request.auth != null
-          && (request.auth.uid ==
-                get(/databases/$(database)/documents/invasions/$(iid)).data.invaderUid
-              || request.auth.uid ==
-                get(/databases/$(database)/documents/invasions/$(iid)).data.defenderUid);
-        allow write: if false;
-      }
-    }
-    // Jeu de territoire : la map persistée d'un user (château + grottes + brouillard
-    // + envahisseur). Lisible par le PROPRIÉTAIRE et l'ENVAHISSEUR actif (spectateur
-    // live). Écriture par le propriétaire (trust-client v1 solo ; à durcir en
-    // CF-only quand le PvP serveur-autoritatif arrivera).
-    match /territories/{tid} {
-      allow read: if request.auth != null
-        && (request.auth.uid == tid
-            || (resource.data.invader != null
-                && request.auth.uid == resource.data.invader.attackerUid));
-      allow write: if request.auth != null && request.auth.uid == tid;
-    }
+    // ── Couche sociale/jeu supprimée (pivot productivité) ────────────────────
+    // Les règles des collections publiques du jeu (profiles, pseudos,
+    // leaderboard_entries, challenge_library, challenge_submissions,
+    // world_nuisibles, battles, invasions, territories) ont été retirées :
+    // sans règle explicite, tout accès client est refusé par défaut.
+    // Anciennes règles récupérables sur archive/couche-jeu-complete-2026-07.
   }
 }

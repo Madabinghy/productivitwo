@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 
 // ---------- Constantes ----------
@@ -581,7 +582,8 @@ class AppLogic {
     if (idx >= 0) {
       final act = state.activities[idx];
       // Coût d'or : supprimer une routine (habit) coûte (déduction douce, plancher 0).
-      if (act.isHabit && sync != null) {
+      // Coupé avec l'ancienne gamification (kOldGamificationEnabled).
+      if (kOldGamificationEnabled && act.isHabit && sync != null) {
         sync!.applyGold(GoldLedgerEntry(
           delta: -GoldEconomy.deleteRoutine,
           category: 'loss',

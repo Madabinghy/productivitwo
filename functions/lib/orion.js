@@ -51,7 +51,7 @@ const ORION_TOOLS = [
 ];
 const ORION_MAX_FREE = 1; // Gratuit : 1 cycle/jour
 const ORION_MAX_PRO = 5; // Pro : 5 cycles/jour
-const ORION_MODEL = models_1.MODELS.HAIKU;
+const ORION_MODEL = (0, models_1.getModel)("orion_cycle");
 // ── Config utilisateur ────────────────────────────────────────────────────────
 async function getOrionConfig(uid) {
     var _a, _b, _c, _d;
@@ -250,7 +250,12 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
     const messages = [
         { role: "user", content: firstMessage },
     ];
-    while (continueLoop) {
+    // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn boucle
+    // jusqu'au timeout de la fonction (coût non borné).
+    const MAX_TURNS = 15;
+    let turns = 0;
+    while (continueLoop && turns < MAX_TURNS) {
+        turns++;
         const response = await client.beta.promptCaching.messages.create({
             model: ORION_MODEL,
             max_tokens: 2048,

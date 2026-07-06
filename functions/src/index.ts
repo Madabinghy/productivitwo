@@ -1,7 +1,7 @@
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
 import { processInboxToProjects } from "./orion_inbox";
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
@@ -125,38 +125,10 @@ export const pushGantt = onRequest({ cors: true, invoker: "public" }, async (req
   res.status(200).json({ success: true, projectId, strategicObjectiveId: strategicObjectiveId ?? null });
 });
 
-// ── markPlanItemDone ─────────────────────────────────────────────────────────
-//
-// POST https://markplanitemdone-dzos75b65q-uc.a.run.app
-// Headers: Authorization: Bearer <widget_token>
-// Body: { uid, planItemId, done }
-// Utilisé par le widget iOS interactif pour cocher/décocher une action sans ouvrir l'app.
-
-export const markPlanItemDone = onRequest({ cors: true, invoker: "public" }, async (req, res) => {
-  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-  if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
-
-  const authHeader = req.headers.authorization ?? "";
-  if (!authHeader.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing Authorization header" }); return;
-  }
-  const rawToken = authHeader.slice(7).trim();
-
-  const { uid, planItemId, done } = req.body as { uid: string; planItemId: string; done: boolean };
-  if (!uid || !planItemId || typeof done !== "boolean") {
-    res.status(400).json({ error: "Missing required fields: uid, planItemId, done" }); return;
-  }
-
-  const valid = await validateToken(uid, rawToken);
-  if (!valid) { res.status(401).json({ error: "Invalid or revoked token" }); return; }
-
-  const ref = db.collection(`users/${uid}/dayPlan`).doc(planItemId);
-  const snap = await ref.get();
-  if (!snap.exists) { res.status(404).json({ error: "Plan item not found" }); return; }
-
-  await ref.update({ done, updatedAt: FieldValue.serverTimestamp() });
-  res.status(200).json({ ok: true });
-});
+// ── markPlanItemDone : SUPPRIMÉ ──────────────────────────────────────────────
+// Écrivait users/{uid}/dayPlan, collection morte depuis la suppression de
+// DayPlanItem (le widget iOS ne l'appelle plus — vérifié dans ios/). Le
+// scheduling passe par daily_schedules + mark_block_done.
 
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
@@ -337,17 +309,22 @@ export const sendMagicLink = onRequest(
 
 // ── mcpHandler ────────────────────────────────────────────────────────────────
 //
-// URL : /mcp/{uid}/{token} — protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless)
+// URL : /mcp/{uid} + header `Authorization: Bearer <token>` (recommandé — un
+// token dans l'URL finit dans les logs proxy/CDN), OU /mcp/{uid}/{token}
+// (legacy, conservé pour les connecteurs déjà configurés).
+// Protocole MCP JSON-RPC 2.0 (Streamable HTTP, stateless).
 
 export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
 
   const parts = (req.path || "").replace(/^\/+mcp\/*/, "").split("/");
-  const uid   = parts[0] || "";
-  const token = parts[1] || "";
+  const uid = parts[0] || "";
+  const authHeader = (req.headers["authorization"] as string | undefined)?.trim();
+  const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  const token = headerToken || parts[1] || "";
 
   if (!uid || !token) {
-    res.status(401).json({ error: "URL invalide — format attendu : /mcp/{uid}/{token}" });
+    res.status(401).json({ error: "Auth requise — /mcp/{uid} + header Authorization: Bearer <token> (ou /mcp/{uid}/{token})" });
     return;
   }
 
@@ -620,6 +597,18 @@ function verifyGithubSignature(raw: Buffer, header: string, secret: string): boo
   const a = Buffer.from(header);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/// Comparaison de secrets en temps constant (via digest sha256 : gère les
+/// longueurs différentes sans fuite de timing). À utiliser pour TOUTE
+/// vérification de secret partagé — jamais `===` sur le secret brut.
+function secretsMatch(provided: string | undefined | null, expected: string | undefined | null): boolean {
+  const p = (provided ?? "").trim();
+  const e = (expected ?? "").trim();
+  if (!p || !e) return false;
+  const hp = createHash("sha256").update(p).digest();
+  const he = createHash("sha256").update(e).digest();
+  return timingSafeEqual(hp, he);
 }
 
 export const githubWebhook = onRequest(
@@ -1817,6 +1806,7 @@ async function extractStructurePreview(
         "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
       messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
     });
+    logTokenUsage("structure_preview", getModel("structure_project"), r.usage);
     const txt = r.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) return null;
@@ -1973,7 +1963,10 @@ export const onboardingChat = onRequest(
       const revNotifications: string[] = [];
       let revComplete = false;
 
-      while (true) {
+      // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn
+      // boucle jusqu'au timeout de la fonction (coût non borné).
+      const REV_MAX_TURNS = 10;
+      for (let revTurn = 0; revTurn < REV_MAX_TURNS; revTurn++) {
         const response = await client2.messages.create({
           model: getModel("onboarding"),
           max_tokens: 1536,
@@ -1981,6 +1974,7 @@ export const onboardingChat = onRequest(
           tools: REVISION_TOOLS as Parameters<typeof client2.messages.create>[0]["tools"],
           messages: revMessages as Parameters<typeof client2.messages.create>[0]["messages"],
         });
+        logTokenUsage("onboarding_revision", getModel("onboarding"), response.usage);
 
         if (response.stop_reason === "end_turn") {
           const text2 = response.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
@@ -2068,8 +2062,12 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     let structurePreview: unknown = null;
     let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
 
-    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale)
-    while (true) {
+    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale).
+    // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn boucle
+    // jusqu'au timeout de la fonction (coût non borné) ; au-delà on renvoie le
+    // texte accumulé (fallthrough gracieux ci-dessous).
+    const ONBOARDING_MAX_TURNS = 12;
+    for (let obTurn = 0; obTurn < ONBOARDING_MAX_TURNS; obTurn++) {
       const response = await client.messages.create({
         model: getModel("onboarding"),
         max_tokens: 8192, // create_workspace = un gros payload unique (≈40 activités + projet)
@@ -2077,6 +2075,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
         tools: ONBOARDING_TOOLS as Parameters<typeof client.messages.create>[0]["tools"],
         messages: messages as Parameters<typeof client.messages.create>[0]["messages"],
       });
+      logTokenUsage("onboarding", getModel("onboarding"), response.usage);
 
       if (response.stop_reason === "end_turn") {
         assistantText += response.content
@@ -2197,9 +2196,9 @@ export const revenueCatWebhook = onRequest(
   { invoker: "public", secrets: ["REVENUECAT_WEBHOOK_SECRET"] },
   async (req, res) => {
     if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
-    const expected = (process.env.REVENUECAT_WEBHOOK_SECRET ?? "").trim();
     const auth = (req.headers["authorization"] as string | undefined)?.trim();
-    if (!expected || auth !== `Bearer ${expected}`) {
+    const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+    if (!secretsMatch(bearer, process.env.REVENUECAT_WEBHOOK_SECRET)) {
       res.status(401).json({ error: "Unauthorized" }); return;
     }
     try {
@@ -2231,6 +2230,15 @@ export const revenueCatWebhook = onRequest(
   }
 );
 
+// Throttle anti-brute-force du secret admin : au-delà de N échecs d'auth dans
+// la fenêtre, l'instance répond 429 à tout le monde jusqu'à la fin de la
+// fenêtre. En mémoire (par instance) — pas parfait, mais l'endpoint donne
+// deleteUser/setPro/dump des emails : mieux vaut un garde-fou simple que rien.
+let _adminFailWindowStart = 0;
+let _adminFailCount = 0;
+const _ADMIN_FAIL_MAX = 10;
+const _ADMIN_FAIL_WINDOW_MS = 10 * 60 * 1000;
+
 export const adminProductivitwo = onRequest(
   { cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] },
   async (req, res) => {
@@ -2244,7 +2252,18 @@ export const adminProductivitwo = onRequest(
       payload?: Record<string, unknown>;
     };
 
-    if (!adminSecret || adminSecret.trim() !== (process.env.ADMIN_PUSH_SECRET ?? "").trim()) {
+    const now = Date.now();
+    if (now - _adminFailWindowStart > _ADMIN_FAIL_WINDOW_MS) {
+      _adminFailWindowStart = now;
+      _adminFailCount = 0;
+    }
+    if (_adminFailCount >= _ADMIN_FAIL_MAX) {
+      res.status(429).json({ error: "Trop de tentatives — réessaie plus tard" });
+      return;
+    }
+    if (!secretsMatch(adminSecret, process.env.ADMIN_PUSH_SECRET)) {
+      _adminFailCount++;
+      console.warn(`adminProductivitwo: échec d'auth (${_adminFailCount}/${_ADMIN_FAIL_MAX} dans la fenêtre), ip=${req.ip ?? "?"}`);
       res.status(401).json({ error: "Secret invalide" }); return;
     }
 
@@ -2697,7 +2716,8 @@ function hexToColorValue(hex: string): number | null {
 // ── generateFormationAccess ───────────────────────────────────────────────────
 //
 // POST — appelé par systeme.io après un achat.
-// Secret accepté : header x-webhook-secret OU query param ?secret=xxx OU body.webhookSecret
+// Secret accepté : header x-webhook-secret OU body.webhookSecret (le query
+// param ?secret= n'est plus accepté — fuite dans les logs d'URL)
 // Email accepté : body.email OU body.contact_email OU body.contact.email
 // Retourne { accessUrl } à inclure dans l'email de confirmation systeme.io.
 
@@ -2707,13 +2727,14 @@ export const generateFormationAccess = onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
 
-    // Secret : header, query param ou body (compatible systeme.io qui ne supporte pas les headers custom)
+    // Secret : header ou body (compatible systeme.io qui ne supporte pas les
+    // headers custom). Le query param `?secret=` n'est PLUS accepté : une URL
+    // finit dans les logs proxy/CDN/referer — l'endpoint crée des comptes.
     const body = req.body as Record<string, unknown>;
     const providedSecret =
       (req.headers["x-webhook-secret"] as string | undefined) ??
-      (req.query?.secret as string | undefined) ??
       (body?.webhookSecret as string | undefined);
-    if (!providedSecret || providedSecret.trim() !== (process.env.SYSTEME_IO_WEBHOOK_SECRET ?? "").trim()) {
+    if (!secretsMatch(providedSecret, process.env.SYSTEME_IO_WEBHOOK_SECRET)) {
       res.status(401).json({ error: "Secret invalide" });
       return;
     }
@@ -2929,12 +2950,12 @@ export const applyFormationProfile = onRequest(
   }
 );
 
-// ── Couche sociale (Phase 1) ────────────────────────────────────────────────
-export { claimPseudo, recomputeLeaderboards, submitChallenge, subscribeChallenge, superOrionCron, releaseNuisible, followNuisible } from "./social";
-// ── Bataille de nuisibles (PvP async 1v1) ───────────────────────────────────
-export { createBattle, joinBattle, deployUnit, resolveBattle } from "./social";
-// ── Invasion / Territoires (tower-defense asymétrique + ladder) ──────────────
-export { releaseInvasion, engageInvasion, deployDefense, resolveInvasion } from "./social";
+// ── Couche sociale/jeu supprimée (pivot productivité) ────────────────────────
+// Les 16 fonctions de social.ts (leaderboards, défis partagés, batailles,
+// invasions, crons superOrion/recomputeLeaderboards) ont été retirées.
+// Code récupérable sur la branche archive/couche-jeu-complete-2026-07.
+// Au prochain `firebase deploy --only functions`, la CLI proposera de
+// supprimer ces fonctions du projet — accepter.
 
 // ── Mode démo ────────────────────────────────────────────────────────────────
 

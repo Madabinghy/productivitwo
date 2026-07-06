@@ -10,16 +10,12 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
-import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
-import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
-import 'package:productivitwo_v1/web/arena_view.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
@@ -56,11 +52,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    // Onglet « Arène » (ancienne gamification) retiré quand le coupe-circuit est off.
-    _mainTabs = TabController(
-        length: kOldGamificationEnabled ? 5 : 4,
-        vsync: this,
-        initialIndex: 1);
+    // Onglet « Arène » (ancienne gamification) supprimé avec la couche jeu.
+    _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
     _load();
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
@@ -217,12 +210,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             children: [
               TabBar(
                 controller: _mainTabs,
-                tabs: [
-                  const Tab(text: 'Projets'),
-                  const Tab(text: 'Focus'),
-                  if (kOldGamificationEnabled) const Tab(text: 'Arène'),
-                  const Tab(text: 'Organisation'),
-                  const Tab(text: 'ORION'),
+                tabs: const [
+                  Tab(text: 'Projets'),
+                  Tab(text: 'Focus'),
+                  Tab(text: 'Organisation'),
+                  Tab(text: 'ORION'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -281,7 +273,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                         _load();
                       },
                     ),
-                    if (kOldGamificationEnabled) ArenaView(sync: _sync),
                     _ArchivesView(sync: _sync),
                     _OrionView(sync: _sync),
                   ],
@@ -2857,16 +2848,12 @@ class _ProjectCard extends StatelessWidget {
 
   Future<void> _confirmDelete(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
-    final billed = project.status != 'draft';
-    final actions = project.tasks.fold<int>(0, (s, t) => s + t.actions.length);
-    final cost = GoldEconomy.deleteProjectCost(project.tasks.length, actions);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le projet ?'),
         content: Text(
-          'Le projet « ${project.title} » sera supprimé définitivement.'
-          '${billed && cost > 0 ? ' Coût : $cost or (selon son contenu).' : ''}',
+          'Le projet « ${project.title} » sera supprimé définitivement.',
         ),
         actions: [
           TextButton(
@@ -2875,7 +2862,7 @@ class _ProjectCard extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: cs.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(billed && cost > 0 ? 'Supprimer (−$cost or)' : 'Supprimer'),
+            child: const Text('Supprimer'),
           ),
         ],
       ),
@@ -3199,17 +3186,13 @@ class _ArchivedProjectCard extends StatelessWidget {
                     style: TextStyle(
                         fontSize: 12, color: cs.error.withOpacity(0.7))),
                 onPressed: () async {
-                  final cost = GoldEconomy.deleteProjectCost(
-                    project.tasks.length,
-                    project.tasks.fold<int>(0, (s, t) => s + t.actions.length),
-                  );
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('Supprimer définitivement ?'),
                       content: Text(
                         'Le projet "${project.title}" sera supprimé définitivement. '
-                        'Cette action est irréversible et coûte $cost or (selon son contenu).',
+                        'Cette action est irréversible.',
                       ),
                       actions: [
                         TextButton(
@@ -3220,7 +3203,7 @@ class _ArchivedProjectCard extends StatelessWidget {
                           style: FilledButton.styleFrom(
                               backgroundColor: cs.error),
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: Text('Supprimer (−$cost or)'),
+                          child: const Text('Supprimer'),
                         ),
                       ],
                     ),
@@ -5469,40 +5452,7 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
   }
 
   Future<void> _deleteProject(Project p) async {
-    // Coût d'or : proportionnel au contenu (déduction douce). Un joker l'annule.
-    final actions = p.tasks.fold<int>(0, (s, t) => s + t.actions.length);
-    final cost = GoldEconomy.deleteProjectCost(p.tasks.length, actions);
-    // Brouillon = gratuit (jamais entré dans l'économie) ; tout projet réel
-    // (actif / terminé / archivé) coûte à supprimer — « tu paies le ménage ».
-    if (cost > 0 && p.status != 'draft') {
-      var usedJoker = await widget.sync.consumeJoker();
-      if (!usedJoker && mounted) {
-        final bought = await offerBuyConsumable(
-          context,
-          widget.sync,
-          itemKey: 'joker',
-          price: GoldEconomy.shopJoker,
-          label: 'Joker de suppression',
-          rationale: 'Annule le coût de $cost or de cette suppression.',
-        );
-        if (bought) usedJoker = await widget.sync.consumeJoker();
-      }
-      if (usedJoker) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('🗑️ Joker utilisé — suppression gratuite.')));
-        }
-      } else {
-        await widget.sync.applyGold(GoldLedgerEntry(
-          delta: -cost,
-          category: 'loss',
-          reasonCode: 'delete_project',
-          label: 'Suppression du projet « ${p.title} »',
-          refType: 'project',
-          refId: p.id,
-        ));
-      }
-    }
+    // (L'économie d'or du jeu — coût de suppression, joker — a été retirée.)
     await widget.sync.deleteProject(p.id);
     widget.onRefresh();
   }

@@ -6,7 +6,6 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
-import 'package:productivitwo_v1/widgets/daily_stake_card.dart';
 
 class FocusView extends StatefulWidget {
   final AppLogic logic;
@@ -137,7 +136,7 @@ class _FocusViewState extends State<FocusView> {
               const SizedBox(height: 20),
             ],
             Text(
-              'Aujourd\'hui',
+              'Maintenant',
               style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -145,42 +144,8 @@ class _FocusViewState extends State<FocusView> {
             ),
             const SizedBox(height: 24),
 
-            // Mise du jour (sink d'or quotidien, commitment device honnête).
-            if (logic.sync != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(.35),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: cs.outlineVariant.withOpacity(.4)),
-                ),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: const [
-                        Icon(Icons.casino_outlined,
-                            size: 16, color: Color(0xFFC9A84C)),
-                        SizedBox(width: 6),
-                        Text('MISE DU JOUR',
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 1,
-                                color: Color(0xFFC9A84C))),
-                      ]),
-                      const SizedBox(height: 10),
-                      DailyStakeCardBody(
-                        logic: logic,
-                        sync: logic.sync!,
-                        onChanged: () {
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                    ]),
-              ),
-              const SizedBox(height: 24),
-            ],
+            // (La « Mise du jour » — sink d'or quotidien — a été supprimée
+            // avec la couche jeu.)
 
             // Programme horaire (stream Firestore)
             DailyScheduleView(

@@ -13,21 +13,13 @@ export async function taskOverdueSummary(uid: string): Promise<TaskResult> {
   const actions: string[] = [];
   let pushed = 0;
   const today = todayInParis();
-  const todayYmd = today.replace(/-/g, "");
 
-  const [dayPlanSnap, projectsSnap] = await Promise.all([
-    db.collection(`users/${uid}/dayPlan`)
-      .where("yyyymmdd", "<", todayYmd)
-      .where("done", "==", false)
-      .get(),
-    db.collection(`users/${uid}/projects`)
-      .where("status", "==", "active")
-      .get(),
-  ]);
-
-  const planOverdue = dayPlanSnap.docs
-    .map((d) => d.data())
-    .filter((it) => it.status !== "archived" && it.status !== "done").length;
+  // NB : l'ancienne lecture de users/{uid}/dayPlan a été retirée — la
+  // collection n'est plus écrite depuis la suppression de DayPlanItem
+  // (le scheduling passe par daily_schedules). Seul le retard Gantt compte.
+  const projectsSnap = await db.collection(`users/${uid}/projects`)
+    .where("status", "==", "active")
+    .get();
 
   const overdueGantt: Array<{ projectTitle: string; projectId: string; taskTitle: string; taskId: string; endDate: string }> = [];
   for (const doc of projectsSnap.docs) {
@@ -39,7 +31,7 @@ export async function taskOverdueSummary(uid: string): Promise<TaskResult> {
     }
   }
 
-  if (planOverdue === 0 && overdueGantt.length === 0) {
+  if (overdueGantt.length === 0) {
     await executePushAssistantMessage(uid, {
       targetDate: today, text: "Aucun retard détecté — continue sur cette lancée !",
       condition: { type: "always" }, expiresAfterDays: 1, priority: 3,
@@ -47,30 +39,18 @@ export async function taskOverdueSummary(uid: string): Promise<TaskResult> {
     pushed++;
     actions.push("ℹ️ Aucun retard détecté");
   } else {
-    if (planOverdue > 0) {
-      const text = `${planOverdue} action${planOverdue > 1 ? "s" : ""} en retard dans ton plan. Priorise tes 3 essentielles aujourd'hui.`;
-      await executePushAssistantMessage(uid, {
-        targetDate: today, text: text.slice(0, 179),
-        condition: { type: "overdue_count", min: 1 }, expiresAfterDays: 1, priority: 1,
-        action: { type: "open_day_plan" },
-      });
-      pushed++;
-      actions.push(`⚠️ ${planOverdue} actions en retard dans le plan`);
-    }
-    if (overdueGantt.length > 0) {
-      overdueGantt.sort((a, b) => a.endDate.localeCompare(b.endDate));
-      const most = overdueGantt[0];
-      const text = overdueGantt.length === 1
-        ? `Tâche Gantt en retard : "${most.taskTitle}" (${most.projectTitle}).`
-        : `${overdueGantt.length} tâches Gantt en retard. Plus urgente : "${most.taskTitle}".`;
-      await executePushAssistantMessage(uid, {
-        targetDate: today, text: text.slice(0, 179),
-        condition: { type: "overdue_count", min: 1 }, expiresAfterDays: 1, priority: 1,
-        action: { type: "open_gantt_task", payload: { projectId: most.projectId, taskId: most.taskId } },
-      });
-      pushed++;
-      actions.push(`⚠️ ${overdueGantt.length} tâches Gantt en retard`);
-    }
+    overdueGantt.sort((a, b) => a.endDate.localeCompare(b.endDate));
+    const most = overdueGantt[0];
+    const text = overdueGantt.length === 1
+      ? `Tâche Gantt en retard : "${most.taskTitle}" (${most.projectTitle}).`
+      : `${overdueGantt.length} tâches Gantt en retard. Plus urgente : "${most.taskTitle}".`;
+    await executePushAssistantMessage(uid, {
+      targetDate: today, text: text.slice(0, 179),
+      condition: { type: "overdue_count", min: 1 }, expiresAfterDays: 1, priority: 1,
+      action: { type: "open_gantt_task", payload: { projectId: most.projectId, taskId: most.taskId } },
+    });
+    pushed++;
+    actions.push(`⚠️ ${overdueGantt.length} tâches Gantt en retard`);
   }
 
   return { actions, pushed, skipped: false };

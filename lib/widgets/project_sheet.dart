@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
-import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -272,22 +270,16 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     }
   }
 
-  /// Supprime le projet. Gratuit en brouillon ; sinon coût d'or (un joker
-  /// l'annule). Archiver reste l'option gratuite pour garder l'historique.
+  /// Supprime le projet (confirmation simple — l'économie d'or du jeu a été
+  /// retirée). Archiver reste l'option qui garde l'historique.
   Future<void> _deleteProject() async {
-    final billed = _project.status != 'draft';
-    final actions =
-        _project.tasks.fold<int>(0, (s, t) => s + t.actions.length);
-    final cost = GoldEconomy.deleteProjectCost(_project.tasks.length, actions);
-    final showCost = billed && cost > 0;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer le projet ?'),
         content: Text(
           'Le projet « ${_project.title} » et tout son contenu seront supprimés.'
-          '${showCost ? ' Coût : $cost or.' : ''}'
-          '\n\nAstuce : « Mettre en veille » garde l\'historique gratuitement.',
+          '\n\nAstuce : « Mettre en veille » garde l\'historique.',
         ),
         actions: [
           TextButton(
@@ -297,49 +289,17 @@ class _ProjectSheetState extends State<_ProjectSheet> {
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(showCost ? 'Supprimer (−$cost or)' : 'Supprimer'),
+            child: const Text('Supprimer'),
           ),
         ],
       ),
     );
     if (ok != true) return;
-    if (showCost) {
-      var usedJoker = await _sync.consumeJoker();
-      // Pas de joker en stock → proposer d'en acheter pour annuler le coût.
-      if (!usedJoker && mounted) {
-        final bought = await offerBuyConsumable(
-          context,
-          _sync,
-          itemKey: 'joker',
-          price: GoldEconomy.shopJoker,
-          label: 'Joker de suppression',
-          rationale: 'Annule le coût de $cost or de cette suppression.',
-        );
-        if (bought) usedJoker = await _sync.consumeJoker();
-      }
-      if (usedJoker) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('🗑️ Joker utilisé — suppression gratuite.')));
-        }
-      } else {
-        _sync.applyGold(GoldLedgerEntry(
-          delta: -cost,
-          category: 'loss',
-          reasonCode: 'delete_project',
-          label: 'Suppression du projet « ${_project.title} »',
-          refType: 'project',
-          refId: _project.id,
-        ));
-      }
-    }
     await _sync.deleteProject(_project.id);
     if (!mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(showCost
-            ? 'Projet supprimé · −$cost or'
-            : 'Projet supprimé')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Projet supprimé')));
   }
 
   Color _domainColor(ColorScheme cs) {
@@ -1366,9 +1326,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
   }
 
   /// Repousser l'échéance d'une tâche : date picker (postérieure à l'échéance
-  /// actuelle) → coût `deadlinePush` par semaine entamée de décalage. Un Sursis
-  /// en stock le rend gratuit (achat-à-l'usage proposé sinon). Repousser sort la
-  /// tâche de `lateTasks()` → stoppe le −1/j.
+  /// actuelle). Repousser sort la tâche de `lateTasks()`. (L'économie d'or du
+  /// jeu — coût par semaine, sursis — a été retirée.)
   Future<void> _pushDeadline() async {
     final cur = _task.endDate;
     if (cur == null) return;
@@ -1382,85 +1341,21 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     );
     if (picked == null || !mounted) return;
     final pickedMid = DateTime(picked.year, picked.month, picked.day);
-    final deltaDays = pickedMid.difference(ref).inDays;
-    if (deltaDays <= 0) return;
-    final weeks = (deltaDays + 6) ~/ 7; // semaines entamées
-    // Brouillon = hors économie (report gratuit).
-    final billed = widget.project.status != 'draft';
-    final cost = billed ? GoldEconomy.deadlinePush * weeks : 0;
-
-    if (cost > 0) {
-      final proceed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Repousser la deadline ?'),
-          content: Text(
-              'L\'échéance de « ${_task.title} » passera au ${_fmtD(pickedMid)} '
-              '(+$weeks semaine${weeks > 1 ? 's' : ''}).\n\nCoût : $cost or — '
-              'gratuit si tu as un Sursis en stock.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annuler')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Repousser (−$cost or)')),
-          ],
-        ),
-      );
-      if (proceed != true) return;
-
-      var usedSursis = await widget.sync.consumeSursis();
-      if (!usedSursis && mounted) {
-        final bought = await offerBuyConsumable(
-          context,
-          widget.sync,
-          itemKey: 'sursis',
-          price: GoldEconomy.shopSursis,
-          label: 'Sursis de deadline',
-          rationale: 'Annule le coût de $cost or de ce report.',
-        );
-        if (bought) usedSursis = await widget.sync.consumeSursis();
-      }
-      if (usedSursis) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('⏳ Sursis utilisé — report gratuit.')));
-        }
-      } else {
-        widget.sync.applyGold(GoldLedgerEntry(
-          delta: -cost,
-          category: 'loss',
-          reasonCode: 'deadline_push',
-          label: 'Report d\'échéance « ${_task.title} »',
-          refType: 'task',
-          refId: _task.id,
-        ));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Échéance repoussée · −$cost or')));
-        }
-      }
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Échéance repoussée.')));
-    }
-
+    if (pickedMid.difference(ref).inDays <= 0) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Échéance repoussée.')));
     setState(() => _task.endDate = pickedMid);
     await _save();
   }
 
   Future<void> _deleteTask() async {
-    // Brouillon = CRUD libre, suppression gratuite (hors économie).
-    final billed = widget.project.status != 'draft';
-    final cost = GoldEconomy.deleteTaskCost(_task.actions.length);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer la tâche ?'),
         content: Text(
             'La tâche « ${_task.title} » et ses ${_task.actions.length} action(s) '
-            'seront supprimées.${billed ? ' Coût : $cost or.' : ''}'),
+            'seront supprimées.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -1469,7 +1364,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
             style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(billed ? 'Supprimer (−$cost or)' : 'Supprimer'),
+            child: const Text('Supprimer'),
           ),
         ],
       ),
@@ -1477,21 +1372,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     if (ok != true) return;
     widget.project.tasks.removeWhere((t) => t.id == _task.id);
     await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
-    if (billed) {
-      widget.sync.applyGold(GoldLedgerEntry(
-        delta: -cost,
-        category: 'loss',
-        reasonCode: 'delete_task',
-        label: 'Suppression tâche « ${_task.title} »',
-        refType: 'task',
-        refId: _task.id,
-      ));
-    }
     widget.onChanged();
     if (!mounted) return;
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(billed ? 'Tâche supprimée · −$cost or' : 'Tâche supprimée')));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Tâche supprimée')));
   }
 
   String _fmtD(DateTime d) {
@@ -1683,7 +1568,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                         itemBuilder: (ctx, i) {
                           final a = doneActions[i];
                           return Dismissible(
-                            key: ValueKey('done_${a.title}_$i'),
+                            key: ValueKey('done_${a.id}'),
                             direction: DismissDirection.endToStart,
                             background: Container(
                               alignment: Alignment.centerRight,
@@ -1755,7 +1640,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                 itemBuilder: (ctx, i) {
                                   final a = todoActions[i];
                                   return Dismissible(
-                                    key: ValueKey('todo_${a.title}_$i'),
+                                    key: ValueKey('todo_${a.id}'),
                                     direction: DismissDirection.endToStart,
                                     background: Container(
                                       alignment: Alignment.centerRight,
@@ -1766,29 +1651,14 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                     onDismissed: (_) {
                                       setState(() => _task.actions.remove(a));
                                       _save();
-                                      final billed =
-                                          widget.project.status != 'draft';
-                                      if (billed) {
-                                        widget.sync.applyGold(GoldLedgerEntry(
-                                          delta: -GoldEconomy.deleteAction,
-                                          category: 'loss',
-                                          reasonCode: 'delete_action',
-                                          label:
-                                              'Suppression action « ${a.title} »',
-                                          refType: 'task',
-                                          refId: _task.id,
-                                        ));
-                                      }
                                       ScaffoldMessenger.of(context)
-                                          .showSnackBar(SnackBar(
-                                        duration: const Duration(seconds: 2),
-                                        content: Text(billed
-                                            ? 'Action supprimée · −${GoldEconomy.deleteAction} or'
-                                            : 'Action supprimée'),
+                                          .showSnackBar(const SnackBar(
+                                        duration: Duration(seconds: 2),
+                                        content: Text('Action supprimée'),
                                       ));
                                     },
                                     child: ListTile(
-                                      key: ValueKey('tile_todo_${a.title}_$i'),
+                                      key: ValueKey('tile_todo_${a.id}'),
                                       dense: true,
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
                                       onLongPress: () async {
@@ -2381,7 +2251,7 @@ class _DraftPlanBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Brouillon — modifie librement, hors or et hors score.',
+              'Brouillon — modifie librement, puis valide pour planifier.',
               style: TextStyle(
                   fontSize: 12.5, color: cs.onTertiaryContainer),
             ),
