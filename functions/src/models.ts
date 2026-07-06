@@ -17,7 +17,7 @@ type TaskType =
   | "inbox_routing";
 
 const MODEL_ROUTING: Record<TaskType, string> = {
-  orion_cycle:       MODELS.SONNET, // test perf vs Haiku
+  orion_cycle:       MODELS.HAIKU, // aligné sur le modèle réellement utilisé (orion.ts)
   structure_project: MODELS.HAIKU,
   plan_day:          MODELS.HAIKU,
   plan_week:         MODELS.HAIKU,

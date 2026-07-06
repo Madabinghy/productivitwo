@@ -187,51 +187,55 @@ class _AuthGateState extends State<_AuthGate> {
     if (kIsWeb) {
       final uri = Uri.base;
       final params = uri.queryParameters;
+      // Toutes les routes de PROTOTYPES (jeu, previews Soft Pop) sont réservées
+      // au dev local : plus exposées en prod depuis le pivot productivité.
+      final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
 
-      // Prototypes moteur de jeu Flame (isolés, sans auth) — évaluation « Le Monde ».
-      if (params['flame'] == '1') return const FlameProtoScreen();
-      if (params['flame'] == '2') return const FlameProto2Screen();
+      if (isLocalHost) {
+        // Prototypes moteur de jeu Flame (isolés, sans auth) — évaluation « Le Monde ».
+        if (params['flame'] == '1') return const FlameProtoScreen();
+        if (params['flame'] == '2') return const FlameProto2Screen();
 
-      // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
-      if (params['proto'] == 'td') return const TdGameScreen();
-      // Proto Overworld fluo (héros déplaçable) — sans auth.
-      if (params['proto'] == 'world') return const OverworldScreen();
-      // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
-      if (params['proto'] == 'level') return const LevelScreen();
-      // POC Rive (perso animé chargé depuis le réseau) — sans auth.
-      if (params['proto'] == 'rive') return const RivePocScreen();
-      // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
-      if (params['proto'] == 'expedition') return const ExpeditionScreen();
-      // Aperçus refonte « Soft Pop » (sans auth ni données). Les écrans sont des
-      // Scaffold sans MaterialApp → on les enveloppe ici pour l'entrée web.
-      final softpop = params['softpop'];
-      if (softpop != null) {
-        final screen = <String, Widget>{
-          '1': const SoftPopPreviewScreen(),
-          'home': const SoftPopHomeScreen(),
-          'routine': const SoftPopRoutineTypesScreen(),
-          'streak': const SoftPopStreakScreen(),
-          'balance': const SoftPopBalanceScreen(),
-          'project': const SoftPopProjectScreen(),
-          'celebrate': const SoftPopCelebrationScreen(),
-          'onboarding': const SoftPopOnboardingScreen(),
-          'focus': const SoftPopFocusScreen(),
-          'lair': const SoftPopLairScreen(),
-          'strategy': const SoftPopStrategyScreen(),
-        }[softpop];
-        if (screen != null) {
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            locale: const Locale('fr', 'FR'),
-            home: screen,
-          );
+        // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
+        if (params['proto'] == 'td') return const TdGameScreen();
+        // Proto Overworld fluo (héros déplaçable) — sans auth.
+        if (params['proto'] == 'world') return const OverworldScreen();
+        // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
+        if (params['proto'] == 'level') return const LevelScreen();
+        // POC Rive (perso animé chargé depuis le réseau) — sans auth.
+        if (params['proto'] == 'rive') return const RivePocScreen();
+        // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
+        if (params['proto'] == 'expedition') return const ExpeditionScreen();
+        // Aperçus refonte « Soft Pop » (sans auth ni données). Les écrans sont des
+        // Scaffold sans MaterialApp → on les enveloppe ici pour l'entrée web.
+        final softpop = params['softpop'];
+        if (softpop != null) {
+          final screen = <String, Widget>{
+            '1': const SoftPopPreviewScreen(),
+            'home': const SoftPopHomeScreen(),
+            'routine': const SoftPopRoutineTypesScreen(),
+            'streak': const SoftPopStreakScreen(),
+            'balance': const SoftPopBalanceScreen(),
+            'project': const SoftPopProjectScreen(),
+            'celebrate': const SoftPopCelebrationScreen(),
+            'onboarding': const SoftPopOnboardingScreen(),
+            'focus': const SoftPopFocusScreen(),
+            'lair': const SoftPopLairScreen(),
+            'strategy': const SoftPopStrategyScreen(),
+          }[softpop];
+          if (screen != null) {
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              locale: const Locale('fr', 'FR'),
+              home: screen,
+            );
+          }
         }
       }
 
       // DEV-LOGIN LOCAL (localhost uniquement) : connexion sur TON compte via
       // getCustomToken(uid + token API). Ne fait RIEN en prod (gardé par l'hôte).
       // S'affiche tant qu'on n'est pas sur un VRAI compte (donc aussi en démo).
-      final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
       User? cur;
       try { cur = FirebaseAuth.instance.currentUser; } catch (_) {}
       final isRealUser = cur != null && cur.uid != 'demo-productivitwo';
@@ -339,41 +343,44 @@ class _AuthGateState extends State<_AuthGate> {
         if (kIsWeb && Uri.base.queryParameters['flame'] == '3') {
           return FlameDataProtoScreen(sync: FirestoreSync());
         }
-        // « Fluo Adventure » AVEC TES DONNÉES : galaxie (domaines autour
-        // d'Aujourd'hui) → tape une planète → map (activités) → carte à nœuds.
-        // C'est l'entrée principale, sur ?proto=orbit (et ?proto=fluo).
-        if (kIsWeb &&
+        // Protos « avec tes données » (galaxie, RPG, compagnon, défense,
+        // village, iso, carte organique) : DEV LOCAL UNIQUEMENT depuis le
+        // pivot productivité — plus accessibles en prod, même authentifié.
+        final protoDev = kIsWeb &&
+            (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1');
+        // « Fluo Adventure » : galaxie (domaines autour d'Aujourd'hui) → tape
+        // une planète → map (activités) → carte à nœuds (?proto=orbit / fluo).
+        if (protoDev &&
             (Uri.base.queryParameters['proto'] == 'orbit' ||
                 Uri.base.queryParameters['proto'] == 'fluo')) {
           return FluoDataScreen(sync: FirestoreSync());
         }
         // Galaxie « pure » (contemplation, tap = info, sans navigation).
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'galaxy') {
+        if (protoDev && Uri.base.queryParameters['proto'] == 'galaxy') {
           return OrbitDataScreen(sync: FirestoreSync());
         }
         // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'rpg') {
+        if (protoDev && Uri.base.queryParameters['proto'] == 'rpg') {
           return RpgDataScreen(sync: FirestoreSync());
         }
         // Proto « Compagnon » AVEC TES DONNÉES : humeur = ta régularité.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'pet') {
+        if (protoDev && Uri.base.queryParameters['proto'] == 'pet') {
           return PetDataScreen(sync: FirestoreSync());
         }
         // Proto « Défense néon » AVEC TES DONNÉES : domaines = tourelles.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'defense') {
+        if (protoDev && Uri.base.queryParameters['proto'] == 'defense') {
           return DefenseDataScreen(sync: FirestoreSync());
         }
         // Proto « Village » AVEC TES DONNÉES : chaque action bâtit ton monde.
-        if (kIsWeb && Uri.base.queryParameters['proto'] == 'village') {
+        if (protoDev && Uri.base.queryParameters['proto'] == 'village') {
           return VillageDataScreen(sync: FirestoreSync());
         }
         // Proto « Monde isométrique » AVEC TES DONNÉES (pixel-art blocks).
-        if (kIsWeb && Uri.base.queryParameters['world'] == 'iso') {
+        if (protoDev && Uri.base.queryParameters['world'] == 'iso') {
           return IsoWorldScreen(sync: FirestoreSync());
         }
-        // Carte ORGANIQUE contemplative (parchemin, type deepnight) — derrière un
-        // flag le temps de migrer ; la carte actuelle reste le défaut.
-        if (kIsWeb && Uri.base.queryParameters['map'] == 'organic') {
+        // Carte ORGANIQUE contemplative (parchemin, type deepnight).
+        if (protoDev && Uri.base.queryParameters['map'] == 'organic') {
           return OrganicMapScreen(sync: FirestoreSync());
         }
         return WebHomeScreen(isDemo: isDemo);

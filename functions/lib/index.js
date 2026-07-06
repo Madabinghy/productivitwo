@@ -1800,6 +1800,7 @@ async function extractStructurePreview(client, prevStructure, userMessage, assis
                 "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
             messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
         });
+        (0, models_1.logTokenUsage)("structure_preview", (0, models_1.getModel)("structure_project"), r.usage);
         const txt = r.content.filter((b) => b.type === "text").map((b) => b.text).join("");
         const m = txt.match(/\{[\s\S]*\}/);
         if (!m)
@@ -1933,7 +1934,10 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
         ];
         const revNotifications = [];
         let revComplete = false;
-        while (true) {
+        // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn
+        // boucle jusqu'au timeout de la fonction (coût non borné).
+        const REV_MAX_TURNS = 10;
+        for (let revTurn = 0; revTurn < REV_MAX_TURNS; revTurn++) {
             const response = await client2.messages.create({
                 model: (0, models_1.getModel)("onboarding"),
                 max_tokens: 1536,
@@ -1941,6 +1945,7 @@ exports.onboardingChat = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 tools: REVISION_TOOLS,
                 messages: revMessages,
             });
+            (0, models_1.logTokenUsage)("onboarding_revision", (0, models_1.getModel)("onboarding"), response.usage);
             if (response.stop_reason === "end_turn") {
                 const text2 = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
                 // Sauvegarde session révision
@@ -2020,8 +2025,12 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
     let onboardingComplete = false;
     let structurePreview = null;
     let assistantText = ""; // accumule le texte de TOUS les tours (évite les messages vides quand le modèle répond ET appelle un outil dans le même tour)
-    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale)
-    while (true) {
+    // Boucle agentique : continue jusqu'à end_turn (réponse texte finale).
+    // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn boucle
+    // jusqu'au timeout de la fonction (coût non borné) ; au-delà on renvoie le
+    // texte accumulé (fallthrough gracieux ci-dessous).
+    const ONBOARDING_MAX_TURNS = 12;
+    for (let obTurn = 0; obTurn < ONBOARDING_MAX_TURNS; obTurn++) {
         const response = await client.messages.create({
             model: (0, models_1.getModel)("onboarding"),
             max_tokens: 8192, // create_workspace = un gros payload unique (≈40 activités + projet)
@@ -2029,6 +2038,7 @@ Commence ta première réponse en reformulant en 2-3 phrases ce que tu comprends
             tools: ONBOARDING_TOOLS,
             messages: messages,
         });
+        (0, models_1.logTokenUsage)("onboarding", (0, models_1.getModel)("onboarding"), response.usage);
         if (response.stop_reason === "end_turn") {
             assistantText += response.content
                 .filter((b) => b.type === "text")

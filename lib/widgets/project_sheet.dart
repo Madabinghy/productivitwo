@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -275,7 +276,8 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   /// Supprime le projet. Gratuit en brouillon ; sinon coût d'or (un joker
   /// l'annule). Archiver reste l'option gratuite pour garder l'historique.
   Future<void> _deleteProject() async {
-    final billed = _project.status != 'draft';
+    // Coût d'or coupé avec l'ancienne gamification (kOldGamificationEnabled).
+    final billed = kOldGamificationEnabled && _project.status != 'draft';
     final actions =
         _project.tasks.fold<int>(0, (s, t) => s + t.actions.length);
     final cost = GoldEconomy.deleteProjectCost(_project.tasks.length, actions);
@@ -1386,7 +1388,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     if (deltaDays <= 0) return;
     final weeks = (deltaDays + 6) ~/ 7; // semaines entamées
     // Brouillon = hors économie (report gratuit).
-    final billed = widget.project.status != 'draft';
+    // Coût d'or coupé avec l'ancienne gamification (kOldGamificationEnabled).
+    final billed = kOldGamificationEnabled && widget.project.status != 'draft';
     final cost = billed ? GoldEconomy.deadlinePush * weeks : 0;
 
     if (cost > 0) {
@@ -1452,7 +1455,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
   Future<void> _deleteTask() async {
     // Brouillon = CRUD libre, suppression gratuite (hors économie).
-    final billed = widget.project.status != 'draft';
+    // Coût d'or coupé avec l'ancienne gamification (kOldGamificationEnabled).
+    final billed = kOldGamificationEnabled && widget.project.status != 'draft';
     final cost = GoldEconomy.deleteTaskCost(_task.actions.length);
     final ok = await showDialog<bool>(
       context: context,
@@ -1683,7 +1687,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                         itemBuilder: (ctx, i) {
                           final a = doneActions[i];
                           return Dismissible(
-                            key: ValueKey('done_${a.title}_$i'),
+                            key: ValueKey('done_${a.id}'),
                             direction: DismissDirection.endToStart,
                             background: Container(
                               alignment: Alignment.centerRight,
@@ -1755,7 +1759,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                 itemBuilder: (ctx, i) {
                                   final a = todoActions[i];
                                   return Dismissible(
-                                    key: ValueKey('todo_${a.title}_$i'),
+                                    key: ValueKey('todo_${a.id}'),
                                     direction: DismissDirection.endToStart,
                                     background: Container(
                                       alignment: Alignment.centerRight,
@@ -1766,7 +1770,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                     onDismissed: (_) {
                                       setState(() => _task.actions.remove(a));
                                       _save();
-                                      final billed =
+                                      final billed = kOldGamificationEnabled &&
                                           widget.project.status != 'draft';
                                       if (billed) {
                                         widget.sync.applyGold(GoldLedgerEntry(
@@ -1788,7 +1792,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       ));
                                     },
                                     child: ListTile(
-                                      key: ValueKey('tile_todo_${a.title}_$i'),
+                                      key: ValueKey('tile_todo_${a.id}'),
                                       dense: true,
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
                                       onLongPress: () async {
@@ -2381,7 +2385,9 @@ class _DraftPlanBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Brouillon — modifie librement, hors or et hors score.',
+              kOldGamificationEnabled
+                  ? 'Brouillon — modifie librement, hors or et hors score.'
+                  : 'Brouillon — modifie librement, puis valide pour planifier.',
               style: TextStyle(
                   fontSize: 12.5, color: cs.onTertiaryContainer),
             ),

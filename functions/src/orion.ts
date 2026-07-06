@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { MODELS, logTokenUsage } from "./models";
+import { getModel, logTokenUsage } from "./models";
 import type { PromptCachingBetaMessageParam, PromptCachingBetaTool } from "@anthropic-ai/sdk/resources/beta/prompt-caching/messages";
 import { db, FieldValue, effectivePro } from "./db";
 import {
@@ -62,7 +62,7 @@ import type { PushGanttBody } from "./types";
 
 const ORION_MAX_FREE = 1;  // Gratuit : 1 cycle/jour
 const ORION_MAX_PRO = 5;   // Pro : 5 cycles/jour
-const ORION_MODEL = MODELS.HAIKU;
+const ORION_MODEL = getModel("orion_cycle");
 
 // ── Config utilisateur ────────────────────────────────────────────────────────
 
@@ -302,7 +302,12 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
     { role: "user", content: firstMessage },
   ];
 
-  while (continueLoop) {
+  // Plafond de tours : sans lui, un modèle qui n'émet jamais end_turn boucle
+  // jusqu'au timeout de la fonction (coût non borné).
+  const MAX_TURNS = 15;
+  let turns = 0;
+  while (continueLoop && turns < MAX_TURNS) {
+    turns++;
     const response = await client.beta.promptCaching.messages.create({
       model: ORION_MODEL,
       max_tokens: 2048,

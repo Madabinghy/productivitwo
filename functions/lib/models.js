@@ -8,7 +8,7 @@ exports.MODELS = {
     SONNET: "claude-sonnet-4-6",
 };
 const MODEL_ROUTING = {
-    orion_cycle: exports.MODELS.SONNET, // test perf vs Haiku
+    orion_cycle: exports.MODELS.HAIKU, // aligné sur le modèle réellement utilisé (orion.ts)
     structure_project: exports.MODELS.HAIKU,
     plan_day: exports.MODELS.HAIKU,
     plan_week: exports.MODELS.HAIKU,

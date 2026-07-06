@@ -2114,7 +2114,11 @@ class _AppRootState extends State<AppRoot>
     if (_state == null) return; // pas encore initialisé
     if (state == AppLifecycleState.resumed) {
       FcmService.clearOrionBadge();
-      logic.reconcileLiveGold(_sync); // gains du jour dispo de suite au retour
+      // Économie d'or coupée avec l'ancienne gamification : pas de transaction
+      // Firestore gold_ledger à chaque retour au premier plan.
+      if (kOldGamificationEnabled) {
+        logic.reconcileLiveGold(_sync); // gains du jour dispo de suite au retour
+      }
       _restoreCountdownFromAlarm(); // le minuteur survit au quitter/rouvrir
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
@@ -2322,10 +2326,15 @@ class _AppRootState extends State<AppRoot>
       //  3) matérialiser les jours clos ; 4) créditer le solde du jour.
       // Si le fetch a ÉCHOUÉ, on NE réconcilie PAS (sinon on zéroterait l'or du
       // jour) → fallback sur les comptes persistés ; le stream réconciliera ensuite.
-      await logic.healGoldCursorIfNeeded(_sync);
+      // Économie d'or coupée avec l'ancienne gamification : ni heal, ni
+      // matérialisation, ni réconciliation (= zéro transaction gold_ledger au
+      // lancement). updateGanttCounts reste : il alimente aussi les widgets.
+      if (kOldGamificationEnabled) await logic.healGoldCursorIfNeeded(_sync);
       if (fetched) logic.updateGanttCounts(projects);
-      logic.materializeGoldUpTo(_sync, DateTime.now());
-      logic.reconcileLiveGold(_sync);
+      if (kOldGamificationEnabled) {
+        logic.materializeGoldUpTo(_sync, DateTime.now());
+        logic.reconcileLiveGold(_sync);
+      }
       // Alimente les widgets avec les données Gantt réelles dès que disponibles.
       if (projects.isNotEmpty && mounted) {
         WidgetService.update(logic);
