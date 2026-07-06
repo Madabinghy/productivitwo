@@ -11,7 +11,6 @@ import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
-import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
@@ -19,7 +18,6 @@ import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/manoir_screen.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
@@ -57,11 +55,6 @@ import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
-import 'package:productivitwo_v1/widgets/expedition_map_game.dart';
-import 'package:productivitwo_v1/widgets/expedition_sheet.dart';
-import 'package:productivitwo_v1/widgets/gold_sheet.dart';
-import 'package:productivitwo_v1/widgets/gamification_hub_sheet.dart';
-import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
@@ -1838,10 +1831,6 @@ class _AppRootState extends State<AppRoot>
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
   _Tab _tab = _Tab.dashboard;
-  // « Deux jeux en un » : mode Manoir 100 % plein écran (zéro chrome Flutter),
-  // la Console devient le mode secondaire. Persisté entre les sessions.
-  bool _manoirMode = false;
-  static const String _kManoirModePref = 'ui.manoir_mode';
 // affiché une seule fois tant que l'app reste ouverte
 
   Timer? _saveDebounce;
@@ -1900,16 +1889,6 @@ class _AppRootState extends State<AppRoot>
       value: 1.0,
     );
     _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
-
-    // Rouvrir l'app dans le mode où on l'a quittée (jeu ou console).
-    // Coupé avec la couche jeu (kGameLayerEnabled).
-    SharedPreferences.getInstance().then((p) {
-      if (mounted &&
-          kGameLayerEnabled &&
-          (p.getBool(_kManoirModePref) ?? false)) {
-        setState(() => _manoirMode = true);
-      }
-    });
 
     _startMinuteHeartbeat();
     _startConnectivityListener();
@@ -3009,12 +2988,8 @@ class _AppRootState extends State<AppRoot>
           FocusView(
             logic: logic,
             state: st,
-            // Quête retirée de « Maintenant » une fois le coffre récupéré.
-            // Masquée aussi quand l'ancienne gamification est coupée.
-            header: (!kOldGamificationEnabled ||
-                    logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now()))
-                ? null
-                : _buildQuestBanner(context, Theme.of(context).colorScheme),
+            // (La bannière « Quête du jour » a été supprimée avec la couche jeu.)
+            header: null,
             focusProject: _focusProject,
             focusTask: _focusTask,
             countdownEndsAt: _countdownEndsAt,
@@ -3063,22 +3038,6 @@ class _AppRootState extends State<AppRoot>
         ],
       ),
     );
-  }
-
-  // Bascules « deux jeux en un » (persistées — l'app rouvre dans le même mode).
-  void _enterManoir() {
-    setState(() => _manoirMode = true);
-    SharedPreferences.getInstance()
-        .then((p) => p.setBool(_kManoirModePref, true));
-  }
-
-  void _exitManoir() {
-    setState(() {
-      _manoirMode = false;
-      _tab = _Tab.dashboard;
-    });
-    SharedPreferences.getInstance()
-        .then((p) => p.setBool(_kManoirModePref, false));
   }
 
   void _handleAssistantAction(AssistantActionData action) {
@@ -4422,740 +4381,11 @@ class _AppRootState extends State<AppRoot>
       );
     }
 
-    // « Deux jeux en un » : en mode Manoir, le jeu occupe TOUT l'écran — zéro
-    // chrome Flutter. Sorties : le POI « Console du Commander » (open_console)
-    // ou le ✕ superposé sur la page Exploration. Mode persisté (_kManoirModePref).
-    if (_manoirMode) {
-      return ManoirScreen(logic: logic, onExit: _exitManoir);
-    }
+    // (Le mode Manoir plein écran a été supprimé avec la couche jeu.)
 
     final filtersOn = logic.state.filters.isActive;
 
-    void _openFullStats(BuildContext ctx) {
-      showModalBottomSheet(
-        context: ctx,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (_) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.92,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (_, controller) => StatsView(
-            logic: logic,
-            state: _state!,
-            selectedDomainId: null,
-            scrollController: controller,
-            sync: _sync,
-            onDataChanged: () {
-              Navigator.pop(ctx);
-              _init();
-            },
-          ),
-        ),
-      );
-    }
-
-    // Détail complet du score (jour + niveau + semaine + paliers), affiché
-    // directement (inline) dans l'onglet Score du hub. `refresh` rebuild le
-    // sous-arbre quand l'objectif hebdomadaire change.
-    List<Widget> _scoreDetailChildren(
-        BuildContext ctx, StateSetter refresh, int done, int total) {
-      final now = DateTime.now();
-      final todayStart = DateTime(now.year, now.month, now.day);
-      final todayEnd = todayStart.add(const Duration(days: 1));
-
-      // Sous-actions Gantt cochées aujourd'hui (via doneAt)
-      final ganttDoneToday = _dashboardProjects
-          .where((p) => p.status != 'archived' && p.status != 'done')
-          .expand((p) => p.tasks)
-          .expand((t) => t.actions)
-          .where((a) =>
-              a.done &&
-              a.doneAt != null &&
-              !a.doneAt!.isBefore(todayStart) &&
-              a.doneAt!.isBefore(todayEnd))
-          .length;
-
-      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
-      // Total tâches Gantt + sous-actions projet validées (même base que les badges)
-      final totalHistoricalDone = _ganttActionCount();
-      final pct = total == 0 ? 0 : (done / total * 100).round();
-      final theme = Theme.of(ctx);
-      final cs = theme.colorScheme;
-      final ringColor = pct >= 100
-          ? cs.primary
-          : Color.lerp(cs.error, cs.primary, (pct / 100).clamp(0.0, 1.0))!;
-
-      return [
-                  Row(
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(
-                          value: total == 0 ? 0 : done / total,
-                          strokeWidth: 5,
-                          backgroundColor: cs.onSurface.withValues(alpha: .12),
-                          color: ringColor,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$pct%',
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.w900,
-                              color: pct >= 100 ? cs.primary : null,
-                            ),
-                          ),
-                          Text(
-                            "Journée d'aujourd'hui",
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: cs.onSurface.withValues(alpha: .6),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (pct >= 100) ...[
-                        const Spacer(),
-                        const Text('🎉', style: TextStyle(fontSize: 32)),
-                      ],
-                    ],
-                  ),
-                  // Section niveau global
-                  Builder(builder: (ctx) {
-                    final lv = logic.userLevelData();
-                    // Prestige Élite I/II… : il y a toujours un palier suivant.
-                    final progress = (lv.xp - lv.xpCurrent) /
-                        (lv.xpNext - lv.xpCurrent).clamp(1, 99999);
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 24),
-                        GestureDetector(
-                          onTap: () => showDialog(
-                            context: ctx,
-                            builder: (_) => AlertDialog(
-                              title: const Text('Comment marche l\'or ?'),
-                              content: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('💰  Gagner de l\'or',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w700)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '🔁  Routine validée : +${GoldEconomy.routineMet} or/jour '
-                                      '(+1 tous les ${GoldEconomy.routineStreakBonusStep} jours de série, '
-                                      'jusqu\'à +${GoldEconomy.routineStreakBonusCap} → '
-                                      'max ${GoldEconomy.routineMet + GoldEconomy.routineStreakBonusCap}/jour)\n'
-                                      '⏱️  Temps loggué : +${GoldEconomy.timePerHour} or / heure\n'
-                                      '✅  Action de projet cochée : +${GoldEconomy.ganttAction} or\n'
-                                      '🏆  Défi relevé : +${GoldEconomy.challengeDone} or\n'
-                                      '✨  Multiplicateur ×2 (boutique) : double tes gains du jour',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const Text('💸  Perdre de l\'or',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w700)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '🔁  Routine lancée puis manquée : −${GoldEconomy.routineMissed} or/jour\n'
-                                      '⏰  Tâche en retard : −${GoldEconomy.lateTaskPerDay} or/jour par tâche\n'
-                                      '⏳  Repousser une échéance : −${GoldEconomy.deadlinePush} or\n'
-                                      '🗑️  Supprimer : action −${GoldEconomy.deleteAction}, '
-                                      'routine −${GoldEconomy.deleteRoutine}, '
-                                      'tâche/projet selon le contenu',
-                                      style: const TextStyle(fontSize: 13),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      '🏅  L\'or sert à révéler tes niveaux et à acheter '
-                                      'des protections en boutique. Ton niveau, lui, ne '
-                                      'descend jamais : l\'or gagné à vie est conservé.',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          color:
-                                              cs.onSurface.withValues(alpha: .7)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(_),
-                                  child: const Text('OK'),
-                                ),
-                              ],
-                            ),
-                          ),
-                          child: Row(
-                          children: [
-                            Text(
-                              '🏅',
-                              style: const TextStyle(fontSize: 22),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        'Niveau ${lv.level}',
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(
-                                                fontWeight: FontWeight.w900),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        lv.title,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: cs.primary,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Icon(Icons.info_outline,
-                                          size: 14,
-                                          color: cs.onSurface.withValues(alpha: .35)),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(3),
-                                    child: LinearProgressIndicator(
-                                      value: progress.clamp(0.0, 1.0),
-                                      minHeight: 6,
-                                      backgroundColor:
-                                          cs.onSurface.withValues(alpha: .10),
-                                      color: cs.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${lv.xp} / ${lv.xpNext} XP',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withValues(alpha: .5),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  // Or du jour + courbe 7 jours
-                                  Builder(builder: (_) {
-                                    final now = DateTime.now();
-                                    final today = logic.provisionalGoldToday();
-                                    final vals = List.generate(
-                                        7,
-                                        (i) => logic.goldGainForDay(now
-                                            .subtract(Duration(days: 6 - i))));
-                                    return Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text("Aujourd'hui : +$today XP",
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                                color: cs.primary)),
-                                        const SizedBox(height: 6),
-                                        SizedBox(
-                                          height: 34,
-                                          width: double.infinity,
-                                          child: CustomPaint(
-                                            painter: _GoldSparkline(
-                                              values: vals,
-                                              color: cs.primary,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        ),
-                        if (kOldGamificationEnabled &&
-                            logic.levelRevealInfo().pending) ...[
-                          const SizedBox(height: 12),
-                          Builder(builder: (_) {
-                            final rv = logic.levelRevealInfo();
-                            return SizedBox(
-                              width: double.infinity,
-                              child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFFD4A017)),
-                                icon: const Text('🎁',
-                                    style: TextStyle(fontSize: 14)),
-                                label: Text(
-                                    'Explorer la carte du niveau ${rv.nextLevel}'),
-                                onPressed: () async {
-                                  // Déjà entré dans le donjon → on y retourne
-                                  // direct ; sinon overworld (trouver le château).
-                                  if (logic.donjonAlreadyEntered) {
-                                    final goOverworld = await showExpeditionSheet(ctx, logic, _sync);
-                                    if (goOverworld && ctx.mounted) {
-                                      await showExpeditionGame(ctx, logic, _sync);
-                                    }
-                                  } else {
-                                    await showExpeditionGame(ctx, logic, _sync);
-                                  }
-                                  refresh(() {});
-                                },
-                              ),
-                            );
-                          }),
-                        ],
-                      ],
-                    );
-                  }),
-
-                  // Section score hebdomadaire
-                  Builder(builder: (ctx) {
-                    final w = logic.weeklyScoreData();
-                    final weekPct = (w.current * 100).round();
-                    final prevPct = (w.previous * 100).round();
-                    final bars = w.days7
-                        .map((v) => v < 0 ? 0.0 : v.clamp(0.0, 1.0))
-                        .toList();
-                    final trend = w.previous > 0
-                        ? w.current - w.previous
-                        : null;
-                    final target = logic.state.weeklyScoreTarget;
-                    final onTrack = weekPct >= target;
-                    final close = weekPct >= (target * 0.85).round();
-                    final statusEmoji = onTrack ? '🟢' : (close ? '🟡' : '🔴');
-                    final statusLabel = onTrack
-                        ? 'Objectif atteint !'
-                        : close
-                            ? 'En route'
-                            : 'En retard';
-
-                    Future<void> pickTarget() async {
-                      const presets = [60, 70, 75, 80, 90, 100];
-                      final picked = await showDialog<int>(
-                        context: ctx,
-                        builder: (d) => SimpleDialog(
-                          title: const Text('Objectif hebdomadaire'),
-                          children: presets
-                              .map((p) => SimpleDialogOption(
-                                    onPressed: () => Navigator.pop(d, p),
-                                    child: Text(
-                                      '$p%',
-                                      style: TextStyle(
-                                        fontWeight: p == target
-                                            ? FontWeight.w800
-                                            : FontWeight.w400,
-                                        color: p == target ? cs.primary : null,
-                                      ),
-                                    ),
-                                  ))
-                              .toList(),
-                        ),
-                      );
-                      if (picked == null) return;
-                      logic.state.weeklyScoreTarget = picked;
-                      logic.onChange();
-                      refresh(() {});
-                    }
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 24),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Semaine',
-                                  style: theme.textTheme.labelMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: cs.onSurface.withValues(alpha: .5),
-                                  ),
-                                ),
-                                Text(
-                                  '$weekPct%',
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: SizedBox(
-                                height: 32,
-                                child: TinyRatioBars(values: bars, height: 32),
-                              ),
-                            ),
-                            if (w.previous > 0) ...[
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    'Sem. passée',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withValues(alpha: .5),
-                                    ),
-                                  ),
-                                  Text(
-                                    '$prevPct%',
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13),
-                                  ),
-                                  if (trend != null)
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          trend >= 0
-                                              ? Icons.trending_up
-                                              : Icons.trending_down,
-                                          size: 14,
-                                          color: trend >= 0
-                                              ? Colors.green
-                                              : cs.error,
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          '${trend >= 0 ? '+' : ''}${(trend * 100).round()}%',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: trend >= 0
-                                                ? Colors.green
-                                                : cs.error,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Objectif hebdomadaire
-                        GestureDetector(
-                          onTap: pickTarget,
-                          child: Row(
-                            children: [
-                              Text(
-                                '$statusEmoji  Objectif $target%',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface.withValues(alpha: .7),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '· $statusLabel',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: onTrack
-                                      ? Colors.green
-                                      : close
-                                          ? Colors.orange
-                                          : cs.error,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const Spacer(),
-                              Icon(Icons.edit,
-                                  size: 14,
-                                  color: cs.onSurface.withValues(alpha: .3)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 24),
-                  if (ganttDoneToday > 0)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.account_tree_outlined),
-                      title: const Text('Actions Gantt · aujourd\'hui'),
-                      trailing: Text(
-                        '$ganttDoneToday cochée${ganttDoneToday > 1 ? 's' : ''}',
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.emoji_events_rounded),
-                    title: const Text('Routines'),
-                    trailing: Text(
-                      '${routineSummary.reached} / ${routineSummary.total}',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  Text(
-                    'Paliers',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: cs.onSurface.withValues(alpha: .5),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // --- Actions ---
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      MapEntry(10, BadgeId.actions10),
-                      MapEntry(50, BadgeId.actions50),
-                      MapEntry(100, BadgeId.actions100),
-                    ].map<Widget>((e) {
-                      final threshold = e.key;
-                      final id = e.value;
-                      final isEarned = logic.state.earnedBadges
-                          .any((b) => b.id == id);
-                      final meta = badgeMeta(id);
-                      if (isEarned) {
-                        return Chip(
-                          backgroundColor: cs.primaryContainer,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 4),
-                          label: Text(
-                            '${meta.emoji} ${meta.label}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: cs.onPrimaryContainer,
-                            ),
-                          ),
-                        );
-                      }
-                      final progress =
-                          totalHistoricalDone.clamp(0, threshold);
-                      return Chip(
-                        backgroundColor:
-                            cs.surfaceContainerHighest.withValues(alpha: .35),
-                        side: BorderSide(
-                            color: cs.outlineVariant.withValues(alpha: .4)),
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 4),
-                        label: Text(
-                          '${meta.emoji} $progress / $threshold',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: cs.onSurface.withValues(alpha: .45),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 8),
-                  // --- Score ---
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      BadgeId.scoreFirst100,
-                      BadgeId.score7dAt80,
-                      BadgeId.score30dAt80,
-                    ].map<Widget>((id) {
-                      final isEarned = logic.state.earnedBadges
-                          .any((b) => b.id == id);
-                      final meta = badgeMeta(id);
-                      if (isEarned) {
-                        return Chip(
-                          backgroundColor: cs.primaryContainer,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: VisualDensity.compact,
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 4),
-                          label: Text(
-                            '${meta.emoji} ${meta.label}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: cs.onPrimaryContainer,
-                            ),
-                          ),
-                        );
-                      }
-                      // Progression : pour scoreFirst100, montrer le % du jour
-                      final hint = id == BadgeId.scoreFirst100
-                          ? '$pct / 100%'
-                          : meta.label;
-                      return Chip(
-                        backgroundColor:
-                            cs.surfaceContainerHighest.withValues(alpha: .35),
-                        side: BorderSide(
-                            color: cs.outlineVariant.withValues(alpha: .4)),
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 4),
-                        label: Text(
-                          '${meta.emoji} $hint',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                            color: cs.onSurface.withValues(alpha: .45),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-      ];
-    }
-
-    // Onglet « Score » du hub : le détail complet du score est affiché
-    // directement (plus de bouton « voir le détail »).
-    Widget _scoreHubTab(BuildContext ctx, int done, int total) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-        children: [
-          // Détail complet affiché directement (le bouton « voir le détail »
-          // est supprimé). StatefulBuilder = refresh local pour l'objectif hebdo.
-          StatefulBuilder(
-            builder: (ctx, refresh) => Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: _scoreDetailChildren(ctx, refresh, done, total),
-            ),
-          ),
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.bar_chart_outlined, size: 18),
-            label: const Text('Statistiques complètes'),
-            onPressed: () => _openFullStats(ctx),
-          ),
-        ],
-      );
-    }
-
-    /// Lance une routine depuis « Mon or » : ferme le hub, démarre le chrono ou
-    /// le minuteur (5 min par défaut si la routine n'a pas de durée), bascule sur
-    /// l'onglet Maintenant. Nécessite une activité liée (pour logger le temps).
-    void _launchRoutineFromGold(BuildContext context, Activity r,
-        {required bool timer}) {
-      final linkedId = (r.linkedActivityId ?? '').trim();
-      final linked = linkedId.isEmpty
-          ? null
-          : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
-      if (linked == null) return;
-      Navigator.of(context, rootNavigator: true).pop(); // ferme le hub
-      logic.start(linked.id);
-      if (timer) {
-        final mins = (r.timerMin ?? 0) > 0 ? r.timerMin! : 5; // défaut 5 min
-        _startCountdown(mins, linked.name, routineId: r.id);
-      } else {
-        logic.rev.value++;
-      }
-      setState(() => _tab = _Tab.maintenant);
-    }
-
-    void _openGamificationHub(BuildContext context) {
-      final routineSummary = logic.routineProgressSummaryForCurrentPeriod();
-      final done = routineSummary.reached;
-      final total = routineSummary.total;
-      showGamificationHub(context, logic, _sync,
-          scoreTab: (ctx) => _scoreHubTab(ctx, done, total),
-          onLaunchRoutine: (r, {required bool timer}) =>
-              _launchRoutineFromGold(context, r, timer: timer));
-    }
-
-    // Indicateur composite : ⭐ gains du jour · anneau de score (sans %) · pièce d'or net
-    // projeté ce soir. Tap → hub gamification (Mon or / Score / Classement / Défis).
-    Widget _buildGamificationIndicator(BuildContext context) {
-      final cs = Theme.of(context).colorScheme;
-      final now = DateTime.now();
-      final ymd = yyyymmdd(now);
-      final score = logic.dailyScore(ymd).clamp(0.0, 1.0);
-      final gainToday = logic.provisionalGoldToday();
-      final solde = logic.gold; // solde réel (= « Mon or »), pas le net projeté
-      final ringColor = score >= 1.0
-          ? const Color(0xFF1D9E75)
-          : Color.lerp(cs.error, cs.primary, score)!;
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => _openGamificationHub(context),
-            borderRadius: BorderRadius.circular(999),
-            child: Ink(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest.withValues(alpha: .55),
-                borderRadius: BorderRadius.circular(999),
-                border:
-                    Border.all(color: cs.outlineVariant.withValues(alpha: .55)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (logic.dailyChestClaimable()) ...[
-                    const Text('🎁', style: TextStyle(fontSize: 13)),
-                    const SizedBox(width: 6),
-                  ],
-                  Text('⭐ +$gainToday',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1D9E75))),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      value: score,
-                      strokeWidth: 2.5,
-                      backgroundColor: cs.onSurface.withValues(alpha: .15),
-                      color: ringColor,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const GoldIcon(size: 13),
-                  const SizedBox(width: 3),
-                  Text('$solde',
-                      style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFFD4A017))),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
+    // (Hub gamification — score/or/classement/défis — supprimé avec la couche jeu.)
 
     // 2) App prête -> Scaffold complet. L'overlay assistant est désormais rendu
     // globalement (MaterialApp.builder → GlobalAssistantOverlay), au-dessus des
@@ -5207,9 +4437,7 @@ class _AppRootState extends State<AppRoot>
               },
             ),
             const Spacer(),
-            // Indicateur composite gamifié (gains du jour · score · net projeté).
-            // Coupé avec l'ancienne gamification (kOldGamificationEnabled).
-            if (kOldGamificationEnabled) _buildGamificationIndicator(context),
+            // (Indicateur composite gamifié supprimé avec la couche jeu.)
             Stack(
               clipBehavior: Clip.none,
               children: [
@@ -5554,42 +4782,8 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ),
               ),
-              // Manoir d'Ombrelune — bascule vers le jeu (WebView pontée : les
-              // routines/chronos réels de Productivitwo rallument le manoir).
-              // Coupé avec la couche jeu (kGameLayerEnabled).
-              if (kGameLayerEnabled) ...[
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.castle_outlined),
-                  title: const Text("Manoir d'Ombrelune"),
-                  subtitle: const Text('Entrer dans le manoir (bêta)'),
-                  trailing: const Icon(Icons.chevron_right, size: 18),
-                  onTap: () {
-                    Navigator.pop(sheetCtx);
-                    _enterManoir();
-                  },
-                ),
-                // Importer les routines « scénario » du Manoir dans les vraies routines
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.playlist_add_check_outlined),
-                  title: const Text('Importer les routines du Manoir'),
-                  subtitle: const Text(
-                      'Ajoute les routines du scénario (eau, vaisselle…) à tes routines'),
-                  onTap: () {
-                    final n = seedManoirRoutines(logic);
-                    _saveAndRefresh();
-                    Navigator.pop(sheetCtx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(n > 0
-                            ? '$n routine(s) du Manoir ajoutée(s)'
-                            : 'Routines du Manoir déjà présentes'),
-                      ),
-                    );
-                  },
-                ),
-              ],
+              // (Les entrées « Manoir d'Ombrelune » ont été supprimées avec la
+              // couche jeu.)
               // Affichage : Défis du moment (désactivé par défaut)
               StatefulBuilder(
                 builder: (ctx, setLocal) => SwitchListTile(
@@ -6083,13 +5277,8 @@ class _AppRootState extends State<AppRoot>
         .where((i) => i.date == todayKey)
         .toList();
 
-    // Défis du donjon (du niveau visé) : ils « se déposent » ici.
-    final donjonChallenges = logic.expeditionChallengeStatuses();
-
-    final total = todayTasks.length +
-        todayActivities.length +
-        freeItems.length +
-        donjonChallenges.length;
+    final total =
+        todayTasks.length + todayActivities.length + freeItems.length;
 
     return Card(
       elevation: 1,
@@ -6140,11 +5329,6 @@ class _AppRootState extends State<AppRoot>
             ),
           ),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(.3)),
-          // ── Défis du donjon ──────────────────────────────────────────────────
-          // Coupés avec l'ancienne gamification (kOldGamificationEnabled).
-          if (kOldGamificationEnabled)
-            for (final c in donjonChallenges)
-              _buildDonjonChallengeTile(context, cs, c),
           // ── Items Gantt ──────────────────────────────────────────────────────
           for (final entry in todayTasks)
             _buildPriorityTaskTile(context, cs, entry.project, entry.task),
@@ -6169,56 +5353,6 @@ class _AppRootState extends State<AppRoot>
             ),
           const SizedBox(height: 4),
         ],
-      ),
-    );
-  }
-
-  /// Tuile d'un défi du donjon dans « Défis du moment » → tap ouvre le donjon.
-  Widget _buildDonjonChallengeTile(
-      BuildContext context,
-      ColorScheme cs,
-      ({String label, String type, int target, int progress, bool done}) c) {
-    final color = c.done ? Colors.green.shade600 : const Color(0xFFD4A017);
-    return InkWell(
-      onTap: () async {
-        if (logic.donjonAlreadyEntered) {
-          final goOverworld = await showExpeditionSheet(context, logic, _sync);
-          if (goOverworld && mounted) await showExpeditionGame(context, logic, _sync);
-        } else {
-          await showExpeditionGame(context, logic, _sync);
-        }
-        if (mounted) setState(() {});
-      },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: Row(children: [
-          Text(c.done ? '✅' : '🎯', style: const TextStyle(fontSize: 16)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(c.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: c.done ? Colors.green.shade700 : null,
-                        decoration:
-                            c.done ? TextDecoration.lineThrough : null)),
-                if (c.target > 1)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Text('${c.progress}/${c.target}',
-                        style: TextStyle(
-                            fontSize: 11, color: cs.onSurface.withOpacity(.5))),
-                  ),
-              ],
-            ),
-          ),
-          Icon(Icons.castle_outlined, size: 16, color: color),
-        ]),
       ),
     );
   }
@@ -6486,85 +5620,29 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  /// Bannière compacte « Quête du jour » en tête de l'accueil → tap ouvre Mon or.
-  Widget _buildQuestBanner(BuildContext context, ColorScheme cs) {
-    final progress = logic.dailyQuestProgress();
-    final target = logic.dailyQuestTarget;
-    final claimable = logic.dailyChestClaimable();
-    final claimed = logic.state.lastQuestClaimedYmd == yyyymmdd(DateTime.now());
-    final streak = logic.questStreak;
-    final pct = target > 0 ? (progress / target).clamp(0.0, 1.0) : 0.0;
-    const dark = Color(0xFF231900); // texte quasi-noir chaud (lisible sur jaune)
-    const gold = Color(0xFFD4A017);
-    return Padding(
-      padding: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () async {
-          await showGoldSheet(context, logic, _sync);
-          if (mounted) setState(() {});
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-                colors: claimable
-                    ? [const Color(0xFFFFE9A8), const Color(0xFFFFD24D)]
-                    : [
-                        cs.surfaceContainerHighest.withOpacity(.5),
-                        cs.surfaceContainerHighest.withOpacity(.3)
-                      ]),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: gold.withOpacity(claimable ? .7 : .3)),
-          ),
-          child: Row(children: [
-            const Text('🎯', style: TextStyle(fontSize: 16)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Text('Quête du jour',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w800,
-                              color: claimable ? dark : cs.onSurface)),
-                      if (streak > 0) ...[
-                        const SizedBox(width: 6),
-                        Text('🔥$streak',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: claimable
-                                    ? dark
-                                    : cs.onSurface.withOpacity(.8))),
-                      ],
-                      const Spacer(),
-                      Text('$progress/$target',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: claimable
-                                  ? dark
-                                  : cs.onSurface.withOpacity(.6))),
-                    ]),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                          value: pct,
-                          minHeight: 5,
-                          backgroundColor: Colors.black.withOpacity(.12),
-                          color: claimable ? const Color(0xFF8A6D00) : gold),
-                    ),
-                  ]),
-            ),
-            const SizedBox(width: 10),
-            Text(claimable ? '🎁' : (claimed ? '✅' : '→'),
-                style: const TextStyle(fontSize: 16)),
-          ]),
+  /// Ouvre la fiche stats complète (StatsView). Accessible depuis la carte
+  /// « Statistiques avancées » de l'accueil (l'ancien accès via le hub
+  /// gamification a été supprimé avec la couche jeu).
+  void _openFullStats(BuildContext ctx) {
+    showModalBottomSheet(
+      context: ctx,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.92,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, controller) => StatsView(
+          logic: logic,
+          state: _state!,
+          selectedDomainId: null,
+          scrollController: controller,
+          sync: _sync,
+          onDataChanged: () {
+            Navigator.pop(ctx);
+            _init();
+          },
         ),
       ),
     );
@@ -6818,7 +5896,12 @@ class _AppRootState extends State<AppRoot>
         SectionCard(
           child: ProGate(
             featureName: 'Statistiques avancées',
-            child: ProductivityStatsCard(logic: logic),
+            // Tap → fiche stats complète (StatsView).
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => _openFullStats(context),
+              child: ProductivityStatsCard(logic: logic),
+            ),
           ),
         ),
         SectionCard(
@@ -10278,69 +9361,3 @@ class _DashedLinePainter extends CustomPainter {
   bool shouldRepaint(_DashedLinePainter old) => old.color != color;
 }
 
-/// Courbe d'historique d'or (7 derniers jours) : ligne lissée + dégradé sous la
-/// courbe + point sur le jour courant. Échelle relative au max de la fenêtre.
-class _GoldSparkline extends CustomPainter {
-  final List<int> values;
-  final Color color;
-  const _GoldSparkline({required this.values, required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (values.isEmpty) return;
-    final maxV = values.fold(1, (a, b) => b > a ? b : a).toDouble();
-    const pad = 3.0; // marge verticale pour que le point ne soit pas rogné
-    final n = values.length;
-    final dx = n > 1 ? size.width / (n - 1) : 0.0;
-    double yFor(int v) =>
-        size.height - pad - (size.height - 2 * pad) * (v / maxV);
-
-    final pts = [
-      for (int i = 0; i < n; i++) Offset(i * dx, yFor(values[i])),
-    ];
-
-    // Tracé lissé (courbe de Catmull-Rom → Bézier cubique).
-    final line = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (int i = 0; i < n - 1; i++) {
-      final p0 = pts[i == 0 ? 0 : i - 1];
-      final p1 = pts[i];
-      final p2 = pts[i + 1];
-      final p3 = pts[i + 2 < n ? i + 2 : n - 1];
-      final c1 = Offset(p1.dx + (p2.dx - p0.dx) / 6, p1.dy + (p2.dy - p0.dy) / 6);
-      final c2 = Offset(p2.dx - (p3.dx - p1.dx) / 6, p2.dy - (p3.dy - p1.dy) / 6);
-      line.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, p2.dx, p2.dy);
-    }
-
-    // Dégradé sous la courbe.
-    final fill = Path.from(line)
-      ..lineTo(pts.last.dx, size.height)
-      ..lineTo(pts.first.dx, size.height)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [color.withValues(alpha: .22), color.withValues(alpha: .0)],
-        ).createShader(Offset.zero & size),
-    );
-
-    canvas.drawPath(
-      line,
-      Paint()
-        ..color = color
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // Point sur le jour courant.
-    canvas.drawCircle(pts.last, 3, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_GoldSparkline old) =>
-      old.color != color || !listEquals(old.values, values);
-}

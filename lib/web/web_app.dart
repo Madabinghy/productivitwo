@@ -8,15 +8,9 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/mobile_preview_screen.dart';
-import 'package:productivitwo_v1/web/world_test_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
 import 'package:productivitwo_v1/web/web_magic_link_complete_screen.dart';
-import 'package:productivitwo_v1/prototypes/td_prototype.dart';
-import 'package:productivitwo_v1/prototypes/overworld_prototype.dart';
-import 'package:productivitwo_v1/prototypes/level_prototype.dart';
-import 'package:productivitwo_v1/prototypes/expedition_prototype.dart';
-import 'package:productivitwo_v1/web/fluo_data_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_routine_types_screen.dart';
@@ -30,13 +24,6 @@ import 'package:productivitwo_v1/softpop/softpop_lair_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_strategy_screen.dart';
 import 'package:productivitwo_v1/main.dart'
     show softpopShellEnabled, loadSoftpopShellFlag;
-import 'package:productivitwo_v1/web/orbit_data_screen.dart';
-import 'package:productivitwo_v1/web/rpg_data_screen.dart';
-import 'package:productivitwo_v1/web/pet_data_screen.dart';
-import 'package:productivitwo_v1/web/defense_data_screen.dart';
-import 'package:productivitwo_v1/web/village_data_screen.dart';
-import 'package:productivitwo_v1/web/iso_world_screen.dart';
-import 'package:productivitwo_v1/web/organic_map_screen.dart';
 import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
 // ── Tampon de build ───────────────────────────────────────────────────────────
@@ -188,14 +175,9 @@ class _AuthGateState extends State<_AuthGate> {
       final isLocalHost = uri.host == 'localhost' || uri.host == '127.0.0.1';
 
       if (isLocalHost) {
-        // Proto Tower Defense jouable (sans auth ni données) — test du feeling.
-        if (params['proto'] == 'td') return const TdGameScreen();
-        // Proto Overworld fluo (héros déplaçable) — sans auth.
-        if (params['proto'] == 'world') return const OverworldScreen();
-        // Proto Carte de niveau fluo (héros explorable, pièces, POI) — sans auth.
-        if (params['proto'] == 'level') return const LevelScreen();
-        // Proto Expédition de la semaine (carte d'ascension, défis, combats) — sans auth.
-        if (params['proto'] == 'expedition') return const ExpeditionScreen();
+        // (Les protos de jeu — td/world/level/expedition/flame/rive et les
+        // écrans « data » — ont été SUPPRIMÉS avec la couche jeu. Récupérables
+        // sur archive/couche-jeu-complete-2026-07.)
         // Aperçus refonte « Soft Pop » (sans auth ni données). Les écrans sont des
         // Scaffold sans MaterialApp → on les enveloppe ici pour l'entrée web.
         final softpop = params['softpop'];
@@ -288,17 +270,15 @@ class _AuthGateState extends State<_AuthGate> {
           );
         }
         if (snapshot.hasError || snapshot.data == null) {
-          // En localhost, les pages de DÉV (worldtest / mobilepreview)
-          // exigent une vraie session → on bascule direct sur le dev-login (token
-          // pré‑rempli depuis l'URL ou le localStorage) plutôt que l'auth publique.
+          // En localhost, les pages de DÉV (mobilepreview) exigent une vraie
+          // session → on bascule direct sur le dev-login (token pré‑rempli
+          // depuis l'URL ou le localStorage) plutôt que l'auth publique.
           final p = Uri.base.queryParameters;
           final localhost =
               Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1';
           if (kIsWeb &&
               localhost &&
-              (p['worldtest'] == 'true' ||
-                  p['mobilepreview'] == 'true' ||
-                  p['devauth'] == '1')) {
+              (p['mobilepreview'] == 'true' || p['devauth'] == '1')) {
             return DevAuthScreen(
                 onSignedIn: () {
                   if (mounted) setState(() {});
@@ -322,52 +302,9 @@ class _AuthGateState extends State<_AuthGate> {
           }
           return MobilePreviewScreen(sync: FirestoreSync());
         }
-        // Page de DÉV : ouvre direct le Monde (cinématique/combat) — recharge
-        // la page pour re-tester.
-        if (kIsWeb &&
-            Uri.base.queryParameters['worldtest'] == 'true') {
-          return WorldTestScreen(sync: FirestoreSync());
-        }
-        // Protos « avec tes données » (galaxie, RPG, compagnon, défense,
-        // village, iso, carte organique) : DEV LOCAL UNIQUEMENT depuis le
-        // pivot productivité — plus accessibles en prod, même authentifié.
-        final protoDev = kIsWeb &&
-            (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1');
-        // « Fluo Adventure » : galaxie (domaines autour d'Aujourd'hui) → tape
-        // une planète → map (activités) → carte à nœuds (?proto=orbit / fluo).
-        if (protoDev &&
-            (Uri.base.queryParameters['proto'] == 'orbit' ||
-                Uri.base.queryParameters['proto'] == 'fluo')) {
-          return FluoDataScreen(sync: FirestoreSync());
-        }
-        // Galaxie « pure » (contemplation, tap = info, sans navigation).
-        if (protoDev && Uri.base.queryParameters['proto'] == 'galaxy') {
-          return OrbitDataScreen(sync: FirestoreSync());
-        }
-        // Proto « RPG / Stats » AVEC TES DONNÉES : domaines = attributs.
-        if (protoDev && Uri.base.queryParameters['proto'] == 'rpg') {
-          return RpgDataScreen(sync: FirestoreSync());
-        }
-        // Proto « Compagnon » AVEC TES DONNÉES : humeur = ta régularité.
-        if (protoDev && Uri.base.queryParameters['proto'] == 'pet') {
-          return PetDataScreen(sync: FirestoreSync());
-        }
-        // Proto « Défense néon » AVEC TES DONNÉES : domaines = tourelles.
-        if (protoDev && Uri.base.queryParameters['proto'] == 'defense') {
-          return DefenseDataScreen(sync: FirestoreSync());
-        }
-        // Proto « Village » AVEC TES DONNÉES : chaque action bâtit ton monde.
-        if (protoDev && Uri.base.queryParameters['proto'] == 'village') {
-          return VillageDataScreen(sync: FirestoreSync());
-        }
-        // Proto « Monde isométrique » AVEC TES DONNÉES (pixel-art blocks).
-        if (protoDev && Uri.base.queryParameters['world'] == 'iso') {
-          return IsoWorldScreen(sync: FirestoreSync());
-        }
-        // Carte ORGANIQUE contemplative (parchemin, type deepnight).
-        if (protoDev && Uri.base.queryParameters['map'] == 'organic') {
-          return OrganicMapScreen(sync: FirestoreSync());
-        }
+        // (Les pages de DÉV du jeu — ?worldtest, ?proto=orbit/fluo/galaxy/rpg/
+        // pet/defense/village, ?world=iso, ?map=organic — ont été SUPPRIMÉES
+        // avec la couche jeu. Récupérables sur archive/couche-jeu-complete-2026-07.)
         return WebHomeScreen(isDemo: isDemo);
       },
     );

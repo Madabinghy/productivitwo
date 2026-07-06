@@ -7,8 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/gold_economy.dart';
-import 'package:productivitwo_v1/gold_purchase.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:uuid/uuid.dart';
@@ -2063,9 +2061,9 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) setState(() => _saving = false);
   }
 
-  /// Repousser l'échéance : date postérieure → coût `deadlinePush` par semaine
-  /// entamée de décalage, gratuit si un Sursis est en stock (achat-à-l'usage
-  /// proposé sinon). Sort la tâche de `lateTasks()` → stoppe le −1/j.
+  /// Repousser l'échéance : date postérieure via date picker. Sort la tâche de
+  /// `lateTasks()`. (L'économie d'or du jeu — coût par semaine, sursis — a été
+  /// retirée.)
   Future<void> _pushDeadline() async {
     final cur = _task.endDate;
     if (cur == null) return;
@@ -2079,69 +2077,9 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     );
     if (picked == null || !mounted) return;
     final pickedMid = DateTime(picked.year, picked.month, picked.day);
-    final deltaDays = pickedMid.difference(ref).inDays;
-    if (deltaDays <= 0) return;
-    final weeks = (deltaDays + 6) ~/ 7;
-    final billed = widget.project.status != 'draft';
-    final cost = billed ? GoldEconomy.deadlinePush * weeks : 0;
-
-    if (cost > 0) {
-      final proceed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Repousser la deadline ?'),
-          content: Text(
-              'L\'échéance de « ${_task.title} » passera au ${_fmtDate(pickedMid)} '
-              '(+$weeks semaine${weeks > 1 ? 's' : ''}).\n\nCoût : $cost or — '
-              'gratuit si tu as un Sursis en stock.'),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Annuler')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Repousser (−$cost or)')),
-          ],
-        ),
-      );
-      if (proceed != true) return;
-
-      var usedSursis = await widget.sync.consumeSursis();
-      if (!usedSursis && mounted) {
-        final bought = await offerBuyConsumable(
-          context,
-          widget.sync,
-          itemKey: 'sursis',
-          price: GoldEconomy.shopSursis,
-          label: 'Sursis de deadline',
-          rationale: 'Annule le coût de $cost or de ce report.',
-        );
-        if (bought) usedSursis = await widget.sync.consumeSursis();
-      }
-      if (usedSursis) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('⏳ Sursis utilisé — report gratuit.')));
-        }
-      } else {
-        widget.sync.applyGold(GoldLedgerEntry(
-          delta: -cost,
-          category: 'loss',
-          reasonCode: 'deadline_push',
-          label: 'Report d\'échéance « ${_task.title} »',
-          refType: 'task',
-          refId: _task.id,
-        ));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Échéance repoussée · −$cost or')));
-        }
-      }
-    } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Échéance repoussée.')));
-    }
-
+    if (pickedMid.difference(ref).inDays <= 0) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Échéance repoussée.')));
     setState(() => _task.endDate = pickedMid);
     await _save();
   }
@@ -2987,26 +2925,13 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                 icon: Icon(Icons.delete_outline,
                     size: 16, color: cs.onSurface.withOpacity(.3)),
                 visualDensity: VisualDensity.compact,
-                tooltip: 'Supprimer (−${GoldEconomy.deleteAction} or)',
+                tooltip: 'Supprimer',
                 onPressed: () {
                   setState(() => _task.actions.remove(a));
                   _save();
-                  final billed = widget.project.status != 'draft';
-                  if (billed) {
-                    widget.sync.applyGold(GoldLedgerEntry(
-                      delta: -GoldEconomy.deleteAction,
-                      category: 'loss',
-                      reasonCode: 'delete_action',
-                      label: 'Suppression action « ${a.title} »',
-                      refType: 'task',
-                      refId: _task.id,
-                    ));
-                  }
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    duration: const Duration(seconds: 2),
-                    content: Text(billed
-                        ? 'Action supprimée · −${GoldEconomy.deleteAction} or'
-                        : 'Action supprimée'),
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    duration: Duration(seconds: 2),
+                    content: Text('Action supprimée'),
                   ));
                 },
               ),
