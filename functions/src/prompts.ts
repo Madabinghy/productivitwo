@@ -35,9 +35,9 @@ export function getPromptMessages(name: string, args: Record<string, string>) {
             `Étapes à suivre dans l'ordre :\n` +
             `1. Appelle get_user_context pour connaître mes objectifs et ce que j'ai fait cette semaine.\n` +
             `2. Appelle get_day_blocks pour connaître mes blocs de journée.\n` +
-            `3. Appelle get_day_plan(${date}) pour voir ce qui est déjà prévu.\n` +
+            `3. Appelle get_day_schedule(${date}) pour voir ce qui est déjà prévu.\n` +
             `4. Appelle list_events (Google Calendar) pour voir mes rendez-vous existants.\n` +
-            `5. Crée un programme cohérent avec plan_day :\n` +
+            `5. Crée un programme cohérent avec schedule_day :\n` +
             `   - Respecte mes blocs\n` +
             `   - Priorise les tâches Gantt en retard\n` +
             `   - Commente les actions non faites de la semaine si pertinent\n` +

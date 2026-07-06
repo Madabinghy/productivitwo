@@ -5,25 +5,31 @@ Langue du code : anglais. Langue des commentaires et UI : français.
 
 ---
 
-## ⏪ Refonte en cours « Soft Pop » + point de restauration
+## ⏪ Pivot productivité (2026-07) + points de restauration
 
-Depuis 2026-06, l'app est en **refonte** : nouvelle direction design **« Soft Pop »**
-(Fredoka/Space Mono, palette violet/corail/teal, ton calme jamais punitif) + nouvelle
-**couche jeu opt-in** (tower-defense / raid asynchrone entre amis ; monnaies **XP / ⚡ énergie /
-💎 gemmes** ; équité par **% du standard personnel**, pas le volume). On **transforme `main`
-directement, PR par PR** (pas de branche longue).
+**Depuis 2026-07, la couche jeu est ABANDONNÉE** : Productivitwo redevient une pure app de
+productivité (cible : power users prêts à payer — Pro via RevenueCat, app web, Gantt).
+La refonte « Soft Pop » de 2026-06 (design Fredoka/palette violet-corail + couche jeu
+tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 
-**Stratégie de retour en arrière si la direction n'est pas retenue :**
+État de la couche jeu :
+- **Coupée de l'UI** par deux flags à `false` dans `lib/gamification_flags.dart` :
+  `kOldGamificationEnabled` (or/combat/donjon/expédition/hub) et `kGameLayerEnabled`
+  (Manoir d'Ombrelune, mise du jour). Le code gaté restant est du code mort volontaire.
+- **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
+  (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
+  Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
+- Onglets mobiles actuels : **Accueil / Projets / Aujourd'hui (programme + demain) /
+  Maintenant (focus/chrono)**. Ne pas réintroduire d'UI de jeu.
 
-- **Point de restauration permanent** = branche **`archive/style-actuel-2026-06`** sur le remote
-  (commit `2f335d1`) = l'app/style AVANT la refonte. Ne jamais la modifier ni la supprimer.
-- **Repêcher un fichier précis** de l'ancien design :
-  `git checkout archive/style-actuel-2026-06 -- <chemin>`.
-- **Tout restaurer** : recréer une branche depuis `archive/style-actuel-2026-06` et la remettre
-  en `main` (PR de restauration). Rien n'est perdu tant qu'on ne **force-push jamais** sur `main`.
-- ⚠️ Ne **jamais** force-push sur `main` (ça écraserait l'historique du style actuel).
+**Points de restauration permanents (ne jamais modifier/supprimer) :**
+
+- **`archive/couche-jeu-complete-2026-07`** = état complet AVANT la purge du jeu
+  (commit `f72eb3a`). Repêcher : `git checkout archive/couche-jeu-complete-2026-07 -- <chemin>`.
+- **`archive/style-actuel-2026-06`** (commit `2f335d1`) = l'app/style AVANT la refonte Soft Pop.
+- Rien n'est perdu tant qu'on ne **force-push jamais** sur `main`. ⚠️ Ne **jamais** force-push.
 - Note : les **tags** ne sont pas poussables via le proxy git de session (403 politique) — d'où
-  l'usage d'une **branche d'archive** comme repère, créée via l'API GitHub.
+  l'usage de **branches d'archive** comme repères, créées via l'API GitHub.
 
 ---
 
@@ -156,9 +162,12 @@ Utiliser `deleted: true` (domaines, activités, routines) ou `status: archived/d
 
 ## Cloud Functions (`functions/src/index.ts`)
 
-~19 Cloud Functions HTTP (Node 20, 2nd Gen), groupées par rôle (👤 = action user, 🔌 = webhook/cron/MCP, 🛠 = admin) :
+~18 Cloud Functions HTTP (Node 20, 2nd Gen), groupées par rôle (👤 = action user, 🔌 = webhook/cron/MCP, 🛠 = admin).
+`markPlanItemDone` (dayPlan mort) et les 16 fonctions sociales/jeu de `social.ts` ont été **supprimées** (pivot productivité).
+Auth `mcpHandler` : header `Authorization: Bearer <token>` recommandé (l'URL `/mcp/{uid}/{token}` reste supportée en legacy).
+Secrets : toute comparaison passe par `secretsMatch()` (temps constant) — jamais `===` sur un secret brut.
 
-**MCP & Gantt** — `mcpHandler` (MCP remote JSON-RPC, connecteur claude.ai) · `pushGantt`, `pushAssistantMessage` (endpoints du MCP local) · `structureProject` · `markPlanItemDone` (widget iOS)
+**MCP & Gantt** — `mcpHandler` (MCP remote JSON-RPC, connecteur claude.ai) · `pushGantt`, `pushAssistantMessage` (endpoints du MCP local) · `structureProject`
 **ORION** — `orionWebhook` 👤 (cycle sur demande) · `orionCron` 🔌 (cycle auto) · `orionBrief`, `orionRunCount`, `orionSaveConfig`
 **Auth & accès web** — `sendMagicLink` 👤 (**gaté** : allowlist / compte existant / acheteur formation) · `getCustomToken` · `getVisionAccess` (statut Vision/Pro)
 **Pro / Entitlements** — `revenueCatWebhook` 🔌 (RevenueCat iOS+Android → écrit `subscriptionUntil`)
