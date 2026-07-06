@@ -65,6 +65,7 @@ import 'package:productivitwo_v1/widgets/gold_icon.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
+import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
@@ -73,7 +74,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
-enum _Tab { dashboard, projets, maintenant, monde }
+enum _Tab { dashboard, projets, aujourdhui, maintenant }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1901,8 +1902,11 @@ class _AppRootState extends State<AppRoot>
     _tabFade = CurvedAnimation(parent: _tabFadeController, curve: Curves.easeIn);
 
     // Rouvrir l'app dans le mode où on l'a quittée (jeu ou console).
+    // Coupé avec la couche jeu (kGameLayerEnabled).
     SharedPreferences.getInstance().then((p) {
-      if (mounted && (p.getBool(_kManoirModePref) ?? false)) {
+      if (mounted &&
+          kGameLayerEnabled &&
+          (p.getBool(_kManoirModePref) ?? false)) {
         setState(() => _manoirMode = true);
       }
     });
@@ -2896,8 +2900,8 @@ class _AppRootState extends State<AppRoot>
     switch (t) {
       case _Tab.dashboard:   return 0;
       case _Tab.projets:     return 1;
-      case _Tab.maintenant:  return 2;
-      case _Tab.monde:       return 3;
+      case _Tab.aujourdhui:  return 2;
+      case _Tab.maintenant:  return 3;
     }
   }
 
@@ -2905,8 +2909,8 @@ class _AppRootState extends State<AppRoot>
     switch (i) {
       case 0:  return _Tab.dashboard;
       case 1:  return _Tab.projets;
-      case 2:  return _Tab.maintenant;
-      case 3:  return _Tab.monde;
+      case 2:  return _Tab.aujourdhui;
+      case 3:  return _Tab.maintenant;
       default: return _Tab.dashboard;
     }
   }
@@ -2987,6 +2991,12 @@ class _AppRootState extends State<AppRoot>
               }
             },
           ),
+          // Onglet Aujourd'hui : programme du jour + planif du lendemain.
+          TodayView(
+            logic: logic,
+            onLaunch: _launchScheduledBlock,
+            onOpenSource: _openBlockSource,
+          ),
           FocusView(
             logic: logic,
             state: st,
@@ -3041,9 +3051,6 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
-          // Emplacement de l'ancien onglet Galaxie : l'item « Manoir » de la
-          // barre bascule en mode jeu plein écran (voir onTap) — jamais rendu ici.
-          const SizedBox.shrink(),
         ],
       ),
     );
@@ -3855,7 +3862,9 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.dashboard || _tab == _Tab.maintenant;
+    return _tab == _Tab.dashboard ||
+        _tab == _Tab.aujourdhui ||
+        _tab == _Tab.maintenant;
   }
 
   Widget _buildFab() {
@@ -5394,10 +5403,6 @@ class _AppRootState extends State<AppRoot>
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _tabIndex(_tab),
         onTap: (i) {
-          if (i == 3) {
-            _enterManoir(); // l'item « Manoir » bascule en mode jeu plein écran
-            return;
-          }
           final tapped = _tabFromIndex(i);
           _tabFadeController.forward(from: 0);
           setState(() => _tab = tapped);
@@ -5415,13 +5420,13 @@ class _AppRootState extends State<AppRoot>
               activeIcon: Icon(Icons.account_tree),
               label: 'Projets'),
           const BottomNavigationBarItem(
+              icon: Icon(Icons.today_outlined),
+              activeIcon: Icon(Icons.today),
+              label: 'Aujourd\'hui'),
+          const BottomNavigationBarItem(
               icon: Icon(Icons.play_circle_outline),
               activeIcon: Icon(Icons.play_circle),
               label: 'Maintenant'),
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.castle_outlined),
-              activeIcon: Icon(Icons.castle),
-              label: 'Manoir'),
         ],
       ),
 
@@ -5542,37 +5547,40 @@ class _AppRootState extends State<AppRoot>
               ),
               // Manoir d'Ombrelune — bascule vers le jeu (WebView pontée : les
               // routines/chronos réels de Productivitwo rallument le manoir).
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.castle_outlined),
-                title: const Text("Manoir d'Ombrelune"),
-                subtitle: const Text('Entrer dans le manoir (bêta)'),
-                trailing: const Icon(Icons.chevron_right, size: 18),
-                onTap: () {
-                  Navigator.pop(sheetCtx);
-                  _enterManoir();
-                },
-              ),
-              // Importer les routines « scénario » du Manoir dans les vraies routines
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.playlist_add_check_outlined),
-                title: const Text('Importer les routines du Manoir'),
-                subtitle: const Text(
-                    'Ajoute les routines du scénario (eau, vaisselle…) à tes routines'),
-                onTap: () {
-                  final n = seedManoirRoutines(logic);
-                  _saveAndRefresh();
-                  Navigator.pop(sheetCtx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(n > 0
-                          ? '$n routine(s) du Manoir ajoutée(s)'
-                          : 'Routines du Manoir déjà présentes'),
-                    ),
-                  );
-                },
-              ),
+              // Coupé avec la couche jeu (kGameLayerEnabled).
+              if (kGameLayerEnabled) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.castle_outlined),
+                  title: const Text("Manoir d'Ombrelune"),
+                  subtitle: const Text('Entrer dans le manoir (bêta)'),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _enterManoir();
+                  },
+                ),
+                // Importer les routines « scénario » du Manoir dans les vraies routines
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.playlist_add_check_outlined),
+                  title: const Text('Importer les routines du Manoir'),
+                  subtitle: const Text(
+                      'Ajoute les routines du scénario (eau, vaisselle…) à tes routines'),
+                  onTap: () {
+                    final n = seedManoirRoutines(logic);
+                    _saveAndRefresh();
+                    Navigator.pop(sheetCtx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(n > 0
+                            ? '$n routine(s) du Manoir ajoutée(s)'
+                            : 'Routines du Manoir déjà présentes'),
+                      ),
+                    );
+                  },
+                ),
+              ],
               // Affichage : Défis du moment (désactivé par défaut)
               StatefulBuilder(
                 builder: (ctx, setLocal) => SwitchListTile(
@@ -6577,7 +6585,8 @@ class _AppRootState extends State<AppRoot>
         return ListView(
           children: [
         // Compteur global de nuisibles (transposé du HUD web « Le Monde »).
-        PestCounterCard(logic: logic),
+        // Coupé avec la couche jeu (kGameLayerEnabled).
+        if (kGameLayerEnabled) PestCounterCard(logic: logic),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(

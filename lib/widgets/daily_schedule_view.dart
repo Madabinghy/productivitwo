@@ -13,13 +13,18 @@ class DailyScheduleView extends StatefulWidget {
   // Tap sur un bloc issu d'une source (tâche/routine/activité) → ouvre SA fiche
   // (au lieu du sheet de renommage du bloc).
   final void Function(ScheduleBlock block)? onOpenSource;
+  // Titre de section et texte d'état vide — surchargés par la vue « Demain ».
+  final String title;
+  final String? emptyText;
 
   const DailyScheduleView(
       {super.key,
       required this.date,
       required this.logic,
       this.onLaunch,
-      this.onOpenSource});
+      this.onOpenSource,
+      this.title = 'Programme du jour',
+      this.emptyText});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -38,13 +43,22 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   // écritures répétées avant le retour du stream.
   final Set<String> _projectSynced = {};
 
+  /// La vue peut afficher une autre date (planif de demain) : les effets de
+  /// bord « jour courant » (todayBlocks, auto-coche) ne valent qu'aujourd'hui.
+  bool get _isToday {
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    return widget.date == today;
+  }
+
   @override
   void initState() {
     super.initState();
     _sub = _sync.streamDailySchedule(widget.date).listen((s) {
       if (mounted) {
         setState(() => _schedule = s);
-        widget.logic.todayBlocks = s?.blocks ?? [];
+        if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
       }
     });
   }
@@ -264,6 +278,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final visible = (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_isToday) return;
       _maybeAutoWin();
       _maybeSyncProjectBlocks();
     });
@@ -274,7 +289,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         Row(
           children: [
             Text(
-              'Programme du jour',
+              widget.title,
               style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -480,7 +495,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
+                widget.emptyText ??
+                    'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
                 style: TextStyle(
                     fontSize: 13,
                     color: cs.onSurface.withOpacity(.4),

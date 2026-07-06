@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
@@ -137,7 +138,7 @@ class _FocusViewState extends State<FocusView> {
               const SizedBox(height: 20),
             ],
             Text(
-              'Aujourd\'hui',
+              'Maintenant',
               style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -146,7 +147,8 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 24),
 
             // Mise du jour (sink d'or quotidien, commitment device honnête).
-            if (logic.sync != null) ...[
+            // Coupée avec la couche jeu (kGameLayerEnabled).
+            if (kGameLayerEnabled && logic.sync != null) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
