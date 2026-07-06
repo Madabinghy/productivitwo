@@ -23,7 +23,11 @@ on:
         description: "Quoi déployer"
         type: choice
         default: both
-        options: [both, hosting, functions]
+        options: [both, hosting, functions, firestore]
+      allow_deletions:
+        description: "Functions : autoriser la SUPPRESSION des fonctions absentes de la source (--force). À cocher uniquement pour entériner un retrait volontaire (ex. purge couche jeu)."
+        type: boolean
+        default: false
   push:
     branches:
       - main # deploy on merge : tout merge sur main déploie web + functions
@@ -105,7 +109,7 @@ jobs:
   # ── Web → Firebase Hosting ─────────────────────────────────────────────────
   deploy-web:
     needs: check
-    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target != 'functions') }}
+    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target == 'both' || inputs.target == 'hosting') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -159,7 +163,7 @@ jobs:
   # ── Cloud Functions → Firebase ─────────────────────────────────────────────
   deploy-functions:
     needs: check
-    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target != 'hosting') }}
+    if: ${{ needs.check.outputs.should_deploy == 'true' && (github.event_name != 'workflow_dispatch' || inputs.target == 'both' || inputs.target == 'functions') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -181,17 +185,49 @@ jobs:
         run: npm run build
 
       - name: Deploy functions
+        env:
+          # --force UNIQUEMENT sur déclenchement manuel avec allow_deletions
+          # coché : entérine un retrait volontaire de fonctions (ex. purge de la
+          # couche jeu). Sur push/cron, la garde anti-incident reste active.
+          ALLOW_DELETIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_deletions == true }}
         run: |
           echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          # PAS de --force : si le déploiement devait SUPPRIMER des fonctions
-          # (présentes en prod mais absentes de la source), il ÉCHOUE au lieu de
-          # les détruire silencieusement. Garde anti-incident (cf. 29/05/2026 où
-          # un --force depuis un main incomplet a supprimé 7 fonctions live).
+          # PAS de --force par défaut : si le déploiement devait SUPPRIMER des
+          # fonctions (présentes en prod mais absentes de la source), il ÉCHOUE
+          # au lieu de les détruire silencieusement. Garde anti-incident
+          # (cf. 29/05/2026 où un --force depuis un main incomplet a supprimé
+          # 7 fonctions live).
+          EXTRA=""
+          [ "$ALLOW_DELETIONS" = "true" ] && EXTRA="--force" \
+            && echo "::warning::allow_deletions coché → les fonctions absentes de la source seront SUPPRIMÉES"
           npx -y firebase-tools@latest deploy \
             --only functions \
             --project "$FIREBASE_PROJECT" \
-            --non-interactive
+            --non-interactive $EXTRA
+
+  # ── Règles + index Firestore (manuel uniquement : target=firestore) ────────
+  deploy-firestore:
+    needs: check
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.target == 'firestore' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check.outputs.target_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Deploy firestore rules + indexes
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@latest deploy \
+            --only firestore:rules,firestore:indexes \
+            --project "$FIREBASE_PROJECT" \
+            --non-interactive --force
 
   # ── Avance le marqueur SEULEMENT si les deux jobs ont réussi ───────────────
   # (déploiement partiel manuel hosting/functions → marqueur non avancé)
