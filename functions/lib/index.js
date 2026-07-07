@@ -1077,13 +1077,18 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
     { "title": "Verbe + action concrète", "phaseIndex": 0, "startDate": "YYYY-MM-DD", "endDate": "YYYY-MM-DD", "isMilestone": false, "actions": ["Étape 1", "Étape 2", "Étape 3"] }
   ]
 }`;
+    const structureModel = (0, models_1.getModel)("structure_project");
     const message = await client.messages.create({
-        model: models_1.MODELS.HAIKU,
-        max_tokens: 2048,
+        model: structureModel,
+        max_tokens: 4096,
         messages: [{ role: "user", content: prompt }],
     });
-    (0, models_1.logTokenUsage)("structure_project", models_1.MODELS.HAIKU, message.usage);
-    const raw = message.content[0].text.trim();
+    (0, models_1.logTokenUsage)("structure_project", structureModel, message.usage);
+    const raw = message.content
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
         res.status(500).json({ error: "ORION n'a pas retourné de JSON valide" });
@@ -1981,7 +1986,7 @@ async function extractStructurePreview(client, prevStructure, userMessage, assis
     try {
         const prevJson = JSON.stringify(prevStructure !== null && prevStructure !== void 0 ? prevStructure : { center: "Ma vie", domains: [] });
         const r = await client.messages.create({
-            model: (0, models_1.getModel)("structure_project"),
+            model: (0, models_1.getModel)("structure_preview"),
             max_tokens: 4096,
             system: "Tu maintiens une structure de vie pour une mindmap. On te donne la structure ACTUELLE (JSON) et le DERNIER échange. " +
                 "Renvoie la structure MISE À JOUR en appliquant le dernier échange : AJOUTE les nouveaux éléments, RENOMME ou SUPPRIME ceux que l'utilisateur demande explicitement de changer/retirer, et conserve À L'IDENTIQUE tout le reste (ne perds rien par inadvertance). UNIQUEMENT du JSON, rien d'autre. " +
@@ -1992,7 +1997,7 @@ async function extractStructurePreview(client, prevStructure, userMessage, assis
                 "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
             messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
         });
-        (0, models_1.logTokenUsage)("structure_preview", (0, models_1.getModel)("structure_project"), r.usage);
+        (0, models_1.logTokenUsage)("structure_preview", (0, models_1.getModel)("structure_preview"), r.usage);
         const txt = r.content.filter((b) => b.type === "text").map((b) => b.text).join("");
         const m = txt.match(/\{[\s\S]*\}/);
         if (!m)
