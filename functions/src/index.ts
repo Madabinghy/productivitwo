@@ -130,6 +130,217 @@ export const pushGantt = onRequest({ cors: true, invoker: "public" }, async (req
 // DayPlanItem (le widget iOS ne l'appelle plus — vérifié dans ios/). Le
 // scheduling passe par daily_schedules + mark_block_done.
 
+// ── nowAssist ─────────────────────────────────────────────────────────────────
+//
+// POST { uid, message } + Authorization: Bearer <api_token>
+// Champ libre de l'onglet « Maintenant » : « Que souhaites-tu faire ? »
+// Boucle Sonnet plafonnée, outils restreints. Règle d'or : ne JAMAIS créer une
+// routine/activité qui existe déjà (liste injectée) — la mission par défaut est
+// de PROGRAMMER les prochaines heures (add_blocks_today), pas de créer.
+// Limite : 10 appels / jour / user (garde de coût).
+
+const NOW_ASSIST_MAX_PER_DAY = 10;
+const NOW_ASSIST_MAX_TURNS = 5;
+
+const ADD_BLOCKS_TODAY_TOOL = {
+  name: "add_blocks_today",
+  description:
+    "Ajoute des blocs au programme d'AUJOURD'HUI (sans toucher aux blocs existants). " +
+    "Uniquement des heures À VENIR — jamais le passé. Un bloc peut porter " +
+    "activityId (chrono ciblé au lancement).",
+  input_schema: {
+    type: "object" as const,
+    required: ["blocks"],
+    properties: {
+      blocks: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["startTime", "durationMin", "title", "category"],
+          properties: {
+            startTime:   { type: "string", description: "HH:mm — obligatoirement ≥ heure actuelle" },
+            durationMin: { type: "integer" },
+            title:       { type: "string" },
+            category:    { type: "string", enum: ["project", "routine", "personal", "break"] },
+            activityId:  { type: "string" },
+            projectId:   { type: "string" },
+            taskId:      { type: "string" },
+          },
+        },
+      },
+    },
+  },
+};
+
+export const nowAssist = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, message } = req.body as { uid?: string; message?: string };
+    if (!uid || !message?.trim()) {
+      res.status(400).json({ error: "uid et message requis" }); return;
+    }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    // Limite quotidienne (garde de coût) — compteur simple par jour.
+    const today = todayInParis();
+    const limitRef = db.doc(`users/${uid}/rate_limits/now_assist`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+    if (count >= NOW_ASSIST_MAX_PER_DAY) {
+      res.status(429).json({ error: `Limite atteinte (${NOW_ASSIST_MAX_PER_DAY}/jour) — réessaie demain.` });
+      return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+    const client = new Anthropic({ apiKey });
+
+    const nowHm = new Date().toLocaleTimeString("fr-FR", {
+      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+
+    // Contexte : programme restant + routines/activités existantes (anti-doublon).
+    const [schedule, actsSnap] = await Promise.all([
+      executeGetDaySchedule(uid, today),
+      db.collection(`users/${uid}/activities`).get(),
+    ]);
+    const acts = actsSnap.docs
+      .map((d) => d.data() as Record<string, unknown>)
+      .filter((a) => a.deleted !== true);
+    const routineList = acts.filter((a) => a.type === "habit")
+      .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
+    const activityList = acts.filter((a) => a.type !== "habit")
+      .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
+
+    const systemPrompt = [
+      `Tu es l'assistant « Maintenant » de Productivitwo. L'utilisateur te dit ce qu'il veut faire là, tout de suite. Il est ${nowHm} (${today}, Europe/Paris).`,
+      ``,
+      `RÈGLES STRICTES :`,
+      `1. Ta mission PAR DÉFAUT est de PROGRAMMER les prochaines heures avec add_blocks_today — blocs UNIQUEMENT ≥ ${nowHm}, jamais le passé, jamais toute la journée (2-3 blocs max).`,
+      `2. Ne crée JAMAIS une routine ou activité qui existe déjà ci-dessous — référence son activityId dans le bloc. create_routine/create_activity SEULEMENT si rien d'existant ne correspond.`,
+      `3. Réponse finale : 1-2 phrases en français, concrètes (ce que tu as posé et quand).`,
+      ``,
+      `ROUTINES EXISTANTES :`,
+      routineList,
+      ``,
+      `ACTIVITÉS-TEMPS EXISTANTES :`,
+      activityList,
+      ``,
+      `PROGRAMME DU JOUR (ne pas dupliquer, ne pas toucher aux blocs existants) :`,
+      schedule,
+    ].join("\n");
+
+    // Ajout de blocs au programme du jour SANS remplacer l'existant.
+    const addBlocksToday = async (blocks: Array<Record<string, unknown>>): Promise<string> => {
+      const ref = db.doc(`users/${uid}/daily_schedules/${today}`);
+      const snap = await ref.get();
+      const existing = snap.exists
+        ? ((snap.data()?.blocks as Array<Record<string, unknown>>) ?? [])
+        : [];
+      const kept: Array<Record<string, unknown>> = [];
+      const skipped: string[] = [];
+      for (const b of blocks) {
+        const startTime = String(b.startTime ?? "");
+        if (!/^\d{2}:\d{2}$/.test(startTime) || startTime < nowHm) {
+          skipped.push(`"${b.title}" (${startTime || "?"} — heure passée/invalide)`);
+          continue;
+        }
+        kept.push({
+          id: uuidv4(),
+          startTime,
+          durationMin: Number(b.durationMin ?? 30),
+          title: String(b.title ?? ""),
+          category: String(b.category ?? "personal"),
+          projectId: b.projectId ?? null,
+          taskId: b.taskId ?? null,
+          activityId: b.activityId ?? null,
+          actionId: null,
+          status: "pending",
+          doneAt: null,
+        });
+      }
+      if (kept.length > 0) {
+        await ref.set({
+          date: today,
+          generatedBy: "claude",
+          generatedAt: FieldValue.serverTimestamp(),
+          blocks: [...existing, ...kept],
+        }, { merge: true });
+      }
+      return `${kept.length} bloc(s) ajouté(s).${skipped.length ? ` Ignorés (passé/invalide) : ${skipped.join(", ")}` : ""}`;
+    };
+
+    try {
+      type MsgParam = { role: "user" | "assistant"; content: string | unknown[] };
+      const messages: MsgParam[] = [{ role: "user", content: message.trim() }];
+      const tools = [CREATE_ROUTINE_TOOL, CREATE_ACTIVITY_TOOL, ADD_BLOCKS_TODAY_TOOL];
+      let blocksAdded = 0;
+      let finalText = "";
+
+      for (let turn = 0; turn < NOW_ASSIST_MAX_TURNS; turn++) {
+        const response = await client.messages.create({
+          model: getModel("chat"),
+          max_tokens: 1024,
+          system: systemPrompt,
+          tools: tools as Parameters<typeof client.messages.create>[0]["tools"],
+          messages: messages as Parameters<typeof client.messages.create>[0]["messages"],
+        });
+        logTokenUsage("now_assist", getModel("chat"), response.usage);
+
+        finalText += response.content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as { type: "text"; text: string }).text)
+          .join("");
+
+        if (response.stop_reason !== "tool_use") break;
+
+        messages.push({ role: "assistant", content: response.content });
+        const toolResults: unknown[] = [];
+        for (const block of response.content) {
+          if (block.type !== "tool_use") continue;
+          const args = block.input as Record<string, unknown>;
+          let result = "";
+          try {
+            if (block.name === "add_blocks_today") {
+              const blocks = (args.blocks as Array<Record<string, unknown>>) ?? [];
+              result = await addBlocksToday(blocks);
+              blocksAdded += blocks.length;
+            } else if (block.name === "create_routine") {
+              result = await executeCreateRoutine(uid, args as Parameters<typeof executeCreateRoutine>[1]);
+            } else if (block.name === "create_activity") {
+              result = await executeCreateActivity(uid, args as Parameters<typeof executeCreateActivity>[1]);
+            } else {
+              result = `Outil inconnu : ${block.name}`;
+            }
+          } catch (e) {
+            result = `Erreur : ${e instanceof Error ? e.message : String(e)}`;
+          }
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
+        }
+        messages.push({ role: "user", content: toolResults });
+      }
+
+      res.status(200).json({
+        message: finalText.trim() || "C'est noté — regarde ton programme.",
+        blocksAdded,
+      });
+    } catch (e) {
+      console.error("nowAssist error:", e);
+      res.status(500).json({ error: "Assistant indisponible — réessaie." });
+    }
+  }
+);
+
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage
