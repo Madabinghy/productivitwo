@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
 /// 3 états exclusifs :
@@ -403,7 +404,7 @@ class _FocusViewState extends State<FocusView> {
             const Spacer(),
             Icon(_categoryIcon(b.category), size: 15, color: color),
             const SizedBox(width: 4),
-            Text('${b.durationMin} min',
+            Text(fmtMin(b.durationMin),
                 style: TextStyle(
                     fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
           ]),

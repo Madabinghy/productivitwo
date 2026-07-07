@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 
 const _kCategoryColor = {
   'project': Color(0xFF1D9E75),
@@ -218,7 +219,7 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
           const SizedBox(width: 6),
           if (!isDone)
             Text(
-              '${block.durationMin}min',
+              fmtMin(block.durationMin),
               style:
                   TextStyle(fontSize: 10, color: cs.onSurface.withOpacity(.3)),
             ),
