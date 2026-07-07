@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/notifications.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -419,7 +420,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                                 : color.withOpacity(.8)),
                         const SizedBox(width: 4),
                         Text(
-                          '${block.durationMin} min',
+                          fmtMin(block.durationMin),
                           style: TextStyle(
                               fontSize: 11,
                               color: cs.onSurface
@@ -784,44 +785,28 @@ class _TimePickerField extends StatelessWidget {
 
 // ── Champ durée ───────────────────────────────────────────────────────────────
 
-class _DurationField extends StatefulWidget {
+class _DurationField extends StatelessWidget {
   final int value;
   final ValueChanged<int> onChanged;
 
   const _DurationField({required this.value, required this.onChanged});
 
   @override
-  State<_DurationField> createState() => _DurationFieldState();
-}
-
-class _DurationFieldState extends State<_DurationField> {
-  late final TextEditingController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.value.toString());
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: _ctrl,
-      keyboardType: TextInputType.number,
-      decoration: const InputDecoration(
-          labelText: 'Durée (min)',
-          border: OutlineInputBorder(),
-          isDense: true),
-      onChanged: (v) {
-        final n = int.tryParse(v);
-        if (n != null && n > 0) widget.onChanged(n);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () async {
+        final picked =
+            await pickDurationMin(context, initial: value, title: 'Durée');
+        if (picked != null && picked > 0) onChanged(picked);
       },
+      child: InputDecorator(
+        decoration: const InputDecoration(
+            labelText: 'Durée',
+            border: OutlineInputBorder(),
+            isDense: true),
+        child: Text(fmtMin(value), style: const TextStyle(fontSize: 14)),
+      ),
     );
   }
 }

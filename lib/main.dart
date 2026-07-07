@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/storage.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:alarm/alarm.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
@@ -7369,45 +7370,15 @@ class _AppRootState extends State<AppRoot>
                       StatefulBuilder(builder: (ctx2, setGoal) => Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
-                            final ctrl = TextEditingController(
-                                text: a.goalMin > 0 ? '${a.goalMin}' : '');
-                            final result = await showDialog<int>(
-                              context: ctx,
-                              builder: (d) => AlertDialog(
-                                title: const Text('Cible quotidienne'),
-                                content: TextField(
-                                  controller: ctrl,
-                                  autofocus: true,
-                                  keyboardType: TextInputType.number,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Minutes par jour',
-                                    suffixText: 'min',
-                                    border: OutlineInputBorder(),
-                                    helperText: 'ex : 45 pour 45 min, 90 pour 1h30',
-                                  ),
-                                  onSubmitted: (_) {
-                                    final v = int.tryParse(ctrl.text.trim()) ?? 0;
-                                    Navigator.pop(d, v.clamp(0, 720));
-                                  },
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(d),
-                                    child: const Text('Annuler'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () {
-                                      final v = int.tryParse(ctrl.text.trim()) ?? 0;
-                                      Navigator.pop(d, v.clamp(0, 720));
-                                    },
-                                    child: const Text('Enregistrer'),
-                                  ),
-                                ],
-                              ),
+                            final result = await pickDurationMin(
+                              ctx,
+                              initial: a.goalMin,
+                              title: 'Cible quotidienne',
+                              allowZero: true,
                             );
                             if (result == null) return;
                             setGoal(() {
-                              a.goalMin = result;
+                              a.goalMin = result.clamp(0, 720);
                               a.targetSource = 'user'; // épinglage manuel : ORION n'y touche plus
                             });
                             logic.onChange();
