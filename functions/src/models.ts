@@ -1,11 +1,13 @@
 export const MODELS = {
   HAIKU:  "claude-haiku-4-5-20251001",
   SONNET: "claude-sonnet-4-6",
+  OPUS:   "claude-opus-4-8",
 } as const;
 
 type TaskType =
   | "orion_cycle"
   | "structure_project"
+  | "structure_preview"
   | "plan_day"
   | "plan_week"
   | "sync_calendar"
@@ -18,7 +20,8 @@ type TaskType =
 
 const MODEL_ROUTING: Record<TaskType, string> = {
   orion_cycle:       MODELS.HAIKU, // aligné sur le modèle réellement utilisé (orion.ts)
-  structure_project: MODELS.HAIKU,
+  structure_project: MODELS.OPUS,  // moment "wow" (5/j max, ~2k tokens) — la qualité du plan prime
+  structure_preview: MODELS.HAIKU, // mindmap live onboarding : appels fréquents, JSON incrémental
   plan_day:          MODELS.HAIKU,
   plan_week:         MODELS.HAIKU,
   sync_calendar:     MODELS.HAIKU,

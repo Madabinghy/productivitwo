@@ -233,7 +233,8 @@ import { MODELS, getModel, logTokenUsage } from "./models";
 
 // Routing par type de tâche
 getModel("orion_cycle")       // → MODELS.HAIKU
-getModel("structure_project") // → MODELS.HAIKU
+getModel("structure_project") // → MODELS.OPUS  (création de projet — moment "wow", 5/j max)
+getModel("structure_preview") // → MODELS.HAIKU (mindmap live onboarding, appels fréquents)
 getModel("chat")              // → MODELS.SONNET
 getModel("generate_document") // → MODELS.SONNET
 // Haiku par défaut pour toute nouvelle tâche automatique
@@ -242,6 +243,7 @@ getModel("generate_document") // → MODELS.SONNET
 `logTokenUsage(taskType, model, usage)` — log JSON structuré dans Cloud Logging.
 À appeler après chaque `client.messages.create()` ou équivalent.
 Tâches automatiques (JSON structuré) → Haiku. Conversations / génération riche → Sonnet.
+Exception : `structure_project` → Opus (feature vitrine payante, volume faible et plafonné).
 
 ---
 

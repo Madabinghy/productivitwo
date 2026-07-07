@@ -6,10 +6,12 @@ exports.logTokenUsage = logTokenUsage;
 exports.MODELS = {
     HAIKU: "claude-haiku-4-5-20251001",
     SONNET: "claude-sonnet-4-6",
+    OPUS: "claude-opus-4-8",
 };
 const MODEL_ROUTING = {
     orion_cycle: exports.MODELS.HAIKU, // aligné sur le modèle réellement utilisé (orion.ts)
-    structure_project: exports.MODELS.HAIKU,
+    structure_project: exports.MODELS.OPUS, // moment "wow" (5/j max, ~2k tokens) — la qualité du plan prime
+    structure_preview: exports.MODELS.HAIKU, // mindmap live onboarding : appels fréquents, JSON incrémental
     plan_day: exports.MODELS.HAIKU,
     plan_week: exports.MODELS.HAIKU,
     sync_calendar: exports.MODELS.HAIKU,

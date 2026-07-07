@@ -5,7 +5,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
 import { processInboxToProjects } from "./orion_inbox";
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
-import { MODELS, getModel, logTokenUsage } from "./models";
+import { getModel, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
 import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
@@ -1082,14 +1082,19 @@ Retourne UNIQUEMENT ce JSON valide, sans aucun texte autour :
   ]
 }`;
 
+    const structureModel = getModel("structure_project");
     const message = await client.messages.create({
-      model: MODELS.HAIKU,
-      max_tokens: 2048,
+      model: structureModel,
+      max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     });
-    logTokenUsage("structure_project", MODELS.HAIKU, message.usage);
+    logTokenUsage("structure_project", structureModel, message.usage);
 
-    const raw = (message.content[0] as { type: string; text: string }).text.trim();
+    const raw = message.content
+      .filter((b) => b.type === "text")
+      .map((b) => (b as { type: "text"; text: string }).text)
+      .join("")
+      .trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       res.status(500).json({ error: "ORION n'a pas retourné de JSON valide" }); return;
@@ -2005,7 +2010,7 @@ async function extractStructurePreview(
   try {
     const prevJson = JSON.stringify(prevStructure ?? { center: "Ma vie", domains: [] });
     const r = await client.messages.create({
-      model: getModel("structure_project"),
+      model: getModel("structure_preview"),
       max_tokens: 4096,
       system:
         "Tu maintiens une structure de vie pour une mindmap. On te donne la structure ACTUELLE (JSON) et le DERNIER échange. " +
@@ -2017,7 +2022,7 @@ async function extractStructurePreview(
         "center = prénom si connu, sinon \"Ma vie\". N'ajoute QUE des domaines/activités/éléments explicitement nommés/validés.",
       messages: [{ role: "user", content: `Structure actuelle:\n${prevJson}\n\nDernier échange:\nuser: ${userMessage}\nassistant: ${assistantText}\n\nRenvoie la structure mise à jour (JSON uniquement).` }],
     });
-    logTokenUsage("structure_preview", getModel("structure_project"), r.usage);
+    logTokenUsage("structure_preview", getModel("structure_preview"), r.usage);
     const txt = r.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
     const m = txt.match(/\{[\s\S]*\}/);
     if (!m) return null;
