@@ -8,9 +8,27 @@ exports.taskGoldReview = taskGoldReview;
 exports.taskCleanExpiredMessages = taskCleanExpiredMessages;
 exports.taskProgressReport = taskProgressReport;
 exports.taskGenerateExpeditionChallenges = taskGenerateExpeditionChallenges;
+exports.taskPrepReminder = taskPrepReminder;
+exports.taskPrepMorningBoost = taskPrepMorningBoost;
 exports.runDeterministicTask = runDeterministicTask;
 const db_1 = require("./db");
 const execute_1 = require("./execute");
+function loadBlocks(snap) {
+    var _a, _b;
+    if (!snap.exists)
+        return [];
+    return ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.blocks) !== null && _b !== void 0 ? _b : []).filter((b) => b && b.status !== "deleted");
+}
+// "07:15" → "7h15" ; "07:00" → "7h"
+function hhmmToFr(hm) {
+    const [h, m] = hm.split(":");
+    const hh = String(parseInt(h, 10));
+    return m === "00" ? `${hh}h` : `${hh}h${m}`;
+}
+function hmToMinutes(hm) {
+    const [h, m] = hm.split(":").map((n) => parseInt(n, 10));
+    return (h || 0) * 60 + (m || 0);
+}
 // ── Résumé des retards ────────────────────────────────────────────────────────
 async function taskOverdueSummary(uid) {
     const actions = [];
@@ -398,6 +416,90 @@ async function taskGenerateExpeditionChallenges(uid) {
         pushed: 0, skipped: false,
     };
 }
+// ── Préparation la veille : rappel du soir (zéro LLM) ─────────────────────────
+// Lit le programme de DEMAIN, repère le premier bloc matinal (< 9h30) qui exige
+// du matériel/logistique (catégorie personal, domaine Santé/Sport, ou titre
+// sport/déplacement/cuisine), et vérifie qu'un bloc de prep lié existe déjà dans
+// le programme d'AUJOURD'HUI. S'il manque → pousse un message qui PROPOSE de
+// préparer ce soir (il n'écrit pas le bloc : ORION propose, l'utilisateur dispose).
+async function taskPrepReminder(uid) {
+    const today = (0, execute_1.todayInParis)();
+    const tomorrow = (0, execute_1.todayInParis)(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const [tomorrowSnap, todaySnap, actsSnap, domainsSnap] = await Promise.all([
+        db_1.db.doc(`users/${uid}/daily_schedules/${tomorrow}`).get(),
+        db_1.db.doc(`users/${uid}/daily_schedules/${today}`).get(),
+        db_1.db.collection(`users/${uid}/activities`).get(),
+        db_1.db.collection(`users/${uid}/domains`).get(),
+    ]);
+    const tomorrowBlocks = loadBlocks(tomorrowSnap);
+    if (tomorrowBlocks.length === 0) {
+        return { actions: ["ℹ️ Pas de programme demain — rien à préparer"], pushed: 0, skipped: true };
+    }
+    // Domaines « préparation-worthy » (santé, sport…) → set d'activityId concernés.
+    const healthDomains = new Set(domainsSnap.docs
+        .filter((d) => { var _a; return /sant|sport|forme|health|fit/i.test((_a = d.get("name")) !== null && _a !== void 0 ? _a : ""); })
+        .map((d) => d.id));
+    const prepWorthyActivity = new Set(actsSnap.docs.filter((a) => { var _a; return healthDomains.has((_a = a.get("domainId")) !== null && _a !== void 0 ? _a : ""); }).map((a) => a.id));
+    const titleNeedsPrep = (t) => /s[eé]ance|sport|muscu|course|footing|run|piscine|natation|d[eé]placement|train|avion|rendez|cuisine|meal|repas/i.test(t);
+    const morning = tomorrowBlocks
+        .filter((b) => b.status === "pending" && b.startTime < "09:30")
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const target = morning.find((b) => b.category === "personal" ||
+        (b.activityId && prepWorthyActivity.has(b.activityId)) ||
+        titleNeedsPrep(b.title));
+    if (!target) {
+        return { actions: ["ℹ️ Aucun bloc matinal à préparer demain"], pushed: 0, skipped: true };
+    }
+    // Un bloc prep lié existe-t-il déjà (aujourd'hui OU demain) ?
+    const alreadyPrepared = [...loadBlocks(todaySnap), ...tomorrowBlocks].some((b) => b.kind === "prep" && b.prepForDate === tomorrow && b.prepForBlockId === target.id);
+    if (alreadyPrepared) {
+        return { actions: [`ℹ️ Prep déjà en place pour « ${target.title} »`], pushed: 0, skipped: true };
+    }
+    const text = `Demain ${hhmmToFr(target.startTime)} : ${target.title}. Prépare tes affaires ce soir — 3 min, et demain tu n'as plus qu'à sortir.`;
+    await (0, execute_1.executePushAssistantMessage)(uid, {
+        targetDate: today, text: text.slice(0, 179),
+        condition: { type: "always" }, expiresAfterDays: 1, priority: 1,
+    });
+    return { actions: [`🌙 Rappel prep poussé pour « ${target.title} » (demain ${target.startTime})`], pushed: 1, skipped: false };
+}
+// ── Préparation la veille : coup de pouce du matin (zéro LLM) ──────────────────
+// Si un bloc prep d'HIER est `done` et que son bloc cible d'AUJOURD'HUI est
+// encore `pending` → affirme le fait tracké « les affaires sont prêtes depuis
+// hier » + compte à rebours vers le bloc.
+async function taskPrepMorningBoost(uid) {
+    const today = (0, execute_1.todayInParis)();
+    const yesterday = (0, execute_1.todayInParis)(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    const [yestSnap, todaySnap] = await Promise.all([
+        db_1.db.doc(`users/${uid}/daily_schedules/${yesterday}`).get(),
+        db_1.db.doc(`users/${uid}/daily_schedules/${today}`).get(),
+    ]);
+    const todayBlocks = loadBlocks(todaySnap);
+    const donePreps = loadBlocks(yestSnap).filter((b) => b.kind === "prep" && b.status === "done" && b.prepForDate === today);
+    if (donePreps.length === 0) {
+        return { actions: ["ℹ️ Aucune prep faite hier pour aujourd'hui"], pushed: 0, skipped: true };
+    }
+    const nowMin = (0, execute_1.nowInParis)().hour * 60 + (0, execute_1.nowInParis)().minute;
+    let pushed = 0;
+    const actions = [];
+    for (const prep of donePreps) {
+        const target = todayBlocks.find((b) => b.id === prep.prepForBlockId && b.status === "pending");
+        if (!target)
+            continue;
+        const minsUntil = hmToMinutes(target.startTime) - nowMin;
+        const whenStr = minsUntil > 0 ? `dans ${minsUntil} min` : "maintenant";
+        const text = `Les affaires sont prêtes depuis hier — ${target.title} ${whenStr}. Plus qu'à sortir.`;
+        await (0, execute_1.executePushAssistantMessage)(uid, {
+            targetDate: today, text: text.slice(0, 179),
+            condition: { type: "always" }, expiresAfterDays: 1, priority: 1,
+        });
+        pushed++;
+        actions.push(`☀️ Coup de pouce prep : « ${target.title} » (${whenStr})`);
+    }
+    if (pushed === 0) {
+        return { actions: ["ℹ️ Prep faite mais bloc cible déjà validé"], pushed: 0, skipped: true };
+    }
+    return { actions, pushed, skipped: false };
+}
 // ── Router ────────────────────────────────────────────────────────────────────
 async function runDeterministicTask(uid, taskId) {
     switch (taskId) {
@@ -409,6 +511,8 @@ async function runDeterministicTask(uid, taskId) {
         case "clean_expired": return taskCleanExpiredMessages(uid);
         case "progress_report": return taskProgressReport(uid);
         case "expedition_challenges": return taskGenerateExpeditionChallenges(uid);
+        case "prep_reminder": return taskPrepReminder(uid);
+        case "prep_morning_boost": return taskPrepMorningBoost(uid);
         default:
             return { actions: [`Tâche inconnue : ${taskId}`], pushed: 0, skipped: true, reason: `taskId inconnu : ${taskId}` };
     }

@@ -1645,6 +1645,11 @@ async function executePlanDay(
     `   → Tâche la plus proche de la deadline en premier`,
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
     `3. schedule_day("${date}", blocks[])`,
+    `4. PRÉPARATION LA VEILLE : pour tout bloc matinal (avant 9h30) qui exige du`,
+    `   matériel ou de la logistique (sport, déplacement, cuisine), ajoute via`,
+    `   add_prep_block un bloc de préparation de 5 min la veille au soir (défaut`,
+    `   21:45), lié via prepForDate + prepForBlockId au bloc matinal. Le user`,
+    `   coche la prep en un tap → le lendemain « les affaires sont prêtes depuis hier ».`,
     ...calendarSync,
     `══════════════════════════════════════════`,
   ].join("\n");
@@ -1798,6 +1803,9 @@ async function executeScheduleDay(
     taskId?: string;
     activityId?: string;
     actionId?: string;
+    kind?: string;
+    prepForDate?: string;
+    prepForBlockId?: string;
   }>
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1815,6 +1823,9 @@ async function executeScheduleDay(
     actionId: b.actionId ?? null, // action ciblée (propre à une activité OU action de projet)
     status: "pending",
     doneAt: null,
+    kind: b.kind ?? "normal", // "normal" | "prep" (préparation la veille)
+    prepForDate: b.prepForDate ?? null,
+    prepForBlockId: b.prepForBlockId ?? null,
   }));
 
   await db.doc(`users/${uid}/daily_schedules/${date}`).set({
@@ -1826,6 +1837,74 @@ async function executeScheduleDay(
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
   return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+}
+
+// Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
+// SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).
+async function executeAddPrepBlock(
+  uid: string,
+  args: {
+    date: string;
+    startTime: string;
+    durationMin?: number;
+    title: string;
+    prepForDate: string;
+    prepForBlockId: string;
+  }
+): Promise<string> {
+  const { date, startTime, title, prepForDate, prepForBlockId } = args;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(prepForDate)) return `prepForDate invalide : ${prepForDate}. Format attendu : YYYY-MM-DD`;
+  if (!startTime || !title || !prepForBlockId) return `startTime, title et prepForBlockId sont requis.`;
+
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+
+  const prepBlock = {
+    id: uuidv4(),
+    startTime,
+    durationMin: args.durationMin ?? 5,
+    title,
+    category: "personal",
+    projectId: null,
+    taskId: null,
+    activityId: null,
+    actionId: null,
+    status: "pending",
+    doneAt: null,
+    kind: "prep",
+    prepForDate,
+    prepForBlockId,
+  };
+
+  if (!snap.exists) {
+    await ref.set({
+      date,
+      generatedBy: "claude",
+      generatedAt: FieldValue.serverTimestamp(),
+      blocks: [prepBlock],
+    });
+    return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
+  }
+
+  const data = snap.data() as Record<string, unknown>;
+  const blocks = (data.blocks as Array<Record<string, unknown>>) ?? [];
+
+  // Idempotence : une prep non supprimée pointant déjà vers ce (prepForDate, prepForBlockId) suffit.
+  const exists = blocks.some(
+    (b) =>
+      b.kind === "prep" &&
+      b.status !== "deleted" &&
+      b.prepForDate === prepForDate &&
+      b.prepForBlockId === prepForBlockId
+  );
+  if (exists) {
+    return `ℹ️ Un bloc de préparation pour ce créneau existe déjà le ${date} — rien ajouté (idempotent).`;
+  }
+
+  blocks.push(prepBlock);
+  await ref.update({ blocks });
+  return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
 }
 
 async function executeComputeTimeBudget(uid: string): Promise<string> {
@@ -2001,6 +2080,7 @@ export {
   executeProposeChange,
   executeGetDaySchedule,
   executeScheduleDay,
+  executeAddPrepBlock,
   executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executePlanDay,
@@ -2010,4 +2090,5 @@ export {
   pickStrategicObjective,
   checkRateLimit,
   todayInParis,
+  nowInParis,
 };

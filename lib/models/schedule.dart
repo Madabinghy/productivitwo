@@ -40,10 +40,17 @@ class ScheduleBlock {
   String? taskId;
   String? activityId;
   String? actionId; // action ciblée (TaskAction propre OU action de projet)
-  String status;      // pending | done | skipped
+  String status;      // pending | done | skipped | deleted
   DateTime? doneAt;
   bool challenge;     // bloc né d'un « Challenge me » programmé (badge 🔥 + streak)
   List<String> reminders; // dates ISO des rappels programmés (max 2 pour un défi)
+  // ── Préparation la veille ──────────────────────────────────────────────────
+  // Absents = bloc normal (rétrocompatible). kind:"prep" = mini-bloc « préparer
+  // ses affaires » le soir, lié à un bloc cible du lendemain matin. La référence
+  // vers le bloc cible est (date, id) car il vit dans le doc d'un autre jour.
+  String kind;            // "normal" (défaut) | "prep"
+  String? prepForDate;    // "YYYY-MM-DD" — jour du bloc cible (souvent J+1)
+  String? prepForBlockId; // id du bloc cible dans daily_schedules/{prepForDate}
 
   ScheduleBlock({
     String? id,
@@ -59,8 +66,13 @@ class ScheduleBlock {
     this.doneAt,
     this.challenge = false,
     List<String>? reminders,
+    this.kind = 'normal',
+    this.prepForDate,
+    this.prepForBlockId,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
+
+  bool get isPrep => kind == 'prep';
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -76,6 +88,9 @@ class ScheduleBlock {
         'doneAt': doneAt?.toIso8601String(),
         'challenge': challenge,
         'reminders': reminders,
+        'kind': kind,
+        'prepForDate': prepForDate,
+        'prepForBlockId': prepForBlockId,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -92,6 +107,9 @@ class ScheduleBlock {
         doneAt: _parseDateOrNull(j['doneAt']),
         challenge: j['challenge'] == true,
         reminders: (j['reminders'] as List?)?.map((e) => e.toString()).toList(),
+        kind: j['kind'] ?? 'normal',
+        prepForDate: j['prepForDate'],
+        prepForBlockId: j['prepForBlockId'],
       );
 }
 

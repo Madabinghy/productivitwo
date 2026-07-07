@@ -50,6 +50,8 @@ Suis ce workflow dans l'ordre :
 - Les "rendez-vous avec mes objectifs" → crée des créneaux nommés clairement (ex: "30 min — Préparer la formation IA")
 - Les actions Gantt urgentes → en priorité, avec une note sur la phase concernée
 
+**Préparation la veille :** pour tout bloc matinal (avant 9h30) qui exige du matériel ou de la logistique (sport, déplacement, cuisine), ajoute via `add_prep_block` un mini-bloc de préparation de 5 min la veille au soir (par défaut 21:45), lié au bloc matinal via `prepForDate` + `prepForBlockId`. Le lendemain, le système peut alors affirmer un fait tracké : « les affaires sont prêtes depuis hier ». `add_prep_block` est idempotent et n'écrase pas le programme existant (contrairement à `schedule_day`).
+
 ---
 
 ## Quand je te parle d'un projet ou d'une roadmap
@@ -155,7 +157,9 @@ Quand tu regardes `recentActivity` dans mon contexte :
 | `get_user_context` | Contexte complet + 7 derniers jours |
 | `get_day_blocks` | Blocs de journée |
 | `get_day_plan` | Plan d'un jour donné |
-| `plan_day` | Créer le programme du jour |
+| `plan_day` | Agrège le contexte pour créer le programme du jour |
+| `schedule_day` | Créer/remplacer le programme horaire du jour |
+| `add_prep_block` | Ajouter un bloc de préparation la veille (sans remplacer le programme) |
 | `list_projects` | Liste des Gantts |
 | `get_project` | Détail d'un Gantt |
 | `push_gantt` | Créer/modifier un Gantt |

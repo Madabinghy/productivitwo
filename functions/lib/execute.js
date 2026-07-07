@@ -43,6 +43,7 @@ exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeProposeChange = executeProposeChange;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
+exports.executeAddPrepBlock = executeAddPrepBlock;
 exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
 exports.executeComputeTimeBudget = executeComputeTimeBudget;
 exports.executePlanDay = executePlanDay;
@@ -52,6 +53,7 @@ exports.pickProject = pickProject;
 exports.pickStrategicObjective = pickStrategicObjective;
 exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
+exports.nowInParis = nowInParis;
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
@@ -1441,6 +1443,11 @@ async function executePlanDay(uid, args) {
         `   → Tâche la plus proche de la deadline en premier`,
         `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
         `3. schedule_day("${date}", blocks[])`,
+        `4. PRÉPARATION LA VEILLE : pour tout bloc matinal (avant 9h30) qui exige du`,
+        `   matériel ou de la logistique (sport, déplacement, cuisine), ajoute via`,
+        `   add_prep_block un bloc de préparation de 5 min la veille au soir (défaut`,
+        `   21:45), lié via prepForDate + prepForBlockId au bloc matinal. Le user`,
+        `   coche la prep en un tap → le lendemain « les affaires sont prêtes depuis hier ».`,
         ...calendarSync,
         `══════════════════════════════════════════`,
     ].join("\n");
@@ -1577,7 +1584,7 @@ async function executeScheduleDay(uid, date, blocks) {
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e, _f, _g;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1590,6 +1597,9 @@ async function executeScheduleDay(uid, date, blocks) {
             actionId: (_d = b.actionId) !== null && _d !== void 0 ? _d : null, // action ciblée (propre à une activité OU action de projet)
             status: "pending",
             doneAt: null,
+            kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", // "normal" | "prep" (préparation la veille)
+            prepForDate: (_f = b.prepForDate) !== null && _f !== void 0 ? _f : null,
+            prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null,
         });
     });
     await db_1.db.doc(`users/${uid}/daily_schedules/${date}`).set({
@@ -1600,6 +1610,58 @@ async function executeScheduleDay(uid, date, blocks) {
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+}
+// Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
+// SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).
+async function executeAddPrepBlock(uid, args) {
+    var _a, _b;
+    const { date, startTime, title, prepForDate, prepForBlockId } = args;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(prepForDate))
+        return `prepForDate invalide : ${prepForDate}. Format attendu : YYYY-MM-DD`;
+    if (!startTime || !title || !prepForBlockId)
+        return `startTime, title et prepForBlockId sont requis.`;
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    const prepBlock = {
+        id: (0, uuid_1.v4)(),
+        startTime,
+        durationMin: (_a = args.durationMin) !== null && _a !== void 0 ? _a : 5,
+        title,
+        category: "personal",
+        projectId: null,
+        taskId: null,
+        activityId: null,
+        actionId: null,
+        status: "pending",
+        doneAt: null,
+        kind: "prep",
+        prepForDate,
+        prepForBlockId,
+    };
+    if (!snap.exists) {
+        await ref.set({
+            date,
+            generatedBy: "claude",
+            generatedAt: db_1.FieldValue.serverTimestamp(),
+            blocks: [prepBlock],
+        });
+        return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
+    }
+    const data = snap.data();
+    const blocks = (_b = data.blocks) !== null && _b !== void 0 ? _b : [];
+    // Idempotence : une prep non supprimée pointant déjà vers ce (prepForDate, prepForBlockId) suffit.
+    const exists = blocks.some((b) => b.kind === "prep" &&
+        b.status !== "deleted" &&
+        b.prepForDate === prepForDate &&
+        b.prepForBlockId === prepForBlockId);
+    if (exists) {
+        return `ℹ️ Un bloc de préparation pour ce créneau existe déjà le ${date} — rien ajouté (idempotent).`;
+    }
+    blocks.push(prepBlock);
+    await ref.update({ blocks });
+    return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
 }
 async function executeComputeTimeBudget(uid) {
     const now = new Date();
