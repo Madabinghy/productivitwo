@@ -5,14 +5,21 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
-import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 
+/// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
+/// 3 états exclusifs :
+///  1. Session en cours → chrono/minuteur + checklists (sous-actions, actions
+///     propres, checklist de la routine liée) — sans le programme du jour.
+///  2. Rien en cours mais des blocs restent → UNE carte focus (bloc en cours,
+///     sinon prochain bloc) avec ▶, ✓ et la checklist de sa source.
+///  3. Plus rien de prévu → « Que souhaites-tu faire maintenant ? »
+///     (Mes routines / Mes activités).
+/// Le programme complet vit dans l'onglet Aujourd'hui.
 class FocusView extends StatefulWidget {
   final AppLogic logic;
   final AppState state;
   final Project? focusProject;
   final ProjectTask? focusTask;
-  final VoidCallback onGoToProjects;
   final void Function(Activity activity, Project? project, ProjectTask? task)
       onStartTimer;
   final VoidCallback onStopTimer;
@@ -23,18 +30,18 @@ class FocusView extends StatefulWidget {
   final VoidCallback onStopCountdown;
   final void Function(Project project, ProjectTask task) onClearFocusTask;
   final void Function(Project project, ProjectTask task)? onTaskTap;
-  // Widget optionnel rendu en tête de l'onglet (ex : bannière Quête du jour).
-  final Widget? header;
   // Lancer un bloc du programme (▶) → chrono + focus de la tâche/activité liée.
   final void Function(ScheduleBlock block)? onLaunchScheduledBlock;
   // Tap sur un bloc issu d'une source → ouvre sa fiche (tâche/routine/activité).
   final void Function(ScheduleBlock block)? onOpenScheduledBlockSource;
+  // État vide : ouvre les sheets « Mes routines » / « Mes activités ».
+  final VoidCallback? onOpenRoutines;
+  final VoidCallback? onOpenActivities;
 
   const FocusView({
     super.key,
     required this.logic,
     required this.state,
-    required this.onGoToProjects,
     required this.onStartTimer,
     required this.onStopTimer,
     required this.onStopCountdown,
@@ -44,9 +51,10 @@ class FocusView extends StatefulWidget {
     this.focusProject,
     this.focusTask,
     this.onTaskTap,
-    this.header,
     this.onLaunchScheduledBlock,
     this.onOpenScheduledBlockSource,
+    this.onOpenRoutines,
+    this.onOpenActivities,
   });
 
   @override
@@ -55,7 +63,13 @@ class FocusView extends StatefulWidget {
 
 class _FocusViewState extends State<FocusView> {
   Timer? _ticker;
-  int _elapsed = 0; // secondes depuis début de session
+  final _sync = FirestoreSync();
+  StreamSubscription<DailySchedule?>? _schedSub;
+  DailySchedule? _schedule;
+  String _schedDate = '';
+  // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
+  // retour du stream (même garde que dans DailyScheduleView).
+  final Set<String> _routineHit = {};
 
   AppLogic get logic => widget.logic;
   AppState get st => widget.state;
@@ -63,19 +77,33 @@ class _FocusViewState extends State<FocusView> {
   @override
   void initState() {
     super.initState();
-    _startTicker();
+    _subscribeSchedule();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      // Passage de minuit → on bascule le stream sur le nouveau jour.
+      if (_ymd(DateTime.now()) != _schedDate) _subscribeSchedule();
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _schedSub?.cancel();
     super.dispose();
   }
 
-  void _startTicker() {
-    _ticker?.cancel();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _elapsed++);
+  String _ymd(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  void _subscribeSchedule() {
+    _schedSub?.cancel();
+    _schedDate = _ymd(DateTime.now());
+    _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
+      if (!mounted) return;
+      setState(() => _schedule = s);
+      // Garde todayBlocks frais même si l'onglet Aujourd'hui affiche « Demain ».
+      logic.todayBlocks = s?.blocks ?? [];
     });
   }
 
@@ -106,96 +134,410 @@ class _FocusViewState extends State<FocusView> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  // ── Données camembert (sessions du jour) ─────────────────────────────────────
+  // ── Sélection du bloc focus ──────────────────────────────────────────────────
+
+  DateTime _blockStart(ScheduleBlock b, DateTime now) {
+    final parts = b.startTime.split(':');
+    final h = int.tryParse(parts.first) ?? 0;
+    final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+    return DateTime(now.year, now.month, now.day, h, m);
+  }
+
+  List<ScheduleBlock> get _pendingBlocks =>
+      (_schedule?.blocks ?? const <ScheduleBlock>[])
+          .where((b) => b.status == 'pending')
+          .toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  /// Le bloc à afficher : celui dont la fenêtre couvre l'heure actuelle,
+  /// sinon le prochain à venir. Les blocs passés non faits ne squattent pas le
+  /// focus (ils restent visibles dans Aujourd'hui + ligne « en retard » ici).
+  ScheduleBlock? _focusBlock(DateTime now) {
+    for (final b in _pendingBlocks) {
+      final start = _blockStart(b, now);
+      final end = start.add(Duration(minutes: b.durationMin));
+      final current = !now.isBefore(start) && now.isBefore(end);
+      final upcoming = now.isBefore(start);
+      if (current || upcoming) return b;
+    }
+    return null;
+  }
+
+  bool _isCurrent(ScheduleBlock b, DateTime now) {
+    final start = _blockStart(b, now);
+    return !now.isBefore(start) &&
+        now.isBefore(start.add(Duration(minutes: b.durationMin)));
+  }
+
+  int _overdueCount(DateTime now) => _pendingBlocks
+      .where((b) => now.isAfter(
+          _blockStart(b, now).add(Duration(minutes: b.durationMin))))
+      .length;
+
+  ScheduleBlock? _nextAfter(ScheduleBlock? current, DateTime now) {
+    for (final b in _pendingBlocks) {
+      if (b.id == current?.id) continue;
+      if (now.isBefore(_blockStart(b, now))) return b;
+    }
+    return null;
+  }
+
+  // ── Actions sur le bloc focus ────────────────────────────────────────────────
+
+  /// ✓ sur la carte : marque le bloc done + valide la routine liée du jour
+  /// (même règle que DailyScheduleView : pas de double incrément si la cible
+  /// est déjà atteinte ou si ce bloc a déjà validé).
+  Future<void> _markBlockDone(ScheduleBlock b) async {
+    final id = b.activityId;
+    if (id != null && !_routineHit.contains(b.id)) {
+      final act = st.activities.where((a) => a.id == id).firstOrNull;
+      if (act != null && act.isHabit) {
+        final day = DateTime.now();
+        final tgt = logic.activeHabitTarget(act);
+        _routineHit.add(b.id);
+        if (!(tgt > 0 && logic.habitValueOn(id, day) >= tgt)) {
+          logic.incHabit(id, 1, DateTime(day.year, day.month, day.day));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('✅ Routine validée : ${act.name}'),
+              duration: const Duration(seconds: 2),
+            ));
+          }
+        }
+      }
+    }
+    await _sync.updateBlockStatus(_schedDate, b.id, 'done');
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final running = _runningActivity;
+    if (running != null) return _buildActive(context, cs, running);
 
-    return running == null ? _buildIdle(context, cs) : _buildActive(context, cs, running);
+    final now = DateTime.now();
+    final focus = _focusBlock(now);
+    return focus != null
+        ? _buildFocusIdle(context, cs, focus, now)
+        : _buildEmpty(context, cs, now);
   }
 
-  // ── État idle ─────────────────────────────────────────────────────────────────
+  // ── État 2 : carte focus (rien en cours, programme restant) ─────────────────
 
-  Widget _buildIdle(BuildContext context, ColorScheme cs) {
-    final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-
+  Widget _buildFocusIdle(
+      BuildContext context, ColorScheme cs, ScheduleBlock b, DateTime now) {
+    final next = _nextAfter(b, now);
     return SafeArea(
       child: SingleChildScrollView(
-        // Padding bas généreux : dégage la pile de boutons du FAB (~156px) pour
-        // que les derniers items du programme restent cochables.
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.header != null) ...[
-              widget.header!,
-              const SizedBox(height: 20),
+            Text('Maintenant',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface)),
+            const SizedBox(height: 20),
+            _focusCard(context, cs, b, now),
+            if (next != null) ...[
+              const SizedBox(height: 14),
+              _nextHint(cs, next),
             ],
-            Text(
-              'Maintenant',
-              style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: cs.onSurface),
-            ),
-            const SizedBox(height: 24),
-
-            // (La « Mise du jour » — sink d'or quotidien — a été supprimée
-            // avec la couche jeu.)
-
-            // Programme horaire (stream Firestore)
-            DailyScheduleView(
-                date: todayStr,
-                logic: logic,
-                onLaunch: widget.onLaunchScheduledBlock,
-                onOpenSource: widget.onOpenScheduledBlockSource),
-
-            const SizedBox(height: 24),
-
-            OutlinedButton.icon(
-              icon: const Icon(Icons.account_tree_outlined, size: 18),
-              label: const Text('Voir mes projets'),
-              onPressed: widget.onGoToProjects,
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
+            _overdueHint(cs, now),
           ],
         ),
       ),
     );
   }
 
+  Widget _focusCard(
+      BuildContext context, ColorScheme cs, ScheduleBlock b, DateTime now) {
+    final color = _categoryColor(b.category, cs);
+    final current = _isCurrent(b, now);
+    final start = _blockStart(b, now);
+    final end = start.add(Duration(minutes: b.durationMin));
+    final launchable = widget.onLaunchScheduledBlock != null &&
+        (b.projectId != null || b.activityId != null);
+    final hasSource = b.projectId != null || b.activityId != null;
 
-  // ── État actif ───────────────────────────────────────────────────────────────
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(.07),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color.withOpacity(.35), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                  color: color.withOpacity(.15),
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text(
+                current
+                    ? 'EN COURS · jusqu\'à ${_hm(end)}'
+                    : 'À ${_hm(start)}',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: color),
+              ),
+            ),
+            const Spacer(),
+            Icon(_categoryIcon(b.category), size: 15, color: color),
+            const SizedBox(width: 4),
+            Text('${b.durationMin} min',
+                style: TextStyle(
+                    fontSize: 11.5, color: cs.onSurface.withOpacity(.5))),
+          ]),
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: hasSource && widget.onOpenScheduledBlockSource != null
+                ? () => widget.onOpenScheduledBlockSource!(b)
+                : null,
+            child: Text(b.title,
+                style: const TextStyle(
+                    fontSize: 19, fontWeight: FontWeight.w800)),
+          ),
+          // Checklist de la source (sous-actions tâche / actions propres /
+          // checklist routine), cochable directement.
+          ..._sourceChecklist(cs, b),
+          const SizedBox(height: 14),
+          Row(children: [
+            if (launchable)
+              Expanded(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                  label: const Text('Lancer'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: color,
+                    minimumSize: const Size.fromHeight(46),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => widget.onLaunchScheduledBlock!(b),
+                ),
+              ),
+            if (launchable) const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Fait'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: color,
+                  side: BorderSide(color: color.withOpacity(.5)),
+                  minimumSize: const Size.fromHeight(46),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () => _markBlockDone(b),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  /// Checklist selon la source du bloc. Liste vide si pas de source détaillée.
+  List<Widget> _sourceChecklist(ColorScheme cs, ScheduleBlock b) {
+    final color = _categoryColor(b.category, cs);
+    final tiles = <Widget>[];
+
+    // Tâche Gantt → sous-actions.
+    if (b.projectId != null && b.taskId != null) {
+      for (final p in logic.currentProjects) {
+        if (p.id != b.projectId) continue;
+        for (final t in p.tasks) {
+          if (t.id != b.taskId || t.actions.isEmpty) continue;
+          tiles.addAll(t.actions.map((a) => _ActionCheckTile(
+                action: a,
+                color: color,
+                onToggle: (v) async {
+                  setState(() {
+                    a.done = v;
+                    a.doneAt = v ? DateTime.now() : null;
+                  });
+                  await _sync.saveProjectTasks(p.id, p.tasks);
+                },
+              )));
+        }
+      }
+    } else if (b.activityId != null) {
+      final act =
+          st.activities.where((a) => a.id == b.activityId).firstOrNull;
+      if (act != null && act.isHabit) {
+        // Routine → sa checklist du jour.
+        final items = logic.checklistForHabit(act.id);
+        final done = logic.checklistDoneSet(act.id, DateTime.now());
+        for (var i = 0; i < items.length; i++) {
+          tiles.add(_checkRow(cs, color, items[i], done.contains(i), () {
+            logic.toggleChecklistItem(act.id, DateTime.now(), i);
+            setState(() {});
+          }));
+        }
+      } else if (act != null) {
+        // Activité-temps → ses actions propres.
+        tiles.addAll(logic.ownActionsOf(act.id).map((a) => _ActionCheckTile(
+              action: a,
+              color: color,
+              onToggle: (v) {
+                logic.toggleOwnAction(act.id, a.id, v);
+                setState(() {});
+              },
+            )));
+      }
+    }
+
+    if (tiles.isEmpty) return const [];
+    return [const SizedBox(height: 10), ...tiles];
+  }
+
+  Widget _checkRow(ColorScheme cs, Color color, String label, bool done,
+      VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          Icon(
+            done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+            size: 22,
+            color: done ? color : cs.onSurface.withOpacity(.3),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                  fontSize: 14,
+                  color:
+                      done ? cs.onSurface.withOpacity(.35) : cs.onSurface,
+                  decoration: done ? TextDecoration.lineThrough : null,
+                )),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _nextHint(ColorScheme cs, ScheduleBlock next) {
+    return Row(children: [
+      Icon(Icons.schedule, size: 14, color: cs.onSurface.withOpacity(.35)),
+      const SizedBox(width: 6),
+      Text('À suivre : ${next.startTime} · ${next.title}',
+          style:
+              TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.5))),
+    ]);
+  }
+
+  Widget _overdueHint(ColorScheme cs, DateTime now) {
+    final n = _overdueCount(now);
+    if (n == 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        '$n bloc${n > 1 ? 's' : ''} plus tôt non fait${n > 1 ? 's' : ''} — à retrouver dans Aujourd\'hui',
+        style: TextStyle(
+            fontSize: 12,
+            fontStyle: FontStyle.italic,
+            color: cs.onSurface.withOpacity(.4)),
+      ),
+    );
+  }
+
+  // ── État 3 : plus rien de prévu ──────────────────────────────────────────────
+
+  Widget _buildEmpty(BuildContext context, ColorScheme cs, DateTime now) {
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Maintenant',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface)),
+            const SizedBox(height: 28),
+            Center(
+              child: Column(children: [
+                Icon(Icons.self_improvement,
+                    size: 44, color: cs.onSurface.withOpacity(.25)),
+                const SizedBox(height: 12),
+                Text('Que souhaites-tu faire maintenant ?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.75))),
+              ]),
+            ),
+            const SizedBox(height: 24),
+            if (widget.onOpenRoutines != null)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.loop, size: 18),
+                label: const Text('Mes routines'),
+                onPressed: widget.onOpenRoutines,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            const SizedBox(height: 10),
+            if (widget.onOpenActivities != null)
+              OutlinedButton.icon(
+                icon: const Icon(Icons.timer_outlined, size: 18),
+                label: const Text('Mes activités'),
+                onPressed: widget.onOpenActivities,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            _overdueHint(cs, now),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── État 1 : session active ──────────────────────────────────────────────────
 
   Widget _buildActive(BuildContext context, ColorScheme cs, Activity running) {
-    final domain = st.activeDomains
-        .where((d) => d.id == running.domainId)
-        .firstOrNull;
+    final domain =
+        st.activeDomains.where((d) => d.id == running.domainId).firstOrNull;
     final color = domainColor(running.domainId, st.activeDomains) ?? cs.primary;
     final elapsed = _elapsedDuration;
     final task = widget.focusTask;
     final project = widget.focusProject;
     final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
     final endsAt = widget.countdownEndsAt;
     final remaining = endsAt != null ? endsAt.difference(now) : null;
     final isCountdown = remaining != null && remaining > Duration.zero;
 
+    // Routine liée à l'activité en cours → sa checklist s'affiche pendant la
+    // session (ex. routine « Sport » minutée sur l'activité « Sport »).
+    final linkedRoutine = st.activities
+        .where((a) =>
+            a.isHabit && !a.deleted && a.linkedActivityId == running.id)
+        .firstOrNull;
+    final next = _focusBlock(now);
 
     return SafeArea(
       child: SingleChildScrollView(
-        // Padding bas généreux : le programme du jour est en bas ici, il doit
-        // rester cochable sous la pile de boutons du FAB (~156px).
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,7 +546,8 @@ class _FocusViewState extends State<FocusView> {
             Row(
               children: [
                 Container(
-                  width: 8, height: 8,
+                  width: 8,
+                  height: 8,
                   decoration:
                       BoxDecoration(color: color, shape: BoxShape.circle),
                 ),
@@ -313,15 +656,7 @@ class _FocusViewState extends State<FocusView> {
             // Sous-actions de la tâche
             if (task != null && task.actions.isNotEmpty) ...[
               const SizedBox(height: 32),
-              Text(
-                'SOUS-ACTIONS',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
-                  color: cs.onSurface.withOpacity(.4),
-                ),
-              ),
+              _sectionLabel(cs, 'SOUS-ACTIONS'),
               const SizedBox(height: 8),
               ...task.actions.map((a) => _ActionCheckTile(
                     action: a,
@@ -330,18 +665,10 @@ class _FocusViewState extends State<FocusView> {
                   )),
             ],
 
-            // Actions PROPRES de l'activité en cours (cochables pendant le chrono).
+            // Actions PROPRES de l'activité en cours.
             if (logic.ownActionsOf(running.id).isNotEmpty) ...[
               const SizedBox(height: 24),
-              Text(
-                'ACTIONS DE L\'ACTIVITÉ',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
-                  color: cs.onSurface.withOpacity(.4),
-                ),
-              ),
+              _sectionLabel(cs, 'ACTIONS DE L\'ACTIVITÉ'),
               const SizedBox(height: 8),
               ...logic.ownActionsOf(running.id).map((a) => _ActionCheckTile(
                     action: a,
@@ -351,6 +678,27 @@ class _FocusViewState extends State<FocusView> {
                       setState(() {});
                     },
                   )),
+            ],
+
+            // Checklist de la routine liée à l'activité en cours.
+            if (linkedRoutine != null &&
+                logic.checklistForHabit(linkedRoutine.id).isNotEmpty) ...[
+              const SizedBox(height: 24),
+              _sectionLabel(cs, 'CHECKLIST · ${linkedRoutine.name.toUpperCase()}'),
+              const SizedBox(height: 8),
+              ...() {
+                final items = logic.checklistForHabit(linkedRoutine.id);
+                final done =
+                    logic.checklistDoneSet(linkedRoutine.id, DateTime.now());
+                return [
+                  for (var i = 0; i < items.length; i++)
+                    _checkRow(cs, color, items[i], done.contains(i), () {
+                      logic.toggleChecklistItem(
+                          linkedRoutine.id, DateTime.now(), i);
+                      setState(() {});
+                    }),
+                ];
+              }(),
             ],
 
             if (task == null) ...[
@@ -364,20 +712,46 @@ class _FocusViewState extends State<FocusView> {
               ),
             ],
 
-            // Programme du jour — masqué pendant un minuteur (mode focus pur)
-            if (!isCountdown) ...[
-              const SizedBox(height: 32),
-              DailyScheduleView(
-                date: todayStr,
-                logic: logic,
-                onLaunch: widget.onLaunchScheduledBlock,
-                onOpenSource: widget.onOpenScheduledBlockSource),
+            // Rappel discret du prochain bloc — pas de programme complet ici
+            // (mode focus pur ; le programme vit dans Aujourd'hui).
+            if (!isCountdown && next != null) ...[
+              const SizedBox(height: 28),
+              _nextHint(cs, next),
             ],
           ],
         ),
       ),
     );
   }
+
+  Widget _sectionLabel(ColorScheme cs, String text) => Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 2,
+          color: cs.onSurface.withOpacity(.4),
+        ),
+      );
+
+  String _hm(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+  Color _categoryColor(String category, ColorScheme cs) => switch (category) {
+        'project' => cs.primary,
+        'routine' => const Color(0xFF1a9e6e),
+        'personal' => cs.secondary,
+        'break' => cs.outline,
+        _ => cs.tertiary,
+      };
+
+  IconData _categoryIcon(String category) => switch (category) {
+        'project' => Icons.rocket_launch_outlined,
+        'routine' => Icons.loop,
+        'personal' => Icons.home_outlined,
+        'break' => Icons.coffee_outlined,
+        _ => Icons.circle_outlined,
+      };
 
   Future<void> _toggleAction(TaskAction action, bool value) async {
     final task = widget.focusTask;
@@ -387,10 +761,7 @@ class _FocusViewState extends State<FocusView> {
       action.done = value;
       action.doneAt = value ? DateTime.now() : null;
     });
-    // L'or/épée/quête de l'action sont dérivés des données (réconciliés dans
-    // updateGanttCounts au retour du stream projets) → pas de compteur UI ici.
-    final sync = FirestoreSync();
-    await sync.saveProjectTasks(project.id, project.tasks);
+    await _sync.saveProjectTasks(project.id, project.tasks);
   }
 
   // ── Flow démarrage ───────────────────────────────────────────────────────────
@@ -404,10 +775,9 @@ class _FocusViewState extends State<FocusView> {
   Future<(Project, ProjectTask)?> _pickTask(
       BuildContext context, Activity activity) async {
     // Tâches actives aujourd'hui du même domaine
-    final sync = FirestoreSync();
     List<Project> projects = [];
     try {
-      projects = await sync.fetchProjects();
+      projects = await _sync.fetchProjects();
     } catch (_) {}
 
     final today = DateTime.now();
@@ -434,11 +804,11 @@ class _FocusViewState extends State<FocusView> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Text('Sur quelle tâche ?',
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.bold)),
+                  style:
+                      TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             ),
             if (pairs.isEmpty)
               Padding(
@@ -447,7 +817,8 @@ class _FocusViewState extends State<FocusView> {
                   'Aucune tâche active aujourd\'hui dans ce domaine.',
                   style: TextStyle(
                       fontSize: 13,
-                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.4)),
+                      color:
+                          Theme.of(ctx).colorScheme.onSurface.withOpacity(.4)),
                 ),
               ),
             for (final pair in pairs)
@@ -456,7 +827,10 @@ class _FocusViewState extends State<FocusView> {
                 subtitle: Text(pair.$1.title,
                     style: TextStyle(
                         fontSize: 12,
-                        color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.45))),
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(.45))),
                 onTap: () => Navigator.pop(ctx, pair),
               ),
             ListTile(

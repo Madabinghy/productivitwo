@@ -2988,15 +2988,15 @@ class _AppRootState extends State<AppRoot>
           FocusView(
             logic: logic,
             state: st,
-            // (La bannière « Quête du jour » a été supprimée avec la couche jeu.)
-            header: null,
             focusProject: _focusProject,
             focusTask: _focusTask,
             countdownEndsAt: _countdownEndsAt,
             countdownTotalSec: _countdownTotalSec,
             onLaunchScheduledBlock: _launchScheduledBlock,
             onOpenScheduledBlockSource: _openBlockSource,
-            onGoToProjects: () => setState(() => _tab = _Tab.projets),
+            // État vide « Que souhaites-tu faire maintenant ? » → sheets existantes.
+            onOpenRoutines: () => _showRoutinesSheet(context),
+            onOpenActivities: () => _showLaunchActivitySheet(context),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {
