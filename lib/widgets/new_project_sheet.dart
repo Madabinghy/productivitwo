@@ -21,7 +21,8 @@ Future<void> showNewProjectSheet(
   await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
     builder: (_) =>
         _NewProjectSheet(domains: domains, onCreated: onCreated, sync: sync),
   );
@@ -45,8 +46,11 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   final _titleFocus = FocusNode();
   String? _selectedDomainId;
   DateTime _endDate = DateTime.now().add(const Duration(days: 30));
+  int? _presetDays = 30;
   bool _loading = false;
   String? _error;
+
+  static const _accent = Color(0xFF7E57C2); // identité ORION (deepPurple 400)
 
   @override
   void initState() {
@@ -69,7 +73,19 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
     );
-    if (picked != null) setState(() => _endDate = picked);
+    if (picked != null) {
+      setState(() {
+        _endDate = picked;
+        _presetDays = null;
+      });
+    }
+  }
+
+  void _applyPreset(int days) {
+    setState(() {
+      _presetDays = days;
+      _endDate = DateTime.now().add(Duration(days: days));
+    });
   }
 
   Future<void> _submit() async {
@@ -166,228 +182,367 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
     }
   }
 
+  InputDecoration _fieldDecoration(BuildContext context,
+      {required String label, String? hint}) {
+    final cs = Theme.of(context).colorScheme;
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      hintStyle:
+          TextStyle(color: cs.onSurface.withOpacity(.35), fontSize: 13),
+      alignLabelWithHint: true,
+      filled: true,
+      fillColor: cs.surfaceVariant.withOpacity(.35),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: _accent, width: 1.6),
+      ),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  Widget _sectionLabel(BuildContext context, String text) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .8,
+          color: cs.onSurface.withOpacity(.45),
+        ),
+      ),
+    );
+  }
+
+  Widget _domainChips(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: widget.domains.map((d) {
+        final selected = d.id == _selectedDomainId;
+        final color = domainColor(d.id, widget.domains) ?? cs.primary;
+        return ChoiceChip(
+          selected: selected,
+          onSelected: (_) => setState(() => _selectedDomainId = d.id),
+          showCheckmark: false,
+          avatar: CircleAvatar(radius: 5, backgroundColor: color),
+          label: Text(d.name),
+          labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            color: selected ? color : cs.onSurface.withOpacity(.7),
+          ),
+          selectedColor: color.withOpacity(.14),
+          backgroundColor: cs.surfaceVariant.withOpacity(.35),
+          side: BorderSide(
+            color: selected ? color.withOpacity(.55) : Colors.transparent,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _datePresets(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const presets = [(14, '2 sem'), (30, '1 mois'), (90, '3 mois'), (180, '6 mois')];
+    final customSelected = _presetDays == null;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final (days, label) in presets)
+          ChoiceChip(
+            selected: _presetDays == days,
+            onSelected: (_) => _applyPreset(days),
+            showCheckmark: false,
+            label: Text(label),
+            labelStyle: TextStyle(
+              fontSize: 13,
+              fontWeight:
+                  _presetDays == days ? FontWeight.w600 : FontWeight.w500,
+              color: _presetDays == days
+                  ? _accent
+                  : cs.onSurface.withOpacity(.7),
+            ),
+            selectedColor: _accent.withOpacity(.14),
+            backgroundColor: cs.surfaceVariant.withOpacity(.35),
+            side: BorderSide(
+              color: _presetDays == days
+                  ? _accent.withOpacity(.55)
+                  : Colors.transparent,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ActionChip(
+          onPressed: _pickDate,
+          avatar: Icon(Icons.edit_calendar_outlined,
+              size: 15,
+              color: customSelected ? _accent : cs.onSurface.withOpacity(.6)),
+          label: Text(customSelected
+              ? '${_endDate.day} ${_monthName(_endDate.month)} ${_endDate.year}'
+              : 'Choisir…'),
+          labelStyle: TextStyle(
+            fontSize: 13,
+            fontWeight: customSelected ? FontWeight.w600 : FontWeight.w500,
+            color:
+                customSelected ? _accent : cs.onSurface.withOpacity(.7),
+          ),
+          backgroundColor: customSelected
+              ? _accent.withOpacity(.14)
+              : cs.surfaceVariant.withOpacity(.35),
+          side: BorderSide(
+            color:
+                customSelected ? _accent.withOpacity(.55) : Colors.transparent,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final canSubmit =
         _titleCtrl.text.trim().isNotEmpty && _ideasCtrl.text.trim().isNotEmpty;
-    final dColor = domainColor(_selectedDomainId, widget.domains);
 
     return Padding(
-      padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: DraggableScrollableSheet(
-        initialChildSize: 0.85,
+        initialChildSize: 0.88,
         maxChildSize: 0.95,
         minChildSize: 0.5,
         expand: false,
-        builder: (_, scroll) => ListView(
-          controller: scroll,
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-          children: [
-            // En-tête
-            Row(
-              children: [
-                Icon(Icons.auto_awesome,
-                    size: 18, color: Colors.deepPurple.shade300),
-                const SizedBox(width: 8),
-                const Text('Nouveau projet',
-                    style: TextStyle(
-                        fontSize: 17, fontWeight: FontWeight.bold)),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'ORION structure le projet à partir de tes idées brutes.',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurface.withOpacity(.45)),
-            ),
-            const SizedBox(height: 10),
-            // Pastille info philosophie
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: Colors.deepPurple.withOpacity(.07),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.deepPurple.withOpacity(.18)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.info_outline, size: 14,
-                      color: Colors.deepPurple.shade300),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Productivitwo ne crée pas de projets manuellement — '
-                      'ORION les structure pour toi en quelques secondes. '
-                      'Tu passes ton temps à exécuter, pas à planifier.',
-                      style: TextStyle(
-                          fontSize: 12,
-                          height: 1.5,
-                          color: cs.onSurface.withOpacity(.55)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Titre
-            TextField(
-              controller: _titleCtrl,
-              focusNode: _titleFocus,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                labelText: 'Titre du projet *',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                prefixIcon: const Icon(Icons.folder_outlined),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 14),
-
-            // Domaine
-            if (widget.domains.isNotEmpty) ...[
-              DropdownButtonFormField<String>(
-                value: _selectedDomainId,
-                decoration: InputDecoration(
-                  labelText: 'Domaine',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  prefixIcon: Icon(Icons.circle,
-                      size: 12, color: dColor ?? cs.primary),
-                ),
-                items: widget.domains
-                    .map((d) => DropdownMenuItem(
-                          value: d.id,
-                          child: Text(d.name),
-                        ))
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedDomainId = v),
-              ),
-              const SizedBox(height: 14),
-            ],
-
-            // Date cible
-            InkWell(
-              onTap: _pickDate,
-              borderRadius: BorderRadius.circular(10),
-              child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: 'Date cible',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  prefixIcon:
-                      const Icon(Icons.calendar_today_outlined),
-                  suffixIcon: const Icon(Icons.chevron_right, size: 18),
-                ),
-                child: Text(
-                  '${_endDate.day} ${_monthName(_endDate.month)} ${_endDate.year}',
-                  style: const TextStyle(fontSize: 15),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-
-            // Idées libres
-            TextField(
-              controller: _ideasCtrl,
-              minLines: 5,
-              maxLines: 10,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                labelText: 'Tes idées pour ce projet *',
-                hintText:
-                    'Décris librement : objectifs, contraintes, livrables, '
-                    'personnes impliquées, étapes qui te semblent importantes…\n\n'
-                    'ORION s\'occupe du reste.',
-                hintStyle: TextStyle(
-                    color: cs.onSurface.withOpacity(.35),
-                    fontSize: 13),
-                alignLabelWithHint: true,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-
-            // Info action stratégique
-            Row(
-              children: [
-                Icon(Icons.bolt,
-                    size: 14,
-                    color: Colors.deepPurple.shade300),
-                const SizedBox(width: 4),
-                Text(
-                  'Consomme 1 action stratégique ORION',
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: cs.onSurface.withOpacity(.4)),
-                ),
-              ],
-            ),
-
-            // Erreur
-            if (_error != null) ...[
-              const SizedBox(height: 12),
+        builder: (_, scroll) => Container(
+          decoration: BoxDecoration(
+            color: cs.surface,
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              // Poignée
               Container(
-                padding: const EdgeInsets.all(12),
+                width: 36,
+                height: 4,
                 decoration: BoxDecoration(
-                  color: cs.errorContainer,
-                  borderRadius: BorderRadius.circular(10),
+                  color: cs.onSurface.withOpacity(.2),
+                  borderRadius: BorderRadius.circular(2),
                 ),
-                child: Text(_error!,
-                    style: TextStyle(
-                        color: cs.onErrorContainer, fontSize: 13)),
+              ),
+              Expanded(
+                child: ListView(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    // En-tête
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                _accent,
+                                Colors.deepPurple.shade300,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(Icons.auto_awesome,
+                              size: 20, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Nouveau projet',
+                                  style: TextStyle(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Décris tes idées, ORION structure le plan.',
+                                style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: cs.onSurface.withOpacity(.5)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 22),
+
+                    // Titre
+                    TextField(
+                      controller: _titleCtrl,
+                      focusNode: _titleFocus,
+                      autofocus: true,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: _fieldDecoration(context,
+                          label: 'Titre du projet'),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Domaine
+                    if (widget.domains.isNotEmpty) ...[
+                      _sectionLabel(context, 'Domaine'),
+                      _domainChips(context),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // Échéance
+                    _sectionLabel(context, 'Échéance'),
+                    _datePresets(context),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 2),
+                      child: Text(
+                        'Objectif : ${_endDate.day} ${_monthName(_endDate.month)} ${_endDate.year}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: cs.onSurface.withOpacity(.5)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Idées libres
+                    _sectionLabel(context, 'Tes idées'),
+                    TextField(
+                      controller: _ideasCtrl,
+                      minLines: 5,
+                      maxLines: 10,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: _fieldDecoration(
+                        context,
+                        label: 'Décris librement ton projet',
+                        hint:
+                            'Objectifs, contraintes, livrables, personnes '
+                            'impliquées, étapes importantes…\n\n'
+                            'ORION s\'occupe du reste.',
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Info action stratégique
+                    Row(
+                      children: [
+                        Icon(Icons.bolt, size: 14, color: _accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Consomme 1 action stratégique ORION',
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(.4)),
+                        ),
+                      ],
+                    ),
+
+                    // Erreur
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: cs.errorContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 16, color: cs.onErrorContainer),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(_error!,
+                                  style: TextStyle(
+                                      color: cs.onErrorContainer,
+                                      fontSize: 13)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+
+                    // Bouton IA
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: (_loading || !canSubmit) ? null : _submit,
+                        icon: _loading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.auto_awesome, size: 18),
+                        label: Text(
+                          _loading
+                              ? 'ORION structure le projet…'
+                              : 'Structurer avec ORION',
+                          style: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _accent,
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Création manuelle (sans IA) — ne nécessite qu'un titre
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: (_loading ||
+                                _titleCtrl.text.trim().isEmpty)
+                            ? null
+                            : _createManual,
+                        icon: const Icon(Icons.edit_outlined, size: 17),
+                        label:
+                            const Text('Créer un projet vide (sans IA)'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: cs.onSurface.withOpacity(.6),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
-            const SizedBox(height: 20),
-
-            // Bouton
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed:
-                    (_loading || !canSubmit) ? null : _submit,
-                icon: _loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Icon(Icons.auto_awesome,
-                        size: 18,
-                        color: Colors.deepPurple.shade100),
-                label: Text(_loading
-                    ? 'ORION structure le projet…'
-                    : 'ORION structure ce projet →'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.deepPurple.shade500,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Création manuelle (sans IA) — ne nécessite qu'un titre
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: (_loading || _titleCtrl.text.trim().isEmpty)
-                    ? null
-                    : _createManual,
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                label: const Text('Créer un projet vide (sans IA)'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
