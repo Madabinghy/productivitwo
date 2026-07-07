@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -71,6 +73,14 @@ class _FocusViewState extends State<FocusView> {
   // retour du stream (même garde que dans DailyScheduleView).
   final Set<String> _routineHit = {};
 
+  // Champ libre « Que souhaites-tu faire maintenant ? »
+  final _assistCtrl = TextEditingController();
+  bool _assistBusy = false;
+  String? _assistReply;
+  List<Activity> _suggestions = const [];
+  static const String _kNowAssistUrl =
+      'https://nowassist-dzos75b65q-uc.a.run.app';
+
   AppLogic get logic => widget.logic;
   AppState get st => widget.state;
 
@@ -90,7 +100,106 @@ class _FocusViewState extends State<FocusView> {
   void dispose() {
     _ticker?.cancel();
     _schedSub?.cancel();
+    _assistCtrl.dispose();
     super.dispose();
+  }
+
+  // ── Champ libre : match local d'abord (0 appel IA), assistant sinon ─────────
+
+  String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp('[àâä]'), 'a')
+      .replaceAll(RegExp('[éèêë]'), 'e')
+      .replaceAll(RegExp('[îï]'), 'i')
+      .replaceAll(RegExp('[ôö]'), 'o')
+      .replaceAll(RegExp('[ùûü]'), 'u')
+      .trim();
+
+  // Mots vides exclus du match (sinon « faire ma séance sport » matcherait
+  // « Faire la vaisselle » via « faire »).
+  static const _stopWords = {
+    'faire', 'avec', 'pour', 'dans', 'les', 'des', 'une', 'mon', 'mes',
+    'veux', 'envie', 'aller', 'voudrais', 'aimerais', 'maintenant',
+    'seance', 'session', 'petit', 'petite', 'heure', 'minutes',
+  };
+
+  /// Routines/activités existantes qui matchent le texte tapé — pour éviter un
+  /// appel IA (et un doublon) quand « faire ma séance sport » = la routine
+  /// Sport qui existe déjà.
+  List<Activity> _localMatches(String query) {
+    final q = _norm(query);
+    if (q.length < 3) return const [];
+    final words = q
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length >= 3 && !_stopWords.contains(w))
+        .toList();
+    return st.activities.where((a) {
+      if (a.deleted) return false;
+      final name = _norm(a.name);
+      if (name.isEmpty) return false;
+      return q.contains(name) ||
+          name.contains(q) ||
+          words.any((w) => name.contains(w));
+    }).toList();
+  }
+
+  Future<void> _submitAssist({bool forceAi = false}) async {
+    final text = _assistCtrl.text.trim();
+    if (text.isEmpty || _assistBusy) return;
+
+    // 1) Interception locale : une routine/activité existante correspond →
+    //    on la propose direct, sans appel IA.
+    if (!forceAi) {
+      final matches = _localMatches(text);
+      if (matches.isNotEmpty) {
+        setState(() {
+          _suggestions = matches.take(4).toList();
+          _assistReply = null;
+        });
+        return;
+      }
+    }
+
+    // 2) Appel assistant (Sonnet côté serveur, plafonné).
+    setState(() {
+      _assistBusy = true;
+      _suggestions = const [];
+      _assistReply = null;
+    });
+    try {
+      final token = await _sync.ensureWidgetToken();
+      final raw = token.rawToken;
+      final uid = _sync.uid;
+      if (raw == null || raw.isEmpty || uid == null) {
+        setState(() => _assistReply =
+            'Assistant indisponible sur cet appareil (token API manquant).');
+        return;
+      }
+      final resp = await http
+          .post(
+            Uri.parse(_kNowAssistUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $raw',
+            },
+            body: jsonEncode({'uid': uid, 'message': text}),
+          )
+          .timeout(const Duration(seconds: 60));
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      setState(() {
+        _assistReply = resp.statusCode == 200
+            ? (body['message'] as String? ?? 'C\'est noté.')
+            : (body['error'] as String? ?? 'Erreur — réessaie.');
+        if (resp.statusCode == 200) _assistCtrl.clear();
+      });
+      // Les blocs créés arrivent tout seuls via le stream du programme.
+    } catch (_) {
+      if (mounted) {
+        setState(() => _assistReply = 'Connexion impossible — réessaie.');
+      }
+    } finally {
+      if (mounted) setState(() => _assistBusy = false);
+    }
   }
 
   String _ymd(DateTime d) =>
@@ -506,6 +615,108 @@ class _FocusViewState extends State<FocusView> {
                       borderRadius: BorderRadius.circular(12)),
                 ),
               ),
+            const SizedBox(height: 18),
+
+            // Champ libre : match local d'abord (0 token), assistant sinon.
+            TextField(
+              controller: _assistCtrl,
+              enabled: !_assistBusy,
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _submitAssist(),
+              decoration: InputDecoration(
+                hintText: 'Décris ce que tu veux faire…',
+                hintStyle: TextStyle(
+                    fontSize: 13.5, color: cs.onSurface.withOpacity(.35)),
+                filled: true,
+                fillColor: cs.surfaceContainerHighest.withOpacity(.35),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                suffixIcon: _assistBusy
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : IconButton(
+                        icon: Icon(Icons.send_rounded,
+                            size: 19, color: cs.primary),
+                        onPressed: () => _submitAssist(),
+                      ),
+              ),
+            ),
+
+            // Suggestions locales : « tu veux dire … ? » — évite l'appel IA
+            // (et un doublon) quand la routine/activité existe déjà.
+            if (_suggestions.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Ça existe déjà — lance-le direct :',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final a in _suggestions)
+                    ActionChip(
+                      avatar: Icon(
+                          a.isHabit ? Icons.loop : Icons.play_arrow_rounded,
+                          size: 16,
+                          color: cs.primary),
+                      label: Text(a.name),
+                      onPressed: () {
+                        setState(() => _suggestions = const []);
+                        if (a.isHabit) {
+                          widget.onOpenRoutines?.call();
+                        } else {
+                          widget.onStartTimer(a, null, null);
+                        }
+                      },
+                    ),
+                  ActionChip(
+                    avatar: Icon(Icons.auto_awesome,
+                        size: 15, color: cs.onSurface.withOpacity(.5)),
+                    label: const Text('Non, demander à l\'assistant'),
+                    onPressed: () => _submitAssist(forceAi: true),
+                  ),
+                ],
+              ),
+            ],
+
+            // Réponse de l'assistant.
+            if (_assistReply != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: cs.primaryContainer.withOpacity(.35),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.auto_awesome, size: 16, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(_assistReply!,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              height: 1.4,
+                              color: cs.onSurface.withOpacity(.85))),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             _overdueHint(cs, now),
           ],
         ),
