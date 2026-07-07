@@ -10,6 +10,13 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.43', '6 juillet 2026', [
+    (Icons.center_focus_strong, 'Onglet « Maintenant » repensé : une seule carte focus — le bloc en cours (ou le prochain) avec ▶, ✓ et sa checklist cochable (sous-actions de tâche, actions d\'activité, checklist de routine). Le programme complet reste dans Aujourd\'hui'),
+    (Icons.checklist, 'Pendant un chrono/minuteur : la checklist de la routine liée s\'affiche aussi, et le programme du jour ne s\'affiche plus (focus pur, avec un rappel « À suivre »)'),
+    (Icons.self_improvement, 'Plus rien de prévu ? « Que souhaites-tu faire maintenant ? » propose tes routines ou tes activités en un tap'),
+    (Icons.schedule, 'Planification (Claude/ORION) : plus jamais de blocs aux heures déjà passées — si tu planifies à 15h, le programme démarre à 15h15, le matin existant reste intact'),
+    (Icons.timer_outlined, 'Le programme du jour peut désormais bloquer du temps directement sur une ACTIVITÉ (pas seulement routines et tâches) — le ▶ lance un chrono ciblé dessus'),
+  ]),
   _Entry('6.42', '6 juillet 2026', [
     (Icons.today_outlined, 'Nouvel onglet « Aujourd\'hui » : ton programme horaire du jour, avec une bascule « Demain » pour préparer la journée suivante la veille (ajoute des blocs à la main, ou demande à Claude/ORION de planifier)'),
     (Icons.play_circle_outline, 'L\'onglet « Maintenant » (chrono, focus, programme en cours) prend la place de l\'onglet Manoir — retour à une vraie app de productivité'),

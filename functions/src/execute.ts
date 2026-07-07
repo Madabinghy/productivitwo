@@ -11,6 +11,26 @@ function todayInParis(d: Date = new Date()): string {
   return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
 }
 
+/** Heure actuelle dans le fuseau Europe/Paris. */
+function nowInParis(): { hm: string; hour: number; minute: number } {
+  const hm = new Date().toLocaleTimeString("fr-FR", {
+    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const [hour, minute] = hm.split(":").map(Number);
+  return { hm, hour, minute };
+}
+
+/** Prochain quart d'heure ≥ maintenant (Paris), format HH:mm — plancher de
+ *  planification pour la date du jour (on ne planifie jamais le passé). */
+function nextQuarterHour(): string {
+  const { hour, minute } = nowInParis();
+  const q = Math.ceil(minute / 15) * 15;
+  const h = q === 60 ? hour + 1 : hour;
+  const m = q === 60 ? 0 : q;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.min(h, 23))}:${pad(m)}`;
+}
+
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -1548,6 +1568,16 @@ async function executePlanDay(
   const endHour = args.endHour ?? 20;
   const syncToCalendar = args.syncToCalendar !== false;
 
+  // Planifier AUJOURD'HUI ne doit jamais créer de blocs déjà passés : le
+  // départ effectif est calé sur le prochain quart d'heure (s'il est 15h12 et
+  // que startHour=7, on planifie à partir de 15h15 — les blocs passés du
+  // programme existant restent intacts).
+  const isToday = date === today;
+  const floorHm = isToday ? nextQuarterHour() : null;
+  const startLabel = floorHm && floorHm > `${String(startHour).padStart(2, "0")}:00`
+    ? floorHm
+    : `${String(startHour).padStart(2, "0")}h`;
+
   const [userContext, existingSchedule] = await Promise.all([
     executeGetUserContext(uid),
     executeGetDaySchedule(uid, date),
@@ -1559,6 +1589,14 @@ async function executePlanDay(
   for (const doc of projectsSnap.docs) {
     projectDetails.push(await executeGetProject(uid, doc.id));
   }
+
+  // Activités-temps programmables : un bloc peut porter UNIQUEMENT activityId
+  // (sans projet/tâche) → le ▶ de l'app lance un chrono ciblé sur l'activité.
+  const actsSnap = await db.collection(`users/${uid}/activities`).get();
+  const timeActivities = actsSnap.docs
+    .map((d) => d.data() as Record<string, unknown>)
+    .filter((a) => a.deleted !== true && a.type !== "habit")
+    .map((a) => `  · "${a.name}" (activityId: ${a.id}${a.goalMin ? ` — objectif ${a.goalMin} min/j` : ""})`);
 
   const calendarSync = syncToCalendar
     ? [
@@ -1575,8 +1613,16 @@ async function executePlanDay(
 
   return [
     `══════════════════════════════════════════`,
-    `📋 CONTEXTE PLANIFICATION — ${date} (${startHour}h-${endHour}h)`,
+    `📋 CONTEXTE PLANIFICATION — ${date} (${startLabel}-${endHour}h)`,
     `══════════════════════════════════════════`,
+    ...(isToday
+      ? [
+          ``,
+          `⏰ Il est ${nowInParis().hm} — ne planifie AUCUN bloc avant ${floorHm}.`,
+          `   Les blocs déjà passés du programme existant restent tels quels`,
+          `   (ne pas les recréer, ne pas les décaler).`,
+        ]
+      : []),
     ``,
     `── CONTEXTE UTILISATEUR ──`,
     userContext,
@@ -1587,10 +1633,15 @@ async function executePlanDay(
     `── PROJETS ACTIFS (${projectDetails.length}) ──`,
     projectDetails.length > 0 ? projectDetails.join("\n\n---\n\n") : "Aucun projet actif.",
     ``,
+    `── ACTIVITÉS-TEMPS PROGRAMMABLES (${timeActivities.length}) ──`,
+    `Un bloc peut porter UNIQUEMENT activityId (sans projet/tâche) → ▶ lance un`,
+    `chrono ciblé sur l'activité. Utilise-les pour bloquer du temps dessus :`,
+    timeActivities.length > 0 ? timeActivities.join("\n") : "  Aucune.",
+    ``,
     `══════════════════════════════════════════`,
     `WORKFLOW :`,
     `1. list_events() Google Calendar principal → identifier les créneaux occupés`,
-    `2. Générer les blocs (${startHour}h-${endHour}h) : tâches Gantt + routines + pauses`,
+    `2. Générer les blocs (${startLabel}-${endHour}h) : tâches Gantt + routines + activités-temps + pauses`,
     `   → Tâche la plus proche de la deadline en premier`,
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
     `3. schedule_day("${date}", blocks[])`,
@@ -1647,6 +1698,13 @@ async function executePlanWeek(
     `📋 CONTEXTE PLANIFICATION SEMAINE`,
     `${weekDates[0]} → ${weekDates[4]}`,
     `══════════════════════════════════════════`,
+    ...(weekDates.includes(today)
+      ? [
+          ``,
+          `⏰ Il est ${nowInParis().hm} — pour AUJOURD'HUI (${today}), ne planifie`,
+          `   aucun bloc avant ${nextQuarterHour()} (jamais d'heures déjà passées).`,
+        ]
+      : []),
     ``,
     `── CONTEXTE UTILISATEUR ──`,
     userContext,

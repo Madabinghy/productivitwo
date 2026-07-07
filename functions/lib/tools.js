@@ -849,6 +849,10 @@ exports.SCHEDULE_DAY_TOOL = {
     name: "schedule_day",
     description: "Génère ou remplace le programme horaire d'une journée dans Productivitwo. " +
         "Chaque bloc est un créneau horaire avec une action concrète. " +
+        "⚠️ Pour la date du JOUR, ne JAMAIS créer de blocs à des heures déjà passées " +
+        "(planifie à partir de l'heure actuelle) ; les blocs passés existants restent intacts. " +
+        "Un bloc peut porter uniquement activityId (sans projet/tâche) → temps bloqué " +
+        "sur une activité, chrono ciblé au lancement. " +
         "Étapes recommandées : (1) get_user_context pour récupérer projets et routines actifs, " +
         "(2) get_day_schedule pour vérifier si un programme existe déjà, " +
         "(3) schedule_day pour créer ou remplacer le programme.",
