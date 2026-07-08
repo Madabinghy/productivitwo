@@ -382,7 +382,20 @@ export const proposeDayPlan = onRequest(
       res.status(429).json({ error: `Limite atteinte (${PROPOSE_PLAN_MAX_PER_DAY}/jour).` });
       return;
     }
-    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    // Plafond par DATE CIBLE (protection : le client cache le brouillon, une
+    // ouverture répétée de l'écran ne doit plus regénérer).
+    const dateLimitRef = db.doc(`users/${uid}/rate_limits/plan_proposal_${target}`);
+    const dateLimitSnap = await dateLimitRef.get();
+    const dateLimitData = dateLimitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const dateCount = dateLimitData?.ymd === today ? (dateLimitData.count ?? 0) : 0;
+    if (dateCount >= 5) {
+      res.status(429).json({ error: "Limite atteinte pour cette date (5 générations/jour) — le brouillon existant reste utilisable." });
+      return;
+    }
+    await Promise.all([
+      limitRef.set({ ymd: today, count: count + 1 }, { merge: true }),
+      dateLimitRef.set({ ymd: today, count: dateCount + 1 }, { merge: true }),
+    ]);
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
@@ -478,7 +491,10 @@ export const proposeDayPlan = onRequest(
         ``,
         `RÈGLES :`,
         `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
-        `2. REPROPOSER les blocs SAUTÉS de la veille (reproposed: true, même source liée) — un engagement rompu n'est pas perdu.`,
+        `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap.`,
+        ...(sameDay
+          ? [`2bis. JAMAIS de rattrapage le jour même : les blocs/routines d'AUJOURD'HUI déjà passés ou sautés sont MORTS pour aujourd'hui — ne les repropose pas ce soir (une routine ratée est morte, sans pénalité). Ils reviendront demain s'ils le méritent.`]
+          : []),
         dayReason === "irrealiste"
           ? `3. ⚠️ La veille était « programme irréaliste » : propose MOINS de blocs que la veille (${Math.max(2, refBlocks.length - 2)} max) et dis-le dans message (« Hier était trop chargé — demain est plus court, volontairement. »).`
           : `3. Charge réaliste : ne pas dépasser la veille.`,
