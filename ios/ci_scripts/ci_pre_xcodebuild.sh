@@ -47,7 +47,13 @@ git config --global credential.helper ""
 
 echo "=== Installing CocoaPods dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH/ios"
-pod repo add trunk https://cdn.cocoapods.org/ 2>/dev/null || pod repo update trunk 2>/dev/null || true
-pod install --repo-update
+# NB : ne PAS faire `pod repo add trunk …` — `trunk` est un nom réservé au dépôt
+# CDN de CocoaPods (erreur « Repo name `trunk` is reserved »), et forcer un repo
+# git sur l'URL du CDN casse `pod install` (« Couldn't determine repo type »).
+# CocoaPods 1.8+ utilise le CDN automatiquement, aucun ajout de repo n'est requis.
+# On enveloppe `pod install` dans retry() : le CDN cdn.cocoapods.org a des
+# coupures SSL transitoires en VM Xcode Cloud (« Connection reset by peer -
+# SSL_connect ») — comme pour les autres étapes réseau, on retente.
+retry pod install --repo-update
 
 echo "=== Pre-build done ==="
