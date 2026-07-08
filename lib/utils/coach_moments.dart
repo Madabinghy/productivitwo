@@ -10,12 +10,28 @@ import 'package:productivitwo_v1/models.dart';
 
 enum CoachTone { neutral, positive, alert }
 
-enum CoachMomentType { wake, morning, midday, drift, afternoon, evening, hidden }
+enum CoachMomentType {
+  wake,
+  morning,
+  unplanned, // matin sans programme → CTA « Planifier · 2 min » (maquette 5a)
+  midday,
+  drift,
+  afternoon,
+  evening,
+  hidden,
+}
 
 /// Une action proposée par la carte. [block] cible le bloc concerné (chrono
 /// ciblé, renégociation…) ; [target] est le moment visé par une transition
 /// manuelle (CTA « Attaquer la journée », « Pause de midi »…).
-enum CoachActionKind { launchBlock, openDayReview, renegotiate, advanceMoment }
+enum CoachActionKind {
+  launchBlock,
+  openDayReview,
+  renegotiate,
+  advanceMoment,
+  planDay, // ouvre l'écran de planification (rattrapage du matin)
+  dismiss, // « À la volée » — masque la carte pour la matinée
+}
 
 class CoachAction {
   final String label;
@@ -63,6 +79,8 @@ class CoachMoment {
 /// (« Attaquer la journée », « Pause de midi »…) : le user peut faire avancer
 /// la journée AVANT l'horloge (levé à 5h → carte matin sans attendre 9h).
 /// L'avance ne peut jamais reculer, et l'horloge la rattrape naturellement.
+/// [unplannedDismissed] : le user a tapé « À la volée » sur la carte
+/// « journée non planifiée » — on ne la re-propose pas de la matinée.
 CoachMoment computeCoachMoment(
   DateTime now,
   AppState st,
@@ -70,6 +88,7 @@ CoachMoment computeCoachMoment(
   DailySchedule? yesterday,
   List<Session> recentSessions, {
   CoachMomentType? advancedTo,
+  bool unplannedDismissed = false,
 }) {
   final minutes = now.hour * 60 + now.minute;
   final blocks = _liveBlocks(today);
@@ -81,6 +100,26 @@ CoachMoment computeCoachMoment(
   // le programme d'HIER (et leur bloc cible est désormais ce matin).
   if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday));
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
+
+  // « Journée non planifiée » (5a) : matinée sans programme (hors preps) →
+  // prime sur les templates réveil/matin, sous la dérive (après-midi de toute
+  // façon). Masquée après « À la volée ».
+  if (minutes < 11 * 60 + 45 &&
+      !unplannedDismissed &&
+      blocks.where((b) => !b.isPrep).isEmpty) {
+    return const CoachMoment(
+      type: CoachMomentType.unplanned,
+      tagLabel: 'ORION · MATIN',
+      title: 'Journée non planifiée',
+      message:
+          'Rien n\'est posé pour aujourd\'hui. 2 minutes maintenant et la journée a une colonne vertébrale.',
+      actions: [
+        CoachAction('Planifier · 2 min', CoachActionKind.planDay),
+        CoachAction('À la volée', CoachActionKind.dismiss),
+      ],
+      tone: CoachTone.neutral,
+    );
+  }
 
   // Moment « horloge ». drift prime sur afternoon dans sa fenêtre (14–19h).
   final CoachMoment clock;
@@ -122,6 +161,7 @@ CoachMoment computeCoachMoment(
 int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.wake => 0,
       CoachMomentType.morning => 1,
+      CoachMomentType.unplanned => 1,
       CoachMomentType.midday => 2,
       CoachMomentType.drift => 3,
       CoachMomentType.afternoon => 3,

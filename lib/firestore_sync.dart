@@ -2136,6 +2136,42 @@ class FirestoreSync {
         .set(schedule.toJson());
   }
 
+  /// Lecture one-shot du programme d'un jour (check-in : historique 7 jours).
+  Future<DailySchedule?> fetchDailySchedule(String date) async {
+    if (uid == null) return null;
+    final snap = await _db.doc('users/$uid/daily_schedules/$date').get();
+    return snap.exists ? DailySchedule.from(snap.data() as Map) : null;
+  }
+
+  /// Écrit le « pourquoi » d'un engagement rompu sur son bloc (check-in étape 2).
+  Future<void> updateBlockSkipReason(
+      String date, String blockId, String reason) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    for (final b in blocks) {
+      if (b['id'] == blockId) {
+        b['skipReason'] = reason;
+        break;
+      }
+    }
+    await ref.update({'blocks': blocks});
+  }
+
+  /// Cause globale d'une journée qui a déraillé (3+ engagements rompus).
+  Future<void> setDayReason(String date, String reason) async {
+    if (uid == null) return;
+    await _db
+        .doc('users/$uid/daily_schedules/$date')
+        .set({'dayReason': reason}, SetOptions(merge: true));
+  }
+
   /// Met à jour le status d'un bloc (pending → done | skipped) sans recharger le doc entier.
   Future<void> updateBlockStatus(
       String date, String blockId, String status) async {

@@ -13,6 +13,10 @@ class CoachMomentCard extends StatelessWidget {
   // CTA de transition (« Attaquer la journée »…) : avance manuellement au
   // moment suivant sans attendre l'horloge.
   final void Function(CoachMomentType target)? onAdvance;
+  // « Planifier · 2 min » (journée non planifiée) → écran de planification.
+  final VoidCallback? onPlanDay;
+  // « À la volée » → masque la carte pour la matinée.
+  final VoidCallback? onDismiss;
 
   const CoachMomentCard({
     super.key,
@@ -21,6 +25,8 @@ class CoachMomentCard extends StatelessWidget {
     this.onRenegotiate,
     this.onOpenDayReview,
     this.onAdvance,
+    this.onPlanDay,
+    this.onDismiss,
   });
 
   @override
@@ -47,6 +53,8 @@ class CoachMomentCard extends StatelessWidget {
               onRenegotiate: onRenegotiate,
               onOpenDayReview: onOpenDayReview,
               onAdvance: onAdvance,
+              onPlanDay: onPlanDay,
+              onDismiss: onDismiss,
             ),
     );
   }
@@ -58,6 +66,8 @@ class _Card extends StatelessWidget {
   final void Function(ScheduleBlock block)? onRenegotiate;
   final VoidCallback? onOpenDayReview;
   final void Function(CoachMomentType target)? onAdvance;
+  final VoidCallback? onPlanDay;
+  final VoidCallback? onDismiss;
 
   const _Card({
     super.key,
@@ -66,6 +76,8 @@ class _Card extends StatelessWidget {
     this.onRenegotiate,
     this.onOpenDayReview,
     this.onAdvance,
+    this.onPlanDay,
+    this.onDismiss,
   });
 
   @override
@@ -135,6 +147,8 @@ class _Card extends StatelessWidget {
               onRenegotiate: onRenegotiate,
               onOpenDayReview: onOpenDayReview,
               onAdvance: onAdvance,
+              onPlanDay: onPlanDay,
+              onDismiss: onDismiss,
             ),
           ],
         ],
@@ -207,6 +221,8 @@ class _Actions extends StatelessWidget {
   final void Function(ScheduleBlock block)? onRenegotiate;
   final VoidCallback? onOpenDayReview;
   final void Function(CoachMomentType target)? onAdvance;
+  final VoidCallback? onPlanDay;
+  final VoidCallback? onDismiss;
 
   const _Actions({
     required this.actions,
@@ -215,6 +231,8 @@ class _Actions extends StatelessWidget {
     this.onRenegotiate,
     this.onOpenDayReview,
     this.onAdvance,
+    this.onPlanDay,
+    this.onDismiss,
   });
 
   @override
@@ -228,7 +246,8 @@ class _Actions extends StatelessWidget {
 
   Widget _button(BuildContext context, CoachAction a) {
     final cs = Theme.of(context).colorScheme;
-    final isPrimary = a.kind == CoachActionKind.launchBlock;
+    final isPrimary = a.kind == CoachActionKind.launchBlock ||
+        a.kind == CoachActionKind.planDay;
     final onTap = _handlerFor(a);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
     final icon = switch (a.kind) {
@@ -236,6 +255,8 @@ class _Actions extends StatelessWidget {
       CoachActionKind.openDayReview => Icons.nightlight_round,
       CoachActionKind.renegotiate => Icons.tune_rounded,
       CoachActionKind.advanceMoment => Icons.arrow_forward_rounded,
+      CoachActionKind.planDay => Icons.edit_calendar_outlined,
+      CoachActionKind.dismiss => Icons.skip_next_outlined,
     };
     // Transition de moment : bouton discret (texte), pas un CTA plein.
     if (a.kind == CoachActionKind.advanceMoment) {
@@ -295,6 +316,10 @@ class _Actions extends StatelessWidget {
         return a.target != null && onAdvance != null
             ? () => onAdvance!(a.target!)
             : null;
+      case CoachActionKind.planDay:
+        return onPlanDay;
+      case CoachActionKind.dismiss:
+        return onDismiss;
     }
   }
 }

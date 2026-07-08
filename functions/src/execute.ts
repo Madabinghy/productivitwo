@@ -1806,6 +1806,7 @@ async function executeScheduleDay(
     kind?: string;
     prepForDate?: string;
     prepForBlockId?: string;
+    skipReason?: string;
   }>
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1826,13 +1827,23 @@ async function executeScheduleDay(
     kind: b.kind ?? "normal", // "normal" | "prep" (préparation la veille)
     prepForDate: b.prepForDate ?? null,
     prepForBlockId: b.prepForBlockId ?? null,
+    skipReason: b.skipReason ?? null, // pourquoi l'engagement a sauté (check-in)
   }));
 
-  await db.doc(`users/${uid}/daily_schedules/${date}`).set({
+  // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du
+  // doc (dayReason du check-in, plannedAt/plannedSameDay du rattrapage).
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const prev = await ref.get();
+  const prevData = prev.exists ? (prev.data() as Record<string, unknown>) : {};
+
+  await ref.set({
     date,
     generatedBy: "claude",
     generatedAt: FieldValue.serverTimestamp(),
     blocks: normalizedBlocks,
+    dayReason: prevData.dayReason ?? null,
+    plannedAt: prevData.plannedAt ?? null,
+    plannedSameDay: prevData.plannedSameDay ?? false,
   });
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);

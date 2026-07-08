@@ -225,13 +225,16 @@ void main() {
     test('CTA transition : levé à 5h, « Attaquer la journée » → carte matin',
         () {
       final now = DateTime(2026, 7, 7, 5, 30);
-      final wake = computeCoachMoment(now, _st([]), null, null, []);
+      final sched = _sched(today, [
+        _block(startTime: '07:15', title: 'Séance', activityId: 'a'),
+      ]);
+      final wake = computeCoachMoment(now, _st([]), sched, null, []);
       expect(wake.type, CoachMomentType.wake);
       final advance = wake.actions
           .firstWhere((a) => a.kind == CoachActionKind.advanceMoment);
       expect(advance.target, CoachMomentType.morning);
 
-      final m = computeCoachMoment(now, _st([]), null, null, [],
+      final m = computeCoachMoment(now, _st([]), sched, null, [],
           advancedTo: CoachMomentType.morning);
       expect(m.type, CoachMomentType.morning);
     });
@@ -270,6 +273,45 @@ void main() {
               a.kind == CoachActionKind.advanceMoment &&
               a.target == CoachMomentType.evening),
           isTrue);
+    });
+
+    test('matin sans programme → carte « journée non planifiée » (5a)', () {
+      final now = DateTime(2026, 7, 7, 7, 58);
+      final m = computeCoachMoment(now, _st([]), null, null, []);
+      expect(m.type, CoachMomentType.unplanned);
+      expect(m.title, 'Journée non planifiée');
+      expect(m.actions.any((a) => a.kind == CoachActionKind.planDay), isTrue);
+      expect(m.actions.any((a) => a.kind == CoachActionKind.dismiss), isTrue);
+    });
+
+    test('« À la volée » → la carte réveil/matin reprend la main', () {
+      final now = DateTime(2026, 7, 7, 7, 58);
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          unplannedDismissed: true);
+      expect(m.type, CoachMomentType.wake);
+    });
+
+    test('un programme (même 1 bloc) suffit → pas de carte non planifiée', () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final sched = _sched(today, [
+        _block(startTime: '11:00', title: 'Réunion', activityId: 'a'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.morning);
+    });
+
+    test('des preps seules ne comptent pas comme programme', () {
+      final now = DateTime(2026, 7, 7, 8, 0);
+      final sched = _sched(today, [
+        _block(
+            startTime: '21:45',
+            title: 'Prep',
+            kind: 'prep',
+            prepForDate: '2026-07-08',
+            prepForBlockId: 'x'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.unplanned);
     });
 
     test('rétrocompat : programme sans champ kind → moment calculé normalement',

@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
+import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
 /// 3 états exclusifs :
@@ -80,6 +81,9 @@ class _FocusViewState extends State<FocusView> {
   // Avance manuelle de la carte coach (CTA « Attaquer la journée »…) — vaut
   // pour la journée en cours seulement, remise à zéro à minuit.
   CoachMomentType? _coachAdvancedTo;
+  // « À la volée » sur la carte « journée non planifiée » — masquée jusqu'à
+  // demain (le lancement ad hoc de l'onglet reste dessous).
+  bool _unplannedDismissed = false;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -222,6 +226,7 @@ class _FocusViewState extends State<FocusView> {
     final now = DateTime.now();
     _schedDate = _ymd(now);
     _coachAdvancedTo = null; // nouvelle journée → l'horloge reprend la main
+    _unplannedDismissed = false;
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
@@ -240,7 +245,8 @@ class _FocusViewState extends State<FocusView> {
   Widget _coachCard(DateTime now) {
     final moment = computeCoachMoment(
         now, st, _schedule, _yesterday, st.sessions,
-        advancedTo: _coachAdvancedTo);
+        advancedTo: _coachAdvancedTo,
+        unplannedDismissed: _unplannedDismissed);
     return CoachMomentCard(
       moment: moment,
       onLaunch: widget.onLaunchScheduledBlock,
@@ -248,7 +254,30 @@ class _FocusViewState extends State<FocusView> {
       onRenegotiate: widget.onOpenScheduledBlockSource,
       onOpenDayReview: widget.onOpenDayReview,
       onAdvance: (target) => setState(() => _coachAdvancedTo = target),
+      onPlanDay: _openPlanToday,
+      onDismiss: () => setState(() => _unplannedDismissed = true),
     );
+  }
+
+  /// « Planifier · 2 min » → écran de planification en mode rattrapage express
+  /// (cible aujourd'hui). Au retour : toast « Journée posée — N blocs » ; la
+  /// carte coach se recalcule d'elle-même via le stream du programme (9b).
+  Future<void> _openPlanToday() async {
+    final count = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => PlanDayScreen(
+        logic: logic,
+        targetDate: _schedDate,
+        rattrapage: true,
+        onLaunchBlock: widget.onLaunchScheduledBlock,
+      ),
+    ));
+    if (count != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Journée posée — $count blocs'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   // ── Données session en cours ─────────────────────────────────────────────────

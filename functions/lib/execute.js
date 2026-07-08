@@ -1579,12 +1579,13 @@ async function executeGetDaySchedule(uid, date) {
     return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 async function executeScheduleDay(uid, date, blocks) {
+    var _a, _b, _c;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g, _h;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1600,13 +1601,22 @@ async function executeScheduleDay(uid, date, blocks) {
             kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", // "normal" | "prep" (préparation la veille)
             prepForDate: (_f = b.prepForDate) !== null && _f !== void 0 ? _f : null,
             prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null,
+            skipReason: (_h = b.skipReason) !== null && _h !== void 0 ? _h : null, // pourquoi l'engagement a sauté (check-in)
         });
     });
-    await db_1.db.doc(`users/${uid}/daily_schedules/${date}`).set({
+    // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du
+    // doc (dayReason du check-in, plannedAt/plannedSameDay du rattrapage).
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const prev = await ref.get();
+    const prevData = prev.exists ? prev.data() : {};
+    await ref.set({
         date,
         generatedBy: "claude",
         generatedAt: db_1.FieldValue.serverTimestamp(),
         blocks: normalizedBlocks,
+        dayReason: (_a = prevData.dayReason) !== null && _a !== void 0 ? _a : null,
+        plannedAt: (_b = prevData.plannedAt) !== null && _b !== void 0 ? _b : null,
+        plannedSameDay: (_c = prevData.plannedSameDay) !== null && _c !== void 0 ? _c : false,
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;

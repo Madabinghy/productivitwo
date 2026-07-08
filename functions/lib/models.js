@@ -13,6 +13,7 @@ const MODEL_ROUTING = {
     structure_project: exports.MODELS.OPUS, // moment "wow" (5/j max, ~2k tokens) — la qualité du plan prime
     structure_preview: exports.MODELS.HAIKU, // mindmap live onboarding : appels fréquents, JSON incrémental
     plan_day: exports.MODELS.HAIKU,
+    plan_proposal: exports.MODELS.HAIKU, // écran de planification : 1 appel JSON / ouverture (cycle quotidien)
     plan_week: exports.MODELS.HAIKU,
     sync_calendar: exports.MODELS.HAIKU,
     chat: exports.MODELS.SONNET,
