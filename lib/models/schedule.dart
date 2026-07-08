@@ -51,6 +51,10 @@ class ScheduleBlock {
   String kind;            // "normal" (défaut) | "prep"
   String? prepForDate;    // "YYYY-MM-DD" — jour du bloc cible (souvent J+1)
   String? prepForBlockId; // id du bloc cible dans daily_schedules/{prepForDate}
+  // ── Check-in du soir ───────────────────────────────────────────────────────
+  // Pourquoi l'engagement a sauté — fait tracké, écrit par le check-in guidé.
+  // Enum ouvert : "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
+  String? skipReason;
 
   ScheduleBlock({
     String? id,
@@ -69,6 +73,7 @@ class ScheduleBlock {
     this.kind = 'normal',
     this.prepForDate,
     this.prepForBlockId,
+    this.skipReason,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
 
@@ -91,6 +96,7 @@ class ScheduleBlock {
         'kind': kind,
         'prepForDate': prepForDate,
         'prepForBlockId': prepForBlockId,
+        'skipReason': skipReason,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -110,6 +116,7 @@ class ScheduleBlock {
         kind: j['kind'] ?? 'normal',
         prepForDate: j['prepForDate'],
         prepForBlockId: j['prepForBlockId'],
+        skipReason: j['skipReason'],
       );
 }
 
@@ -118,12 +125,23 @@ class DailySchedule {
   String generatedBy; // claude | orion
   DateTime generatedAt;
   List<ScheduleBlock> blocks;
+  // ── Check-in du soir / planification — faits trackés (optionnels) ──────────
+  // Cause globale quand 3+ engagements ont sauté (pas de skipReason par bloc) :
+  // "imprevu_global" | "energie" | "irrealiste" | texte libre.
+  String? dayReason;
+  // Planification le jour même après 5h (rattrapage du matin) — rejoué au
+  // check-in du soir sans culpabiliser (« 7 h 58 — planifié au réveil »).
+  DateTime? plannedAt;
+  bool plannedSameDay;
 
   DailySchedule({
     required this.date,
     this.generatedBy = 'claude',
     DateTime? generatedAt,
     List<ScheduleBlock>? blocks,
+    this.dayReason,
+    this.plannedAt,
+    this.plannedSameDay = false,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
 
@@ -132,6 +150,9 @@ class DailySchedule {
         'generatedBy': generatedBy,
         'generatedAt': generatedAt.toIso8601String(),
         'blocks': blocks.map((b) => b.toJson()).toList(),
+        'dayReason': dayReason,
+        'plannedAt': plannedAt?.toIso8601String(),
+        'plannedSameDay': plannedSameDay,
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -142,5 +163,8 @@ class DailySchedule {
                 ?.map((b) => ScheduleBlock.from(b))
                 .toList() ??
             [],
+        dayReason: j['dayReason'],
+        plannedAt: _parseDateOrNull(j['plannedAt']),
+        plannedSameDay: j['plannedSameDay'] == true,
       );
 }

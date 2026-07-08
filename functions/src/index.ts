@@ -341,6 +341,189 @@ export const nowAssist = onRequest(
   }
 );
 
+// ── proposeDayPlan ────────────────────────────────────────────────────────────
+//
+// POST { uid, date? } + Authorization: Bearer <api_token>
+// Écran de planification (check-in « Poser demain » / rattrapage du matin) :
+// retourne une PROPOSITION de programme en JSON structuré — n'écrit RIEN.
+// La validation côté app passe par les écritures existantes (schedule_day /
+// saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
+
+const PROPOSE_PLAN_MAX_PER_DAY = 20;
+
+export const proposeDayPlan = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, date } = req.body as { uid?: string; date?: string };
+    if (!uid) { res.status(400).json({ error: "uid requis" }); return; }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    const today = todayInParis();
+    const target = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : today;
+    // Jour de référence = la veille de la cible (son programme + ses causes).
+    const refDate = todayInParis(new Date(new Date(target).getTime() - 24 * 60 * 60 * 1000));
+
+    // Garde de coût quotidienne.
+    const limitRef = db.doc(`users/${uid}/rate_limits/plan_proposal`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+    if (count >= PROPOSE_PLAN_MAX_PER_DAY) {
+      res.status(429).json({ error: `Limite atteinte (${PROPOSE_PLAN_MAX_PER_DAY}/jour).` });
+      return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+
+    const nowHm = new Date().toLocaleTimeString("fr-FR", {
+      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+    const sameDay = target === today;
+
+    try {
+      // ── Contexte ────────────────────────────────────────────────────────────
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap] = await Promise.all([
+        db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
+        db.doc(`users/${uid}/daily_schedules/${target}`).get(),
+        db.collection(`users/${uid}/activities`).get(),
+        db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+        db.collection(`users/${uid}/documents`).orderBy("updatedAt", "desc").limit(10).get()
+          .catch(() => db.collection(`users/${uid}/documents`).limit(10).get()),
+      ]);
+
+      const refData = refSnap.exists ? (refSnap.data() as Record<string, unknown>) : {};
+      const refBlocks = ((refData.blocks as Array<Record<string, unknown>>) ?? [])
+        .filter((b) => b.status !== "deleted" && b.kind !== "prep");
+      const refLines = refBlocks.map((b) => {
+        const st = b.status === "done" ? "✅" : "❌ SAUTÉ";
+        const reason = b.skipReason ? ` (cause : ${b.skipReason})` : "";
+        return `  ${b.startTime} "${b.title}" [${b.category}] ${st}${reason}` +
+          (b.activityId ? ` activityId=${b.activityId}` : "") +
+          (b.projectId ? ` projectId=${b.projectId} taskId=${b.taskId ?? ""}` : "");
+      });
+      const dayReason = (refData.dayReason as string) ?? null;
+
+      const targetBlocks = targetSnap.exists
+        ? (((targetSnap.data()?.blocks as Array<Record<string, unknown>>) ?? [])
+            .filter((b) => b.status !== "deleted"))
+        : [];
+
+      const acts = actsSnap.docs
+        .map((d) => d.data() as Record<string, unknown>)
+        .filter((a) => a.deleted !== true);
+      const routineList = acts.filter((a) => a.type === "habit")
+        .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
+      const activityList = acts.filter((a) => a.type !== "habit")
+        .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
+
+      const projLines: string[] = [];
+      for (const doc of projSnap.docs) {
+        const p = doc.data();
+        const pending = ((p.tasks || []) as Array<Record<string, unknown>>)
+          .filter((t) => t.status !== "done" && t.status !== "skipped")
+          .slice(0, 3)
+          .map((t) => `    - "${t.title}" (taskId: ${t.id}${t.endDate ? `, deadline ${t.endDate}` : ""})`);
+        if (pending.length > 0) {
+          projLines.push(`  · "${p.title}" (projectId: ${p.id})\n${pending.join("\n")}`);
+        }
+      }
+
+      const docLines = docsSnap.docs.map((d) => {
+        const doc = d.data();
+        return `  · "${doc.title ?? d.id}" (documentId: ${d.id})`;
+      });
+
+      const systemPrompt = [
+        `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, Europe/Paris).`,
+        sameDay
+          ? `⚠️ La cible est AUJOURD'HUI (rattrapage express) : ne propose AUCUN bloc avant ${nowHm}. Horizon = ce qui reste de la journée.`
+          : `La cible est un jour complet (7h-21h environ).`,
+        ``,
+        `Tu réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :`,
+        `{`,
+        `  "message": "pourquoi cette proposition, 1-2 phrases avec la provenance (plans, deadlines, causes d'hier)",`,
+        `  "sources": [{"title": "nom court de l'artefact/plan utilisé", "documentId": "id ou null"}],`,
+        `  "blocks": [{"startTime": "HH:mm", "durationMin": 30, "title": "…", "category": "project|routine|personal|break",`,
+        `              "activityId": null, "projectId": null, "taskId": null,`,
+        `              "subtitle": "provenance courte (ex: plan de reprise S2, deadline 30 sept)", "reproposed": false}]`,
+        `}`,
+        ``,
+        `RÈGLES :`,
+        `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
+        `2. REPROPOSER les blocs SAUTÉS de la veille (reproposed: true, même source liée) — un engagement rompu n'est pas perdu.`,
+        dayReason === "irrealiste"
+          ? `3. ⚠️ La veille était « programme irréaliste » : propose MOINS de blocs que la veille (${Math.max(2, refBlocks.length - 2)} max) et dis-le dans message (« Hier était trop chargé — demain est plus court, volontairement. »).`
+          : `3. Charge réaliste : ne pas dépasser la veille.`,
+        `4. Réutilise les activityId/projectId/taskId existants ci-dessous (chrono ciblé) — jamais d'id inventé.`,
+        `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
+        ``,
+        `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
+        refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
+        ``,
+        `── PROGRAMME DÉJÀ EN PLACE POUR ${target} (à intégrer, ne pas dupliquer) ──`,
+        targetBlocks.length > 0
+          ? targetBlocks.map((b) => `  ${b.startTime} "${b.title}" [${b.status}]`).join("\n")
+          : "  Aucun.",
+        ``,
+        `── ROUTINES ──`, routineList,
+        `── ACTIVITÉS-TEMPS ──`, activityList,
+        `── PROJETS ACTIFS (tâches ouvertes) ──`,
+        projLines.length > 0 ? projLines.join("\n") : "  Aucun.",
+        `── DOCUMENTS/PLANS DISPONIBLES (provenance) ──`,
+        docLines.length > 0 ? docLines.join("\n") : "  Aucun.",
+      ].join("\n");
+
+      const client = new Anthropic({ apiKey });
+      const model = getModel("plan_proposal");
+      const response = await client.messages.create({
+        model,
+        max_tokens: 1500,
+        system: systemPrompt,
+        messages: [{ role: "user", content: `Propose le programme du ${target}.` }],
+      });
+      logTokenUsage("plan_proposal", model, response.usage);
+
+      const raw = response.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b as { type: "text"; text: string }).text)
+        .join("");
+      // Extraction tolérante : premier { … dernier } (Haiku peut entourer de texte).
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start < 0 || end <= start) throw new Error("Réponse sans JSON");
+      const proposal = JSON.parse(raw.slice(start, end + 1)) as {
+        message?: string;
+        sources?: Array<{ title?: string; documentId?: string | null }>;
+        blocks?: Array<Record<string, unknown>>;
+      };
+
+      res.status(200).json({
+        message: proposal.message ?? "",
+        sources: proposal.sources ?? [],
+        blocks: (proposal.blocks ?? []).filter(
+          (b) => /^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) && b.title
+        ),
+        refDate,
+        dayReason,
+      });
+    } catch (e) {
+      console.error("proposeDayPlan error:", e);
+      // Le client a un fallback déterministe — 502 le déclenche proprement.
+      res.status(502).json({ error: "Proposition indisponible — fallback local." });
+    }
+  }
+);
+
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage

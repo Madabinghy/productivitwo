@@ -973,6 +973,7 @@ export const SCHEDULE_DAY_TOOL = {
             kind:           { type: "string", enum: ["normal", "prep"], description: "défaut 'normal'. 'prep' = mini-bloc de préparation la veille lié à un bloc du lendemain (préfère l'outil add_prep_block pour ajouter une prep sans remplacer le programme)." },
             prepForDate:    { type: "string", description: "si kind=prep : YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
             prepForBlockId: { type: "string", description: "si kind=prep : id du bloc cible dans le programme de prepForDate" },
+            skipReason:     { type: "string", description: "pourquoi l'engagement a sauté (écrit par le check-in du soir — ne pas remplir à la planification)" },
           },
         },
       },
