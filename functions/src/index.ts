@@ -25,7 +25,7 @@ import {
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
-  GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
+  GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -46,7 +46,7 @@ import {
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
   executeLinkActionToActivity, executeAddActivityAction,
   executeLogRoutineHit, executeMarkBlockDone,
-  executeGetDaySchedule, executeScheduleDay,
+  executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
 } from "./execute";
@@ -597,7 +597,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
-            GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL,
+            GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -692,6 +692,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeGetDaySchedule(uid, args.date as string);
         } else if (toolName === "schedule_day") {
           text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
+        } else if (toolName === "add_prep_block") {
+          text = await executeAddPrepBlock(uid, args as Parameters<typeof executeAddPrepBlock>[1]);
         } else if (toolName === "plan_day") {
           text = await executePlanDay(uid, args as Parameters<typeof executePlanDay>[1]);
         } else if (toolName === "plan_week") {

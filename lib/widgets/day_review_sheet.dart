@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -31,6 +34,40 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   AppState get st => logic.state;
 
   bool _showRoutines = true;
+
+  final _sync = FirestoreSync();
+  StreamSubscription<DailySchedule?>? _schedSub;
+  DailySchedule? _schedule;
+  late final String _todayYmd;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _todayYmd =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _schedSub = _sync.streamDailySchedule(_todayYmd).listen((s) {
+      if (mounted) setState(() => _schedule = s);
+    });
+  }
+
+  @override
+  void dispose() {
+    _schedSub?.cancel();
+    super.dispose();
+  }
+
+  List<ScheduleBlock> get _prepBlocks =>
+      (_schedule?.blocks
+              .where((b) => b.isPrep && b.status != 'deleted')
+              .toList() ??
+          [])
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  Future<void> _togglePrep(ScheduleBlock b) async {
+    final newStatus = b.status == 'done' ? 'pending' : 'done';
+    await _sync.updateBlockStatus(_todayYmd, b.id, newStatus);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +218,63 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
           if (routines.isEmpty)
             _emptyHint(cs, 'Aucune routine quotidienne configurée.'),
           const SizedBox(height: 20),
+
+          // ── Préparer demain ───────────────────────────────────────────────
+          // Clore la journée ET armer la suivante dans le même écran.
+          if (_prepBlocks.isNotEmpty) ...[
+            _sectionHeader(cs,
+                icon: Icons.backpack_outlined, title: 'Préparer demain'),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Demain se gagne ce soir.',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.55))),
+            ),
+            for (final b in _prepBlocks)
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _togglePrep(b),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        b.status == 'done'
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        size: 20,
+                        color: b.status == 'done'
+                            ? Colors.green
+                            : cs.tertiary.withOpacity(.7),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          b.title,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            decoration: b.status == 'done'
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: b.status == 'done'
+                                ? cs.onSurface.withOpacity(.4)
+                                : cs.onSurface.withOpacity(.85),
+                          ),
+                        ),
+                      ),
+                      Text(b.startTime,
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              color: cs.onSurface.withOpacity(.4))),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 20),
+          ],
 
           // ── Badges ────────────────────────────────────────────────────────
           // Section coupée avec l'ancienne gamification (kOldGamificationEnabled).

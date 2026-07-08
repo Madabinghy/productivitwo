@@ -970,9 +970,35 @@ export const SCHEDULE_DAY_TOOL = {
             taskId:      { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
             activityId:  { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
             actionId:    { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
+            kind:           { type: "string", enum: ["normal", "prep"], description: "défaut 'normal'. 'prep' = mini-bloc de préparation la veille lié à un bloc du lendemain (préfère l'outil add_prep_block pour ajouter une prep sans remplacer le programme)." },
+            prepForDate:    { type: "string", description: "si kind=prep : YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
+            prepForBlockId: { type: "string", description: "si kind=prep : id du bloc cible dans le programme de prepForDate" },
           },
         },
       },
+    },
+  },
+};
+
+export const ADD_PREP_BLOCK_TOOL = {
+  name: "add_prep_block",
+  description:
+    "Ajoute UN bloc de préparation la veille (kind:'prep') au programme d'une journée SANS remplacer " +
+    "le reste (contrairement à schedule_day). Sert à armer un bloc matinal du lendemain qui exige du " +
+    "matériel ou de la logistique (sport, déplacement, cuisine) : le user coche la prep le soir en un " +
+    "tap, et le lendemain matin le système peut affirmer un fait tracké (« affaires prêtes depuis hier »). " +
+    "Idempotent : si un bloc prep non supprimé pointant déjà vers (prepForDate, prepForBlockId) existe, " +
+    "il n'est pas dupliqué. Crée le doc du jour au besoin.",
+  inputSchema: {
+    type: "object",
+    required: ["date", "startTime", "title", "prepForDate", "prepForBlockId"],
+    properties: {
+      date:           { type: "string", description: "YYYY-MM-DD — jour où placer le bloc de prep (souvent la veille du bloc cible)" },
+      startTime:      { type: "string", description: "Heure de début HH:mm (défaut recommandé : 21:45)" },
+      durationMin:    { type: "integer", description: "Durée en minutes (défaut : 5)" },
+      title:          { type: "string", description: "Intitulé, ex: 'Préparer les affaires de sport'" },
+      prepForDate:    { type: "string", description: "YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
+      prepForBlockId: { type: "string", description: "id du bloc cible dans le programme de prepForDate (via get_day_schedule)" },
     },
   },
 };

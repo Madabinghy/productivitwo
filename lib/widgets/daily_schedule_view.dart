@@ -331,6 +331,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   Widget _buildBlock(BuildContext context, ColorScheme cs, ScheduleBlock block,
       {required Key key}) {
+    if (block.isPrep) return _buildPrepBlock(context, cs, block, key: key);
     final isDone = block.status == 'done';
     // Défi programmé = teinte dorée distincte (cohérent avec « Challenge me »).
     final color =
@@ -476,6 +477,111 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         ),
       ),
     );
+  }
+
+  /// Bloc de préparation la veille (kind:"prep") : rangée compacte, icône sac,
+  /// libellé + « pour demain », checkbox en un tap. Swipe = supprimer (comme les
+  /// autres blocs). « Demain se gagne ce soir. »
+  Widget _buildPrepBlock(BuildContext context, ColorScheme cs, ScheduleBlock block,
+      {required Key key}) {
+    final isDone = block.status == 'done';
+    final color = cs.tertiary;
+    return Dismissible(
+      key: key,
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: cs.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(Icons.delete_outline, color: cs.onErrorContainer, size: 20),
+      ),
+      onDismissed: (_) => _deleteBlock(block),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: GestureDetector(
+          onTap: () => _showEditSheet(context, cs, block),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withOpacity(.18)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.backpack_outlined,
+                    size: 16,
+                    color: isDone ? color.withOpacity(.35) : color.withOpacity(.85)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        block.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isDone ? cs.onSurface.withOpacity(.35) : cs.onSurface,
+                          decoration: isDone ? TextDecoration.lineThrough : null,
+                          decorationColor: cs.onSurface.withOpacity(.3),
+                        ),
+                      ),
+                      Text(
+                        '${block.startTime} · ${_prepForLabel(block)}',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            color: cs.onSurface.withOpacity(isDone ? .3 : .45)),
+                      ),
+                    ],
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => _toggleDone(block),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 4, 2, 4),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isDone ? color : Colors.transparent,
+                        border: isDone
+                            ? null
+                            : Border.all(
+                                color: cs.onSurface.withOpacity(.2), width: 1.5),
+                      ),
+                      child: isDone
+                          ? Icon(Icons.check, size: 14, color: cs.surface)
+                          : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// « pour demain » si prepForDate = lendemain de la date du programme, sinon
+  /// « pour le JJ/MM ».
+  String _prepForLabel(ScheduleBlock block) {
+    final pd = block.prepForDate;
+    if (pd == null || pd.length < 10) return 'pour demain';
+    final base = _blockDay();
+    final tomorrow = base.add(const Duration(days: 1));
+    final tStr =
+        '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+    if (pd == tStr) return 'pour demain';
+    return 'pour le ${pd.substring(8, 10)}/${pd.substring(5, 7)}';
   }
 
   Widget _buildEmptyState(ColorScheme cs) {

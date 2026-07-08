@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
 /// 3 états exclusifs :
@@ -40,6 +42,8 @@ class FocusView extends StatefulWidget {
   // État vide : ouvre les sheets « Mes routines » / « Mes activités ».
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
+  // Carte coach « Maintenant » : « Faire le point » du soir → day review.
+  final VoidCallback? onOpenDayReview;
 
   const FocusView({
     super.key,
@@ -58,6 +62,7 @@ class FocusView extends StatefulWidget {
     this.onOpenScheduledBlockSource,
     this.onOpenRoutines,
     this.onOpenActivities,
+    this.onOpenDayReview,
   });
 
   @override
@@ -69,6 +74,9 @@ class _FocusViewState extends State<FocusView> {
   final _sync = FirestoreSync();
   StreamSubscription<DailySchedule?>? _schedSub;
   DailySchedule? _schedule;
+  // Programme de la veille — nécessaire à la carte coach (« affaires prêtes
+  // depuis hier »). Rarement modifié → simple fetch one-shot à l'init/minuit.
+  DailySchedule? _yesterday;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -208,13 +216,33 @@ class _FocusViewState extends State<FocusView> {
 
   void _subscribeSchedule() {
     _schedSub?.cancel();
-    _schedDate = _ymd(DateTime.now());
+    final now = DateTime.now();
+    _schedDate = _ymd(now);
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
       // Garde todayBlocks frais même si l'onglet Aujourd'hui affiche « Demain ».
       logic.todayBlocks = s?.blocks ?? [];
     });
+    // Programme de la veille (one-shot) pour la carte coach du réveil.
+    final yesterday = _ymd(now.subtract(const Duration(days: 1)));
+    _sync.streamDailySchedule(yesterday).first.then((s) {
+      if (mounted) setState(() => _yesterday = s);
+    }).catchError((_) {});
+  }
+
+  // ── Carte coach « Maintenant » ───────────────────────────────────────────────
+
+  Widget _coachCard(DateTime now) {
+    final moment =
+        computeCoachMoment(now, st, _schedule, _yesterday, st.sessions);
+    return CoachMomentCard(
+      moment: moment,
+      onLaunch: widget.onLaunchScheduledBlock,
+      // Renégocier (v1) : ouvre la fiche du bloc / de sa source.
+      onRenegotiate: widget.onOpenScheduledBlockSource,
+      onOpenDayReview: widget.onOpenDayReview,
+    );
   }
 
   // ── Données session en cours ─────────────────────────────────────────────────
@@ -351,6 +379,7 @@ class _FocusViewState extends State<FocusView> {
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
             const SizedBox(height: 20),
+            _coachCard(now),
             _focusCard(context, cs, b, now),
             if (next != null) ...[
               const SizedBox(height: 14),
@@ -578,7 +607,9 @@ class _FocusViewState extends State<FocusView> {
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
+            _coachCard(now),
+            const SizedBox(height: 8),
             Center(
               child: Column(children: [
                 Icon(Icons.self_improvement,

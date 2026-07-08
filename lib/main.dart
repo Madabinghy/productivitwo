@@ -2998,6 +2998,9 @@ class _AppRootState extends State<AppRoot>
             // État vide « Que souhaites-tu faire maintenant ? » → sheets existantes.
             onOpenRoutines: () => _showRoutinesSheet(context),
             onOpenActivities: () => _showLaunchActivitySheet(context),
+            // Carte coach du soir → résumé du jour (check-in).
+            onOpenDayReview: () => showDayReviewSheet(context,
+                logic: logic, projects: _dashboardProjects),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {
