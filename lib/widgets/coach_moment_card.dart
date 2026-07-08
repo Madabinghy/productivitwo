@@ -10,6 +10,9 @@ class CoachMomentCard extends StatelessWidget {
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
   final VoidCallback? onOpenDayReview;
+  // CTA de transition (« Attaquer la journée »…) : avance manuellement au
+  // moment suivant sans attendre l'horloge.
+  final void Function(CoachMomentType target)? onAdvance;
 
   const CoachMomentCard({
     super.key,
@@ -17,6 +20,7 @@ class CoachMomentCard extends StatelessWidget {
     this.onLaunch,
     this.onRenegotiate,
     this.onOpenDayReview,
+    this.onAdvance,
   });
 
   @override
@@ -42,6 +46,7 @@ class CoachMomentCard extends StatelessWidget {
               onLaunch: onLaunch,
               onRenegotiate: onRenegotiate,
               onOpenDayReview: onOpenDayReview,
+              onAdvance: onAdvance,
             ),
     );
   }
@@ -52,6 +57,7 @@ class _Card extends StatelessWidget {
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
   final VoidCallback? onOpenDayReview;
+  final void Function(CoachMomentType target)? onAdvance;
 
   const _Card({
     super.key,
@@ -59,6 +65,7 @@ class _Card extends StatelessWidget {
     this.onLaunch,
     this.onRenegotiate,
     this.onOpenDayReview,
+    this.onAdvance,
   });
 
   @override
@@ -127,6 +134,7 @@ class _Card extends StatelessWidget {
               onLaunch: onLaunch,
               onRenegotiate: onRenegotiate,
               onOpenDayReview: onOpenDayReview,
+              onAdvance: onAdvance,
             ),
           ],
         ],
@@ -198,6 +206,7 @@ class _Actions extends StatelessWidget {
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
   final VoidCallback? onOpenDayReview;
+  final void Function(CoachMomentType target)? onAdvance;
 
   const _Actions({
     required this.actions,
@@ -205,6 +214,7 @@ class _Actions extends StatelessWidget {
     this.onLaunch,
     this.onRenegotiate,
     this.onOpenDayReview,
+    this.onAdvance,
   });
 
   @override
@@ -225,7 +235,22 @@ class _Actions extends StatelessWidget {
       CoachActionKind.launchBlock => Icons.play_arrow_rounded,
       CoachActionKind.openDayReview => Icons.nightlight_round,
       CoachActionKind.renegotiate => Icons.tune_rounded,
+      CoachActionKind.advanceMoment => Icons.arrow_forward_rounded,
     };
+    // Transition de moment : bouton discret (texte), pas un CTA plein.
+    if (a.kind == CoachActionKind.advanceMoment) {
+      return TextButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(a.label),
+        style: TextButton.styleFrom(
+          foregroundColor: cs.onSurface.withOpacity(.6),
+          minimumSize: const Size(0, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: shape,
+        ),
+      );
+    }
     if (isPrimary) {
       return FilledButton.icon(
         onPressed: onTap,
@@ -266,6 +291,10 @@ class _Actions extends StatelessWidget {
             : null;
       case CoachActionKind.openDayReview:
         return onOpenDayReview;
+      case CoachActionKind.advanceMoment:
+        return a.target != null && onAdvance != null
+            ? () => onAdvance!(a.target!)
+            : null;
     }
   }
 }

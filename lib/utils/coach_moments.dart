@@ -13,14 +13,16 @@ enum CoachTone { neutral, positive, alert }
 enum CoachMomentType { wake, morning, midday, drift, afternoon, evening, hidden }
 
 /// Une action proposée par la carte. [block] cible le bloc concerné (chrono
-/// ciblé, renégociation…).
-enum CoachActionKind { launchBlock, openDayReview, renegotiate }
+/// ciblé, renégociation…) ; [target] est le moment visé par une transition
+/// manuelle (CTA « Attaquer la journée », « Pause de midi »…).
+enum CoachActionKind { launchBlock, openDayReview, renegotiate, advanceMoment }
 
 class CoachAction {
   final String label;
   final CoachActionKind kind;
   final ScheduleBlock? block;
-  const CoachAction(this.label, this.kind, {this.block});
+  final CoachMomentType? target;
+  const CoachAction(this.label, this.kind, {this.block, this.target});
 }
 
 class StatItem {
@@ -57,41 +59,75 @@ class CoachMoment {
 
 // ── Point d'entrée ────────────────────────────────────────────────────────────
 
+/// [advancedTo] = avance manuelle via le CTA de transition de la carte
+/// (« Attaquer la journée », « Pause de midi »…) : le user peut faire avancer
+/// la journée AVANT l'horloge (levé à 5h → carte matin sans attendre 9h).
+/// L'avance ne peut jamais reculer, et l'horloge la rattrape naturellement.
 CoachMoment computeCoachMoment(
   DateTime now,
   AppState st,
   DailySchedule? today,
   DailySchedule? yesterday,
-  List<Session> recentSessions,
-) {
+  List<Session> recentSessions, {
+  CoachMomentType? advancedTo,
+}) {
   final minutes = now.hour * 60 + now.minute;
   final blocks = _liveBlocks(today);
   final sessionsToday =
       recentSessions.where((s) => _sameDay(s.startAt, now)).toList();
 
-  // drift prime sur morning/midday/afternoon dans sa fenêtre (14:00–19:00).
-  if (minutes >= 14 * 60 && minutes < 19 * 60) {
-    final drift = _driftMoment(now, blocks, sessionsToday);
-    if (drift != null) return drift;
+  // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
+  // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
+  // le programme d'HIER (et leur bloc cible est désormais ce matin).
+  if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday));
+  if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
+
+  // Moment « horloge ». drift prime sur afternoon dans sa fenêtre (14–19h).
+  final CoachMoment clock;
+  if (minutes >= 19 * 60) {
+    clock = _eveningMoment(blocks);
+  } else if (minutes >= 14 * 60) {
+    clock = _driftMoment(now, blocks, sessionsToday) ??
+        _afternoonMoment(now, blocks);
+  } else if (minutes >= 11 * 60 + 45) {
+    clock = _middayMoment(now, blocks, recentSessions);
+  } else if (minutes >= 9 * 60) {
+    clock = _morningMoment(now, blocks);
+  } else {
+    clock = _wakeMoment(now, blocks, yesterday, today);
   }
 
-  if (minutes >= 5 * 60 && minutes < 9 * 60) {
-    return _wakeMoment(now, blocks, yesterday, today);
+  // Avance manuelle : ne s'applique que si elle est PLUS LOIN dans la journée
+  // que l'horloge (sinon elle est périmée). Avancer en soirée fait aussi taire
+  // une éventuelle dérive (le user a explicitement clos son après-midi).
+  if (advancedTo != null && _dayOrder(advancedTo) > _dayOrder(clock.type)) {
+    switch (advancedTo) {
+      case CoachMomentType.morning:
+        return _morningMoment(now, blocks);
+      case CoachMomentType.midday:
+        return _middayMoment(now, blocks, recentSessions);
+      case CoachMomentType.afternoon:
+        return _afternoonMoment(now, blocks);
+      case CoachMomentType.evening:
+        return _eveningMoment(blocks);
+      default:
+        break;
+    }
   }
-  if (minutes >= 9 * 60 && minutes < 11 * 60 + 45) {
-    return _morningMoment(now, blocks);
-  }
-  if (minutes >= 11 * 60 + 45 && minutes < 14 * 60) {
-    return _middayMoment(now, blocks, recentSessions);
-  }
-  if (minutes >= 14 * 60 && minutes < 19 * 60) {
-    return _afternoonMoment(now, blocks);
-  }
-  if (minutes >= 19 * 60 && minutes < 23 * 60) {
-    return _eveningMoment(blocks);
-  }
-  return CoachMoment.none; // nuit
+  return clock;
 }
+
+/// Position de chaque moment dans le déroulé de la journée (drift et afternoon
+/// partagent la même fenêtre).
+int _dayOrder(CoachMomentType t) => switch (t) {
+      CoachMomentType.wake => 0,
+      CoachMomentType.morning => 1,
+      CoachMomentType.midday => 2,
+      CoachMomentType.drift => 3,
+      CoachMomentType.afternoon => 3,
+      CoachMomentType.evening => 4,
+      CoachMomentType.hidden => -1,
+    };
 
 // ── Moments ───────────────────────────────────────────────────────────────────
 
@@ -126,6 +162,9 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
         ? 'Journée libre côté programme — mais les affaires sont prêtes depuis hier, prêt à démarrer.'
         : 'Nouvelle journée. Prends une minute pour poser ton premier bloc.';
   }
+  actions.add(const CoachAction('Attaquer la journée',
+      CoachActionKind.advanceMoment,
+      target: CoachMomentType.morning));
 
   return CoachMoment(
     type: CoachMomentType.wake,
@@ -138,6 +177,8 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
 }
 
 CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
+  const advance = CoachAction('Pause de midi', CoachActionKind.advanceMoment,
+      target: CoachMomentType.midday);
   final firstDone = _firstDoneEngagement(blocks);
   if (firstDone != null) {
     final at = firstDone.doneAt;
@@ -147,6 +188,7 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
       tagLabel: 'ORION · MATIN',
       message:
           '${firstDone.title} fait$atStr — la journée est lancée, c\'est ça qu\'on voulait.',
+      actions: const [advance],
       tone: CoachTone.positive,
     );
   }
@@ -167,6 +209,7 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
   } else {
     message = 'Matinée libre. Choisis une chose à faire avancer.';
   }
+  actions.add(advance);
   return CoachMoment(
     type: CoachMomentType.morning,
     tagLabel: 'ORION · MATIN',
@@ -209,6 +252,9 @@ CoachMoment _middayMoment(
     actions
         .add(CoachAction('Lancer', CoachActionKind.launchBlock, block: key));
   }
+  actions.add(const CoachAction('Attaquer l\'aprèm',
+      CoachActionKind.advanceMoment,
+      target: CoachMomentType.afternoon));
 
   return CoachMoment(
     type: CoachMomentType.midday,
@@ -258,8 +304,21 @@ CoachMoment? _driftMoment(
 }
 
 CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
+  const advance = CoachAction('Passer en soirée',
+      CoachActionKind.advanceMoment,
+      target: CoachMomentType.evening);
   final next = _firstEngagement(now, blocks);
-  if (next == null) return CoachMoment.none;
+  if (next == null) {
+    // Carte visible même sans bloc : le user peut clore l'aprèm quand il veut.
+    return const CoachMoment(
+      type: CoachMomentType.afternoon,
+      tagLabel: 'ORION · APRÈS-MIDI',
+      message:
+          'Rien de posé pour la suite. Une chose à faire avancer, ou on passe en mode soirée ?',
+      actions: [advance],
+      tone: CoachTone.neutral,
+    );
+  }
   final mins = _minutesUntil(now, next.startTime);
   final whenStr = mins > 0 ? 'dans $mins min' : 'maintenant';
   return CoachMoment(
@@ -270,6 +329,7 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
     actions: [
       if (_launchable(next))
         CoachAction('Lancer', CoachActionKind.launchBlock, block: next),
+      advance,
     ],
     tone: CoachTone.neutral,
   );

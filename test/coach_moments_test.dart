@@ -46,11 +46,34 @@ void main() {
   const yesterday = '2026-07-06';
 
   group('computeCoachMoment', () {
-    test('nuit → carte masquée', () {
+    test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
       expect(m.hidden, isTrue);
       expect(m.type, CoachMomentType.hidden);
+    });
+
+    test('23h25 → toujours la carte du soir (fenêtre étendue)', () {
+      final now = DateTime(2026, 7, 7, 23, 25);
+      final m = computeCoachMoment(now, _st([]), null, null, []);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('0h30 → carte du soir, preps lues dans le programme d\'HIER', () {
+      final now = DateTime(2026, 7, 8, 0, 30);
+      // À 0h30 le doc « du jour » est celui du 08 (vide) ; la prep du soir
+      // vit dans le doc du 07.
+      final yestSched = _sched(today, [
+        _block(
+            startTime: '21:45',
+            title: 'Préparer le sac',
+            kind: 'prep',
+            prepForDate: '2026-07-08',
+            prepForBlockId: 'x'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), null, yestSched, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.stats.any((s) => s.label == 'À préparer'), isTrue);
     });
 
     test('réveil : affiche « prêtes depuis hier » + compte à rebours', () {
@@ -197,6 +220,56 @@ void main() {
       expect(m.message, contains('Demain se gagne ce soir'));
       expect(
           m.actions.any((a) => a.kind == CoachActionKind.openDayReview), isTrue);
+    });
+
+    test('CTA transition : levé à 5h, « Attaquer la journée » → carte matin',
+        () {
+      final now = DateTime(2026, 7, 7, 5, 30);
+      final wake = computeCoachMoment(now, _st([]), null, null, []);
+      expect(wake.type, CoachMomentType.wake);
+      final advance = wake.actions
+          .firstWhere((a) => a.kind == CoachActionKind.advanceMoment);
+      expect(advance.target, CoachMomentType.morning);
+
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          advancedTo: CoachMomentType.morning);
+      expect(m.type, CoachMomentType.morning);
+    });
+
+    test('avance périmée : advancedTo=morning à 12h30 → l\'horloge gagne', () {
+      final now = DateTime(2026, 7, 7, 12, 30);
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          advancedTo: CoachMomentType.morning);
+      expect(m.type, CoachMomentType.midday);
+    });
+
+    test('avancer en soirée fait taire une dérive en cours', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final sched = _sched(today, [
+        _block(
+            startTime: '14:00',
+            title: 'Formation IA',
+            category: 'project',
+            projectId: 'p',
+            taskId: 't',
+            activityId: 'a'),
+      ]);
+      final drift = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(drift.type, CoachMomentType.drift);
+      final m = computeCoachMoment(now, _st([]), sched, null, [],
+          advancedTo: CoachMomentType.evening);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('après-midi sans bloc : carte visible avec « Passer en soirée »', () {
+      final now = DateTime(2026, 7, 7, 16, 0);
+      final m = computeCoachMoment(now, _st([]), null, null, []);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(
+          m.actions.any((a) =>
+              a.kind == CoachActionKind.advanceMoment &&
+              a.target == CoachMomentType.evening),
+          isTrue);
     });
 
     test('rétrocompat : programme sans champ kind → moment calculé normalement',

@@ -77,6 +77,9 @@ class _FocusViewState extends State<FocusView> {
   // Programme de la veille — nécessaire à la carte coach (« affaires prêtes
   // depuis hier »). Rarement modifié → simple fetch one-shot à l'init/minuit.
   DailySchedule? _yesterday;
+  // Avance manuelle de la carte coach (CTA « Attaquer la journée »…) — vaut
+  // pour la journée en cours seulement, remise à zéro à minuit.
+  CoachMomentType? _coachAdvancedTo;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -218,6 +221,7 @@ class _FocusViewState extends State<FocusView> {
     _schedSub?.cancel();
     final now = DateTime.now();
     _schedDate = _ymd(now);
+    _coachAdvancedTo = null; // nouvelle journée → l'horloge reprend la main
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
@@ -234,14 +238,16 @@ class _FocusViewState extends State<FocusView> {
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
 
   Widget _coachCard(DateTime now) {
-    final moment =
-        computeCoachMoment(now, st, _schedule, _yesterday, st.sessions);
+    final moment = computeCoachMoment(
+        now, st, _schedule, _yesterday, st.sessions,
+        advancedTo: _coachAdvancedTo);
     return CoachMomentCard(
       moment: moment,
       onLaunch: widget.onLaunchScheduledBlock,
       // Renégocier (v1) : ouvre la fiche du bloc / de sa source.
       onRenegotiate: widget.onOpenScheduledBlockSource,
       onOpenDayReview: widget.onOpenDayReview,
+      onAdvance: (target) => setState(() => _coachAdvancedTo = target),
     );
   }
 
