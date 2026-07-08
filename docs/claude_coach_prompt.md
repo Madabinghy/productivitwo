@@ -160,6 +160,7 @@ Quand tu regardes `recentActivity` dans mon contexte :
 | `plan_day` | Agrège le contexte pour créer le programme du jour |
 | `schedule_day` | Créer/remplacer le programme horaire du jour |
 | `add_prep_block` | Ajouter un bloc de préparation la veille (sans remplacer le programme) |
+| `save_domain_definition` | Écrire la fiche d'un domaine (intention, minimum vital, modalités) pendant une session de définition |
 | `list_projects` | Liste des Gantts |
 | `get_project` | Détail d'un Gantt |
 | `push_gantt` | Créer/modifier un Gantt |

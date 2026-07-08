@@ -1918,6 +1918,84 @@ async function executeAddPrepBlock(
   return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
 }
 
+// ── Session de définition : écrit la fiche domaine (intention/vital/modalités)
+// sur la collection domains EXISTANTE. Appelé à chaque élément validé.
+async function executeSaveDomainDefinition(
+  uid: string,
+  args: {
+    domainId?: string;
+    name: string;
+    intention?: string;
+    vitalMinimum?: Array<{ label: string; metric?: string; target?: number; period?: string }>;
+    modalities?: string[];
+    wantedArtifacts?: string[];
+    finalize?: boolean;
+  }
+): Promise<string> {
+  if (!args.name?.trim()) return "name requis.";
+  const col = db.collection(`users/${uid}/domains`);
+
+  // Upsert : id connu → doc ; sinon match par nom (insensible à la casse,
+  // domaines non supprimés) ; sinon création en draft.
+  let docId = args.domainId;
+  let existing: Record<string, unknown> | null = null;
+  if (docId) {
+    const snap = await col.doc(docId).get();
+    if (snap.exists) existing = snap.data() as Record<string, unknown>;
+    else docId = undefined;
+  }
+  if (!docId) {
+    const all = await col.get();
+    const match = all.docs.find((d) => {
+      const v = d.data();
+      return v.deleted !== true &&
+        String(v.name ?? "").trim().toLowerCase() === args.name.trim().toLowerCase();
+    });
+    if (match) {
+      docId = match.id;
+      existing = match.data() as Record<string, unknown>;
+    }
+  }
+  if (!docId) docId = uuidv4();
+
+  const update: Record<string, unknown> = {
+    id: docId,
+    name: existing?.name ?? args.name.trim(),
+    deleted: existing?.deleted ?? false,
+  };
+  if (args.intention !== undefined) update.intention = args.intention;
+  if (args.vitalMinimum !== undefined) {
+    update.vitalMinimum = args.vitalMinimum.map((v) => ({
+      label: v.label,
+      metric: v.metric ?? "",
+      target: v.target ?? 0,
+      period: v.period ?? "week",
+    }));
+  }
+  if (args.modalities !== undefined) {
+    update.modalities = args.modalities.map((m) => ({ label: m }));
+  }
+  if (args.wantedArtifacts !== undefined) update.wantedArtifacts = args.wantedArtifacts;
+
+  const currentStatus = String(existing?.definitionStatus ?? "none");
+  if (args.finalize === true) {
+    update.definitionStatus = "active";
+    if (!existing?.definedAt) update.definedAt = new Date().toISOString();
+  } else if (currentStatus === "none") {
+    update.definitionStatus = "draft"; // session en cours — reprise gratuite
+  }
+
+  await col.doc(docId).set(update, { merge: true });
+
+  const parts: string[] = [`✅ Domaine « ${update.name} » (id: ${docId})`];
+  if (args.intention) parts.push(`intention posée`);
+  if (args.vitalMinimum?.length) parts.push(`${args.vitalMinimum.length} vital(aux)`);
+  if (args.modalities?.length) parts.push(`${args.modalities.length} modalité(s)`);
+  if (args.wantedArtifacts?.length) parts.push(`${args.wantedArtifacts.length} artefact(s) voulu(s)`);
+  if (args.finalize) parts.push(`FINALISÉ — je m'en servirai chaque jour`);
+  return parts.join(" · ");
+}
+
 async function executeComputeTimeBudget(uid: string): Promise<string> {
   const now = new Date();
   const today = todayInParis(now);
@@ -2092,6 +2170,7 @@ export {
   executeGetDaySchedule,
   executeScheduleDay,
   executeAddPrepBlock,
+  executeSaveDomainDefinition,
   executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executePlanDay,

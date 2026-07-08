@@ -10,6 +10,7 @@ type TaskType =
   | "structure_preview"
   | "plan_day"
   | "plan_proposal"
+  | "define_domain"
   | "plan_week"
   | "sync_calendar"
   | "chat"
@@ -25,6 +26,7 @@ const MODEL_ROUTING: Record<TaskType, string> = {
   structure_preview: MODELS.HAIKU, // mindmap live onboarding : appels fréquents, JSON incrémental
   plan_day:          MODELS.HAIKU,
   plan_proposal:     MODELS.HAIKU, // écran de planification : 1 appel JSON / ouverture (cycle quotidien)
+  define_domain:     MODELS.OPUS,  // session de définition — moment fondateur, faible volume plafonné (pattern structure_project)
   plan_week:         MODELS.HAIKU,
   sync_calendar:     MODELS.HAIKU,
   chat:              MODELS.SONNET,

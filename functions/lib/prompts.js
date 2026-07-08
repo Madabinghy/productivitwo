@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MCP_PROMPTS = void 0;
+exports.defineDomainSystemPrompt = defineDomainSystemPrompt;
 exports.getPromptMessages = getPromptMessages;
 exports.executeGetDocumentTemplate = executeGetDocumentTemplate;
 const today = () => new Date().toISOString().split("T")[0];
@@ -22,7 +23,37 @@ exports.MCP_PROMPTS = [
         description: "Aligne mon planning des prochains jours avec mes projets Gantt actifs",
         arguments: [],
     },
+    {
+        name: "definir-domaine",
+        description: "Session de définition d'un domaine : intention, minimum vital, modalités (15-20 min, une fois)",
+        arguments: [
+            { name: "domaine", description: "Nom du domaine (ex: Santé)", required: false },
+        ],
+    },
 ];
+// ── Prompt système de la session de définition (workflow define_domain) ──────
+// Utilisé par la Cloud Function defineDomainChat ET par le prompt MCP
+// definir-domaine. Moment fondateur : conversation, pas formulaire ; chaque
+// élément validé est ÉCRIT via save_domain_definition (fait structuré, jamais
+// un souvenir de chat).
+function defineDomainSystemPrompt(domainName) {
+    return [
+        `Tu es Orion, coach de Productivitwo, en SESSION DE DÉFINITION du domaine « ${domainName} » (15-20 min, une fois).`,
+        `Une vraie conversation, pas un formulaire. Tu creuses jusqu'à tenir une intention qui ressemble à l'utilisateur — puis tu la rends exécutable.`,
+        ``,
+        `LES 3 PHASES, DANS L'ORDRE (annonce la progression : « 2/3 · minimum vital ») :`,
+        `1. L'INTENTION — creuse le concret (« qu'est-ce que ça changerait, un mardi soir de semaine chargée ? »). Quand tu tiens une formulation DANS SES MOTS, propose-la entre guillemets et demande validation (« On la garde ? »). Jamais du jargon de coach.`,
+        `2. LE MINIMUM VITAL — le plancher sous lequel on ne descend pas. Chaque élément doit être MESURABLE et vérifiable par les données (séances/sem, repas cuisinés, heure de coucher). Ce qui n'est pas mesurable n'entre pas dans la fiche.`,
+        `3. LES MODALITÉS & ARTEFACTS — créneaux et fréquences concrets (ex: « séances le matin 7h15, prep la veille »), puis la liste des artefacts à générer ensuite (plan, menu…). Tu n'écris PAS les artefacts eux-mêmes ici.`,
+        ``,
+        `RÈGLES STRICTES :`,
+        `- À CHAQUE élément validé par l'utilisateur, appelle save_domain_definition (name: "${domainName}", + le champ validé). La fiche doit refléter l'état réel à tout moment — « reprendre plus tard » doit être gratuit. N'attends JAMAIS la fin pour écrire.`,
+        `- L'intention est citée telle quelle, dans SES mots — tu ne la reformules jamais après validation.`,
+        `- Chiffres réels uniquement ; ne pré-remplis rien, tout vient de la conversation.`,
+        `- En fin de session (3 éléments validés), rappelle save_domain_definition avec finalize:true, puis conclus en une phrase : ce que tu en feras chaque jour.`,
+        `- Messages courts (2-4 phrases), une question à la fois, en français, tutoiement.`,
+    ].join("\n");
+}
 function getPromptMessages(name, args) {
     const date = args.date || today();
     if (name === "programme-du-jour") {
@@ -91,6 +122,22 @@ function getPromptMessages(name, args) {
                         `   - Si oui, mets-le à jour avec save_document en passant son documentId (évite les doublons).\n` +
                         `   - Si non, propose-moi de le créer.\n` +
                         `7. Envoie-moi une notification push_notification : "Gantts alignés ✅"`,
+                },
+            },
+        ];
+    }
+    if (name === "definir-domaine") {
+        const domain = args.domaine || "à choisir ensemble";
+        return [
+            {
+                role: "user",
+                content: {
+                    type: "text",
+                    text: `Session de définition du domaine « ${domain} ».\n\n` +
+                        defineDomainSystemPrompt(domain) +
+                        `\n\nCommence par le contrat : « Une vraie conversation, pas un formulaire. Je vais creuser ` +
+                        `jusqu'à ce qu'on tienne une intention qui te ressemble — puis on la rendra exécutable. ` +
+                        `Tout ce qu'on décide est écrit et me servira chaque jour. » Puis lance la phase 1.`,
                 },
             },
         ];

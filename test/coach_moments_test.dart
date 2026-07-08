@@ -314,6 +314,70 @@ void main() {
       expect(m.type, CoachMomentType.unplanned);
     });
 
+    test('quick fix : aprem sans bloc → « Planifier l\'après-midi », pas d\'abdication',
+        () {
+      final now = DateTime(2026, 7, 7, 14, 46);
+      final m = computeCoachMoment(now, _st([]), null, null, []);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(
+          m.actions.any((a) =>
+              a.kind == CoachActionKind.planDay &&
+              a.label.contains('après-midi')),
+          isTrue);
+      // La transition reste disponible, en secondaire.
+      expect(m.actions.any((a) => a.kind == CoachActionKind.advanceMoment),
+          isTrue);
+    });
+
+    test('vital hebdo : « 1/2 séances · sem. » sur la carte midi (réel)', () {
+      final now = DateTime(2026, 7, 8, 12, 30); // mercredi
+      final st = AppState(
+        domains: [
+          Domain(
+            id: 'd1',
+            name: 'Santé',
+            intention: 'Un corps qui suit le rythme',
+            definitionStatus: 'active',
+            vitalMinimum: [
+              VitalMinimum(
+                  label: '2 séances / sem',
+                  metric: 'sessions_week',
+                  target: 2,
+                  period: 'week'),
+            ],
+          ),
+        ],
+        activities: [
+          Activity(id: 'a1', name: 'Sport', domainId: 'd1'),
+        ],
+        sessions: [
+          Session(
+              activityId: 'a1',
+              startAt: DateTime(2026, 7, 7, 7, 15), // mardi — même semaine
+              endAt: DateTime(2026, 7, 7, 7, 45)),
+        ],
+        habitProgress: [],
+      );
+      final sched = _sched('2026-07-08', [
+        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
+      ]);
+      final m =
+          computeCoachMoment(now, st, sched, null, st.sessions);
+      expect(m.type, CoachMomentType.midday);
+      expect(
+          m.stats.any((s) => s.label == 'Santé' && s.value == '1/2 · sem.'),
+          isTrue);
+    });
+
+    test('vital omis sans domaine défini (jamais de chiffre inventé)', () {
+      final now = DateTime(2026, 7, 8, 12, 30);
+      final sched = _sched('2026-07-08', [
+        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.stats.any((s) => s.value.contains('sem.')), isFalse);
+    });
+
     test('rétrocompat : programme sans champ kind → moment calculé normalement',
         () {
       final now = DateTime(2026, 7, 7, 10, 0);
