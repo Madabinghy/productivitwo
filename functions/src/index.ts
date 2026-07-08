@@ -11,7 +11,7 @@ import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue, effectivePro } from "./db";
-import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate } from "./prompts";
+import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate, defineDomainSystemPrompt } from "./prompts";
 import {
   GET_USER_CONTEXT_TOOL, GET_DAY_BLOCKS_TOOL,
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
@@ -26,6 +26,7 @@ import {
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
+  SAVE_DOMAIN_DEFINITION_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -47,6 +48,7 @@ import {
   executeLinkActionToActivity, executeAddActivityAction,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock,
+  executeSaveDomainDefinition,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
 } from "./execute";
@@ -392,14 +394,30 @@ export const proposeDayPlan = onRequest(
 
     try {
       // ── Contexte ────────────────────────────────────────────────────────────
-      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap] = await Promise.all([
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap] = await Promise.all([
         db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
         db.doc(`users/${uid}/daily_schedules/${target}`).get(),
         db.collection(`users/${uid}/activities`).get(),
         db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
         db.collection(`users/${uid}/documents`).orderBy("updatedAt", "desc").limit(10).get()
           .catch(() => db.collection(`users/${uid}/documents`).limit(10).get()),
+        db.collection(`users/${uid}/domains`).get(),
       ]);
+
+      // Domaines définis (session de définition) : intention + vital + modalités
+      // — la colonne vertébrale de la proposition, cités en provenance.
+      const domainLines = domainsSnap.docs
+        .map((d) => d.data() as Record<string, unknown>)
+        .filter((v) => v.deleted !== true && v.definitionStatus === "active" && v.intention)
+        .map((v) => {
+          const vital = ((v.vitalMinimum as Array<Record<string, unknown>>) ?? [])
+            .map((m) => m.label).join(" · ");
+          const mods = ((v.modalities as Array<Record<string, unknown>>) ?? [])
+            .map((m) => (m as { label?: string }).label ?? m).join(" · ");
+          return `  · ${v.name} — intention : « ${v.intention} »` +
+            (vital ? `\n    minimum vital : ${vital}` : "") +
+            (mods ? `\n    modalités : ${mods}` : "");
+        });
 
       const refData = refSnap.exists ? (refSnap.data() as Record<string, unknown>) : {};
       const refBlocks = ((refData.blocks as Array<Record<string, unknown>>) ?? [])
@@ -467,6 +485,13 @@ export const proposeDayPlan = onRequest(
         `4. Réutilise les activityId/projectId/taskId existants ci-dessous (chrono ciblé) — jamais d'id inventé.`,
         `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
         ``,
+        ...(domainLines.length > 0
+          ? [
+              `── DOMAINES DÉFINIS (respecte les modalités, défends le minimum vital) ──`,
+              domainLines.join("\n"),
+              ``,
+            ]
+          : []),
         `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
         refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
         ``,
@@ -520,6 +545,125 @@ export const proposeDayPlan = onRequest(
       console.error("proposeDayPlan error:", e);
       // Le client a un fallback déterministe — 502 le déclenche proprement.
       res.status(502).json({ error: "Proposition indisponible — fallback local." });
+    }
+  }
+);
+
+// ── defineDomainChat ──────────────────────────────────────────────────────────
+//
+// POST { uid, domainName, messages: [{role, content}] } + Bearer <api_token>
+// Session de définition d'un domaine (13a-13c) : conversation guidée en 3
+// phases (intention → minimum vital → modalités & artefacts). Chaque élément
+// validé est ÉCRIT via save_domain_definition — fait structuré, jamais un
+// souvenir de chat. Moment fondateur → classe premium (pattern
+// structure_project : faible volume, plafonné).
+
+const DEFINE_DOMAIN_MAX_PER_DAY = 80; // messages/jour (une session ≈ 15-25 tours)
+const DEFINE_DOMAIN_MAX_TURNS = 4;
+
+export const defineDomainChat = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, domainName, messages } = req.body as {
+      uid?: string;
+      domainName?: string;
+      messages?: Array<{ role: "user" | "assistant"; content: string }>;
+    };
+    if (!uid || !domainName?.trim() || !messages?.length) {
+      res.status(400).json({ error: "uid, domainName et messages requis" }); return;
+    }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    // Garde de coût (classe premium).
+    const today = todayInParis();
+    const limitRef = db.doc(`users/${uid}/rate_limits/define_domain`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+    if (count >= DEFINE_DOMAIN_MAX_PER_DAY) {
+      res.status(429).json({ error: "Limite de session atteinte pour aujourd'hui." });
+      return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+    const client = new Anthropic({ apiKey });
+    const model = getModel("define_domain");
+
+    try {
+      type MsgParam = { role: "user" | "assistant"; content: string | unknown[] };
+      const convo: MsgParam[] = messages
+        .filter((m) => m.content?.trim())
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      let finalText = "";
+      let domainId: string | null = null;
+      let finalized = false;
+
+      // Format API Anthropic (input_schema) depuis la définition MCP (inputSchema).
+      const anthropicTools = [{
+        name: SAVE_DOMAIN_DEFINITION_TOOL.name,
+        description: SAVE_DOMAIN_DEFINITION_TOOL.description,
+        input_schema: SAVE_DOMAIN_DEFINITION_TOOL.inputSchema,
+      }];
+
+      for (let turn = 0; turn < DEFINE_DOMAIN_MAX_TURNS; turn++) {
+        const response = await client.messages.create({
+          model,
+          max_tokens: 1024,
+          system: defineDomainSystemPrompt(domainName.trim()),
+          tools: anthropicTools as Parameters<typeof client.messages.create>[0]["tools"],
+          messages: convo as Parameters<typeof client.messages.create>[0]["messages"],
+        });
+        logTokenUsage("define_domain", model, response.usage);
+
+        finalText += response.content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as { type: "text"; text: string }).text)
+          .join("");
+
+        if (response.stop_reason !== "tool_use") break;
+
+        convo.push({ role: "assistant", content: response.content });
+        const toolResults: unknown[] = [];
+        for (const block of response.content) {
+          if (block.type !== "tool_use") continue;
+          let result = "";
+          try {
+            if (block.name === "save_domain_definition") {
+              const args = block.input as Parameters<typeof executeSaveDomainDefinition>[1];
+              result = await executeSaveDomainDefinition(uid, args);
+              const idMatch = result.match(/\(id: ([^)]+)\)/);
+              if (idMatch) domainId = idMatch[1];
+              if (args.finalize === true) finalized = true;
+            } else {
+              result = `Outil inconnu : ${block.name}`;
+            }
+          } catch (e) {
+            result = `Erreur : ${e instanceof Error ? e.message : String(e)}`;
+          }
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
+        }
+        convo.push({ role: "user", content: toolResults });
+      }
+
+      res.status(200).json({
+        message: finalText.trim() || "…",
+        domainId,
+        finalized,
+      });
+    } catch (e) {
+      console.error("defineDomainChat error:", e);
+      res.status(500).json({ error: "Session indisponible — réessaie." });
     }
   }
 );
@@ -781,6 +925,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
+            SAVE_DOMAIN_DEFINITION_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -877,6 +1022,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
         } else if (toolName === "add_prep_block") {
           text = await executeAddPrepBlock(uid, args as Parameters<typeof executeAddPrepBlock>[1]);
+        } else if (toolName === "save_domain_definition") {
+          text = await executeSaveDomainDefinition(uid, args as Parameters<typeof executeSaveDomainDefinition>[1]);
         } else if (toolName === "plan_day") {
           text = await executePlanDay(uid, args as Parameters<typeof executePlanDay>[1]);
         } else if (toolName === "plan_week") {

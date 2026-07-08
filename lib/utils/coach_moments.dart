@@ -94,11 +94,13 @@ CoachMoment computeCoachMoment(
   final blocks = _liveBlocks(today);
   final sessionsToday =
       recentSessions.where((s) => _sameDay(s.startAt, now)).toList();
+  // Minimum vital hebdo des domaines définis — affiché midi et soir.
+  final vitals = _vitalStats(now, st, recentSessions);
 
   // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
   // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
   // le programme d'HIER (et leur bloc cible est désormais ce matin).
-  if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday));
+  if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday), const []);
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
 
   // « Journée non planifiée » (5a) : matinée sans programme (hors preps) →
@@ -124,12 +126,12 @@ CoachMoment computeCoachMoment(
   // Moment « horloge ». drift prime sur afternoon dans sa fenêtre (14–19h).
   final CoachMoment clock;
   if (minutes >= 19 * 60) {
-    clock = _eveningMoment(blocks);
+    clock = _eveningMoment(blocks, vitals);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
         _afternoonMoment(now, blocks);
   } else if (minutes >= 11 * 60 + 45) {
-    clock = _middayMoment(now, blocks, recentSessions);
+    clock = _middayMoment(now, blocks, recentSessions, vitals);
   } else if (minutes >= 9 * 60) {
     clock = _morningMoment(now, blocks);
   } else {
@@ -144,11 +146,11 @@ CoachMoment computeCoachMoment(
       case CoachMomentType.morning:
         return _morningMoment(now, blocks);
       case CoachMomentType.midday:
-        return _middayMoment(now, blocks, recentSessions);
+        return _middayMoment(now, blocks, recentSessions, vitals);
       case CoachMomentType.afternoon:
         return _afternoonMoment(now, blocks);
       case CoachMomentType.evening:
-        return _eveningMoment(blocks);
+        return _eveningMoment(blocks, vitals);
       default:
         break;
     }
@@ -260,8 +262,8 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
   );
 }
 
-CoachMoment _middayMoment(
-    DateTime now, List<ScheduleBlock> blocks, List<Session> recentSessions) {
+CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
+    List<Session> recentSessions, List<StatItem> vitals) {
   final dayStart = DateTime(now.year, now.month, now.day);
   final noon = dayStart.add(const Duration(hours: 12));
   final loggedBeforeNoon =
@@ -280,6 +282,7 @@ CoachMoment _middayMoment(
     StatItem('Loggué avant 12h', _fmtDur(loggedBeforeNoon)),
     StatItem('Blocs tenus', '$held/${morningBlocks.length}'),
     if (rank != null) StatItem('Matinée', '#$rank / 7 j'),
+    ...vitals,
   ];
 
   final key = _afternoonKeyBlock(now, blocks);
@@ -349,13 +352,18 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
       target: CoachMomentType.evening);
   final next = _firstEngagement(now, blocks);
   if (next == null) {
-    // Carte visible même sans bloc : le user peut clore l'aprèm quand il veut.
+    // Quick fix (constaté sur build) : à 14h46 sans programme, proposer
+    // « Passer en soirée » abdique la demi-journée — la soirée commence à 19h.
+    // On propose de PLANIFIER l'après-midi ; la transition reste en secondaire.
     return const CoachMoment(
       type: CoachMomentType.afternoon,
       tagLabel: 'ORION · APRÈS-MIDI',
       message:
-          'Rien de posé pour la suite. Une chose à faire avancer, ou on passe en mode soirée ?',
-      actions: [advance],
+          'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.',
+      actions: [
+        CoachAction('Planifier l\'après-midi · 2 min', CoachActionKind.planDay),
+        advance,
+      ],
       tone: CoachTone.neutral,
     );
   }
@@ -375,12 +383,13 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
   );
 }
 
-CoachMoment _eveningMoment(List<ScheduleBlock> blocks) {
+CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
   final pendingPreps =
       blocks.where((b) => b.isPrep && b.status == 'pending').length;
   final stats = <StatItem>[
     if (pendingPreps > 0)
       StatItem('À préparer', '$pendingPreps bloc${pendingPreps > 1 ? 's' : ''}'),
+    ...vitals,
   ];
   final message = pendingPreps > 0
       ? 'Demain se gagne ce soir. Clôture ta journée et arme demain — $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher.'
@@ -398,6 +407,36 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks) {
 }
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
+
+/// Minimum vital hebdo des domaines définis, vérifié par les données réelles :
+/// une « séance » = une session ≥ 10 min sur une activité du domaine, semaine
+/// courante (lundi → maintenant). V1 : métriques `sessions*` / period `week`
+/// uniquement — le reste est omis (jamais de chiffre inventé). Max 2 stats.
+List<StatItem> _vitalStats(DateTime now, AppState st, List<Session> sessions) {
+  final stats = <StatItem>[];
+  final monday = DateTime(now.year, now.month, now.day)
+      .subtract(Duration(days: now.weekday - 1));
+  for (final d in st.domains) {
+    if (d.deleted || !d.isDefined) continue;
+    for (final v in d.vitalMinimum) {
+      if (v.period != 'week' || v.target <= 0) continue;
+      if (!v.metric.startsWith('sessions')) continue;
+      var count = 0;
+      for (final s in sessions) {
+        if (s.startAt.isBefore(monday)) continue;
+        final act =
+            st.activities.where((a) => a.id == s.activityId).firstOrNull;
+        if (act == null || act.domainId != d.id) continue;
+        if ((s.endAt ?? now).difference(s.startAt).inMinutes >= 10) count++;
+      }
+      stats.add(StatItem(d.name, '$count/${v.target.toInt()} · sem.',
+          sub: v.label));
+      break; // une stat par domaine — la carte reste compacte
+    }
+    if (stats.length >= 2) break;
+  }
+  return stats;
+}
 
 List<ScheduleBlock> _liveBlocks(DailySchedule? s) =>
     (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])

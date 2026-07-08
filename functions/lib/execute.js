@@ -44,6 +44,7 @@ exports.executeProposeChange = executeProposeChange;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
 exports.executeAddPrepBlock = executeAddPrepBlock;
+exports.executeSaveDomainDefinition = executeSaveDomainDefinition;
 exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
 exports.executeComputeTimeBudget = executeComputeTimeBudget;
 exports.executePlanDay = executePlanDay;
@@ -1672,6 +1673,85 @@ async function executeAddPrepBlock(uid, args) {
     blocks.push(prepBlock);
     await ref.update({ blocks });
     return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
+}
+// ── Session de définition : écrit la fiche domaine (intention/vital/modalités)
+// sur la collection domains EXISTANTE. Appelé à chaque élément validé.
+async function executeSaveDomainDefinition(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    if (!((_a = args.name) === null || _a === void 0 ? void 0 : _a.trim()))
+        return "name requis.";
+    const col = db_1.db.collection(`users/${uid}/domains`);
+    // Upsert : id connu → doc ; sinon match par nom (insensible à la casse,
+    // domaines non supprimés) ; sinon création en draft.
+    let docId = args.domainId;
+    let existing = null;
+    if (docId) {
+        const snap = await col.doc(docId).get();
+        if (snap.exists)
+            existing = snap.data();
+        else
+            docId = undefined;
+    }
+    if (!docId) {
+        const all = await col.get();
+        const match = all.docs.find((d) => {
+            var _a;
+            const v = d.data();
+            return v.deleted !== true &&
+                String((_a = v.name) !== null && _a !== void 0 ? _a : "").trim().toLowerCase() === args.name.trim().toLowerCase();
+        });
+        if (match) {
+            docId = match.id;
+            existing = match.data();
+        }
+    }
+    if (!docId)
+        docId = (0, uuid_1.v4)();
+    const update = {
+        id: docId,
+        name: (_b = existing === null || existing === void 0 ? void 0 : existing.name) !== null && _b !== void 0 ? _b : args.name.trim(),
+        deleted: (_c = existing === null || existing === void 0 ? void 0 : existing.deleted) !== null && _c !== void 0 ? _c : false,
+    };
+    if (args.intention !== undefined)
+        update.intention = args.intention;
+    if (args.vitalMinimum !== undefined) {
+        update.vitalMinimum = args.vitalMinimum.map((v) => {
+            var _a, _b, _c;
+            return ({
+                label: v.label,
+                metric: (_a = v.metric) !== null && _a !== void 0 ? _a : "",
+                target: (_b = v.target) !== null && _b !== void 0 ? _b : 0,
+                period: (_c = v.period) !== null && _c !== void 0 ? _c : "week",
+            });
+        });
+    }
+    if (args.modalities !== undefined) {
+        update.modalities = args.modalities.map((m) => ({ label: m }));
+    }
+    if (args.wantedArtifacts !== undefined)
+        update.wantedArtifacts = args.wantedArtifacts;
+    const currentStatus = String((_d = existing === null || existing === void 0 ? void 0 : existing.definitionStatus) !== null && _d !== void 0 ? _d : "none");
+    if (args.finalize === true) {
+        update.definitionStatus = "active";
+        if (!(existing === null || existing === void 0 ? void 0 : existing.definedAt))
+            update.definedAt = new Date().toISOString();
+    }
+    else if (currentStatus === "none") {
+        update.definitionStatus = "draft"; // session en cours — reprise gratuite
+    }
+    await col.doc(docId).set(update, { merge: true });
+    const parts = [`✅ Domaine « ${update.name} » (id: ${docId})`];
+    if (args.intention)
+        parts.push(`intention posée`);
+    if ((_e = args.vitalMinimum) === null || _e === void 0 ? void 0 : _e.length)
+        parts.push(`${args.vitalMinimum.length} vital(aux)`);
+    if ((_f = args.modalities) === null || _f === void 0 ? void 0 : _f.length)
+        parts.push(`${args.modalities.length} modalité(s)`);
+    if ((_g = args.wantedArtifacts) === null || _g === void 0 ? void 0 : _g.length)
+        parts.push(`${args.wantedArtifacts.length} artefact(s) voulu(s)`);
+    if (args.finalize)
+        parts.push(`FINALISÉ — je m'en servirai chaque jour`);
+    return parts.join(" · ");
 }
 async function executeComputeTimeBudget(uid) {
     const now = new Date();

@@ -981,6 +981,50 @@ export const SCHEDULE_DAY_TOOL = {
   },
 };
 
+export const SAVE_DOMAIN_DEFINITION_TOOL = {
+  name: "save_domain_definition",
+  description:
+    "Écrit la définition d'un domaine de vie (intention, minimum vital, modalités, artefacts voulus) " +
+    "sur la collection domains EXISTANTE — appelé par la session de définition à CHAQUE élément validé " +
+    "par l'utilisateur (jamais en bloc à la fin : la fiche doit refléter l'état réel, « reprendre plus " +
+    "tard » doit être gratuit). L'intention est LES MOTS DE L'UTILISATEUR, jamais reformulée. " +
+    "vitalMinimum : uniquement du mesurable (metric/target/period) — omettre les vœux invérifiables. " +
+    "Upsert : domainId si connu, sinon match par nom (insensible à la casse), sinon création en draft. " +
+    "finalize:true à la fin de session → definitionStatus:'active' + definedAt.",
+  inputSchema: {
+    type: "object",
+    required: ["name"],
+    properties: {
+      domainId:  { type: "string", description: "id du domaine si connu (sinon match par nom / création)" },
+      name:      { type: "string", description: "nom du domaine, ex: 'Santé'" },
+      intention: { type: "string", description: "l'intention, une phrase, dans les mots exacts de l'utilisateur" },
+      vitalMinimum: {
+        type: "array",
+        description: "le plancher non négociable, traduit en métriques mesurables",
+        items: {
+          type: "object",
+          required: ["label"],
+          properties: {
+            label:  { type: "string", description: "ex: '2 séances / sem'" },
+            metric: { type: "string", description: "sessions_week | sessions_day | … — omettre si non mesurable" },
+            target: { type: "number" },
+            period: { type: "string", enum: ["week", "day"] },
+          },
+        },
+      },
+      modalities: {
+        type: "array", items: { type: "string" },
+        description: "créneaux/fréquences concrets — ce que la renégociation fera évoluer, ex: 'séances le matin 7h15 (prep la veille)'",
+      },
+      wantedArtifacts: {
+        type: "array", items: { type: "string" },
+        description: "artefacts à générer ensuite, ex: 'Plan de reprise — 6 semaines'",
+      },
+      finalize: { type: "boolean", description: "true en fin de session → domaine actif + definedAt" },
+    },
+  },
+};
+
 export const ADD_PREP_BLOCK_TOOL = {
   name: "add_prep_block",
   description:

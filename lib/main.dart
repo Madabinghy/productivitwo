@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
+import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
@@ -6124,6 +6125,59 @@ class _AppRootState extends State<AppRoot>
                           onPressed: addDomain,
                         ),
                       ],
+                    ),
+                  ),
+                  // Pastille « Mes domaines » : intentions & minimum vital
+                  // (sessions de définition avec Orion).
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => DomainsScreen(logic: logic),
+                      ));
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .primaryContainer
+                            .withOpacity(.35),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .primary
+                                .withOpacity(.2)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag_outlined,
+                              size: 14,
+                              color: Theme.of(ctx).colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Intentions & minimum vital — définis tes domaines avec Orion',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.4,
+                                  color: Theme.of(ctx)
+                                      .colorScheme
+                                      .onSurface
+                                      .withOpacity(.65)),
+                            ),
+                          ),
+                          Icon(Icons.arrow_forward_ios_rounded,
+                              size: 11,
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(.5)),
+                        ],
+                      ),
                     ),
                   ),
                   // Pastille catalogue

@@ -70,6 +70,27 @@ export interface ScheduleBlockPayload {
   skipReason?: string | null;
 }
 
+// ── Domaine (users/{uid}/domains/{id}) — intention & minimum vital ───────────
+// Extension de la collection domains EXISTANTE (name/colorValue/goalMinDay…) :
+// champs optionnels écrits par la session de définition Orion.
+
+export interface VitalMinimumPayload {
+  label: string;
+  metric?: string; // sessions_week | sessions_day | … — omettre si non mesurable
+  target?: number;
+  period?: "week" | "day";
+}
+
+export interface DomainDefinitionPayload {
+  domainId?: string;
+  name: string;
+  intention?: string; // LES MOTS DU USER — jamais reformulée
+  vitalMinimum?: VitalMinimumPayload[];
+  modalities?: string[]; // stockées en [{label}] côté Firestore
+  wantedArtifacts?: string[];
+  finalize?: boolean; // true → definitionStatus:"active" + definedAt
+}
+
 export interface DailySchedulePayload {
   date: string;
   generatedBy?: string;
