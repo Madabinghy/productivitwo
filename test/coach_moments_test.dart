@@ -378,6 +378,72 @@ void main() {
       expect(m.stats.any((s) => s.value.contains('sem.')), isFalse);
     });
 
+    test('carte midi menu (15c) : repas du jour + chips ✓ Mangé / Autre chose',
+        () {
+      final now = DateTime(2026, 7, 8, 12, 30); // mercredi
+      final menu = Artifact(
+        id: 'menu1',
+        kind: 'weekly_menu',
+        domainId: 'd1',
+        entries: [
+          ArtifactEntry(weekday: 'wed', time: '12:30', title: 'Chili sin carne'),
+          ArtifactEntry(weekday: 'mon', time: '12:30', title: 'Poulet rôti'),
+        ],
+        mealLog: {'2026-07-06': 'eaten'}, // lundi de la même semaine
+      );
+      final sched = _sched('2026-07-08', [
+        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, [],
+          artifacts: [menu]);
+      expect(m.type, CoachMomentType.midday);
+      expect(m.message, contains('Chili sin carne au frigo'));
+      expect(m.stats.any((s) => s.label == 'Repas cuisinés' && s.value == '1/2'),
+          isTrue);
+      expect(
+          m.actions.any((a) =>
+              a.kind == CoachActionKind.mealEaten && a.artifactId == 'menu1'),
+          isTrue);
+      expect(m.actions.any((a) => a.kind == CoachActionKind.mealShift), isTrue);
+    });
+
+    test('repas déjà tranché aujourd\'hui → pas de section repas', () {
+      final now = DateTime(2026, 7, 8, 12, 30);
+      final menu = Artifact(
+        id: 'menu1',
+        kind: 'weekly_menu',
+        domainId: 'd1',
+        entries: [ArtifactEntry(weekday: 'wed', time: '12:30', title: 'Chili')],
+        mealLog: {'2026-07-08': 'eaten'},
+      );
+      final sched = _sched('2026-07-08', [
+        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, [],
+          artifacts: [menu]);
+      expect(m.message, isNot(contains('au frigo')));
+      expect(m.actions.any((a) => a.kind == CoachActionKind.mealEaten), isFalse);
+    });
+
+    test('shiftMenuOneDay : le futur glisse d\'un jour, le passé ne bouge pas',
+        () {
+      final menu = Artifact(
+        kind: 'weekly_menu',
+        domainId: 'd1',
+        entries: [
+          ArtifactEntry(date: '2026-07-07', time: '12:30', title: 'Passé'),
+          ArtifactEntry(date: '2026-07-08', time: '12:30', title: 'Aujourd\'hui'),
+          ArtifactEntry(date: '2026-07-09', time: '12:30', title: 'Demain'),
+          ArtifactEntry(weekday: 'sun', time: '17:00', title: 'Batch'),
+        ],
+      );
+      shiftMenuOneDay(menu, '2026-07-08');
+      expect(menu.entries[0].date, '2026-07-07'); // passé intouché
+      expect(menu.entries[1].date, '2026-07-09');
+      expect(menu.entries[2].date, '2026-07-10');
+      expect(menu.entries[3].weekday, 'sun'); // motif hebdo intouché
+    });
+
     test('rétrocompat : programme sans champ kind → moment calculé normalement',
         () {
       final now = DateTime(2026, 7, 7, 10, 0);

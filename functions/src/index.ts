@@ -407,7 +407,7 @@ export const proposeDayPlan = onRequest(
 
     try {
       // ── Contexte ────────────────────────────────────────────────────────────
-      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap] = await Promise.all([
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap] = await Promise.all([
         db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
         db.doc(`users/${uid}/daily_schedules/${target}`).get(),
         db.collection(`users/${uid}/activities`).get(),
@@ -415,7 +415,32 @@ export const proposeDayPlan = onRequest(
         db.collection(`users/${uid}/documents`).orderBy("updatedAt", "desc").limit(10).get()
           .catch(() => db.collection(`users/${uid}/documents`).limit(10).get()),
         db.collection(`users/${uid}/domains`).get(),
+        db.collection(`users/${uid}/artifacts`).get(),
       ]);
+
+      // ── Artefacts : entrées prévues pour la date cible + offSlots ───────────
+      // Un artefact est une SOURCE DE BLOCS : ses entries du jour sont posées
+      // en blocs avec provenance (14c/15c). offSlots = contrainte DURE.
+      const weekdayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      const targetWeekday = weekdayCodes[new Date(`${target}T12:00:00`).getDay()];
+      const artifactEntryLines: string[] = [];
+      const offSlots = new Set<string>();
+      for (const doc of artifactsSnap.docs) {
+        const a = doc.data() as Record<string, unknown>;
+        if (a.deleted === true) continue;
+        for (const slot of (a.offSlots as string[]) ?? []) offSlots.add(slot);
+        const label = a.kind === "weekly_menu" ? "Menu de la semaine" : "Plan de reprise";
+        for (const e of (a.entries as Array<Record<string, unknown>>) ?? []) {
+          const matches = e.date === target ||
+            (!e.date && e.weekday === targetWeekday);
+          if (!matches) continue;
+          artifactEntryLines.push(
+            `  ${e.time} "${e.title}" (${e.durationMin ?? 30} min)` +
+            `${e.detail ? ` — ${e.detail}` : ""} · provenance: ${label}` +
+            `${e.optional ? " · optionnelle, hors vital" : ""}`
+          );
+        }
+      }
 
       // Domaines définis (session de définition) : intention + vital + modalités
       // — la colonne vertébrale de la proposition, cités en provenance.
@@ -508,6 +533,19 @@ export const proposeDayPlan = onRequest(
               ``,
             ]
           : []),
+        ...(artifactEntryLines.length > 0
+          ? [
+              `── ARTEFACTS : ENTRÉES PRÉVUES CE JOUR (pose-les en blocs, subtitle = provenance ; celles marquées optionnelles restent optionnelles) ──`,
+              artifactEntryLines.join("\n"),
+              ``,
+            ]
+          : []),
+        ...(offSlots.size > 0
+          ? [
+              `── CONTRAINTE DURE (offSlots — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")} ──`,
+              ``,
+            ]
+          : []),
         `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
         refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
         ``,
@@ -551,9 +589,14 @@ export const proposeDayPlan = onRequest(
       res.status(200).json({
         message: proposal.message ?? "",
         sources: proposal.sources ?? [],
-        blocks: (proposal.blocks ?? []).filter(
-          (b) => /^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) && b.title
-        ),
+        blocks: (proposal.blocks ?? []).filter((b) => {
+          if (!/^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) || !b.title) return false;
+          // offSlots = contrainte dure, appliquée aussi en déterministe (le
+          // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
+          const hour = parseInt(String(b.startTime).slice(0, 2), 10);
+          const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+          return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
+        }),
         refDate,
         dayReason,
       });

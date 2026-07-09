@@ -84,6 +84,9 @@ class _FocusViewState extends State<FocusView> {
   // « À la volée » sur la carte « journée non planifiée » — masquée jusqu'à
   // demain (le lancement ad hoc de l'onglet reste dessous).
   bool _unplannedDismissed = false;
+  // Artefacts (menu…) : la carte midi affiche le repas du jour (15c).
+  List<Artifact> _artifacts = const [];
+  StreamSubscription<List<Artifact>>? _artifactsSub;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -104,6 +107,9 @@ class _FocusViewState extends State<FocusView> {
   void initState() {
     super.initState();
     _subscribeSchedule();
+    _artifactsSub = _sync.streamArtifacts().listen((a) {
+      if (mounted) setState(() => _artifacts = a);
+    });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       // Passage de minuit → on bascule le stream sur le nouveau jour.
@@ -116,6 +122,7 @@ class _FocusViewState extends State<FocusView> {
   void dispose() {
     _ticker?.cancel();
     _schedSub?.cancel();
+    _artifactsSub?.cancel();
     _assistCtrl.dispose();
     super.dispose();
   }
@@ -246,7 +253,8 @@ class _FocusViewState extends State<FocusView> {
     final moment = computeCoachMoment(
         now, st, _schedule, _yesterday, st.sessions,
         advancedTo: _coachAdvancedTo,
-        unplannedDismissed: _unplannedDismissed);
+        unplannedDismissed: _unplannedDismissed,
+        artifacts: _artifacts);
     return CoachMomentCard(
       moment: moment,
       onLaunch: widget.onLaunchScheduledBlock,
@@ -256,7 +264,28 @@ class _FocusViewState extends State<FocusView> {
       onAdvance: (target) => setState(() => _coachAdvancedTo = target),
       onPlanDay: _openPlanToday,
       onDismiss: () => setState(() => _unplannedDismissed = true),
+      onMealEaten: (id) => _logMeal(id, eaten: true),
+      onMealShift: (id) => _logMeal(id, eaten: false),
     );
+  }
+
+  /// Carte midi menu (15c) : ✓ Mangé incrémente le fait tracké ; « Autre
+  /// chose » logge 'other' ET fait glisser le menu d'un jour — sans pénalité.
+  Future<void> _logMeal(String artifactId, {required bool eaten}) async {
+    final a = _artifacts.where((x) => x.id == artifactId).firstOrNull;
+    if (a == null) return;
+    a.mealLog[_schedDate] = eaten ? 'eaten' : 'other';
+    if (!eaten) shiftMenuOneDay(a, _schedDate);
+    await _sync.saveArtifact(a);
+    if (mounted) {
+      setState(() {});
+      if (!eaten) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Le menu glisse d\'un jour — sans pénalité.'),
+          duration: Duration(seconds: 2),
+        ));
+      }
+    }
   }
 
   /// « Planifier · 2 min » → écran de planification en mode rattrapage express

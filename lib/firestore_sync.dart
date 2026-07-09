@@ -772,6 +772,11 @@ class FirestoreSync {
     return snap.exists ? Artifact.from(snap.data() as Map) : null;
   }
 
+  Future<void> saveArtifact(Artifact artifact) async {
+    if (uid == null) return;
+    await _col('artifacts').doc(artifact.id).set(artifact.toJson());
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();

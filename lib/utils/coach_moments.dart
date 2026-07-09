@@ -31,6 +31,8 @@ enum CoachActionKind {
   advanceMoment,
   planDay, // ouvre l'écran de planification (rattrapage du matin)
   dismiss, // « À la volée » — masque la carte pour la matinée
+  mealEaten, // ✓ Mangé (carte midi menu, 15c)
+  mealShift, // « Autre chose aujourd'hui » — glisse le menu d'un jour
 }
 
 class CoachAction {
@@ -38,7 +40,9 @@ class CoachAction {
   final CoachActionKind kind;
   final ScheduleBlock? block;
   final CoachMomentType? target;
-  const CoachAction(this.label, this.kind, {this.block, this.target});
+  final String? artifactId; // menu concerné (mealEaten / mealShift)
+  const CoachAction(this.label, this.kind,
+      {this.block, this.target, this.artifactId});
 }
 
 class StatItem {
@@ -89,6 +93,7 @@ CoachMoment computeCoachMoment(
   List<Session> recentSessions, {
   CoachMomentType? advancedTo,
   bool unplannedDismissed = false,
+  List<Artifact> artifacts = const [],
 }) {
   final minutes = now.hour * 60 + now.minute;
   final blocks = _liveBlocks(today);
@@ -96,6 +101,8 @@ CoachMoment computeCoachMoment(
       recentSessions.where((s) => _sameDay(s.startAt, now)).toList();
   // Minimum vital hebdo des domaines définis — affiché midi et soir.
   final vitals = _vitalStats(now, st, recentSessions);
+  // Repas du jour du menu (15c) — zéro décision à midi.
+  final meal = _todayMeal(now, artifacts);
 
   // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
   // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
@@ -131,7 +138,7 @@ CoachMoment computeCoachMoment(
     clock = _driftMoment(now, blocks, sessionsToday) ??
         _afternoonMoment(now, blocks);
   } else if (minutes >= 11 * 60 + 45) {
-    clock = _middayMoment(now, blocks, recentSessions, vitals);
+    clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
     clock = _morningMoment(now, blocks);
   } else {
@@ -146,7 +153,7 @@ CoachMoment computeCoachMoment(
       case CoachMomentType.morning:
         return _morningMoment(now, blocks);
       case CoachMomentType.midday:
-        return _middayMoment(now, blocks, recentSessions, vitals);
+        return _middayMoment(now, blocks, recentSessions, vitals, meal);
       case CoachMomentType.afternoon:
         return _afternoonMoment(now, blocks);
       case CoachMomentType.evening:
@@ -263,7 +270,7 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
 }
 
 CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
-    List<Session> recentSessions, List<StatItem> vitals) {
+    List<Session> recentSessions, List<StatItem> vitals, _MealInfo? meal) {
   final dayStart = DateTime(now.year, now.month, now.day);
   final noon = dayStart.add(const Duration(hours: 12));
   final loggedBeforeNoon =
@@ -286,11 +293,25 @@ CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
   ];
 
   final key = _afternoonKeyBlock(now, blocks);
-  final message = key != null
+  var message = key != null
       ? 'L\'après-midi n\'a qu\'une chose à tenir : ${key.title}. Tout le reste est du bonus.'
       : 'Belle matinée. L\'après-midi est à toi.';
 
   final actions = <CoachAction>[];
+  // Repas du menu (15c) : « zéro décision » — le fait mangé/autre est tracké.
+  if (meal != null) {
+    message =
+        '${meal.title} au frigo — réchauffe 10 min, zéro décision. $message';
+    if (meal.weeklyTarget > 0) {
+      stats.add(StatItem('Repas cuisinés',
+          '${meal.eatenThisWeek}/${meal.weeklyTarget}'));
+    }
+    actions.add(CoachAction('✓ Mangé', CoachActionKind.mealEaten,
+        artifactId: meal.artifactId));
+    actions.add(CoachAction('Autre chose aujourd\'hui',
+        CoachActionKind.mealShift,
+        artifactId: meal.artifactId));
+  }
   if (key != null && _launchable(key)) {
     actions
         .add(CoachAction('Lancer', CoachActionKind.launchBlock, block: key));
@@ -307,6 +328,50 @@ CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
     actions: actions,
     tone: CoachTone.positive,
   );
+}
+
+// ── Repas du jour (menu, maquette 15c) ────────────────────────────────────────
+
+class _MealInfo {
+  final String artifactId;
+  final String title;
+  final int eatenThisWeek;
+  final int weeklyTarget;
+  _MealInfo(this.artifactId, this.title, this.eatenThisWeek, this.weeklyTarget);
+}
+
+/// Le repas prévu aujourd'hui par le menu actif : entrée datée du jour ou motif
+/// hebdo du jour de semaine, non encore loggée (mangé/autre). Null si pas de
+/// menu, pas de repas prévu, ou déjà tranché — la carte n'invente rien.
+_MealInfo? _todayMeal(DateTime now, List<Artifact> artifacts) {
+  final todayStr = _ymd(now);
+  const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  final wd = codes[now.weekday - 1];
+  for (final a in artifacts) {
+    if (a.deleted || a.kind != 'weekly_menu') continue;
+    if (a.mealLog[todayStr] != null) return null; // déjà tranché aujourd'hui
+    ArtifactEntry? entry;
+    for (final e in a.entries) {
+      if (e.date == todayStr || (e.date == null && e.weekday == wd)) {
+        entry = e;
+        break;
+      }
+    }
+    if (entry == null) continue;
+    // Semaine courante (lundi → dim.) : repas mangés / cible = nb de repas du
+    // motif hebdo (à défaut, les entrées datées de la semaine).
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    var eaten = 0;
+    a.mealLog.forEach((date, v) {
+      final d = DateTime.tryParse(date);
+      if (v == 'eaten' && d != null && !d.isBefore(monday)) eaten++;
+    });
+    final weeklyCount = a.entries.where((e) => e.weekday != null).length;
+    return _MealInfo(a.id, entry.title, eaten,
+        weeklyCount > 0 ? weeklyCount : 0);
+  }
+  return null;
 }
 
 /// Retourne un moment `drift` si un bloc source est posé depuis > 45 min avec
