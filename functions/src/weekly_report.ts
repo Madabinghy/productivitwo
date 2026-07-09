@@ -33,6 +33,8 @@ export type WeeklyFacts = {
     samples: Array<{ weekday: string; time: string; held: boolean }>;
   }>;
   checkinsDone: number; // jours avec skipReason/dayReason posés (rendre des comptes)
+  minutesLogged: number; // heures réelles de la semaine (« ce qui a tenu »)
+  renegotiations: number; // renégociations de la semaine = sacrifices en connaissance
 };
 
 const WEEKDAY_FR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
@@ -131,21 +133,29 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     actDomain.set(a.id, (a.get("domainId") as string) ?? "");
   }
   const sessionsByDomain = new Map<string, number>();
+  let minutesLogged = 0;
   for (const s of sessionsSnap.docs) {
     const startAt = String(s.get("startAt") ?? "");
     if (startAt.slice(0, 10) > weekEnd) continue;
     const endAt = s.get("endAt");
     const start = new Date(startAt).getTime();
     const end = endAt ? new Date(String(endAt)).getTime() : start;
+    minutesLogged += Math.max(0, Math.round((end - start) / 60000));
     if (end - start < 10 * 60 * 1000) continue;
     const dom = actDomain.get(String(s.get("activityId") ?? "")) ?? "";
     if (dom) sessionsByDomain.set(dom, (sessionsByDomain.get(dom) ?? 0) + 1);
   }
 
   const domains: WeeklyFacts["domains"] = [];
+  let renegotiations = 0;
   for (const doc of domainsSnap.docs) {
     const d = doc.data() as Record<string, unknown>;
     if (d.deleted === true || d.definitionStatus !== "active" || !d.intention) continue;
+    // Renégociations de la semaine (history) — des sacrifices en connaissance.
+    for (const h of ((d.history as Array<Record<string, unknown>>) ?? [])) {
+      const date = String(h.date ?? "").slice(0, 10);
+      if (date >= weekStart && date <= weekEnd) renegotiations++;
+    }
     const vitals: Array<{ label: string; done: number; target: number }> = [];
     for (const v of ((d.vitalMinimum as Array<Record<string, unknown>>) ?? [])) {
       const metric = String(v.metric ?? "");
@@ -169,7 +179,24 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     weekStart, weekEnd, isoWeek: isoWeekOf(weekStart),
     engagements: { held, total },
     domains, motifs, checkinsDone,
+    minutesLogged, renegotiations,
   };
+}
+
+/// Routage : vital < 50 % sur ≥ 2 domaines → rapport COURT (17b) — pas de
+/// score, pas d'agrégat par bloc, les faits sans morale.
+export function isShortWeek(facts: WeeklyFacts): boolean {
+  let under = 0;
+  for (const d of facts.domains) {
+    let done = 0;
+    let target = 0;
+    for (const v of d.vitals) {
+      done += v.done;
+      target += v.target;
+    }
+    if (target > 0 && done / target < 0.5) under++;
+  }
+  return under >= 2;
 }
 
 // ── Génération du rapport (faits + 1 appel narratif) ─────────────────────────
@@ -178,6 +205,18 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
   const today = ymd(new Date());
   const weekStart = weekStartArg ?? mondayOf(today);
   const facts = await buildWeeklyFacts(uid, weekStart);
+  const short = isShortWeek(facts);
+
+  // 2 semaines minimales d'affilée → on propose la renégociation structurelle,
+  // jamais on ne requestionne l'intention à chaud.
+  const prevMonday = (() => {
+    const d = new Date(`${weekStart}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 7);
+    return ymd(d);
+  })();
+  const prevSnap = await db.doc(`users/${uid}/weekly_reports/${prevMonday}`).get();
+  const secondMinimal = short &&
+    ["minimal", "vital"].includes(String(prevSnap.data()?.weekModeChosen ?? ""));
 
   // Une phrase d'heures pour le motif principal (« toujours entre 14 h et 16 h »).
   const hoursLabel = (hours: string[]): string => {
@@ -188,8 +227,13 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     return min === max ? `toujours vers ${min} h` : `toujours entre ${min} h et ${max} h`;
   };
 
+  const hoursTotal = Math.round(facts.minutesLogged / 60);
   const factLines = [
     `Engagements tenus : ${facts.engagements.held}/${facts.engagements.total}`,
+    `Heures logguées : ${hoursTotal} h`,
+    ...(facts.renegotiations > 0
+      ? [`Renégociations cette semaine : ${facts.renegotiations} (des sacrifices en connaissance, pas des oublis)`]
+      : []),
     ...facts.domains.map((d) =>
       `Domaine ${d.name} — intention « ${d.intention} » — vital : ` +
       (d.vitals.length > 0
@@ -208,6 +252,18 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     system: [
       `Tu rédiges le RAPPORT HEBDO de Productivitwo à partir de FAITS déjà calculés (tu n'inventes AUCUN chiffre).`,
       `Ton : direct, factuel, jamais de culpabilité rétroactive. Ce qui a tenu compte autant que ce qui a sauté.`,
+      ...(short
+        ? [
+            ``,
+            `⚠️ SEMAINE RATÉE (vital < 50 % sur ≥ 2 domaines) → RAPPORT COURT : pas de score, pas de morale, pas d'interrogatoire.`,
+            `narrative = les faits sans morale, EN COMMENÇANT par ce qui a tenu (heures logguées, check-ins faits, renégociations = sacrifices en connaissance).`,
+            `question = null (la question binaire « le rush est-il fini ? » est posée par l'app, pas par toi). proposedDecision = null.`,
+            `Termine par : une semaine comme ça n'annule rien — elle teste juste si le système survit au réel.`,
+            ...(secondMinimal
+              ? [`2ᵉ semaine minimale d'affilée : mentionne qu'on proposera de renégocier la structure (modalités) — sans JAMAIS requestionner l'intention à chaud.`]
+              : []),
+          ]
+        : []),
       ``,
       `Tu réponds UNIQUEMENT en JSON valide :`,
       `{`,
@@ -257,13 +313,14 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     weekStart,
     weekEnd: facts.weekEnd,
     isoWeek: facts.isoWeek,
-    kind: "full", // le rapport court (17b) = PR 4
+    kind: short ? "short" : "full",
+    secondMinimal,
     generatedAt: new Date().toISOString(),
     facts,
     narrative,
-    question,
-    proposedDecision,
-    decisionStatus: proposedDecision ? "pending" : "none",
+    question: short ? null : question,
+    proposedDecision: short ? null : proposedDecision,
+    decisionStatus: !short && proposedDecision ? "pending" : "none",
   });
 
   return weekStart;

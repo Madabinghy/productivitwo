@@ -408,7 +408,7 @@ export const proposeDayPlan = onRequest(
 
     try {
       // ── Contexte ────────────────────────────────────────────────────────────
-      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap] = await Promise.all([
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, metaSnap] = await Promise.all([
         db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
         db.doc(`users/${uid}/daily_schedules/${target}`).get(),
         db.collection(`users/${uid}/activities`).get(),
@@ -417,6 +417,7 @@ export const proposeDayPlan = onRequest(
           .catch(() => db.collection(`users/${uid}/documents`).limit(10).get()),
         db.collection(`users/${uid}/domains`).get(),
         db.collection(`users/${uid}/artifacts`).get(),
+        db.doc(`users/${uid}/data/meta`).get(),
       ]);
 
       // ── Artefacts : entrées prévues pour la date cible + offSlots ───────────
@@ -424,6 +425,22 @@ export const proposeDayPlan = onRequest(
       // en blocs avec provenance (14c/15c). offSlots = contrainte DURE.
       const weekdayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
       const targetWeekday = weekdayCodes[new Date(`${target}T12:00:00`).getDay()];
+
+      // Semaine minimale / protection du vital (17b/17c) : posée au rapport
+      // hebdo, lue ici. 'minimal' = vital + essentiel du Gantt, plan recalé ;
+      // 'vital' = vital seul (encore une semaine de rush). Dans les deux cas :
+      // les blocs morts de la semaine ratée ne sont PAS reportés.
+      const weekModeRaw = (metaSnap.data()?.weekMode ?? null) as
+        { weekStart?: string; mode?: string } | null;
+      let weekMode: string | null = null;
+      if (weekModeRaw?.weekStart && weekModeRaw.mode) {
+        const end = new Date(`${weekModeRaw.weekStart}T12:00:00Z`);
+        end.setUTCDate(end.getUTCDate() + 6);
+        const endYmd = end.toISOString().slice(0, 10);
+        if (target >= weekModeRaw.weekStart && target <= endYmd) {
+          weekMode = weekModeRaw.mode;
+        }
+      }
       const artifactEntryLines: string[] = [];
       const offSlots = new Set<string>();
       for (const doc of artifactsSnap.docs) {
@@ -516,8 +533,17 @@ export const proposeDayPlan = onRequest(
         `}`,
         ``,
         `RÈGLES :`,
+        ...(weekMode
+          ? [
+              weekMode === "minimal"
+                ? `⚠️ SEMAINE MINIMALE (décidée au rapport — rien à rattraper) : pose UNIQUEMENT le minimum vital des domaines + 1-2 tâches Gantt essentielles (deadline proche). Pas d'objectif bonus, charge légère. Les blocs morts de la semaine ratée ne sont PAS reportés — ce qui compte encore reviendra par le Gantt, le reste meurt ici.`
+                : `⚠️ SEMAINE DE RUSH (protection du vital, décidée au rapport) : pose UNIQUEMENT le minimum vital des domaines — rien d'autre. Aucun report, aucun bonus.`,
+            ]
+          : []),
         `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
-        `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap.`,
+        weekMode
+          ? `2. NE REPROPOSE PAS les blocs sautés (semaine ${weekMode === "minimal" ? "minimale" : "de rush"} — une semaine ne se rattrape pas).`
+          : `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap.`,
         ...(sameDay
           ? [`2bis. JAMAIS de rattrapage le jour même : les blocs/routines d'AUJOURD'HUI déjà passés ou sautés sont MORTS pour aujourd'hui — ne les repropose pas ce soir (une routine ratée est morte, sans pénalité). Ils reviendront demain s'ils le méritent.`]
           : []),

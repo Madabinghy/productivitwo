@@ -518,6 +518,54 @@ void main() {
       expect(back.decisionStatus, 'pending');
     });
 
+    test('recaleArtifactOneWeek : la semaine se rejoue, le passé ne bouge pas',
+        () {
+      final plan = Artifact(
+        kind: 'training_plan',
+        domainId: 'd1',
+        entries: [
+          ArtifactEntry(date: '2026-07-09', time: '07:15', title: 'S1 passée'),
+          ArtifactEntry(date: '2026-07-14', time: '07:15', title: 'S2 mardi'),
+          ArtifactEntry(date: '2026-07-16', time: '07:15', title: 'S2 jeudi'),
+          ArtifactEntry(weekday: 'sat', time: '09:30', title: 'Motif hebdo'),
+        ],
+      );
+      recaleArtifactOneWeek(plan, '2026-07-13'); // lundi de la semaine à venir
+      expect(plan.entries[0].date, '2026-07-09'); // passé intouché
+      expect(plan.entries[1].date, '2026-07-21'); // S2 rejouée +7 j
+      expect(plan.entries[2].date, '2026-07-23');
+      expect(plan.entries[3].weekday, 'sat'); // motif hebdo intouché
+    });
+
+    test('WeeklyReport court : parse minutesLogged/renegotiations/secondMinimal',
+        () {
+      final r = WeeklyReport.from({
+        'weekStart': '2026-07-06',
+        'kind': 'short',
+        'secondMinimal': true,
+        'weekModeChosen': null,
+        'facts': {
+          'engagements': {'held': 2, 'total': 12},
+          'checkinsDone': 3,
+          'minutesLogged': 3120, // 52 h
+          'renegotiations': 1,
+          'domains': [],
+          'motifs': [],
+        },
+        'narrative': 'Une semaine comme ça n\'annule rien.',
+        'question': null,
+      });
+      expect(r.kind, 'short');
+      expect(r.minutesLogged, 3120);
+      expect(r.renegotiations, 1);
+      expect(r.secondMinimal, isTrue);
+      expect(r.weekModeChosen, isNull);
+      // Round-trip conserve les champs courts.
+      final back = WeeklyReport.from(r.toJson());
+      expect(back.minutesLogged, 3120);
+      expect(back.secondMinimal, isTrue);
+    });
+
     test('rétrocompat : programme sans champ kind → moment calculé normalement',
         () {
       final now = DateTime(2026, 7, 7, 10, 0);

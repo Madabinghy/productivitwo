@@ -151,6 +151,11 @@ class WeeklyReport {
   String? question;
   WeeklyDecision? proposedDecision;
   String decisionStatus; // none | pending | applied | declined
+  // Rapport court (17b) — faits « sans morale » + choix de mode de semaine.
+  int minutesLogged;
+  int renegotiations;
+  bool secondMinimal; // 2ᵉ semaine minimale d'affilée → proposer 12b
+  String? weekModeChosen; // 'minimal' | 'vital' une fois tranché
 
   WeeklyReport({
     required this.weekStart,
@@ -167,6 +172,10 @@ class WeeklyReport {
     this.question,
     this.proposedDecision,
     this.decisionStatus = 'none',
+    this.minutesLogged = 0,
+    this.renegotiations = 0,
+    this.secondMinimal = false,
+    this.weekModeChosen,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         domains = domains ?? [],
         motifs = motifs ?? [];
@@ -201,6 +210,10 @@ class WeeklyReport {
           ? WeeklyDecision.fromJson(j['proposedDecision'] as Map)
           : null,
       decisionStatus: j['decisionStatus'] ?? 'none',
+      minutesLogged: (facts['minutesLogged'] as num?)?.toInt() ?? 0,
+      renegotiations: (facts['renegotiations'] as num?)?.toInt() ?? 0,
+      secondMinimal: j['secondMinimal'] == true,
+      weekModeChosen: j['weekModeChosen'],
     );
   }
 
@@ -219,7 +232,11 @@ class WeeklyReport {
           'checkinsDone': checkinsDone,
           'domains': domains.map((d) => d.toJson()).toList(),
           'motifs': motifs.map((m) => m.toJson()).toList(),
+          'minutesLogged': minutesLogged,
+          'renegotiations': renegotiations,
         },
+        'secondMinimal': secondMinimal,
+        'weekModeChosen': weekModeChosen,
         'narrative': narrative,
         'question': question,
         'proposedDecision': proposedDecision?.toJson(),

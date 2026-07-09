@@ -793,6 +793,22 @@ class FirestoreSync {
         .set({'decisionStatus': status}, SetOptions(merge: true));
   }
 
+  /// Mode de la semaine À VENIR (17b) : 'minimal' (le rush est fini, on repart
+  /// au minimum — le plan se recale) ou 'vital' (encore une semaine de rush —
+  /// on protège juste le vital). Lu par proposeDayPlan. Trace aussi le choix
+  /// sur le rapport (weekModeChosen) — le rapport suivant détecte la 2ᵉ semaine
+  /// minimale d'affilée.
+  Future<void> setWeekMode(
+      String reportWeekStart, String nextWeekStart, String mode) async {
+    if (uid == null) return;
+    await _meta().set({
+      'weekMode': {'weekStart': nextWeekStart, 'mode': mode},
+    }, SetOptions(merge: true));
+    await _col('weekly_reports')
+        .doc(reportWeekStart)
+        .set({'weekModeChosen': mode}, SetOptions(merge: true));
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();
