@@ -684,6 +684,173 @@ export const defineDomainChat = onRequest(
   }
 );
 
+// ── generateArtifact ──────────────────────────────────────────────────────────
+//
+// POST { uid, kind, domainId, params, artifactId?, regenerateFrom? } + Bearer
+// Génère un artefact structuré (plan d'entraînement / menu) — une SOURCE DE
+// BLOCS instanciable, pas un document. 1 appel Haiku (classe quotidienne),
+// JSON strict, écrit users/{uid}/artifacts/{id} d'un bloc (jamais d'artefact à
+// moitié écrit). regenerateFrom (YYYY-MM-DD) = ⟳ : seules les entries à partir
+// de cette date sont régénérées, le passé n'est JAMAIS réécrit.
+
+const GENERATE_ARTIFACT_MAX_PER_DAY = 15;
+
+export const generateArtifact = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, kind, domainId, params, artifactId, regenerateFrom } = req.body as {
+      uid?: string;
+      kind?: string;
+      domainId?: string;
+      params?: Record<string, unknown>;
+      artifactId?: string;
+      regenerateFrom?: string;
+    };
+    if (!uid || !kind || !domainId || !params) {
+      res.status(400).json({ error: "uid, kind, domainId et params requis" }); return;
+    }
+    if (kind !== "training_plan" && kind !== "weekly_menu") {
+      res.status(400).json({ error: `kind inconnu : ${kind}` }); return;
+    }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    const today = todayInParis();
+    const limitRef = db.doc(`users/${uid}/rate_limits/generate_artifact`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+    if (count >= GENERATE_ARTIFACT_MAX_PER_DAY) {
+      res.status(429).json({ error: `Limite atteinte (${GENERATE_ARTIFACT_MAX_PER_DAY}/jour).` });
+      return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+
+    try {
+      // ── Contexte : la fiche domaine + l'existant en cas de régénération ─────
+      const domainSnap = await db.doc(`users/${uid}/domains/${domainId}`).get();
+      const domain = domainSnap.exists ? (domainSnap.data() as Record<string, unknown>) : {};
+      const vital = ((domain.vitalMinimum as Array<Record<string, unknown>>) ?? [])
+        .map((v) => v.label).join(" · ");
+      const modalities = ((domain.modalities as Array<Record<string, unknown>>) ?? [])
+        .map((m) => (m as { label?: string }).label ?? m).join(" · ");
+
+      // ⟳ : préserver les entries passées de l'artefact existant.
+      let pastEntries: Array<Record<string, unknown>> = [];
+      let existingParams: Record<string, unknown> = {};
+      if (artifactId && regenerateFrom) {
+        const prevSnap = await db.doc(`users/${uid}/artifacts/${artifactId}`).get();
+        if (prevSnap.exists) {
+          const prev = prevSnap.data() as Record<string, unknown>;
+          existingParams = (prev.params as Record<string, unknown>) ?? {};
+          pastEntries = ((prev.entries as Array<Record<string, unknown>>) ?? [])
+            .filter((e) => e.date && String(e.date) < regenerateFrom);
+        }
+      }
+
+      const isMenu = kind === "weekly_menu";
+      const systemPrompt = [
+        `Tu génères un artefact structuré « ${isMenu ? "menu de la semaine" : "plan d'entraînement"} » pour Productivitwo. Nous sommes le ${today}.`,
+        `Cet artefact est une SOURCE DE BLOCS : ses entries datées seront posées dans le programme quotidien. ${isMenu ? "Un menu qui se vit, pas un menu de magazine." : "Progressif, réaliste, tenable."}`,
+        ``,
+        `FICHE DOMAINE (le raccord est obligatoire) :`,
+        `  intention : « ${domain.intention ?? "non définie"} »`,
+        vital ? `  minimum vital : ${vital}` : "",
+        modalities ? `  modalités : ${modalities}` : "",
+        ``,
+        `PARAMÈTRES CONFIRMÉS AU CADRAGE (à respecter strictement) :`,
+        JSON.stringify({ ...existingParams, ...params }, null, 2),
+        ``,
+        regenerateFrom
+          ? `⟳ RÉGÉNÉRATION DE LA SUITE : génère UNIQUEMENT les entries à partir du ${regenerateFrom} (le passé est préservé tel quel, jamais de culpabilité rétroactive). Repars des faits : les paramètres restent, le rythme peut se recaler.`
+          : `Génère ${isMenu ? "la semaine courante (jours restants) + le motif hebdo" : "les 2 premières semaines datées + le motif des semaines suivantes"} à partir d'aujourd'hui.`,
+        ``,
+        `Tu réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :`,
+        `{`,
+        `  "entries": [{"date": "YYYY-MM-DD" ou null, "weekday": "mon".."sun" ou null, "time": "HH:mm",`,
+        `               "title": "…", "durationMin": 20, "detail": "contenu concret court", "portions": null, "optional": false}],`,
+        isMenu
+          ? `  "shoppingList": [{"label": "poulet", "qty": "×2"}],`
+          : `  "shoppingList": [],`,
+        `  "offSlots": ["fri_evening", …]  // repris des paramètres « on ne touche pas »`,
+        `}`,
+        ``,
+        `RÈGLES : date OU weekday par entry (date pour la semaine courante, weekday pour le motif récurrent) · ` +
+          `respecte les offSlots (rien dessus) · marque optional:true ce qui est hors vital · ` +
+          `detail court et concret (exercices/plat, pas de blabla) · chiffres réalistes, jamais grandioses.`,
+      ].filter((l) => l !== "").join("\n");
+
+      const client = new Anthropic({ apiKey });
+      const model = getModel("generate_artifact");
+      const response = await client.messages.create({
+        model,
+        max_tokens: 2500,
+        system: systemPrompt,
+        messages: [{ role: "user", content: `Génère l'artefact ${kind}.` }],
+      });
+      logTokenUsage("generate_artifact", model, response.usage);
+
+      const raw = response.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b as { type: "text"; text: string }).text)
+        .join("");
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start < 0 || end <= start) throw new Error("Réponse sans JSON");
+      const gen = JSON.parse(raw.slice(start, end + 1)) as {
+        entries?: Array<Record<string, unknown>>;
+        shoppingList?: Array<Record<string, unknown>>;
+        offSlots?: string[];
+      };
+      const newEntries = (gen.entries ?? []).filter(
+        (e) => e.title && /^\d{2}:\d{2}$/.test(String(e.time ?? ""))
+      );
+      if (newEntries.length === 0) throw new Error("Aucune entry générée");
+
+      // Écriture d'un bloc — jamais d'artefact à moitié écrit.
+      const docId = artifactId ?? uuidv4();
+      const artifact = {
+        id: docId,
+        kind,
+        domainId,
+        generatedAt: new Date().toISOString(),
+        params: { ...existingParams, ...params },
+        entries: [...pastEntries, ...newEntries],
+        shoppingList: gen.shoppingList ?? [],
+        offSlots: gen.offSlots ?? ((params.offSlots as string[]) ?? []),
+        deleted: false,
+      };
+      await db.doc(`users/${uid}/artifacts/${docId}`).set(artifact);
+
+      // Raccord au domaine (artifactIds) — sans doublon.
+      if (domainSnap.exists) {
+        const ids = ((domain.artifactIds as string[]) ?? []);
+        if (!ids.includes(docId)) {
+          await domainSnap.ref.set(
+            { artifactIds: [...ids, docId] }, { merge: true });
+        }
+      }
+
+      res.status(200).json({ artifactId: docId, entries: artifact.entries.length });
+    } catch (e) {
+      console.error("generateArtifact error:", e);
+      // Jamais d'artefact à moitié écrit : rien n'a été posé, le client
+      // affiche erreur + retry.
+      res.status(502).json({ error: "Génération échouée — rien n'a été écrit, réessaie." });
+    }
+  }
+);
+
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
 //
 // POST https://us-central1-productivitwo-app.cloudfunctions.net/pushAssistantMessage

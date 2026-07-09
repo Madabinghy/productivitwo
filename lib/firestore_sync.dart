@@ -756,6 +756,22 @@ class FirestoreSync {
     await _col('domains').doc(domain.id).set(domain.toJson());
   }
 
+  // ── Artefacts structurés (plan, menu) — sources de blocs ────────────────────
+
+  Stream<List<Artifact>> streamArtifacts() {
+    if (uid == null) return const Stream.empty();
+    return _col('artifacts').snapshots().map((snap) => snap.docs
+        .map((d) => Artifact.from(d.data() as Map))
+        .where((a) => !a.deleted)
+        .toList());
+  }
+
+  Future<Artifact?> fetchArtifact(String id) async {
+    if (uid == null) return null;
+    final snap = await _col('artifacts').doc(id).get();
+    return snap.exists ? Artifact.from(snap.data() as Map) : null;
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();
