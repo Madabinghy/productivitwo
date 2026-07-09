@@ -144,6 +144,22 @@ class Artifact {
       );
 }
 
+/// Semaine minimale (17c) : « la S2 se rejoue, pas la S3 » — les entrées
+/// datées à partir de [fromDate] reculent de 7 jours (la semaine du plan se
+/// REJOUE, jamais sautée). Le passé et le motif hebdo ne bougent pas.
+/// Fonction pure, testable.
+void recaleArtifactOneWeek(Artifact artifact, String fromDate) {
+  for (final e in artifact.entries) {
+    final d = e.date;
+    if (d == null || d.compareTo(fromDate) < 0) continue;
+    final parsed = DateTime.tryParse(d);
+    if (parsed == null) continue;
+    final shifted = parsed.add(const Duration(days: 7));
+    e.date =
+        '${shifted.year}-${shifted.month.toString().padLeft(2, '0')}-${shifted.day.toString().padLeft(2, '0')}';
+  }
+}
+
 /// « Autre chose aujourd'hui » : fait glisser le menu d'UN jour, sans pénalité
 /// — les entrées datées à partir de [fromDate] reculent d'un jour ; le motif
 /// hebdo (weekday) n'est pas touché (il se rejouera naturellement). Fonction
