@@ -61,10 +61,14 @@ export interface ScheduleBlockPayload {
   activityId?: string | null;
   actionId?: string | null;
   status?: string; // pending | done | skipped | deleted
-  // Préparation la veille (kind:"prep") — cf. add_prep_block
-  kind?: string; // "normal" (défaut) | "prep"
+  // Préparation la veille (kind:"prep") — cf. add_prep_block.
+  // "bilan" = bilan d'essai (renégociation 12c). "session" = session de
+  // définition d'un domaine (onboarding 18b, domainId = domaine ciblé).
+  // prep/bilan/session survivent au remplacement par schedule_day.
+  kind?: string; // "normal" (défaut) | "prep" | "bilan" | "session"
   prepForDate?: string | null;
   prepForBlockId?: string | null;
+  domainId?: string | null;
   // Check-in du soir : pourquoi l'engagement a sauté (fait tracké).
   // "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
   skipReason?: string | null;

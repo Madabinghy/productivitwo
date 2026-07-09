@@ -135,7 +135,9 @@ class Domain {
   List<String> modalities; // ce que la renégociation fait évoluer
   List<String> artifactIds; // refs vers la collection documents
   List<String> wantedArtifacts; // artefacts voulus (génération = handoff suivant)
-  String definitionStatus; // "none" (jamais défini) | "draft" | "active" | "suspended"
+  // "named" (onboarding : nommé mais pas défini — N'EXISTE PAS pour le coach :
+  // ignoré par la proposition, la carte et le rapport, aucun vital inventé).
+  String definitionStatus; // "none" | "named" | "draft" | "active" | "suspended"
   DateTime? definedAt;
   DateTime? renegotiatedAt;
   List<Map<String, dynamic>> history; // { date, field, from, to, reason }

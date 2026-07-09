@@ -48,9 +48,13 @@ class ScheduleBlock {
   // Absents = bloc normal (rétrocompatible). kind:"prep" = mini-bloc « préparer
   // ses affaires » le soir, lié à un bloc cible du lendemain matin. La référence
   // vers le bloc cible est (date, id) car il vit dans le doc d'un autre jour.
-  String kind;            // "normal" (défaut) | "prep"
+  // kind:"bilan" = bilan d'essai posé à J+14 par la renégociation structurelle.
+  // kind:"session" = session de définition d'un domaine (onboarding 18b) —
+  // domainId pointe le domaine à définir, le tap lance la session.
+  String kind;            // "normal" (défaut) | "prep" | "bilan" | "session"
   String? prepForDate;    // "YYYY-MM-DD" — jour du bloc cible (souvent J+1)
   String? prepForBlockId; // id du bloc cible dans daily_schedules/{prepForDate}
+  String? domainId;       // domaine ciblé (kind:"session")
   // ── Check-in du soir ───────────────────────────────────────────────────────
   // Pourquoi l'engagement a sauté — fait tracké, écrit par le check-in guidé.
   // Enum ouvert : "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
@@ -73,6 +77,7 @@ class ScheduleBlock {
     this.kind = 'normal',
     this.prepForDate,
     this.prepForBlockId,
+    this.domainId,
     this.skipReason,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
@@ -96,6 +101,7 @@ class ScheduleBlock {
         'kind': kind,
         'prepForDate': prepForDate,
         'prepForBlockId': prepForBlockId,
+        'domainId': domainId,
         'skipReason': skipReason,
       };
 
@@ -116,6 +122,7 @@ class ScheduleBlock {
         kind: j['kind'] ?? 'normal',
         prepForDate: j['prepForDate'],
         prepForBlockId: j['prepForBlockId'],
+        domainId: j['domainId'],
         skipReason: j['skipReason'],
       );
 }

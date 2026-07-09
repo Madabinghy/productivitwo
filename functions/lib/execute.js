@@ -1586,7 +1586,7 @@ async function executeScheduleDay(uid, date, blocks) {
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1599,10 +1599,11 @@ async function executeScheduleDay(uid, date, blocks) {
             actionId: (_d = b.actionId) !== null && _d !== void 0 ? _d : null, // action ciblée (propre à une activité OU action de projet)
             status: "pending",
             doneAt: null,
-            kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", // "normal" | "prep" (préparation la veille)
+            kind: (_e = b.kind) !== null && _e !== void 0 ? _e : "normal", // "normal" | "prep" | "bilan" | "session"
             prepForDate: (_f = b.prepForDate) !== null && _f !== void 0 ? _f : null,
             prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null,
-            skipReason: (_h = b.skipReason) !== null && _h !== void 0 ? _h : null, // pourquoi l'engagement a sauté (check-in)
+            domainId: (_h = b.domainId) !== null && _h !== void 0 ? _h : null, // domaine ciblé (kind:"session")
+            skipReason: (_j = b.skipReason) !== null && _j !== void 0 ? _j : null, // pourquoi l'engagement a sauté (check-in)
         });
     });
     // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du
@@ -1611,9 +1612,11 @@ async function executeScheduleDay(uid, date, blocks) {
     const prev = await ref.get();
     const prevData = prev.exists ? prev.data() : {};
     // Les blocs posés par d'autres flux survivent au remplacement : preps du
-    // soir (add_prep_block) et bilans d'essai (renégociation 12c, posés à J+14).
+    // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14)
+    // et sessions de définition de domaine (onboarding 18b).
     const preserved = ((_a = prevData.blocks) !== null && _a !== void 0 ? _a : [])
-        .filter((b) => (b.kind === "prep" || b.kind === "bilan") && b.status !== "deleted");
+        .filter((b) => (b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
+        b.status !== "deleted");
     await ref.set({
         date,
         generatedBy: "claude",

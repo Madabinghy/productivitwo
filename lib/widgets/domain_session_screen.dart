@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/artifact_screens.dart';
+import 'package:productivitwo_v1/widgets/domain_onboarding_screen.dart';
 
 /// Session de définition d'un domaine (maquettes 13a → 13c) : une vraie
 /// conversation avec Orion, pas un formulaire. Chaque élément validé est ÉCRIT
@@ -605,20 +606,28 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
 class DomainCard extends StatelessWidget {
   final Domain domain;
   final VoidCallback? onTap;
-  const DomainCard({super.key, required this.domain, this.onTap});
+  // 18c : « session demain 18 h 30 » — prochaine session posée d'un domaine
+  // `named` (nommé, pas défini). Null = pas de session trouvée cette semaine.
+  final String? sessionLabel;
+  const DomainCard(
+      {super.key, required this.domain, this.onTap, this.sessionLabel});
+
+  bool get _named => domain.definitionStatus == 'named';
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final color =
         domain.colorValue != null ? Color(domain.colorValue!) : cs.primary;
-    final dateLabel = domain.renegotiatedAt != null
-        ? 'renégocié le ${_frDate(domain.renegotiatedAt!)}'
-        : domain.definedAt != null
-            ? 'défini le ${_frDate(domain.definedAt!)}'
-            : domain.definitionStatus == 'draft'
-                ? 'session en cours'
-                : 'à définir';
+    final dateLabel = _named
+        ? ''
+        : domain.renegotiatedAt != null
+            ? 'renégocié le ${_frDate(domain.renegotiatedAt!)}'
+            : domain.definedAt != null
+                ? 'défini le ${_frDate(domain.definedAt!)}'
+                : domain.definitionStatus == 'draft'
+                    ? 'session en cours'
+                    : 'à définir';
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -627,8 +636,11 @@ class DomainCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(.35)),
-          color: color.withOpacity(.05),
+          // Fiche `named` : en retrait (pas encore une fiche — juste un nom).
+          border: Border.all(
+              color: color.withOpacity(_named ? .45 : .35),
+              style: BorderStyle.solid),
+          color: _named ? Colors.transparent : color.withOpacity(.05),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,6 +663,18 @@ class DomainCard extends StatelessWidget {
                         fontSize: 11, color: cs.onSurface.withOpacity(.45))),
               ],
             ),
+            if (_named) ...[
+              const SizedBox(height: 6),
+              Text(
+                sessionLabel != null
+                    ? 'session $sessionLabel — rien à faire d\'ici là'
+                    : 'session à poser — le coach n\'y touche pas d\'ici là',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic,
+                    color: cs.onSurface.withOpacity(.5)),
+              ),
+            ],
             if (domain.intention?.isNotEmpty == true) ...[
               const SizedBox(height: 10),
               // L'intention : LES MOTS DU USER — jamais reformulée par l'UI.
@@ -695,9 +719,57 @@ class DomainCard extends StatelessWidget {
 
 // ── Vue « Mes domaines » (maquette 4a) ────────────────────────────────────────
 
-class DomainsScreen extends StatelessWidget {
+class DomainsScreen extends StatefulWidget {
   final AppLogic logic;
   const DomainsScreen({super.key, required this.logic});
+
+  @override
+  State<DomainsScreen> createState() => _DomainsScreenState();
+}
+
+class _DomainsScreenState extends State<DomainsScreen> {
+  final _sessionSync = FirestoreSync();
+  // 18c : domainId → « demain 18 h 30 » (prochaine session posée, 7 jours).
+  Map<String, String> _sessionLabels = const {};
+
+  AppLogic get logic => widget.logic;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessionLabels();
+  }
+
+  Future<void> _loadSessionLabels() async {
+    final now = DateTime.now();
+    final labels = <String, String>{};
+    final days = await Future.wait(List.generate(7, (i) {
+      final d = now.add(Duration(days: i));
+      final ymd =
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      return _sessionSync.fetchDailySchedule(ymd).catchError((_) => null);
+    }));
+    const weekdays = [
+      'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'
+    ];
+    for (var i = 0; i < days.length; i++) {
+      final day = now.add(Duration(days: i));
+      final dayName = i == 0
+          ? 'aujourd\'hui'
+          : i == 1
+              ? 'demain'
+              : weekdays[day.weekday - 1];
+      for (final b in days[i]?.blocks ?? const <ScheduleBlock>[]) {
+        if (b.kind != 'session' || b.domainId == null) continue;
+        if (b.status == 'deleted' || b.status == 'done') continue;
+        final p = b.startTime.split(':');
+        final h = int.tryParse(p.first) ?? 0;
+        final m = p.length > 1 && p[1] != '00' ? ' ${p[1]}' : '';
+        labels.putIfAbsent(b.domainId!, () => '$dayName $h h$m');
+      }
+    }
+    if (mounted) setState(() => _sessionLabels = labels);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -713,7 +785,12 @@ class DomainsScreen extends StatelessWidget {
         builder: (ctx, snap) {
           final domains = (snap.data ?? logic.state.activeDomains)
               .where((d) => !d.deleted)
-              .toList();
+              .toList()
+            // Fiches actives d'abord, puis en session, puis juste nommées.
+            ..sort((a, b) => _statusRank(a).compareTo(_statusRank(b)));
+          final defined = domains.where((d) => d.isDefined).toList();
+          final named =
+              domains.where((d) => d.definitionStatus == 'named').toList();
           return StreamBuilder<List<Artifact>>(
             stream: sync.streamArtifacts(),
             builder: (ctx2, artSnap) {
@@ -721,11 +798,41 @@ class DomainsScreen extends StatelessWidget {
               return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
+              // Onboarding (18a) : rien n'est encore nommé ni défini.
+              if (domains.every((d) =>
+                  d.definitionStatus == 'none' ||
+                  d.definitionStatus == '')) ...[
+                FilledButton.icon(
+                  icon: const Icon(Icons.flag_rounded, size: 16),
+                  label: const Text('Nommer tes domaines — 2 min'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999)),
+                  ),
+                  onPressed: () => Navigator.of(ctx)
+                      .push(MaterialPageRoute(
+                        builder: (_) => DomainOnboardingScreen(logic: logic),
+                      ))
+                      .then((_) => _loadSessionLabels()),
+                ),
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    'Nommer d\'abord, définir ensuite — le n° 1 tout de suite, les autres cette semaine.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 11.5, color: cs.onSurface.withOpacity(.45)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               for (final d in domains) ...[
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
                   child: DomainCard(
                     domain: d,
+                    sessionLabel: _sessionLabels[d.id],
                     onTap: () => Navigator.of(ctx).push(MaterialPageRoute(
                       builder: (_) => DomainSessionScreen(
                           logic: logic, domainName: d.name),
@@ -802,7 +909,10 @@ class DomainsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Center(
                 child: Text(
-                  'Intention · minimum vital · modalités — la colonne vertébrale du coach.',
+                  // 18c : un domaine nommé n'existe pas encore pour le coach.
+                  defined.isNotEmpty && named.isNotEmpty
+                      ? 'Le coach travaille déjà avec ${defined.map((d) => d.name).join(' et ')} — les autres domaines s\'ajoutent sans rien casser.'
+                      : 'Intention · minimum vital · modalités — la colonne vertébrale du coach.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 11.5, color: cs.onSurface.withOpacity(.45)),
@@ -816,4 +926,12 @@ class DomainsScreen extends StatelessWidget {
       ),
     );
   }
+
+  static int _statusRank(Domain d) => switch (d.definitionStatus) {
+        'active' => 0,
+        'draft' => 1,
+        'suspended' => 2,
+        'named' => 3,
+        _ => 4,
+      };
 }
