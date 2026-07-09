@@ -14,6 +14,7 @@ String skipReasonLabel(String reason) => switch (reason) {
       'sous_estime' => 'sous-estimé',
       'evite' => 'évité',
       'reporte' => 'reporté',
+      'renegocie' => 'renégocié — modalité changée',
       'imprevu_global' => 'un imprévu a mangé la journée',
       'irrealiste' => 'programme irréaliste',
       _ => reason,

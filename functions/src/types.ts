@@ -90,6 +90,9 @@ export interface DomainDefinitionPayload {
   wantedArtifacts?: string[];
   finalize?: boolean; // true → definitionStatus:"active" + definedAt
 }
+// Renégociation (écrite par l'app, lue par proposeDayPlan sur le doc brut) :
+// renegotiatedAt (ISO), history [{date, field, from, to, reason}],
+// suspendedUntil ("YYYY-MM-DD" — suspension assumée : rien ne se pose dessus).
 
 // ── Artefacts structurés (users/{uid}/artifacts/{id}) ────────────────────────
 // Un artefact = une SOURCE DE BLOCS (entries datées instanciables par la

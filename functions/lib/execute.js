@@ -1580,7 +1580,7 @@ async function executeGetDaySchedule(uid, date) {
     return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 async function executeScheduleDay(uid, date, blocks) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -1610,14 +1610,18 @@ async function executeScheduleDay(uid, date, blocks) {
     const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
     const prev = await ref.get();
     const prevData = prev.exists ? prev.data() : {};
+    // Les blocs posés par d'autres flux survivent au remplacement : preps du
+    // soir (add_prep_block) et bilans d'essai (renégociation 12c, posés à J+14).
+    const preserved = ((_a = prevData.blocks) !== null && _a !== void 0 ? _a : [])
+        .filter((b) => (b.kind === "prep" || b.kind === "bilan") && b.status !== "deleted");
     await ref.set({
         date,
         generatedBy: "claude",
         generatedAt: db_1.FieldValue.serverTimestamp(),
-        blocks: normalizedBlocks,
-        dayReason: (_a = prevData.dayReason) !== null && _a !== void 0 ? _a : null,
-        plannedAt: (_b = prevData.plannedAt) !== null && _b !== void 0 ? _b : null,
-        plannedSameDay: (_c = prevData.plannedSameDay) !== null && _c !== void 0 ? _c : false,
+        blocks: [...preserved, ...normalizedBlocks],
+        dayReason: (_b = prevData.dayReason) !== null && _b !== void 0 ? _b : null,
+        plannedAt: (_c = prevData.plannedAt) !== null && _c !== void 0 ? _c : null,
+        plannedSameDay: (_d = prevData.plannedSameDay) !== null && _d !== void 0 ? _d : false,
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;

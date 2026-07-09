@@ -434,13 +434,33 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             .filter((v) => v.deleted !== true && v.definitionStatus === "active" && v.intention)
             .map((v) => {
             var _a, _b;
+            // Suspension assumée (renégociation 12b) : rien ne se pose dessus.
+            if (typeof v.suspendedUntil === "string" && v.suspendedUntil >= target) {
+                return `  · ${v.name} — ⛔ SUSPENDU jusqu'au ${v.suspendedUntil} (assumé, sans pénalité) : ne pose RIEN sur ce domaine.`;
+            }
             const vital = ((_a = v.vitalMinimum) !== null && _a !== void 0 ? _a : [])
                 .map((m) => m.label).join(" · ");
             const mods = ((_b = v.modalities) !== null && _b !== void 0 ? _b : [])
                 .map((m) => { var _a; return (_a = m.label) !== null && _a !== void 0 ? _a : m; }).join(" · ");
+            // Essai 2 semaines en cours : la nouvelle modalité se respecte à la lettre.
+            const renegRaw = v.renegotiatedAt;
+            let renegYmd = null;
+            if (typeof renegRaw === "string")
+                renegYmd = renegRaw.slice(0, 10);
+            else if (renegRaw && typeof renegRaw.toDate === "function") {
+                renegYmd = renegRaw.toDate().toISOString().slice(0, 10);
+            }
+            let essai = "";
+            if (renegYmd) {
+                const endEssai = new Date(new Date(`${renegYmd}T00:00:00Z`).getTime() + 14 * 86400000)
+                    .toISOString().slice(0, 10);
+                if (target <= endEssai) {
+                    essai = `\n    ⚠️ essai en cours (modalité renégociée le ${renegYmd}, bilan le ${endEssai}) : respecte STRICTEMENT la nouvelle modalité, ne repose pas l'ancienne.`;
+                }
+            }
             return `  · ${v.name} — intention : « ${v.intention} »` +
                 (vital ? `\n    minimum vital : ${vital}` : "") +
-                (mods ? `\n    modalités : ${mods}` : "");
+                (mods ? `\n    modalités : ${mods}` : "") + essai;
         });
         const refData = refSnap.exists ? refSnap.data() : {};
         const refBlocks = ((_j = refData.blocks) !== null && _j !== void 0 ? _j : [])
@@ -507,7 +527,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
             weekMode
                 ? `2. NE REPROPOSE PAS les blocs sautés (semaine ${weekMode === "minimal" ? "minimale" : "de rush"} — une semaine ne se rattrape pas).`
-                : `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap. Un bloc à cause « reporte » (renégocié hier) passe EN PREMIER dans la journée, avant tout.`,
+                : `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap. Un bloc à cause « reporte » (renégocié hier) passe EN PREMIER dans la journée, avant tout. EXCEPTION : un bloc à cause « renegocie » a changé de modalité — ne le repose JAMAIS à son ancien créneau, la nouvelle modalité est dans la fiche domaine.`,
             ...(sameDay
                 ? [`2bis. JAMAIS de rattrapage le jour même : les blocs/routines d'AUJOURD'HUI déjà passés ou sautés sont MORTS pour aujourd'hui — ne les repropose pas ce soir (une routine ratée est morte, sans pénalité). Ils reviendront demain s'ils le méritent.`]
                 : []),
