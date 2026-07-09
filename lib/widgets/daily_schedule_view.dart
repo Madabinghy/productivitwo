@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
+import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -259,15 +260,31 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
 
+  /// Mode soirée (23c) : bloc non fait d'avant 19 h → « en attente, à recaser
+  /// ce soir » (rendu seulement — le bloc n'est jamais modifié par la bascule).
+  bool _waitingInEveningMode(ScheduleBlock b) =>
+      _schedule?.eveningMode == true &&
+      b.status == 'pending' &&
+      !b.isPrep &&
+      b.category != 'break' &&
+      b.startTime.compareTo('19:00') < 0;
+
   Future<void> _saveBlock(ScheduleBlock updated) async {
     final schedule = _schedule;
     if (schedule == null) return;
     final blocks = schedule.blocks.map((b) => b.id == updated.id ? updated : b).toList();
+    // Préserver les faits du doc (dayReason, planifié quand, mode soirée) —
+    // éditer un bloc ne doit rien effacer d'autre.
     await _sync.saveDailySchedule(DailySchedule(
       date: schedule.date,
       generatedBy: schedule.generatedBy,
       generatedAt: schedule.generatedAt,
       blocks: blocks,
+      dayReason: schedule.dayReason,
+      plannedAt: schedule.plannedAt,
+      plannedSameDay: schedule.plannedSameDay,
+      dayMode: schedule.dayMode,
+      dayModeActivatedAt: schedule.dayModeActivatedAt,
     ));
   }
 
@@ -356,6 +373,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
+          // 23a : déplacer à la main — long-press → créneaux libres réels.
+          onLongPress: block.status == 'pending' && !block.isPrep
+              ? () => showMoveBlockSheet(context,
+                  logic: widget.logic, block: block, date: widget.date)
+              : null,
           onTap: () {
             // Bloc session de définition (onboarding 18b) → lance la session ;
             // bloc « nommer mes domaines » (21a) → sheet de nommage in-place.
@@ -449,6 +471,23 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                               color: cs.onSurface
                                   .withOpacity(isDone ? .2 : .4)),
                         ),
+                        // Mode soirée (23c) : les blocs non faits d'avant 19 h
+                        // sont EN ATTENTE — jamais supprimés, recasés au
+                        // check-in ; « Revenir » les restaure tels quels.
+                        if (_waitingInEveningMode(block)) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'en attente — à recaser ce soir',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontStyle: FontStyle.italic,
+                                  color: cs.tertiary.withOpacity(.9)),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],

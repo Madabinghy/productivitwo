@@ -397,6 +397,67 @@ class _FocusViewState extends State<FocusView> {
     }
   }
 
+  // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
+
+  /// « Terminer l'après-midi » : bascule système EXPLICITE — les blocs ne sont
+  /// jamais touchés, snackbar « Annuler » à l'activation, bandeau permanent.
+  Future<void> _endAfternoon() async {
+    await _sync.setDayMode(_schedDate, 'evening');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Mode soirée activé'),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () => _sync.setDayMode(_schedDate, 'normal'),
+        ),
+      ));
+    }
+  }
+
+  /// Bandeau d'état permanent en tête de Maintenant tant que le mode est actif.
+  Widget _eveningModeBanner(ColorScheme cs) {
+    final at = _schedule?.dayModeActivatedAt;
+    final atStr = at != null
+        ? ' — activé à ${at.hour}:${at.minute.toString().padLeft(2, '0')}'
+        : '';
+    final amber = cs.brightness == Brightness.dark
+        ? const Color(0xFFFFB74D)
+        : const Color(0xFFEF8B1F);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: amber.withOpacity(.5)),
+        color: amber.withOpacity(.08),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Mode soirée$atStr',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: amber)),
+          ),
+          // « Revenir » restaure le programme tel quel (rien n'a été modifié).
+          TextButton(
+            onPressed: () => _sync.setDayMode(_schedDate, 'normal'),
+            style: TextButton.styleFrom(
+              foregroundColor: amber,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('↩ Revenir à l\'après-midi',
+                style: TextStyle(fontSize: 12.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
 
   Widget _coachCard(DateTime now) {
@@ -416,6 +477,7 @@ class _FocusViewState extends State<FocusView> {
       onNameTonight: _poseNamingTonight,
       onStartSession: _startDomainSession,
       onPoseSessions: _poseRemainingSessions,
+      onEndAfternoon: _endAfternoon,
       // « Garder [créneau] » du nudge : silence pour la journée seulement.
       onDismiss: isNudge
           ? () => setState(() => _nudgeDismissed = true)
@@ -618,6 +680,7 @@ class _FocusViewState extends State<FocusView> {
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
             const SizedBox(height: 20),
+            if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
             _focusCard(context, cs, b, now),
             if (next != null) ...[
@@ -847,6 +910,7 @@ class _FocusViewState extends State<FocusView> {
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
             const SizedBox(height: 20),
+            if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
             const SizedBox(height: 8),
             Center(

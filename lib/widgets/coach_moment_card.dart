@@ -27,6 +27,8 @@ class CoachMomentCard extends StatelessWidget {
   final VoidCallback? onNameTonight;
   final void Function(String domain, {bool short})? onStartSession;
   final VoidCallback? onPoseSessions;
+  // « Terminer l'après-midi — mode soirée » (23c) : bascule réversible.
+  final VoidCallback? onEndAfternoon;
 
   const CoachMomentCard({
     super.key,
@@ -44,6 +46,7 @@ class CoachMomentCard extends StatelessWidget {
     this.onNameTonight,
     this.onStartSession,
     this.onPoseSessions,
+    this.onEndAfternoon,
   });
 
   @override
@@ -79,6 +82,7 @@ class CoachMomentCard extends StatelessWidget {
               onNameTonight: onNameTonight,
               onStartSession: onStartSession,
               onPoseSessions: onPoseSessions,
+              onEndAfternoon: onEndAfternoon,
             ),
     );
   }
@@ -99,6 +103,7 @@ class _Card extends StatelessWidget {
   final VoidCallback? onNameTonight;
   final void Function(String domain, {bool short})? onStartSession;
   final VoidCallback? onPoseSessions;
+  final VoidCallback? onEndAfternoon;
 
   const _Card({
     super.key,
@@ -116,6 +121,7 @@ class _Card extends StatelessWidget {
     this.onNameTonight,
     this.onStartSession,
     this.onPoseSessions,
+    this.onEndAfternoon,
   });
 
   @override
@@ -228,6 +234,7 @@ class _Card extends StatelessWidget {
               onNameTonight: onNameTonight,
               onStartSession: onStartSession,
               onPoseSessions: onPoseSessions,
+              onEndAfternoon: onEndAfternoon,
             ),
           ],
         ],
@@ -309,6 +316,7 @@ class _Actions extends StatelessWidget {
   final VoidCallback? onNameTonight;
   final void Function(String domain, {bool short})? onStartSession;
   final VoidCallback? onPoseSessions;
+  final VoidCallback? onEndAfternoon;
 
   const _Actions({
     required this.actions,
@@ -326,6 +334,7 @@ class _Actions extends StatelessWidget {
     this.onNameTonight,
     this.onStartSession,
     this.onPoseSessions,
+    this.onEndAfternoon,
   });
 
   @override
@@ -345,9 +354,10 @@ class _Actions extends StatelessWidget {
         a.kind == CoachActionKind.nameDomains ||
         a.kind == CoachActionKind.startSession ||
         a.kind == CoachActionKind.startSessionShort;
-    // Secondaires du nudge : liens discrets sous le CTA (maquettes 21a-21c).
+    // Secondaires du nudge / bascule système : liens discrets sous le CTA.
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
+        a.kind == CoachActionKind.endAfternoon ||
         (a.kind == CoachActionKind.dismiss &&
             a.label.startsWith('Garder'));
     final onTap = _handlerFor(a);
@@ -367,6 +377,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.startSession => Icons.auto_awesome,
       CoachActionKind.startSessionShort => Icons.bolt_rounded,
       CoachActionKind.poseSessions => Icons.event_available_outlined,
+      CoachActionKind.endAfternoon => Icons.nights_stay_outlined,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -454,6 +465,8 @@ class _Actions extends StatelessWidget {
             : null;
       case CoachActionKind.poseSessions:
         return onPoseSessions;
+      case CoachActionKind.endAfternoon:
+        return onEndAfternoon;
     }
   }
 }
