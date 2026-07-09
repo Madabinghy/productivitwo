@@ -74,6 +74,9 @@ class Artifact {
   List<ArtifactEntry> entries;
   List<ShoppingItem> shoppingList; // menu uniquement — dérivée des repas
   List<String> offSlots; // « on ne touche pas » — contrainte dure (ex: fri_evening)
+  // Fait tracké de la carte midi (15c) : date → "eaten" | "other".
+  // « Autre chose » fait glisser le menu d'un jour, sans pénalité.
+  Map<String, String> mealLog;
   bool deleted; // soft-delete comme partout
 
   Artifact({
@@ -85,13 +88,15 @@ class Artifact {
     List<ArtifactEntry>? entries,
     List<ShoppingItem>? shoppingList,
     List<String>? offSlots,
+    Map<String, String>? mealLog,
     this.deleted = false,
   })  : id = id ?? _uuid.v4(),
         generatedAt = generatedAt ?? DateTime.now(),
         params = params ?? {},
         entries = entries ?? [],
         shoppingList = shoppingList ?? [],
-        offSlots = offSlots ?? [];
+        offSlots = offSlots ?? [],
+        mealLog = mealLog ?? {};
 
   String get title => switch (kind) {
         'training_plan' => 'Plan de reprise',
@@ -108,6 +113,7 @@ class Artifact {
         'entries': entries.map((e) => e.toJson()).toList(),
         'shoppingList': shoppingList.map((s) => s.toJson()).toList(),
         'offSlots': offSlots,
+        'mealLog': mealLog,
         'deleted': deleted,
       };
 
@@ -131,6 +137,25 @@ class Artifact {
             [],
         offSlots:
             (j['offSlots'] as List?)?.map((e) => e.toString()).toList() ?? [],
+        mealLog: (j['mealLog'] as Map?)
+                ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
+            {},
         deleted: j['deleted'] == true,
       );
+}
+
+/// « Autre chose aujourd'hui » : fait glisser le menu d'UN jour, sans pénalité
+/// — les entrées datées à partir de [fromDate] reculent d'un jour ; le motif
+/// hebdo (weekday) n'est pas touché (il se rejouera naturellement). Fonction
+/// pure, testable.
+void shiftMenuOneDay(Artifact menu, String fromDate) {
+  for (final e in menu.entries) {
+    final d = e.date;
+    if (d == null || d.compareTo(fromDate) < 0) continue; // passé intouché
+    final parsed = DateTime.tryParse(d);
+    if (parsed == null) continue;
+    final shifted = parsed.add(const Duration(days: 1));
+    e.date =
+        '${shifted.year}-${shifted.month.toString().padLeft(2, '0')}-${shifted.day.toString().padLeft(2, '0')}';
+  }
 }

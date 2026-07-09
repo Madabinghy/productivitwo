@@ -17,6 +17,9 @@ class CoachMomentCard extends StatelessWidget {
   final VoidCallback? onPlanDay;
   // « À la volée » → masque la carte pour la matinée.
   final VoidCallback? onDismiss;
+  // Carte midi menu (15c) : ✓ Mangé / « Autre chose » (glisse le menu d'un jour).
+  final void Function(String artifactId)? onMealEaten;
+  final void Function(String artifactId)? onMealShift;
 
   const CoachMomentCard({
     super.key,
@@ -27,6 +30,8 @@ class CoachMomentCard extends StatelessWidget {
     this.onAdvance,
     this.onPlanDay,
     this.onDismiss,
+    this.onMealEaten,
+    this.onMealShift,
   });
 
   @override
@@ -55,6 +60,8 @@ class CoachMomentCard extends StatelessWidget {
               onAdvance: onAdvance,
               onPlanDay: onPlanDay,
               onDismiss: onDismiss,
+              onMealEaten: onMealEaten,
+              onMealShift: onMealShift,
             ),
     );
   }
@@ -68,6 +75,8 @@ class _Card extends StatelessWidget {
   final void Function(CoachMomentType target)? onAdvance;
   final VoidCallback? onPlanDay;
   final VoidCallback? onDismiss;
+  final void Function(String artifactId)? onMealEaten;
+  final void Function(String artifactId)? onMealShift;
 
   const _Card({
     super.key,
@@ -78,6 +87,8 @@ class _Card extends StatelessWidget {
     this.onAdvance,
     this.onPlanDay,
     this.onDismiss,
+    this.onMealEaten,
+    this.onMealShift,
   });
 
   @override
@@ -149,6 +160,8 @@ class _Card extends StatelessWidget {
               onAdvance: onAdvance,
               onPlanDay: onPlanDay,
               onDismiss: onDismiss,
+              onMealEaten: onMealEaten,
+              onMealShift: onMealShift,
             ),
           ],
         ],
@@ -223,6 +236,8 @@ class _Actions extends StatelessWidget {
   final void Function(CoachMomentType target)? onAdvance;
   final VoidCallback? onPlanDay;
   final VoidCallback? onDismiss;
+  final void Function(String artifactId)? onMealEaten;
+  final void Function(String artifactId)? onMealShift;
 
   const _Actions({
     required this.actions,
@@ -233,6 +248,8 @@ class _Actions extends StatelessWidget {
     this.onAdvance,
     this.onPlanDay,
     this.onDismiss,
+    this.onMealEaten,
+    this.onMealShift,
   });
 
   @override
@@ -257,6 +274,8 @@ class _Actions extends StatelessWidget {
       CoachActionKind.advanceMoment => Icons.arrow_forward_rounded,
       CoachActionKind.planDay => Icons.edit_calendar_outlined,
       CoachActionKind.dismiss => Icons.skip_next_outlined,
+      CoachActionKind.mealEaten => Icons.check_rounded,
+      CoachActionKind.mealShift => Icons.swap_horiz_rounded,
     };
     // Transition de moment : bouton discret (texte), pas un CTA plein.
     if (a.kind == CoachActionKind.advanceMoment) {
@@ -320,6 +339,14 @@ class _Actions extends StatelessWidget {
         return onPlanDay;
       case CoachActionKind.dismiss:
         return onDismiss;
+      case CoachActionKind.mealEaten:
+        return a.artifactId != null && onMealEaten != null
+            ? () => onMealEaten!(a.artifactId!)
+            : null;
+      case CoachActionKind.mealShift:
+        return a.artifactId != null && onMealShift != null
+            ? () => onMealShift!(a.artifactId!)
+            : null;
     }
   }
 }

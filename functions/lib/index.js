@@ -315,7 +315,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -377,7 +377,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
     const sameDay = target === today;
     try {
         // ── Contexte ────────────────────────────────────────────────────────────
-        const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap] = await Promise.all([
+        const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap] = await Promise.all([
             db_1.db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
             db_1.db.doc(`users/${uid}/daily_schedules/${target}`).get(),
             db_1.db.collection(`users/${uid}/activities`).get(),
@@ -385,7 +385,32 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             db_1.db.collection(`users/${uid}/documents`).orderBy("updatedAt", "desc").limit(10).get()
                 .catch(() => db_1.db.collection(`users/${uid}/documents`).limit(10).get()),
             db_1.db.collection(`users/${uid}/domains`).get(),
+            db_1.db.collection(`users/${uid}/artifacts`).get(),
         ]);
+        // ── Artefacts : entrées prévues pour la date cible + offSlots ───────────
+        // Un artefact est une SOURCE DE BLOCS : ses entries du jour sont posées
+        // en blocs avec provenance (14c/15c). offSlots = contrainte DURE.
+        const weekdayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+        const targetWeekday = weekdayCodes[new Date(`${target}T12:00:00`).getDay()];
+        const artifactEntryLines = [];
+        const offSlots = new Set();
+        for (const doc of artifactsSnap.docs) {
+            const a = doc.data();
+            if (a.deleted === true)
+                continue;
+            for (const slot of (_d = a.offSlots) !== null && _d !== void 0 ? _d : [])
+                offSlots.add(slot);
+            const label = a.kind === "weekly_menu" ? "Menu de la semaine" : "Plan de reprise";
+            for (const e of (_e = a.entries) !== null && _e !== void 0 ? _e : []) {
+                const matches = e.date === target ||
+                    (!e.date && e.weekday === targetWeekday);
+                if (!matches)
+                    continue;
+                artifactEntryLines.push(`  ${e.time} "${e.title}" (${(_f = e.durationMin) !== null && _f !== void 0 ? _f : 30} min)` +
+                    `${e.detail ? ` — ${e.detail}` : ""} · provenance: ${label}` +
+                    `${e.optional ? " · optionnelle, hors vital" : ""}`);
+            }
+        }
         // Domaines définis (session de définition) : intention + vital + modalités
         // — la colonne vertébrale de la proposition, cités en provenance.
         const domainLines = domainsSnap.docs
@@ -402,7 +427,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (mods ? `\n    modalités : ${mods}` : "");
         });
         const refData = refSnap.exists ? refSnap.data() : {};
-        const refBlocks = ((_d = refData.blocks) !== null && _d !== void 0 ? _d : [])
+        const refBlocks = ((_g = refData.blocks) !== null && _g !== void 0 ? _g : [])
             .filter((b) => b.status !== "deleted" && b.kind !== "prep");
         const refLines = refBlocks.map((b) => {
             var _a;
@@ -412,9 +437,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (b.activityId ? ` activityId=${b.activityId}` : "") +
                 (b.projectId ? ` projectId=${b.projectId} taskId=${(_a = b.taskId) !== null && _a !== void 0 ? _a : ""}` : "");
         });
-        const dayReason = (_e = refData.dayReason) !== null && _e !== void 0 ? _e : null;
+        const dayReason = (_h = refData.dayReason) !== null && _h !== void 0 ? _h : null;
         const targetBlocks = targetSnap.exists
-            ? (((_g = (_f = targetSnap.data()) === null || _f === void 0 ? void 0 : _f.blocks) !== null && _g !== void 0 ? _g : [])
+            ? (((_l = (_j = targetSnap.data()) === null || _j === void 0 ? void 0 : _j.blocks) !== null && _l !== void 0 ? _l : [])
                 .filter((b) => b.status !== "deleted"))
             : [];
         const acts = actsSnap.docs
@@ -474,6 +499,19 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     ``,
                 ]
                 : []),
+            ...(artifactEntryLines.length > 0
+                ? [
+                    `── ARTEFACTS : ENTRÉES PRÉVUES CE JOUR (pose-les en blocs, subtitle = provenance ; celles marquées optionnelles restent optionnelles) ──`,
+                    artifactEntryLines.join("\n"),
+                    ``,
+                ]
+                : []),
+            ...(offSlots.size > 0
+                ? [
+                    `── CONTRAINTE DURE (offSlots — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")} ──`,
+                    ``,
+                ]
+                : []),
             `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
             refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
             ``,
@@ -509,9 +547,18 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             throw new Error("Réponse sans JSON");
         const proposal = JSON.parse(raw.slice(start, end + 1));
         res.status(200).json({
-            message: (_h = proposal.message) !== null && _h !== void 0 ? _h : "",
-            sources: (_j = proposal.sources) !== null && _j !== void 0 ? _j : [],
-            blocks: ((_l = proposal.blocks) !== null && _l !== void 0 ? _l : []).filter((b) => { var _a; return /^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) && b.title; }),
+            message: (_m = proposal.message) !== null && _m !== void 0 ? _m : "",
+            sources: (_o = proposal.sources) !== null && _o !== void 0 ? _o : [],
+            blocks: ((_p = proposal.blocks) !== null && _p !== void 0 ? _p : []).filter((b) => {
+                var _a;
+                if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
+                    return false;
+                // offSlots = contrainte dure, appliquée aussi en déterministe (le
+                // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
+                const hour = parseInt(String(b.startTime).slice(0, 2), 10);
+                const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+                return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
+            }),
             refDate,
             dayReason,
         });
