@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/evening_verdict.dart';
 
 // ─── CARTE COACH « MAINTENANT » ──────────────────────────────────────────────
 //
@@ -18,6 +19,7 @@ enum CoachMomentType {
   drift,
   afternoon,
   evening,
+  weekly, // dimanche soir : teaser du rapport hebdo (maquette 16a)
   hidden,
 }
 
@@ -33,6 +35,7 @@ enum CoachActionKind {
   dismiss, // « À la volée » — masque la carte pour la matinée
   mealEaten, // ✓ Mangé (carte midi menu, 15c)
   mealShift, // « Autre chose aujourd'hui » — glisse le menu d'un jour
+  openWeeklyReport, // « Lire le rapport — 3 min » (16a)
 }
 
 class CoachAction {
@@ -94,6 +97,7 @@ CoachMoment computeCoachMoment(
   CoachMomentType? advancedTo,
   bool unplannedDismissed = false,
   List<Artifact> artifacts = const [],
+  WeeklyReport? weeklyReport,
 }) {
   final minutes = now.hour * 60 + now.minute;
   final blocks = _liveBlocks(today);
@@ -133,7 +137,11 @@ CoachMoment computeCoachMoment(
   // Moment « horloge ». drift prime sur afternoon dans sa fenêtre (14–19h).
   final CoachMoment clock;
   if (minutes >= 19 * 60) {
-    clock = _eveningMoment(blocks, vitals);
+    // Dimanche soir : le rapport hebdo prime sur le check-in (16a) — la
+    // semaine se juge avant de se clore.
+    clock = (now.weekday == DateTime.sunday && weeklyReport != null)
+        ? _weeklyTeaser(weeklyReport)
+        : _eveningMoment(blocks, vitals);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
         _afternoonMoment(now, blocks);
@@ -175,6 +183,7 @@ int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.drift => 3,
       CoachMomentType.afternoon => 3,
       CoachMomentType.evening => 4,
+      CoachMomentType.weekly => 4,
       CoachMomentType.hidden => -1,
     };
 
@@ -445,6 +454,28 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
       advance,
     ],
     tone: CoachTone.neutral,
+  );
+}
+
+/// Teaser du rapport hebdo (16a) — chiffres réels du rapport généré.
+CoachMoment _weeklyTeaser(WeeklyReport r) {
+  final motif = r.motifs.isNotEmpty ? r.motifs.first : null;
+  return CoachMoment(
+    type: CoachMomentType.weekly,
+    tagLabel: 'ORION · RAPPORT HEBDO',
+    title: 'Semaine ${r.isoWeek}',
+    message:
+        'Le rapport fait 3 minutes, la question de fond en fait une.',
+    stats: [
+      StatItem('Engagements tenus', '${r.held}/${r.total}'),
+      if (motif != null)
+        StatItem('« ${skipReasonLabel(motif.cause)} »', '×${motif.count}'),
+    ],
+    actions: const [
+      CoachAction('Lire le rapport — 3 min', CoachActionKind.openWeeklyReport),
+      CoachAction('Faire le point', CoachActionKind.openDayReview),
+    ],
+    tone: CoachTone.positive,
   );
 }
 

@@ -444,6 +444,80 @@ void main() {
       expect(menu.entries[3].weekday, 'sun'); // motif hebdo intouché
     });
 
+    test('dimanche soir + rapport → teaser 16a (chiffres réels)', () {
+      final now = DateTime(2026, 7, 12, 20, 0); // dimanche
+      final report = WeeklyReport(
+        weekStart: '2026-07-06',
+        isoWeek: 28,
+        held: 11,
+        total: 14,
+        motifs: [ReportMotif(cause: 'imprevu', count: 3, brokenTotal: 4)],
+      );
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          weeklyReport: report);
+      expect(m.type, CoachMomentType.weekly);
+      expect(m.stats.any((s) => s.value == '11/14'), isTrue);
+      expect(m.stats.any((s) => s.value == '×3'), isTrue);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
+          isTrue);
+    });
+
+    test('dimanche soir sans rapport → check-in normal', () {
+      final now = DateTime(2026, 7, 12, 20, 0);
+      final m = computeCoachMoment(now, _st([]), null, null, []);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('lundi soir avec rapport → check-in normal (le teaser est dominical)',
+        () {
+      final now = DateTime(2026, 7, 13, 20, 0); // lundi
+      final report = WeeklyReport(weekStart: '2026-07-13');
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          weeklyReport: report);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('WeeklyReport : round-trip toJson → from', () {
+      final r = WeeklyReport(
+        weekStart: '2026-07-06',
+        weekEnd: '2026-07-12',
+        isoWeek: 28,
+        held: 11,
+        total: 14,
+        checkinsDone: 5,
+        domains: [
+          ReportDomainFact(domainId: 'd1', name: 'Santé', vitals: [
+            ReportVital(label: '2 séances / sem', done: 2, target: 2),
+          ]),
+        ],
+        motifs: [
+          ReportMotif(
+              cause: 'imprevu',
+              count: 3,
+              brokenTotal: 4,
+              hours: ['14:00', '15:00', '16:00']),
+        ],
+        narrative: 'Meilleure semaine du mois.',
+        question: 'On déplace les relances au matin ?',
+        proposedDecision: WeeklyDecision(
+            domainId: 'd2',
+            domainName: 'Business',
+            from: 'relances à 14h',
+            to: 'relances à 9h',
+            reason: '0/3 à 14h'),
+        decisionStatus: 'pending',
+      );
+      final back = WeeklyReport.from(r.toJson());
+      expect(back.held, 11);
+      expect(back.total, 14);
+      expect(back.isoWeek, 28);
+      expect(back.domains.single.vitals.single.done, 2);
+      expect(back.motifs.single.hoursLabel, 'toujours entre 14 h et 16 h');
+      expect(back.proposedDecision?.to, 'relances à 9h');
+      expect(back.decisionStatus, 'pending');
+    });
+
     test('rétrocompat : programme sans champ kind → moment calculé normalement',
         () {
       final now = DateTime(2026, 7, 7, 10, 0);

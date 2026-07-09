@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
+exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -23,6 +23,7 @@ const models_1 = require("./models");
 const sdk_1 = require("@anthropic-ai/sdk");
 const sgMail = require("@sendgrid/mail");
 const orion_tasks_1 = require("./orion_tasks");
+const weekly_report_1 = require("./weekly_report");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
 const prompts_1 = require("./prompts");
@@ -841,6 +842,83 @@ exports.generateArtifact = (0, https_1.onRequest)({ cors: true, invoker: "public
         // Jamais d'artefact à moitié écrit : rien n'a été posé, le client
         // affiche erreur + retry.
         res.status(502).json({ error: "Génération échouée — rien n'a été écrit, réessaie." });
+    }
+});
+// ── weeklyReportNow / weeklyReportCron ────────────────────────────────────────
+//
+// Rapport hebdo (phase 2, 16a-16c) : agrégats 100 % déterministes + 1 appel
+// narratif (classe quotidienne). Cron le dimanche 18h (fenêtre 17h-20h du
+// handoff) ; endpoint on-demand pour la carte 16a et les tests.
+exports.weeklyReportNow = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
+    var _a, _b;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing Authorization header" });
+        return;
+    }
+    const { uid, weekStart } = req.body;
+    if (!uid) {
+        res.status(400).json({ error: "uid requis" });
+        return;
+    }
+    const valid = await (0, execute_1.validateToken)(uid, authHeader.slice(7).trim());
+    if (!valid) {
+        res.status(401).json({ error: "Token invalide ou révoqué" });
+        return;
+    }
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" });
+        return;
+    }
+    // Garde de coût : 1 génération / semaine / jour (le doc existant se relit).
+    const today = (0, execute_1.todayInParis)();
+    const limitRef = db_1.db.doc(`users/${uid}/rate_limits/weekly_report`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data();
+    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_b = limitData.count) !== null && _b !== void 0 ? _b : 0) : 0;
+    if (count >= 3) {
+        res.status(429).json({ error: "Limite atteinte (3 rapports/jour)." });
+        return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    try {
+        const id = await (0, weekly_report_1.generateWeeklyReport)(uid, apiKey, weekStart);
+        res.status(200).json({ reportId: id });
+    }
+    catch (e) {
+        console.error("weeklyReportNow error:", e);
+        res.status(502).json({ error: "Rapport indisponible — réessaie." });
+    }
+});
+exports.weeklyReportCron = (0, scheduler_1.onSchedule)({ schedule: "0 18 * * 0", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] }, async () => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        console.error("weeklyReportCron: ANTHROPIC_API_KEY manquante");
+        return;
+    }
+    // listDocuments inclut les docs « virtuels » qui n'ont que des sous-collections.
+    const users = await db_1.db.collection("users").listDocuments();
+    const weekStart = (0, weekly_report_1.mondayOf)(new Date().toISOString().slice(0, 10));
+    for (const ref of users) {
+        try {
+            // Ne regénère pas un rapport déjà présent (idempotent sur la semaine).
+            const existing = await db_1.db.doc(`users/${ref.id}/weekly_reports/${weekStart}`).get();
+            if (existing.exists)
+                continue;
+            await (0, weekly_report_1.generateWeeklyReport)(ref.id, apiKey, weekStart);
+        }
+        catch (e) {
+            console.error(`weeklyReportCron uid=${ref.id}:`, e);
+        }
     }
 });
 // ── pushAssistantMessage ──────────────────────────────────────────────────────

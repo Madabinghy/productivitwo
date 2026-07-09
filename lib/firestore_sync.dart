@@ -777,6 +777,22 @@ class FirestoreSync {
     await _col('artifacts').doc(artifact.id).set(artifact.toJson());
   }
 
+  // ── Rapport hebdo ────────────────────────────────────────────────────────
+
+  Future<WeeklyReport?> fetchWeeklyReport(String weekStart) async {
+    if (uid == null) return null;
+    final snap = await _col('weekly_reports').doc(weekStart).get();
+    return snap.exists ? WeeklyReport.from(snap.data() as Map) : null;
+  }
+
+  /// Statut de la décision du rapport (pending → applied | declined).
+  Future<void> setWeeklyReportDecision(String weekStart, String status) async {
+    if (uid == null) return;
+    await _col('weekly_reports')
+        .doc(weekStart)
+        .set({'decisionStatus': status}, SetOptions(merge: true));
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();

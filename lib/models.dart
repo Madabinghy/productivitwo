@@ -9,6 +9,7 @@ part 'models/projects.dart';
 part 'models/integrations.dart';
 part 'models/schedule.dart';
 part 'models/artifact.dart';
+part 'models/weekly_report.dart';
 part 'models/world.dart';
 part 'models/redemption.dart';
 
