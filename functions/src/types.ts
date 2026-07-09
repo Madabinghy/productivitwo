@@ -91,6 +91,31 @@ export interface DomainDefinitionPayload {
   finalize?: boolean; // true → definitionStatus:"active" + definedAt
 }
 
+// ── Artefacts structurés (users/{uid}/artifacts/{id}) ────────────────────────
+// Un artefact = une SOURCE DE BLOCS (entries datées instanciables par la
+// proposition), pas un document à lire. ⟳ régénère la suite, jamais le passé.
+
+export interface ArtifactEntryPayload {
+  date?: string; // "YYYY-MM-DD" (exclusif avec weekday)
+  weekday?: string; // "mon".."sun" — motif hebdo (menu)
+  time: string; // "HH:mm"
+  title: string;
+  durationMin: number;
+  detail?: string;
+  portions?: number;
+  optional?: boolean;
+}
+
+export interface ArtifactPayload {
+  id?: string;
+  kind: "training_plan" | "weekly_menu";
+  domainId: string;
+  params: Record<string, unknown>; // les 3-4 paramètres confirmés au cadrage
+  entries: ArtifactEntryPayload[];
+  shoppingList?: Array<{ label: string; qty?: string }>; // menu uniquement
+  offSlots?: string[]; // « on ne touche pas » — contrainte dure
+}
+
 export interface DailySchedulePayload {
   date: string;
   generatedBy?: string;

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 
 /// Session de définition d'un domaine (maquettes 13a → 13c) : une vraie
 /// conversation avec Orion, pas un formulaire. Chaque élément validé est ÉCRIT
@@ -524,10 +525,12 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
             InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: () {
-                // Génération structurée = handoff suivant : en attendant, la
-                // demande repart dans la conversation de session, pré-cadrée.
-                setState(() => _stage = _Stage.chat);
-                _send('Génère « $a » pour le domaine ${widget.domainName}.');
+                // Génération structurée : la rangée pointe vers le CADRAGE
+                // (14a/15a) — 3-4 paramètres pré-remplis depuis la fiche.
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ArtifactSetupScreen(
+                      domain: d, kind: artifactKindFromLabel(a)),
+                ));
               },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
@@ -711,12 +714,16 @@ class DomainsScreen extends StatelessWidget {
           final domains = (snap.data ?? logic.state.activeDomains)
               .where((d) => !d.deleted)
               .toList();
-          return ListView(
+          return StreamBuilder<List<Artifact>>(
+            stream: sync.streamArtifacts(),
+            builder: (ctx2, artSnap) {
+              final artifacts = artSnap.data ?? const <Artifact>[];
+              return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
-              for (final d in domains)
+              for (final d in domains) ...[
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: DomainCard(
                     domain: d,
                     onTap: () => Navigator.of(ctx).push(MaterialPageRoute(
@@ -725,6 +732,30 @@ class DomainsScreen extends StatelessWidget {
                     )),
                   ),
                 ),
+                // Artefacts du domaine (plan, menu) — sources de blocs.
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final a in artifacts
+                          .where((a) => a.domainId == d.id))
+                        ActionChip(
+                          avatar: Icon(Icons.article_outlined,
+                              size: 14, color: cs.primary),
+                          label: Text(a.title,
+                              style: const TextStyle(fontSize: 12)),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () =>
+                              Navigator.of(ctx).push(MaterialPageRoute(
+                            builder: (_) => ArtifactViewScreen(
+                                artifact: a, domain: d),
+                          )),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 6),
               OutlinedButton.icon(
                 icon: const Icon(Icons.auto_awesome, size: 16),
@@ -778,6 +809,8 @@ class DomainsScreen extends StatelessWidget {
                 ),
               ),
             ],
+              );
+            },
           );
         },
       ),

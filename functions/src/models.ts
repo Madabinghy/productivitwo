@@ -11,6 +11,7 @@ type TaskType =
   | "plan_day"
   | "plan_proposal"
   | "define_domain"
+  | "generate_artifact"
   | "plan_week"
   | "sync_calendar"
   | "chat"
@@ -27,6 +28,7 @@ const MODEL_ROUTING: Record<TaskType, string> = {
   plan_day:          MODELS.HAIKU,
   plan_proposal:     MODELS.HAIKU, // écran de planification : 1 appel JSON / ouverture (cycle quotidien)
   define_domain:     MODELS.OPUS,  // session de définition — moment fondateur, faible volume plafonné (pattern structure_project)
+  generate_artifact: MODELS.HAIKU, // plan/menu : 1 appel JSON par génération (classe quotidienne)
   plan_week:         MODELS.HAIKU,
   sync_calendar:     MODELS.HAIKU,
   chat:              MODELS.SONNET,

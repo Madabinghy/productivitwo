@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
+exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -639,6 +639,161 @@ exports.defineDomainChat = (0, https_1.onRequest)({ cors: true, invoker: "public
     catch (e) {
         console.error("defineDomainChat error:", e);
         res.status(500).json({ error: "Session indisponible — réessaie." });
+    }
+});
+// ── generateArtifact ──────────────────────────────────────────────────────────
+//
+// POST { uid, kind, domainId, params, artifactId?, regenerateFrom? } + Bearer
+// Génère un artefact structuré (plan d'entraînement / menu) — une SOURCE DE
+// BLOCS instanciable, pas un document. 1 appel Haiku (classe quotidienne),
+// JSON strict, écrit users/{uid}/artifacts/{id} d'un bloc (jamais d'artefact à
+// moitié écrit). regenerateFrom (YYYY-MM-DD) = ⟳ : seules les entries à partir
+// de cette date sont régénérées, le passé n'est JAMAIS réécrit.
+const GENERATE_ARTIFACT_MAX_PER_DAY = 15;
+exports.generateArtifact = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Missing Authorization header" });
+        return;
+    }
+    const { uid, kind, domainId, params, artifactId, regenerateFrom } = req.body;
+    if (!uid || !kind || !domainId || !params) {
+        res.status(400).json({ error: "uid, kind, domainId et params requis" });
+        return;
+    }
+    if (kind !== "training_plan" && kind !== "weekly_menu") {
+        res.status(400).json({ error: `kind inconnu : ${kind}` });
+        return;
+    }
+    const valid = await (0, execute_1.validateToken)(uid, authHeader.slice(7).trim());
+    if (!valid) {
+        res.status(401).json({ error: "Token invalide ou révoqué" });
+        return;
+    }
+    const today = (0, execute_1.todayInParis)();
+    const limitRef = db_1.db.doc(`users/${uid}/rate_limits/generate_artifact`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data();
+    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_b = limitData.count) !== null && _b !== void 0 ? _b : 0) : 0;
+    if (count >= GENERATE_ARTIFACT_MAX_PER_DAY) {
+        res.status(429).json({ error: `Limite atteinte (${GENERATE_ARTIFACT_MAX_PER_DAY}/jour).` });
+        return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+        res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" });
+        return;
+    }
+    try {
+        // ── Contexte : la fiche domaine + l'existant en cas de régénération ─────
+        const domainSnap = await db_1.db.doc(`users/${uid}/domains/${domainId}`).get();
+        const domain = domainSnap.exists ? domainSnap.data() : {};
+        const vital = ((_c = domain.vitalMinimum) !== null && _c !== void 0 ? _c : [])
+            .map((v) => v.label).join(" · ");
+        const modalities = ((_d = domain.modalities) !== null && _d !== void 0 ? _d : [])
+            .map((m) => { var _a; return (_a = m.label) !== null && _a !== void 0 ? _a : m; }).join(" · ");
+        // ⟳ : préserver les entries passées de l'artefact existant.
+        let pastEntries = [];
+        let existingParams = {};
+        if (artifactId && regenerateFrom) {
+            const prevSnap = await db_1.db.doc(`users/${uid}/artifacts/${artifactId}`).get();
+            if (prevSnap.exists) {
+                const prev = prevSnap.data();
+                existingParams = (_e = prev.params) !== null && _e !== void 0 ? _e : {};
+                pastEntries = ((_f = prev.entries) !== null && _f !== void 0 ? _f : [])
+                    .filter((e) => e.date && String(e.date) < regenerateFrom);
+            }
+        }
+        const isMenu = kind === "weekly_menu";
+        const systemPrompt = [
+            `Tu génères un artefact structuré « ${isMenu ? "menu de la semaine" : "plan d'entraînement"} » pour Productivitwo. Nous sommes le ${today}.`,
+            `Cet artefact est une SOURCE DE BLOCS : ses entries datées seront posées dans le programme quotidien. ${isMenu ? "Un menu qui se vit, pas un menu de magazine." : "Progressif, réaliste, tenable."}`,
+            ``,
+            `FICHE DOMAINE (le raccord est obligatoire) :`,
+            `  intention : « ${(_g = domain.intention) !== null && _g !== void 0 ? _g : "non définie"} »`,
+            vital ? `  minimum vital : ${vital}` : "",
+            modalities ? `  modalités : ${modalities}` : "",
+            ``,
+            `PARAMÈTRES CONFIRMÉS AU CADRAGE (à respecter strictement) :`,
+            JSON.stringify(Object.assign(Object.assign({}, existingParams), params), null, 2),
+            ``,
+            regenerateFrom
+                ? `⟳ RÉGÉNÉRATION DE LA SUITE : génère UNIQUEMENT les entries à partir du ${regenerateFrom} (le passé est préservé tel quel, jamais de culpabilité rétroactive). Repars des faits : les paramètres restent, le rythme peut se recaler.`
+                : `Génère ${isMenu ? "la semaine courante (jours restants) + le motif hebdo" : "les 2 premières semaines datées + le motif des semaines suivantes"} à partir d'aujourd'hui.`,
+            ``,
+            `Tu réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :`,
+            `{`,
+            `  "entries": [{"date": "YYYY-MM-DD" ou null, "weekday": "mon".."sun" ou null, "time": "HH:mm",`,
+            `               "title": "…", "durationMin": 20, "detail": "contenu concret court", "portions": null, "optional": false}],`,
+            isMenu
+                ? `  "shoppingList": [{"label": "poulet", "qty": "×2"}],`
+                : `  "shoppingList": [],`,
+            `  "offSlots": ["fri_evening", …]  // repris des paramètres « on ne touche pas »`,
+            `}`,
+            ``,
+            `RÈGLES : date OU weekday par entry (date pour la semaine courante, weekday pour le motif récurrent) · ` +
+                `respecte les offSlots (rien dessus) · marque optional:true ce qui est hors vital · ` +
+                `detail court et concret (exercices/plat, pas de blabla) · chiffres réalistes, jamais grandioses.`,
+        ].filter((l) => l !== "").join("\n");
+        const client = new sdk_1.default({ apiKey });
+        const model = (0, models_1.getModel)("generate_artifact");
+        const response = await client.messages.create({
+            model,
+            max_tokens: 2500,
+            system: systemPrompt,
+            messages: [{ role: "user", content: `Génère l'artefact ${kind}.` }],
+        });
+        (0, models_1.logTokenUsage)("generate_artifact", model, response.usage);
+        const raw = response.content
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+        const start = raw.indexOf("{");
+        const end = raw.lastIndexOf("}");
+        if (start < 0 || end <= start)
+            throw new Error("Réponse sans JSON");
+        const gen = JSON.parse(raw.slice(start, end + 1));
+        const newEntries = ((_h = gen.entries) !== null && _h !== void 0 ? _h : []).filter((e) => { var _a; return e.title && /^\d{2}:\d{2}$/.test(String((_a = e.time) !== null && _a !== void 0 ? _a : "")); });
+        if (newEntries.length === 0)
+            throw new Error("Aucune entry générée");
+        // Écriture d'un bloc — jamais d'artefact à moitié écrit.
+        const docId = artifactId !== null && artifactId !== void 0 ? artifactId : (0, uuid_1.v4)();
+        const artifact = {
+            id: docId,
+            kind,
+            domainId,
+            generatedAt: new Date().toISOString(),
+            params: Object.assign(Object.assign({}, existingParams), params),
+            entries: [...pastEntries, ...newEntries],
+            shoppingList: (_j = gen.shoppingList) !== null && _j !== void 0 ? _j : [],
+            offSlots: (_l = gen.offSlots) !== null && _l !== void 0 ? _l : ((_m = params.offSlots) !== null && _m !== void 0 ? _m : []),
+            deleted: false,
+        };
+        await db_1.db.doc(`users/${uid}/artifacts/${docId}`).set(artifact);
+        // Raccord au domaine (artifactIds) — sans doublon.
+        if (domainSnap.exists) {
+            const ids = ((_o = domain.artifactIds) !== null && _o !== void 0 ? _o : []);
+            if (!ids.includes(docId)) {
+                await domainSnap.ref.set({ artifactIds: [...ids, docId] }, { merge: true });
+            }
+        }
+        res.status(200).json({ artifactId: docId, entries: artifact.entries.length });
+    }
+    catch (e) {
+        console.error("generateArtifact error:", e);
+        // Jamais d'artefact à moitié écrit : rien n'a été posé, le client
+        // affiche erreur + retry.
+        res.status(502).json({ error: "Génération échouée — rien n'a été écrit, réessaie." });
     }
 });
 // ── pushAssistantMessage ──────────────────────────────────────────────────────
