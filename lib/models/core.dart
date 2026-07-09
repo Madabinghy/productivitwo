@@ -138,6 +138,7 @@ class Domain {
   // "named" (onboarding : nommé mais pas défini — N'EXISTE PAS pour le coach :
   // ignoré par la proposition, la carte et le rapport, aucun vital inventé).
   String definitionStatus; // "none" | "named" | "draft" | "active" | "suspended"
+  DateTime? namedAt; // posé au nommage (18a/22a) — « nommé depuis N j » (21c)
   DateTime? definedAt;
   DateTime? renegotiatedAt;
   List<Map<String, dynamic>> history; // { date, field, from, to, reason }
@@ -164,6 +165,7 @@ class Domain {
     List<String>? artifactIds,
     List<String>? wantedArtifacts,
     this.definitionStatus = 'none',
+    this.namedAt,
     this.definedAt,
     this.renegotiatedAt,
     List<Map<String, dynamic>>? history,
@@ -198,6 +200,7 @@ class Domain {
         'artifactIds': artifactIds,
         'wantedArtifacts': wantedArtifacts,
         'definitionStatus': definitionStatus,
+        'namedAt': namedAt?.toIso8601String(),
         'definedAt': definedAt?.toIso8601String(),
         'renegotiatedAt': renegotiatedAt?.toIso8601String(),
         'history': history,
@@ -231,6 +234,7 @@ class Domain {
             (j['wantedArtifacts'] as List?)?.map((e) => e.toString()).toList() ??
                 [],
         definitionStatus: j['definitionStatus']?.toString() ?? 'none',
+        namedAt: _parseDateOrNull(j['namedAt']),
         definedAt: _parseDateOrNull(j['definedAt']),
         renegotiatedAt: _parseDateOrNull(j['renegotiatedAt']),
         history: (j['history'] as List?)

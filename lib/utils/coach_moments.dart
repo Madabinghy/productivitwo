@@ -20,6 +20,7 @@ enum CoachMomentType {
   afternoon,
   evening,
   weekly, // dimanche soir : teaser du rapport hebdo (maquette 16a)
+  defineNudge, // domaines absents/nommés → l'app invite (Partie D, 21a-21c)
   hidden,
 }
 
@@ -32,10 +33,16 @@ enum CoachActionKind {
   renegotiate,
   advanceMoment,
   planDay, // ouvre l'écran de planification (rattrapage du matin)
-  dismiss, // « À la volée » — masque la carte pour la matinée
+  dismiss, // « À la volée » / « Garder [créneau] » — masque la carte du jour
   mealEaten, // ✓ Mangé (carte midi menu, 15c)
   mealShift, // « Autre chose aujourd'hui » — glisse le menu d'un jour
   openWeeklyReport, // « Lire le rapport — 3 min » (16a)
+  // ── Partie D — nudge domaines (21a-21c / 22a-22c) ──────────────────────────
+  nameDomains, // ouvre le sheet de nommage in-place (22a)
+  nameTonight, // « Ce soir plutôt » — pose un bloc « nommer » dans le programme
+  startSession, // « Faire la session maintenant — 15 min » (domain)
+  startSessionShort, // « Version courte — 8 min » (21c, intention + vital)
+  poseSessions, // « Plus tard » — pose les sessions restantes (mécanique 18b)
 }
 
 class CoachAction {
@@ -44,8 +51,9 @@ class CoachAction {
   final ScheduleBlock? block;
   final CoachMomentType? target;
   final String? artifactId; // menu concerné (mealEaten / mealShift)
+  final String? domain; // domaine visé (startSession / startSessionShort)
   const CoachAction(this.label, this.kind,
-      {this.block, this.target, this.artifactId});
+      {this.block, this.target, this.artifactId, this.domain});
 }
 
 class StatItem {
@@ -63,6 +71,8 @@ class CoachMoment {
   final List<StatItem> stats;
   final List<CoachAction> actions;
   final CoachTone tone;
+  // Chips domaines du nudge (21b) : « Santé ✓ · Business · Perso ».
+  final List<({String label, bool done})> chips;
 
   const CoachMoment({
     required this.type,
@@ -72,6 +82,7 @@ class CoachMoment {
     this.stats = const [],
     this.actions = const [],
     this.tone = CoachTone.neutral,
+    this.chips = const [],
   });
 
   bool get hidden => type == CoachMomentType.hidden;
@@ -88,6 +99,11 @@ class CoachMoment {
 /// L'avance ne peut jamais reculer, et l'horloge la rattrape naturellement.
 /// [unplannedDismissed] : le user a tapé « À la volée » sur la carte
 /// « journée non planifiée » — on ne la re-propose pas de la matinée.
+/// [sessionSkipCount] : sessions de définition sautées/reportées (14 jours) —
+/// déclenche l'escalade factuelle 21c à partir de 2. [nextSessionLabel] :
+/// prochaine session posée (« demain 18 h 30 »), calculée par l'appelant.
+/// [nudgeDismissed] : « Garder [créneau] » / « Ce soir plutôt » — le nudge se
+/// tait pour la journée (le bloc posé prend le relais).
 CoachMoment computeCoachMoment(
   DateTime now,
   AppState st,
@@ -98,6 +114,9 @@ CoachMoment computeCoachMoment(
   bool unplannedDismissed = false,
   List<Artifact> artifacts = const [],
   WeeklyReport? weeklyReport,
+  int sessionSkipCount = 0,
+  String? nextSessionLabel,
+  bool nudgeDismissed = false,
 }) {
   final minutes = now.hour * 60 + now.minute;
   final blocks = _liveBlocks(today);
@@ -113,6 +132,16 @@ CoachMoment computeCoachMoment(
   // le programme d'HIER (et leur bloc cible est désormais ce matin).
   if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday), const []);
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
+
+  // ── Nudge domaines (Partie D) : prioritaire sur les moments horaires tant
+  // qu'un domaine est absent ou seulement nommé. Le teaser du rapport (16a)
+  // garde le dimanche soir — la semaine se juge avant de se nudger.
+  final sundayReport =
+      now.weekday == DateTime.sunday && minutes >= 19 * 60 && weeklyReport != null;
+  if (!nudgeDismissed && !sundayReport) {
+    final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
+    if (nudge != null) return nudge;
+  }
 
   // « Journée non planifiée » (5a) : matinée sans programme (hors preps) →
   // prime sur les templates réveil/matin, sous la dérive (après-midi de toute
@@ -184,8 +213,113 @@ int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.afternoon => 3,
       CoachMomentType.evening => 4,
       CoachMomentType.weekly => 4,
+      CoachMomentType.defineNudge => 5, // hors déroulé — jamais dépassé
       CoachMomentType.hidden => -1,
     };
+
+// ── Nudge domaines (Partie D, maquettes 21a-21c) ─────────────────────────────
+//
+// Le trou entre « le modèle domaine existe » et « le user pense à s'en
+// servir » : si rien n'est défini, c'est l'app qui invite, dans Maintenant,
+// et tout se fait sur place. Templates déterministes, chiffres réels. 0 LLM.
+
+CoachMoment? _defineNudge(
+    DateTime now, AppState st, int skips, String? nextLabel) {
+  final domains = st.domains.where((d) => !d.deleted).toList();
+  final named =
+      domains.where((d) => d.definitionStatus == 'named').toList();
+  final started = domains
+      .where((d) =>
+          d.definitionStatus == 'active' || d.definitionStatus == 'draft')
+      .toList();
+
+  // 21a — rien n'est nommé ni défini : le programme ne peut pas exister.
+  if (named.isEmpty && started.isEmpty) {
+    return const CoachMoment(
+      type: CoachMomentType.defineNudge,
+      tagLabel: 'ORION · À FAIRE UNE FOIS',
+      message:
+          'Je peux te planifier des journées — mais pour l\'instant je ne sais pas ce qui compte pour toi. Donne-moi tes 2 ou 3 domaines, ici même : 2 minutes, et je commence à travailler.',
+      actions: [
+        CoachAction('Nommer mes domaines — 2 min', CoachActionKind.nameDomains),
+        CoachAction('Ce soir plutôt — pose-le dans mon programme',
+            CoachActionKind.nameTonight),
+      ],
+    );
+  }
+  if (named.isEmpty) return null; // tout est défini ou en session — silence
+
+  final first = named.first;
+  final active = domains.where((d) => d.isDefined).toList();
+  final chips = <({String label, bool done})>[
+    for (final d in [...active, ...started.where((d) => !d.isDefined), ...named])
+      (label: d.name, done: d.isDefined),
+  ];
+  final total = chips.length;
+
+  // 21c — ≥ 2 reports : escalade FACTUELLE uniquement, jamais de morale.
+  if (skips >= 2) {
+    final namedDays =
+        first.namedAt != null ? now.difference(first.namedAt!).inDays : null;
+    final planned = active.isNotEmpty
+        ? 'tes journées ne contiennent que ${active.map((d) => d.name).join(' et ')}'
+        : 'je planifie sans lui';
+    return CoachMoment(
+      type: CoachMomentType.defineNudge,
+      tagLabel: 'ORION · SESSION EN ATTENTE · $skips REPORTS',
+      message:
+          '${first.name} est nommé${namedDays != null ? ' depuis $namedDays j' : ''} et sa session a sauté $skips fois. Résultat concret : $planned. Version courte, ici : intention + minimum vital, le reste plus tard.',
+      stats: [
+        if (namedDays != null) StatItem('Nommé depuis', '$namedDays j'),
+        StatItem('Sessions sautées', '$skips'),
+        if (nextLabel == null) StatItem('Bloc ${first.name} posé', '0'),
+      ],
+      actions: [
+        CoachAction('Version courte — 8 min', CoachActionKind.startSessionShort,
+            domain: first.name),
+        const CoachAction('Reposer un créneau', CoachActionKind.poseSessions),
+      ],
+      tone: CoachTone.alert,
+      chips: chips,
+    );
+  }
+
+  // 22c — tout juste nommé, rien de posé : on enchaîne sur le rang 1.
+  if (active.isEmpty && started.isEmpty && nextLabel == null) {
+    return CoachMoment(
+      type: CoachMomentType.defineNudge,
+      tagLabel: 'ORION · LA SUITE · 0 DÉFINI / $total',
+      message:
+          'Nommer, c\'est fait. Définir, c\'est ce qui me rend utile : intention + minimum vital. On commence par ${first.name} — c\'est toi qui l\'as mis en 1.',
+      actions: [
+        CoachAction('Définir « ${first.name} » — 15 min',
+            CoachActionKind.startSession, domain: first.name),
+        CoachAction(
+            'Plus tard — pose les ${named.length} sessions dans ma semaine',
+            CoachActionKind.poseSessions),
+      ],
+      chips: chips,
+    );
+  }
+
+  // 21b — nommés, session en attente.
+  return CoachMoment(
+    type: CoachMomentType.defineNudge,
+    tagLabel: 'ORION · SESSION EN ATTENTE · ${active.length} DÉFINI / $total',
+    message:
+        '${first.name} attend sa session${nextLabel != null ? ' — elle est posée $nextLabel' : ''}. Si tu as 15 min, on la fait ici, tout de suite. Tant qu\'il n\'est pas défini, je planifie sans lui.',
+    actions: [
+      CoachAction('Faire la session maintenant — 15 min',
+          CoachActionKind.startSession, domain: first.name),
+      nextLabel != null
+          ? CoachAction('Garder $nextLabel', CoachActionKind.dismiss)
+          : CoachAction(
+              'Plus tard — pose les ${named.length} sessions dans ma semaine',
+              CoachActionKind.poseSessions),
+    ],
+    chips: chips,
+  );
+}
 
 // ── Moments ───────────────────────────────────────────────────────────────────
 

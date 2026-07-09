@@ -2,10 +2,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 
+// Un domaine ACTIF par défaut : le nudge domaines (Partie D) ne se déclenche
+// que s'il existe un domaine absent ou seulement nommé — les moments horaires
+// se testent donc avec une fiche définie.
 AppState _st(List<Session> sessions) => AppState(
-      domains: [],
+      domains: [
+        Domain(
+            name: 'Santé',
+            definitionStatus: 'active',
+            intention: 'tenir le rythme'),
+      ],
       activities: [],
       sessions: sessions,
+      habitProgress: [],
+    );
+
+AppState _stDomains(List<Domain> domains) => AppState(
+      domains: domains,
+      activities: [],
+      sessions: [],
       habitProgress: [],
     );
 
@@ -46,6 +61,104 @@ void main() {
   const yesterday = '2026-07-06';
 
   group('computeCoachMoment', () {
+    test('21a — aucun domaine nommé ni défini → nudge prioritaire', () {
+      final now = DateTime(2026, 7, 7, 18, 12);
+      // Même avec un programme en place, l'invite prime sur l'horaire.
+      final sched = _sched(today, [_block(startTime: '15:00')]);
+      final m = computeCoachMoment(now, _stDomains([]), sched, null, []);
+      expect(m.type, CoachMomentType.defineNudge);
+      expect(m.actions.first.kind, CoachActionKind.nameDomains);
+      expect(m.actions[1].kind, CoachActionKind.nameTonight);
+    });
+
+    test('21a — les domaines legacy (none) comptent comme absents', () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final m = computeCoachMoment(
+          now, _stDomains([Domain(name: 'Vieux domaine')]), null, null, []);
+      expect(m.type, CoachMomentType.defineNudge);
+      expect(m.actions.first.kind, CoachActionKind.nameDomains);
+    });
+
+    test('22c — nommés, rien de posé → « Définir le rang 1 » + chips', () {
+      final now = DateTime(2026, 7, 7, 18, 15);
+      final st = _stDomains([
+        Domain(name: 'Santé', definitionStatus: 'named'),
+        Domain(name: 'Business', definitionStatus: 'named'),
+      ]);
+      final m = computeCoachMoment(now, st, null, null, []);
+      expect(m.type, CoachMomentType.defineNudge);
+      expect(m.actions.first.kind, CoachActionKind.startSession);
+      expect(m.actions.first.domain, 'Santé'); // rang 1 = ordre de nommage
+      expect(m.actions[1].kind, CoachActionKind.poseSessions);
+      expect(m.chips, hasLength(2));
+    });
+
+    test('21b — session posée → « Garder [créneau] », défini ✓ en chip', () {
+      final now = DateTime(2026, 7, 7, 19, 40);
+      final st = _stDomains([
+        Domain(
+            name: 'Santé', definitionStatus: 'active', intention: 'rythme'),
+        Domain(name: 'Business', definitionStatus: 'named'),
+      ]);
+      final m = computeCoachMoment(now, st, null, null, [],
+          nextSessionLabel: 'demain 18 h 30');
+      expect(m.type, CoachMomentType.defineNudge);
+      expect(m.message, contains('Business'));
+      expect(m.message, contains('demain 18 h 30'));
+      expect(m.actions[1].kind, CoachActionKind.dismiss);
+      expect(m.actions[1].label, 'Garder demain 18 h 30');
+      expect(m.chips.where((c) => c.done), hasLength(1));
+    });
+
+    test('21c — ≥ 2 reports → escalade factuelle, version courte', () {
+      final now = DateTime(2026, 7, 13, 12, 35);
+      final st = _stDomains([
+        Domain(
+            name: 'Business',
+            definitionStatus: 'named',
+            namedAt: DateTime(2026, 7, 9)),
+      ]);
+      final m =
+          computeCoachMoment(now, st, null, null, [], sessionSkipCount: 2);
+      expect(m.type, CoachMomentType.defineNudge);
+      expect(m.tone, CoachTone.alert);
+      expect(m.actions.first.kind, CoachActionKind.startSessionShort);
+      expect(m.stats.any((s) => s.value == '4 j'), isTrue); // nommé depuis
+      expect(m.stats.any((s) => s.value == '2'), isTrue); // sessions sautées
+    });
+
+    test('nudge écarté (« Garder ») → les moments horaires reprennent', () {
+      final now = DateTime(2026, 7, 7, 19, 40);
+      final st = _stDomains([
+        Domain(name: 'Business', definitionStatus: 'named'),
+      ]);
+      final m =
+          computeCoachMoment(now, st, null, null, [], nudgeDismissed: true);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('tout est défini ou en session → pas de nudge', () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final st = _stDomains([
+        Domain(name: 'Santé', definitionStatus: 'active', intention: 'x'),
+        Domain(name: 'Business', definitionStatus: 'draft'),
+      ]);
+      final sched = _sched(today, [_block(startTime: '09:00')]);
+      final m = computeCoachMoment(now, st, sched, null, []);
+      expect(m.type, isNot(CoachMomentType.defineNudge));
+    });
+
+    test('dimanche soir : le rapport hebdo garde la main sur le nudge', () {
+      final now = DateTime(2026, 7, 12, 20, 0); // dimanche
+      final st = _stDomains([
+        Domain(name: 'Business', definitionStatus: 'named'),
+      ]);
+      final report = WeeklyReport(weekStart: '2026-07-06');
+      final m = computeCoachMoment(now, st, null, null, [],
+          weeklyReport: report);
+      expect(m.type, CoachMomentType.weekly);
+    });
+
     test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);

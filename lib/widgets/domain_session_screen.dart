@@ -17,11 +17,15 @@ import 'package:productivitwo_v1/widgets/domain_onboarding_screen.dart';
 class DomainSessionScreen extends StatefulWidget {
   final AppLogic logic;
   final String domainName;
+  // Version courte (21c) : intention + minimum vital seulement, les modalités
+  // plus tard — la consigne part dans le message d'amorce, prompt inchangé.
+  final bool shortVersion;
 
   const DomainSessionScreen({
     super.key,
     required this.logic,
     required this.domainName,
+    this.shortVersion = false,
   });
 
   @override
@@ -86,7 +90,9 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
     await _send(
       _resumable
           ? 'Reprenons la session de définition là où on s\'était arrêtés.'
-          : 'Commençons la session de définition du domaine « ${widget.domainName} ».',
+          : widget.shortVersion
+              ? 'Commençons la session de définition COURTE du domaine « ${widget.domainName} » : intention + minimum vital seulement, en 8 minutes — les modalités viendront plus tard.'
+              : 'Commençons la session de définition du domaine « ${widget.domainName} ».',
       visible: false,
     );
   }

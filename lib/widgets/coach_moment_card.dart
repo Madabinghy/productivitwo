@@ -22,6 +22,11 @@ class CoachMomentCard extends StatelessWidget {
   final void Function(String artifactId)? onMealShift;
   // « Lire le rapport — 3 min » (16a) → écran du rapport hebdo.
   final VoidCallback? onOpenWeeklyReport;
+  // Nudge domaines (Partie D) : nommage in-place / session sur place.
+  final VoidCallback? onNameDomains;
+  final VoidCallback? onNameTonight;
+  final void Function(String domain, {bool short})? onStartSession;
+  final VoidCallback? onPoseSessions;
 
   const CoachMomentCard({
     super.key,
@@ -35,6 +40,10 @@ class CoachMomentCard extends StatelessWidget {
     this.onMealEaten,
     this.onMealShift,
     this.onOpenWeeklyReport,
+    this.onNameDomains,
+    this.onNameTonight,
+    this.onStartSession,
+    this.onPoseSessions,
   });
 
   @override
@@ -66,6 +75,10 @@ class CoachMomentCard extends StatelessWidget {
               onMealEaten: onMealEaten,
               onMealShift: onMealShift,
               onOpenWeeklyReport: onOpenWeeklyReport,
+              onNameDomains: onNameDomains,
+              onNameTonight: onNameTonight,
+              onStartSession: onStartSession,
+              onPoseSessions: onPoseSessions,
             ),
     );
   }
@@ -82,6 +95,10 @@ class _Card extends StatelessWidget {
   final void Function(String artifactId)? onMealEaten;
   final void Function(String artifactId)? onMealShift;
   final VoidCallback? onOpenWeeklyReport;
+  final VoidCallback? onNameDomains;
+  final VoidCallback? onNameTonight;
+  final void Function(String domain, {bool short})? onStartSession;
+  final VoidCallback? onPoseSessions;
 
   const _Card({
     super.key,
@@ -95,6 +112,10 @@ class _Card extends StatelessWidget {
     this.onMealEaten,
     this.onMealShift,
     this.onOpenWeeklyReport,
+    this.onNameDomains,
+    this.onNameTonight,
+    this.onStartSession,
+    this.onPoseSessions,
   });
 
   @override
@@ -145,6 +166,40 @@ class _Card extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 17, fontWeight: FontWeight.w800)),
           ],
+          // Chips domaines du nudge (21b) : « Santé ✓ · Business · Perso ».
+          if (moment.chips.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final c in moment.chips)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                          color: c.done
+                              ? cs.primary.withOpacity(.5)
+                              : cs.onSurface.withOpacity(.25)),
+                      color: c.done
+                          ? cs.primary.withOpacity(.08)
+                          : Colors.transparent,
+                    ),
+                    child: Text(
+                      c.done ? '${c.label} ✓' : c.label,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: c.done
+                              ? cs.primary
+                              : cs.onSurface.withOpacity(.6)),
+                    ),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
             moment.message,
@@ -169,6 +224,10 @@ class _Card extends StatelessWidget {
               onMealEaten: onMealEaten,
               onMealShift: onMealShift,
               onOpenWeeklyReport: onOpenWeeklyReport,
+              onNameDomains: onNameDomains,
+              onNameTonight: onNameTonight,
+              onStartSession: onStartSession,
+              onPoseSessions: onPoseSessions,
             ),
           ],
         ],
@@ -246,6 +305,10 @@ class _Actions extends StatelessWidget {
   final void Function(String artifactId)? onMealEaten;
   final void Function(String artifactId)? onMealShift;
   final VoidCallback? onOpenWeeklyReport;
+  final VoidCallback? onNameDomains;
+  final VoidCallback? onNameTonight;
+  final void Function(String domain, {bool short})? onStartSession;
+  final VoidCallback? onPoseSessions;
 
   const _Actions({
     required this.actions,
@@ -259,6 +322,10 @@ class _Actions extends StatelessWidget {
     this.onMealEaten,
     this.onMealShift,
     this.onOpenWeeklyReport,
+    this.onNameDomains,
+    this.onNameTonight,
+    this.onStartSession,
+    this.onPoseSessions,
   });
 
   @override
@@ -274,7 +341,15 @@ class _Actions extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final isPrimary = a.kind == CoachActionKind.launchBlock ||
         a.kind == CoachActionKind.planDay ||
-        a.kind == CoachActionKind.openWeeklyReport;
+        a.kind == CoachActionKind.openWeeklyReport ||
+        a.kind == CoachActionKind.nameDomains ||
+        a.kind == CoachActionKind.startSession ||
+        a.kind == CoachActionKind.startSessionShort;
+    // Secondaires du nudge : liens discrets sous le CTA (maquettes 21a-21c).
+    final isQuiet = a.kind == CoachActionKind.nameTonight ||
+        a.kind == CoachActionKind.poseSessions ||
+        (a.kind == CoachActionKind.dismiss &&
+            a.label.startsWith('Garder'));
     final onTap = _handlerFor(a);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
     final icon = switch (a.kind) {
@@ -287,9 +362,14 @@ class _Actions extends StatelessWidget {
       CoachActionKind.mealEaten => Icons.check_rounded,
       CoachActionKind.mealShift => Icons.swap_horiz_rounded,
       CoachActionKind.openWeeklyReport => Icons.insights_rounded,
+      CoachActionKind.nameDomains => Icons.flag_rounded,
+      CoachActionKind.nameTonight => Icons.nightlight_outlined,
+      CoachActionKind.startSession => Icons.auto_awesome,
+      CoachActionKind.startSessionShort => Icons.bolt_rounded,
+      CoachActionKind.poseSessions => Icons.event_available_outlined,
     };
-    // Transition de moment : bouton discret (texte), pas un CTA plein.
-    if (a.kind == CoachActionKind.advanceMoment) {
+    // Transition de moment / secondaires du nudge : bouton discret (texte).
+    if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
       return TextButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 16),
@@ -360,6 +440,20 @@ class _Actions extends StatelessWidget {
             : null;
       case CoachActionKind.openWeeklyReport:
         return onOpenWeeklyReport;
+      case CoachActionKind.nameDomains:
+        return onNameDomains;
+      case CoachActionKind.nameTonight:
+        return onNameTonight;
+      case CoachActionKind.startSession:
+        return a.domain != null && onStartSession != null
+            ? () => onStartSession!(a.domain!)
+            : null;
+      case CoachActionKind.startSessionShort:
+        return a.domain != null && onStartSession != null
+            ? () => onStartSession!(a.domain!, short: true)
+            : null;
+      case CoachActionKind.poseSessions:
+        return onPoseSessions;
     }
   }
 }
