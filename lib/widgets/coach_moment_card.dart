@@ -20,6 +20,8 @@ class CoachMomentCard extends StatelessWidget {
   // Carte midi menu (15c) : ✓ Mangé / « Autre chose » (glisse le menu d'un jour).
   final void Function(String artifactId)? onMealEaten;
   final void Function(String artifactId)? onMealShift;
+  // « Lire le rapport — 3 min » (16a) → écran du rapport hebdo.
+  final VoidCallback? onOpenWeeklyReport;
 
   const CoachMomentCard({
     super.key,
@@ -32,6 +34,7 @@ class CoachMomentCard extends StatelessWidget {
     this.onDismiss,
     this.onMealEaten,
     this.onMealShift,
+    this.onOpenWeeklyReport,
   });
 
   @override
@@ -62,6 +65,7 @@ class CoachMomentCard extends StatelessWidget {
               onDismiss: onDismiss,
               onMealEaten: onMealEaten,
               onMealShift: onMealShift,
+              onOpenWeeklyReport: onOpenWeeklyReport,
             ),
     );
   }
@@ -77,6 +81,7 @@ class _Card extends StatelessWidget {
   final VoidCallback? onDismiss;
   final void Function(String artifactId)? onMealEaten;
   final void Function(String artifactId)? onMealShift;
+  final VoidCallback? onOpenWeeklyReport;
 
   const _Card({
     super.key,
@@ -89,6 +94,7 @@ class _Card extends StatelessWidget {
     this.onDismiss,
     this.onMealEaten,
     this.onMealShift,
+    this.onOpenWeeklyReport,
   });
 
   @override
@@ -162,6 +168,7 @@ class _Card extends StatelessWidget {
               onDismiss: onDismiss,
               onMealEaten: onMealEaten,
               onMealShift: onMealShift,
+              onOpenWeeklyReport: onOpenWeeklyReport,
             ),
           ],
         ],
@@ -238,6 +245,7 @@ class _Actions extends StatelessWidget {
   final VoidCallback? onDismiss;
   final void Function(String artifactId)? onMealEaten;
   final void Function(String artifactId)? onMealShift;
+  final VoidCallback? onOpenWeeklyReport;
 
   const _Actions({
     required this.actions,
@@ -250,6 +258,7 @@ class _Actions extends StatelessWidget {
     this.onDismiss,
     this.onMealEaten,
     this.onMealShift,
+    this.onOpenWeeklyReport,
   });
 
   @override
@@ -264,7 +273,8 @@ class _Actions extends StatelessWidget {
   Widget _button(BuildContext context, CoachAction a) {
     final cs = Theme.of(context).colorScheme;
     final isPrimary = a.kind == CoachActionKind.launchBlock ||
-        a.kind == CoachActionKind.planDay;
+        a.kind == CoachActionKind.planDay ||
+        a.kind == CoachActionKind.openWeeklyReport;
     final onTap = _handlerFor(a);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
     final icon = switch (a.kind) {
@@ -276,6 +286,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.dismiss => Icons.skip_next_outlined,
       CoachActionKind.mealEaten => Icons.check_rounded,
       CoachActionKind.mealShift => Icons.swap_horiz_rounded,
+      CoachActionKind.openWeeklyReport => Icons.insights_rounded,
     };
     // Transition de moment : bouton discret (texte), pas un CTA plein.
     if (a.kind == CoachActionKind.advanceMoment) {
@@ -347,6 +358,8 @@ class _Actions extends StatelessWidget {
         return a.artifactId != null && onMealShift != null
             ? () => onMealShift!(a.artifactId!)
             : null;
+      case CoachActionKind.openWeeklyReport:
+        return onOpenWeeklyReport;
     }
   }
 }

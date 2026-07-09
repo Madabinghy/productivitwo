@@ -16,6 +16,7 @@ const MODEL_ROUTING = {
     plan_proposal: exports.MODELS.HAIKU, // écran de planification : 1 appel JSON / ouverture (cycle quotidien)
     define_domain: exports.MODELS.OPUS, // session de définition — moment fondateur, faible volume plafonné (pattern structure_project)
     generate_artifact: exports.MODELS.HAIKU, // plan/menu : 1 appel JSON par génération (classe quotidienne)
+    weekly_report: exports.MODELS.HAIKU, // rapport hebdo : agrégats déterministes + 1 appel narratif
     plan_week: exports.MODELS.HAIKU,
     sync_calendar: exports.MODELS.HAIKU,
     chat: exports.MODELS.SONNET,

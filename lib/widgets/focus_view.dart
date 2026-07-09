@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
 /// 3 états exclusifs :
@@ -87,6 +88,8 @@ class _FocusViewState extends State<FocusView> {
   // Artefacts (menu…) : la carte midi affiche le repas du jour (15c).
   List<Artifact> _artifacts = const [];
   StreamSubscription<List<Artifact>>? _artifactsSub;
+  // Rapport hebdo de la semaine courante — teaser du dimanche soir (16a).
+  WeeklyReport? _weeklyReport;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -245,6 +248,12 @@ class _FocusViewState extends State<FocusView> {
     _sync.streamDailySchedule(yesterday).first.then((s) {
       if (mounted) setState(() => _yesterday = s);
     }).catchError((_) {});
+    // Rapport hebdo de la semaine courante (16a) — one-shot, léger.
+    final monday = _ymd(DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1)));
+    _sync.fetchWeeklyReport(monday).then((r) {
+      if (mounted) setState(() => _weeklyReport = r);
+    }).catchError((_) {});
   }
 
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
@@ -254,7 +263,8 @@ class _FocusViewState extends State<FocusView> {
         now, st, _schedule, _yesterday, st.sessions,
         advancedTo: _coachAdvancedTo,
         unplannedDismissed: _unplannedDismissed,
-        artifacts: _artifacts);
+        artifacts: _artifacts,
+        weeklyReport: _weeklyReport);
     return CoachMomentCard(
       moment: moment,
       onLaunch: widget.onLaunchScheduledBlock,
@@ -266,6 +276,12 @@ class _FocusViewState extends State<FocusView> {
       onDismiss: () => setState(() => _unplannedDismissed = true),
       onMealEaten: (id) => _logMeal(id, eaten: true),
       onMealShift: (id) => _logMeal(id, eaten: false),
+      onOpenWeeklyReport: _weeklyReport == null
+          ? null
+          : () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => WeeklyReportScreen(
+                    logic: logic, report: _weeklyReport!),
+              )),
     );
   }
 

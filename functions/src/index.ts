@@ -9,6 +9,7 @@ import { getModel, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
 import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
+import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue, effectivePro } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate, defineDomainSystemPrompt } from "./prompts";
@@ -890,6 +891,69 @@ export const generateArtifact = onRequest(
       // Jamais d'artefact à moitié écrit : rien n'a été posé, le client
       // affiche erreur + retry.
       res.status(502).json({ error: "Génération échouée — rien n'a été écrit, réessaie." });
+    }
+  }
+);
+
+// ── weeklyReportNow / weeklyReportCron ────────────────────────────────────────
+//
+// Rapport hebdo (phase 2, 16a-16c) : agrégats 100 % déterministes + 1 appel
+// narratif (classe quotidienne). Cron le dimanche 18h (fenêtre 17h-20h du
+// handoff) ; endpoint on-demand pour la carte 16a et les tests.
+
+export const weeklyReportNow = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, weekStart } = req.body as { uid?: string; weekStart?: string };
+    if (!uid) { res.status(400).json({ error: "uid requis" }); return; }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+    // Garde de coût : 1 génération / semaine / jour (le doc existant se relit).
+    const today = todayInParis();
+    const limitRef = db.doc(`users/${uid}/rate_limits/weekly_report`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+    const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+    if (count >= 3) {
+      res.status(429).json({ error: "Limite atteinte (3 rapports/jour)." });
+      return;
+    }
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    try {
+      const id = await generateWeeklyReport(uid, apiKey, weekStart);
+      res.status(200).json({ reportId: id });
+    } catch (e) {
+      console.error("weeklyReportNow error:", e);
+      res.status(502).json({ error: "Rapport indisponible — réessaie." });
+    }
+  }
+);
+
+export const weeklyReportCron = onSchedule(
+  { schedule: "0 18 * * 0", timeZone: "Europe/Paris", secrets: ["ANTHROPIC_API_KEY"] },
+  async () => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { console.error("weeklyReportCron: ANTHROPIC_API_KEY manquante"); return; }
+    // listDocuments inclut les docs « virtuels » qui n'ont que des sous-collections.
+    const users = await db.collection("users").listDocuments();
+    const weekStart = mondayOf(new Date().toISOString().slice(0, 10));
+    for (const ref of users) {
+      try {
+        // Ne regénère pas un rapport déjà présent (idempotent sur la semaine).
+        const existing = await db.doc(`users/${ref.id}/weekly_reports/${weekStart}`).get();
+        if (existing.exists) continue;
+        await generateWeeklyReport(ref.id, apiKey, weekStart);
+      } catch (e) {
+        console.error(`weeklyReportCron uid=${ref.id}:`, e);
+      }
     }
   }
 );
