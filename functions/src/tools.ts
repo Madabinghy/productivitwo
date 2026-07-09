@@ -1020,6 +1020,14 @@ export const SAVE_DOMAIN_DEFINITION_TOOL = {
         type: "array", items: { type: "string" },
         description: "artefacts à générer ensuite, ex: 'Plan de reprise — 6 semaines'",
       },
+      tracking: {
+        type: "string", enum: ["timed", "declared"],
+        description: "suivi du vital : 'timed' (défaut — sessions/blocs mesurés) ou 'declared' (vie privée : pas de chrono, pas de blocs, pas de score — le vital est demandé en 1-2 questions binaires au rapport hebdo, c'est tout)",
+      },
+      protectedSlots: {
+        type: "array", items: { type: "string" },
+        description: "territoire défendu — créneaux où la proposition ne pose JAMAIS rien, quel que soit le retard ailleurs. Codes '{mon|tue|wed|thu|fri|sat|sun}_{morning|afternoon|evening|day}', ex: ['fri_evening','sat_evening','sun_day']",
+      },
       finalize: { type: "boolean", description: "true en fin de session → domaine actif + definedAt" },
     },
   },

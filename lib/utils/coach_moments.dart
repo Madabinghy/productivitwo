@@ -518,6 +518,9 @@ List<StatItem> _vitalStats(DateTime now, AppState st, List<Session> sessions) {
     if (d.deleted || !d.isDefined) continue;
     // Suspension assumée (12b) : le coach ne demande rien pendant la pause.
     if (d.suspendedOn(ymd)) continue;
+    // Suivi déclaré (20) : pas de score, absent de la carte quotidienne —
+    // son vital n'existe qu'au rapport du dimanche.
+    if (d.tracking == 'declared') continue;
     for (final v in d.vitalMinimum) {
       if (v.period != 'week' || v.target <= 0) continue;
       if (!v.metric.startsWith('sessions')) continue;

@@ -92,6 +92,9 @@ export interface DomainDefinitionPayload {
   vitalMinimum?: VitalMinimumPayload[];
   modalities?: string[]; // stockées en [{label}] côté Firestore
   wantedArtifacts?: string[];
+  // Session « sans données » (tour 20) : décider aussi ce qu'on ne mesure pas.
+  tracking?: "timed" | "declared"; // declared = vital demandé au rapport, pas de chrono/blocs/score
+  protectedSlots?: string[]; // territoire défendu — codes "{mon..sun}_{morning|afternoon|evening|day}"
   finalize?: boolean; // true → definitionStatus:"active" + definedAt
 }
 // Renégociation (écrite par l'app, lue par proposeDayPlan sur le doc brut) :

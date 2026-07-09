@@ -24,6 +24,7 @@ const sdk_1 = require("@anthropic-ai/sdk");
 const sgMail = require("@sendgrid/mail");
 const orion_tasks_1 = require("./orion_tasks");
 const weekly_report_1 = require("./weekly_report");
+const domain_facts_1 = require("./domain_facts");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
 const prompts_1 = require("./prompts");
@@ -433,14 +434,23 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             .map((d) => d.data())
             .filter((v) => v.deleted !== true && v.definitionStatus === "active" && v.intention)
             .map((v) => {
-            var _a, _b;
+            var _a, _b, _c;
+            // Territoire défendu (tour 20) : contrainte DURE, quel que soit le
+            // retard ailleurs — fusionné avec les offSlots des artefacts.
+            for (const slot of (_a = v.protectedSlots) !== null && _a !== void 0 ? _a : [])
+                offSlots.add(slot);
             // Suspension assumée (renégociation 12b) : rien ne se pose dessus.
             if (typeof v.suspendedUntil === "string" && v.suspendedUntil >= target) {
                 return `  · ${v.name} — ⛔ SUSPENDU jusqu'au ${v.suspendedUntil} (assumé, sans pénalité) : ne pose RIEN sur ce domaine.`;
             }
-            const vital = ((_a = v.vitalMinimum) !== null && _a !== void 0 ? _a : [])
+            // Suivi déclaré (tour 20) : pas de chrono, pas de blocs, pas de
+            // score — son vital se demande au rapport du dimanche, c'est tout.
+            if (v.tracking === "declared") {
+                return `  · ${v.name} — intention : « ${v.intention} » — SUIVI DÉCLARÉ : ne pose JAMAIS de bloc sur ce domaine (son vital est demandé au rapport hebdo, pas dans le programme).`;
+            }
+            const vital = ((_b = v.vitalMinimum) !== null && _b !== void 0 ? _b : [])
                 .map((m) => m.label).join(" · ");
-            const mods = ((_b = v.modalities) !== null && _b !== void 0 ? _b : [])
+            const mods = ((_c = v.modalities) !== null && _c !== void 0 ? _c : [])
                 .map((m) => { var _a; return (_a = m.label) !== null && _a !== void 0 ? _a : m; }).join(" · ");
             // Essai 2 semaines en cours : la nouvelle modalité se respecte à la lettre.
             const renegRaw = v.renegotiatedAt;
@@ -553,7 +563,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 : []),
             ...(offSlots.size > 0
                 ? [
-                    `── CONTRAINTE DURE (offSlots — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")} ──`,
+                    `── CONTRAINTE DURE (offSlots artefacts + territoire défendu des domaines — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")}, quel que soit le retard ailleurs ──`,
                     ``,
                 ]
                 : []),
@@ -680,11 +690,21 @@ exports.defineDomainChat = (0, https_1.onRequest)({ cors: true, invoker: "public
                 description: tools_1.SAVE_DOMAIN_DEFINITION_TOOL.description,
                 input_schema: tools_1.SAVE_DOMAIN_DEFINITION_TOOL.inputSchema,
             }];
+        // Dossier de faits (19/20) : domaine vivant → confrontation déclaré vs
+        // réel + artefacts adoptés ; domaine vide → le vide est le point de
+        // départ (en creux, plancher minuscule, tracking déclaré, territoire).
+        let dossier;
+        try {
+            dossier = await (0, domain_facts_1.buildDomainDossier)(uid, domainName.trim());
+        }
+        catch (e) {
+            console.error("buildDomainDossier error (session sans dossier):", e);
+        }
         for (let turn = 0; turn < DEFINE_DOMAIN_MAX_TURNS; turn++) {
             const response = await client.messages.create({
                 model,
                 max_tokens: 1024,
-                system: (0, prompts_1.defineDomainSystemPrompt)(domainName.trim()),
+                system: (0, prompts_1.defineDomainSystemPrompt)(domainName.trim(), dossier),
                 tools: anthropicTools,
                 messages: convo,
             });

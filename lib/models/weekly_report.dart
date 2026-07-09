@@ -156,6 +156,11 @@ class WeeklyReport {
   int renegotiations;
   bool secondMinimal; // 2ᵉ semaine minimale d'affilée → proposer 12b
   String? weekModeChosen; // 'minimal' | 'vital' une fois tranché
+  // Suivi déclaré (tour 20) : le vital de ces domaines se DEMANDE ici — 1-2
+  // questions binaires, seul endroit où il existe. Réponses trackées sur le
+  // doc : clé "domainId|label" → bool.
+  List<Map<String, dynamic>> declaredQuestions; // {domainId, name, label}
+  Map<String, bool> declaredAnswers;
 
   WeeklyReport({
     required this.weekStart,
@@ -176,9 +181,13 @@ class WeeklyReport {
     this.renegotiations = 0,
     this.secondMinimal = false,
     this.weekModeChosen,
+    List<Map<String, dynamic>>? declaredQuestions,
+    Map<String, bool>? declaredAnswers,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         domains = domains ?? [],
-        motifs = motifs ?? [];
+        motifs = motifs ?? [],
+        declaredQuestions = declaredQuestions ?? [],
+        declaredAnswers = declaredAnswers ?? {};
 
   static WeeklyReport from(Map j) {
     final facts = (j['facts'] as Map?) ?? {};
@@ -214,6 +223,14 @@ class WeeklyReport {
       renegotiations: (facts['renegotiations'] as num?)?.toInt() ?? 0,
       secondMinimal: j['secondMinimal'] == true,
       weekModeChosen: j['weekModeChosen'],
+      declaredQuestions: (facts['declaredQuestions'] as List?)
+              ?.whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList() ??
+          [],
+      declaredAnswers: (j['declaredAnswers'] as Map?)
+              ?.map((k, v) => MapEntry(k.toString(), v == true)) ??
+          {},
     );
   }
 
@@ -234,7 +251,9 @@ class WeeklyReport {
           'motifs': motifs.map((m) => m.toJson()).toList(),
           'minutesLogged': minutesLogged,
           'renegotiations': renegotiations,
+          'declaredQuestions': declaredQuestions,
         },
+        'declaredAnswers': declaredAnswers,
         'secondMinimal': secondMinimal,
         'weekModeChosen': weekModeChosen,
         'narrative': narrative,

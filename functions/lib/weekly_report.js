@@ -27,7 +27,7 @@ function isoWeekOf(dateYmd) {
 }
 // ── Agrégats déterministes ────────────────────────────────────────────────────
 async function buildWeeklyFacts(uid, weekStart) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
     const days = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(`${weekStart}T12:00:00Z`);
@@ -120,6 +120,7 @@ async function buildWeeklyFacts(uid, weekStart) {
             sessionsByDomain.set(dom, ((_g = sessionsByDomain.get(dom)) !== null && _g !== void 0 ? _g : 0) + 1);
     }
     const domains = [];
+    const declaredQuestions = [];
     let renegotiations = 0;
     for (const doc of domainsSnap.docs) {
         const d = doc.data();
@@ -131,22 +132,37 @@ async function buildWeeklyFacts(uid, weekStart) {
             if (date >= weekStart && date <= weekEnd)
                 renegotiations++;
         }
+        // Suivi déclaré : pas de chrono, pas de score — le vital se DEMANDE
+        // (2 questions binaires max, tous domaines déclarés confondus).
+        if (d.tracking === "declared") {
+            for (const v of ((_k = d.vitalMinimum) !== null && _k !== void 0 ? _k : [])) {
+                if (declaredQuestions.length >= 2)
+                    break;
+                const label = String((_l = v.label) !== null && _l !== void 0 ? _l : "").trim();
+                if (label) {
+                    declaredQuestions.push({
+                        domainId: doc.id, name: String((_m = d.name) !== null && _m !== void 0 ? _m : ""), label,
+                    });
+                }
+            }
+            continue;
+        }
         const vitals = [];
-        for (const v of ((_k = d.vitalMinimum) !== null && _k !== void 0 ? _k : [])) {
-            const metric = String((_l = v.metric) !== null && _l !== void 0 ? _l : "");
-            const target = Number((_m = v.target) !== null && _m !== void 0 ? _m : 0);
+        for (const v of ((_o = d.vitalMinimum) !== null && _o !== void 0 ? _o : [])) {
+            const metric = String((_p = v.metric) !== null && _p !== void 0 ? _p : "");
+            const target = Number((_q = v.target) !== null && _q !== void 0 ? _q : 0);
             if (!metric.startsWith("sessions") || target <= 0)
                 continue; // pas mesurable ici → omis
             vitals.push({
-                label: String((_o = v.label) !== null && _o !== void 0 ? _o : ""),
-                done: (_p = sessionsByDomain.get(doc.id)) !== null && _p !== void 0 ? _p : 0,
+                label: String((_r = v.label) !== null && _r !== void 0 ? _r : ""),
+                done: (_s = sessionsByDomain.get(doc.id)) !== null && _s !== void 0 ? _s : 0,
                 target,
             });
         }
         domains.push({
             domainId: doc.id,
-            name: String((_q = d.name) !== null && _q !== void 0 ? _q : ""),
-            intention: String((_r = d.intention) !== null && _r !== void 0 ? _r : ""),
+            name: String((_t = d.name) !== null && _t !== void 0 ? _t : ""),
+            intention: String((_u = d.intention) !== null && _u !== void 0 ? _u : ""),
             vitals,
         });
     }
@@ -155,6 +171,7 @@ async function buildWeeklyFacts(uid, weekStart) {
         engagements: { held, total },
         domains, motifs, checkinsDone,
         minutesLogged, renegotiations,
+        declaredQuestions,
     };
 }
 /// Routage : vital < 50 % sur ≥ 2 domaines → rapport COURT (17b) — pas de
@@ -212,6 +229,9 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
                 : "aucune métrique mesurable")),
         ...facts.motifs.map((m) => `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
         `Check-ins faits : ${facts.checkinsDone}/7 jours`,
+        ...(facts.declaredQuestions.length > 0
+            ? [`Domaines à suivi déclaré : ${[...new Set(facts.declaredQuestions.map((q) => q.name))].join(", ")} — leur vital est demandé directement dans l'app, tu n'as AUCUNE donnée dessus : n'en dis rien.`]
+            : []),
     ];
     const client = new sdk_1.default({ apiKey });
     const model = (0, models_1.getModel)("weekly_report");

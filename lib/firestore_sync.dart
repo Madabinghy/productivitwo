@@ -785,6 +785,16 @@ class FirestoreSync {
     return snap.exists ? WeeklyReport.from(snap.data() as Map) : null;
   }
 
+  /// Réponse binaire d'un vital « déclaré » (tour 20) — écrite sur le doc du
+  /// rapport (clé "domainId|label"), SEUL endroit où ce vital existe.
+  Future<void> setWeeklyReportDeclaredAnswer(
+      String weekStart, String key, bool value) async {
+    if (uid == null) return;
+    await _col('weekly_reports')
+        .doc(weekStart)
+        .set({'declaredAnswers': {key: value}}, SetOptions(merge: true));
+  }
+
   /// Statut de la décision du rapport (pending → applied | declined).
   Future<void> setWeeklyReportDecision(String weekStart, String status) async {
     if (uid == null) return;

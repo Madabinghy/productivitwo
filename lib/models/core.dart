@@ -144,6 +144,12 @@ class Domain {
   // Suspension assumée (renégociation 12b) : jusqu'à cette date incluse, le
   // coach ne pose RIEN sur ce domaine — puis il redevient actif tout seul.
   String? suspendedUntil; // YYYY-MM-DD
+  // Session « sans données » (tour 20) — décider aussi ce qu'on ne mesure pas :
+  // "declared" = vie privée, pas de chrono/blocs/score, vital demandé en 1-2
+  // questions binaires au rapport du dimanche (seul endroit où il existe).
+  String tracking; // "timed" (défaut) | "declared"
+  // Territoire défendu : créneaux où la proposition ne pose JAMAIS rien.
+  List<String> protectedSlots; // codes "{mon..sun}_{morning|afternoon|evening|day}"
 
   Domain({
     String? id,
@@ -162,12 +168,15 @@ class Domain {
     this.renegotiatedAt,
     List<Map<String, dynamic>>? history,
     this.suspendedUntil,
+    this.tracking = 'timed',
+    List<String>? protectedSlots,
   })  : id = id ?? _uuid.v4(),
         vitalMinimum = vitalMinimum ?? [],
         modalities = modalities ?? [],
         artifactIds = artifactIds ?? [],
         wantedArtifacts = wantedArtifacts ?? [],
-        history = history ?? [];
+        history = history ?? [],
+        protectedSlots = protectedSlots ?? [];
 
   bool get isDefined => definitionStatus == 'active' && intention != null;
 
@@ -193,6 +202,8 @@ class Domain {
         'renegotiatedAt': renegotiatedAt?.toIso8601String(),
         'history': history,
         'suspendedUntil': suspendedUntil,
+        'tracking': tracking,
+        'protectedSlots': protectedSlots,
       };
 
   static Domain from(Map j) => Domain(
@@ -228,5 +239,9 @@ class Domain {
                 .toList() ??
             [],
         suspendedUntil: j['suspendedUntil']?.toString(),
+        tracking: j['tracking']?.toString() == 'declared' ? 'declared' : 'timed',
+        protectedSlots:
+            (j['protectedSlots'] as List?)?.map((e) => e.toString()).toList() ??
+                [],
       );
 }
