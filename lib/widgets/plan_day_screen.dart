@@ -334,12 +334,15 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     try {
       final existing = await _sync.fetchDailySchedule(widget.targetDate);
       // Ne pas écraser ce qui est déjà acté (fait / supprimé / prep existante).
+      // Les blocs prep / bilan d'essai / session de définition sont posés par
+      // d'autres flux : la proposition ne les connaît pas, on les garde.
       final kept = (existing?.blocks ?? const <ScheduleBlock>[])
           .where((b) =>
               b.status == 'done' ||
               b.status == 'deleted' ||
               b.isPrep ||
-              b.kind == 'bilan')
+              b.kind == 'bilan' ||
+              b.kind == 'session')
           .toList();
       final blocks = <ScheduleBlock>[
         ...kept,

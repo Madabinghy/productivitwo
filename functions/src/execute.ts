@@ -1806,6 +1806,7 @@ async function executeScheduleDay(
     kind?: string;
     prepForDate?: string;
     prepForBlockId?: string;
+    domainId?: string;
     skipReason?: string;
   }>
 ): Promise<string> {
@@ -1824,9 +1825,10 @@ async function executeScheduleDay(
     actionId: b.actionId ?? null, // action ciblée (propre à une activité OU action de projet)
     status: "pending",
     doneAt: null,
-    kind: b.kind ?? "normal", // "normal" | "prep" (préparation la veille)
+    kind: b.kind ?? "normal", // "normal" | "prep" | "bilan" | "session"
     prepForDate: b.prepForDate ?? null,
     prepForBlockId: b.prepForBlockId ?? null,
+    domainId: b.domainId ?? null, // domaine ciblé (kind:"session")
     skipReason: b.skipReason ?? null, // pourquoi l'engagement a sauté (check-in)
   }));
 
@@ -1836,9 +1838,12 @@ async function executeScheduleDay(
   const prev = await ref.get();
   const prevData = prev.exists ? (prev.data() as Record<string, unknown>) : {};
   // Les blocs posés par d'autres flux survivent au remplacement : preps du
-  // soir (add_prep_block) et bilans d'essai (renégociation 12c, posés à J+14).
+  // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14)
+  // et sessions de définition de domaine (onboarding 18b).
   const preserved = ((prevData.blocks as Array<Record<string, unknown>>) ?? [])
-    .filter((b) => (b.kind === "prep" || b.kind === "bilan") && b.status !== "deleted");
+    .filter((b) =>
+      (b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
+      b.status !== "deleted");
 
   await ref.set({
     date,
