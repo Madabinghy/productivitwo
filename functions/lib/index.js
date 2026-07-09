@@ -507,7 +507,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
             weekMode
                 ? `2. NE REPROPOSE PAS les blocs sautés (semaine ${weekMode === "minimal" ? "minimale" : "de rush"} — une semaine ne se rattrape pas).`
-                : `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap.`,
+                : `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap. Un bloc à cause « reporte » (renégocié hier) passe EN PREMIER dans la journée, avant tout.`,
             ...(sameDay
                 ? [`2bis. JAMAIS de rattrapage le jour même : les blocs/routines d'AUJOURD'HUI déjà passés ou sautés sont MORTS pour aujourd'hui — ne les repropose pas ce soir (une routine ratée est morte, sans pénalité). Ils reviendront demain s'ils le méritent.`]
                 : []),

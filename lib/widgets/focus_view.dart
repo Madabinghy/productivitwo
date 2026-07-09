@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
@@ -268,8 +269,15 @@ class _FocusViewState extends State<FocusView> {
     return CoachMomentCard(
       moment: moment,
       onLaunch: widget.onLaunchScheduledBlock,
-      // Renégocier (v1) : ouvre la fiche du bloc / de sa source.
-      onRenegotiate: widget.onOpenScheduledBlockSource,
+      // Renégocier (12a) : trois issues générées depuis le réel — réduire /
+      // déplacer / reporter. Remplace l'ouverture de fiche v1.
+      onRenegotiate: (block) => showRenegotiateSheet(
+        context,
+        logic: logic,
+        block: block,
+        date: _schedDate,
+        onLaunch: widget.onLaunchScheduledBlock,
+      ),
       onOpenDayReview: widget.onOpenDayReview,
       onAdvance: (target) => setState(() => _coachAdvancedTo = target),
       onPlanDay: _openPlanToday,

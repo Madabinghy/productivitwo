@@ -2238,6 +2238,29 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Renégociation tactique (12a) : repose le bloc à une autre heure / durée
+  /// sans toucher au reste du programme.
+  Future<void> updateScheduleBlockTime(String date, String blockId,
+      {String? startTime, int? durationMin}) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    for (final b in blocks) {
+      if (b['id'] == blockId) {
+        if (startTime != null) b['startTime'] = startTime;
+        if (durationMin != null) b['durationMin'] = durationMin;
+        break;
+      }
+    }
+    await ref.update({'blocks': blocks});
+  }
+
   /// Cause globale d'une journée qui a déraillé (3+ engagements rompus).
   Future<void> setDayReason(String date, String reason) async {
     if (uid == null) return;
