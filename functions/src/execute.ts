@@ -1835,12 +1835,16 @@ async function executeScheduleDay(
   const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
   const prev = await ref.get();
   const prevData = prev.exists ? (prev.data() as Record<string, unknown>) : {};
+  // Les blocs posés par d'autres flux survivent au remplacement : preps du
+  // soir (add_prep_block) et bilans d'essai (renégociation 12c, posés à J+14).
+  const preserved = ((prevData.blocks as Array<Record<string, unknown>>) ?? [])
+    .filter((b) => (b.kind === "prep" || b.kind === "bilan") && b.status !== "deleted");
 
   await ref.set({
     date,
     generatedBy: "claude",
     generatedAt: FieldValue.serverTimestamp(),
-    blocks: normalizedBlocks,
+    blocks: [...preserved, ...normalizedBlocks],
     dayReason: prevData.dayReason ?? null,
     plannedAt: prevData.plannedAt ?? null,
     plannedSameDay: prevData.plannedSameDay ?? false,

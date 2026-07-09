@@ -512,8 +512,12 @@ List<StatItem> _vitalStats(DateTime now, AppState st, List<Session> sessions) {
   final stats = <StatItem>[];
   final monday = DateTime(now.year, now.month, now.day)
       .subtract(Duration(days: now.weekday - 1));
+  final ymd =
+      '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   for (final d in st.domains) {
     if (d.deleted || !d.isDefined) continue;
+    // Suspension assumée (12b) : le coach ne demande rien pendant la pause.
+    if (d.suspendedOn(ymd)) continue;
     for (final v in d.vitalMinimum) {
       if (v.period != 'week' || v.target <= 0) continue;
       if (!v.metric.startsWith('sessions')) continue;

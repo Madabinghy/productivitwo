@@ -139,6 +139,9 @@ class Domain {
   DateTime? definedAt;
   DateTime? renegotiatedAt;
   List<Map<String, dynamic>> history; // { date, field, from, to, reason }
+  // Suspension assumée (renégociation 12b) : jusqu'à cette date incluse, le
+  // coach ne pose RIEN sur ce domaine — puis il redevient actif tout seul.
+  String? suspendedUntil; // YYYY-MM-DD
 
   Domain({
     String? id,
@@ -156,6 +159,7 @@ class Domain {
     this.definedAt,
     this.renegotiatedAt,
     List<Map<String, dynamic>>? history,
+    this.suspendedUntil,
   })  : id = id ?? _uuid.v4(),
         vitalMinimum = vitalMinimum ?? [],
         modalities = modalities ?? [],
@@ -164,6 +168,10 @@ class Domain {
         history = history ?? [];
 
   bool get isDefined => definitionStatus == 'active' && intention != null;
+
+  /// Suspendu à la date [ymd] (YYYY-MM-DD) — comparaison lexicale ISO.
+  bool suspendedOn(String ymd) =>
+      suspendedUntil != null && suspendedUntil!.compareTo(ymd) >= 0;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -182,6 +190,7 @@ class Domain {
         'definedAt': definedAt?.toIso8601String(),
         'renegotiatedAt': renegotiatedAt?.toIso8601String(),
         'history': history,
+        'suspendedUntil': suspendedUntil,
       };
 
   static Domain from(Map j) => Domain(
@@ -216,5 +225,6 @@ class Domain {
                 .map((h) => Map<String, dynamic>.from(h))
                 .toList() ??
             [],
+        suspendedUntil: j['suspendedUntil']?.toString(),
       );
 }

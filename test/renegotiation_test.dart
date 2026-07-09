@@ -84,6 +84,108 @@ void main() {
     });
   });
 
+  group('diagnoseStructural', () {
+    // Historique 14 j : « Séance jambes » (t1) sautée 2 fois à 18 h + le bloc
+    // du jour = 3 échecs même tranche. Le matin tient (6/6, autres blocs).
+    final today = _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1');
+    final history = [
+      _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1',
+          status: 'skipped', skipReason: 'energie'),
+      _b(startTime: '18:30', title: 'Séance jambes', taskId: 't1',
+          status: 'skipped', skipReason: 'imprevu'),
+      for (var i = 0; i < 6; i++)
+        _b(startTime: '07:15', title: 'Deep work', taskId: 'dw',
+            status: 'done'),
+    ];
+
+    test('3 échecs même tranche → déclenché, stats réelles', () {
+      final d = diagnoseStructural(today, history);
+      expect(d, isNotNull);
+      expect(d!.fails, 3);
+      expect(d.held, 0);
+      expect(d.total, 3);
+      expect(d.bucket, 'soir');
+      expect(d.slotHm, '18:00'); // heure la plus fréquente des échecs
+    });
+
+    test('alternatives = tranches qui tiennent, heure typique des tenues', () {
+      final d = diagnoseStructural(today, history)!;
+      expect(d.alternatives, hasLength(1));
+      expect(d.alternatives.first.bucket, 'matin');
+      expect(d.alternatives.first.held, 6);
+      expect(d.alternatives.first.total, 6);
+      expect(d.alternatives.first.typicalTime, '07:15');
+    });
+
+    test('2 échecs seulement → pas de déclenchement', () {
+      final d = diagnoseStructural(today, [history.first, ...history.skip(2)]);
+      expect(d, isNull);
+    });
+
+    test('les échecs d\'un AUTRE engagement ne comptent pas', () {
+      final d = diagnoseStructural(today, [
+        _b(startTime: '18:00', title: 'Autre', taskId: 't2', status: 'skipped'),
+        _b(startTime: '18:00', title: 'Autre', taskId: 't2', status: 'skipped'),
+      ]);
+      expect(d, isNull);
+    });
+
+    test('les échecs du même engagement sur une AUTRE tranche ne comptent pas',
+        () {
+      final d = diagnoseStructural(today, [
+        _b(startTime: '09:00', title: 'Séance jambes', taskId: 't1',
+            status: 'skipped'),
+        _b(startTime: '09:00', title: 'Séance jambes', taskId: 't1',
+            status: 'skipped'),
+      ]);
+      expect(d, isNull);
+    });
+
+    test('blocs deleted et preps ignorés partout', () {
+      final d = diagnoseStructural(today, [
+        _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1',
+            status: 'deleted'),
+        _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1',
+            status: 'skipped'),
+        _b(startTime: '07:00', durationMin: 5, status: 'done', kind: 'prep'),
+      ]);
+      expect(d, isNull); // 1 échec réel + aujourd'hui = 2 < 3
+    });
+
+    test('une tranche qui ne tient pas (<60%) n\'est pas une alternative', () {
+      final d = diagnoseStructural(today, [
+        ...history.take(2),
+        _b(startTime: '12:30', title: 'Relances', status: 'done'),
+        _b(startTime: '12:30', title: 'Relances', status: 'done'),
+        _b(startTime: '12:30', title: 'Relances', status: 'skipped'),
+        _b(startTime: '12:30', title: 'Relances', status: 'skipped'),
+      ])!;
+      expect(d.alternatives, isEmpty); // midi 2/4 = 50 % < 60 %
+    });
+
+    test('weeklyFreq depuis la fenêtre 7 jours quand fournie', () {
+      final week = [
+        _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1',
+            status: 'skipped'),
+        _b(startTime: '18:00', title: 'Séance jambes', taskId: 't1',
+            status: 'skipped'),
+      ];
+      final d = diagnoseStructural(today, history, weekBlocks: week)!;
+      expect(d.weeklyFreq, 3); // 2 occurrences + le bloc du jour
+    });
+  });
+
+  group('slotBucket', () {
+    test('tranches de journée', () {
+      expect(slotBucket('07:15'), 'matin');
+      expect(slotBucket('11:59'), 'matin');
+      expect(slotBucket('12:45'), 'midi');
+      expect(slotBucket('15:00'), 'apres_midi');
+      expect(slotBucket('18:00'), 'soir');
+      expect(slotBucket('01:00'), 'soir');
+    });
+  });
+
   group('usefulMinutesLeft', () {
     test('15 h → 7 h utiles jusqu\'à 22 h', () {
       expect(usefulMinutesLeft(DateTime(2026, 7, 9, 15, 0)), 420);
