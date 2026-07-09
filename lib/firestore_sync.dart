@@ -2143,6 +2143,27 @@ class FirestoreSync {
     return snap.exists ? DailySchedule.from(snap.data() as Map) : null;
   }
 
+  // ── Cache de la proposition de planification ─────────────────────────────
+  // L'ouverture répétée de l'écran de planification doit coûter 0 appel LLM :
+  // le brouillon est persisté par date cible sur le doc du jour et réutilisé
+  // tant qu'il est frais et que le programme source n'a pas changé. schedule_day
+  // et la validation remplacent le doc → le cache s'invalide naturellement.
+
+  Future<Map<String, dynamic>?> fetchProposalDraft(String date) async {
+    if (uid == null) return null;
+    final snap = await _db.doc('users/$uid/daily_schedules/$date').get();
+    if (!snap.exists) return null;
+    final raw = (snap.data() as Map)['proposalDraft'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : null;
+  }
+
+  Future<void> saveProposalDraft(String date, Map<String, dynamic> draft) async {
+    if (uid == null) return;
+    await _db
+        .doc('users/$uid/daily_schedules/$date')
+        .set({'date': date, 'proposalDraft': draft}, SetOptions(merge: true));
+  }
+
   /// Écrit le « pourquoi » d'un engagement rompu sur son bloc (check-in étape 2).
   Future<void> updateBlockSkipReason(
       String date, String blockId, String reason) async {

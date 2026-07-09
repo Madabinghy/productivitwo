@@ -315,7 +315,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -352,7 +352,20 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         res.status(429).json({ error: `Limite atteinte (${PROPOSE_PLAN_MAX_PER_DAY}/jour).` });
         return;
     }
-    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    // Plafond par DATE CIBLE (protection : le client cache le brouillon, une
+    // ouverture répétée de l'écran ne doit plus regénérer).
+    const dateLimitRef = db_1.db.doc(`users/${uid}/rate_limits/plan_proposal_${target}`);
+    const dateLimitSnap = await dateLimitRef.get();
+    const dateLimitData = dateLimitSnap.data();
+    const dateCount = (dateLimitData === null || dateLimitData === void 0 ? void 0 : dateLimitData.ymd) === today ? ((_c = dateLimitData.count) !== null && _c !== void 0 ? _c : 0) : 0;
+    if (dateCount >= 5) {
+        res.status(429).json({ error: "Limite atteinte pour cette date (5 générations/jour) — le brouillon existant reste utilisable." });
+        return;
+    }
+    await Promise.all([
+        limitRef.set({ ymd: today, count: count + 1 }, { merge: true }),
+        dateLimitRef.set({ ymd: today, count: dateCount + 1 }, { merge: true }),
+    ]);
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
         res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" });
@@ -389,7 +402,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (mods ? `\n    modalités : ${mods}` : "");
         });
         const refData = refSnap.exists ? refSnap.data() : {};
-        const refBlocks = ((_c = refData.blocks) !== null && _c !== void 0 ? _c : [])
+        const refBlocks = ((_d = refData.blocks) !== null && _d !== void 0 ? _d : [])
             .filter((b) => b.status !== "deleted" && b.kind !== "prep");
         const refLines = refBlocks.map((b) => {
             var _a;
@@ -399,9 +412,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (b.activityId ? ` activityId=${b.activityId}` : "") +
                 (b.projectId ? ` projectId=${b.projectId} taskId=${(_a = b.taskId) !== null && _a !== void 0 ? _a : ""}` : "");
         });
-        const dayReason = (_d = refData.dayReason) !== null && _d !== void 0 ? _d : null;
+        const dayReason = (_e = refData.dayReason) !== null && _e !== void 0 ? _e : null;
         const targetBlocks = targetSnap.exists
-            ? (((_f = (_e = targetSnap.data()) === null || _e === void 0 ? void 0 : _e.blocks) !== null && _f !== void 0 ? _f : [])
+            ? (((_g = (_f = targetSnap.data()) === null || _f === void 0 ? void 0 : _f.blocks) !== null && _g !== void 0 ? _g : [])
                 .filter((b) => b.status !== "deleted"))
             : [];
         const acts = actsSnap.docs
@@ -444,7 +457,10 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             ``,
             `RÈGLES :`,
             `1. 3 à 6 blocs, jamais une page vide. Heures plausibles, pas de chevauchement.`,
-            `2. REPROPOSER les blocs SAUTÉS de la veille (reproposed: true, même source liée) — un engagement rompu n'est pas perdu.`,
+            `2. REPROPOSER les blocs SAUTÉS de la VEILLE uniquement (reproposed: true, même source liée) — un engagement rompu n'est pas perdu : il revient LE LENDEMAIN, marqué reproposé, refusable en un tap.`,
+            ...(sameDay
+                ? [`2bis. JAMAIS de rattrapage le jour même : les blocs/routines d'AUJOURD'HUI déjà passés ou sautés sont MORTS pour aujourd'hui — ne les repropose pas ce soir (une routine ratée est morte, sans pénalité). Ils reviendront demain s'ils le méritent.`]
+                : []),
             dayReason === "irrealiste"
                 ? `3. ⚠️ La veille était « programme irréaliste » : propose MOINS de blocs que la veille (${Math.max(2, refBlocks.length - 2)} max) et dis-le dans message (« Hier était trop chargé — demain est plus court, volontairement. »).`
                 : `3. Charge réaliste : ne pas dépasser la veille.`,
@@ -493,9 +509,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             throw new Error("Réponse sans JSON");
         const proposal = JSON.parse(raw.slice(start, end + 1));
         res.status(200).json({
-            message: (_g = proposal.message) !== null && _g !== void 0 ? _g : "",
-            sources: (_h = proposal.sources) !== null && _h !== void 0 ? _h : [],
-            blocks: ((_j = proposal.blocks) !== null && _j !== void 0 ? _j : []).filter((b) => { var _a; return /^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) && b.title; }),
+            message: (_h = proposal.message) !== null && _h !== void 0 ? _h : "",
+            sources: (_j = proposal.sources) !== null && _j !== void 0 ? _j : [],
+            blocks: ((_l = proposal.blocks) !== null && _l !== void 0 ? _l : []).filter((b) => { var _a; return /^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) && b.title; }),
             refDate,
             dayReason,
         });

@@ -74,10 +74,34 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
 
   // ── Chargement de la proposition ─────────────────────────────────────────────
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
     // Récurrence « planifié au réveil » (fait rejoué, jamais culpabilisant).
     if (widget.rattrapage) {
       _countSameDayPlans();
+    }
+    // ── Cache : l'ouverture répétée de l'écran coûte 0 appel LLM ─────────────
+    // Le brouillon persiste sur le doc de la date cible et reste valable < 6 h
+    // si le programme source (la veille) n'a pas changé. ⟳ = régénérer.
+    final fingerprint = await _sourceFingerprint();
+    if (!force) {
+      try {
+        final cached = await _sync.fetchProposalDraft(widget.targetDate);
+        final genAt = cached?['generatedAt'] is String
+            ? DateTime.tryParse(cached!['generatedAt'] as String)
+            : null;
+        if (cached != null &&
+            genAt != null &&
+            DateTime.now().difference(genAt).inHours < 6 &&
+            cached['fingerprint'] == fingerprint &&
+            cached['body'] is Map) {
+          _applyProposal(Map<String, dynamic>.from(cached['body'] as Map));
+          if (_draft.isNotEmpty) {
+            _postProcess();
+            if (mounted) setState(() => _loading = false);
+            return; // brouillon réutilisé — zéro appel réseau LLM
+          }
+        }
+      } catch (_) {}
     }
     try {
       final token = await _sync.ensureWidgetToken();
@@ -99,12 +123,53 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
       final body = jsonDecode(resp.body) as Map<String, dynamic>;
       _applyProposal(body);
+      // Persister le brouillon (les fallbacks locaux, gratuits, ne sont pas
+      // cachés — seule la proposition LLM l'est).
+      if (_draft.isNotEmpty) {
+        unawaited(_sync.saveProposalDraft(widget.targetDate, {
+          'generatedAt': DateTime.now().toIso8601String(),
+          'fingerprint': fingerprint,
+          'body': body,
+        }));
+      }
     } catch (_) {
       // Fallback déterministe — l'écran ne doit jamais être vide ni bloquer.
       await _buildFallback();
     }
     _postProcess();
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Empreinte du programme source (la veille de la cible) : si les statuts,
+  /// causes ou blocs changent, le brouillon caché est invalide.
+  Future<String> _sourceFingerprint() async {
+    final ref = _ymd(
+        DateTime.parse(widget.targetDate).subtract(const Duration(days: 1)));
+    try {
+      final s = await _sync.fetchDailySchedule(ref);
+      final live =
+          (s?.blocks ?? const <ScheduleBlock>[]).where((b) => b.status != 'deleted');
+      return [
+        s?.dayReason ?? '',
+        ...live.map((b) => '${b.id}:${b.status}:${b.skipReason ?? ''}'),
+      ].join('|');
+    } catch (_) {
+      return 'na';
+    }
+  }
+
+  /// ⟳ explicite : régénère la proposition (1 appel), remplace le brouillon.
+  Future<void> _regenerate() async {
+    setState(() {
+      _loading = true;
+      _draft.clear();
+      _arbitration = null;
+      _eveningPrep = null;
+      _sources = const [];
+      _message = '';
+      _launchOnValidate = false;
+    });
+    await _load(force: true);
   }
 
   void _applyProposal(Map<String, dynamic> body) {
@@ -345,6 +410,13 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Régénérer la proposition',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loading || _saving ? null : _regenerate,
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -431,6 +503,16 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                     color: cs.onSurface.withOpacity(.4))),
           ),
         // ── Blocs proposés ──────────────────────────────────────────────────
+        // Tout est refusable : le refus est silencieux et sans pénalité.
+        if (_draft.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('Glisse un bloc pour le retirer — tout est refusable, sans pénalité.',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontStyle: FontStyle.italic,
+                    color: cs.onSurface.withOpacity(.4))),
+          ),
         for (final d in _draft) _draftRow(cs, d),
         if (_eveningPrep != null) _draftRow(cs, _eveningPrep!, discreet: true),
         // ── + Ajouter un bloc ───────────────────────────────────────────────
@@ -619,6 +701,19 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
             tooltip: 'Changer l\'heure',
             onPressed: () => _pickTime(d),
           ),
+          // Bloc reproposé : le refus doit être VISIBLE (pas seulement le
+          // swipe) — ✕ en un tap, silencieux, sans pénalité.
+          if (d.reproposed)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.close_rounded,
+                  size: 18, color: cs.tertiary.withOpacity(.9)),
+              tooltip: 'Refuser ce bloc',
+              onPressed: () => setState(() {
+                _draft.remove(d);
+                _refreshEveningPrep();
+              }),
+            ),
         ],
       ),
     );
