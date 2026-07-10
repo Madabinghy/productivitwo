@@ -9,7 +9,10 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/onboarding_slots.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
+import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
+import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
@@ -91,6 +94,10 @@ class _FocusViewState extends State<FocusView> {
   StreamSubscription<List<Artifact>>? _artifactsSub;
   // Rapport hebdo de la semaine courante — teaser du dimanche soir (16a).
   WeeklyReport? _weeklyReport;
+  // Nudge domaines (Partie D) : faits calculés sur ±7 jours de programme.
+  int _sessionSkipCount = 0; // sessions de définition sautées (déclenche 21c)
+  String? _nextSessionLabel; // « demain 18 h 30 » — prochaine session posée
+  bool _nudgeDismissed = false; // « Garder [créneau] » — silence pour le jour
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -238,6 +245,8 @@ class _FocusViewState extends State<FocusView> {
     _schedDate = _ymd(now);
     _coachAdvancedTo = null; // nouvelle journée → l'horloge reprend la main
     _unplannedDismissed = false;
+    _nudgeDismissed = false;
+    _loadNudgeFacts(now);
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
@@ -257,6 +266,137 @@ class _FocusViewState extends State<FocusView> {
     }).catchError((_) {});
   }
 
+  // ── Nudge domaines (Partie D) : faits sur ±7 jours de programme ─────────────
+
+  /// Ne coûte rien tant qu'aucun domaine n'est seulement « nommé » (les
+  /// variantes 21b/21c n'existent que pour eux ; 21a n'a besoin de rien).
+  Future<void> _loadNudgeFacts(DateTime now) async {
+    _sessionSkipCount = 0;
+    _nextSessionLabel = null;
+    if (!st.domains
+        .any((d) => !d.deleted && d.definitionStatus == 'named')) {
+      return;
+    }
+    try {
+      final days = await Future.wait(List.generate(15, (i) {
+        final d = now.add(Duration(days: i - 7)); // J-7 … J+7
+        return _sync.fetchDailySchedule(_ymd(d)).catchError((_) => null);
+      }));
+      var skips = 0;
+      String? nextLabel;
+      const weekdays = [
+        'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'
+      ];
+      for (var i = 0; i < days.length; i++) {
+        final offset = i - 7;
+        for (final b in days[i]?.blocks ?? const <ScheduleBlock>[]) {
+          if (b.kind != 'session' || b.status == 'deleted') continue;
+          // Passé : une session non faite a sauté. Futur : la prochaine posée.
+          if (offset < 0 && b.status != 'done') skips++;
+          if (offset >= 0 && b.status == 'pending' && nextLabel == null) {
+            final day = offset == 0
+                ? 'aujourd\'hui'
+                : offset == 1
+                    ? 'demain'
+                    : weekdays[now.add(Duration(days: offset)).weekday - 1];
+            final p = b.startTime.split(':');
+            final h = int.tryParse(p.first) ?? 0;
+            final m = p.length > 1 && p[1] != '00' ? ' ${p[1]}' : '';
+            nextLabel = '$day $h h$m';
+          }
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _sessionSkipCount = skips;
+          _nextSessionLabel = nextLabel;
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// « Nommer mes domaines — 2 min » (21a) → sheet in-place (22a/22b).
+  Future<void> _openNamingSheet() async {
+    final named = await showDomainNamingSheet(context, logic: logic);
+    if (named != null && named.isNotEmpty && mounted) {
+      setState(() {}); // le nudge recalcule : « Définir « X » — 15 min » (22c)
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            '${named.length} domaine${named.length > 1 ? 's' : ''} nommé${named.length > 1 ? 's' : ''} — 2 min chrono'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  /// « Ce soir plutôt » (21a) — pose le nommage comme un vrai bloc ce soir.
+  Future<void> _poseNamingTonight() async {
+    final now = DateTime.now();
+    final startMin = (now.hour * 60 + now.minute + 30).clamp(19 * 60, 21 * 60);
+    final hm =
+        '${(startMin ~/ 60).toString().padLeft(2, '0')}:${(startMin % 60).toString().padLeft(2, '0')}';
+    await _sync.addScheduleBlock(
+        _schedDate,
+        ScheduleBlock(
+          startTime: hm,
+          durationMin: 5,
+          title: 'Nommer mes domaines — 2 min',
+          category: 'personal',
+          kind: 'session',
+        ));
+    if (mounted) {
+      setState(() => _nudgeDismissed = true);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Posé ce soir à ${hm.replaceFirst(':', ' h ')}.'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
+
+  /// « Faire la session maintenant » (21b) / « Version courte — 8 min » (21c).
+  void _startDomainSession(String domain, {bool short = false}) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DomainSessionScreen(
+          logic: logic, domainName: domain, shortVersion: short),
+    ));
+  }
+
+  /// « Plus tard — pose les N sessions dans ma semaine » (22c) /
+  /// « Reposer un créneau » (21c) — mécanique 18b.
+  Future<void> _poseRemainingSessions() async {
+    final named = st.domains
+        .where((d) => !d.deleted && d.definitionStatus == 'named')
+        .toList();
+    if (named.isEmpty) return;
+    final now = DateTime.now();
+    final slots = definitionSessionSlots(now, named.length);
+    for (var i = 0; i < named.length; i++) {
+      final slot = slots[i];
+      await _sync.addScheduleBlock(
+        _ymd(slot),
+        ScheduleBlock(
+          startTime:
+              '${slot.hour.toString().padLeft(2, '0')}:${slot.minute.toString().padLeft(2, '0')}',
+          durationMin: 20,
+          title: 'Définir « ${named[i].name} » avec Orion',
+          category: 'personal',
+          kind: 'session',
+          domainId: named[i].id,
+        ),
+      );
+    }
+    if (mounted) {
+      setState(() => _nudgeDismissed = true);
+      _loadNudgeFacts(now);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            '${named.length} session${named.length > 1 ? 's' : ''} posée${named.length > 1 ? 's' : ''} dans ta semaine — engagements comme les autres.'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
 
   Widget _coachCard(DateTime now) {
@@ -265,9 +405,21 @@ class _FocusViewState extends State<FocusView> {
         advancedTo: _coachAdvancedTo,
         unplannedDismissed: _unplannedDismissed,
         artifacts: _artifacts,
-        weeklyReport: _weeklyReport);
+        weeklyReport: _weeklyReport,
+        sessionSkipCount: _sessionSkipCount,
+        nextSessionLabel: _nextSessionLabel,
+        nudgeDismissed: _nudgeDismissed);
+    final isNudge = moment.type == CoachMomentType.defineNudge;
     return CoachMomentCard(
       moment: moment,
+      onNameDomains: _openNamingSheet,
+      onNameTonight: _poseNamingTonight,
+      onStartSession: _startDomainSession,
+      onPoseSessions: _poseRemainingSessions,
+      // « Garder [créneau] » du nudge : silence pour la journée seulement.
+      onDismiss: isNudge
+          ? () => setState(() => _nudgeDismissed = true)
+          : () => setState(() => _unplannedDismissed = true),
       onLaunch: widget.onLaunchScheduledBlock,
       // Renégocier (12a) : trois issues générées depuis le réel — réduire /
       // déplacer / reporter. Remplace l'ouverture de fiche v1.
@@ -281,7 +433,6 @@ class _FocusViewState extends State<FocusView> {
       onOpenDayReview: widget.onOpenDayReview,
       onAdvance: (target) => setState(() => _coachAdvancedTo = target),
       onPlanDay: _openPlanToday,
-      onDismiss: () => setState(() => _unplannedDismissed = true),
       onMealEaten: (id) => _logMeal(id, eaten: true),
       onMealShift: (id) => _logMeal(id, eaten: false),
       onOpenWeeklyReport: _weeklyReport == null

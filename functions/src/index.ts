@@ -10,6 +10,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
+import { buildDomainDossier } from "./domain_facts";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue, effectivePro } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate, defineDomainSystemPrompt } from "./prompts";
@@ -466,9 +467,17 @@ export const proposeDayPlan = onRequest(
         .map((d) => d.data() as Record<string, unknown>)
         .filter((v) => v.deleted !== true && v.definitionStatus === "active" && v.intention)
         .map((v) => {
+          // Territoire défendu (tour 20) : contrainte DURE, quel que soit le
+          // retard ailleurs — fusionné avec les offSlots des artefacts.
+          for (const slot of (v.protectedSlots as string[]) ?? []) offSlots.add(slot);
           // Suspension assumée (renégociation 12b) : rien ne se pose dessus.
           if (typeof v.suspendedUntil === "string" && v.suspendedUntil >= target) {
             return `  · ${v.name} — ⛔ SUSPENDU jusqu'au ${v.suspendedUntil} (assumé, sans pénalité) : ne pose RIEN sur ce domaine.`;
+          }
+          // Suivi déclaré (tour 20) : pas de chrono, pas de blocs, pas de
+          // score — son vital se demande au rapport du dimanche, c'est tout.
+          if (v.tracking === "declared") {
+            return `  · ${v.name} — intention : « ${v.intention} » — SUIVI DÉCLARÉ : ne pose JAMAIS de bloc sur ce domaine (son vital est demandé au rapport hebdo, pas dans le programme).`;
           }
           const vital = ((v.vitalMinimum as Array<Record<string, unknown>>) ?? [])
             .map((m) => m.label).join(" · ");
@@ -588,7 +597,7 @@ export const proposeDayPlan = onRequest(
           : []),
         ...(offSlots.size > 0
           ? [
-              `── CONTRAINTE DURE (offSlots — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")} ──`,
+              `── CONTRAINTE DURE (offSlots artefacts + territoire défendu des domaines — « on ne touche pas ») : ne pose RIEN sur ${[...offSlots].join(", ")}, quel que soit le retard ailleurs ──`,
               ``,
             ]
           : []),
@@ -721,11 +730,21 @@ export const defineDomainChat = onRequest(
         input_schema: SAVE_DOMAIN_DEFINITION_TOOL.inputSchema,
       }];
 
+      // Dossier de faits (19/20) : domaine vivant → confrontation déclaré vs
+      // réel + artefacts adoptés ; domaine vide → le vide est le point de
+      // départ (en creux, plancher minuscule, tracking déclaré, territoire).
+      let dossier: { mode: "vivant" | "vide"; text: string } | undefined;
+      try {
+        dossier = await buildDomainDossier(uid, domainName.trim());
+      } catch (e) {
+        console.error("buildDomainDossier error (session sans dossier):", e);
+      }
+
       for (let turn = 0; turn < DEFINE_DOMAIN_MAX_TURNS; turn++) {
         const response = await client.messages.create({
           model,
           max_tokens: 1024,
-          system: defineDomainSystemPrompt(domainName.trim()),
+          system: defineDomainSystemPrompt(domainName.trim(), dossier),
           tools: anthropicTools as Parameters<typeof client.messages.create>[0]["tools"],
           messages: convo as Parameters<typeof client.messages.create>[0]["messages"],
         });

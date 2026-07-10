@@ -138,12 +138,19 @@ class Domain {
   // "named" (onboarding : nommé mais pas défini — N'EXISTE PAS pour le coach :
   // ignoré par la proposition, la carte et le rapport, aucun vital inventé).
   String definitionStatus; // "none" | "named" | "draft" | "active" | "suspended"
+  DateTime? namedAt; // posé au nommage (18a/22a) — « nommé depuis N j » (21c)
   DateTime? definedAt;
   DateTime? renegotiatedAt;
   List<Map<String, dynamic>> history; // { date, field, from, to, reason }
   // Suspension assumée (renégociation 12b) : jusqu'à cette date incluse, le
   // coach ne pose RIEN sur ce domaine — puis il redevient actif tout seul.
   String? suspendedUntil; // YYYY-MM-DD
+  // Session « sans données » (tour 20) — décider aussi ce qu'on ne mesure pas :
+  // "declared" = vie privée, pas de chrono/blocs/score, vital demandé en 1-2
+  // questions binaires au rapport du dimanche (seul endroit où il existe).
+  String tracking; // "timed" (défaut) | "declared"
+  // Territoire défendu : créneaux où la proposition ne pose JAMAIS rien.
+  List<String> protectedSlots; // codes "{mon..sun}_{morning|afternoon|evening|day}"
 
   Domain({
     String? id,
@@ -158,16 +165,20 @@ class Domain {
     List<String>? artifactIds,
     List<String>? wantedArtifacts,
     this.definitionStatus = 'none',
+    this.namedAt,
     this.definedAt,
     this.renegotiatedAt,
     List<Map<String, dynamic>>? history,
     this.suspendedUntil,
+    this.tracking = 'timed',
+    List<String>? protectedSlots,
   })  : id = id ?? _uuid.v4(),
         vitalMinimum = vitalMinimum ?? [],
         modalities = modalities ?? [],
         artifactIds = artifactIds ?? [],
         wantedArtifacts = wantedArtifacts ?? [],
-        history = history ?? [];
+        history = history ?? [],
+        protectedSlots = protectedSlots ?? [];
 
   bool get isDefined => definitionStatus == 'active' && intention != null;
 
@@ -189,10 +200,13 @@ class Domain {
         'artifactIds': artifactIds,
         'wantedArtifacts': wantedArtifacts,
         'definitionStatus': definitionStatus,
+        'namedAt': namedAt?.toIso8601String(),
         'definedAt': definedAt?.toIso8601String(),
         'renegotiatedAt': renegotiatedAt?.toIso8601String(),
         'history': history,
         'suspendedUntil': suspendedUntil,
+        'tracking': tracking,
+        'protectedSlots': protectedSlots,
       };
 
   static Domain from(Map j) => Domain(
@@ -220,6 +234,7 @@ class Domain {
             (j['wantedArtifacts'] as List?)?.map((e) => e.toString()).toList() ??
                 [],
         definitionStatus: j['definitionStatus']?.toString() ?? 'none',
+        namedAt: _parseDateOrNull(j['namedAt']),
         definedAt: _parseDateOrNull(j['definedAt']),
         renegotiatedAt: _parseDateOrNull(j['renegotiatedAt']),
         history: (j['history'] as List?)
@@ -228,5 +243,9 @@ class Domain {
                 .toList() ??
             [],
         suspendedUntil: j['suspendedUntil']?.toString(),
+        tracking: j['tracking']?.toString() == 'declared' ? 'declared' : 'timed',
+        protectedSlots:
+            (j['protectedSlots'] as List?)?.map((e) => e.toString()).toList() ??
+                [],
       );
 }

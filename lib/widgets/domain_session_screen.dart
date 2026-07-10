@@ -17,11 +17,15 @@ import 'package:productivitwo_v1/widgets/domain_onboarding_screen.dart';
 class DomainSessionScreen extends StatefulWidget {
   final AppLogic logic;
   final String domainName;
+  // Version courte (21c) : intention + minimum vital seulement, les modalités
+  // plus tard — la consigne part dans le message d'amorce, prompt inchangé.
+  final bool shortVersion;
 
   const DomainSessionScreen({
     super.key,
     required this.logic,
     required this.domainName,
+    this.shortVersion = false,
   });
 
   @override
@@ -86,7 +90,9 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
     await _send(
       _resumable
           ? 'Reprenons la session de définition là où on s\'était arrêtés.'
-          : 'Commençons la session de définition du domaine « ${widget.domainName} ».',
+          : widget.shortVersion
+              ? 'Commençons la session de définition COURTE du domaine « ${widget.domainName} » : intention + minimum vital seulement, en 8 minutes — les modalités viendront plus tard.'
+              : 'Commençons la session de définition du domaine « ${widget.domainName} ».',
       visible: false,
     );
   }
@@ -218,7 +224,32 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
 
   // ── 13a : l'entrée (le contrat) ──────────────────────────────────────────────
 
+  /// Heures des 6 dernières semaines par activité du domaine (dossier 19a).
+  /// Liste vide = domaine sans activités connues ; minutes à 0 = activité qui
+  /// existe mais rien de loggué (la matière de la confrontation).
+  List<({String name, int minutes})> _domainFacts() {
+    final d = _domain;
+    if (d == null) return const [];
+    final since = DateTime.now().subtract(const Duration(days: 42));
+    final now = DateTime.now();
+    final out = <({String name, int minutes})>[];
+    for (final a in widget.logic.state.activities) {
+      if (a.deleted || a.domainId != d.id) continue;
+      var min = 0;
+      for (final s in widget.logic.state.sessions) {
+        if (s.activityId != a.id || s.startAt.isBefore(since)) continue;
+        min += (s.endAt ?? now).difference(s.startAt).inMinutes;
+      }
+      out.add((name: a.name, minutes: min));
+    }
+    out.sort((x, y) => y.minutes.compareTo(x.minutes));
+    return out;
+  }
+
   Widget _intro(ColorScheme cs) {
+    final facts = _domainFacts();
+    final vivant = facts.any((f) => f.minutes > 0);
+    final vide = _domain != null && !vivant;
     return ListView(
       key: const ValueKey('intro'),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
@@ -228,14 +259,69 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
           decoration: BoxDecoration(
             color: cs.primary.withOpacity(.06),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: cs.primary.withOpacity(.3)),
+            border: Border.all(
+                color:
+                    (vide ? cs.tertiary : cs.primary).withOpacity(.3)),
           ),
           child: Text(
-            'Une vraie conversation, pas un formulaire. Je vais creuser jusqu\'à ce qu\'on tienne une intention qui te ressemble — puis on la rendra exécutable. Tout ce qu\'on décide est écrit et me servira chaque jour.',
+            vivant
+                ? 'Ici je ne pars pas de zéro — je te regarde travailler depuis six semaines. Voilà ce que je sais déjà. On va juste décider ce que tout ça sert.'
+                : vide
+                    ? 'Ici, rien — pas une heure, pas un bloc en six semaines. Ce vide est la première chose à regarder : il ne veut pas dire que ce domaine va bien. Une promesse : on n\'instrumente pas ta vie privée — on décide ce qui est non négociable, et je le défendrai.'
+                    : 'Une vraie conversation, pas un formulaire. Je vais creuser jusqu\'à ce qu\'on tienne une intention qui te ressemble — puis on la rendra exécutable. Tout ce qu\'on décide est écrit et me servira chaque jour.',
             style: TextStyle(
                 fontSize: 14, height: 1.5, color: cs.onSurface.withOpacity(.9)),
           ),
         ),
+        // ── 19a : le dossier — les faits avant la conversation ────────────────
+        if (vivant) ...[
+          const SizedBox(height: 16),
+          Text('LE DOSSIER — SIX SEMAINES DE FAITS',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: cs.onSurface.withOpacity(.4))),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (final f in facts.take(2))
+                Expanded(
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: (f.minutes == 0 ? cs.tertiary : cs.primary)
+                              .withOpacity(.35)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${(f.minutes / 60).round()} h',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: f.minutes == 0
+                                    ? cs.tertiary
+                                    : cs.primary)),
+                        Text('${f.name.toUpperCase()} · 6 SEM.',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: .8,
+                                color: cs.onSurface.withOpacity(.5))),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 20),
         Text('CE QU\'ON AURA À LA FIN',
             style: TextStyle(
@@ -702,10 +788,43 @@ class DomainCard extends StatelessWidget {
                       fontSize: 11, color: cs.onSurface.withOpacity(.6)),
                 ),
               ),
+            // Suivi déclaré (20c) : décidé aussi ce qu'on ne mesure pas.
+            if (domain.tracking == 'declared')
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  'Suivi : déclaré au rapport du dimanche — pas de chrono, pas de blocs, pas de score',
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withOpacity(.6)),
+                ),
+              ),
+            if (domain.protectedSlots.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Text(
+                  'Territoire défendu : ${domain.protectedSlots.map(_slotFr).join(' · ')} — la proposition n\'y posera jamais un bloc',
+                  style: TextStyle(
+                      fontSize: 11, color: cs.onSurface.withOpacity(.6)),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  static String _slotFr(String code) {
+    final p = code.split('_');
+    const days = {
+      'mon': 'lun', 'tue': 'mar', 'wed': 'mer', 'thu': 'jeu',
+      'fri': 'ven', 'sat': 'sam', 'sun': 'dim',
+    };
+    const parts = {
+      'morning': 'matin', 'afternoon': 'après-midi',
+      'evening': 'soir', 'day': 'journée',
+    };
+    return '${days[p.first] ?? p.first} ${parts[p.length > 1 ? p[1] : ''] ?? ''}'
+        .trim();
   }
 
   static String _frDate(DateTime d) {

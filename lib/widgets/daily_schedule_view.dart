@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 
 class DailyScheduleView extends StatefulWidget {
@@ -356,17 +357,23 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
           onTap: () {
-            // Bloc session de définition (onboarding 18b) → lance la session.
-            if (block.kind == 'session' && block.domainId != null) {
-              Domain? d;
-              for (final x in widget.logic.state.domains) {
-                if (x.id == block.domainId && !x.deleted) d = x;
-              }
-              if (d != null) {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => DomainSessionScreen(
-                      logic: widget.logic, domainName: d!.name),
-                ));
+            // Bloc session de définition (onboarding 18b) → lance la session ;
+            // bloc « nommer mes domaines » (21a) → sheet de nommage in-place.
+            if (block.kind == 'session') {
+              if (block.domainId != null) {
+                Domain? d;
+                for (final x in widget.logic.state.domains) {
+                  if (x.id == block.domainId && !x.deleted) d = x;
+                }
+                if (d != null) {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => DomainSessionScreen(
+                        logic: widget.logic, domainName: d!.name),
+                  ));
+                  return;
+                }
+              } else {
+                showDomainNamingSheet(context, logic: widget.logic);
                 return;
               }
             }

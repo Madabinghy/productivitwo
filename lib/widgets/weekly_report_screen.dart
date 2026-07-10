@@ -25,6 +25,8 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
   final _sync = FirestoreSync();
   late String _decisionStatus;
   String? _weekModeChosen; // rapport court : 'minimal' | 'vital'
+  // Vital déclaré (tour 20) : réponses binaires, clé "domainId|label".
+  late Map<String, bool> _declared;
 
   WeeklyReport get r => widget.report;
 
@@ -33,6 +35,83 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     super.initState();
     _decisionStatus = r.decisionStatus;
     _weekModeChosen = r.weekModeChosen;
+    _declared = Map.of(r.declaredAnswers);
+  }
+
+  Future<void> _answerDeclared(String key, bool value) async {
+    setState(() => _declared[key] = value);
+    try {
+      await _sync.setWeeklyReportDeclaredAnswer(r.weekStart, key, value);
+    } catch (_) {}
+  }
+
+  /// Questions binaires des domaines à suivi déclaré — le SEUL endroit où ce
+  /// vital est demandé (pas de chrono, pas de blocs, pas de score ailleurs).
+  List<Widget> _declaredSection(ColorScheme cs) {
+    if (r.declaredQuestions.isEmpty) return const [];
+    return [
+      Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.tertiary.withOpacity(.35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('VITAL DÉCLARÉ — ON DEMANDE, ON NE MESURE PAS',
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    color: cs.tertiary)),
+            const SizedBox(height: 10),
+            for (final q in r.declaredQuestions) ...[
+              Builder(builder: (_) {
+                final key = '${q['domainId']}|${q['label']}';
+                final answer = _declared[key];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${q['name']} — ${q['label']} : tenu cette semaine ?',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('Oui'),
+                        selected: answer == true,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) => _answerDeclared(key, true),
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text('Non'),
+                        selected: answer == false,
+                        visualDensity: VisualDensity.compact,
+                        onSelected: (_) => _answerDeclared(key, false),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+            Text(
+              'C\'est tout — pas de score, pas de rattrapage. Une réponse honnête suffit.',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                  color: cs.onSurface.withOpacity(.45)),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 
   /// Rapport court (17b) : « Fini — on repart au minimum » (le plan se RECALE,
@@ -170,6 +249,8 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
           const SizedBox(height: 14),
           // ── Domaines : le vital, en faits ────────────────────────────────────
           for (final d in r.domains) _domainCard(cs, d),
+          // ── Vital déclaré (tour 20) : le SEUL endroit où on le demande ──────
+          ..._declaredSection(cs),
           // ── Motifs : ce n'est plus de la malchance ──────────────────────────
           for (final m in r.motifs) _motifCard(cs, m),
           // ── LA question de fond (une seule) + décision ──────────────────────
@@ -256,6 +337,8 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        ..._declaredSection(cs),
         if (r.narrative.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),

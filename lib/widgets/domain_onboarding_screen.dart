@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 
 /// Onboarding domaines (maquettes 18a/18b) : NOMMER D'ABORD, DÉFINIR ENSUITE.
@@ -28,8 +29,8 @@ class _Row {
       : ctrl = TextEditingController(text: initial);
 }
 
-// Palette de l'onboarding (mockup : vert / violet / corail, puis rotation).
-const _kPalette = [0xFF2BC48A, 0xFF8B7CF6, 0xFFF07167, 0xFFF4A261, 0xFF4CC9F0];
+// Palette partagée avec le nommage in-place (22a).
+const _kPalette = kDomainPalette;
 
 class _DomainOnboardingScreenState extends State<DomainOnboardingScreen> {
   final _sync = FirestoreSync();
@@ -87,24 +88,13 @@ class _DomainOnboardingScreenState extends State<DomainOnboardingScreen> {
     if (_saving || _names.isEmpty) return;
     setState(() => _saving = true);
     try {
-      final created = <Domain>[];
-      for (var i = 0; i < _rows.length; i++) {
-        final name = _rows[i].ctrl.text.trim();
-        if (name.isEmpty) continue;
-        Domain? d;
-        for (final existing in widget.logic.state.activeDomains) {
-          if (existing.name.trim().toLowerCase() == name.toLowerCase()) {
-            d = existing;
-            break;
-          }
-        }
-        d ??= widget.logic.createDomain(name);
-        d.colorValue ??= _kPalette[_rows[i].colorIdx];
-        // Ne jamais rétrograder un domaine déjà en session ou défini.
-        if (d.definitionStatus == 'none') d.definitionStatus = 'named';
-        created.add(d);
-      }
-      widget.logic.onChange();
+      // Même chemin d'écriture que le nommage in-place (22a) — une seule
+      // implémentation pour les deux entrées.
+      final created = saveNamedDomains(widget.logic, [
+        for (final r in _rows)
+          if (r.ctrl.text.trim().isNotEmpty)
+            (name: r.ctrl.text.trim(), color: _kPalette[r.colorIdx]),
+      ]);
 
       _firstName = created.first.name;
       _others = created.skip(1).toList();

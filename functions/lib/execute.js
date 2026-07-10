@@ -1684,7 +1684,7 @@ async function executeAddPrepBlock(uid, args) {
 // ── Session de définition : écrit la fiche domaine (intention/vital/modalités)
 // sur la collection domains EXISTANTE. Appelé à chaque élément validé.
 async function executeSaveDomainDefinition(uid, args) {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     if (!((_a = args.name) === null || _a === void 0 ? void 0 : _a.trim()))
         return "name requis.";
     const col = db_1.db.collection(`users/${uid}/domains`);
@@ -1737,6 +1737,13 @@ async function executeSaveDomainDefinition(uid, args) {
     }
     if (args.wantedArtifacts !== undefined)
         update.wantedArtifacts = args.wantedArtifacts;
+    // Suivi déclaré + territoire défendu (session « sans données », tour 20).
+    if (args.tracking === "timed" || args.tracking === "declared") {
+        update.tracking = args.tracking;
+    }
+    if (args.protectedSlots !== undefined) {
+        update.protectedSlots = args.protectedSlots.filter((s) => /^(mon|tue|wed|thu|fri|sat|sun)_(morning|afternoon|evening|day)$/.test(s));
+    }
     const currentStatus = String((_d = existing === null || existing === void 0 ? void 0 : existing.definitionStatus) !== null && _d !== void 0 ? _d : "none");
     if (args.finalize === true) {
         update.definitionStatus = "active";
@@ -1756,6 +1763,10 @@ async function executeSaveDomainDefinition(uid, args) {
         parts.push(`${args.modalities.length} modalité(s)`);
     if ((_g = args.wantedArtifacts) === null || _g === void 0 ? void 0 : _g.length)
         parts.push(`${args.wantedArtifacts.length} artefact(s) voulu(s)`);
+    if (args.tracking === "declared")
+        parts.push(`suivi déclaré (pas de chrono, pas de blocs, pas de score)`);
+    if ((_h = args.protectedSlots) === null || _h === void 0 ? void 0 : _h.length)
+        parts.push(`territoire défendu : ${args.protectedSlots.join(", ")}`);
     if (args.finalize)
         parts.push(`FINALISÉ — je m'en servirai chaque jour`);
     return parts.join(" · ");

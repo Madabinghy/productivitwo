@@ -35,6 +35,10 @@ export type WeeklyFacts = {
   checkinsDone: number; // jours avec skipReason/dayReason posés (rendre des comptes)
   minutesLogged: number; // heures réelles de la semaine (« ce qui a tenu »)
   renegotiations: number; // renégociations de la semaine = sacrifices en connaissance
+  // Domaines à suivi DÉCLARÉ (tour 20) : rien n'est mesuré, rien n'est inventé
+  // — le vital se demande ici, en 1-2 questions binaires, SEUL endroit où il
+  // existe. Réponses écrites par l'app sur le doc (declaredAnswers).
+  declaredQuestions: Array<{ domainId: string; name: string; label: string }>;
 };
 
 const WEEKDAY_FR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
@@ -147,6 +151,7 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
   }
 
   const domains: WeeklyFacts["domains"] = [];
+  const declaredQuestions: WeeklyFacts["declaredQuestions"] = [];
   let renegotiations = 0;
   for (const doc of domainsSnap.docs) {
     const d = doc.data() as Record<string, unknown>;
@@ -155,6 +160,20 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     for (const h of ((d.history as Array<Record<string, unknown>>) ?? [])) {
       const date = String(h.date ?? "").slice(0, 10);
       if (date >= weekStart && date <= weekEnd) renegotiations++;
+    }
+    // Suivi déclaré : pas de chrono, pas de score — le vital se DEMANDE
+    // (2 questions binaires max, tous domaines déclarés confondus).
+    if (d.tracking === "declared") {
+      for (const v of ((d.vitalMinimum as Array<Record<string, unknown>>) ?? [])) {
+        if (declaredQuestions.length >= 2) break;
+        const label = String(v.label ?? "").trim();
+        if (label) {
+          declaredQuestions.push({
+            domainId: doc.id, name: String(d.name ?? ""), label,
+          });
+        }
+      }
+      continue;
     }
     const vitals: Array<{ label: string; done: number; target: number }> = [];
     for (const v of ((d.vitalMinimum as Array<Record<string, unknown>>) ?? [])) {
@@ -180,6 +199,7 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     engagements: { held, total },
     domains, motifs, checkinsDone,
     minutesLogged, renegotiations,
+    declaredQuestions,
   };
 }
 
@@ -242,6 +262,9 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     ...facts.motifs.map((m) =>
       `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
     `Check-ins faits : ${facts.checkinsDone}/7 jours`,
+    ...(facts.declaredQuestions.length > 0
+      ? [`Domaines à suivi déclaré : ${[...new Set(facts.declaredQuestions.map((q) => q.name))].join(", ")} — leur vital est demandé directement dans l'app, tu n'as AUCUNE donnée dessus : n'en dis rien.`]
+      : []),
   ];
 
   const client = new Anthropic({ apiKey });

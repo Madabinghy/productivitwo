@@ -1938,6 +1938,8 @@ async function executeSaveDomainDefinition(
     vitalMinimum?: Array<{ label: string; metric?: string; target?: number; period?: string }>;
     modalities?: string[];
     wantedArtifacts?: string[];
+    tracking?: string;
+    protectedSlots?: string[];
     finalize?: boolean;
   }
 ): Promise<string> {
@@ -1985,6 +1987,14 @@ async function executeSaveDomainDefinition(
     update.modalities = args.modalities.map((m) => ({ label: m }));
   }
   if (args.wantedArtifacts !== undefined) update.wantedArtifacts = args.wantedArtifacts;
+  // Suivi déclaré + territoire défendu (session « sans données », tour 20).
+  if (args.tracking === "timed" || args.tracking === "declared") {
+    update.tracking = args.tracking;
+  }
+  if (args.protectedSlots !== undefined) {
+    update.protectedSlots = args.protectedSlots.filter((s) =>
+      /^(mon|tue|wed|thu|fri|sat|sun)_(morning|afternoon|evening|day)$/.test(s));
+  }
 
   const currentStatus = String(existing?.definitionStatus ?? "none");
   if (args.finalize === true) {
@@ -2001,6 +2011,8 @@ async function executeSaveDomainDefinition(
   if (args.vitalMinimum?.length) parts.push(`${args.vitalMinimum.length} vital(aux)`);
   if (args.modalities?.length) parts.push(`${args.modalities.length} modalité(s)`);
   if (args.wantedArtifacts?.length) parts.push(`${args.wantedArtifacts.length} artefact(s) voulu(s)`);
+  if (args.tracking === "declared") parts.push(`suivi déclaré (pas de chrono, pas de blocs, pas de score)`);
+  if (args.protectedSlots?.length) parts.push(`territoire défendu : ${args.protectedSlots.join(", ")}`);
   if (args.finalize) parts.push(`FINALISÉ — je m'en servirai chaque jour`);
   return parts.join(" · ");
 }

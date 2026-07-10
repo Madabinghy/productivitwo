@@ -26,6 +26,24 @@ class _TodayViewState extends State<TodayView> {
   String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// État vide du jour selon les domaines (Partie D) : rien de nommé → le
+  /// programme ne peut pas exister ; nommé mais rien de défini → il attend le
+  /// rang 1. Sinon : état vide standard (null).
+  String? _domainsPlaceholder() {
+    final domains =
+        widget.logic.state.domains.where((d) => !d.deleted).toList();
+    final named = domains.where((d) => d.definitionStatus == 'named').toList();
+    final started = domains.any((d) =>
+        d.definitionStatus == 'active' || d.definitionStatus == 'draft');
+    if (named.isEmpty && !started) {
+      return 'Ton programme apparaîtra ici.\nIl se construit à partir de tes domaines — c\'est l\'étape juste au-dessus.';
+    }
+    if (!started && named.isNotEmpty) {
+      return 'Le programme se remplit dès que ${named.first.name} est défini — ce soir si tu veux.';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -76,9 +94,11 @@ class _TodayViewState extends State<TodayView> {
               onOpenSource: widget.onOpenSource,
               title:
                   _showTomorrow ? 'Programme de demain' : 'Programme du jour',
+              // Placeholder 21a/22c : sans domaine, le programme ne peut pas
+              // exister — l'étape est juste au-dessus (nudge de Maintenant).
               emptyText: _showTomorrow
                   ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
-                  : null,
+                  : _domainsPlaceholder(),
             ),
             if (_showTomorrow) ...[
               const SizedBox(height: 16),
