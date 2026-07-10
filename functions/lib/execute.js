@@ -1580,7 +1580,7 @@ async function executeGetDaySchedule(uid, date) {
     return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 async function executeScheduleDay(uid, date, blocks) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -1625,6 +1625,8 @@ async function executeScheduleDay(uid, date, blocks) {
         dayReason: (_b = prevData.dayReason) !== null && _b !== void 0 ? _b : null,
         plannedAt: (_c = prevData.plannedAt) !== null && _c !== void 0 ? _c : null,
         plannedSameDay: (_d = prevData.plannedSameDay) !== null && _d !== void 0 ? _d : false,
+        dayMode: (_e = prevData.dayMode) !== null && _e !== void 0 ? _e : "normal", // mode soirée réversible (23c)
+        dayModeActivatedAt: (_f = prevData.dayModeActivatedAt) !== null && _f !== void 0 ? _f : null,
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;

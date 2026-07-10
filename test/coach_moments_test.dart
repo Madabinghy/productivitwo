@@ -159,6 +159,45 @@ void main() {
       expect(m.type, CoachMomentType.weekly);
     });
 
+    test('mode soirée (23c) : carte « journée pliée tôt » avant 19 h', () {
+      final now = DateTime(2026, 7, 7, 15, 7);
+      final sched = DailySchedule(
+        date: today,
+        dayMode: 'evening',
+        dayModeActivatedAt: DateTime(2026, 7, 7, 15, 7),
+        blocks: [
+          _block(startTime: '14:00', title: 'Relancer 3 prospects'),
+          _block(startTime: '19:30', title: 'Dîner du menu'),
+        ],
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.tagLabel, contains('JOURNÉE PLIÉE TÔT'));
+      expect(m.message, contains('assumé'));
+      expect(m.message, contains('Relancer 3 prospects'));
+      expect(m.message, contains('on les recase au check-in'));
+      expect(m.message, contains('Ce soir tient en 1 chose'));
+    });
+
+    test('mode soirée : après 19 h la soirée normale reprend', () {
+      final now = DateTime(2026, 7, 7, 20, 0);
+      final sched = DailySchedule(date: today, dayMode: 'evening');
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.tagLabel, isNot(contains('PLIÉE')));
+    });
+
+    test('après-midi : la bascule est explicite (endAfternoon, plus jamais « Passer en soirée »)',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final sched = _sched(today, [_block(startTime: '16:00')]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.actions.any((a) => a.kind == CoachActionKind.endAfternoon),
+          isTrue);
+      expect(m.actions.any((a) => a.label == 'Passer en soirée'), isFalse);
+    });
+
     test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
@@ -377,14 +416,12 @@ void main() {
       expect(m.type, CoachMomentType.evening);
     });
 
-    test('après-midi sans bloc : carte visible avec « Passer en soirée »', () {
+    test('après-midi sans bloc : carte visible avec la bascule mode soirée',
+        () {
       final now = DateTime(2026, 7, 7, 16, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
       expect(m.type, CoachMomentType.afternoon);
-      expect(
-          m.actions.any((a) =>
-              a.kind == CoachActionKind.advanceMoment &&
-              a.target == CoachMomentType.evening),
+      expect(m.actions.any((a) => a.kind == CoachActionKind.endAfternoon),
           isTrue);
     });
 
@@ -437,8 +474,8 @@ void main() {
               a.kind == CoachActionKind.planDay &&
               a.label.contains('après-midi')),
           isTrue);
-      // La transition reste disponible, en secondaire.
-      expect(m.actions.any((a) => a.kind == CoachActionKind.advanceMoment),
+      // La bascule système reste disponible, en secondaire — explicite (23c).
+      expect(m.actions.any((a) => a.kind == CoachActionKind.endAfternoon),
           isTrue);
     });
 

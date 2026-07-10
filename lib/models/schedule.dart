@@ -140,6 +140,12 @@ class DailySchedule {
   // check-in du soir sans culpabiliser (« 7 h 58 — planifié au réveil »).
   DateTime? plannedAt;
   bool plannedSameDay;
+  // Mode soirée RÉVERSIBLE (23c) : « Terminer l'après-midi » bascule tout le
+  // système en soirée — les blocs non faits passent « en attente, à recaser
+  // ce soir » (jamais supprimés, recasés au check-in). « Revenir » restaure
+  // le programme tel quel : les blocs ne sont jamais modifiés par la bascule.
+  String dayMode; // "normal" | "evening"
+  DateTime? dayModeActivatedAt;
 
   DailySchedule({
     required this.date,
@@ -149,8 +155,12 @@ class DailySchedule {
     this.dayReason,
     this.plannedAt,
     this.plannedSameDay = false,
+    this.dayMode = 'normal',
+    this.dayModeActivatedAt,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
+
+  bool get eveningMode => dayMode == 'evening';
 
   Map<String, dynamic> toJson() => {
         'date': date,
@@ -160,6 +170,8 @@ class DailySchedule {
         'dayReason': dayReason,
         'plannedAt': plannedAt?.toIso8601String(),
         'plannedSameDay': plannedSameDay,
+        'dayMode': dayMode,
+        'dayModeActivatedAt': dayModeActivatedAt?.toIso8601String(),
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -173,5 +185,7 @@ class DailySchedule {
         dayReason: j['dayReason'],
         plannedAt: _parseDateOrNull(j['plannedAt']),
         plannedSameDay: j['plannedSameDay'] == true,
+        dayMode: j['dayMode']?.toString() == 'evening' ? 'evening' : 'normal',
+        dayModeActivatedAt: _parseDateOrNull(j['dayModeActivatedAt']),
       );
 }

@@ -357,6 +357,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         dayReason: existing?.dayReason,
         plannedAt: sameDay ? now : existing?.plannedAt,
         plannedSameDay: sameDay ? true : (existing?.plannedSameDay ?? false),
+        // Replanifier sort du mode soirée : la journée reprend explicitement.
+        dayMode: 'normal',
       ));
       // Prep du soir (cible = demain) : ajoutée au programme d'AUJOURD'HUI
       // sans le remplacer (même sémantique qu'add_prep_block, idempotent).

@@ -84,6 +84,52 @@ void main() {
     });
   });
 
+  group('freeDaySlots (23a)', () {
+    test('tous les trous du jour, pas seulement le dernier', () {
+      final now = DateTime(2026, 7, 9, 15, 0);
+      final blocks = [
+        _b(startTime: '16:00', durationMin: 90), // 16:00-17:30
+        _b(startTime: '19:00', durationMin: 60), // 19:00-20:00
+      ];
+      final slots = freeDaySlots(now, blocks);
+      expect(slots.map((s) => s.start).toList(),
+          ['15:00', '17:30', '20:00']);
+      expect(slots[0].minutes, 60);
+      expect(slots[1].minutes, 90);
+      expect(slots[2].minutes, 120);
+    });
+
+    test('fin de journée réduite (soirée protégée → dayEndHour 18)', () {
+      final now = DateTime(2026, 7, 9, 15, 0);
+      final slots = freeDaySlots(now, [], dayEndHour: 18);
+      expect(slots.single.start, '15:00');
+      expect(slots.single.minutes, 180);
+    });
+
+    test('le bloc déplacé est exclu des occupations', () {
+      final now = DateTime(2026, 7, 9, 15, 0);
+      final self = _b(startTime: '16:00', durationMin: 360);
+      expect(freeDaySlots(now, [self], excludeBlockId: self.id), hasLength(1));
+    });
+  });
+
+  group('slotIsProtected (territoire défendu)', () {
+    test('codes jour_partie et jour_day', () {
+      // 2026-07-10 est un vendredi.
+      const protected = {'fri_evening', 'sun_day'};
+      expect(slotIsProtected('19:30', DateTime.friday, protected), isTrue);
+      expect(slotIsProtected('15:00', DateTime.friday, protected), isFalse);
+      expect(slotIsProtected('10:00', DateTime.sunday, protected), isTrue);
+      expect(slotIsProtected('19:30', DateTime.monday, protected), isFalse);
+    });
+
+    test('slotPart : même découpage que le post-filtre de la proposition', () {
+      expect(slotPart('08:00'), 'morning');
+      expect(slotPart('14:00'), 'afternoon');
+      expect(slotPart('18:00'), 'evening');
+    });
+  });
+
   group('diagnoseStructural', () {
     // Historique 14 j : « Séance jambes » (t1) sautée 2 fois à 18 h + le bloc
     // du jour = 3 échecs même tranche. Le matin tient (6/6, autres blocs).

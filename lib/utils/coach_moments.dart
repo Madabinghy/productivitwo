@@ -43,6 +43,8 @@ enum CoachActionKind {
   startSession, // « Faire la session maintenant — 15 min » (domain)
   startSessionShort, // « Version courte — 8 min » (21c, intention + vital)
   poseSessions, // « Plus tard » — pose les sessions restantes (mécanique 18b)
+  // ── Phase 5 — contrôle direct (23b/23c) ────────────────────────────────────
+  endAfternoon, // bascule système EXPLICITE en mode soirée (réversible)
 }
 
 class CoachAction {
@@ -141,6 +143,12 @@ CoachMoment computeCoachMoment(
   if (!nudgeDismissed && !sundayReport) {
     final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
     if (nudge != null) return nudge;
+  }
+
+  // Mode soirée (23c) : la journée est pliée tôt — assumé, réversible. Avant
+  // 19 h la carte le dit explicitement ; après, la soirée normale reprend.
+  if (today?.eveningMode == true && minutes < 19 * 60) {
+    return _eveningModeMoment(today!, blocks, vitals);
   }
 
   // « Journée non planifiée » (5a) : matinée sans programme (hors preps) →
@@ -554,10 +562,57 @@ CoachMoment? _driftMoment(
   );
 }
 
+// ── Mode soirée (23c) : journée pliée tôt — assumé, jamais de rattrapage ─────
+
+CoachMoment _eveningModeMoment(
+    DailySchedule today, List<ScheduleBlock> blocks, List<StatItem> vitals) {
+  final at = today.dayModeActivatedAt;
+  final atStr = at != null
+      ? ' à ${at.minute == 0 ? '${at.hour} h' : '${at.hour} h ${at.minute.toString().padLeft(2, '0')}'}'
+      : '';
+  final waiting = blocks
+      .where((b) =>
+          b.status == 'pending' &&
+          !b.isPrep &&
+          b.category != 'break' &&
+          b.startTime.compareTo('19:00') < 0)
+      .toList();
+  final tonight = blocks
+      .where((b) =>
+          b.status == 'pending' &&
+          !b.isPrep &&
+          b.startTime.compareTo('19:00') >= 0)
+      .toList();
+
+  final parts = <String>['Après-midi terminé$atStr — assumé.'];
+  if (waiting.isNotEmpty) {
+    final names = waiting.take(2).map((b) => b.title).join(' et ');
+    final suffix = waiting.length > 2 ? ' (+${waiting.length - 2})' : '';
+    parts.add(
+        '$names$suffix en attente : on les recase au check-in, pas maintenant.');
+  }
+  if (tonight.isNotEmpty) {
+    parts.add(
+        'Ce soir tient en ${tonight.length} chose${tonight.length > 1 ? 's' : ''} : ${tonight.take(2).map((b) => b.title).join(', ')}.');
+  }
+
+  return CoachMoment(
+    type: CoachMomentType.evening,
+    tagLabel: 'ORION · SOIRÉE · JOURNÉE PLIÉE TÔT',
+    message: parts.join(' '),
+    stats: vitals,
+    actions: const [
+      CoachAction('Faire le point', CoachActionKind.openDayReview),
+    ],
+    tone: CoachTone.neutral,
+  );
+}
+
 CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
-  const advance = CoachAction('Passer en soirée',
-      CoachActionKind.advanceMoment,
-      target: CoachMomentType.evening);
+  // 23b/23c : « Passer en soirée » (bascule invisible) devient la bascule
+  // système EXPLICITE — nommée, conséquence visible, réversible (dayMode).
+  const advance = CoachAction('Terminer l\'après-midi — mode soirée',
+      CoachActionKind.endAfternoon);
   final next = _firstEngagement(now, blocks);
   if (next == null) {
     // Quick fix (constaté sur build) : à 14h46 sans programme, proposer

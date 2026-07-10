@@ -76,6 +76,71 @@ bool _sameEngagement(ScheduleBlock b, ScheduleBlock w) {
   return w.title.trim().toLowerCase() == b.title.trim().toLowerCase();
 }
 
+// ─── DÉPLACER À LA MAIN (maquette 23a) ───────────────────────────────────────
+//
+// Les cibles de drop sont les créneaux libres RÉELS du jour. Un déplacement =
+// update de l'heure du bloc, zéro effet sur le reste, non compté comme sauté.
+
+/// Tranche « protection » d'une heure "HH:mm" — même découpage que le
+/// post-filtre offSlots de la proposition (morning <12, afternoon <18, evening).
+String slotPart(String hm) {
+  final h = int.tryParse(hm.split(':').first) ?? 0;
+  return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+}
+
+/// Créneau protégé (protectedSlots des domaines / offSlots des artefacts) :
+/// jamais une cible. [weekday] : DateTime.weekday (1 = lundi).
+bool slotIsProtected(String hm, int weekday, Set<String> protectedSlots) {
+  const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  final d = days[weekday - 1];
+  return protectedSlots.contains('${d}_${slotPart(hm)}') ||
+      protectedSlots.contains('${d}_day');
+}
+
+/// TOUS les trous du jour (≥ [minMinutes]) entre maintenant et [dayEndHour],
+/// en évitant les blocs pending restants (hors preps et [excludeBlockId]).
+List<({String start, int minutes})> freeDaySlots(
+  DateTime now,
+  List<ScheduleBlock> blocks, {
+  int dayEndHour = 22,
+  int minMinutes = 25,
+  String? excludeBlockId,
+}) {
+  int hm(String s) {
+    final p = s.split(':');
+    return (int.tryParse(p.first) ?? 0) * 60 +
+        (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+  }
+
+  String fmt(int m) =>
+      '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+
+  final nowMin = now.hour * 60 + now.minute;
+  final dayEnd = dayEndHour * 60;
+  final busy = blocks
+      .where((b) =>
+          b.status == 'pending' && b.id != excludeBlockId && !b.isPrep)
+      .map((b) => (start: hm(b.startTime), end: hm(b.startTime) + b.durationMin))
+      .where((b) => b.end > nowMin)
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+
+  final slots = <({String start, int minutes})>[];
+  var cursor = nowMin;
+  for (final b in busy) {
+    final gapEnd = b.start.clamp(cursor, dayEnd);
+    if (gapEnd - cursor >= minMinutes) {
+      slots.add((start: fmt(cursor), minutes: gapEnd - cursor));
+    }
+    if (b.end > cursor) cursor = b.end;
+    if (cursor >= dayEnd) break;
+  }
+  if (dayEnd - cursor >= minMinutes) {
+    slots.add((start: fmt(cursor), minutes: dayEnd - cursor));
+  }
+  return slots;
+}
+
 // ─── RENÉGOCIATION STRUCTURELLE (maquette 12b) ───────────────────────────────
 //
 // Déclencheur déterministe : 3 échecs du MÊME engagement sur la MÊME tranche
