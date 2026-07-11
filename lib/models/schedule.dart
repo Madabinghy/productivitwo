@@ -59,6 +59,11 @@ class ScheduleBlock {
   // Pourquoi l'engagement a sauté — fait tracké, écrit par le check-in guidé.
   // Enum ouvert : "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
   String? skipReason;
+  // Raison donnée AU MOMENT du report (skipReason "reporte" garde son sens
+  // serveur : « demain il passe en premier ») : "pas_sur_place" | "imprevu" |
+  // "energie" | "pas_le_moment" | texte libre. Le check-in et la proposition
+  // du lendemain la citent telle quelle.
+  String? reportReason;
 
   ScheduleBlock({
     String? id,
@@ -79,6 +84,7 @@ class ScheduleBlock {
     this.prepForBlockId,
     this.domainId,
     this.skipReason,
+    this.reportReason,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
 
@@ -103,6 +109,7 @@ class ScheduleBlock {
         'prepForBlockId': prepForBlockId,
         'domainId': domainId,
         'skipReason': skipReason,
+        'reportReason': reportReason,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -124,6 +131,7 @@ class ScheduleBlock {
         prepForBlockId: j['prepForBlockId'],
         domainId: j['domainId'],
         skipReason: j['skipReason'],
+        reportReason: j['reportReason'],
       );
 }
 

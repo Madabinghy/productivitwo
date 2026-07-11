@@ -48,6 +48,8 @@ async function buildWeeklyFacts(uid, weekStart) {
     const broken = [];
     let total = 0;
     let checkinsDone = 0;
+    let reported = 0;
+    let deletedBlocks = 0;
     schedSnaps.forEach((snap, i) => {
         var _a;
         if (!snap.exists)
@@ -57,13 +59,19 @@ async function buildWeeklyFacts(uid, weekStart) {
             checkinsDone++;
         let dayHasReason = !!data.dayReason;
         for (const b of ((_a = data.blocks) !== null && _a !== void 0 ? _a : [])) {
-            if (!b || b.status === "deleted" || b.kind === "prep" || b.category === "break")
+            if (!b || b.kind === "prep" || b.category === "break")
                 continue;
+            if (b.status === "deleted") {
+                deletedBlocks++;
+                continue;
+            }
             total++;
             if (b.status === "done")
                 held++;
             else
                 broken.push(Object.assign(Object.assign({}, b), { day: days[i] }));
+            if (b.skipReason === "reporte")
+                reported++;
             if (b.skipReason)
                 dayHasReason = true;
         }
@@ -172,6 +180,7 @@ async function buildWeeklyFacts(uid, weekStart) {
         domains, motifs, checkinsDone,
         minutesLogged, renegotiations,
         declaredQuestions,
+        reported, deletedBlocks,
     };
 }
 /// Routage : vital < 50 % sur ≥ 2 domaines → rapport COURT (17b) — pas de
@@ -229,6 +238,9 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
                 : "aucune métrique mesurable")),
         ...facts.motifs.map((m) => `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
         `Check-ins faits : ${facts.checkinsDone}/7 jours`,
+        ...(facts.reported + facts.deletedBlocks > 0
+            ? [`Hygiène du programme : ${facts.reported} bloc(s) reporté(s), ${facts.deletedBlocks} supprimé(s) sur ${facts.engagements.total + facts.deletedBlocks} posés${facts.engagements.total + facts.deletedBlocks >= 5 && (facts.reported + facts.deletedBlocks) / (facts.engagements.total + facts.deletedBlocks) >= 0.3 ? " — au-dessus de 30 % : le programme du matin ment peut-être (constat, pas morale)" : ""}`]
+            : []),
         ...(facts.declaredQuestions.length > 0
             ? [`Domaines à suivi déclaré : ${[...new Set(facts.declaredQuestions.map((q) => q.name))].join(", ")} — leur vital est demandé directement dans l'app, tu n'as AUCUNE donnée dessus : n'en dis rien.`]
             : []),

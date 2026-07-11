@@ -478,7 +478,11 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         const refLines = refBlocks.map((b) => {
             var _a;
             const st = b.status === "done" ? "✅" : "❌ SAUTÉ";
-            const reason = b.skipReason ? ` (cause : ${b.skipReason})` : "";
+            // La raison du report est citée telle quelle : « pas sur place » hier
+            // ≠ aujourd'hui — la proposition peut en tenir compte.
+            const reason = b.skipReason
+                ? ` (cause : ${b.skipReason}${b.reportReason ? ` — ${b.reportReason}` : ""})`
+                : "";
             return `  ${b.startTime} "${b.title}" [${b.category}] ${st}${reason}` +
                 (b.activityId ? ` activityId=${b.activityId}` : "") +
                 (b.projectId ? ` projectId=${b.projectId} taskId=${(_a = b.taskId) !== null && _a !== void 0 ? _a : ""}` : "");

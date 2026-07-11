@@ -1067,6 +1067,27 @@ class _FocusViewState extends State<FocusView> {
                 onPressed: () => _markBlockDone(b),
               ),
             ),
+            // 3ᵉ verbe : reporter (avec raison) / déplacer / réduire /
+            // supprimer — le sheet du bloc (12a/23b), pas juste ▶ et ✓.
+            const SizedBox(width: 10),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: cs.onSurface.withOpacity(.6),
+                side: BorderSide(color: cs.onSurface.withOpacity(.25)),
+                minimumSize: const Size(46, 46),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => showRenegotiateSheet(
+                context,
+                logic: logic,
+                block: b,
+                date: _schedDate,
+                onLaunch: widget.onLaunchScheduledBlock,
+              ),
+              child: const Icon(Icons.more_horiz_rounded, size: 20),
+            ),
           ]),
         ],
       ),

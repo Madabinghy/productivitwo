@@ -45,6 +45,39 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     } catch (_) {}
   }
 
+  /// Hygiène du programme (constat, jamais de morale) : combien de blocs
+  /// posés ont été reportés ou supprimés — au-dessus de 30 %, on le dit.
+  List<Widget> _hygieneSection(ColorScheme cs) {
+    if (r.reported + r.deletedBlocks == 0) return const [SizedBox(height: 0)];
+    final alert = r.hygieneAlert;
+    final amber = cs.brightness == Brightness.dark
+        ? const Color(0xFFFFB74D)
+        : const Color(0xFFEF8B1F);
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          children: [
+            Icon(alert ? Icons.warning_amber_rounded : Icons.swap_horiz_rounded,
+                size: 15,
+                color: alert ? amber : cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                '${r.reported} reporté${r.reported > 1 ? 's' : ''} · ${r.deletedBlocks} supprimé${r.deletedBlocks > 1 ? 's' : ''} sur ${r.postedTotal} posés'
+                '${alert ? ' — plus de 30 % : le programme du matin ment peut-être. Moins de blocs, mieux posés ?' : ''}',
+                style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: alert ? amber : cs.onSurface.withOpacity(.55)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
+
   /// Questions binaires des domaines à suivi déclaré — le SEUL endroit où ce
   /// vital est demandé (pas de chrono, pas de blocs, pas de score ailleurs).
   List<Widget> _declaredSection(ColorScheme cs) {
@@ -246,6 +279,8 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                       color: cs.onSurface.withOpacity(.5))),
             ],
           ),
+          // ── Hygiène du programme : reports/suppressions (constat) ──────────
+          ..._hygieneSection(cs),
           const SizedBox(height: 14),
           // ── Domaines : le vital, en faits ────────────────────────────────────
           for (final d in r.domains) _domainCard(cs, d),
@@ -334,6 +369,9 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
               if (r.renegotiations > 0)
                 _shortFact(cs,
                     '${r.renegotiations} renégociation${r.renegotiations > 1 ? 's' : ''} — des sacrifices en connaissance, pas des oublis.'),
+              if (r.reported + r.deletedBlocks > 0)
+                _shortFact(cs,
+                    '${r.reported} reporté${r.reported > 1 ? 's' : ''} · ${r.deletedBlocks} supprimé${r.deletedBlocks > 1 ? 's' : ''} sur ${r.postedTotal} posés${r.hygieneAlert ? ' — le programme du matin ment peut-être.' : '.'}'),
             ],
           ),
         ),

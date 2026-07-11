@@ -1586,7 +1586,7 @@ async function executeScheduleDay(uid, date, blocks) {
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1604,6 +1604,7 @@ async function executeScheduleDay(uid, date, blocks) {
             prepForBlockId: (_g = b.prepForBlockId) !== null && _g !== void 0 ? _g : null,
             domainId: (_h = b.domainId) !== null && _h !== void 0 ? _h : null, // domaine ciblé (kind:"session")
             skipReason: (_j = b.skipReason) !== null && _j !== void 0 ? _j : null, // pourquoi l'engagement a sauté (check-in)
+            reportReason: (_l = b.reportReason) !== null && _l !== void 0 ? _l : null, // raison donnée au moment du report
         });
     });
     // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du

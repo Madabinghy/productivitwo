@@ -161,6 +161,17 @@ class WeeklyReport {
   // doc : clé "domainId|label" → bool.
   List<Map<String, dynamic>> declaredQuestions; // {domainId, name, label}
   Map<String, bool> declaredAnswers;
+  // Hygiène du programme : reports + suppressions de la semaine (constat).
+  int reported;
+  int deletedBlocks;
+
+  /// Blocs réellement posés (engagements + supprimés en cours de route).
+  int get postedTotal => total + deletedBlocks;
+
+  /// ≥ 30 % des blocs posés reportés ou supprimés (sur ≥ 5 posés) : le
+  /// programme du matin ment peut-être — constat déterministe, pas de morale.
+  bool get hygieneAlert =>
+      postedTotal >= 5 && (reported + deletedBlocks) / postedTotal >= 0.3;
 
   WeeklyReport({
     required this.weekStart,
@@ -183,6 +194,8 @@ class WeeklyReport {
     this.weekModeChosen,
     List<Map<String, dynamic>>? declaredQuestions,
     Map<String, bool>? declaredAnswers,
+    this.reported = 0,
+    this.deletedBlocks = 0,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         domains = domains ?? [],
         motifs = motifs ?? [],
@@ -231,6 +244,8 @@ class WeeklyReport {
       declaredAnswers: (j['declaredAnswers'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), v == true)) ??
           {},
+      reported: (facts['reported'] as num?)?.toInt() ?? 0,
+      deletedBlocks: (facts['deletedBlocks'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -252,6 +267,8 @@ class WeeklyReport {
           'minutesLogged': minutesLogged,
           'renegotiations': renegotiations,
           'declaredQuestions': declaredQuestions,
+          'reported': reported,
+          'deletedBlocks': deletedBlocks,
         },
         'declaredAnswers': declaredAnswers,
         'secondMinimal': secondMinimal,
