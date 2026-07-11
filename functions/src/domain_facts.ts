@@ -27,12 +27,13 @@ export async function buildDomainDossier(
     last14.push(new Date(now.getTime() - i * DAY_MS).toISOString().slice(0, 10));
   }
 
-  const [domainsSnap, actsSnap, sessionsSnap, artsSnap, schedSnaps] =
+  const [domainsSnap, actsSnap, sessionsSnap, artsSnap, projectsSnap, schedSnaps] =
     await Promise.all([
       db.collection(`users/${uid}/domains`).get(),
       db.collection(`users/${uid}/activities`).get(),
       db.collection(`users/${uid}/sessions`).where("startAt", ">=", sinceIso).get(),
       db.collection(`users/${uid}/artifacts`).get(),
+      db.collection(`users/${uid}/projects`).get(),
       Promise.all(last14.map((d) => db.doc(`users/${uid}/daily_schedules/${d}`).get())),
     ]);
 
@@ -117,7 +118,39 @@ export async function buildDomainDossier(
         (topCause ? ` — ${topN} fois « ${topCause} »` : "")
     );
   }
+  // Tâches Gantt du domaine (Project.domainId) : deadlines réelles, retard
+  // chiffré — la matière du « tes heures disent l'inverse de ta phrase ».
+  let ganttSeen = 0;
   if (domainId) {
+    const today = new Date(now.toISOString().slice(0, 10) + "T00:00:00Z");
+    for (const p of projectsSnap.docs) {
+      const data = p.data() as Record<string, unknown>;
+      if (data.domainId !== domainId) continue;
+      const status = String(data.status ?? "active");
+      if (status === "archived" || status === "done") continue;
+      const tasks = ((data.tasks as Array<Record<string, unknown>>) ?? [])
+        .filter((t) => t.status !== "done" && t.status !== "skipped");
+      if (tasks.length === 0) continue;
+      ganttSeen++;
+      // La deadline la plus proche parmi les tâches ouvertes datées.
+      let nearest: Date | null = null;
+      for (const t of tasks) {
+        if (!t.endDate) continue;
+        const d = new Date(String(t.endDate));
+        if (!isNaN(d.getTime()) && (nearest === null || d < nearest)) nearest = d;
+      }
+      let deadline = "";
+      if (nearest) {
+        const iso = nearest.toISOString().slice(0, 10);
+        const lateDays = Math.floor((today.getTime() - nearest.getTime()) / DAY_MS);
+        deadline = lateDays > 0
+          ? ` — deadline ${iso}, en retard de ${lateDays >= 7 ? `${Math.floor(lateDays / 7)} semaine(s)` : `${lateDays} jour(s)`}`
+          : ` — deadline ${iso}`;
+      }
+      lines.push(
+        `  · Gantt « ${String(data.title ?? p.id)} » : ${tasks.length} tâche(s) ouverte(s)${deadline}`
+      );
+    }
     for (const a of artsSnap.docs) {
       const data = a.data() as Record<string, unknown>;
       if (data.deleted === true || data.domainId !== domainId) continue;
@@ -127,7 +160,7 @@ export async function buildDomainDossier(
     }
   }
 
-  const vivant = totalMinutes > 0 || domainBlocksSeen > 0;
+  const vivant = totalMinutes > 0 || domainBlocksSeen > 0 || ganttSeen > 0;
   if (vivant) return { mode: "vivant", text: lines.join("\n") };
 
   // ── Sans données : ce qu'on voit EN CREUX (tous domaines confondus) ─────────
