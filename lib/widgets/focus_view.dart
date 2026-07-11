@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -98,6 +99,8 @@ class _FocusViewState extends State<FocusView> {
   int _sessionSkipCount = 0; // sessions de définition sautées (déclenche 21c)
   String? _nextSessionLabel; // « demain 18 h 30 » — prochaine session posée
   bool _nudgeDismissed = false; // « Garder [créneau] » — silence pour le jour
+  // Guide du moment libre : intention choisie (chips « Que souhaites-tu faire ? »).
+  FreeIntent? _freeIntent;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -396,6 +399,288 @@ class _FocusViewState extends State<FocusView> {
       ));
     }
   }
+
+  // ── Guide du moment libre (« Que souhaites-tu faire ? ») ────────────────────
+
+  /// Lance une proposition en un tap : bloc synthétique (non persisté) →
+  /// même machinerie que le ▶ du programme (chrono ciblé + focus).
+  void _launchProposalBlock({
+    String? activityId,
+    String? projectId,
+    String? taskId,
+    required String title,
+  }) {
+    final now = DateTime.now();
+    widget.onLaunchScheduledBlock?.call(ScheduleBlock(
+      startTime:
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+      durationMin: 25,
+      title: title,
+      category: projectId != null ? 'project' : 'routine',
+      activityId: activityId,
+      projectId: projectId,
+      taskId: taskId,
+    ));
+  }
+
+  List<Widget> _freeMomentSection(ColorScheme cs, DateTime now) {
+    final intents = freeIntentsFor(now);
+    return [
+      Center(
+        child: Column(children: [
+          Icon(Icons.self_improvement,
+              size: 44, color: cs.onSurface.withOpacity(.25)),
+          const SizedBox(height: 12),
+          Text('Rien en cours — que souhaites-tu faire ?',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.75))),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: [
+          for (final i in intents)
+            ChoiceChip(
+              avatar: Icon(_intentIcon(i),
+                  size: 16,
+                  color: _freeIntent == i ? cs.surface : cs.primary),
+              label: Text(freeIntentLabel(i)),
+              selected: _freeIntent == i,
+              selectedColor: cs.primary,
+              labelStyle: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: _freeIntent == i ? cs.surface : null),
+              onSelected: (_) => setState(
+                  () => _freeIntent = _freeIntent == i ? null : i),
+            ),
+        ],
+      ),
+      if (_freeIntent != null) ...[
+        const SizedBox(height: 14),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: Column(
+            key: ValueKey('intent-$_freeIntent'),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _intentProposals(cs, now, _freeIntent!),
+          ),
+        ),
+      ],
+    ];
+  }
+
+  IconData _intentIcon(FreeIntent i) => switch (i) {
+        FreeIntent.sleep => Icons.bedtime_outlined,
+        FreeIntent.rest => Icons.spa_outlined,
+        FreeIntent.project => Icons.rocket_launch_outlined,
+        FreeIntent.routines => Icons.loop,
+        FreeIntent.plan => Icons.edit_calendar_outlined,
+      };
+
+  /// Les propositions d'une intention — toujours tirées du réel, jamais
+  /// inventées ; une donnée absente = ligne absente.
+  List<Widget> _intentProposals(ColorScheme cs, DateTime now, FreeIntent i) {
+    switch (i) {
+      case FreeIntent.project:
+        final props = projectProposals(now, logic.currentProjects);
+        if (props.isEmpty) {
+          return [
+            _freeHint(cs,
+                'Aucune tâche ouverte dans tes projets — c\'est peut-être le moment d\'en poser un.'),
+          ];
+        }
+        return [
+          for (final p in props)
+            _proposalRow(
+              cs,
+              p.task.title,
+              p.subtitle,
+              Icons.play_arrow_rounded,
+              () => _launchProposalBlock(
+                  projectId: p.project.id,
+                  taskId: p.task.id,
+                  title: p.task.title),
+            ),
+          _freeHint(cs, '▶ lance un chrono ciblé de 25 min — l\'essentiel vaut mieux que 0.'),
+        ];
+
+      case FreeIntent.routines:
+        final props = routineProposals(st, logic.habitReached);
+        if (props.isEmpty) {
+          return [
+            _freeHint(cs,
+                'Toutes tes routines du jour sont tenues — rien à rattraper.'),
+          ];
+        }
+        return [
+          for (final p in props)
+            _proposalRow(
+              cs,
+              p.routine.name,
+              p.subtitle,
+              Icons.play_arrow_rounded,
+              () => _launchProposalBlock(
+                  activityId: p.routine.id, title: p.routine.name),
+            ),
+          if (widget.onOpenRoutines != null)
+            Center(
+              child: TextButton(
+                onPressed: widget.onOpenRoutines,
+                child: const Text('Toutes mes routines',
+                    style: TextStyle(fontSize: 12.5)),
+              ),
+            ),
+        ];
+
+      case FreeIntent.rest:
+        final next = (_schedule?.blocks ?? const <ScheduleBlock>[])
+            .where((b) =>
+                b.status == 'pending' &&
+                !b.isPrep &&
+                b.startTime.compareTo(
+                        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}') >
+                    0)
+            .toList()
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+        return [
+          _freeHint(cs,
+              'Se poser fait partie du système : la récup fait tenir le reste. Aucune culpabilité — le coach ne compte pas les pauses.'),
+          if (next.isNotEmpty)
+            _proposalRow(
+              cs,
+              'Prochain : ${next.first.title}',
+              'à ${next.first.startTime.replaceFirst(':', ' h ')} — d\'ici là, c\'est ton temps',
+              Icons.schedule,
+              null,
+            ),
+          if (now.hour >= 19 || now.hour < 5)
+            _proposalRow(
+              cs,
+              'Clore la journée — check-in',
+              '2 min, puis la soirée est à toi',
+              Icons.nightlight_round,
+              widget.onOpenDayReview,
+            ),
+        ];
+
+      case FreeIntent.sleep:
+        final preps = (_schedule?.blocks ?? const <ScheduleBlock>[])
+            .where((b) => b.isPrep && b.status == 'pending')
+            .toList();
+        return [
+          if (preps.isNotEmpty)
+            _proposalRow(
+              cs,
+              'Préparer demain — ${preps.length} prep${preps.length > 1 ? 's' : ''} à cocher',
+              'demain matin, les affaires seront prêtes depuis hier',
+              Icons.checklist_rounded,
+              widget.onOpenDayReview,
+            ),
+          _proposalRow(
+            cs,
+            'Clore la journée — check-in',
+            '2 min : le constat, le pourquoi, demain',
+            Icons.nightlight_round,
+            widget.onOpenDayReview,
+          ),
+          _freeHint(cs,
+              'Puis bonne nuit — la carte coach se tait jusqu\'à 5 h.'),
+        ];
+
+      case FreeIntent.plan:
+        final evening = now.hour >= 20 || now.hour < 5;
+        return [
+          if (!evening)
+            _proposalRow(
+              cs,
+              'Planifier le reste de la journée',
+              '2 min — proposition pré-remplie, à ajuster',
+              Icons.edit_calendar_outlined,
+              _openPlanToday,
+            ),
+          _proposalRow(
+            cs,
+            evening ? 'Poser demain — 2 min' : 'Poser demain',
+            'demain se gagne ce soir',
+            Icons.event_outlined,
+            () {
+              final t = DateTime.now().add(const Duration(days: 1));
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PlanDayScreen(
+                    logic: logic,
+                    targetDate: _ymd(t),
+                    rattrapage: false),
+              ));
+            },
+          ),
+        ];
+    }
+  }
+
+  Widget _proposalRow(ColorScheme cs, String title, String? subtitle,
+      IconData icon, VoidCallback? onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: onTap != null
+                  ? cs.primary.withOpacity(.35)
+                  : cs.onSurface.withOpacity(.12)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 18,
+                color: onTap != null
+                    ? cs.primary
+                    : cs.onSurface.withOpacity(.4)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  if (subtitle != null && subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.3,
+                            color: cs.onSurface.withOpacity(.55))),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _freeHint(ColorScheme cs, String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                fontStyle: FontStyle.italic,
+                color: cs.onSurface.withOpacity(.5))),
+      );
 
   // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
 
@@ -913,43 +1198,8 @@ class _FocusViewState extends State<FocusView> {
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
             const SizedBox(height: 8),
-            Center(
-              child: Column(children: [
-                Icon(Icons.self_improvement,
-                    size: 44, color: cs.onSurface.withOpacity(.25)),
-                const SizedBox(height: 12),
-                Text('Que souhaites-tu faire maintenant ?',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(.75))),
-              ]),
-            ),
-            const SizedBox(height: 24),
-            if (widget.onOpenRoutines != null)
-              OutlinedButton.icon(
-                icon: const Icon(Icons.loop, size: 18),
-                label: const Text('Mes routines'),
-                onPressed: widget.onOpenRoutines,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            const SizedBox(height: 10),
-            if (widget.onOpenActivities != null)
-              OutlinedButton.icon(
-                icon: const Icon(Icons.timer_outlined, size: 18),
-                label: const Text('Mes activités'),
-                onPressed: widget.onOpenActivities,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
+            // ── Guide du moment libre : intention → propositions réelles ──────
+            ..._freeMomentSection(cs, now),
             const SizedBox(height: 18),
 
             // Champ libre : match local d'abord (0 token), assistant sinon.

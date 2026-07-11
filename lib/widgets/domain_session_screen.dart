@@ -246,9 +246,48 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
     return out;
   }
 
+  /// Projets Gantt du domaine (Project.domainId) : tâches ouvertes + deadline
+  /// la plus proche, retard chiffré — même matière que le dossier serveur.
+  List<String> _ganttFacts() {
+    final d = _domain;
+    if (d == null) return const [];
+    final today = DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+    final out = <String>[];
+    for (final p in widget.logic.currentProjects) {
+      if (p.domainId != d.id) continue;
+      if (p.status == 'archived' || p.status == 'done') continue;
+      final open = p.tasks
+          .where((t) => t.status != 'done' && t.status != 'skipped')
+          .toList();
+      if (open.isEmpty) continue;
+      DateTime? nearest;
+      for (final t in open) {
+        final e = t.endDate;
+        if (e != null && (nearest == null || e.isBefore(nearest))) nearest = e;
+      }
+      var deadline = '';
+      if (nearest != null) {
+        final late = day.difference(nearest).inDays;
+        const months = [
+          'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
+          'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
+        ];
+        final fr = '${nearest.day} ${months[nearest.month - 1]}';
+        deadline = late > 0
+            ? ' — deadline $fr, en retard ${late >= 7 ? 'd\'${late ~/ 7} semaine${late >= 14 ? 's' : ''}' : 'de $late jour${late > 1 ? 's' : ''}'}'
+            : ' — deadline $fr';
+      }
+      out.add('Gantt « ${p.title} » : ${open.length} tâche${open.length > 1 ? 's' : ''} ouverte${open.length > 1 ? 's' : ''}$deadline');
+      if (out.length >= 2) break;
+    }
+    return out;
+  }
+
   Widget _intro(ColorScheme cs) {
     final facts = _domainFacts();
-    final vivant = facts.any((f) => f.minutes > 0);
+    final gantt = _ganttFacts();
+    final vivant = facts.any((f) => f.minutes > 0) || gantt.isNotEmpty;
     final vide = _domain != null && !vivant;
     return ListView(
       key: const ValueKey('intro'),
@@ -321,6 +360,35 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
                 ),
             ],
           ),
+          // Tâches Gantt du domaine — deadlines réelles (maquette 19a).
+          for (final g in gantt)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.onSurface.withOpacity(.15)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.stacked_bar_chart_rounded,
+                      size: 16, color: g.contains('en retard')
+                          ? cs.tertiary
+                          : cs.onSurface.withOpacity(.5)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(g,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.35,
+                            color: cs.onSurface.withOpacity(.8))),
+                  ),
+                ],
+              ),
+            ),
         ],
         const SizedBox(height: 20),
         Text('CE QU\'ON AURA À LA FIN',

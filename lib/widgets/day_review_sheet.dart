@@ -43,7 +43,11 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   final _sync = FirestoreSync();
   StreamSubscription<DailySchedule?>? _schedSub;
   DailySchedule? _schedule;
-  late final String _todayYmd;
+  // La journée VÉCUE : avant 5 h du matin, le check-in clôture encore HIER
+  // (fin de soirée des couche-tard — même seuil que la nuit de la carte
+  // coach). Sinon à 00:25 on demanderait de clore un samedi vide de 25 min.
+  late final DateTime _anchor;
+  late final String _todayYmd; // ymd de la journée vécue (= _anchor)
 
   // ── Flux guidé ─────────────────────────────────────────────────────────────
   int _step = 0; // 0 = constat · 1 = pourquoi · 2 = verdict + pont
@@ -57,12 +61,13 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   void initState() {
     super.initState();
     final now = DateTime.now();
+    _anchor = now.hour < 5 ? now.subtract(const Duration(days: 1)) : now;
     _todayYmd =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        '${_anchor.year}-${_anchor.month.toString().padLeft(2, '0')}-${_anchor.day.toString().padLeft(2, '0')}';
     _schedSub = _sync.streamDailySchedule(_todayYmd).listen((s) {
       if (mounted) setState(() => _schedule = s);
     });
-    _loadWeekHistory(now);
+    _loadWeekHistory(_anchor);
   }
 
   Future<void> _loadWeekHistory(DateTime now) async {
@@ -108,16 +113,15 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     await _sync.updateBlockStatus(_todayYmd, b.id, newStatus);
   }
 
-  /// Minutes réelles logguées sur un bloc (même croisement que la carte coach).
+  /// Minutes réelles logguées sur un bloc (même croisement que la carte
+  /// coach). Fenêtre = la journée VÉCUE : du début du jour d'ancre jusqu'à
+  /// maintenant — une session lancée à 00:10 compte encore pour hier soir.
   int _blockLoggedMin(ScheduleBlock b) {
     final now = DateTime.now();
+    final dayStart = DateTime(_anchor.year, _anchor.month, _anchor.day);
     var total = 0;
     for (final s in st.sessions) {
-      if (s.startAt.year != now.year ||
-          s.startAt.month != now.month ||
-          s.startAt.day != now.day) {
-        continue;
-      }
+      if (s.startAt.isBefore(dayStart) || s.startAt.isAfter(now)) continue;
       final matches = (b.activityId != null && s.activityId == b.activityId) ||
           (b.taskId != null && s.taskId == b.taskId);
       if (!matches) continue;
@@ -149,7 +153,9 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   void _skipStep2() => setState(() => _step = 2);
 
   Future<void> _openPlanTomorrow() async {
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    // « Demain » relatif à la journée vécue : à 00:25 c'est bien AUJOURD'HUI
+    // (samedi) qu'on pose, pas dimanche.
+    final tomorrow = _anchor.add(const Duration(days: 1));
     final ymd =
         '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
     final count = await Navigator.of(context).push<int>(MaterialPageRoute(
@@ -207,7 +213,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   }
 
   Widget _header(ColorScheme cs) {
-    final now = DateTime.now();
+    final now = _anchor; // l'en-tête date la journée VÉCUE (« ven 10 juil »)
     final title = switch (_step) {
       0 => 'Check-in du soir',
       1 => _broken.length >= 3
@@ -268,8 +274,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   // ── Étape 1 : le constat (10a) ─────────────────────────────────────────────
 
   Widget _step1(ColorScheme cs, {required Key key}) {
-    final now = DateTime.now();
-    final ymd = yyyymmdd(DateTime(now.year, now.month, now.day));
+    final ymd = yyyymmdd(DateTime(_anchor.year, _anchor.month, _anchor.day));
     final score = logic.dailyScore(ymd);
     final scorePct = (score * 100).round();
 
@@ -278,7 +283,8 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
             (a) => a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily)
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
-    final routinesDone = routines.where((a) => logic.habitReached(a)).length;
+    final routinesDone =
+        routines.where((a) => _routineReachedOnAnchor(a)).length;
 
     final done = _engagements.where((b) => b.status == 'done').length;
 
@@ -397,10 +403,26 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
     );
   }
 
+  /// Routine tenue sur la journée VÉCUE : hits du jour d'ancre (+ la fin de
+  /// soirée jusqu'à 5 h du matin) ≥ quota — le calendaire de la revue, pas la
+  /// fenêtre glissante de habitReached (qui a basculé à minuit).
+  bool _routineReachedOnAnchor(Activity a) {
+    final dayStart = DateTime(_anchor.year, _anchor.month, _anchor.day);
+    final dayEnd = dayStart.add(const Duration(days: 1, hours: 5));
+    final quota = logic.dayQuotaFor(a);
+    if (quota <= 0) return false;
+    final hits = st.habitHits
+        .where((h) =>
+            h.habitId == a.id &&
+            !h.ts.isBefore(dayStart) &&
+            h.ts.isBefore(dayEnd))
+        .length;
+    return hits >= quota;
+  }
+
   Widget _detailsSection(
       ColorScheme cs, List<Activity> routines, int routinesDone) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = DateTime(_anchor.year, _anchor.month, _anchor.day);
     final ymd = yyyymmdd(today);
     final List<({String taskTitle, String actionTitle})> ganttDone = [];
     for (final project in widget.projects) {

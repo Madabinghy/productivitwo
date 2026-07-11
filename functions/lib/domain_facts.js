@@ -4,18 +4,19 @@ exports.buildDomainDossier = buildDomainDossier;
 const db_1 = require("./db");
 const DAY_MS = 86400000;
 async function buildDomainDossier(uid, domainName) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
     const now = new Date();
     const sinceIso = new Date(now.getTime() - 42 * DAY_MS).toISOString(); // 6 sem
     const last14 = [];
     for (let i = 1; i <= 14; i++) {
         last14.push(new Date(now.getTime() - i * DAY_MS).toISOString().slice(0, 10));
     }
-    const [domainsSnap, actsSnap, sessionsSnap, artsSnap, schedSnaps] = await Promise.all([
+    const [domainsSnap, actsSnap, sessionsSnap, artsSnap, projectsSnap, schedSnaps] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
         db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", sinceIso).get(),
         db_1.db.collection(`users/${uid}/artifacts`).get(),
+        db_1.db.collection(`users/${uid}/projects`).get(),
         Promise.all(last14.map((d) => db_1.db.doc(`users/${uid}/daily_schedules/${d}`).get())),
     ]);
     const domain = domainsSnap.docs
@@ -96,15 +97,50 @@ async function buildDomainDossier(uid, domainName) {
         lines.push(`  · « ${title} » : sauté ${s.skips} fois en 14 jours` +
             (topCause ? ` — ${topN} fois « ${topCause} »` : ""));
     }
+    // Tâches Gantt du domaine (Project.domainId) : deadlines réelles, retard
+    // chiffré — la matière du « tes heures disent l'inverse de ta phrase ».
+    let ganttSeen = 0;
     if (domainId) {
+        const today = new Date(now.toISOString().slice(0, 10) + "T00:00:00Z");
+        for (const p of projectsSnap.docs) {
+            const data = p.data();
+            if (data.domainId !== domainId)
+                continue;
+            const status = String((_m = data.status) !== null && _m !== void 0 ? _m : "active");
+            if (status === "archived" || status === "done")
+                continue;
+            const tasks = ((_o = data.tasks) !== null && _o !== void 0 ? _o : [])
+                .filter((t) => t.status !== "done" && t.status !== "skipped");
+            if (tasks.length === 0)
+                continue;
+            ganttSeen++;
+            // La deadline la plus proche parmi les tâches ouvertes datées.
+            let nearest = null;
+            for (const t of tasks) {
+                if (!t.endDate)
+                    continue;
+                const d = new Date(String(t.endDate));
+                if (!isNaN(d.getTime()) && (nearest === null || d < nearest))
+                    nearest = d;
+            }
+            let deadline = "";
+            if (nearest) {
+                const iso = nearest.toISOString().slice(0, 10);
+                const lateDays = Math.floor((today.getTime() - nearest.getTime()) / DAY_MS);
+                deadline = lateDays > 0
+                    ? ` — deadline ${iso}, en retard de ${lateDays >= 7 ? `${Math.floor(lateDays / 7)} semaine(s)` : `${lateDays} jour(s)`}`
+                    : ` — deadline ${iso}`;
+            }
+            lines.push(`  · Gantt « ${String((_p = data.title) !== null && _p !== void 0 ? _p : p.id)} » : ${tasks.length} tâche(s) ouverte(s)${deadline}`);
+        }
         for (const a of artsSnap.docs) {
             const data = a.data();
             if (data.deleted === true || data.domainId !== domainId)
                 continue;
-            lines.push(`  · Artefact existant : « ${String((_m = data.title) !== null && _m !== void 0 ? _m : data.kind)} » — À ADOPTER tel quel (le référencer), ne JAMAIS proposer de le régénérer.`);
+            lines.push(`  · Artefact existant : « ${String((_q = data.title) !== null && _q !== void 0 ? _q : data.kind)} » — À ADOPTER tel quel (le référencer), ne JAMAIS proposer de le régénérer.`);
         }
     }
-    const vivant = totalMinutes > 0 || domainBlocksSeen > 0;
+    const vivant = totalMinutes > 0 || domainBlocksSeen > 0 || ganttSeen > 0;
     if (vivant)
         return { mode: "vivant", text: lines.join("\n") };
     // ── Sans données : ce qu'on voit EN CREUX (tous domaines confondus) ─────────
@@ -113,7 +149,7 @@ async function buildDomainDossier(uid, domainName) {
     const workedSundays = new Set();
     const since28 = new Date(now.getTime() - 28 * DAY_MS).toISOString();
     for (const s of sessionsSnap.docs) {
-        const startAt = String((_o = s.get("startAt")) !== null && _o !== void 0 ? _o : "");
+        const startAt = String((_r = s.get("startAt")) !== null && _r !== void 0 ? _r : "");
         if (startAt < since28)
             continue;
         const d = new Date(startAt);
@@ -134,7 +170,7 @@ async function buildDomainDossier(uid, domainName) {
         if (!snap.exists)
             continue;
         daysWithSchedule++;
-        const blocks = (_p = snap.data().blocks) !== null && _p !== void 0 ? _p : [];
+        const blocks = (_s = snap.data().blocks) !== null && _s !== void 0 ? _s : [];
         const evening = blocks.some((b) => { var _a; return b.status !== "deleted" && String((_a = b.startTime) !== null && _a !== void 0 ? _a : "") >= "19:00"; });
         if (!evening)
             emptyEvenings++;
