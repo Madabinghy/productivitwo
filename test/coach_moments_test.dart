@@ -226,7 +226,50 @@ void main() {
       expect(m.tagLabel, contains('JE SUIS LE FLOW'));
       expect(m.message, contains('18 h'));
       expect(m.message, contains('pas sur place'));
-      expect(m.actions.single.kind, CoachActionKind.availableNow);
+      expect(m.actions.any((a) => a.kind == CoachActionKind.availableNow),
+          isTrue);
+    });
+
+    test('indispo + routine en attente → « Planifions — [routine] »', () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final st = AppState(
+        domains: [],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Marche',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
+      );
+      final m = computeCoachMoment(now, st, sched, null, [],
+          nudgeDismissed: true);
+      final plan = m.actions
+          .where((a) => a.kind == CoachActionKind.planNext)
+          .toList();
+      expect(plan, hasLength(1));
+      expect(plan.first.label, 'Planifions — Marche');
+      expect(plan.first.block?.activityId, 'r1');
+    });
+
+    test('indispo sans routine en attente → pas de « Planifions » inventé',
+        () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.planNext), isFalse);
     });
 
     test('indispo : le check-in du soir reprend la main (≥ 19 h)', () {

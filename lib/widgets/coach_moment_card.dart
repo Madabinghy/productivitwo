@@ -31,6 +31,8 @@ class CoachMomentCard extends StatelessWidget {
   final VoidCallback? onEndAfternoon;
   // « Je suis dispo » — efface la fenêtre d'indisponibilité déclarée.
   final VoidCallback? onAvailableNow;
+  // « Planifions — [routine] » → date/heure de la prochaine exécution.
+  final void Function(ScheduleBlock block)? onPlanNext;
 
   const CoachMomentCard({
     super.key,
@@ -50,6 +52,7 @@ class CoachMomentCard extends StatelessWidget {
     this.onPoseSessions,
     this.onEndAfternoon,
     this.onAvailableNow,
+    this.onPlanNext,
   });
 
   @override
@@ -87,6 +90,7 @@ class CoachMomentCard extends StatelessWidget {
               onPoseSessions: onPoseSessions,
               onEndAfternoon: onEndAfternoon,
               onAvailableNow: onAvailableNow,
+              onPlanNext: onPlanNext,
             ),
     );
   }
@@ -109,6 +113,7 @@ class _Card extends StatelessWidget {
   final VoidCallback? onPoseSessions;
   final VoidCallback? onEndAfternoon;
   final VoidCallback? onAvailableNow;
+  final void Function(ScheduleBlock block)? onPlanNext;
 
   const _Card({
     super.key,
@@ -128,6 +133,7 @@ class _Card extends StatelessWidget {
     this.onPoseSessions,
     this.onEndAfternoon,
     this.onAvailableNow,
+    this.onPlanNext,
   });
 
   @override
@@ -242,6 +248,7 @@ class _Card extends StatelessWidget {
               onPoseSessions: onPoseSessions,
               onEndAfternoon: onEndAfternoon,
               onAvailableNow: onAvailableNow,
+              onPlanNext: onPlanNext,
             ),
           ],
         ],
@@ -325,6 +332,7 @@ class _Actions extends StatelessWidget {
   final VoidCallback? onPoseSessions;
   final VoidCallback? onEndAfternoon;
   final VoidCallback? onAvailableNow;
+  final void Function(ScheduleBlock block)? onPlanNext;
 
   const _Actions({
     required this.actions,
@@ -344,6 +352,7 @@ class _Actions extends StatelessWidget {
     this.onPoseSessions,
     this.onEndAfternoon,
     this.onAvailableNow,
+    this.onPlanNext,
   });
 
   @override
@@ -362,7 +371,8 @@ class _Actions extends StatelessWidget {
         a.kind == CoachActionKind.openWeeklyReport ||
         a.kind == CoachActionKind.nameDomains ||
         a.kind == CoachActionKind.startSession ||
-        a.kind == CoachActionKind.startSessionShort;
+        a.kind == CoachActionKind.startSessionShort ||
+        a.kind == CoachActionKind.planNext;
     // Secondaires du nudge / bascule système : liens discrets sous le CTA.
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
@@ -388,6 +398,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.poseSessions => Icons.event_available_outlined,
       CoachActionKind.endAfternoon => Icons.nights_stay_outlined,
       CoachActionKind.availableNow => Icons.notifications_active_outlined,
+      CoachActionKind.planNext => Icons.event_available_outlined,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -479,6 +490,10 @@ class _Actions extends StatelessWidget {
         return onEndAfternoon;
       case CoachActionKind.availableNow:
         return onAvailableNow;
+      case CoachActionKind.planNext:
+        return a.block != null && onPlanNext != null
+            ? () => onPlanNext!(a.block!)
+            : null;
     }
   }
 }

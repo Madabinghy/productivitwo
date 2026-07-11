@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 
@@ -529,7 +530,10 @@ class _FocusViewState extends State<FocusView> {
               Icons.play_arrow_rounded,
               () => _launchProposalBlock(
                   activityId: p.routine.id, title: p.routine.name),
+              onLongPress: () => showPlanNextSheet(context,
+                  logic: logic, routine: p.routine),
             ),
+          _freeHint(cs, 'tap = lancer maintenant · appui long = planifier la prochaine exécution'),
           if (widget.onOpenRoutines != null)
             Center(
               child: TextButton(
@@ -634,10 +638,12 @@ class _FocusViewState extends State<FocusView> {
   }
 
   Widget _proposalRow(ColorScheme cs, String title, String? subtitle,
-      IconData icon, VoidCallback? onTap) {
+      IconData icon, VoidCallback? onTap,
+      {VoidCallback? onLongPress}) {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 8),
@@ -790,6 +796,20 @@ class _FocusViewState extends State<FocusView> {
       onEndAfternoon: _endAfternoon,
       // « Je suis dispo » — efface la fenêtre, le coach reprend normalement.
       onAvailableNow: () => _sync.setUnavailability(_schedDate, null),
+      // « Planifions — [routine] » : pose la prochaine exécution à date/heure
+      // choisies (après la fenêtre d'indispo par défaut).
+      onPlanNext: (block) {
+        Activity? routine;
+        for (final a in st.activities) {
+          if (a.id == block.activityId) routine = a;
+        }
+        if (routine != null) {
+          showPlanNextSheet(context,
+              logic: logic,
+              routine: routine,
+              notBefore: _schedule?.unavailableUntil);
+        }
+      },
       // « Garder [créneau] » du nudge : silence pour la journée seulement.
       onDismiss: isNudge
           ? () => setState(() => _nudgeDismissed = true)
