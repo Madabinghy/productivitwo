@@ -2227,9 +2227,12 @@ class FirestoreSync {
         .set({'date': date, 'proposalDraft': draft}, SetOptions(merge: true));
   }
 
-  /// Écrit le « pourquoi » d'un engagement rompu sur son bloc (check-in étape 2).
+  /// Écrit le « pourquoi » d'un engagement rompu sur son bloc (check-in étape
+  /// 2 ; renégociation). [reportReason] = raison donnée au moment du report
+  /// (« pas sur place »…) — skipReason « reporte » garde son sens serveur.
   Future<void> updateBlockSkipReason(
-      String date, String blockId, String reason) async {
+      String date, String blockId, String reason,
+      {String? reportReason}) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');
     final snap = await ref.get();
@@ -2242,6 +2245,7 @@ class FirestoreSync {
     for (final b in blocks) {
       if (b['id'] == blockId) {
         b['skipReason'] = reason;
+        if (reportReason != null) b['reportReason'] = reportReason;
         break;
       }
     }

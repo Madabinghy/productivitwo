@@ -39,6 +39,10 @@ export type WeeklyFacts = {
   // — le vital se demande ici, en 1-2 questions binaires, SEUL endroit où il
   // existe. Réponses écrites par l'app sur le doc (declaredAnswers).
   declaredQuestions: Array<{ domainId: string; name: string; label: string }>;
+  // Hygiène du programme : trop de reports/suppressions = le programme ment
+  // le matin — constat factuel, jamais de morale.
+  reported: number; // blocs sautés avec cause « reporte »
+  deletedBlocks: number; // blocs soft-supprimés dans la semaine
 };
 
 const WEEKDAY_FR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
@@ -89,16 +93,23 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
   const broken: Array<SchedBlock & { day: string }> = [];
   let total = 0;
   let checkinsDone = 0;
+  let reported = 0;
+  let deletedBlocks = 0;
   schedSnaps.forEach((snap, i) => {
     if (!snap.exists) return;
     const data = snap.data() as Record<string, unknown>;
     if (data.dayReason) checkinsDone++;
     let dayHasReason = !!data.dayReason;
     for (const b of ((data.blocks as SchedBlock[]) ?? [])) {
-      if (!b || b.status === "deleted" || b.kind === "prep" || b.category === "break") continue;
+      if (!b || b.kind === "prep" || b.category === "break") continue;
+      if (b.status === "deleted") {
+        deletedBlocks++;
+        continue;
+      }
       total++;
       if (b.status === "done") held++;
       else broken.push({ ...b, day: days[i] });
+      if (b.skipReason === "reporte") reported++;
       if (b.skipReason) dayHasReason = true;
     }
     if (dayHasReason && !data.dayReason) checkinsDone++;
@@ -200,6 +211,7 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     domains, motifs, checkinsDone,
     minutesLogged, renegotiations,
     declaredQuestions,
+    reported, deletedBlocks,
   };
 }
 
@@ -262,6 +274,9 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     ...facts.motifs.map((m) =>
       `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
     `Check-ins faits : ${facts.checkinsDone}/7 jours`,
+    ...(facts.reported + facts.deletedBlocks > 0
+      ? [`Hygiène du programme : ${facts.reported} bloc(s) reporté(s), ${facts.deletedBlocks} supprimé(s) sur ${facts.engagements.total + facts.deletedBlocks} posés${facts.engagements.total + facts.deletedBlocks >= 5 && (facts.reported + facts.deletedBlocks) / (facts.engagements.total + facts.deletedBlocks) >= 0.3 ? " — au-dessus de 30 % : le programme du matin ment peut-être (constat, pas morale)" : ""}`]
+      : []),
     ...(facts.declaredQuestions.length > 0
       ? [`Domaines à suivi déclaré : ${[...new Set(facts.declaredQuestions.map((q) => q.name))].join(", ")} — leur vital est demandé directement dans l'app, tu n'as AUCUNE donnée dessus : n'en dis rien.`]
       : []),

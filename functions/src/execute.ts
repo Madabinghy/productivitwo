@@ -1808,6 +1808,7 @@ async function executeScheduleDay(
     prepForBlockId?: string;
     domainId?: string;
     skipReason?: string;
+    reportReason?: string;
   }>
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1830,6 +1831,7 @@ async function executeScheduleDay(
     prepForBlockId: b.prepForBlockId ?? null,
     domainId: b.domainId ?? null, // domaine ciblé (kind:"session")
     skipReason: b.skipReason ?? null, // pourquoi l'engagement a sauté (check-in)
+    reportReason: b.reportReason ?? null, // raison donnée au moment du report
   }));
 
   // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du

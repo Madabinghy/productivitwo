@@ -251,15 +251,109 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     }
   }
 
-  /// « Reporter à demain » : fait tracké — sauté + cause « reporte » → demain
-  /// la proposition le pose EN PREMIER (règle serveur), refusable.
+  /// « Reporter à demain » : demande d'abord LA RAISON (fait tracké, cité par
+  /// le check-in et la proposition du lendemain), puis sauté + cause
+  /// « reporte » → demain il passe EN PREMIER (règle serveur), refusable.
   Future<void> _actReportTomorrow() async {
     if (_saving) return;
+    final reason = await _askReportReason();
+    if (reason == null) return; // annulé — rien n'est écrit
     setState(() => _saving = true);
     try {
       await _sync.updateBlockStatus(widget.date, b.id, 'skipped');
-      await _sync.updateBlockSkipReason(widget.date, b.id, 'reporte');
+      await _sync.updateBlockSkipReason(widget.date, b.id, 'reporte',
+          reportReason: reason.isEmpty ? null : reason);
       if (mounted) Navigator.pop(context);
+    } catch (_) {
+      _fail();
+    }
+  }
+
+  /// Chips de raison + texte libre — la raison du report est un fait, pas un
+  /// souvenir (« aujourd'hui je ne peux pas : je ne suis pas chez moi »).
+  Future<String?> _askReportReason() async {
+    const reasons = <(String, String)>[
+      ('pas_sur_place', 'Pas sur place / pas le matériel'),
+      ('imprevu', 'Imprévu'),
+      ('energie', 'Pas d\'énergie'),
+      ('pas_le_moment', 'Pas le bon moment'),
+    ];
+    final ctrl = TextEditingController();
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+            20, 4, 20, MediaQuery.of(sctx).viewInsets.bottom + 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Pourquoi le report ?',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(
+              'Une raison honnête suffit — elle nourrit le coach, jamais la culpabilité.',
+              style: TextStyle(
+                  fontSize: 12.5,
+                  color: Theme.of(sctx).colorScheme.onSurface.withOpacity(.55)),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final r in reasons)
+                  ActionChip(
+                    label: Text(r.$2, style: const TextStyle(fontSize: 12.5)),
+                    onPressed: () => Navigator.pop(sctx, r.$1),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (v) => Navigator.pop(sctx, v.trim()),
+              decoration: const InputDecoration(
+                hintText: 'Autre raison…',
+                isDense: true,
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: () => Navigator.pop(sctx, ctrl.text.trim()),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              child: const Text('Reporter à demain'),
+            ),
+          ],
+        ),
+      ),
+    );
+    ctrl.dispose();
+    return result;
+  }
+
+  /// « Supprimer le bloc » : il n'aurait pas dû être posé — soft-delete
+  /// (jamais retiré du tableau), compté par les stats d'hygiène du rapport.
+  Future<void> _actDelete() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Bloc supprimé — il n\'aurait pas dû être posé. Le rapport hebdo le compte.')));
+      }
     } catch (_) {
       _fail();
     }
@@ -530,10 +624,10 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
         ),
         _actionRow(
           cs,
-          'Reporter à demain',
+          'Reporter à demain…',
           _reportCount > 1
-              ? '$_reportCountᵉ report cette semaine — demain il passe en premier, avant tout'
-              : 'demain il passe en premier, avant tout',
+              ? '$_reportCountᵉ report cette semaine — dis pourquoi, demain il passe en premier'
+              : 'dis pourquoi (10 s) — demain il passe en premier, avant tout',
           _actReportTomorrow,
           amber: _reportCount > 1,
         ),
@@ -571,6 +665,16 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
             onPressed: _saving ? null : _abandon,
             child: Text(
               'Abandonner pour aujourd\'hui (compte comme sauté)',
+              style: TextStyle(
+                  fontSize: 12.5, color: cs.onSurface.withOpacity(.5)),
+            ),
+          ),
+        ),
+        Center(
+          child: TextButton(
+            onPressed: _saving ? null : _actDelete,
+            child: Text(
+              'Supprimer le bloc (n\'aurait pas dû être posé)',
               style: TextStyle(
                   fontSize: 12.5, color: cs.onSurface.withOpacity(.5)),
             ),

@@ -72,6 +72,9 @@ export interface ScheduleBlockPayload {
   // Check-in du soir : pourquoi l'engagement a sauté (fait tracké).
   // "imprevu" | "energie" | "sous_estime" | "evite" | texte libre.
   skipReason?: string | null;
+  // Raison donnée AU MOMENT du report (skipReason "reporte" garde son sens
+  // « demain il passe en premier ») : "pas_sur_place" | … | texte libre.
+  reportReason?: string | null;
 }
 
 // ── Domaine (users/{uid}/domains/{id}) — intention & minimum vital ───────────
