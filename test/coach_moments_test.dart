@@ -198,6 +198,17 @@ void main() {
       expect(m.actions.any((a) => a.label == 'Passer en soirée'), isFalse);
     });
 
+    test('prochain bloc lointain → « dans 3 h 58 », jamais « 238 min »', () {
+      final now = DateTime(2026, 7, 11, 17, 2);
+      final sched = _sched(today, [
+        _block(startTime: '21:00', title: 'Payer l\'eau'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.message, contains('dans 3 h 58'));
+      expect(m.message, isNot(contains('min')));
+    });
+
     test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
