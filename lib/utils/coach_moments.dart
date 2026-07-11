@@ -346,7 +346,7 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
   String message;
   if (first != null) {
     final mins = _minutesUntil(now, first.startTime);
-    final whenStr = mins > 0 ? 'dans $mins min' : 'maintenant';
+    final whenStr = _inFr(mins);
     stats.add(StatItem('Premier bloc', _hhmmToFr(first.startTime),
         sub: first.title));
     final prepSuffix =
@@ -399,7 +399,7 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
   final stats = <StatItem>[];
   if (next != null) {
     final mins = _minutesUntil(now, next.startTime);
-    final whenStr = mins > 0 ? 'dans $mins min' : 'maintenant';
+    final whenStr = _inFr(mins);
     stats.add(StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title));
     message = 'Prochain rendez-vous : ${next.title} $whenStr.';
     if (_launchable(next)) {
@@ -631,7 +631,7 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
     );
   }
   final mins = _minutesUntil(now, next.startTime);
-  final whenStr = mins > 0 ? 'dans $mins min' : 'maintenant';
+  final whenStr = _inFr(mins);
   return CoachMoment(
     type: CoachMomentType.afternoon,
     tagLabel: 'ORION · APRÈS-MIDI',
@@ -692,6 +692,16 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
 }
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
+
+/// « dans 238 min » est illisible : sous l'heure on parle en minutes, au-delà
+/// en heures (« dans 3 h 58 »). 0 ou moins = « maintenant ».
+String _inFr(int mins) {
+  if (mins <= 0) return 'maintenant';
+  if (mins < 60) return 'dans $mins min';
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  return m == 0 ? 'dans $h h' : 'dans $h h ${m.toString().padLeft(2, '0')}';
+}
 
 /// Minimum vital hebdo des domaines définis, vérifié par les données réelles :
 /// une « séance » = une session ≥ 10 min sur une activité du domaine, semaine
