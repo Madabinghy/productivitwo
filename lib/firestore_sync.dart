@@ -2287,6 +2287,18 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Disponibilité déclarée : « pas dispo avant [until] » — le coach suit le
+  /// flow jusqu'à cette heure. null = « je suis dispo » (efface la fenêtre).
+  Future<void> setUnavailability(String date, DateTime? until,
+      {String? reason}) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/daily_schedules/$date').set({
+      'date': date,
+      'unavailableUntil': until?.toIso8601String(),
+      'unavailableReason': until == null ? null : reason,
+    }, SetOptions(merge: true));
+  }
+
   /// Cause globale d'une journée qui a déraillé (3+ engagements rompus).
   Future<void> setDayReason(String date, String reason) async {
     if (uid == null) return;

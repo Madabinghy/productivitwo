@@ -154,6 +154,11 @@ class DailySchedule {
   // le programme tel quel : les blocs ne sont jamais modifiés par la bascule.
   String dayMode; // "normal" | "evening"
   DateTime? dayModeActivatedAt;
+  // Disponibilité déclarée : « pas dispo avant X » (posé au report ou depuis
+  // « Me poser »). Jusqu'à cette heure le coach SUIT LE FLOW — pas de relance,
+  // pas de dérive ; le check-in du soir et le rapport restent intouchés.
+  DateTime? unavailableUntil;
+  String? unavailableReason; // souvent la raison du report (« pas sur place »)
 
   DailySchedule({
     required this.date,
@@ -165,10 +170,16 @@ class DailySchedule {
     this.plannedSameDay = false,
     this.dayMode = 'normal',
     this.dayModeActivatedAt,
+    this.unavailableUntil,
+    this.unavailableReason,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
 
   bool get eveningMode => dayMode == 'evening';
+
+  /// Indisponibilité déclarée encore active à [now].
+  bool unavailableAt(DateTime now) =>
+      unavailableUntil != null && now.isBefore(unavailableUntil!);
 
   Map<String, dynamic> toJson() => {
         'date': date,
@@ -180,6 +191,8 @@ class DailySchedule {
         'plannedSameDay': plannedSameDay,
         'dayMode': dayMode,
         'dayModeActivatedAt': dayModeActivatedAt?.toIso8601String(),
+        'unavailableUntil': unavailableUntil?.toIso8601String(),
+        'unavailableReason': unavailableReason,
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -195,5 +208,7 @@ class DailySchedule {
         plannedSameDay: j['plannedSameDay'] == true,
         dayMode: j['dayMode']?.toString() == 'evening' ? 'evening' : 'normal',
         dayModeActivatedAt: _parseDateOrNull(j['dayModeActivatedAt']),
+        unavailableUntil: _parseDateOrNull(j['unavailableUntil']),
+        unavailableReason: j['unavailableReason'],
       );
 }

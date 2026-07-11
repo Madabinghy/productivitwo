@@ -285,6 +285,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       plannedSameDay: schedule.plannedSameDay,
       dayMode: schedule.dayMode,
       dayModeActivatedAt: schedule.dayModeActivatedAt,
+      unavailableUntil: schedule.unavailableUntil,
+      unavailableReason: schedule.unavailableReason,
     ));
   }
 

@@ -45,6 +45,7 @@ enum CoachActionKind {
   poseSessions, // « Plus tard » — pose les sessions restantes (mécanique 18b)
   // ── Phase 5 — contrôle direct (23b/23c) ────────────────────────────────────
   endAfternoon, // bascule système EXPLICITE en mode soirée (réversible)
+  availableNow, // « Je suis dispo » — efface la fenêtre d'indisponibilité
 }
 
 class CoachAction {
@@ -143,6 +144,28 @@ CoachMoment computeCoachMoment(
   if (!nudgeDismissed && !sundayReport) {
     final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
     if (nudge != null) return nudge;
+  }
+
+  // Indisponibilité déclarée (« pas dispo avant X ») : le coach SUIT LE FLOW —
+  // carte calme, aucune relance, aucune dérive avant l'heure dite. Le soir
+  // (≥ 19 h) le check-in reprend la main : rendre des comptes reste sacré.
+  if (today?.unavailableAt(now) == true && minutes < 19 * 60) {
+    final until = today!.unavailableUntil!;
+    final sameDay = until.day == now.day && until.month == now.month;
+    final hm = until.minute == 0
+        ? '${until.hour} h'
+        : '${until.hour} h ${until.minute.toString().padLeft(2, '0')}';
+    return CoachMoment(
+      type: CoachMomentType.afternoon, // carte visible mais calme
+      tagLabel: 'ORION · JE SUIS LE FLOW',
+      message:
+          'Pas dispo ${sameDay ? 'avant $hm' : 'aujourd\'hui'}${today.unavailableReason != null ? ' (${skipReasonLabel(today.unavailableReason!)})' : ''} — noté. '
+          'Je te relance ${sameDay ? 'à $hm' : 'demain'}, rien ne dérive d\'ici là.',
+      actions: const [
+        CoachAction('Je suis dispo', CoachActionKind.availableNow),
+      ],
+      tone: CoachTone.neutral,
+    );
   }
 
   // Mode soirée (23c) : la journée est pliée tôt — assumé, réversible. Avant

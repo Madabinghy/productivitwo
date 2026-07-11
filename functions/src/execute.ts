@@ -1857,6 +1857,8 @@ async function executeScheduleDay(
     plannedSameDay: prevData.plannedSameDay ?? false,
     dayMode: prevData.dayMode ?? "normal", // mode soirée réversible (23c)
     dayModeActivatedAt: prevData.dayModeActivatedAt ?? null,
+    unavailableUntil: prevData.unavailableUntil ?? null, // « je suis le flow »
+    unavailableReason: prevData.unavailableReason ?? null,
   });
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);

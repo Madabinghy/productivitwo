@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -540,6 +541,7 @@ class _FocusViewState extends State<FocusView> {
         ];
 
       case FreeIntent.rest:
+        // « Me poser » peut aussi poser la fenêtre : le coach suit le flow.
         final next = (_schedule?.blocks ?? const <ScheduleBlock>[])
             .where((b) =>
                 b.status == 'pending' &&
@@ -560,6 +562,13 @@ class _FocusViewState extends State<FocusView> {
               Icons.schedule,
               null,
             ),
+          _proposalRow(
+            cs,
+            'Ne pas me relancer avant…',
+            'je suis le flow : aucune relance, aucune dérive avant l\'heure dite',
+            Icons.do_not_disturb_on_outlined,
+            _declareUnavailable,
+          ),
           if (now.hour >= 19 || now.hour < 5)
             _proposalRow(
               cs,
@@ -682,6 +691,22 @@ class _FocusViewState extends State<FocusView> {
                 color: cs.onSurface.withOpacity(.5))),
       );
 
+  /// « Ne pas me relancer avant… » (guide « Me poser ») — même fait tracké
+  /// que le report : le coach suit le flow jusqu'à l'heure choisie.
+  Future<void> _declareUnavailable() async {
+    final until = await showAvailabilitySheet(context);
+    if (until == null || until == kAvailableNow || !mounted) return;
+    await _sync.setUnavailability(_schedDate, until, reason: 'repos');
+    if (mounted) {
+      setState(() => _freeIntent = null);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Noté — je suis le flow, aucune relance d\'ici là.'),
+        duration: Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
 
   /// « Terminer l'après-midi » : bascule système EXPLICITE — les blocs ne sont
@@ -763,6 +788,8 @@ class _FocusViewState extends State<FocusView> {
       onStartSession: _startDomainSession,
       onPoseSessions: _poseRemainingSessions,
       onEndAfternoon: _endAfternoon,
+      // « Je suis dispo » — efface la fenêtre, le coach reprend normalement.
+      onAvailableNow: () => _sync.setUnavailability(_schedDate, null),
       // « Garder [créneau] » du nudge : silence pour la journée seulement.
       onDismiss: isNudge
           ? () => setState(() => _nudgeDismissed = true)
