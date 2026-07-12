@@ -943,6 +943,9 @@ export const SCHEDULE_DAY_TOOL = {
     "(planifie à partir de l'heure actuelle) ; les blocs passés existants restent intacts. " +
     "Un bloc peut porter uniquement activityId (sans projet/tâche) → temps bloqué " +
     "sur une activité, chrono ciblé au lancement. " +
+    "⚠️ Un bloc = UNE SEULE routine/activité avec SON activityId — ne JAMAIS " +
+    "regrouper plusieurs routines dans un bloc (« Ménage + hygiène » interdit : " +
+    "ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs. " +
     "Étapes recommandées : (1) get_user_context pour récupérer projets et routines actifs, " +
     "(2) get_day_schedule pour vérifier si un programme existe déjà, " +
     "(3) schedule_day pour créer ou remplacer le programme.",

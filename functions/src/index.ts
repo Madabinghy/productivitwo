@@ -583,6 +583,7 @@ export const proposeDayPlan = onRequest(
           ? `3. ⚠️ La veille était « programme irréaliste » : propose MOINS de blocs que la veille (${Math.max(2, refBlocks.length - 2)} max) et dis-le dans message (« Hier était trop chargé — demain est plus court, volontairement. »).`
           : `3. Charge réaliste : ne pas dépasser la veille.`,
         `4. Réutilise les activityId/projectId/taskId existants ci-dessous (chrono ciblé) — jamais d'id inventé.`,
+        `4bis. Un bloc = UNE SEULE routine/activité, avec SON activityId — ne regroupe JAMAIS plusieurs routines dans un bloc (« Ménage + hygiène » interdit : ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs consécutifs.`,
         `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
         ``,
         ...(domainLines.length > 0
@@ -645,6 +646,45 @@ export const proposeDayPlan = onRequest(
         blocks?: Array<Record<string, unknown>>;
       };
 
+      // Garde-fou déterministe (le prompt ne suffit pas) : un bloc qui
+      // regroupe plusieurs routines (« Ménage + hygiène du soir ») est SCINDÉ
+      // en blocs individuels consécutifs, chacun avec SON activityId — sinon
+      // le chrono ciblé et le ✓ par routine sont cassés.
+      const normName = (s: string) =>
+        s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const routineNames = acts
+        .filter((a) => a.type === "habit")
+        .map((a) => ({ id: String(a.id), name: String(a.name ?? "") }))
+        .filter((a) => a.name.length >= 3);
+      const splitCombined = (
+        b: Record<string, unknown>
+      ): Array<Record<string, unknown>> => {
+        const title = normName(String(b.title ?? ""));
+        const matches = routineNames.filter((a) => title.includes(normName(a.name)));
+        if (matches.length < 2) return [b];
+        const dur = Math.max(
+          10,
+          Math.round((Number(b.durationMin ?? 30)) / matches.length)
+        );
+        let [h, m] = String(b.startTime ?? "09:00")
+          .split(":")
+          .map((x) => parseInt(x, 10) || 0);
+        return matches.map((a) => {
+          const st = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+          m += dur;
+          h += Math.floor(m / 60);
+          m %= 60;
+          return {
+            ...b,
+            title: a.name,
+            activityId: a.id,
+            durationMin: dur,
+            startTime: st,
+            subtitle: "une routine par bloc — séparé automatiquement",
+          };
+        });
+      };
+
       res.status(200).json({
         message: proposal.message ?? "",
         sources: proposal.sources ?? [],
@@ -655,7 +695,7 @@ export const proposeDayPlan = onRequest(
           const hour = parseInt(String(b.startTime).slice(0, 2), 10);
           const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
           return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
-        }),
+        }).flatMap(splitCombined),
         refDate,
         dayReason,
       });
