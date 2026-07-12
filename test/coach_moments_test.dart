@@ -209,6 +209,91 @@ void main() {
       expect(m.message, isNot(contains('min')));
     });
 
+    test('indispo déclarée → carte calme « je suis le flow », pas de dérive',
+        () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
+        unavailableReason: 'pas_sur_place',
+        blocks: [
+          // Bloc en dérive flagrante (posé 14h, 0 min logguée) : silencieux.
+          _block(startTime: '14:00', title: 'Relances', activityId: 'a'),
+        ],
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, isNot(CoachMomentType.drift));
+      expect(m.tagLabel, contains('JE SUIS LE FLOW'));
+      expect(m.message, contains('18 h'));
+      expect(m.message, contains('pas sur place'));
+      expect(m.actions.any((a) => a.kind == CoachActionKind.availableNow),
+          isTrue);
+    });
+
+    test('indispo + routine en attente → « Planifions — [routine] »', () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final st = AppState(
+        domains: [],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Marche',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
+      );
+      final m = computeCoachMoment(now, st, sched, null, [],
+          nudgeDismissed: true);
+      final plan = m.actions
+          .where((a) => a.kind == CoachActionKind.planNext)
+          .toList();
+      expect(plan, hasLength(1));
+      expect(plan.first.label, 'Planifions — Marche');
+      expect(plan.first.block?.activityId, 'r1');
+    });
+
+    test('indispo sans routine en attente → pas de « Planifions » inventé',
+        () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.planNext), isFalse);
+    });
+
+    test('indispo : le check-in du soir reprend la main (≥ 19 h)', () {
+      final now = DateTime(2026, 7, 11, 20, 0);
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 22, 0),
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.evening);
+    });
+
+    test('fenêtre expirée → le flow normal reprend', () {
+      final now = DateTime(2026, 7, 11, 15, 0);
+      final sched = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 11, 14, 0),
+        blocks: [_block(startTime: '16:00')],
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.tagLabel, isNot(contains('FLOW')));
+    });
+
     test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);

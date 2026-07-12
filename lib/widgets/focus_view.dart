@@ -11,10 +11,12 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 
@@ -528,7 +530,10 @@ class _FocusViewState extends State<FocusView> {
               Icons.play_arrow_rounded,
               () => _launchProposalBlock(
                   activityId: p.routine.id, title: p.routine.name),
+              onLongPress: () => showPlanNextSheet(context,
+                  logic: logic, routine: p.routine),
             ),
+          _freeHint(cs, 'tap = lancer maintenant · appui long = planifier la prochaine exécution'),
           if (widget.onOpenRoutines != null)
             Center(
               child: TextButton(
@@ -540,6 +545,7 @@ class _FocusViewState extends State<FocusView> {
         ];
 
       case FreeIntent.rest:
+        // « Me poser » peut aussi poser la fenêtre : le coach suit le flow.
         final next = (_schedule?.blocks ?? const <ScheduleBlock>[])
             .where((b) =>
                 b.status == 'pending' &&
@@ -560,6 +566,13 @@ class _FocusViewState extends State<FocusView> {
               Icons.schedule,
               null,
             ),
+          _proposalRow(
+            cs,
+            'Ne pas me relancer avant…',
+            'je suis le flow : aucune relance, aucune dérive avant l\'heure dite',
+            Icons.do_not_disturb_on_outlined,
+            _declareUnavailable,
+          ),
           if (now.hour >= 19 || now.hour < 5)
             _proposalRow(
               cs,
@@ -625,10 +638,12 @@ class _FocusViewState extends State<FocusView> {
   }
 
   Widget _proposalRow(ColorScheme cs, String title, String? subtitle,
-      IconData icon, VoidCallback? onTap) {
+      IconData icon, VoidCallback? onTap,
+      {VoidCallback? onLongPress}) {
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 8),
@@ -681,6 +696,22 @@ class _FocusViewState extends State<FocusView> {
                 fontStyle: FontStyle.italic,
                 color: cs.onSurface.withOpacity(.5))),
       );
+
+  /// « Ne pas me relancer avant… » (guide « Me poser ») — même fait tracké
+  /// que le report : le coach suit le flow jusqu'à l'heure choisie.
+  Future<void> _declareUnavailable() async {
+    final until = await showAvailabilitySheet(context);
+    if (until == null || until == kAvailableNow || !mounted) return;
+    await _sync.setUnavailability(_schedDate, until, reason: 'repos');
+    if (mounted) {
+      setState(() => _freeIntent = null);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Noté — je suis le flow, aucune relance d\'ici là.'),
+        duration: Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
 
   // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
 
@@ -763,6 +794,22 @@ class _FocusViewState extends State<FocusView> {
       onStartSession: _startDomainSession,
       onPoseSessions: _poseRemainingSessions,
       onEndAfternoon: _endAfternoon,
+      // « Je suis dispo » — efface la fenêtre, le coach reprend normalement.
+      onAvailableNow: () => _sync.setUnavailability(_schedDate, null),
+      // « Planifions — [routine] » : pose la prochaine exécution à date/heure
+      // choisies (après la fenêtre d'indispo par défaut).
+      onPlanNext: (block) {
+        Activity? routine;
+        for (final a in st.activities) {
+          if (a.id == block.activityId) routine = a;
+        }
+        if (routine != null) {
+          showPlanNextSheet(context,
+              logic: logic,
+              routine: routine,
+              notBefore: _schedule?.unavailableUntil);
+        }
+      },
       // « Garder [créneau] » du nudge : silence pour la journée seulement.
       onDismiss: isNudge
           ? () => setState(() => _nudgeDismissed = true)

@@ -45,6 +45,8 @@ enum CoachActionKind {
   poseSessions, // « Plus tard » — pose les sessions restantes (mécanique 18b)
   // ── Phase 5 — contrôle direct (23b/23c) ────────────────────────────────────
   endAfternoon, // bascule système EXPLICITE en mode soirée (réversible)
+  availableNow, // « Je suis dispo » — efface la fenêtre d'indisponibilité
+  planNext, // « Planifions » — pose la prochaine exécution d'une routine
 }
 
 class CoachAction {
@@ -143,6 +145,39 @@ CoachMoment computeCoachMoment(
   if (!nudgeDismissed && !sundayReport) {
     final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
     if (nudge != null) return nudge;
+  }
+
+  // Indisponibilité déclarée (« pas dispo avant X ») : le coach SUIT LE FLOW —
+  // carte calme, aucune relance, aucune dérive avant l'heure dite. Le soir
+  // (≥ 19 h) le check-in reprend la main : rendre des comptes reste sacré.
+  if (today?.unavailableAt(now) == true && minutes < 19 * 60) {
+    final until = today!.unavailableUntil!;
+    final sameDay = until.day == now.day && until.month == now.month;
+    final hm = until.minute == 0
+        ? '${until.hour} h'
+        : '${until.hour} h ${until.minute.toString().padLeft(2, '0')}';
+    // « Planifions » : indispo pour FAIRE, mais dispo pour POSER — la première
+    // routine du jour sans hit devient un bloc à date/heure choisies.
+    final toPlan = _nextRoutineToPlan(now, st);
+    return CoachMoment(
+      type: CoachMomentType.afternoon, // carte visible mais calme
+      tagLabel: 'ORION · JE SUIS LE FLOW',
+      message:
+          'Pas dispo ${sameDay ? 'avant $hm' : 'aujourd\'hui'}${today.unavailableReason != null ? ' (${skipReasonLabel(today.unavailableReason!)})' : ''} — noté. '
+          'Je te relance ${sameDay ? 'à $hm' : 'demain'}, rien ne dérive d\'ici là.',
+      actions: [
+        if (toPlan != null)
+          CoachAction('Planifions — ${toPlan.name}', CoachActionKind.planNext,
+              block: ScheduleBlock(
+                  startTime: '00:00',
+                  durationMin: toPlan.timerMin ?? 20,
+                  title: toPlan.name,
+                  category: 'routine',
+                  activityId: toPlan.id)),
+        const CoachAction('Je suis dispo', CoachActionKind.availableNow),
+      ],
+      tone: CoachTone.neutral,
+    );
   }
 
   // Mode soirée (23c) : la journée est pliée tôt — assumé, réversible. Avant
@@ -692,6 +727,22 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
 }
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
+
+/// Première routine quotidienne sans hit aujourd'hui — candidate au
+/// « Planifions » (jamais inventée : aucune routine en attente = pas de CTA).
+Activity? _nextRoutineToPlan(DateTime now, AppState st) {
+  final routines = st.activities
+      .where((a) =>
+          !a.deleted && a.isHabit && a.effHabitFreq == HabitFreq.daily)
+      .toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+  for (final a in routines) {
+    final hitToday = st.habitHits.any((h) =>
+        h.habitId == a.id && _sameDay(h.ts, now));
+    if (!hitToday) return a;
+  }
+  return null;
+}
 
 /// « dans 238 min » est illisible : sous l'heure on parle en minutes, au-delà
 /// en heures (« dans 3 h 58 »). 0 ou moins = « maintenant ».

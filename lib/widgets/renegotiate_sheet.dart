@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/renegotiation.dart';
+import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
 
 /// Renégociation / sheet du bloc actif (maquettes 12a/12b/12c + 23b) —
@@ -258,15 +259,43 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     if (_saving) return;
     final reason = await _askReportReason();
     if (reason == null) return; // annulé — rien n'est écrit
+    if (!mounted) return;
+    // La disponibilité devient un fait : « pas dispo avant X » → le coach
+    // suit le flow (pas de relance ni de dérive avant l'heure dite).
+    final availability = await showAvailabilitySheet(context);
     setState(() => _saving = true);
     try {
       await _sync.updateBlockStatus(widget.date, b.id, 'skipped');
       await _sync.updateBlockSkipReason(widget.date, b.id, 'reporte',
           reportReason: reason.isEmpty ? null : reason);
-      if (mounted) Navigator.pop(context);
+      if (availability != null && availability != kAvailableNow) {
+        await _sync.setUnavailability(widget.date, availability,
+            reason: reason.isEmpty ? null : reason);
+      }
+      if (mounted) {
+        Navigator.pop(context);
+        if (availability != null && availability != kAvailableNow) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                'Noté — je te relance ${_untilFr(availability)}. D\'ici là, je suis le flow.'),
+            duration: const Duration(seconds: 3),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
     } catch (_) {
       _fail();
     }
+  }
+
+  String _untilFr(DateTime d) {
+    final now = DateTime.now();
+    final sameDay =
+        d.year == now.year && d.month == now.month && d.day == now.day;
+    final hm = d.minute == 0
+        ? '${d.hour} h'
+        : '${d.hour} h ${d.minute.toString().padLeft(2, '0')}';
+    return sameDay ? 'à $hm' : 'demain';
   }
 
   /// Chips de raison + texte libre — la raison du report est un fait, pas un
