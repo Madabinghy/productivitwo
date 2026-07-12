@@ -615,6 +615,46 @@ void main() {
           isTrue);
     });
 
+    test('vital TEMPS (heures) : mesuré depuis les sessions logguées', () {
+      final now = DateTime(2026, 7, 8, 12, 30); // mercredi
+      final st = AppState(
+        domains: [
+          Domain(
+            id: 'd1',
+            name: 'Sommeil',
+            definitionStatus: 'active',
+            intention: 'me sentir en forme',
+            vitalMinimum: [
+              VitalMinimum(
+                  label: '7 h / nuit',
+                  metric: 'hours_day',
+                  target: 7,
+                  period: 'day'),
+            ],
+          ),
+        ],
+        activities: [
+          Activity(id: 'a1', name: 'Sommeil', domainId: 'd1'),
+        ],
+        sessions: [
+          Session(
+              activityId: 'a1',
+              startAt: DateTime(2026, 7, 7, 23, 0), // mardi soir, même semaine
+              endAt: DateTime(2026, 7, 8, 6, 30)), // 7 h 30 dormies
+        ],
+        habitProgress: [],
+      );
+      final sched = _sched('2026-07-08', [
+        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
+      ]);
+      final m = computeCoachMoment(now, st, sched, null, st.sessions);
+      expect(m.type, CoachMomentType.midday);
+      // Cible journalière ramenée à la semaine (7 h × 7 = 49 h), réel mesuré.
+      expect(
+          m.stats.any((s) => s.label == 'Sommeil' && s.value == '7,5/49 h · sem.'),
+          isTrue);
+    });
+
     test('vital omis sans domaine défini (jamais de chiffre inventé)', () {
       final now = DateTime(2026, 7, 8, 12, 30);
       final sched = _sched('2026-07-08', [

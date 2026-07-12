@@ -1009,7 +1009,7 @@ export const SAVE_DOMAIN_DEFINITION_TOOL = {
           required: ["label"],
           properties: {
             label:  { type: "string", description: "ex: '2 séances / sem'" },
-            metric: { type: "string", description: "sessions_week | sessions_day | … — omettre si non mesurable" },
+            metric: { type: "string", description: "sessions_week | sessions_day | hours_week | hours_day | minutes_week | minutes_day — omettre si non mesurable (sessions* = nb de séances ≥ 10 min ; hours*/minutes* = temps réel loggué sur les activités du domaine)" },
             target: { type: "number" },
             period: { type: "string", enum: ["week", "day"] },
           },

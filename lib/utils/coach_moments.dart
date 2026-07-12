@@ -1194,15 +1194,19 @@ String _inFr(int mins) {
 }
 
 /// Minimum vital hebdo des domaines définis, vérifié par les données réelles :
-/// une « séance » = une session ≥ 10 min sur une activité du domaine, semaine
-/// courante (lundi → maintenant). V1 : métriques `sessions*` / period `week`
-/// uniquement — le reste est omis (jamais de chiffre inventé). Max 2 stats.
+/// métriques `sessions*` (séances ≥ 10 min sur une activité du domaine, semaine
+/// courante) et métriques TEMPS `hours*`/`minutes*` (heures réelles logguées
+/// sur le domaine — cible journalière ramenée à la semaine ×7). Le reste est
+/// omis (jamais de chiffre inventé). Max 2 stats.
 List<StatItem> _vitalStats(DateTime now, AppState st, List<Session> sessions) {
   final stats = <StatItem>[];
   final monday = DateTime(now.year, now.month, now.day)
       .subtract(Duration(days: now.weekday - 1));
   final ymd =
       '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  String fmtH(double v) => v % 1 == 0
+      ? v.toInt().toString()
+      : v.toStringAsFixed(1).replaceAll('.', ',');
   for (final d in st.domains) {
     if (d.deleted || !d.isDefined) continue;
     // Suspension assumée (12b) : le coach ne demande rien pendant la pause.
@@ -1211,18 +1215,39 @@ List<StatItem> _vitalStats(DateTime now, AppState st, List<Session> sessions) {
     // son vital n'existe qu'au rapport du dimanche.
     if (d.tracking == 'declared') continue;
     for (final v in d.vitalMinimum) {
-      if (v.period != 'week' || v.target <= 0) continue;
-      if (!v.metric.startsWith('sessions')) continue;
-      var count = 0;
-      for (final s in sessions) {
-        if (s.startAt.isBefore(monday)) continue;
-        final act =
-            st.activities.where((a) => a.id == s.activityId).firstOrNull;
-        if (act == null || act.domainId != d.id) continue;
-        if ((s.endAt ?? now).difference(s.startAt).inMinutes >= 10) count++;
+      if (v.target <= 0) continue;
+      final metric = v.metric.toLowerCase();
+      if (metric.startsWith('sessions')) {
+        if (v.period != 'week') continue;
+        var count = 0;
+        for (final s in sessions) {
+          if (s.startAt.isBefore(monday)) continue;
+          final act =
+              st.activities.where((a) => a.id == s.activityId).firstOrNull;
+          if (act == null || act.domainId != d.id) continue;
+          if ((s.endAt ?? now).difference(s.startAt).inMinutes >= 10) count++;
+        }
+        stats.add(StatItem(d.name, '$count/${v.target.toInt()} · sem.',
+            sub: v.label));
+      } else if (RegExp(r'hour|heure|min').hasMatch(metric)) {
+        // Métrique temps : heures réelles de la semaine sur le domaine.
+        final isHours = RegExp(r'hour|heure').hasMatch(metric);
+        final weekTargetMin =
+            (v.period == 'day' ? v.target * 7 : v.target) * (isHours ? 60 : 1);
+        var mins = 0;
+        for (final s in sessions) {
+          if (s.startAt.isBefore(monday)) continue;
+          final act =
+              st.activities.where((a) => a.id == s.activityId).firstOrNull;
+          if (act == null || act.domainId != d.id) continue;
+          mins += (s.endAt ?? now).difference(s.startAt).inMinutes;
+        }
+        stats.add(StatItem(d.name,
+            '${fmtH(mins / 60)}/${fmtH(weekTargetMin / 60)} h · sem.',
+            sub: v.label));
+      } else {
+        continue; // métrique non mesurable → omise
       }
-      stats.add(StatItem(d.name, '$count/${v.target.toInt()} · sem.',
-          sub: v.label));
       break; // une stat par domaine — la carte reste compacte
     }
     if (stats.length >= 2) break;
