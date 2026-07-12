@@ -21,6 +21,7 @@ enum CoachMomentType {
   evening,
   weekly, // dimanche soir : teaser du rapport hebdo (maquette 16a)
   defineNudge, // domaines absents/nommés → l'app invite (Partie D, 21a-21c)
+  chain, // un chrono vient de finir → « Et ensuite ? » (enchaînement immédiat)
   hidden,
 }
 
@@ -47,6 +48,9 @@ enum CoachActionKind {
   endAfternoon, // bascule système EXPLICITE en mode soirée (réversible)
   availableNow, // « Je suis dispo » — efface la fenêtre d'indisponibilité
   planNext, // « Planifions » — pose la prochaine exécution d'une routine
+  // ── Défi ORION dans la carte ────────────────────────────────────────────────
+  challengeAccept, // « Je relève 🔥 » — chrono + minuteur-alarme + streak
+  challengeSchedule, // « Programmer 📅 » — défi daté dans le programme
 }
 
 class CoachAction {
@@ -65,6 +69,24 @@ class StatItem {
   final String value;
   final String? sub;
   const StatItem(this.label, this.value, {this.sub});
+}
+
+/// Défi ORION prêt à afficher — calculé par l'appelant depuis le réel
+/// (AppLogic.challengeActivity + challengeDurationFor) : l'activité-temps la
+/// plus en retard sur sa cible du JOUR. La carte n'applique que les règles de
+/// moment (retard franc, trou suffisant, une sollicitation par jour).
+class ChallengeProposal {
+  final Activity activity;
+  final int minutes; // durée suggérée (reste vers la cible, borné 10-45)
+  final int doneMin; // minutes réellement logguées aujourd'hui
+  final int targetMin; // cible du jour (goalMin)
+  final int streak; // jours consécutifs avec ≥ 1 défi relevé
+  const ChallengeProposal(
+      {required this.activity,
+      required this.minutes,
+      required this.doneMin,
+      required this.targetMin,
+      this.streak = 0});
 }
 
 class CoachMoment {
@@ -121,8 +143,19 @@ CoachMoment computeCoachMoment(
   int sessionSkipCount = 0,
   String? nextSessionLabel,
   bool nudgeDismissed = false,
+  ChallengeProposal? challenge,
 }) {
   final minutes = now.hour * 60 + now.minute;
+  // Défi ORION proactif : une sollicitation par jour maximum — passé
+  // (skippedChallengeDates) ou déjà relevé aujourd'hui = silence. Le bouton
+  // et la chip du guide restent disponibles à la demande, eux.
+  final ymdCompact =
+      '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+  final chal = challenge != null &&
+          !st.skippedChallengeDates.contains(ymdCompact) &&
+          !st.challengeWinsByDay.containsKey(ymdCompact)
+      ? challenge
+      : null;
   final blocks = _liveBlocks(today);
   final sessionsToday =
       recentSessions.where((s) => _sameDay(s.startAt, now)).toList();
@@ -186,6 +219,14 @@ CoachMoment computeCoachMoment(
     return _eveningModeMoment(today!, blocks, vitals);
   }
 
+  // « Et ensuite ? » : un chrono vient de se terminer (≤ 10 min) — le moment
+  // le plus précieux pour enchaîner. Avant 19 h seulement (check-in sacré).
+  if (minutes < 19 * 60) {
+    final chain =
+        _chainMoment(now, st, blocks, recentSessions, challenge: chal);
+    if (chain != null) return chain;
+  }
+
   // « Journée non planifiée » (5a) : matinée sans programme (hors preps) →
   // prime sur les templates réveil/matin, sous la dérive (après-midi de toute
   // façon). Masquée après « À la volée ».
@@ -216,13 +257,13 @@ CoachMoment computeCoachMoment(
         : _eveningMoment(blocks, vitals);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
-        _afternoonMoment(now, blocks);
+        _afternoonMoment(now, st, blocks, recentSessions, challenge: chal);
   } else if (minutes >= 11 * 60 + 45) {
     clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
-    clock = _morningMoment(now, blocks);
+    clock = _morningMoment(now, st, blocks);
   } else {
-    clock = _wakeMoment(now, blocks, yesterday, today);
+    clock = _wakeMoment(now, st, blocks, yesterday, today);
   }
 
   // Avance manuelle : ne s'applique que si elle est PLUS LOIN dans la journée
@@ -231,11 +272,12 @@ CoachMoment computeCoachMoment(
   if (advancedTo != null && _dayOrder(advancedTo) > _dayOrder(clock.type)) {
     switch (advancedTo) {
       case CoachMomentType.morning:
-        return _morningMoment(now, blocks);
+        return _morningMoment(now, st, blocks);
       case CoachMomentType.midday:
         return _middayMoment(now, blocks, recentSessions, vitals, meal);
       case CoachMomentType.afternoon:
-        return _afternoonMoment(now, blocks);
+        return _afternoonMoment(now, st, blocks, recentSessions,
+            challenge: chal);
       case CoachMomentType.evening:
         return _eveningMoment(blocks, vitals);
       default:
@@ -257,6 +299,7 @@ int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.evening => 4,
       CoachMomentType.weekly => 4,
       CoachMomentType.defineNudge => 5, // hors déroulé — jamais dépassé
+      CoachMomentType.chain => 5, // hors déroulé — fenêtre de 10 min
       CoachMomentType.hidden => -1,
     };
 
@@ -366,7 +409,7 @@ CoachMoment? _defineNudge(
 
 // ── Moments ───────────────────────────────────────────────────────────────────
 
-CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
+CoachMoment _wakeMoment(DateTime now, AppState st, List<ScheduleBlock> blocks,
     DailySchedule? yesterday, DailySchedule? today) {
   final todayStr = _ymd(now);
   final first = _firstEngagement(now, blocks);
@@ -392,6 +435,15 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
       actions.add(CoachAction('Lancer', CoachActionKind.launchBlock,
           block: first));
     }
+    // Trou avant le premier bloc : une routine qui tient dedans, la plus
+    // proche de son heure habituelle en premier.
+    if (mins >= 60) {
+      final f = gapFillers(now, st, mins, blocks: blocks).firstOrNull;
+      if (f != null) {
+        message = '$message ${_fillerText(f, hasNext: true)}';
+        actions.add(_fillerAction(now, f));
+      }
+    }
   } else {
     message = prepReady
         ? 'Journée libre côté programme — mais les affaires sont prêtes depuis hier, prêt à démarrer.'
@@ -411,30 +463,45 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
   );
 }
 
-CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
+CoachMoment _morningMoment(
+    DateTime now, AppState st, List<ScheduleBlock> blocks) {
   const advance = CoachAction('Pause de midi', CoachActionKind.advanceMoment,
       target: CoachMomentType.midday);
+  // Prochain engagement et trou avant lui (jusqu'à midi si rien n'est posé).
+  final next = _firstEngagement(now, blocks);
+  final gap = next != null
+      ? _minutesUntil(now, next.startTime)
+      : 12 * 60 - (now.hour * 60 + now.minute);
+  final filler = gap >= 60
+      ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
+      : null;
+
   final firstDone = _firstDoneEngagement(blocks);
   if (firstDone != null) {
     final at = firstDone.doneAt;
     final atStr = at != null ? ' à ${_hhmmToFr(_hm(at))}' : '';
+    var message =
+        '${firstDone.title} fait$atStr — la journée est lancée, c\'est ça qu\'on voulait.';
+    final actions = <CoachAction>[];
+    if (filler != null) {
+      message = '$message ${_fillerText(filler, hasNext: next != null)}';
+      actions.add(_fillerAction(now, filler));
+    }
+    actions.add(advance);
     return CoachMoment(
       type: CoachMomentType.morning,
       tagLabel: 'ORION · MATIN',
-      message:
-          '${firstDone.title} fait$atStr — la journée est lancée, c\'est ça qu\'on voulait.',
-      actions: const [advance],
+      message: message,
+      actions: actions,
       tone: CoachTone.positive,
     );
   }
   // Carte réduite : le prochain bloc seulement.
-  final next = _firstEngagement(now, blocks);
   final actions = <CoachAction>[];
   String message;
   final stats = <StatItem>[];
   if (next != null) {
-    final mins = _minutesUntil(now, next.startTime);
-    final whenStr = _inFr(mins);
+    final whenStr = _inFr(gap);
     stats.add(StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title));
     message = 'Prochain rendez-vous : ${next.title} $whenStr.';
     if (_launchable(next)) {
@@ -443,6 +510,10 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
     }
   } else {
     message = 'Matinée libre. Choisis une chose à faire avancer.';
+  }
+  if (filler != null) {
+    message = '$message ${_fillerText(filler, hasNext: next != null)}';
+    actions.add(_fillerAction(now, filler));
   }
   actions.add(advance);
   return CoachMoment(
@@ -597,6 +668,99 @@ CoachMoment? _driftMoment(
   );
 }
 
+// ── Défi ORION dans la carte ─────────────────────────────────────────────────
+
+/// Fragment de message du défi : chiffres réels (durée suggérée, manque vers
+/// la cible du jour).
+String _challengeText(ChallengeProposal c) =>
+    'ORION te défie : ${c.minutes} min de « ${c.activity.name} » — il en manque ${c.targetMin - c.doneMin} vers ta cible du jour.';
+
+/// Bloc porteur du défi (activityId + durée) pour les handlers de la carte.
+ScheduleBlock _challengeBlock(ChallengeProposal c) => ScheduleBlock(
+    startTime: '00:00',
+    durationMin: c.minutes,
+    title: c.activity.name,
+    category: 'personal',
+    activityId: c.activity.id);
+
+// ── « Et ensuite ? » : enchaînement immédiat après un chrono terminé ─────────
+//
+// Le moment où le user vient de finir quelque chose est le plus propice à
+// enchaîner : la carte le dit avec les faits (ce qui vient d'être fait, durée)
+// et propose UNE suite concrète — le prochain bloc s'il est proche, sinon une
+// routine qui tient dans le trou. Rien à proposer = pas de carte.
+
+CoachMoment? _chainMoment(DateTime now, AppState st,
+    List<ScheduleBlock> blocks, List<Session> sessions,
+    {ChallengeProposal? challenge}) {
+  Session? last;
+  for (final s in sessions) {
+    if (s.endAt == null) {
+      // Chrono en cours : pas d'enchaînement à proposer.
+      if (_sameDay(s.startAt, now)) return null;
+      continue;
+    }
+    if (!_sameDay(s.endAt!, now)) continue;
+    if (last == null || s.endAt!.isAfter(last.endAt!)) last = s;
+  }
+  if (last == null) return null;
+  final since = now.difference(last.endAt!).inMinutes;
+  if (since < 0 || since > 10) return null;
+
+  final durMin = last.endAt!.difference(last.startAt).inMinutes;
+  final act = st.activities.where((a) => a.id == last!.activityId).firstOrNull;
+  final done = act?.name ?? 'Session';
+
+  final actions = <CoachAction>[];
+  String proposal = '';
+  final next = _firstEngagement(now, blocks);
+  final gap = next != null
+      ? _minutesUntil(now, next.startTime)
+      : 19 * 60 - (now.hour * 60 + now.minute);
+  // Défi ORION comme suite : jamais sur l'activité qu'on vient de finir, et
+  // seulement s'il tient dans le trou. Sinon : prochain bloc / routine.
+  final chal = challenge != null &&
+          challenge.activity.id != last.activityId &&
+          challenge.minutes + 10 <= gap
+      ? challenge
+      : null;
+  if (next != null && gap < 60) {
+    proposal = 'Prochain : ${next.title} ${_inFr(gap)}.';
+    if (_launchable(next)) {
+      actions.add(
+          CoachAction('Lancer ${next.title}', CoachActionKind.launchBlock,
+              block: next));
+    }
+  } else if (chal != null) {
+    proposal = _challengeText(chal);
+    actions.add(CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
+        block: _challengeBlock(chal)));
+  } else {
+    final f = gapFillers(now, st, gap, blocks: blocks).firstOrNull;
+    if (f != null) {
+      proposal = _fillerText(f, hasNext: next != null);
+      actions.add(_fillerAction(now, f));
+    } else if (next != null) {
+      proposal = 'Prochain : ${next.title} ${_inFr(gap)}.';
+      if (_launchable(next)) {
+        actions.add(
+            CoachAction('Lancer ${next.title}', CoachActionKind.launchBlock,
+                block: next));
+      }
+    }
+  }
+  if (actions.isEmpty) return null; // rien de réel à proposer — silence
+
+  return CoachMoment(
+    type: CoachMomentType.chain,
+    tagLabel: 'ORION · ET ENSUITE ?',
+    message:
+        '$done terminé${durMin >= 1 ? ' — $durMin min au compteur' : ''}. Tu es lancé : $proposal',
+    actions: actions,
+    tone: CoachTone.positive,
+  );
+}
+
 // ── Mode soirée (23c) : journée pliée tôt — assumé, jamais de rattrapage ─────
 
 CoachMoment _eveningModeMoment(
@@ -643,42 +807,148 @@ CoachMoment _eveningModeMoment(
   );
 }
 
-CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
+CoachMoment _afternoonMoment(DateTime now, AppState st,
+    List<ScheduleBlock> blocks, List<Session> sessions,
+    {ChallengeProposal? challenge}) {
   // 23b/23c : « Passer en soirée » (bascule invisible) devient la bascule
   // système EXPLICITE — nommée, conséquence visible, réversible (dayMode).
   const advance = CoachAction('Terminer l\'après-midi — mode soirée',
       CoachActionKind.endAfternoon);
   final next = _firstEngagement(now, blocks);
+  // Trou réel : jusqu'au prochain bloc, sinon jusqu'au check-in du soir.
+  final gap = next != null
+      ? _minutesUntil(now, next.startTime)
+      : 19 * 60 - (now.hour * 60 + now.minute);
+  // Vital en tension : fin de semaine (jeudi+), un minimum hebdo n'y est pas
+  // encore — la carte le dit et propose de CASER une séance (→ Planifions).
+  // Une seule proposition à la fois : tension > défi ORION > combleur.
+  final tension = _vitalTension(now, st, sessions);
+  final tensionText = tension != null
+      ? ' ${tension.domain.name} : ${tension.count}/${tension.target} séance${tension.target > 1 ? 's' : ''} cette semaine — on en case une ?'
+      : '';
+  final tensionAction = tension != null
+      ? CoachAction('Caser une séance ${tension.domain.name}',
+          CoachActionKind.planNext,
+          block: ScheduleBlock(
+              startTime: '00:00',
+              durationMin: tension.activity.timerMin ?? 30,
+              title: tension.activity.name,
+              category: 'routine',
+              activityId: tension.activity.id))
+      : null;
+  // Défi ORION : retard FRANC sur la cible du jour (moins de la moitié faite)
+  // et un trou qui laisse la place de le relever. C'est l'après-midi que la
+  // cible du jour se joue — jamais le matin, jamais le soir.
+  final chal = tension == null &&
+          challenge != null &&
+          challenge.doneMin * 2 < challenge.targetMin &&
+          challenge.minutes + 10 <= gap
+      ? challenge
+      : null;
+  final challengeActions = chal != null
+      ? [
+          CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
+              block: _challengeBlock(chal)),
+          CoachAction('Programmer 📅', CoachActionKind.challengeSchedule,
+              block: _challengeBlock(chal)),
+        ]
+      : const <CoachAction>[];
+  final chalStats = <StatItem>[
+    if (chal != null && chal.streak >= 2)
+      StatItem('Défis', '${chal.streak} j d\'affilée'),
+  ];
   if (next == null) {
     // Quick fix (constaté sur build) : à 14h46 sans programme, proposer
     // « Passer en soirée » abdique la demi-journée — la soirée commence à 19h.
     // On propose de PLANIFIER l'après-midi ; la transition reste en secondaire.
-    return const CoachMoment(
+    // Trou jusqu'au check-in du soir : une routine peut le remplir tout de suite.
+    final f = tension == null && chal == null && gap >= 60
+        ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
+        : null;
+    var message =
+        'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.$tensionText';
+    if (chal != null) message = '$message ${_challengeText(chal)}';
+    if (f != null) message = '$message ${_fillerText(f, hasNext: false)}';
+    return CoachMoment(
       type: CoachMomentType.afternoon,
       tagLabel: 'ORION · APRÈS-MIDI',
-      message:
-          'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.',
+      message: message,
+      stats: chalStats,
       actions: [
-        CoachAction('Planifier l\'après-midi · 2 min', CoachActionKind.planDay),
+        const CoachAction(
+            'Planifier l\'après-midi · 2 min', CoachActionKind.planDay),
+        if (tensionAction != null) tensionAction,
+        ...challengeActions,
+        if (f != null) _fillerAction(now, f),
         advance,
       ],
       tone: CoachTone.neutral,
     );
   }
-  final mins = _minutesUntil(now, next.startTime);
-  final whenStr = _inFr(mins);
+  final whenStr = _inFr(gap);
+  final f = tension == null && chal == null && gap >= 60
+      ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
+      : null;
+  var message = 'Prochain : ${next.title} $whenStr.$tensionText';
+  if (chal != null) message = '$message ${_challengeText(chal)}';
+  if (f != null) message = '$message ${_fillerText(f, hasNext: true)}';
   return CoachMoment(
     type: CoachMomentType.afternoon,
     tagLabel: 'ORION · APRÈS-MIDI',
-    message: 'Prochain : ${next.title} $whenStr.',
-    stats: [StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title)],
+    message: message,
+    stats: [
+      StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title),
+      if (tension != null)
+        StatItem(tension.domain.name, '${tension.count}/${tension.target} · sem.'),
+      ...chalStats,
+    ],
     actions: [
       if (_launchable(next))
         CoachAction('Lancer', CoachActionKind.launchBlock, block: next),
+      if (tensionAction != null) tensionAction,
+      ...challengeActions,
+      if (f != null) _fillerAction(now, f),
       advance,
     ],
     tone: CoachTone.neutral,
   );
+}
+
+/// Premier domaine défini dont le minimum vital hebdo (metric `sessions*`,
+/// period `week`) est en retard alors que la semaine se termine (jeudi ou
+/// plus) — avec l'activité-temps du domaine à poser. Null si rien à dire ou
+/// rien à poser (domaine sans activité, suspendu, suivi déclaré).
+({Domain domain, Activity activity, int count, int target})? _vitalTension(
+    DateTime now, AppState st, List<Session> sessions) {
+  if (now.weekday < DateTime.thursday) return null;
+  final monday = DateTime(now.year, now.month, now.day)
+      .subtract(Duration(days: now.weekday - 1));
+  final ymd = _ymd(now);
+  for (final d in st.domains) {
+    if (d.deleted || !d.isDefined) continue;
+    if (d.suspendedOn(ymd)) continue;
+    if (d.tracking == 'declared') continue;
+    for (final v in d.vitalMinimum) {
+      if (v.period != 'week' || v.target <= 0) continue;
+      if (!v.metric.startsWith('sessions')) continue;
+      var count = 0;
+      for (final s in sessions) {
+        if (s.startAt.isBefore(monday)) continue;
+        final act =
+            st.activities.where((a) => a.id == s.activityId).firstOrNull;
+        if (act == null || act.domainId != d.id) continue;
+        if ((s.endAt ?? now).difference(s.startAt).inMinutes >= 10) count++;
+      }
+      final target = v.target.toInt();
+      if (count >= target) break; // ce domaine est à jour
+      final activity = st.activities
+          .where((a) => !a.deleted && !a.isHabit && a.domainId == d.id)
+          .firstOrNull;
+      if (activity == null) break; // rien à poser — pas de CTA inventé
+      return (domain: d, activity: activity, count: count, target: target);
+    }
+  }
+  return null;
 }
 
 /// Teaser du rapport hebdo (16a) — chiffres réels du rapport généré.
@@ -727,6 +997,154 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
 }
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
+
+// ── Heure habituelle & combleur de trous ─────────────────────────────────────
+//
+// Deux dynamiques pour Maintenant : quand le prochain bloc est loin, la carte
+// propose « d'ici là » une routine qui TIENT dans le trou ; et quand une
+// routine a une heure habituelle (médiane de ses hits réels), c'est elle qui
+// est proposée à son heure. 0 LLM, chiffres réels — pas d'historique = pas de
+// fait, jamais de chiffre inventé.
+
+/// Heure habituelle d'une routine : médiane des heures de ses hits sur
+/// [lookbackDays] jours, en minutes depuis minuit. Les hits nocturnes (< 5 h)
+/// comptent comme fin de la journée précédente (+24 h) — cohérent avec la
+/// « journée vécue ». Null sous [minHits] hits : pas assez de données.
+int? typicalMinuteOf(String habitId, List<HabitHit> hits, DateTime now,
+    {int lookbackDays = 28, int minHits = 3}) {
+  final cutoff = now.subtract(Duration(days: lookbackDays));
+  final mins = <int>[];
+  for (final h in hits) {
+    if (h.habitId != habitId || h.ts.isBefore(cutoff)) continue;
+    var m = h.ts.hour * 60 + h.ts.minute;
+    if (m < 5 * 60) m += 24 * 60;
+    mins.add(m);
+  }
+  if (mins.length < minHits) return null;
+  mins.sort();
+  return mins[mins.length ~/ 2] % (24 * 60);
+}
+
+/// Distance circulaire entre deux minutes-du-jour (23h50 et 0h10 = 20 min).
+int _circDist(int a, int b) {
+  final d = (a - b).abs();
+  return d <= 720 ? d : 1440 - d;
+}
+
+/// Série en cours d'une routine : jours consécutifs avec ≥ 1 hit, en remontant
+/// depuis aujourd'hui — ou depuis hier si rien encore aujourd'hui (la série
+/// n'est pas cassée tant que la journée n'est pas finie). Hits nocturnes
+/// (< 5 h) rattachés à la journée vécue, comme partout.
+int streakOf(String habitId, List<HabitHit> hits, DateTime now) {
+  final days = <String>{};
+  for (final h in hits) {
+    if (h.habitId != habitId) continue;
+    final t = h.ts.hour * 60 + h.ts.minute < 5 * 60
+        ? h.ts.subtract(const Duration(days: 1))
+        : h.ts;
+    days.add(_ymd(t));
+  }
+  var d = DateTime(now.year, now.month, now.day);
+  if (!days.contains(_ymd(d))) d = d.subtract(const Duration(days: 1));
+  var streak = 0;
+  while (days.contains(_ymd(d))) {
+    streak++;
+    d = d.subtract(const Duration(days: 1));
+  }
+  return streak;
+}
+
+/// Une routine proposée pour combler le temps libre avant le prochain bloc.
+class GapFiller {
+  final Activity routine;
+  final int durationMin;
+  final int? typicalMinute; // heure habituelle — null si historique insuffisant
+  final bool usualTime; // ± 45 min autour de maintenant
+  final int streakDays; // jours d'affilée (série en cours, aujourd'hui exclu)
+  const GapFiller(
+      {required this.routine,
+      required this.durationMin,
+      this.typicalMinute,
+      this.usualTime = false,
+      this.streakDays = 0});
+}
+
+/// Routines quotidiennes pas encore tenues qui tiennent dans [gapMin] (durée
+/// + 10 min de marge pour arriver au bloc suivant à l'heure), classées par
+/// proximité de leur heure habituelle avec maintenant — sans historique,
+/// l'ordre utilisateur. Une routine jamais faite autour de cette heure
+/// (habituelle à > 4 h d'ici) est écartée : la bonne routine au bon moment.
+/// [blocks] : une routine déjà posée en bloc pending aujourd'hui est écartée
+/// aussi — le programme la porte déjà.
+List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
+    {List<ScheduleBlock> blocks = const [], int max = 2}) {
+  final nowMin = now.hour * 60 + now.minute;
+  final planned = {
+    for (final b in blocks)
+      if (b.status == 'pending' && b.activityId != null) b.activityId!
+  };
+  final routines = st.activities
+      .where((a) => !a.deleted && a.isHabit && a.effHabitFreq == HabitFreq.daily)
+      .toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+  final entries = <({GapFiller f, int dist, int idx})>[];
+  for (var i = 0; i < routines.length; i++) {
+    final a = routines[i];
+    if (planned.contains(a.id)) continue;
+    if (st.habitHits.any((h) => h.habitId == a.id && _sameDay(h.ts, now))) {
+      continue;
+    }
+    final dur = a.timerMin ?? 20;
+    if (dur + 10 > gapMin) continue;
+    final tm = typicalMinuteOf(a.id, st.habitHits, now);
+    final dist = tm != null ? _circDist(tm, nowMin) : null;
+    if (dist != null && dist > 240) continue;
+    entries.add((
+      f: GapFiller(
+          routine: a,
+          durationMin: dur,
+          typicalMinute: tm,
+          usualTime: dist != null && dist <= 45,
+          streakDays: streakOf(a.id, st.habitHits, now)),
+      dist: dist ?? 1 << 20,
+      idx: i,
+    ));
+  }
+  entries.sort((a, b) {
+    if (a.dist != b.dist) return a.dist.compareTo(b.dist);
+    // À proximité égale (ou sans historique) : l'élan d'abord, puis l'ordre user.
+    if (a.f.streakDays != b.f.streakDays) {
+      return b.f.streakDays.compareTo(a.f.streakDays);
+    }
+    return a.idx.compareTo(b.idx); // tri stable : ordre utilisateur
+  });
+  return [for (final e in entries.take(max)) e.f];
+}
+
+/// Fragment de message pour un combleur : « D'ici là : X, 10 min — c'est ton
+/// heure habituelle (vers 9h30) · 4 jours d'affilée, on continue ? »
+/// [hasNext] pilote la formule d'accroche. Faits réels uniquement.
+String _fillerText(GapFiller f, {required bool hasNext}) {
+  final facts = <String>[
+    if (f.usualTime && f.typicalMinute != null)
+      'c\'est ton heure habituelle (vers ${_minToFr(f.typicalMinute!)})',
+    if (f.streakDays >= 3) '${f.streakDays} jours d\'affilée, on continue ?',
+  ];
+  final suffix = facts.isEmpty ? '' : ' — ${facts.join(' · ')}';
+  final head = hasNext ? 'D\'ici là' : 'Par exemple';
+  return '$head : ${f.routine.name}, ${f.durationMin} min$suffix.';
+}
+
+/// CTA de lancement d'un combleur : bloc synthétique → chrono ciblé, même
+/// machinerie que le ▶ du programme.
+CoachAction _fillerAction(DateTime now, GapFiller f) => CoachAction(
+    '${f.routine.name} — ${f.durationMin} min', CoachActionKind.launchBlock,
+    block: ScheduleBlock(
+        startTime: _hm(now),
+        durationMin: f.durationMin,
+        title: f.routine.name,
+        category: 'routine',
+        activityId: f.routine.id));
 
 /// Première routine quotidienne sans hit aujourd'hui — candidate au
 /// « Planifions » (jamais inventée : aucune routine en attente = pas de CTA).
@@ -907,6 +1325,13 @@ String _ymd(DateTime d) =>
 
 String _hm(DateTime d) =>
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// 570 (minutes depuis minuit) → "9h30" ; 540 → "9h".
+String _minToFr(int m) {
+  final h = m ~/ 60;
+  final mm = m % 60;
+  return mm == 0 ? '${h}h' : '${h}h${mm.toString().padLeft(2, '0')}';
+}
 
 /// "07:15" → "7h15" ; "07:00" → "7h".
 String _hhmmToFr(String hm) {

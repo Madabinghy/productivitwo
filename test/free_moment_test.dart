@@ -102,5 +102,48 @@ void main() {
       expect(props[1].subtitle, 'Santé — « un corps qui suit »');
       expect(props[0].subtitle, isNull); // domaine inconnu → rien d'inventé
     });
+
+    test('élan réel dans le sous-titre (série ≥ 3) + domaine non défini signalé',
+        () {
+      final now = DateTime(2026, 7, 10, 10, 0);
+      final st = AppState(
+        domains: [
+          Domain(
+              id: 'd1',
+              name: 'Santé',
+              definitionStatus: 'active',
+              intention: 'un corps qui suit'),
+          Domain(id: 'd2', name: 'Business', definitionStatus: 'named'),
+        ],
+        activities: [
+          Activity(
+              id: 'r1', name: 'Marche', domainId: 'd1', type: 'habit', order: 0),
+          Activity(
+              id: 'r2',
+              name: 'Prospection',
+              domainId: 'd2',
+              type: 'habit',
+              order: 1),
+        ],
+        sessions: [],
+        habitProgress: [],
+        habitHits: [
+          for (var i = 1; i <= 4; i++)
+            HabitHit(
+                habitId: 'r1',
+                ts: DateTime(2026, 7, 10 - i, 9, 0)), // 4 jours d'affilée
+          HabitHit(habitId: 'r2', ts: DateTime(2026, 7, 9, 14, 0)), // 1 seul
+        ],
+      );
+      final props = routineProposals(st, (_) => false, now: now);
+      // Marche : intention + élan, joints par « · ».
+      expect(props[0].subtitle, contains('un corps qui suit'));
+      expect(props[0].subtitle, contains('4 j d\'affilée — on continue ?'));
+      expect(props[0].undefinedDomain, isNull);
+      // Prospection : domaine nommé mais non défini → lien « définir », et
+      // série de 1 jour = pas un élan (rien d'affiché).
+      expect(props[1].undefinedDomain, 'Business');
+      expect(props[1].subtitle, isNull);
+    });
   });
 }

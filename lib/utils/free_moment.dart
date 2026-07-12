@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/coach_moments.dart' show streakOf;
 
 // ─── GUIDE DU MOMENT LIBRE ───────────────────────────────────────────────────
 //
@@ -99,41 +100,57 @@ List<TaskProposal> projectProposals(
 }
 
 /// Une routine du jour pas encore tenue — avec l'intention de son domaine
-/// quand elle existe (jamais inventée).
+/// quand elle existe (jamais inventée), et l'élan en cours (série de jours).
+/// [undefinedDomain] = nom du domaine si la routine appartient à un domaine
+/// qui existe mais n'est pas encore défini — le guide propose alors un lien
+/// discret « définir ce domaine ».
 class RoutineProposal {
   final Activity routine;
   final String? subtitle;
+  final String? undefinedDomain;
 
-  const RoutineProposal({required this.routine, this.subtitle});
+  const RoutineProposal(
+      {required this.routine, this.subtitle, this.undefinedDomain});
 }
 
 /// Routines quotidiennes non tenues, dans l'ordre de l'utilisateur.
 /// [routineDone] vient de l'appelant (logic.habitReached) — la fonction reste
-/// pure et testable.
+/// pure et testable. Avec [now], le sous-titre porte aussi l'élan réel
+/// (« 4 j d'affilée — on continue ? », série ≥ 3 uniquement).
 List<RoutineProposal> routineProposals(
   AppState st,
   bool Function(Activity) routineDone, {
   int max = 4,
+  DateTime? now,
 }) {
   final routines = st.activities
       .where((a) => !a.deleted && a.isHabit && !routineDone(a))
       .toList()
     ..sort((a, b) => a.order.compareTo(b.order));
 
-  String? intentionOf(Activity a) {
+  Domain? domainOf(Activity a) {
     for (final d in st.domains) {
-      if (d.deleted || d.id != a.domainId) continue;
-      final i = d.intention;
-      if (d.isDefined && i != null && i.isNotEmpty) {
-        return '${d.name} — « $i »';
-      }
-      return null;
+      if (!d.deleted && d.id == a.domainId) return d;
     }
     return null;
   }
 
   return [
     for (final a in routines.take(max))
-      RoutineProposal(routine: a, subtitle: intentionOf(a)),
+      () {
+        final d = domainOf(a);
+        final i = d?.intention;
+        final streak = now != null ? streakOf(a.id, st.habitHits, now) : 0;
+        final parts = <String>[
+          if (d != null && d.isDefined && i != null && i.isNotEmpty)
+            '${d.name} — « $i »',
+          if (streak >= 3) '$streak j d\'affilée — on continue ?',
+        ];
+        return RoutineProposal(
+          routine: a,
+          subtitle: parts.isEmpty ? null : parts.join(' · '),
+          undefinedDomain: d != null && !d.isDefined ? d.name : null,
+        );
+      }(),
   ];
 }
