@@ -51,6 +51,7 @@ enum CoachActionKind {
   // ── Défi ORION dans la carte ────────────────────────────────────────────────
   challengeAccept, // « Je relève 🔥 » — chrono + minuteur-alarme + streak
   challengeSchedule, // « Programmer 📅 » — défi daté dans le programme
+  checkRoutine, // ✓ — coche une routine sans minuteur (pas de chrono)
 }
 
 class CoachAction {
@@ -733,7 +734,9 @@ CoachMoment? _chainMoment(DateTime now, AppState st,
     }
   } else if (chal != null) {
     proposal = _challengeText(chal);
-    actions.add(CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
+    actions.add(CoachAction(
+        'Défi : ${chal.activity.name} — ${chal.minutes} min',
+        CoachActionKind.challengeAccept,
         block: _challengeBlock(chal)));
   } else {
     final f = gapFillers(now, st, gap, blocks: blocks).firstOrNull;
@@ -845,11 +848,13 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
           challenge.minutes + 10 <= gap
       ? challenge
       : null;
+  // Le CTA porte le NOM du défi (constaté sur build : « Je relève » seul ne
+  // dit pas ce qu'on accepte) et ouvre le dialog de confirmation — le chrono
+  // ne démarre jamais sur un simple tap de carte.
   final challengeActions = chal != null
       ? [
-          CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
-              block: _challengeBlock(chal)),
-          CoachAction('Programmer 📅', CoachActionKind.challengeSchedule,
+          CoachAction('Défi : ${chal.activity.name} — ${chal.minutes} min',
+              CoachActionKind.challengeAccept,
               block: _challengeBlock(chal)),
         ]
       : const <CoachAction>[];
@@ -1055,15 +1060,17 @@ int streakOf(String habitId, List<HabitHit> hits, DateTime now) {
 }
 
 /// Une routine proposée pour combler le temps libre avant le prochain bloc.
+/// [durationMin] null = routine sans minuteur (« boire de l'eau ») : pas de
+/// chiffre inventé, pas de chrono — une coche directe (✓) suffit.
 class GapFiller {
   final Activity routine;
-  final int durationMin;
+  final int? durationMin;
   final int? typicalMinute; // heure habituelle — null si historique insuffisant
   final bool usualTime; // ± 45 min autour de maintenant
   final int streakDays; // jours d'affilée (série en cours, aujourd'hui exclu)
   const GapFiller(
       {required this.routine,
-      required this.durationMin,
+      this.durationMin,
       this.typicalMinute,
       this.usualTime = false,
       this.streakDays = 0});
@@ -1094,8 +1101,11 @@ List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
     if (st.habitHits.any((h) => h.habitId == a.id && _sameDay(h.ts, now))) {
       continue;
     }
-    final dur = a.timerMin ?? 20;
-    if (dur + 10 > gapMin) continue;
+    // Durée RÉELLE uniquement (constaté sur build : « Boire de l'eau, 20 min »
+    // n'a aucun sens). Sans minuteur : proposée sans chiffre, coche directe —
+    // elle ne prend pas de temps, elle tient dans n'importe quel trou.
+    final dur = (a.timerMin ?? 0) > 0 ? a.timerMin : null;
+    if (dur != null && dur + 10 > gapMin) continue;
     final tm = typicalMinuteOf(a.id, st.habitHits, now);
     final dist = tm != null ? _circDist(tm, nowMin) : null;
     if (dist != null && dist > 240) continue;
@@ -1123,7 +1133,8 @@ List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
 
 /// Fragment de message pour un combleur : « D'ici là : X, 10 min — c'est ton
 /// heure habituelle (vers 9h30) · 4 jours d'affilée, on continue ? »
-/// [hasNext] pilote la formule d'accroche. Faits réels uniquement.
+/// [hasNext] pilote la formule d'accroche. Faits réels uniquement — pas de
+/// durée si la routine n'a pas de minuteur, pas de point après un « ? ».
 String _fillerText(GapFiller f, {required bool hasNext}) {
   final facts = <String>[
     if (f.usualTime && f.typicalMinute != null)
@@ -1132,19 +1143,29 @@ String _fillerText(GapFiller f, {required bool hasNext}) {
   ];
   final suffix = facts.isEmpty ? '' : ' — ${facts.join(' · ')}';
   final head = hasNext ? 'D\'ici là' : 'Par exemple';
-  return '$head : ${f.routine.name}, ${f.durationMin} min$suffix.';
+  final dur = f.durationMin != null ? ', ${f.durationMin} min' : '';
+  final body = '$head : ${f.routine.name}$dur$suffix';
+  return body.endsWith('?') ? body : '$body.';
 }
 
-/// CTA de lancement d'un combleur : bloc synthétique → chrono ciblé, même
-/// machinerie que le ▶ du programme.
-CoachAction _fillerAction(DateTime now, GapFiller f) => CoachAction(
-    '${f.routine.name} — ${f.durationMin} min', CoachActionKind.launchBlock,
-    block: ScheduleBlock(
-        startTime: _hm(now),
-        durationMin: f.durationMin,
-        title: f.routine.name,
-        category: 'routine',
-        activityId: f.routine.id));
+/// CTA d'un combleur : routine minutée → chrono ciblé (même machinerie que le
+/// ▶ du programme) ; routine sans minuteur → coche directe (✓), rien à lancer.
+CoachAction _fillerAction(DateTime now, GapFiller f) => f.durationMin != null
+    ? CoachAction(
+        '${f.routine.name} — ${f.durationMin} min', CoachActionKind.launchBlock,
+        block: ScheduleBlock(
+            startTime: _hm(now),
+            durationMin: f.durationMin!,
+            title: f.routine.name,
+            category: 'routine',
+            activityId: f.routine.id))
+    : CoachAction('✓ ${f.routine.name}', CoachActionKind.checkRoutine,
+        block: ScheduleBlock(
+            startTime: _hm(now),
+            durationMin: 5,
+            title: f.routine.name,
+            category: 'routine',
+            activityId: f.routine.id));
 
 /// Première routine quotidienne sans hit aujourd'hui — candidate au
 /// « Planifions » (jamais inventée : aucune routine en attente = pas de CTA).

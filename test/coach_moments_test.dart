@@ -946,6 +946,55 @@ void main() {
       expect(fillers.map((f) => f.routine.id), ['r1']);
     });
 
+    test('routine sans minuteur : pas de durée inventée — coche directe (✓)',
+        () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final st = AppState(
+        domains: [
+          Domain(
+              name: 'Santé',
+              definitionStatus: 'active',
+              intention: 'tenir le rythme'),
+        ],
+        activities: [
+          // « Boire de l'eau » : routine à cocher, aucun minuteur.
+          Activity(
+              id: 'r1',
+              name: 'Boire de l\'eau',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+        habitHits: [
+          for (var i = 1; i <= 7; i++)
+            HabitHit(
+                habitId: 'r1', ts: DateTime(2026, 7, 7 - i, 9, 30)),
+        ],
+      );
+      final sched = _sched(today, [_block(startTime: '12:30', title: 'Réunion')]);
+      final m = computeCoachMoment(now, st, sched, null, []);
+      // Aucun « 20 min » inventé, et la phrase se termine sur le « ? » du streak.
+      expect(m.message, contains('D\'ici là : Boire de l\'eau — '));
+      expect(m.message, isNot(contains('20 min')));
+      expect(m.message, contains('7 jours d\'affilée, on continue ?'));
+      expect(m.message, isNot(contains('?.')));
+      // Le CTA est une coche, pas un chrono.
+      final check = m.actions
+          .where((a) => a.kind == CoachActionKind.checkRoutine)
+          .toList();
+      expect(check, hasLength(1));
+      expect(check.first.label, '✓ Boire de l\'eau');
+      expect(check.first.block?.activityId, 'r1');
+      expect(
+          m.actions.any((a) =>
+              a.kind == CoachActionKind.launchBlock &&
+              a.block?.activityId == 'r1'),
+          isFalse);
+    });
+
     test('carte matin : prochain bloc loin → « D\'ici là » + heure habituelle',
         () {
       final now = DateTime(2026, 7, 7, 9, 30);
@@ -1217,7 +1266,8 @@ void main() {
           habitProgress: [],
         );
 
-    test('après-midi : retard franc + trou → « ORION te défie » + 2 CTA', () {
+    test('après-midi : retard franc + trou → « ORION te défie » + CTA nommé',
+        () {
       final now = DateTime(2026, 7, 7, 15, 0); // mardi — pas de tension vitale
       final sched = _sched(today, [_block(startTime: '17:00', title: 'Réunion')]);
       final m = computeCoachMoment(now, stBase(), sched, null, [],
@@ -1225,15 +1275,15 @@ void main() {
       expect(m.type, CoachMomentType.afternoon);
       expect(m.message,
           contains('ORION te défie : 20 min de « Sport » — il en manque 60'));
+      // UN CTA, qui porte le NOM du défi (constaté sur build : « Je relève »
+      // seul ne dit pas ce qu'on accepte) — la confirmation se fait en aval.
       final accept = m.actions
           .where((a) => a.kind == CoachActionKind.challengeAccept)
           .toList();
       expect(accept, hasLength(1));
+      expect(accept.first.label, 'Défi : Sport — 20 min');
       expect(accept.first.block?.activityId, 'a1');
       expect(accept.first.block?.durationMin, 20);
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.challengeSchedule),
-          isTrue);
       // Le streak de défis est un fait affiché, et le défi éteint le combleur.
       expect(m.stats.any((s) => s.label == 'Défis' && s.value == '3 j d\'affilée'),
           isTrue);
@@ -1300,6 +1350,7 @@ void main() {
       expect(
           m1.actions.any((a) =>
               a.kind == CoachActionKind.challengeAccept &&
+              a.label == 'Défi : Guitare — 25 min' &&
               a.block?.activityId == 'a2'),
           isTrue);
       // Défi sur l'activité qu'on vient de finir : non — le combleur reprend.
