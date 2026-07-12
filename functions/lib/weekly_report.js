@@ -27,7 +27,7 @@ function isoWeekOf(dateYmd) {
 }
 // ── Agrégats déterministes ────────────────────────────────────────────────────
 async function buildWeeklyFacts(uid, weekStart) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
     const days = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(`${weekStart}T12:00:00Z`);
@@ -196,6 +196,7 @@ async function buildWeeklyFacts(uid, weekStart) {
             name: String((_x = d.name) !== null && _x !== void 0 ? _x : ""),
             intention: String((_y = d.intention) !== null && _y !== void 0 ? _y : ""),
             vitals,
+            hoursLogged: Math.round((((_z = minutesByDomain.get(doc.id)) !== null && _z !== void 0 ? _z : 0) / 60) * 10) / 10,
         });
     }
     return {
@@ -257,12 +258,14 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
         ...(facts.renegotiations > 0
             ? [`Renégociations cette semaine : ${facts.renegotiations} (des sacrifices en connaissance, pas des oublis)`]
             : []),
-        ...facts.domains.map((d) => `Domaine ${d.name} — intention « ${d.intention} » — vital : ` +
+        ...facts.domains.map((d) => `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
             (d.vitals.length > 0
                 ? d.vitals
                     .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
                     .join(" · ")
-                : "aucune métrique mesurable")),
+                : (d.hoursLogged > 0
+                    ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
+                    : "aucune métrique mesurable"))),
         ...facts.motifs.map((m) => `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
         `Check-ins faits : ${facts.checkinsDone}/7 jours`,
         ...(facts.reported + facts.deletedBlocks > 0

@@ -28,6 +28,10 @@ export type WeeklyFacts = {
     // unit : "seances" (metric sessions*) ou "h" (metric heures/minutes —
     // done/target exprimés en heures, cible journalière ramenée à la semaine).
     vitals: Array<{ label: string; done: number; target: number; unit?: string }>;
+    // Heures réellement logguées sur les activités du domaine cette semaine —
+    // TOUJOURS présent : même sans métrique vitale mesurable, le temps tracké
+    // du domaine existe et le narratif ne peut pas prétendre le contraire.
+    hoursLogged: number;
   }>;
   motifs: Array<{
     cause: string; count: number; brokenTotal: number;
@@ -227,6 +231,8 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
       name: String(d.name ?? ""),
       intention: String(d.intention ?? ""),
       vitals,
+      hoursLogged:
+        Math.round(((minutesByDomain.get(doc.id) ?? 0) / 60) * 10) / 10,
     });
   }
 
@@ -292,12 +298,14 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
       ? [`Renégociations cette semaine : ${facts.renegotiations} (des sacrifices en connaissance, pas des oublis)`]
       : []),
     ...facts.domains.map((d) =>
-      `Domaine ${d.name} — intention « ${d.intention} » — vital : ` +
+      `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
       (d.vitals.length > 0
         ? d.vitals
             .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
             .join(" · ")
-        : "aucune métrique mesurable")),
+        : (d.hoursLogged > 0
+            ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
+            : "aucune métrique mesurable"))),
     ...facts.motifs.map((m) =>
       `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
     `Check-ins faits : ${facts.checkinsDone}/7 jours`,

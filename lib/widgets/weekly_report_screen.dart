@@ -566,7 +566,12 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
           ] else
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('Pas de métrique mesurable cette semaine.',
+              // Le temps tracké du domaine reste un fait, même sans métrique
+              // vitale mesurable — on l'affiche plutôt que « rien ».
+              child: Text(
+                  d.hoursLogged > 0
+                      ? '${d.hoursLogged % 1 == 0 ? d.hoursLogged.toInt() : d.hoursLogged.toStringAsFixed(1).replaceAll('.', ',')} h logguées cette semaine — pas de métrique vitale posée.'
+                      : 'Pas de métrique mesurable cette semaine.',
                   style: TextStyle(
                       fontSize: 11.5, color: cs.onSurface.withOpacity(.45))),
             ),

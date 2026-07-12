@@ -41,10 +41,14 @@ class ReportDomainFact {
   String name;
   String intention;
   List<ReportVital> vitals;
+  // Heures réellement logguées sur le domaine cette semaine (toujours un fait,
+  // même sans métrique vitale mesurable).
+  double hoursLogged;
   ReportDomainFact({
     required this.domainId,
     required this.name,
     this.intention = '',
+    this.hoursLogged = 0,
     List<ReportVital>? vitals,
   }) : vitals = vitals ?? [];
 
@@ -55,6 +59,7 @@ class ReportDomainFact {
         domainId: j['domainId'] ?? '',
         name: j['name'] ?? '',
         intention: j['intention'] ?? '',
+        hoursLogged: (j['hoursLogged'] as num?)?.toDouble() ?? 0,
         vitals: (j['vitals'] as List?)
                 ?.whereType<Map>()
                 .map(ReportVital.from)
@@ -66,6 +71,7 @@ class ReportDomainFact {
         'domainId': domainId,
         'name': name,
         'intention': intention,
+        'hoursLogged': hoursLogged,
         'vitals': vitals.map((v) => v.toJson()).toList(),
       };
 }
