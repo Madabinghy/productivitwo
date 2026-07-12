@@ -33,6 +33,7 @@ import {
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+  GENERATE_WEEKLY_REPORT_TOOL,
 } from "./tools";
 import {
   validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
@@ -53,6 +54,7 @@ import {
   executeSaveDomainDefinition,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
+  executeGenerateWeeklyReport,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -1328,6 +1330,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+            GENERATE_WEEKLY_REPORT_TOOL,
           ],
         },
       });
@@ -1422,6 +1425,12 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddPrepBlock(uid, args as Parameters<typeof executeAddPrepBlock>[1]);
         } else if (toolName === "save_domain_definition") {
           text = await executeSaveDomainDefinition(uid, args as Parameters<typeof executeSaveDomainDefinition>[1]);
+        } else if (toolName === "generate_weekly_report") {
+          text = await executeGenerateWeeklyReport(
+            uid,
+            process.env.ANTHROPIC_API_KEY ?? "",
+            args.weekStart as string | undefined,
+          );
         } else if (toolName === "plan_day") {
           text = await executePlanDay(uid, args as Parameters<typeof executePlanDay>[1]);
         } else if (toolName === "plan_week") {
