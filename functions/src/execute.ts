@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as admin from "firebase-admin";
 import { createHash } from "crypto";
 import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayload } from "./types";
+import { generateWeeklyReport, mondayOf } from "./weekly_report";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -2153,6 +2154,30 @@ async function executeUpdateScheduleBlock(
   return `✅ Bloc "${blocks[idx].title}" → ${status}`;
 }
 
+// ── generate_weekly_report ────────────────────────────────────────────────────
+
+/** (Ré)génère le rapport hebdo d'une semaine — même garde de coût que
+ * l'endpoint weeklyReportNow (3 générations/jour, le doc existant se relit). */
+async function executeGenerateWeeklyReport(
+  uid: string, apiKey: string, weekStart?: string,
+): Promise<string> {
+  if (weekStart !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+    return "❌ weekStart invalide — format attendu YYYY-MM-DD.";
+  }
+  if (!apiKey) return "❌ ANTHROPIC_API_KEY manquante côté serveur.";
+  const start = mondayOf(weekStart ?? todayInParis());
+  const today = todayInParis();
+  const limitRef = db.doc(`users/${uid}/rate_limits/weekly_report`);
+  const limitSnap = await limitRef.get();
+  const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
+  const count = limitData?.ymd === today ? (limitData.count ?? 0) : 0;
+  if (count >= 3) return "❌ Limite atteinte : 3 rapports générés aujourd'hui — réessaie demain.";
+  await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+  const id = await generateWeeklyReport(uid, apiKey, start);
+  return `✅ Rapport hebdo régénéré pour la semaine du ${id} (lundi → dimanche). ` +
+    "Il remplace le doc existant et est visible immédiatement dans l'app (écran Rapport / carte du dimanche).";
+}
+
 export {
   executePushAssistantMessage,
   validateToken,
@@ -2194,6 +2219,7 @@ export {
   executeGetInbox,
   executeProcessInboxItem,
   executeProposeChange,
+  executeGenerateWeeklyReport,
   executeGetDaySchedule,
   executeScheduleDay,
   executeAddPrepBlock,

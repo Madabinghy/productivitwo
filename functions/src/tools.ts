@@ -823,6 +823,26 @@ const MARK_BLOCK_DONE_TOOL = {
   },
 };
 
+const GENERATE_WEEKLY_REPORT_TOOL = {
+  name: "generate_weekly_report",
+  description:
+    "(Ré)génère le rapport hebdo d'une semaine : agrégats 100 % déterministes (engagements, vital " +
+    "par domaine — séances ET heures logguées —, motifs, hygiène) + narratif. Écrase le doc " +
+    "weekly_reports/{lundi} existant. Utile pour recalculer un rapport après correction des " +
+    "données ou du calcul. Max 3 générations/jour.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      weekStart: {
+        type: "string",
+        description:
+          "Lundi de la semaine, format YYYY-MM-DD (défaut : semaine courante). " +
+          "Une date en milieu de semaine est ramenée à son lundi.",
+      },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
@@ -859,6 +879,7 @@ LINK_ACTION_TO_ACTIVITY_TOOL,
 ADD_ACTIVITY_ACTION_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
+GENERATE_WEEKLY_REPORT_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {
@@ -1009,7 +1030,7 @@ export const SAVE_DOMAIN_DEFINITION_TOOL = {
           required: ["label"],
           properties: {
             label:  { type: "string", description: "ex: '2 séances / sem'" },
-            metric: { type: "string", description: "sessions_week | sessions_day | … — omettre si non mesurable" },
+            metric: { type: "string", description: "sessions_week | sessions_day | hours_week | hours_day | minutes_week | minutes_day — omettre si non mesurable (sessions* = nb de séances ≥ 10 min ; hours*/minutes* = temps réel loggué sur les activités du domaine)" },
             target: { type: "number" },
             period: { type: "string", enum: ["week", "day"] },
           },

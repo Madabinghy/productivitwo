@@ -9,18 +9,31 @@ part of '../models.dart';
 
 class ReportVital {
   String label;
-  int done;
-  int target;
-  ReportVital({required this.label, this.done = 0, this.target = 0});
+  double done;
+  double target;
+  // 'seances' (metric sessions*) ou 'h' (metric temps — valeurs en heures).
+  String unit;
+  ReportVital(
+      {required this.label, this.done = 0, this.target = 0, this.unit = 'seances'});
 
   static ReportVital from(Map j) => ReportVital(
         label: j['label'] ?? '',
-        done: (j['done'] as num?)?.toInt() ?? 0,
-        target: (j['target'] as num?)?.toInt() ?? 0,
+        done: (j['done'] as num?)?.toDouble() ?? 0,
+        target: (j['target'] as num?)?.toDouble() ?? 0,
+        unit: j['unit'] ?? 'seances',
       );
 
+  static String _fmt(double v) => v % 1 == 0
+      ? v.toInt().toString()
+      : v.toStringAsFixed(1).replaceAll('.', ',');
+
+  /// « 39,5/49 h » ou « 1/3 » — l'unité h affichée, les séances portées par
+  /// le label du vital.
+  String get ratioLabel =>
+      '${_fmt(done)}/${_fmt(target)}${unit == 'h' ? ' h' : ''}';
+
   Map<String, dynamic> toJson() =>
-      {'label': label, 'done': done, 'target': target};
+      {'label': label, 'done': done, 'target': target, 'unit': unit};
 }
 
 class ReportDomainFact {
@@ -28,10 +41,14 @@ class ReportDomainFact {
   String name;
   String intention;
   List<ReportVital> vitals;
+  // Heures réellement logguées sur le domaine cette semaine (toujours un fait,
+  // même sans métrique vitale mesurable).
+  double hoursLogged;
   ReportDomainFact({
     required this.domainId,
     required this.name,
     this.intention = '',
+    this.hoursLogged = 0,
     List<ReportVital>? vitals,
   }) : vitals = vitals ?? [];
 
@@ -42,6 +59,7 @@ class ReportDomainFact {
         domainId: j['domainId'] ?? '',
         name: j['name'] ?? '',
         intention: j['intention'] ?? '',
+        hoursLogged: (j['hoursLogged'] as num?)?.toDouble() ?? 0,
         vitals: (j['vitals'] as List?)
                 ?.whereType<Map>()
                 .map(ReportVital.from)
@@ -53,6 +71,7 @@ class ReportDomainFact {
         'domainId': domainId,
         'name': name,
         'intention': intention,
+        'hoursLogged': hoursLogged,
         'vitals': vitals.map((v) => v.toJson()).toList(),
       };
 }

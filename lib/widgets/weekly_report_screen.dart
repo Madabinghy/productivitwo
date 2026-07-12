@@ -363,7 +363,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
               for (final d in r.domains)
                 if (d.vitals.isNotEmpty)
                   _shortFact(cs,
-                      'Vital ${d.name.toLowerCase()} : ${d.vitals.map((v) => '${v.done}/${v.target} ${v.label}').join(' · ')}.'),
+                      'Vital ${d.name.toLowerCase()} : ${d.vitals.map((v) => '${v.ratioLabel} ${v.label}').join(' · ')}.'),
               _shortFact(cs,
                   '${r.checkinsDone} check-in${r.checkinsDone > 1 ? 's' : ''} fait${r.checkinsDone > 1 ? 's' : ''} sur sept — même en pleine semaine noire, le fil a tenu.'),
               if (r.renegotiations > 0)
@@ -547,7 +547,7 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
                 for (final v in d.vitals)
                   Text.rich(TextSpan(children: [
                     TextSpan(
-                      text: '${v.done}/${v.target} ',
+                      text: '${v.ratioLabel} ',
                       style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
@@ -566,7 +566,12 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
           ] else
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('Pas de métrique mesurable cette semaine.',
+              // Le temps tracké du domaine reste un fait, même sans métrique
+              // vitale mesurable — on l'affiche plutôt que « rien ».
+              child: Text(
+                  d.hoursLogged > 0
+                      ? '${d.hoursLogged % 1 == 0 ? d.hoursLogged.toInt() : d.hoursLogged.toStringAsFixed(1).replaceAll('.', ',')} h logguées cette semaine — pas de métrique vitale posée.'
+                      : 'Pas de métrique mesurable cette semaine.',
                   style: TextStyle(
                       fontSize: 11.5, color: cs.onSurface.withOpacity(.45))),
             ),

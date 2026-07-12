@@ -25,7 +25,13 @@ export type WeeklyFacts = {
   engagements: { held: number; total: number };
   domains: Array<{
     domainId: string; name: string; intention: string;
-    vitals: Array<{ label: string; done: number; target: number }>;
+    // unit : "seances" (metric sessions*) ou "h" (metric heures/minutes —
+    // done/target exprimés en heures, cible journalière ramenée à la semaine).
+    vitals: Array<{ label: string; done: number; target: number; unit?: string }>;
+    // Heures réellement logguées sur les activités du domaine cette semaine —
+    // TOUJOURS présent : même sans métrique vitale mesurable, le temps tracké
+    // du domaine existe et le narratif ne peut pas prétendre le contraire.
+    hoursLogged: number;
   }>;
   motifs: Array<{
     cause: string; count: number; brokenTotal: number;
@@ -142,12 +148,13 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
   motifs.sort((a, b) => b.count - a.count);
 
   // Vital par domaine défini : séances = sessions ≥ 10 min sur une activité du
-  // domaine, cette semaine. Seules les métriques sessions* sont mesurées ici.
+  // domaine, cette semaine — et minutes réelles par domaine (métriques temps).
   const actDomain = new Map<string, string>();
   for (const a of actsSnap.docs) {
     actDomain.set(a.id, (a.get("domainId") as string) ?? "");
   }
   const sessionsByDomain = new Map<string, number>();
+  const minutesByDomain = new Map<string, number>();
   let minutesLogged = 0;
   for (const s of sessionsSnap.docs) {
     const startAt = String(s.get("startAt") ?? "");
@@ -155,9 +162,11 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
     const endAt = s.get("endAt");
     const start = new Date(startAt).getTime();
     const end = endAt ? new Date(String(endAt)).getTime() : start;
-    minutesLogged += Math.max(0, Math.round((end - start) / 60000));
-    if (end - start < 10 * 60 * 1000) continue;
+    const mins = Math.max(0, Math.round((end - start) / 60000));
+    minutesLogged += mins;
     const dom = actDomain.get(String(s.get("activityId") ?? "")) ?? "";
+    if (dom) minutesByDomain.set(dom, (minutesByDomain.get(dom) ?? 0) + mins);
+    if (end - start < 10 * 60 * 1000) continue;
     if (dom) sessionsByDomain.set(dom, (sessionsByDomain.get(dom) ?? 0) + 1);
   }
 
@@ -186,22 +195,44 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
       }
       continue;
     }
-    const vitals: Array<{ label: string; done: number; target: number }> = [];
+    const vitals: Array<{ label: string; done: number; target: number; unit?: string }> = [];
     for (const v of ((d.vitalMinimum as Array<Record<string, unknown>>) ?? [])) {
-      const metric = String(v.metric ?? "");
+      const metric = String(v.metric ?? "").toLowerCase();
       const target = Number(v.target ?? 0);
-      if (!metric.startsWith("sessions") || target <= 0) continue; // pas mesurable ici → omis
-      vitals.push({
-        label: String(v.label ?? ""),
-        done: sessionsByDomain.get(doc.id) ?? 0,
-        target,
-      });
+      if (target <= 0) continue;
+      if (metric.startsWith("sessions")) {
+        vitals.push({
+          label: String(v.label ?? ""),
+          done: sessionsByDomain.get(doc.id) ?? 0,
+          target,
+          unit: "seances",
+        });
+      } else if (/hour|heure|min/.test(metric)) {
+        // Métrique TEMPS (« 7 h / nuit », « 30 min / jour ») : le temps réel
+        // loggué sur les activités du domaine cette semaine. Cible journalière
+        // (period 'day') ramenée à la semaine (× 7) — agrégat honnête, tout en
+        // heures pour la lecture.
+        const isHours = /hour|heure/.test(metric);
+        const weekTargetMin =
+          (String(v.period ?? "week") === "day" ? target * 7 : target) *
+          (isHours ? 60 : 1);
+        const doneMin = minutesByDomain.get(doc.id) ?? 0;
+        vitals.push({
+          label: String(v.label ?? ""),
+          done: Math.round((doneMin / 60) * 10) / 10,
+          target: Math.round((weekTargetMin / 60) * 10) / 10,
+          unit: "h",
+        });
+      }
+      // autre métrique : pas mesurable ici → omise (jamais de chiffre inventé)
     }
     domains.push({
       domainId: doc.id,
       name: String(d.name ?? ""),
       intention: String(d.intention ?? ""),
       vitals,
+      hoursLogged:
+        Math.round(((minutesByDomain.get(doc.id) ?? 0) / 60) * 10) / 10,
     });
   }
 
@@ -220,13 +251,13 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
 export function isShortWeek(facts: WeeklyFacts): boolean {
   let under = 0;
   for (const d of facts.domains) {
-    let done = 0;
-    let target = 0;
-    for (const v of d.vitals) {
-      done += v.done;
-      target += v.target;
-    }
-    if (target > 0 && done / target < 0.5) under++;
+    // Moyenne des ratios par vital — on ne somme jamais des unités différentes
+    // (séances + heures).
+    const ratios = d.vitals
+      .filter((v) => v.target > 0)
+      .map((v) => Math.min(1, v.done / v.target));
+    if (ratios.length === 0) continue;
+    if (ratios.reduce((a, b) => a + b, 0) / ratios.length < 0.5) under++;
   }
   return under >= 2;
 }
@@ -267,10 +298,14 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
       ? [`Renégociations cette semaine : ${facts.renegotiations} (des sacrifices en connaissance, pas des oublis)`]
       : []),
     ...facts.domains.map((d) =>
-      `Domaine ${d.name} — intention « ${d.intention} » — vital : ` +
+      `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
       (d.vitals.length > 0
-        ? d.vitals.map((v) => `${v.done}/${v.target} ${v.label}`).join(" · ")
-        : "aucune métrique mesurable")),
+        ? d.vitals
+            .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
+            .join(" · ")
+        : (d.hoursLogged > 0
+            ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
+            : "aucune métrique mesurable"))),
     ...facts.motifs.map((m) =>
       `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
     `Check-ins faits : ${facts.checkinsDone}/7 jours`,

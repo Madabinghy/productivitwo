@@ -27,7 +27,7 @@ function isoWeekOf(dateYmd) {
 }
 // ── Agrégats déterministes ────────────────────────────────────────────────────
 async function buildWeeklyFacts(uid, weekStart) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
     const days = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(`${weekStart}T12:00:00Z`);
@@ -106,12 +106,13 @@ async function buildWeeklyFacts(uid, weekStart) {
     });
     motifs.sort((a, b) => b.count - a.count);
     // Vital par domaine défini : séances = sessions ≥ 10 min sur une activité du
-    // domaine, cette semaine. Seules les métriques sessions* sont mesurées ici.
+    // domaine, cette semaine — et minutes réelles par domaine (métriques temps).
     const actDomain = new Map();
     for (const a of actsSnap.docs) {
         actDomain.set(a.id, (_c = a.get("domainId")) !== null && _c !== void 0 ? _c : "");
     }
     const sessionsByDomain = new Map();
+    const minutesByDomain = new Map();
     let minutesLogged = 0;
     for (const s of sessionsSnap.docs) {
         const startAt = String((_d = s.get("startAt")) !== null && _d !== void 0 ? _d : "");
@@ -120,12 +121,15 @@ async function buildWeeklyFacts(uid, weekStart) {
         const endAt = s.get("endAt");
         const start = new Date(startAt).getTime();
         const end = endAt ? new Date(String(endAt)).getTime() : start;
-        minutesLogged += Math.max(0, Math.round((end - start) / 60000));
-        if (end - start < 10 * 60 * 1000)
-            continue;
+        const mins = Math.max(0, Math.round((end - start) / 60000));
+        minutesLogged += mins;
         const dom = (_f = actDomain.get(String((_e = s.get("activityId")) !== null && _e !== void 0 ? _e : ""))) !== null && _f !== void 0 ? _f : "";
         if (dom)
-            sessionsByDomain.set(dom, ((_g = sessionsByDomain.get(dom)) !== null && _g !== void 0 ? _g : 0) + 1);
+            minutesByDomain.set(dom, ((_g = minutesByDomain.get(dom)) !== null && _g !== void 0 ? _g : 0) + mins);
+        if (end - start < 10 * 60 * 1000)
+            continue;
+        if (dom)
+            sessionsByDomain.set(dom, ((_h = sessionsByDomain.get(dom)) !== null && _h !== void 0 ? _h : 0) + 1);
     }
     const domains = [];
     const declaredQuestions = [];
@@ -135,43 +139,64 @@ async function buildWeeklyFacts(uid, weekStart) {
         if (d.deleted === true || d.definitionStatus !== "active" || !d.intention)
             continue;
         // Renégociations de la semaine (history) — des sacrifices en connaissance.
-        for (const h of ((_h = d.history) !== null && _h !== void 0 ? _h : [])) {
-            const date = String((_j = h.date) !== null && _j !== void 0 ? _j : "").slice(0, 10);
+        for (const h of ((_j = d.history) !== null && _j !== void 0 ? _j : [])) {
+            const date = String((_k = h.date) !== null && _k !== void 0 ? _k : "").slice(0, 10);
             if (date >= weekStart && date <= weekEnd)
                 renegotiations++;
         }
         // Suivi déclaré : pas de chrono, pas de score — le vital se DEMANDE
         // (2 questions binaires max, tous domaines déclarés confondus).
         if (d.tracking === "declared") {
-            for (const v of ((_k = d.vitalMinimum) !== null && _k !== void 0 ? _k : [])) {
+            for (const v of ((_l = d.vitalMinimum) !== null && _l !== void 0 ? _l : [])) {
                 if (declaredQuestions.length >= 2)
                     break;
-                const label = String((_l = v.label) !== null && _l !== void 0 ? _l : "").trim();
+                const label = String((_m = v.label) !== null && _m !== void 0 ? _m : "").trim();
                 if (label) {
                     declaredQuestions.push({
-                        domainId: doc.id, name: String((_m = d.name) !== null && _m !== void 0 ? _m : ""), label,
+                        domainId: doc.id, name: String((_o = d.name) !== null && _o !== void 0 ? _o : ""), label,
                     });
                 }
             }
             continue;
         }
         const vitals = [];
-        for (const v of ((_o = d.vitalMinimum) !== null && _o !== void 0 ? _o : [])) {
-            const metric = String((_p = v.metric) !== null && _p !== void 0 ? _p : "");
-            const target = Number((_q = v.target) !== null && _q !== void 0 ? _q : 0);
-            if (!metric.startsWith("sessions") || target <= 0)
-                continue; // pas mesurable ici → omis
-            vitals.push({
-                label: String((_r = v.label) !== null && _r !== void 0 ? _r : ""),
-                done: (_s = sessionsByDomain.get(doc.id)) !== null && _s !== void 0 ? _s : 0,
-                target,
-            });
+        for (const v of ((_p = d.vitalMinimum) !== null && _p !== void 0 ? _p : [])) {
+            const metric = String((_q = v.metric) !== null && _q !== void 0 ? _q : "").toLowerCase();
+            const target = Number((_r = v.target) !== null && _r !== void 0 ? _r : 0);
+            if (target <= 0)
+                continue;
+            if (metric.startsWith("sessions")) {
+                vitals.push({
+                    label: String((_s = v.label) !== null && _s !== void 0 ? _s : ""),
+                    done: (_t = sessionsByDomain.get(doc.id)) !== null && _t !== void 0 ? _t : 0,
+                    target,
+                    unit: "seances",
+                });
+            }
+            else if (/hour|heure|min/.test(metric)) {
+                // Métrique TEMPS (« 7 h / nuit », « 30 min / jour ») : le temps réel
+                // loggué sur les activités du domaine cette semaine. Cible journalière
+                // (period 'day') ramenée à la semaine (× 7) — agrégat honnête, tout en
+                // heures pour la lecture.
+                const isHours = /hour|heure/.test(metric);
+                const weekTargetMin = (String((_u = v.period) !== null && _u !== void 0 ? _u : "week") === "day" ? target * 7 : target) *
+                    (isHours ? 60 : 1);
+                const doneMin = (_v = minutesByDomain.get(doc.id)) !== null && _v !== void 0 ? _v : 0;
+                vitals.push({
+                    label: String((_w = v.label) !== null && _w !== void 0 ? _w : ""),
+                    done: Math.round((doneMin / 60) * 10) / 10,
+                    target: Math.round((weekTargetMin / 60) * 10) / 10,
+                    unit: "h",
+                });
+            }
+            // autre métrique : pas mesurable ici → omise (jamais de chiffre inventé)
         }
         domains.push({
             domainId: doc.id,
-            name: String((_t = d.name) !== null && _t !== void 0 ? _t : ""),
-            intention: String((_u = d.intention) !== null && _u !== void 0 ? _u : ""),
+            name: String((_x = d.name) !== null && _x !== void 0 ? _x : ""),
+            intention: String((_y = d.intention) !== null && _y !== void 0 ? _y : ""),
             vitals,
+            hoursLogged: Math.round((((_z = minutesByDomain.get(doc.id)) !== null && _z !== void 0 ? _z : 0) / 60) * 10) / 10,
         });
     }
     return {
@@ -188,13 +213,14 @@ async function buildWeeklyFacts(uid, weekStart) {
 function isShortWeek(facts) {
     let under = 0;
     for (const d of facts.domains) {
-        let done = 0;
-        let target = 0;
-        for (const v of d.vitals) {
-            done += v.done;
-            target += v.target;
-        }
-        if (target > 0 && done / target < 0.5)
+        // Moyenne des ratios par vital — on ne somme jamais des unités différentes
+        // (séances + heures).
+        const ratios = d.vitals
+            .filter((v) => v.target > 0)
+            .map((v) => Math.min(1, v.done / v.target));
+        if (ratios.length === 0)
+            continue;
+        if (ratios.reduce((a, b) => a + b, 0) / ratios.length < 0.5)
             under++;
     }
     return under >= 2;
@@ -232,10 +258,14 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
         ...(facts.renegotiations > 0
             ? [`Renégociations cette semaine : ${facts.renegotiations} (des sacrifices en connaissance, pas des oublis)`]
             : []),
-        ...facts.domains.map((d) => `Domaine ${d.name} — intention « ${d.intention} » — vital : ` +
+        ...facts.domains.map((d) => `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
             (d.vitals.length > 0
-                ? d.vitals.map((v) => `${v.done}/${v.target} ${v.label}`).join(" · ")
-                : "aucune métrique mesurable")),
+                ? d.vitals
+                    .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
+                    .join(" · ")
+                : (d.hoursLogged > 0
+                    ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
+                    : "aucune métrique mesurable"))),
         ...facts.motifs.map((m) => `MOTIF : « ${m.cause} » a mangé ${m.count} blocs sur ${m.brokenTotal} sautés — ${hoursLabel(m.hours)}`),
         `Check-ins faits : ${facts.checkinsDone}/7 jours`,
         ...(facts.reported + facts.deletedBlocks > 0

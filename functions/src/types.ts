@@ -83,7 +83,7 @@ export interface ScheduleBlockPayload {
 
 export interface VitalMinimumPayload {
   label: string;
-  metric?: string; // sessions_week | sessions_day | … — omettre si non mesurable
+  metric?: string; // sessions_week | sessions_day | hours_week | hours_day | minutes_* — omettre si non mesurable
   target?: number;
   period?: "week" | "day";
 }

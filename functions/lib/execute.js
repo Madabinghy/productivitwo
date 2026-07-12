@@ -41,6 +41,7 @@ exports.executeDeleteOrionQueueItem = executeDeleteOrionQueueItem;
 exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeProposeChange = executeProposeChange;
+exports.executeGenerateWeeklyReport = executeGenerateWeeklyReport;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
 exports.executeAddPrepBlock = executeAddPrepBlock;
@@ -59,6 +60,7 @@ const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
+const weekly_report_1 = require("./weekly_report");
 // ── Date helpers ──────────────────────────────────────────────────────────────
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
 function todayInParis(d = new Date()) {
@@ -1891,5 +1893,28 @@ async function executeUpdateScheduleBlock(uid, date, blockTitle, status) {
     blocks[idx] = Object.assign(Object.assign(Object.assign({}, blocks[idx]), { status }), (status === "done" ? { doneAt: new Date().toISOString() } : {}));
     await ref.update({ blocks });
     return `✅ Bloc "${blocks[idx].title}" → ${status}`;
+}
+// ── generate_weekly_report ────────────────────────────────────────────────────
+/** (Ré)génère le rapport hebdo d'une semaine — même garde de coût que
+ * l'endpoint weeklyReportNow (3 générations/jour, le doc existant se relit). */
+async function executeGenerateWeeklyReport(uid, apiKey, weekStart) {
+    var _a;
+    if (weekStart !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        return "❌ weekStart invalide — format attendu YYYY-MM-DD.";
+    }
+    if (!apiKey)
+        return "❌ ANTHROPIC_API_KEY manquante côté serveur.";
+    const start = (0, weekly_report_1.mondayOf)(weekStart !== null && weekStart !== void 0 ? weekStart : todayInParis());
+    const today = todayInParis();
+    const limitRef = db_1.db.doc(`users/${uid}/rate_limits/weekly_report`);
+    const limitSnap = await limitRef.get();
+    const limitData = limitSnap.data();
+    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_a = limitData.count) !== null && _a !== void 0 ? _a : 0) : 0;
+    if (count >= 3)
+        return "❌ Limite atteinte : 3 rapports générés aujourd'hui — réessaie demain.";
+    await limitRef.set({ ymd: today, count: count + 1 }, { merge: true });
+    const id = await (0, weekly_report_1.generateWeeklyReport)(uid, apiKey, start);
+    return `✅ Rapport hebdo régénéré pour la semaine du ${id} (lundi → dimanche). ` +
+        "Il remplace le doc existant et est visible immédiatement dans l'app (écran Rapport / carte du dimanche).";
 }
 //# sourceMappingURL=execute.js.map
