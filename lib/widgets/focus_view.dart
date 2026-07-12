@@ -742,10 +742,26 @@ class _FocusViewState extends State<FocusView> {
 
   /// « Ne pas me relancer avant… » (guide « Me poser ») — même fait tracké
   /// que le report : le coach suit le flow jusqu'à l'heure choisie.
-  Future<void> _declareUnavailable() async {
+  /// Déclare une fenêtre d'indispo (« pas dispo avant X ») — ou la lève si
+  /// l'utilisateur répond « Oui — on enchaîne ». Utilisé par le guide (repos)
+  /// et par le bouton pause discret de l'en-tête (toujours disponible).
+  Future<void> _declareUnavailable({String reason = 'repos'}) async {
     final until = await showAvailabilitySheet(context);
-    if (until == null || until == kAvailableNow || !mounted) return;
-    await _sync.setUnavailability(_schedDate, until, reason: 'repos');
+    if (until == null || !mounted) return;
+    if (until == kAvailableNow) {
+      // « Oui — on enchaîne » : lève une éventuelle fenêtre en cours.
+      final wasPaused = _schedule?.unavailableAt(DateTime.now()) == true;
+      await _sync.setUnavailability(_schedDate, null);
+      if (mounted && wasPaused) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Je suis dispo — le coach reprend.'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+      return;
+    }
+    await _sync.setUnavailability(_schedDate, until, reason: reason);
     if (mounted) {
       setState(() => _freeIntent = null);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -754,6 +770,37 @@ class _FocusViewState extends State<FocusView> {
         behavior: SnackBarBehavior.floating,
       ));
     }
+  }
+
+  /// En-tête commun : le bouton pause est TOUJOURS disponible, même quand des
+  /// blocs restent — « je ne peux rien faire avant telle heure » ne doit pas
+  /// dépendre de l'état du programme (le guide n'apparaît que tout vide).
+  Widget _header(ColorScheme cs, DateTime now) {
+    final paused = _schedule?.unavailableAt(now) == true;
+    return Row(
+      children: [
+        Text('Maintenant',
+            style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface)),
+        const Spacer(),
+        IconButton(
+          tooltip: paused
+              ? 'En pause — modifier ou reprendre'
+              : 'Pas dispo avant… (pause coach)',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => _declareUnavailable(reason: 'pas_le_moment'),
+          icon: Icon(
+            paused
+                ? Icons.do_not_disturb_on
+                : Icons.do_not_disturb_on_outlined,
+            size: 22,
+            color: paused ? cs.primary : cs.onSurface.withOpacity(.35),
+          ),
+        ),
+      ],
+    );
   }
 
   // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
@@ -1077,11 +1124,7 @@ class _FocusViewState extends State<FocusView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Maintenant',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface)),
+            _header(cs, now),
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
@@ -1328,11 +1371,7 @@ class _FocusViewState extends State<FocusView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Maintenant',
-                style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface)),
+            _header(cs, now),
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
