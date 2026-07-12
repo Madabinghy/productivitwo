@@ -36,6 +36,8 @@ class CoachMomentCard extends StatelessWidget {
   // Défi ORION : « Je relève 🔥 » (chrono + alarme + streak) / « Programmer 📅 ».
   final void Function(ScheduleBlock block)? onChallengeAccept;
   final void Function(ScheduleBlock block)? onChallengeSchedule;
+  // ✓ — coche directe d'une routine sans minuteur (pas de chrono).
+  final void Function(ScheduleBlock block)? onCheckRoutine;
 
   const CoachMomentCard({
     super.key,
@@ -58,6 +60,7 @@ class CoachMomentCard extends StatelessWidget {
     this.onPlanNext,
     this.onChallengeAccept,
     this.onChallengeSchedule,
+    this.onCheckRoutine,
   });
 
   @override
@@ -98,6 +101,7 @@ class CoachMomentCard extends StatelessWidget {
               onPlanNext: onPlanNext,
               onChallengeAccept: onChallengeAccept,
               onChallengeSchedule: onChallengeSchedule,
+              onCheckRoutine: onCheckRoutine,
             ),
     );
   }
@@ -123,6 +127,7 @@ class _Card extends StatelessWidget {
   final void Function(ScheduleBlock block)? onPlanNext;
   final void Function(ScheduleBlock block)? onChallengeAccept;
   final void Function(ScheduleBlock block)? onChallengeSchedule;
+  final void Function(ScheduleBlock block)? onCheckRoutine;
 
   const _Card({
     super.key,
@@ -145,6 +150,7 @@ class _Card extends StatelessWidget {
     this.onPlanNext,
     this.onChallengeAccept,
     this.onChallengeSchedule,
+    this.onCheckRoutine,
   });
 
   @override
@@ -262,6 +268,7 @@ class _Card extends StatelessWidget {
               onPlanNext: onPlanNext,
               onChallengeAccept: onChallengeAccept,
               onChallengeSchedule: onChallengeSchedule,
+              onCheckRoutine: onCheckRoutine,
             ),
           ],
         ],
@@ -348,6 +355,7 @@ class _Actions extends StatelessWidget {
   final void Function(ScheduleBlock block)? onPlanNext;
   final void Function(ScheduleBlock block)? onChallengeAccept;
   final void Function(ScheduleBlock block)? onChallengeSchedule;
+  final void Function(ScheduleBlock block)? onCheckRoutine;
 
   const _Actions({
     required this.actions,
@@ -370,6 +378,7 @@ class _Actions extends StatelessWidget {
     this.onPlanNext,
     this.onChallengeAccept,
     this.onChallengeSchedule,
+    this.onCheckRoutine,
   });
 
   @override
@@ -419,6 +428,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.planNext => Icons.event_available_outlined,
       CoachActionKind.challengeAccept => Icons.local_fire_department_rounded,
       CoachActionKind.challengeSchedule => Icons.event_outlined,
+      CoachActionKind.checkRoutine => Icons.check_rounded,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -521,6 +531,10 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.challengeSchedule:
         return a.block != null && onChallengeSchedule != null
             ? () => onChallengeSchedule!(a.block!)
+            : null;
+      case CoachActionKind.checkRoutine:
+        return a.block != null && onCheckRoutine != null
+            ? () => onCheckRoutine!(a.block!)
             : null;
     }
   }

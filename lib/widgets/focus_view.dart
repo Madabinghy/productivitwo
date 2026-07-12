@@ -954,6 +954,21 @@ class _FocusViewState extends State<FocusView> {
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
         if (a != null) widget.onChallengeSchedule?.call(a, block.durationMin);
       },
+      // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
+      // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
+      onCheckRoutine: (block) {
+        final a =
+            st.activities.where((x) => x.id == block.activityId).firstOrNull;
+        if (a == null || !a.isHabit) return;
+        final day = DateTime.now();
+        final tgt = logic.activeHabitTarget(a);
+        if (tgt > 0 && logic.habitValueOn(a.id, day) >= tgt) return;
+        logic.incHabit(a.id, 1, DateTime(day.year, day.month, day.day));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('✅ Routine validée : ${a.name}'),
+          duration: const Duration(seconds: 2),
+        ));
+      },
     );
   }
 
