@@ -1217,7 +1217,8 @@ void main() {
           habitProgress: [],
         );
 
-    test('après-midi : retard franc + trou → « ORION te défie » + 2 CTA', () {
+    test('après-midi : retard franc + trou → « ORION te défie » + CTA nommé',
+        () {
       final now = DateTime(2026, 7, 7, 15, 0); // mardi — pas de tension vitale
       final sched = _sched(today, [_block(startTime: '17:00', title: 'Réunion')]);
       final m = computeCoachMoment(now, stBase(), sched, null, [],
@@ -1225,15 +1226,15 @@ void main() {
       expect(m.type, CoachMomentType.afternoon);
       expect(m.message,
           contains('ORION te défie : 20 min de « Sport » — il en manque 60'));
+      // UN CTA, qui porte le NOM du défi (constaté sur build : « Je relève »
+      // seul ne dit pas ce qu'on accepte) — la confirmation se fait en aval.
       final accept = m.actions
           .where((a) => a.kind == CoachActionKind.challengeAccept)
           .toList();
       expect(accept, hasLength(1));
+      expect(accept.first.label, 'Défi : Sport — 20 min');
       expect(accept.first.block?.activityId, 'a1');
       expect(accept.first.block?.durationMin, 20);
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.challengeSchedule),
-          isTrue);
       // Le streak de défis est un fait affiché, et le défi éteint le combleur.
       expect(m.stats.any((s) => s.label == 'Défis' && s.value == '3 j d\'affilée'),
           isTrue);
@@ -1300,6 +1301,7 @@ void main() {
       expect(
           m1.actions.any((a) =>
               a.kind == CoachActionKind.challengeAccept &&
+              a.label == 'Défi : Guitare — 25 min' &&
               a.block?.activityId == 'a2'),
           isTrue);
       // Défi sur l'activité qu'on vient de finir : non — le combleur reprend.

@@ -941,12 +941,13 @@ class _FocusViewState extends State<FocusView> {
                 builder: (_) => WeeklyReportScreen(
                     logic: logic, report: _weeklyReport!),
               )),
-      // Défi ORION : mêmes flows que le bouton doré (chrono + alarme + streak,
-      // ou défi daté) — l'activité est retrouvée par l'id du bloc porteur.
+      // Défi ORION : le tap de carte ouvre TOUJOURS le dialog de confirmation
+      // (constaté sur build : lancer le minuteur directement surprend) — le
+      // chrono ne démarre qu'après « Je relève 🔥 », comme avec le bouton doré.
       onChallengeAccept: (block) {
         final a =
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
-        if (a != null) widget.onChallengeAccept?.call(a, block.durationMin);
+        if (a != null) _confirmChallenge(a, block.durationMin);
       },
       onChallengeSchedule: (block) {
         final a =
@@ -954,6 +955,49 @@ class _FocusViewState extends State<FocusView> {
         if (a != null) widget.onChallengeSchedule?.call(a, block.durationMin);
       },
     );
+  }
+
+  /// Confirmation du défi (même dialog que le bouton doré) : le nom et la
+  /// durée en grand, trois issues explicites — rien ne se lance sans ça.
+  Future<void> _confirmChallenge(Activity a, int minutes) async {
+    final cs = Theme.of(context).colorScheme;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        icon: const Icon(Icons.smart_toy_rounded,
+            color: Color(0xFFB8860B), size: 32),
+        title: const Text('ORION te défie'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$minutes min de « ${a.name} »',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(
+                '« Je relève » lance le chrono et le minuteur-alarme tout de suite. « Programmer » le pose pour plus tard.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
+          ],
+        ),
+        actionsOverflowDirection: VerticalDirection.down,
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, null),
+              child: const Text('Pas maintenant')),
+          TextButton(
+              onPressed: () => Navigator.pop(d, 'schedule'),
+              child: const Text('Programmer 📅')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, 'now'),
+              child: const Text('Je relève 🔥')),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'now') widget.onChallengeAccept?.call(a, minutes);
+    if (choice == 'schedule') widget.onChallengeSchedule?.call(a, minutes);
   }
 
   /// Carte midi menu (15c) : ✓ Mangé incrémente le fait tracké ; « Autre

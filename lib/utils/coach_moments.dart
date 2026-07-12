@@ -733,7 +733,9 @@ CoachMoment? _chainMoment(DateTime now, AppState st,
     }
   } else if (chal != null) {
     proposal = _challengeText(chal);
-    actions.add(CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
+    actions.add(CoachAction(
+        'Défi : ${chal.activity.name} — ${chal.minutes} min',
+        CoachActionKind.challengeAccept,
         block: _challengeBlock(chal)));
   } else {
     final f = gapFillers(now, st, gap, blocks: blocks).firstOrNull;
@@ -845,11 +847,13 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
           challenge.minutes + 10 <= gap
       ? challenge
       : null;
+  // Le CTA porte le NOM du défi (constaté sur build : « Je relève » seul ne
+  // dit pas ce qu'on accepte) et ouvre le dialog de confirmation — le chrono
+  // ne démarre jamais sur un simple tap de carte.
   final challengeActions = chal != null
       ? [
-          CoachAction('Je relève 🔥', CoachActionKind.challengeAccept,
-              block: _challengeBlock(chal)),
-          CoachAction('Programmer 📅', CoachActionKind.challengeSchedule,
+          CoachAction('Défi : ${chal.activity.name} — ${chal.minutes} min',
+              CoachActionKind.challengeAccept,
               block: _challengeBlock(chal)),
         ]
       : const <CoachAction>[];
