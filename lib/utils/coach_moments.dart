@@ -216,13 +216,13 @@ CoachMoment computeCoachMoment(
         : _eveningMoment(blocks, vitals);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
-        _afternoonMoment(now, blocks);
+        _afternoonMoment(now, st, blocks);
   } else if (minutes >= 11 * 60 + 45) {
     clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
-    clock = _morningMoment(now, blocks);
+    clock = _morningMoment(now, st, blocks);
   } else {
-    clock = _wakeMoment(now, blocks, yesterday, today);
+    clock = _wakeMoment(now, st, blocks, yesterday, today);
   }
 
   // Avance manuelle : ne s'applique que si elle est PLUS LOIN dans la journée
@@ -231,11 +231,11 @@ CoachMoment computeCoachMoment(
   if (advancedTo != null && _dayOrder(advancedTo) > _dayOrder(clock.type)) {
     switch (advancedTo) {
       case CoachMomentType.morning:
-        return _morningMoment(now, blocks);
+        return _morningMoment(now, st, blocks);
       case CoachMomentType.midday:
         return _middayMoment(now, blocks, recentSessions, vitals, meal);
       case CoachMomentType.afternoon:
-        return _afternoonMoment(now, blocks);
+        return _afternoonMoment(now, st, blocks);
       case CoachMomentType.evening:
         return _eveningMoment(blocks, vitals);
       default:
@@ -366,7 +366,7 @@ CoachMoment? _defineNudge(
 
 // ── Moments ───────────────────────────────────────────────────────────────────
 
-CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
+CoachMoment _wakeMoment(DateTime now, AppState st, List<ScheduleBlock> blocks,
     DailySchedule? yesterday, DailySchedule? today) {
   final todayStr = _ymd(now);
   final first = _firstEngagement(now, blocks);
@@ -392,6 +392,15 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
       actions.add(CoachAction('Lancer', CoachActionKind.launchBlock,
           block: first));
     }
+    // Trou avant le premier bloc : une routine qui tient dedans, la plus
+    // proche de son heure habituelle en premier.
+    if (mins >= 60) {
+      final f = gapFillers(now, st, mins, blocks: blocks).firstOrNull;
+      if (f != null) {
+        message = '$message ${_fillerText(f, hasNext: true)}';
+        actions.add(_fillerAction(now, f));
+      }
+    }
   } else {
     message = prepReady
         ? 'Journée libre côté programme — mais les affaires sont prêtes depuis hier, prêt à démarrer.'
@@ -411,30 +420,45 @@ CoachMoment _wakeMoment(DateTime now, List<ScheduleBlock> blocks,
   );
 }
 
-CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
+CoachMoment _morningMoment(
+    DateTime now, AppState st, List<ScheduleBlock> blocks) {
   const advance = CoachAction('Pause de midi', CoachActionKind.advanceMoment,
       target: CoachMomentType.midday);
+  // Prochain engagement et trou avant lui (jusqu'à midi si rien n'est posé).
+  final next = _firstEngagement(now, blocks);
+  final gap = next != null
+      ? _minutesUntil(now, next.startTime)
+      : 12 * 60 - (now.hour * 60 + now.minute);
+  final filler = gap >= 60
+      ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
+      : null;
+
   final firstDone = _firstDoneEngagement(blocks);
   if (firstDone != null) {
     final at = firstDone.doneAt;
     final atStr = at != null ? ' à ${_hhmmToFr(_hm(at))}' : '';
+    var message =
+        '${firstDone.title} fait$atStr — la journée est lancée, c\'est ça qu\'on voulait.';
+    final actions = <CoachAction>[];
+    if (filler != null) {
+      message = '$message ${_fillerText(filler, hasNext: next != null)}';
+      actions.add(_fillerAction(now, filler));
+    }
+    actions.add(advance);
     return CoachMoment(
       type: CoachMomentType.morning,
       tagLabel: 'ORION · MATIN',
-      message:
-          '${firstDone.title} fait$atStr — la journée est lancée, c\'est ça qu\'on voulait.',
-      actions: const [advance],
+      message: message,
+      actions: actions,
       tone: CoachTone.positive,
     );
   }
   // Carte réduite : le prochain bloc seulement.
-  final next = _firstEngagement(now, blocks);
   final actions = <CoachAction>[];
   String message;
   final stats = <StatItem>[];
   if (next != null) {
-    final mins = _minutesUntil(now, next.startTime);
-    final whenStr = _inFr(mins);
+    final whenStr = _inFr(gap);
     stats.add(StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title));
     message = 'Prochain rendez-vous : ${next.title} $whenStr.';
     if (_launchable(next)) {
@@ -443,6 +467,10 @@ CoachMoment _morningMoment(DateTime now, List<ScheduleBlock> blocks) {
     }
   } else {
     message = 'Matinée libre. Choisis une chose à faire avancer.';
+  }
+  if (filler != null) {
+    message = '$message ${_fillerText(filler, hasNext: next != null)}';
+    actions.add(_fillerAction(now, filler));
   }
   actions.add(advance);
   return CoachMoment(
@@ -643,7 +671,8 @@ CoachMoment _eveningModeMoment(
   );
 }
 
-CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
+CoachMoment _afternoonMoment(
+    DateTime now, AppState st, List<ScheduleBlock> blocks) {
   // 23b/23c : « Passer en soirée » (bascule invisible) devient la bascule
   // système EXPLICITE — nommée, conséquence visible, réversible (dayMode).
   const advance = CoachAction('Terminer l\'après-midi — mode soirée',
@@ -653,13 +682,22 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
     // Quick fix (constaté sur build) : à 14h46 sans programme, proposer
     // « Passer en soirée » abdique la demi-journée — la soirée commence à 19h.
     // On propose de PLANIFIER l'après-midi ; la transition reste en secondaire.
-    return const CoachMoment(
+    // Trou jusqu'au check-in du soir : une routine peut le remplir tout de suite.
+    final gap = 19 * 60 - (now.hour * 60 + now.minute);
+    final f = gap >= 60
+        ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
+        : null;
+    var message =
+        'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.';
+    if (f != null) message = '$message ${_fillerText(f, hasNext: false)}';
+    return CoachMoment(
       type: CoachMomentType.afternoon,
       tagLabel: 'ORION · APRÈS-MIDI',
-      message:
-          'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.',
+      message: message,
       actions: [
-        CoachAction('Planifier l\'après-midi · 2 min', CoachActionKind.planDay),
+        const CoachAction(
+            'Planifier l\'après-midi · 2 min', CoachActionKind.planDay),
+        if (f != null) _fillerAction(now, f),
         advance,
       ],
       tone: CoachTone.neutral,
@@ -667,14 +705,20 @@ CoachMoment _afternoonMoment(DateTime now, List<ScheduleBlock> blocks) {
   }
   final mins = _minutesUntil(now, next.startTime);
   final whenStr = _inFr(mins);
+  final f = mins >= 60
+      ? gapFillers(now, st, mins, blocks: blocks).firstOrNull
+      : null;
+  var message = 'Prochain : ${next.title} $whenStr.';
+  if (f != null) message = '$message ${_fillerText(f, hasNext: true)}';
   return CoachMoment(
     type: CoachMomentType.afternoon,
     tagLabel: 'ORION · APRÈS-MIDI',
-    message: 'Prochain : ${next.title} $whenStr.',
+    message: message,
     stats: [StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title)],
     actions: [
       if (_launchable(next))
         CoachAction('Lancer', CoachActionKind.launchBlock, block: next),
+      if (f != null) _fillerAction(now, f),
       advance,
     ],
     tone: CoachTone.neutral,
@@ -727,6 +771,120 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
 }
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
+
+// ── Heure habituelle & combleur de trous ─────────────────────────────────────
+//
+// Deux dynamiques pour Maintenant : quand le prochain bloc est loin, la carte
+// propose « d'ici là » une routine qui TIENT dans le trou ; et quand une
+// routine a une heure habituelle (médiane de ses hits réels), c'est elle qui
+// est proposée à son heure. 0 LLM, chiffres réels — pas d'historique = pas de
+// fait, jamais de chiffre inventé.
+
+/// Heure habituelle d'une routine : médiane des heures de ses hits sur
+/// [lookbackDays] jours, en minutes depuis minuit. Les hits nocturnes (< 5 h)
+/// comptent comme fin de la journée précédente (+24 h) — cohérent avec la
+/// « journée vécue ». Null sous [minHits] hits : pas assez de données.
+int? typicalMinuteOf(String habitId, List<HabitHit> hits, DateTime now,
+    {int lookbackDays = 28, int minHits = 3}) {
+  final cutoff = now.subtract(Duration(days: lookbackDays));
+  final mins = <int>[];
+  for (final h in hits) {
+    if (h.habitId != habitId || h.ts.isBefore(cutoff)) continue;
+    var m = h.ts.hour * 60 + h.ts.minute;
+    if (m < 5 * 60) m += 24 * 60;
+    mins.add(m);
+  }
+  if (mins.length < minHits) return null;
+  mins.sort();
+  return mins[mins.length ~/ 2] % (24 * 60);
+}
+
+/// Distance circulaire entre deux minutes-du-jour (23h50 et 0h10 = 20 min).
+int _circDist(int a, int b) {
+  final d = (a - b).abs();
+  return d <= 720 ? d : 1440 - d;
+}
+
+/// Une routine proposée pour combler le temps libre avant le prochain bloc.
+class GapFiller {
+  final Activity routine;
+  final int durationMin;
+  final int? typicalMinute; // heure habituelle — null si historique insuffisant
+  final bool usualTime; // ± 45 min autour de maintenant
+  const GapFiller(
+      {required this.routine,
+      required this.durationMin,
+      this.typicalMinute,
+      this.usualTime = false});
+}
+
+/// Routines quotidiennes pas encore tenues qui tiennent dans [gapMin] (durée
+/// + 10 min de marge pour arriver au bloc suivant à l'heure), classées par
+/// proximité de leur heure habituelle avec maintenant — sans historique,
+/// l'ordre utilisateur. Une routine jamais faite autour de cette heure
+/// (habituelle à > 4 h d'ici) est écartée : la bonne routine au bon moment.
+/// [blocks] : une routine déjà posée en bloc pending aujourd'hui est écartée
+/// aussi — le programme la porte déjà.
+List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
+    {List<ScheduleBlock> blocks = const [], int max = 2}) {
+  final nowMin = now.hour * 60 + now.minute;
+  final planned = {
+    for (final b in blocks)
+      if (b.status == 'pending' && b.activityId != null) b.activityId!
+  };
+  final routines = st.activities
+      .where((a) => !a.deleted && a.isHabit && a.effHabitFreq == HabitFreq.daily)
+      .toList()
+    ..sort((a, b) => a.order.compareTo(b.order));
+  final entries = <({GapFiller f, int dist, int idx})>[];
+  for (var i = 0; i < routines.length; i++) {
+    final a = routines[i];
+    if (planned.contains(a.id)) continue;
+    if (st.habitHits.any((h) => h.habitId == a.id && _sameDay(h.ts, now))) {
+      continue;
+    }
+    final dur = a.timerMin ?? 20;
+    if (dur + 10 > gapMin) continue;
+    final tm = typicalMinuteOf(a.id, st.habitHits, now);
+    final dist = tm != null ? _circDist(tm, nowMin) : null;
+    if (dist != null && dist > 240) continue;
+    entries.add((
+      f: GapFiller(
+          routine: a,
+          durationMin: dur,
+          typicalMinute: tm,
+          usualTime: dist != null && dist <= 45),
+      dist: dist ?? 1 << 20,
+      idx: i,
+    ));
+  }
+  entries.sort((a, b) {
+    if (a.dist != b.dist) return a.dist.compareTo(b.dist);
+    return a.idx.compareTo(b.idx); // tri stable : ordre utilisateur
+  });
+  return [for (final e in entries.take(max)) e.f];
+}
+
+/// Fragment de message pour un combleur : « D'ici là : X, 10 min — c'est ton
+/// heure habituelle (vers 9h30). » [hasNext] pilote la formule d'accroche.
+String _fillerText(GapFiller f, {required bool hasNext}) {
+  final usual = f.usualTime && f.typicalMinute != null
+      ? ' — c\'est ton heure habituelle (vers ${_minToFr(f.typicalMinute!)})'
+      : '';
+  final head = hasNext ? 'D\'ici là' : 'Par exemple';
+  return '$head : ${f.routine.name}, ${f.durationMin} min$usual.';
+}
+
+/// CTA de lancement d'un combleur : bloc synthétique → chrono ciblé, même
+/// machinerie que le ▶ du programme.
+CoachAction _fillerAction(DateTime now, GapFiller f) => CoachAction(
+    '${f.routine.name} — ${f.durationMin} min', CoachActionKind.launchBlock,
+    block: ScheduleBlock(
+        startTime: _hm(now),
+        durationMin: f.durationMin,
+        title: f.routine.name,
+        category: 'routine',
+        activityId: f.routine.id));
 
 /// Première routine quotidienne sans hit aujourd'hui — candidate au
 /// « Planifions » (jamais inventée : aucune routine en attente = pas de CTA).
@@ -907,6 +1065,13 @@ String _ymd(DateTime d) =>
 
 String _hm(DateTime d) =>
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// 570 (minutes depuis minuit) → "9h30" ; 540 → "9h".
+String _minToFr(int m) {
+  final h = m ~/ 60;
+  final mm = m % 60;
+  return mm == 0 ? '${h}h' : '${h}h${mm.toString().padLeft(2, '0')}';
+}
 
 /// "07:15" → "7h15" ; "07:00" → "7h".
 String _hhmmToFr(String hm) {

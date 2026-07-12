@@ -830,4 +830,166 @@ void main() {
       expect(m.type, CoachMomentType.morning);
     });
   });
+
+  group('heure habituelle + combleur de trous', () {
+    List<HabitHit> hitsAt(String id, DateTime now,
+            List<({int daysAgo, int h, int m})> specs) =>
+        [
+          for (final s in specs)
+            HabitHit(
+                habitId: id,
+                ts: DateTime(
+                    now.year, now.month, now.day - s.daysAgo, s.h, s.m)),
+        ];
+
+    AppState stRoutines(List<HabitHit> hits) => AppState(
+          domains: [
+            Domain(
+                name: 'Santé',
+                definitionStatus: 'active',
+                intention: 'tenir le rythme'),
+          ],
+          activities: [
+            Activity(
+                id: 'r1',
+                name: 'Méditation',
+                domainId: 'd1',
+                type: 'habit',
+                habitFreq: HabitFreq.daily,
+                timerMin: 10,
+                order: 0),
+            Activity(
+                id: 'r2',
+                name: 'Marche',
+                domainId: 'd1',
+                type: 'habit',
+                habitFreq: HabitFreq.daily,
+                timerMin: 30,
+                order: 1),
+          ],
+          sessions: [],
+          habitProgress: [],
+          habitHits: hits,
+        );
+
+    test('typicalMinuteOf : médiane des hits réels', () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final hits = hitsAt('r1', now, [
+        (daysAgo: 1, h: 9, m: 0),
+        (daysAgo: 2, h: 9, m: 25),
+        (daysAgo: 3, h: 10, m: 0),
+      ]);
+      expect(typicalMinuteOf('r1', hits, now), 9 * 60 + 25);
+    });
+
+    test('typicalMinuteOf : moins de 3 hits → null (jamais inventé)', () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final hits = hitsAt('r1', now, [
+        (daysAgo: 1, h: 9, m: 0),
+        (daysAgo: 2, h: 9, m: 30),
+      ]);
+      expect(typicalMinuteOf('r1', hits, now), isNull);
+      // Les hits d'une AUTRE routine ne comptent pas.
+      final other = hitsAt('r2', now,
+          [for (var i = 1; i <= 5; i++) (daysAgo: i, h: 9, m: 0)]);
+      expect(typicalMinuteOf('r1', [...hits, ...other], now), isNull);
+    });
+
+    test('typicalMinuteOf : hits nocturnes = fin de la journée vécue', () {
+      final now = DateTime(2026, 7, 7, 22, 0);
+      final hits = hitsAt('r1', now, [
+        (daysAgo: 1, h: 23, m: 50),
+        (daysAgo: 2, h: 0, m: 10), // 0h10 = fin de la veille, pas 0h du matin
+        (daysAgo: 3, h: 23, m: 30),
+      ]);
+      expect(typicalMinuteOf('r1', hits, now), 23 * 60 + 50);
+    });
+
+    test('gapFillers : faite aujourd\'hui / trop longue / déjà posée = écartées',
+        () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      // Méditation (10 min) faite ce matin → seule Marche (30 min) reste.
+      final done = hitsAt('r1', now, [(daysAgo: 0, h: 8, m: 0)]);
+      var fillers = gapFillers(now, stRoutines(done), 120);
+      expect(fillers.map((f) => f.routine.id), ['r2']);
+      // Trou de 30 min : Marche (30 + 10 de marge) ne tient plus.
+      fillers = gapFillers(now, stRoutines(done), 30);
+      expect(fillers, isEmpty);
+      // Marche déjà posée en bloc pending → le programme la porte déjà.
+      fillers = gapFillers(now, stRoutines(done), 120, blocks: [
+        _block(startTime: '17:00', title: 'Marche', activityId: 'r2'),
+      ]);
+      expect(fillers, isEmpty);
+    });
+
+    test('gapFillers : l\'heure habituelle proche prime sur l\'ordre user', () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      // Marche (ordre 1) a une heure habituelle ≈ maintenant → passe devant.
+      final hits = hitsAt('r2', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 40)]);
+      final fillers = gapFillers(now, stRoutines(hits), 120);
+      expect(fillers.map((f) => f.routine.id), ['r2', 'r1']);
+      expect(fillers.first.usualTime, isTrue);
+      expect(fillers.first.typicalMinute, 9 * 60 + 40);
+      // Méditation sans historique : proposée quand même, sans fait inventé.
+      expect(fillers[1].typicalMinute, isNull);
+      expect(fillers[1].usualTime, isFalse);
+    });
+
+    test('gapFillers : jamais faite autour de cette heure (> 4 h) = écartée',
+        () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      // Marche toujours faite à 21 h → pas proposée à 9 h 30.
+      final hits = hitsAt('r2', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 21, m: 0)]);
+      final fillers = gapFillers(now, stRoutines(hits), 120);
+      expect(fillers.map((f) => f.routine.id), ['r1']);
+    });
+
+    test('carte matin : prochain bloc loin → « D\'ici là » + heure habituelle',
+        () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final hits = hitsAt('r1', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 25)]);
+      final sched = _sched(today, [
+        _block(startTime: '12:30', title: 'Réunion'),
+      ]);
+      final m = computeCoachMoment(now, stRoutines(hits), sched, null, []);
+      expect(m.type, CoachMomentType.morning);
+      expect(m.message, contains('D\'ici là : Méditation, 10 min'));
+      expect(m.message, contains('heure habituelle (vers 9h25)'));
+      final launch = m.actions
+          .where((a) =>
+              a.kind == CoachActionKind.launchBlock &&
+              a.block?.activityId == 'r1')
+          .toList();
+      expect(launch, hasLength(1));
+      expect(launch.first.block!.durationMin, 10);
+    });
+
+    test('carte matin : prochain bloc proche → pas de combleur', () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final sched = _sched(today, [
+        _block(startTime: '10:30', title: 'Réunion'),
+      ]);
+      final m = computeCoachMoment(now, stRoutines([]), sched, null, []);
+      expect(m.type, CoachMomentType.morning);
+      expect(m.message, isNot(contains('D\'ici là')));
+    });
+
+    test('après-midi sans programme : « Par exemple » + lancement en un tap',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final m = computeCoachMoment(
+          now, stRoutines([]), _sched(today, []), null, [],
+          unplannedDismissed: true);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.message, contains('Par exemple : Méditation, 10 min'));
+      expect(
+          m.actions.any((a) =>
+              a.kind == CoachActionKind.launchBlock &&
+              a.block?.activityId == 'r1'),
+          isTrue);
+    });
+  });
 }
