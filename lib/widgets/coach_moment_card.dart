@@ -33,6 +33,9 @@ class CoachMomentCard extends StatelessWidget {
   final VoidCallback? onAvailableNow;
   // « Planifions — [routine] » → date/heure de la prochaine exécution.
   final void Function(ScheduleBlock block)? onPlanNext;
+  // Défi ORION : « Je relève 🔥 » (chrono + alarme + streak) / « Programmer 📅 ».
+  final void Function(ScheduleBlock block)? onChallengeAccept;
+  final void Function(ScheduleBlock block)? onChallengeSchedule;
 
   const CoachMomentCard({
     super.key,
@@ -53,6 +56,8 @@ class CoachMomentCard extends StatelessWidget {
     this.onEndAfternoon,
     this.onAvailableNow,
     this.onPlanNext,
+    this.onChallengeAccept,
+    this.onChallengeSchedule,
   });
 
   @override
@@ -91,6 +96,8 @@ class CoachMomentCard extends StatelessWidget {
               onEndAfternoon: onEndAfternoon,
               onAvailableNow: onAvailableNow,
               onPlanNext: onPlanNext,
+              onChallengeAccept: onChallengeAccept,
+              onChallengeSchedule: onChallengeSchedule,
             ),
     );
   }
@@ -114,6 +121,8 @@ class _Card extends StatelessWidget {
   final VoidCallback? onEndAfternoon;
   final VoidCallback? onAvailableNow;
   final void Function(ScheduleBlock block)? onPlanNext;
+  final void Function(ScheduleBlock block)? onChallengeAccept;
+  final void Function(ScheduleBlock block)? onChallengeSchedule;
 
   const _Card({
     super.key,
@@ -134,6 +143,8 @@ class _Card extends StatelessWidget {
     this.onEndAfternoon,
     this.onAvailableNow,
     this.onPlanNext,
+    this.onChallengeAccept,
+    this.onChallengeSchedule,
   });
 
   @override
@@ -249,6 +260,8 @@ class _Card extends StatelessWidget {
               onEndAfternoon: onEndAfternoon,
               onAvailableNow: onAvailableNow,
               onPlanNext: onPlanNext,
+              onChallengeAccept: onChallengeAccept,
+              onChallengeSchedule: onChallengeSchedule,
             ),
           ],
         ],
@@ -333,6 +346,8 @@ class _Actions extends StatelessWidget {
   final VoidCallback? onEndAfternoon;
   final VoidCallback? onAvailableNow;
   final void Function(ScheduleBlock block)? onPlanNext;
+  final void Function(ScheduleBlock block)? onChallengeAccept;
+  final void Function(ScheduleBlock block)? onChallengeSchedule;
 
   const _Actions({
     required this.actions,
@@ -353,6 +368,8 @@ class _Actions extends StatelessWidget {
     this.onEndAfternoon,
     this.onAvailableNow,
     this.onPlanNext,
+    this.onChallengeAccept,
+    this.onChallengeSchedule,
   });
 
   @override
@@ -372,7 +389,8 @@ class _Actions extends StatelessWidget {
         a.kind == CoachActionKind.nameDomains ||
         a.kind == CoachActionKind.startSession ||
         a.kind == CoachActionKind.startSessionShort ||
-        a.kind == CoachActionKind.planNext;
+        a.kind == CoachActionKind.planNext ||
+        a.kind == CoachActionKind.challengeAccept;
     // Secondaires du nudge / bascule système : liens discrets sous le CTA.
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
@@ -399,6 +417,8 @@ class _Actions extends StatelessWidget {
       CoachActionKind.endAfternoon => Icons.nights_stay_outlined,
       CoachActionKind.availableNow => Icons.notifications_active_outlined,
       CoachActionKind.planNext => Icons.event_available_outlined,
+      CoachActionKind.challengeAccept => Icons.local_fire_department_rounded,
+      CoachActionKind.challengeSchedule => Icons.event_outlined,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -493,6 +513,14 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.planNext:
         return a.block != null && onPlanNext != null
             ? () => onPlanNext!(a.block!)
+            : null;
+      case CoachActionKind.challengeAccept:
+        return a.block != null && onChallengeAccept != null
+            ? () => onChallengeAccept!(a.block!)
+            : null;
+      case CoachActionKind.challengeSchedule:
+        return a.block != null && onChallengeSchedule != null
+            ? () => onChallengeSchedule!(a.block!)
             : null;
     }
   }

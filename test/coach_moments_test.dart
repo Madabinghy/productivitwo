@@ -1177,4 +1177,137 @@ void main() {
       expect(m.actions.any((a) => a.kind == CoachActionKind.planNext), isFalse);
     });
   });
+
+  group('défi ORION dans la carte', () {
+    ChallengeProposal chal(
+            {String id = 'a1',
+            String name = 'Sport',
+            int minutes = 20,
+            int doneMin = 0,
+            int targetMin = 60,
+            int streak = 0}) =>
+        ChallengeProposal(
+            activity:
+                Activity(id: id, name: name, domainId: 'd1', goalMin: targetMin),
+            minutes: minutes,
+            doneMin: doneMin,
+            targetMin: targetMin,
+            streak: streak);
+
+    AppState stBase() => AppState(
+          domains: [
+            Domain(
+                id: 'd1',
+                name: 'Santé',
+                definitionStatus: 'active',
+                intention: 'tenir le rythme'),
+          ],
+          activities: [
+            Activity(
+                id: 'r1',
+                name: 'Méditation',
+                domainId: 'd1',
+                type: 'habit',
+                habitFreq: HabitFreq.daily,
+                timerMin: 10,
+                order: 0),
+            Activity(id: 'a1', name: 'Sport', domainId: 'd1', goalMin: 60),
+          ],
+          sessions: [],
+          habitProgress: [],
+        );
+
+    test('après-midi : retard franc + trou → « ORION te défie » + 2 CTA', () {
+      final now = DateTime(2026, 7, 7, 15, 0); // mardi — pas de tension vitale
+      final sched = _sched(today, [_block(startTime: '17:00', title: 'Réunion')]);
+      final m = computeCoachMoment(now, stBase(), sched, null, [],
+          challenge: chal(streak: 3));
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.message,
+          contains('ORION te défie : 20 min de « Sport » — il en manque 60'));
+      final accept = m.actions
+          .where((a) => a.kind == CoachActionKind.challengeAccept)
+          .toList();
+      expect(accept, hasLength(1));
+      expect(accept.first.block?.activityId, 'a1');
+      expect(accept.first.block?.durationMin, 20);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.challengeSchedule),
+          isTrue);
+      // Le streak de défis est un fait affiché, et le défi éteint le combleur.
+      expect(m.stats.any((s) => s.label == 'Défis' && s.value == '3 j d\'affilée'),
+          isTrue);
+      expect(m.message, isNot(contains('D\'ici là')));
+    });
+
+    test('pas de retard franc (moitié faite) → pas de défi, combleur de retour',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final sched = _sched(today, [_block(startTime: '17:00', title: 'Réunion')]);
+      final m = computeCoachMoment(now, stBase(), sched, null, [],
+          challenge: chal(doneMin: 40, targetMin: 60));
+      expect(m.message, isNot(contains('ORION te défie')));
+      expect(m.message, contains('D\'ici là : Méditation'));
+    });
+
+    test('défi passé ou déjà relevé aujourd\'hui → une sollicitation par jour',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final sched = _sched(today, [_block(startTime: '17:00', title: 'Réunion')]);
+      final skipped = stBase()..skippedChallengeDates.add('20260707');
+      final m1 = computeCoachMoment(now, skipped, sched, null, [],
+          challenge: chal());
+      expect(m1.message, isNot(contains('ORION te défie')));
+      final won = stBase()..challengeWinsByDay['20260707'] = 1;
+      final m2 =
+          computeCoachMoment(now, won, sched, null, [], challenge: chal());
+      expect(m2.message, isNot(contains('ORION te défie')));
+    });
+
+    test('la tension vitale prime sur le défi (une proposition à la fois)', () {
+      final now = DateTime(2026, 7, 9, 15, 0); // jeudi
+      final st = stBase();
+      st.domains.first.vitalMinimum.add(VitalMinimum(
+          label: '3 séances / sem',
+          metric: 'sessions_week',
+          target: 3,
+          period: 'week'));
+      final sched = _sched('2026-07-09', [
+        _block(startTime: '17:00', title: 'Réunion'),
+      ]);
+      final m =
+          computeCoachMoment(now, st, sched, null, [], challenge: chal());
+      expect(m.message, contains('on en case une ?'));
+      expect(m.message, isNot(contains('ORION te défie')));
+    });
+
+    test('« Et ensuite ? » : le défi est la suite — sauf sur l\'activité finie',
+        () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final sessions = [
+        Session(
+            activityId: 'a1',
+            startAt: DateTime(2026, 7, 7, 9, 30),
+            endAt: DateTime(2026, 7, 7, 9, 55)),
+      ];
+      final st = stBase()..sessions.addAll(sessions);
+      // Défi sur une AUTRE activité : il prend la place du combleur.
+      final m1 = computeCoachMoment(now, st, _sched(today, []), null, sessions,
+          challenge: chal(id: 'a2', name: 'Guitare', targetMin: 45,
+              minutes: 25));
+      expect(m1.type, CoachMomentType.chain);
+      expect(m1.message, contains('ORION te défie : 25 min de « Guitare »'));
+      expect(
+          m1.actions.any((a) =>
+              a.kind == CoachActionKind.challengeAccept &&
+              a.block?.activityId == 'a2'),
+          isTrue);
+      // Défi sur l'activité qu'on vient de finir : non — le combleur reprend.
+      final m2 = computeCoachMoment(now, st, _sched(today, []), null, sessions,
+          challenge: chal());
+      expect(m2.type, CoachMomentType.chain);
+      expect(m2.message, isNot(contains('ORION te défie')));
+      expect(m2.message, contains('Méditation'));
+    });
+  });
 }

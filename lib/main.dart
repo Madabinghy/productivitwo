@@ -3002,6 +3002,19 @@ class _AppRootState extends State<AppRoot>
             // Carte coach du soir → résumé du jour (check-in).
             onOpenDayReview: () => showDayReviewSheet(context,
                 logic: logic, projects: _dashboardProjects),
+            // Défi ORION dans Maintenant : chip du guide → dialog existant ;
+            // « Je relève 🔥 » de la carte → même flow que le bouton doré
+            // (chrono + minuteur-alarme + streak) ; « Programmer 📅 » → défi daté.
+            onChallenge: _showChallenge,
+            onChallengeAccept: (a, minutes) {
+              logic.start(a.id);
+              _startCountdown(minutes, a.name);
+              final now = DateTime.now();
+              logic.recordChallengeAccepted(
+                  '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}');
+              setState(() {});
+            },
+            onChallengeSchedule: (a, minutes) => _programChallenge(a, minutes),
             onStartTimer: (activity, project, task) {
               logic.start(activity.id);
               setState(() {

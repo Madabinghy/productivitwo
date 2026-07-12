@@ -53,6 +53,12 @@ class FocusView extends StatefulWidget {
   final VoidCallback? onOpenActivities;
   // Carte coach « Maintenant » : « Faire le point » du soir → day review.
   final VoidCallback? onOpenDayReview;
+  // Défi ORION : chip du guide → dialog « ORION te défie » existant ;
+  // « Je relève 🔥 » de la carte → chrono + minuteur-alarme + streak ;
+  // « Programmer 📅 » → sheet défi daté (mêmes flows que le bouton doré).
+  final VoidCallback? onChallenge;
+  final void Function(Activity activity, int minutes)? onChallengeAccept;
+  final void Function(Activity activity, int minutes)? onChallengeSchedule;
 
   const FocusView({
     super.key,
@@ -72,6 +78,9 @@ class FocusView extends StatefulWidget {
     this.onOpenRoutines,
     this.onOpenActivities,
     this.onOpenDayReview,
+    this.onChallenge,
+    this.onChallengeAccept,
+    this.onChallengeSchedule,
   });
 
   @override
@@ -103,6 +112,9 @@ class _FocusViewState extends State<FocusView> {
   bool _nudgeDismissed = false; // « Garder [créneau] » — silence pour le jour
   // Guide du moment libre : intention choisie (chips « Que souhaites-tu faire ? »).
   FreeIntent? _freeIntent;
+  // Défi ORION : activités ayant déjà un défi 🔥 programmé (aujourd'hui/futur)
+  // — exclues pour que le défi propose autre chose (même règle que le bouton).
+  Set<String> _scheduledChallengeIds = const {};
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -125,6 +137,9 @@ class _FocusViewState extends State<FocusView> {
     _subscribeSchedule();
     _artifactsSub = _sync.streamArtifacts().listen((a) {
       if (mounted) setState(() => _artifacts = a);
+    });
+    _sync.fetchScheduledChallengeActivityIds().then((ids) {
+      if (mounted) setState(() => _scheduledChallengeIds = ids);
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -427,6 +442,10 @@ class _FocusViewState extends State<FocusView> {
 
   List<Widget> _freeMomentSection(ColorScheme cs, DateTime now) {
     final intents = freeIntentsFor(now);
+    // Chip défi : uniquement si un vrai défi existe (une activité-temps en
+    // retard sur sa cible du jour) — ouvre le dialog « ORION te défie ».
+    final hasChallenge = widget.onChallenge != null &&
+        logic.challengeActivity(exclude: _scheduledChallengeIds) != null;
     return [
       Center(
         child: Column(children: [
@@ -461,6 +480,15 @@ class _FocusViewState extends State<FocusView> {
                   color: _freeIntent == i ? cs.surface : null),
               onSelected: (_) => setState(
                   () => _freeIntent = _freeIntent == i ? null : i),
+            ),
+          if (hasChallenge)
+            ActionChip(
+              avatar: Icon(Icons.local_fire_department_rounded,
+                  size: 16, color: const Color(0xFFB8860B)),
+              label: const Text('ORION me défie'),
+              labelStyle:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              onPressed: widget.onChallenge,
             ),
         ],
       ),
@@ -791,6 +819,21 @@ class _FocusViewState extends State<FocusView> {
 
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
 
+  /// Défi ORION prêt pour la carte : l'activité-temps la plus en retard sur sa
+  /// cible du jour (même sélection que le bouton doré), avec les faits réels.
+  ChallengeProposal? _challengeProposal(DateTime now) {
+    final a = logic.challengeActivity(exclude: _scheduledChallengeIds);
+    if (a == null) return null;
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final done = logic.totalForRangeByActivity(a.id, todayStart, now).inMinutes;
+    return ChallengeProposal(
+        activity: a,
+        minutes: logic.challengeDurationFor(a),
+        doneMin: done,
+        targetMin: a.goalMin,
+        streak: st.challengeStreak);
+  }
+
   Widget _coachCard(DateTime now) {
     final moment = computeCoachMoment(
         now, st, _schedule, _yesterday, st.sessions,
@@ -800,7 +843,8 @@ class _FocusViewState extends State<FocusView> {
         weeklyReport: _weeklyReport,
         sessionSkipCount: _sessionSkipCount,
         nextSessionLabel: _nextSessionLabel,
-        nudgeDismissed: _nudgeDismissed);
+        nudgeDismissed: _nudgeDismissed,
+        challenge: _challengeProposal(now));
     final isNudge = moment.type == CoachMomentType.defineNudge;
     return CoachMomentCard(
       moment: moment,
@@ -850,6 +894,18 @@ class _FocusViewState extends State<FocusView> {
                 builder: (_) => WeeklyReportScreen(
                     logic: logic, report: _weeklyReport!),
               )),
+      // Défi ORION : mêmes flows que le bouton doré (chrono + alarme + streak,
+      // ou défi daté) — l'activité est retrouvée par l'id du bloc porteur.
+      onChallengeAccept: (block) {
+        final a =
+            st.activities.where((x) => x.id == block.activityId).firstOrNull;
+        if (a != null) widget.onChallengeAccept?.call(a, block.durationMin);
+      },
+      onChallengeSchedule: (block) {
+        final a =
+            st.activities.where((x) => x.id == block.activityId).firstOrNull;
+        if (a != null) widget.onChallengeSchedule?.call(a, block.durationMin);
+      },
     );
   }
 
