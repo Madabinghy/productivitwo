@@ -514,13 +514,19 @@ class _FocusViewState extends State<FocusView> {
         ];
 
       case FreeIntent.routines:
-        final props = routineProposals(st, logic.habitReached);
+        final props = routineProposals(st, logic.habitReached, now: now);
         if (props.isEmpty) {
           return [
             _freeHint(cs,
                 'Toutes tes routines du jour sont tenues — rien à rattraper.'),
           ];
         }
+        // Domaines non définis derrière ces routines : lien discret vers la
+        // session de définition — sur place, sans quitter le guide.
+        final toDefine = <String>{
+          for (final p in props)
+            if (p.undefinedDomain != null) p.undefinedDomain!
+        };
         return [
           for (final p in props)
             _proposalRow(
@@ -534,6 +540,15 @@ class _FocusViewState extends State<FocusView> {
                   logic: logic, routine: p.routine),
             ),
           _freeHint(cs, 'tap = lancer maintenant · appui long = planifier la prochaine exécution'),
+          for (final name in toDefine)
+            Center(
+              child: TextButton.icon(
+                onPressed: () => _startDomainSession(name),
+                icon: const Icon(Icons.auto_awesome, size: 15),
+                label: Text('Définir « $name » — 15 min',
+                    style: const TextStyle(fontSize: 12.5)),
+              ),
+            ),
           if (widget.onOpenRoutines != null)
             Center(
               child: TextButton(
