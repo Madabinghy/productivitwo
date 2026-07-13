@@ -121,8 +121,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     );
     if (picked == null) return; // sheet fermé sans choix
     act.linkedActivityId = picked == '__none__' ? null : picked;
-    // Délier ⇒ plus de minuteur possible (minuteur ⇒ activité liée).
-    if (act.linkedActivityId == null) act.timerMin = null;
+    // Le minuteur survit au déliage : sans activité liée, le décompte tourne
+    // sur la routine elle-même (micro-routines).
     _applySetting();
   }
 
@@ -522,7 +522,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               Wrap(
                 spacing: 6, runSpacing: 6,
                 children: [
-                  for (final m in const [0, 5, 10, 15, 25])
+                  for (final m in const [0, 1, 2, 5, 10, 15, 25])
                     ChoiceChip(
                       label: Text(m == 0 ? 'Aucun' : '$m min'),
                       selected: (act.timerMin ?? 0) == m,
@@ -541,9 +541,29 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                     TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),
             ] else ...[
-              const SizedBox(height: 2),
+              const SizedBox(height: 12),
+              Text('MINUTEUR PAR DÉFAUT',
+                  style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1, color: cs.onSurface.withOpacity(.4))),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6, runSpacing: 6,
+                children: [
+                  for (final m in const [0, 1, 2, 5, 10, 15, 25])
+                    ChoiceChip(
+                      label: Text(m == 0 ? 'Aucun' : '$m min'),
+                      selected: (act.timerMin ?? 0) == m,
+                      onSelected: (_) {
+                        act.timerMin = m == 0 ? null : m;
+                        _applySetting();
+                      },
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
               Text(
-                'Lie une activité temps pour chronométrer cette routine (le temps sera loggué dessus).',
+                'Le ▶ lancera un décompte de cette durée et cochera la routine à la fin — parfait pour les micro-routines (1 min : vitamines, verre d\'eau). Lie une activité temps si tu veux logguer le temps dessus.',
                 style:
                     TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.45)),
               ),

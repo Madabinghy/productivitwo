@@ -58,7 +58,11 @@ class FocusView extends StatefulWidget {
   // « Programmer 📅 » → sheet défi daté (mêmes flows que le bouton doré).
   final VoidCallback? onChallenge;
   final void Function(Activity activity, int minutes)? onChallengeAccept;
-  final void Function(Activity activity, int minutes)? onChallengeSchedule;
+  // Future : la vue attend la fin de la pose pour rafraîchir la liste des
+  // défis déjà programmés (sinon la carte repropose un défi qu'on vient de
+  // poser pour demain).
+  final Future<void> Function(Activity activity, int minutes)?
+      onChallengeSchedule;
 
   const FocusView({
     super.key,
@@ -968,10 +972,13 @@ class _FocusViewState extends State<FocusView> {
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
         if (a != null) _confirmChallenge(a, block.durationMin);
       },
-      onChallengeSchedule: (block) {
+      onChallengeSchedule: (block) async {
         final a =
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
-        if (a != null) widget.onChallengeSchedule?.call(a, block.durationMin);
+        if (a == null) return;
+        await widget.onChallengeSchedule?.call(a, block.durationMin);
+        final ids = await _sync.fetchScheduledChallengeActivityIds();
+        if (mounted) setState(() => _scheduledChallengeIds = ids);
       },
       // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
       // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
@@ -1031,7 +1038,13 @@ class _FocusViewState extends State<FocusView> {
     );
     if (!mounted) return;
     if (choice == 'now') widget.onChallengeAccept?.call(a, minutes);
-    if (choice == 'schedule') widget.onChallengeSchedule?.call(a, minutes);
+    if (choice == 'schedule') {
+      await widget.onChallengeSchedule?.call(a, minutes);
+      // Le défi vient (peut-être) d'être posé : la liste d'exclusion se
+      // recharge pour que la carte ne le repropose pas dans la foulée.
+      final ids = await _sync.fetchScheduledChallengeActivityIds();
+      if (mounted) setState(() => _scheduledChallengeIds = ids);
+    }
   }
 
   /// Carte midi menu (15c) : ✓ Mangé incrémente le fait tracké ; « Autre

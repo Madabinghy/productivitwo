@@ -741,7 +741,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Durées proposées en un tap — la modification est libre, aucun fait de
   /// report n'est posé.
   void _askDuration(BuildContext context, ScheduleBlock block) {
-    const durations = [10, 15, 25, 30, 45, 60, 90, 120];
+    const durations = [1, 2, 5, 10, 15, 25, 30, 45, 60, 90, 120];
     showModalBottomSheet(
       context: context,
       showDragHandle: true,

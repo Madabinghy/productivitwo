@@ -632,9 +632,14 @@ CoachMoment? _driftMoment(
   }
   if (drifting == null || driftStart == null) return null;
 
+  // « 25 min » n'a aucun sens pour un bloc d'1 min (vitamines) : le CTA
+  // s'aligne sur la durée RÉELLE du bloc, plafonnée à 25.
+  final relance =
+      drifting.durationMin < 25 ? drifting.durationMin : 25;
   final actions = <CoachAction>[
     if (_launchable(drifting))
-      CoachAction('Lancer 25 min', CoachActionKind.launchBlock, block: drifting),
+      CoachAction('Lancer $relance min', CoachActionKind.launchBlock,
+          block: drifting),
     CoachAction('Renégocier', CoachActionKind.renegotiate, block: drifting),
   ];
 
@@ -643,7 +648,7 @@ CoachMoment? _driftMoment(
     tagLabel: 'ORION · DÉRIVE DÉTECTÉE',
     title: drifting.title,
     message:
-        'Le bloc « ${drifting.title} » est posé depuis ${_hhmmToFr(drifting.startTime)} — 0 min logguée. 25 minutes suffisent pour l\'enclencher.',
+        'Le bloc « ${drifting.title} » est posé depuis ${_hhmmToFr(drifting.startTime)} — 0 min logguée. ${relance == 1 ? '1 minute suffit' : '$relance minutes suffisent'} pour l\'enclencher.',
     actions: actions,
     tone: CoachTone.alert,
   );

@@ -10,7 +10,7 @@ String fmtMin(int min) {
   return m == 0 ? '${h}h' : '${h}h${m.toString().padLeft(2, '0')}';
 }
 
-const _presets = [15, 30, 45, 60, 90, 120, 180, 240];
+const _presets = [1, 2, 5, 15, 30, 45, 60, 90, 120, 180, 240];
 
 /// Sélecteur de durée heures/minutes (roue Cupertino + presets rapides).
 /// Retourne la durée en minutes, ou null si annulé.
@@ -54,8 +54,9 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
   @override
   void initState() {
     super.initState();
-    final rounded = ((widget.initial / _step).round() * _step).clamp(0, 23 * 60 + 55);
-    _minutes = rounded == 0 ? 30 : rounded;
+    // La valeur exacte est conservée (une micro-routine de 1 min ne doit pas
+    // rouvrir à 30) — seule la ROUE est arrondie au pas de 5.
+    _minutes = widget.initial > 0 ? widget.initial.clamp(1, 23 * 60 + 55) : 30;
   }
 
   @override
@@ -117,7 +118,10 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
                   key: ValueKey(_wheelEpoch),
                   mode: CupertinoTimerPickerMode.hm,
                   minuteInterval: _step,
-                  initialTimerDuration: Duration(minutes: _minutes),
+                  // La roue exige un multiple du pas — les presets 1/2 min
+                  // gardent leur valeur exacte dans _minutes.
+                  initialTimerDuration:
+                      Duration(minutes: (_minutes ~/ _step) * _step),
                   onTimerDurationChanged: (d) =>
                       setState(() => _minutes = d.inMinutes),
                 ),

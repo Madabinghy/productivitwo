@@ -263,6 +263,22 @@ void main() {
       expect(m.tagLabel, isNot(contains('FLOW')));
     });
 
+    test('dérive : le CTA s\'aligne sur la durée réelle du bloc (1 min)', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final sched = _sched(today, [
+        _block(
+            startTime: '05:30',
+            durationMin: 1,
+            title: 'Vitamines',
+            activityId: 'r1'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.drift);
+      // Plus jamais « 25 min » pour un bloc d'une minute.
+      expect(m.message, contains('1 minute suffit'));
+      expect(m.actions.first.label, 'Lancer 1 min');
+    });
+
     test('nuit (1h–5h) → carte masquée', () {
       final now = DateTime(2026, 7, 7, 3, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
