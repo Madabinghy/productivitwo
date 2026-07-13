@@ -183,6 +183,10 @@ class WeeklyReport {
   // Hygiène du programme : reports + suppressions de la semaine (constat).
   int reported;
   int deletedBlocks;
+  // Fait « lu » : posé à la première ouverture de l'écran — le teaser du
+  // dimanche soir se tait ensuite (le rapport n'est pas la dernière chose de
+  // la journée, la carte reprend son cours).
+  DateTime? readAt;
 
   /// Blocs réellement posés (engagements + supprimés en cours de route).
   int get postedTotal => total + deletedBlocks;
@@ -215,6 +219,7 @@ class WeeklyReport {
     Map<String, bool>? declaredAnswers,
     this.reported = 0,
     this.deletedBlocks = 0,
+    this.readAt,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         domains = domains ?? [],
         motifs = motifs ?? [],
@@ -232,6 +237,7 @@ class WeeklyReport {
           0,
       kind: j['kind'] ?? 'full',
       generatedAt: _parseDate(j['generatedAt']),
+      readAt: j['readAt'] != null ? _parseDate(j['readAt']) : null,
       held: (engagements['held'] as num?)?.toInt() ?? 0,
       total: (engagements['total'] as num?)?.toInt() ?? 0,
       checkinsDone: (facts['checkinsDone'] as num?)?.toInt() ?? 0,
@@ -275,6 +281,7 @@ class WeeklyReport {
         'isoWeek': isoWeek,
         'kind': kind,
         'generatedAt': generatedAt.toIso8601String(),
+        'readAt': readAt?.toIso8601String(),
         'facts': {
           'weekStart': weekStart,
           'weekEnd': weekEnd,

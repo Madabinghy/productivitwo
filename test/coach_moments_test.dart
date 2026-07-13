@@ -749,6 +749,25 @@ void main() {
           isTrue);
     });
 
+    test('rapport LU (fait readAt) → le teaser se tait, check-in normal', () {
+      final now = DateTime(2026, 7, 12, 20, 0); // dimanche
+      final report = WeeklyReport(
+        weekStart: '2026-07-06',
+        readAt: DateTime(2026, 7, 12, 17, 30), // lu en fin d'aprem
+      );
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          weeklyReport: report);
+      // Le rapport n'est pas la dernière chose de la journée : une fois lu,
+      // la carte reprend son cours (check-in, propositions).
+      expect(m.type, CoachMomentType.evening);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
+          isFalse);
+      // Round-trip : le fait survit à la sérialisation.
+      final back = WeeklyReport.from(report.toJson());
+      expect(back.readAt, isNotNull);
+    });
+
     test('dimanche soir sans rapport → check-in normal', () {
       final now = DateTime(2026, 7, 12, 20, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);

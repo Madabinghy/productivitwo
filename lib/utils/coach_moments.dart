@@ -174,8 +174,12 @@ CoachMoment computeCoachMoment(
   // ── Nudge domaines (Partie D) : prioritaire sur les moments horaires tant
   // qu'un domaine est absent ou seulement nommé. Le teaser du rapport (16a)
   // garde le dimanche soir — la semaine se juge avant de se nudger.
+  // Le teaser du rapport ne vaut que tant que le rapport n'est pas LU — une
+  // fois lu (fait readAt), la soirée reprend son cours normal : le rapport
+  // n'est pas forcément la dernière chose de la journée.
+  final unreadReport = weeklyReport != null && weeklyReport.readAt == null;
   final sundayReport =
-      now.weekday == DateTime.sunday && minutes >= 19 * 60 && weeklyReport != null;
+      now.weekday == DateTime.sunday && minutes >= 19 * 60 && unreadReport;
   if (!nudgeDismissed && !sundayReport) {
     final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
     if (nudge != null) return nudge;
@@ -252,8 +256,8 @@ CoachMoment computeCoachMoment(
   final CoachMoment clock;
   if (minutes >= 19 * 60) {
     // Dimanche soir : le rapport hebdo prime sur le check-in (16a) — la
-    // semaine se juge avant de se clore.
-    clock = (now.weekday == DateTime.sunday && weeklyReport != null)
+    // semaine se juge avant de se clore. Une fois LU, le check-in reprend.
+    clock = (now.weekday == DateTime.sunday && unreadReport)
         ? _weeklyTeaser(weeklyReport)
         : _eveningMoment(blocks, vitals);
   } else if (minutes >= 14 * 60) {

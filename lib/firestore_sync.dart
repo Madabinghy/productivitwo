@@ -819,6 +819,14 @@ class FirestoreSync {
         .set({'weekModeChosen': mode}, SetOptions(merge: true));
   }
 
+  /// Fait « rapport lu » : posé à la première ouverture de l'écran du rapport
+  /// — le teaser du dimanche soir se tait ensuite, la carte reprend son cours.
+  Future<void> markWeeklyReportRead(String weekStart) async {
+    if (uid == null) return;
+    await _col('weekly_reports').doc(weekStart).set(
+        {'readAt': DateTime.now().toIso8601String()}, SetOptions(merge: true));
+  }
+
   /// Heure de lever habituelle (« HH:mm ») — fait demandé UNE fois à la
   /// première planification, contrainte dure de proposeDayPlan (rien ne se
   /// pose avant le lever).
