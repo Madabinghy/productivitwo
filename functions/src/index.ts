@@ -367,7 +367,9 @@ export const proposeDayPlan = onRequest(
     if (!authHeader.startsWith("Bearer ")) {
       res.status(401).json({ error: "Missing Authorization header" }); return;
     }
-    const { uid, date } = req.body as { uid?: string; date?: string };
+    const { uid, date, wakeTime } = req.body as {
+      uid?: string; date?: string; wakeTime?: string;
+    };
     if (!uid) { res.status(400).json({ error: "uid requis" }); return; }
     const valid = await validateToken(uid, authHeader.slice(7).trim());
     if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
@@ -444,6 +446,15 @@ export const proposeDayPlan = onRequest(
           weekMode = weekModeRaw.mode;
         }
       }
+      // Heure de lever : fait tracké (client à la 1ʳᵉ planification, stocké
+      // dans data/meta) — contrainte DURE : rien ne se pose avant le lever.
+      const hmRe = /^\d{2}:\d{2}$/;
+      const metaWake = metaSnap.data()?.wakeTime as string | undefined;
+      const wake =
+        (typeof wakeTime === "string" && hmRe.test(wakeTime) && wakeTime) ||
+        (typeof metaWake === "string" && hmRe.test(metaWake) && metaWake) ||
+        "07:00";
+
       const artifactEntryLines: string[] = [];
       const offSlots = new Set<string>();
       for (const doc of artifactsSnap.docs) {
@@ -555,7 +566,7 @@ export const proposeDayPlan = onRequest(
         `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, Europe/Paris).`,
         sameDay
           ? `⚠️ La cible est AUJOURD'HUI (rattrapage express) : ne propose AUCUN bloc avant ${nowHm}. Horizon = ce qui reste de la journée.`
-          : `La cible est un jour complet (7h-21h environ).`,
+          : `La cible est un jour complet. ⚠️ LEVER À ${wake} : ne propose AUCUN bloc avant ${wake} — la journée utile va de ${wake} à 21h30 environ (les blocs reproposés aussi : ils reprennent une heure PLAUSIBLE de la journée, jamais leur heure d'hier si elle tombe la nuit).`,
         ``,
         `Tu réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :`,
         `{`,
@@ -687,17 +698,43 @@ export const proposeDayPlan = onRequest(
         });
       };
 
+      // Contrainte dure déterministe (le prompt ne suffit pas) : rien avant le
+      // LEVER. Les blocs proposés avant l'heure de lever (« Check-in à 03:00 »)
+      // sont décalés à la suite, dans l'ordre, sans chevauchement ; un bloc
+      // repoussé au-delà de 23 h 30 est abandonné.
+      const toMin = (hm: string) =>
+        parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
+      const toHm = (min: number) =>
+        `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+      const repackAfterWake = (
+        blocks: Array<Record<string, unknown>>
+      ): Array<Record<string, unknown>> => {
+        const floor = Math.max(toMin(wake), sameDay ? toMin(nowHm) : 0);
+        const sorted = [...blocks].sort(
+          (a, b) => toMin(String(a.startTime)) - toMin(String(b.startTime)));
+        let cursor = floor;
+        const out: Array<Record<string, unknown>> = [];
+        for (const b of sorted) {
+          const orig = toMin(String(b.startTime));
+          const st = Math.max(orig, cursor);
+          if (st > 23 * 60 + 30) continue; // journée pleine — abandonné
+          out.push(st === orig ? b : { ...b, startTime: toHm(st) });
+          cursor = st + Math.max(5, Number(b.durationMin ?? 30));
+        }
+        return out;
+      };
+
       res.status(200).json({
         message: proposal.message ?? "",
         sources: proposal.sources ?? [],
-        blocks: (proposal.blocks ?? []).filter((b) => {
+        blocks: repackAfterWake((proposal.blocks ?? []).filter((b) => {
           if (!/^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) || !b.title) return false;
           // offSlots = contrainte dure, appliquée aussi en déterministe (le
           // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
           const hour = parseInt(String(b.startTime).slice(0, 2), 10);
           const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
           return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
-        }).flatMap(splitCombined),
+        }).flatMap(splitCombined)),
         refDate,
         dayReason,
       });

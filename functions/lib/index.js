@@ -317,7 +317,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -331,7 +331,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         res.status(401).json({ error: "Missing Authorization header" });
         return;
     }
-    const { uid, date } = req.body;
+    const { uid, date, wakeTime } = req.body;
     if (!uid) {
         res.status(400).json({ error: "uid requis" });
         return;
@@ -409,21 +409,28 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 weekMode = weekModeRaw.mode;
             }
         }
+        // Heure de lever : fait tracké (client à la 1ʳᵉ planification, stocké
+        // dans data/meta) — contrainte DURE : rien ne se pose avant le lever.
+        const hmRe = /^\d{2}:\d{2}$/;
+        const metaWake = (_f = metaSnap.data()) === null || _f === void 0 ? void 0 : _f.wakeTime;
+        const wake = (typeof wakeTime === "string" && hmRe.test(wakeTime) && wakeTime) ||
+            (typeof metaWake === "string" && hmRe.test(metaWake) && metaWake) ||
+            "07:00";
         const artifactEntryLines = [];
         const offSlots = new Set();
         for (const doc of artifactsSnap.docs) {
             const a = doc.data();
             if (a.deleted === true)
                 continue;
-            for (const slot of (_f = a.offSlots) !== null && _f !== void 0 ? _f : [])
+            for (const slot of (_g = a.offSlots) !== null && _g !== void 0 ? _g : [])
                 offSlots.add(slot);
             const label = a.kind === "weekly_menu" ? "Menu de la semaine" : "Plan de reprise";
-            for (const e of (_g = a.entries) !== null && _g !== void 0 ? _g : []) {
+            for (const e of (_h = a.entries) !== null && _h !== void 0 ? _h : []) {
                 const matches = e.date === target ||
                     (!e.date && e.weekday === targetWeekday);
                 if (!matches)
                     continue;
-                artifactEntryLines.push(`  ${e.time} "${e.title}" (${(_h = e.durationMin) !== null && _h !== void 0 ? _h : 30} min)` +
+                artifactEntryLines.push(`  ${e.time} "${e.title}" (${(_j = e.durationMin) !== null && _j !== void 0 ? _j : 30} min)` +
                     `${e.detail ? ` — ${e.detail}` : ""} · provenance: ${label}` +
                     `${e.optional ? " · optionnelle, hors vital" : ""}`);
             }
@@ -473,7 +480,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (mods ? `\n    modalités : ${mods}` : "") + essai;
         });
         const refData = refSnap.exists ? refSnap.data() : {};
-        const refBlocks = ((_j = refData.blocks) !== null && _j !== void 0 ? _j : [])
+        const refBlocks = ((_l = refData.blocks) !== null && _l !== void 0 ? _l : [])
             .filter((b) => b.status !== "deleted" && b.kind !== "prep");
         const refLines = refBlocks.map((b) => {
             var _a;
@@ -487,9 +494,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (b.activityId ? ` activityId=${b.activityId}` : "") +
                 (b.projectId ? ` projectId=${b.projectId} taskId=${(_a = b.taskId) !== null && _a !== void 0 ? _a : ""}` : "");
         });
-        const dayReason = (_l = refData.dayReason) !== null && _l !== void 0 ? _l : null;
+        const dayReason = (_m = refData.dayReason) !== null && _m !== void 0 ? _m : null;
         const targetBlocks = targetSnap.exists
-            ? (((_o = (_m = targetSnap.data()) === null || _m === void 0 ? void 0 : _m.blocks) !== null && _o !== void 0 ? _o : [])
+            ? (((_p = (_o = targetSnap.data()) === null || _o === void 0 ? void 0 : _o.blocks) !== null && _p !== void 0 ? _p : [])
                 .filter((b) => b.status !== "deleted"))
             : [];
         const acts = actsSnap.docs
@@ -519,7 +526,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, Europe/Paris).`,
             sameDay
                 ? `⚠️ La cible est AUJOURD'HUI (rattrapage express) : ne propose AUCUN bloc avant ${nowHm}. Horizon = ce qui reste de la journée.`
-                : `La cible est un jour complet (7h-21h environ).`,
+                : `La cible est un jour complet. ⚠️ LEVER À ${wake} : ne propose AUCUN bloc avant ${wake} — la journée utile va de ${wake} à 21h30 environ (les blocs reproposés aussi : ils reprennent une heure PLAUSIBLE de la journée, jamais leur heure d'hier si elle tombe la nuit).`,
             ``,
             `Tu réponds UNIQUEMENT avec un objet JSON valide, sans markdown ni texte autour :`,
             `{`,
@@ -633,10 +640,32 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 return Object.assign(Object.assign({}, b), { title: a.name, activityId: a.id, durationMin: dur, startTime: st, subtitle: "une routine par bloc — séparé automatiquement" });
             });
         };
+        // Contrainte dure déterministe (le prompt ne suffit pas) : rien avant le
+        // LEVER. Les blocs proposés avant l'heure de lever (« Check-in à 03:00 »)
+        // sont décalés à la suite, dans l'ordre, sans chevauchement ; un bloc
+        // repoussé au-delà de 23 h 30 est abandonné.
+        const toMin = (hm) => parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
+        const toHm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+        const repackAfterWake = (blocks) => {
+            var _a;
+            const floor = Math.max(toMin(wake), sameDay ? toMin(nowHm) : 0);
+            const sorted = [...blocks].sort((a, b) => toMin(String(a.startTime)) - toMin(String(b.startTime)));
+            let cursor = floor;
+            const out = [];
+            for (const b of sorted) {
+                const orig = toMin(String(b.startTime));
+                const st = Math.max(orig, cursor);
+                if (st > 23 * 60 + 30)
+                    continue; // journée pleine — abandonné
+                out.push(st === orig ? b : Object.assign(Object.assign({}, b), { startTime: toHm(st) }));
+                cursor = st + Math.max(5, Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 30));
+            }
+            return out;
+        };
         res.status(200).json({
-            message: (_p = proposal.message) !== null && _p !== void 0 ? _p : "",
-            sources: (_q = proposal.sources) !== null && _q !== void 0 ? _q : [],
-            blocks: ((_r = proposal.blocks) !== null && _r !== void 0 ? _r : []).filter((b) => {
+            message: (_q = proposal.message) !== null && _q !== void 0 ? _q : "",
+            sources: (_r = proposal.sources) !== null && _r !== void 0 ? _r : [],
+            blocks: repackAfterWake(((_s = proposal.blocks) !== null && _s !== void 0 ? _s : []).filter((b) => {
                 var _a;
                 if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
                     return false;
@@ -645,7 +674,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 const hour = parseInt(String(b.startTime).slice(0, 2), 10);
                 const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
                 return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
-            }).flatMap(splitCombined),
+            }).flatMap(splitCombined)),
             refDate,
             dayReason,
         });

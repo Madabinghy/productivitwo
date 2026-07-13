@@ -79,10 +79,14 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     if (widget.rattrapage) {
       _countSameDayPlans();
     }
+    // Heure de lever : fait demandé UNE fois (sheet), puis contrainte dure de
+    // la proposition — plus jamais de bloc à 3 h du matin. Fait partie de
+    // l'empreinte : la changer invalide le brouillon.
+    final wake = await _ensureWakeTime();
     // ── Cache : l'ouverture répétée de l'écran coûte 0 appel LLM ─────────────
     // Le brouillon persiste sur le doc de la date cible et reste valable < 6 h
     // si le programme source (la veille) n'a pas changé. ⟳ = régénérer.
-    final fingerprint = await _sourceFingerprint();
+    final fingerprint = '${await _sourceFingerprint()}|lever:$wake';
     if (!force) {
       try {
         final cached = await _sync.fetchProposalDraft(widget.targetDate);
@@ -117,7 +121,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer $raw',
             },
-            body: jsonEncode({'uid': uid, 'date': widget.targetDate}),
+            body: jsonEncode(
+                {'uid': uid, 'date': widget.targetDate, 'wakeTime': wake}),
           )
           .timeout(const Duration(seconds: 45));
       if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
@@ -138,6 +143,77 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     }
     _postProcess();
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Heure de lever habituelle : lue depuis le fait stocké, demandée via un
+  /// sheet à la toute première planification. Refus/fermeture → 07:00 pour
+  /// cette fois (rien n'est écrit, la question reviendra).
+  Future<String> _ensureWakeTime() async {
+    final stored = await _sync.fetchWakeTime();
+    if (stored != null) return stored;
+    if (!mounted) return '07:00';
+    final picked = await _askWakeTime();
+    if (picked != null) {
+      await _sync.setWakeTime(picked);
+      return picked;
+    }
+    return '07:00';
+  }
+
+  Future<String?> _askWakeTime() {
+    const options = ['05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '09:00'];
+    return showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('À quelle heure te lèves-tu, en général ?',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text(
+                'Demandé une fois : le programme ne posera plus rien avant ton lever.',
+                style: TextStyle(
+                    fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final o in options)
+                    ActionChip(
+                      label: Text(o.replaceFirst(':', ' h ')
+                          .replaceFirst(' h 00', ' h')),
+                      labelStyle: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w700),
+                      onPressed: () => Navigator.pop(ctx, o),
+                    ),
+                  ActionChip(
+                    label: const Text('Autre…'),
+                    onPressed: () async {
+                      final t = await showTimePicker(
+                          context: ctx,
+                          initialTime: const TimeOfDay(hour: 7, minute: 0));
+                      if (t != null && ctx.mounted) {
+                        Navigator.pop(
+                            ctx,
+                            '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   /// Empreinte du programme source (la veille de la cible) : si les statuts,
