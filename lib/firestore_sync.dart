@@ -819,6 +819,25 @@ class FirestoreSync {
         .set({'weekModeChosen': mode}, SetOptions(merge: true));
   }
 
+  /// Heure de lever habituelle (« HH:mm ») — fait demandé UNE fois à la
+  /// première planification, contrainte dure de proposeDayPlan (rien ne se
+  /// pose avant le lever).
+  Future<String?> fetchWakeTime() async {
+    if (uid == null) return null;
+    try {
+      final snap = await _meta().get();
+      final v = (snap.data() as Map?)?['wakeTime'];
+      return v is String && RegExp(r'^\d{2}:\d{2}\$').hasMatch(v) ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setWakeTime(String hm) async {
+    if (uid == null) return;
+    await _meta().set({'wakeTime': hm}, SetOptions(merge: true));
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();
