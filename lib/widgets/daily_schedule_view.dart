@@ -318,12 +318,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   color: cs.onSurface),
             ),
             const Spacer(),
-            if (_schedule != null)
-              Text(
-                _schedule!.generatedBy == 'orion' ? '✨ ORION' : '🤖 Claude',
-                style: TextStyle(
-                    fontSize: 11, color: cs.onSurface.withOpacity(.4)),
-              ),
             IconButton(
               tooltip: 'Ajouter un bloc',
               visualDensity: VisualDensity.compact,
@@ -375,10 +369,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: GestureDetector(
-          // 23a : déplacer à la main — long-press → créneaux libres réels.
+          // Appui long : ajuster le bloc — heure et durée se changent SANS
+          // pénalité (la flexibilité intra-journée est libre) ; seul le
+          // changement de DATE compte comme report.
           onLongPress: block.status == 'pending' && !block.isPrep
-              ? () => showMoveBlockSheet(context,
-                  logic: widget.logic, block: block, date: widget.date)
+              ? () => _showAdjustSheet(context, block)
               : null,
           onTap: () {
             // Bloc session de définition (onboarding 18b) → lance la session ;
@@ -676,6 +671,117 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Appui long : ajuster le bloc. Heure et durée = flexibilité libre, rien
+  /// n'est compté ; reporter au lendemain = la date change, c'est un report
+  /// (assumé, tracké — le bloc revient reproposé dans la proposition).
+  void _showAdjustSheet(BuildContext context, ScheduleBlock block) {
+    final cs = Theme.of(context).colorScheme;
+    Widget row(IconData icon, String title, String sub, VoidCallback onTap,
+            {Color? color}) =>
+        ListTile(
+          leading: Icon(icon, size: 20, color: color ?? cs.primary),
+          title: Text(title,
+              style:
+                  const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+          subtitle: Text(sub,
+              style: TextStyle(
+                  fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+          onTap: onTap,
+        );
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (sctx) => Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text('« ${block.title} » — ${block.startTime.replaceFirst(':', ' h ')} · ${block.durationMin} min',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w800)),
+            ),
+            row(Icons.schedule, 'Changer l\'heure',
+                'créneau libre réel — sans pénalité, rien n\'est compté', () {
+              Navigator.pop(sctx);
+              showMoveBlockSheet(context,
+                  logic: widget.logic, block: block, date: widget.date);
+            }),
+            row(Icons.timelapse, 'Changer la durée',
+                '${block.durationMin} min actuellement — sans pénalité', () {
+              Navigator.pop(sctx);
+              _askDuration(context, block);
+            }),
+            row(Icons.redo_rounded, 'Reporter au lendemain',
+                'la date change : compté comme report — il reviendra reproposé',
+                () async {
+              Navigator.pop(sctx);
+              await _sync.updateBlockStatus(widget.date, block.id, 'skipped');
+              await _sync.updateBlockSkipReason(widget.date, block.id, 'reporte');
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text(
+                      'Reporté — il revient demain dans la proposition, marqué reproposé.'),
+                  duration: Duration(seconds: 3),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              }
+            }, color: cs.tertiary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Durées proposées en un tap — la modification est libre, aucun fait de
+  /// report n'est posé.
+  void _askDuration(BuildContext context, ScheduleBlock block) {
+    const durations = [10, 15, 25, 30, 45, 60, 90, 120];
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (sctx) {
+        final cs = Theme.of(sctx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Durée de « ${block.title} »',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final d in durations)
+                    ChoiceChip(
+                      label: Text('$d min'),
+                      selected: block.durationMin == d,
+                      labelStyle: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: block.durationMin == d ? cs.surface : null),
+                      selectedColor: cs.primary,
+                      onSelected: (_) async {
+                        Navigator.pop(sctx);
+                        block.durationMin = d;
+                        await _saveBlock(block);
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
