@@ -746,7 +746,9 @@ class _FocusViewState extends State<FocusView> {
   /// l'utilisateur répond « Oui — on enchaîne ». Utilisé par le guide (repos)
   /// et par le bouton pause discret de l'en-tête (toujours disponible).
   Future<void> _declareUnavailable({String reason = 'repos'}) async {
-    final until = await showAvailabilitySheet(context);
+    final until = await showAvailabilitySheet(context,
+        pause: true,
+        paused: _schedule?.unavailableAt(DateTime.now()) == true);
     if (until == null || !mounted) return;
     if (until == kAvailableNow) {
       // « Oui — on enchaîne » : lève une éventuelle fenêtre en cours.
@@ -776,7 +778,18 @@ class _FocusViewState extends State<FocusView> {
   /// blocs restent — « je ne peux rien faire avant telle heure » ne doit pas
   /// dépendre de l'état du programme (le guide n'apparaît que tout vide).
   Widget _header(ColorScheme cs, DateTime now) {
-    final paused = _schedule?.unavailableAt(now) == true;
+    final until = _schedule?.unavailableAt(now) == true
+        ? _schedule!.unavailableUntil
+        : null;
+    // Libellé explicite (constaté sur build : l'icône seule ressemble à un
+    // « moins ») — et l'état visible : « Pause · 18 h » quand elle court.
+    String label = 'Pause';
+    if (until != null) {
+      final sameDay = until.day == now.day && until.month == now.month;
+      label = sameDay
+          ? 'Pause · ${until.minute == 0 ? '${until.hour} h' : '${until.hour} h ${until.minute.toString().padLeft(2, '0')}'}'
+          : 'Pause · demain';
+    }
     return Row(
       children: [
         Text('Maintenant',
@@ -785,18 +798,24 @@ class _FocusViewState extends State<FocusView> {
                 fontWeight: FontWeight.w800,
                 color: cs.onSurface)),
         const Spacer(),
-        IconButton(
-          tooltip: paused
-              ? 'En pause — modifier ou reprendre'
-              : 'Pas dispo avant… (pause coach)',
-          visualDensity: VisualDensity.compact,
+        TextButton.icon(
           onPressed: () => _declareUnavailable(reason: 'pas_le_moment'),
           icon: Icon(
-            paused
-                ? Icons.do_not_disturb_on
-                : Icons.do_not_disturb_on_outlined,
-            size: 22,
-            color: paused ? cs.primary : cs.onSurface.withOpacity(.35),
+            until != null
+                ? Icons.notifications_paused
+                : Icons.notifications_paused_outlined,
+            size: 18,
+          ),
+          label: Text(label,
+              style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          style: TextButton.styleFrom(
+            foregroundColor:
+                until != null ? cs.primary : cs.onSurface.withOpacity(.45),
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999)),
           ),
         ),
       ],

@@ -7,7 +7,11 @@ import 'package:flutter/material.dart';
 ///  · un DateTime     → « pas dispo avant X » (le coach suit le flow)
 final DateTime kAvailableNow = DateTime.fromMillisecondsSinceEpoch(0);
 
-Future<DateTime?> showAvailabilitySheet(BuildContext context) {
+/// [pause] = variante « bouton pause » de Maintenant : on l'ouvre soi-même
+/// pour se déclarer indispo — le titre le dit, et le CTA « dispo » n'apparaît
+/// que si une fenêtre est déjà active ([paused]), pour la lever.
+Future<DateTime?> showAvailabilitySheet(BuildContext context,
+    {bool pause = false, bool paused = false}) {
   final now = DateTime.now();
   DateTime at(int h, [int m = 0]) =>
       DateTime(now.year, now.month, now.day, h, m);
@@ -36,26 +40,37 @@ Future<DateTime?> showAvailabilitySheet(BuildContext context) {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Et là, tu es dispo ?',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(
+                pause
+                    ? (paused ? 'Pause en cours' : 'Pause — pas dispo avant…')
+                    : 'Et là, tu es dispo ?',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
             Text(
-              'Si tu n\'es pas dispo, je suis le flow : aucune relance, aucune dérive avant l\'heure dite.',
+              'Je suis le flow : aucune relance, aucune dérive avant l\'heure dite.',
               style: TextStyle(
                   fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
             ),
             const SizedBox(height: 14),
-            FilledButton.icon(
-              icon: const Icon(Icons.bolt_rounded, size: 18),
-              label: const Text('Oui — on enchaîne'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999)),
+            // « Dispo » : réponse du flow report, ou levée d'une pause active —
+            // mais jamais en ouvrant le bouton pause sans fenêtre en cours
+            // (on vient se déclarer INDISPO, pas l'inverse).
+            if (!pause || paused) ...[
+              FilledButton.icon(
+                icon: const Icon(Icons.bolt_rounded, size: 18),
+                label: Text(pause
+                    ? 'Je suis dispo — reprendre'
+                    : 'Oui — on enchaîne'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999)),
+                ),
+                onPressed: () => Navigator.pop(sctx, kAvailableNow),
               ),
-              onPressed: () => Navigator.pop(sctx, kAvailableNow),
-            ),
-            const SizedBox(height: 10),
+              const SizedBox(height: 10),
+            ],
             Wrap(
               spacing: 8,
               runSpacing: 8,
