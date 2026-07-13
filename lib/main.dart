@@ -3388,6 +3388,25 @@ class _AppRootState extends State<AppRoot>
     );
     await FirestoreSync().addScheduleBlock(ymd, block);
 
+    // Le défi remplace un bloc d'AUJOURD'HUI sur la même activité et part à
+    // une date FUTURE : changer de date = un report. Le bloc du jour passe en
+    // sauté « reporté » — la trace reste (barré, check-in, stats d'hygiène),
+    // le coach arrête de relancer, rien ne disparaît en silence.
+    final now0 = DateTime.now();
+    final todayYmd0 =
+        '${now0.year}-${now0.month.toString().padLeft(2, '0')}-${now0.day.toString().padLeft(2, '0')}';
+    if (ymd != todayYmd0) {
+      final sync = FirestoreSync();
+      final todaySched = await sync.fetchDailySchedule(todayYmd0);
+      for (final b in todaySched?.blocks ?? const <ScheduleBlock>[]) {
+        if (b.status != 'pending' || b.activityId != a.id || b.challenge) {
+          continue;
+        }
+        await sync.updateBlockStatus(todayYmd0, b.id, 'skipped');
+        await sync.updateBlockSkipReason(todayYmd0, b.id, 'reporte');
+      }
+    }
+
     final ids = NotificationService.challengeNotifIds(block.id);
     await NotificationService.scheduleChallengeAt(
       id: ids.atTime,
