@@ -209,7 +209,7 @@ void main() {
       expect(m.message, isNot(contains('min')));
     });
 
-    test('indispo déclarée → carte calme « je suis le flow », pas de dérive',
+    test('pause active → AUCUNE carte (le guide prend la place), pas de dérive',
         () {
       final now = DateTime(2026, 7, 11, 15, 0);
       final sched = DailySchedule(
@@ -222,54 +222,23 @@ void main() {
         ],
       );
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, isNot(CoachMomentType.drift));
-      expect(m.tagLabel, contains('JE SUIS LE FLOW'));
-      expect(m.message, contains('18 h'));
-      expect(m.message, contains('pas sur place'));
-      expect(m.actions.any((a) => a.kind == CoachActionKind.availableNow),
-          isTrue);
+      // « Je suis le flow » = zéro relance : ni carte calme, ni nudge, ni
+      // dérive — le guide « que souhaites-tu faire ? » occupe l'écran, et
+      // l'état/la sortie de pause vivent sur le bouton ⏸ de l'en-tête.
+      expect(m.hidden, isTrue);
     });
 
-    test('indispo + routine en attente → « Planifions — [routine] »', () {
+    test('pause : même le nudge domaines se tait', () {
       final now = DateTime(2026, 7, 11, 15, 0);
-      final st = AppState(
-        domains: [],
-        activities: [
-          Activity(
-              id: 'r1',
-              name: 'Marche',
-              domainId: 'd1',
-              type: 'habit',
-              habitFreq: HabitFreq.daily,
-              order: 0),
-        ],
-        sessions: [],
-        habitProgress: [],
-      );
+      final st = _stDomains([
+        Domain(name: 'Business', definitionStatus: 'named'),
+      ]);
       final sched = DailySchedule(
         date: today,
         unavailableUntil: DateTime(2026, 7, 11, 18, 0),
       );
-      final m = computeCoachMoment(now, st, sched, null, [],
-          nudgeDismissed: true);
-      final plan = m.actions
-          .where((a) => a.kind == CoachActionKind.planNext)
-          .toList();
-      expect(plan, hasLength(1));
-      expect(plan.first.label, 'Planifions — Marche');
-      expect(plan.first.block?.activityId, 'r1');
-    });
-
-    test('indispo sans routine en attente → pas de « Planifions » inventé',
-        () {
-      final now = DateTime(2026, 7, 11, 15, 0);
-      final sched = DailySchedule(
-        date: today,
-        unavailableUntil: DateTime(2026, 7, 11, 18, 0),
-      );
-      final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.planNext), isFalse);
+      final m = computeCoachMoment(now, st, sched, null, []);
+      expect(m.hidden, isTrue);
     });
 
     test('indispo : le check-in du soir reprend la main (≥ 19 h)', () {
@@ -747,6 +716,25 @@ void main() {
       expect(
           m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
           isTrue);
+    });
+
+    test('rapport LU (fait readAt) → le teaser se tait, check-in normal', () {
+      final now = DateTime(2026, 7, 12, 20, 0); // dimanche
+      final report = WeeklyReport(
+        weekStart: '2026-07-06',
+        readAt: DateTime(2026, 7, 12, 17, 30), // lu en fin d'aprem
+      );
+      final m = computeCoachMoment(now, _st([]), null, null, [],
+          weeklyReport: report);
+      // Le rapport n'est pas la dernière chose de la journée : une fois lu,
+      // la carte reprend son cours (check-in, propositions).
+      expect(m.type, CoachMomentType.evening);
+      expect(
+          m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
+          isFalse);
+      // Round-trip : le fait survit à la sérialisation.
+      final back = WeeklyReport.from(report.toJson());
+      expect(back.readAt, isNotNull);
     });
 
     test('dimanche soir sans rapport → check-in normal', () {

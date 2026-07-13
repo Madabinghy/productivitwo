@@ -1185,6 +1185,12 @@ class _FocusViewState extends State<FocusView> {
     if (running != null) return _buildActive(context, cs, running);
 
     final now = DateTime.now();
+    // Pause active : aucune relance — ni carte coach ni carte focus. Le guide
+    // « que souhaites-tu faire ? » prend la place (pull, pas push) ; l'état et
+    // la sortie de pause vivent sur le bouton ⏸ de l'en-tête.
+    if (_schedule?.unavailableAt(now) == true) {
+      return _buildEmpty(context, cs, now);
+    }
     final focus = _focusBlock(now);
     return focus != null
         ? _buildFocusIdle(context, cs, focus, now)

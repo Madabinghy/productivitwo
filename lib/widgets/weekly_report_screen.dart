@@ -36,6 +36,13 @@ class _WeeklyReportScreenState extends State<WeeklyReportScreen> {
     _decisionStatus = r.decisionStatus;
     _weekModeChosen = r.weekModeChosen;
     _declared = Map.of(r.declaredAnswers);
+    // « Lu » devient un fait à la première ouverture : le teaser du dimanche
+    // soir se tait, la carte coach reprend son cours (l'objet est partagé avec
+    // l'appelant — pas de refetch nécessaire).
+    if (r.readAt == null) {
+      r.readAt = DateTime.now();
+      _sync.markWeeklyReportRead(r.weekStart);
+    }
   }
 
   Future<void> _answerDeclared(String key, bool value) async {
