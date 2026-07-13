@@ -2749,6 +2749,12 @@ class _AppRootState extends State<AppRoot>
             return;
           }
         }
+        // Routine minutée SANS activité liée : décompte direct en un tap —
+        // la routine se coche à la fin (micro-routines : 1 min suffit).
+        if (act != null && act.isHabit && (act.timerMin ?? 0) > 0) {
+          _startRoutineTimer(act);
+          return;
+        }
         // Routine sans minuteur → chrono sur l'activité liée si elle existe.
         if (act != null && act.isHabit) {
           final linkedId = (act.linkedActivityId ?? '').trim();
@@ -3894,9 +3900,12 @@ class _AppRootState extends State<AppRoot>
         ? null
         : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
     final minutes = r.timerMin ?? 0;
-    if (linked == null || minutes <= 0) return;
-    logic.start(linked.id);
-    _startCountdown(minutes, linked.name, routineId: r.id);
+    if (minutes <= 0) return;
+    // Sans activité liée, le décompte tourne sur la routine elle-même —
+    // micro-routine (1 min : vitamines, verre d'eau) cochée à la fin.
+    final target = linked ?? r;
+    logic.start(target.id);
+    _startCountdown(minutes, target.name, routineId: r.id);
     setState(() => _tab = _Tab.maintenant);
   }
 
@@ -3957,7 +3966,7 @@ class _AppRootState extends State<AppRoot>
     final linked = linkedId.isEmpty
         ? null
         : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
-    final canTimer = linked != null && (r.timerMin ?? 0) > 0;
+    final canTimer = (r.timerMin ?? 0) > 0;
     await showModalBottomSheet<void>(
       context: sheetCtx,
       showDragHandle: true,
@@ -3978,7 +3987,9 @@ class _AppRootState extends State<AppRoot>
               ListTile(
                 leading: const Icon(Icons.play_circle_outline),
                 title: Text('Démarrer le minuteur (${r.timerMin} min)'),
-                subtitle: Text('Sur « ${linked.name} »'),
+                subtitle: Text(linked != null
+                    ? 'Sur « ${linked.name} »'
+                    : 'cochée à la fin du décompte'),
                 onTap: () {
                   Navigator.pop(ctx);
                   Navigator.pop(sheetCtx); // ferme aussi le lanceur
@@ -4047,11 +4058,11 @@ class _AppRootState extends State<AppRoot>
     final linked = linkedId.isEmpty
         ? null
         : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
-    if (linked == null) {
+    final hasTimer = (r.timerMin ?? 0) > 0;
+    if (linked == null && !hasTimer) {
       return _freqPill(logic.effectiveHabitFreq(r), cs);
     }
     final accent = dColor ?? cs.primary;
-    final hasTimer = (r.timerMin ?? 0) > 0;
 
     Widget btn(IconData icon, String tooltip, VoidCallback onTap) {
       return Tooltip(
@@ -4075,13 +4086,14 @@ class _AppRootState extends State<AppRoot>
       mainAxisSize: MainAxisSize.min,
       children: [
         // Lancement temps (chrono libre sur l'activité liée)
-        btn(Icons.play_arrow_rounded, 'Démarrer le chrono sur « ${linked.name} »',
-            () {
-          logic.start(linked.id);
-          logic.rev.value++;
-          Navigator.pop(sheetCtx); // ferme le lanceur
-          setState(() => _tab = _Tab.maintenant);
-        }),
+        if (linked != null)
+          btn(Icons.play_arrow_rounded,
+              'Démarrer le chrono sur « ${linked.name} »', () {
+            logic.start(linked.id);
+            logic.rev.value++;
+            Navigator.pop(sheetCtx); // ferme le lanceur
+            setState(() => _tab = _Tab.maintenant);
+          }),
         // Lancement minuteur (si réglé)
         if (hasTimer)
           btn(Icons.timer_outlined, 'Démarrer le minuteur (${r.timerMin} min)',
