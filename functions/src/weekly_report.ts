@@ -26,8 +26,10 @@ export type WeeklyFacts = {
   domains: Array<{
     domainId: string; name: string; intention: string;
     // unit : "seances" (metric sessions*) ou "h" (metric heures/minutes —
-    // done/target exprimés en heures, cible journalière ramenée à la semaine).
-    vitals: Array<{ label: string; done: number; target: number; unit?: string }>;
+    // done/target exprimés en heures, cible journalière ramenée à la semaine ;
+    // avgPerDay = réalisé moyen RÉEL par jour, pour que le narratif ne confonde
+    // jamais le label de la cible avec une mesure).
+    vitals: Array<{ label: string; done: number; target: number; unit?: string; avgPerDay?: number }>;
     // Heures réellement logguées sur les activités du domaine cette semaine —
     // TOUJOURS présent : même sans métrique vitale mesurable, le temps tracké
     // du domaine existe et le narratif ne peut pas prétendre le contraire.
@@ -195,7 +197,7 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
       }
       continue;
     }
-    const vitals: Array<{ label: string; done: number; target: number; unit?: string }> = [];
+    const vitals: Array<{ label: string; done: number; target: number; unit?: string; avgPerDay?: number }> = [];
     for (const v of ((d.vitalMinimum as Array<Record<string, unknown>>) ?? [])) {
       const metric = String(v.metric ?? "").toLowerCase();
       const target = Number(v.target ?? 0);
@@ -222,6 +224,9 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
           done: Math.round((doneMin / 60) * 10) / 10,
           target: Math.round((weekTargetMin / 60) * 10) / 10,
           unit: "h",
+          ...(String(v.period ?? "week") === "day"
+            ? { avgPerDay: Math.round((doneMin / 7 / 60) * 10) / 10 }
+            : {}),
         });
       }
       // autre métrique : pas mesurable ici → omise (jamais de chiffre inventé)
@@ -301,7 +306,9 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
       `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
       (d.vitals.length > 0
         ? d.vitals
-            .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
+            .map((v) =>
+              `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} pour la cible « ${v.label} »` +
+              (v.avgPerDay !== undefined ? ` — réalisé RÉEL : ${v.avgPerDay} h/jour en moyenne` : ""))
             .join(" · ")
         : (d.hoursLogged > 0
             ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
@@ -325,6 +332,7 @@ export async function generateWeeklyReport(uid: string, apiKey: string, weekStar
     system: [
       `Tu rédiges le RAPPORT HEBDO de Productivitwo à partir de FAITS déjà calculés (tu n'inventes AUCUN chiffre).`,
       `Ton : direct, factuel, jamais de culpabilité rétroactive. Ce qui a tenu compte autant que ce qui a sauté.`,
+      `⚠️ Les libellés des minimums vitaux (ex. « 7 h / nuit ») décrivent la CIBLE, jamais le réalisé. Le réalisé est le chiffre done (et le « réalisé RÉEL … h/jour » quand il est fourni). Ne présente JAMAIS un libellé de cible comme une mesure.`,
       ...(short
         ? [
             ``,
