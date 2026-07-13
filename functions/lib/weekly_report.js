@@ -27,7 +27,7 @@ function isoWeekOf(dateYmd) {
 }
 // ── Agrégats déterministes ────────────────────────────────────────────────────
 async function buildWeeklyFacts(uid, weekStart) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0;
     const days = [];
     for (let i = 0; i < 7; i++) {
         const d = new Date(`${weekStart}T12:00:00Z`);
@@ -182,21 +182,18 @@ async function buildWeeklyFacts(uid, weekStart) {
                 const weekTargetMin = (String((_u = v.period) !== null && _u !== void 0 ? _u : "week") === "day" ? target * 7 : target) *
                     (isHours ? 60 : 1);
                 const doneMin = (_v = minutesByDomain.get(doc.id)) !== null && _v !== void 0 ? _v : 0;
-                vitals.push({
-                    label: String((_w = v.label) !== null && _w !== void 0 ? _w : ""),
-                    done: Math.round((doneMin / 60) * 10) / 10,
-                    target: Math.round((weekTargetMin / 60) * 10) / 10,
-                    unit: "h",
-                });
+                vitals.push(Object.assign({ label: String((_w = v.label) !== null && _w !== void 0 ? _w : ""), done: Math.round((doneMin / 60) * 10) / 10, target: Math.round((weekTargetMin / 60) * 10) / 10, unit: "h" }, (String((_x = v.period) !== null && _x !== void 0 ? _x : "week") === "day"
+                    ? { avgPerDay: Math.round((doneMin / 7 / 60) * 10) / 10 }
+                    : {})));
             }
             // autre métrique : pas mesurable ici → omise (jamais de chiffre inventé)
         }
         domains.push({
             domainId: doc.id,
-            name: String((_x = d.name) !== null && _x !== void 0 ? _x : ""),
-            intention: String((_y = d.intention) !== null && _y !== void 0 ? _y : ""),
+            name: String((_y = d.name) !== null && _y !== void 0 ? _y : ""),
+            intention: String((_z = d.intention) !== null && _z !== void 0 ? _z : ""),
             vitals,
-            hoursLogged: Math.round((((_z = minutesByDomain.get(doc.id)) !== null && _z !== void 0 ? _z : 0) / 60) * 10) / 10,
+            hoursLogged: Math.round((((_0 = minutesByDomain.get(doc.id)) !== null && _0 !== void 0 ? _0 : 0) / 60) * 10) / 10,
         });
     }
     return {
@@ -261,7 +258,8 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
         ...facts.domains.map((d) => `Domaine ${d.name} — intention « ${d.intention} » — ${d.hoursLogged} h logguées cette semaine — vital : ` +
             (d.vitals.length > 0
                 ? d.vitals
-                    .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} ${v.label}`)
+                    .map((v) => `${v.done}/${v.target}${v.unit === "h" ? " h" : ""} pour la cible « ${v.label} »` +
+                    (v.avgPerDay !== undefined ? ` — réalisé RÉEL : ${v.avgPerDay} h/jour en moyenne` : ""))
                     .join(" · ")
                 : (d.hoursLogged > 0
                     ? "pas de métrique vitale mesurable, MAIS le temps du domaine est bien tracké (voir heures ci-avant) — ne dis jamais qu'il n'y a aucune donnée"
@@ -283,6 +281,7 @@ async function generateWeeklyReport(uid, apiKey, weekStartArg) {
         system: [
             `Tu rédiges le RAPPORT HEBDO de Productivitwo à partir de FAITS déjà calculés (tu n'inventes AUCUN chiffre).`,
             `Ton : direct, factuel, jamais de culpabilité rétroactive. Ce qui a tenu compte autant que ce qui a sauté.`,
+            `⚠️ Les libellés des minimums vitaux (ex. « 7 h / nuit ») décrivent la CIBLE, jamais le réalisé. Le réalisé est le chiffre done (et le « réalisé RÉEL … h/jour » quand il est fourni). Ne présente JAMAIS un libellé de cible comme une mesure.`,
             ...(short
                 ? [
                     ``,
