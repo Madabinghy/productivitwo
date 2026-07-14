@@ -125,6 +125,8 @@ class _FocusViewState extends State<FocusView> {
   Set<String> _scheduledStepTaskIds = const {};
   // « Plus tard » sur la question micro-cible — silence pour la session.
   bool _microTargetDismissed = false;
+  // Renégociation faite → la carte dérive respire 45 min (pas de rafale).
+  DateTime? _driftSnoozeUntil;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -924,6 +926,8 @@ class _FocusViewState extends State<FocusView> {
         nextSessionLabel: _nextSessionLabel,
         nudgeDismissed: _nudgeDismissed,
         microTargetDismissed: _microTargetDismissed,
+        driftSnoozed:
+            _driftSnoozeUntil != null && now.isBefore(_driftSnoozeUntil!),
         challenge: _challengeProposal(now),
         // Gantt invisible : micro-action du projet le plus urgent — la carte
         // ne la sort que quand rien d'autre n'a la priorité.
@@ -963,14 +967,22 @@ class _FocusViewState extends State<FocusView> {
               : () => setState(() => _unplannedDismissed = true),
       onLaunch: widget.onLaunchScheduledBlock,
       // Renégocier (12a) : trois issues générées depuis le réel — réduire /
-      // déplacer / reporter. Remplace l'ouverture de fiche v1.
-      onRenegotiate: (block) => showRenegotiateSheet(
-        context,
-        logic: logic,
-        block: block,
-        date: _schedDate,
-        onLaunch: widget.onLaunchScheduledBlock,
-      ),
+      // déplacer / reporter. Remplace l'ouverture de fiche v1. Au retour, la
+      // carte dérive respire 45 min : on vient de trier, pas de rafale
+      // « dérive suivante » (le check-in rattrape ce qui doit l'être).
+      onRenegotiate: (block) async {
+        await showRenegotiateSheet(
+          context,
+          logic: logic,
+          block: block,
+          date: _schedDate,
+          onLaunch: widget.onLaunchScheduledBlock,
+        );
+        if (mounted) {
+          setState(() => _driftSnoozeUntil =
+              DateTime.now().add(const Duration(minutes: 45)));
+        }
+      },
       onOpenDayReview: widget.onOpenDayReview,
       onAdvance: (target) => setState(() => _coachAdvancedTo = target),
       onPlanDay: _openPlanToday,
