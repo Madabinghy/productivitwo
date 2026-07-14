@@ -22,6 +22,7 @@ enum CoachMomentType {
   weekly, // dimanche soir : teaser du rapport hebdo (maquette 16a)
   defineNudge, // domaines absents/nommés → l'app invite (Partie D, 21a-21c)
   chain, // un chrono vient de finir → « Et ensuite ? » (enchaînement immédiat)
+  idealHour, // routine quotidienne juste après son heure habituelle, pas cochée
   hidden,
 }
 
@@ -243,13 +244,16 @@ CoachMoment computeCoachMoment(
         : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
+        _idealHourMoment(now, st, blocks) ??
         _afternoonMoment(now, st, blocks, recentSessions, challenge: chal);
   } else if (minutes >= 11 * 60 + 45) {
     clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
-    clock = _morningMoment(now, st, blocks);
+    clock = _idealHourMoment(now, st, blocks) ??
+        _morningMoment(now, st, blocks);
   } else {
-    clock = _wakeMoment(now, st, blocks, yesterday, today);
+    clock = _idealHourMoment(now, st, blocks) ??
+        _wakeMoment(now, st, blocks, yesterday, today);
   }
 
   // Avance manuelle : ne s'applique que si elle est PLUS LOIN dans la journée
@@ -282,6 +286,8 @@ int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.midday => 2,
       CoachMomentType.drift => 3,
       CoachMomentType.afternoon => 3,
+      CoachMomentType.idealHour => 3, // seule la soirée passe devant
+
       CoachMomentType.evening => 4,
       CoachMomentType.weekly => 4,
       CoachMomentType.defineNudge => 5, // hors déroulé — jamais dépassé
@@ -1173,6 +1179,60 @@ CoachAction _fillerAction(DateTime now, GapFiller f) => f.durationMin != null
             title: f.routine.name,
             category: 'routine',
             activityId: f.routine.id));
+
+// ── « C'était ton heure » (programme idéal) ──────────────────────────────────
+//
+// Une routine quotidienne dont l'heure habituelle MESURÉE vient de passer
+// (10 à 90 min), pas encore tenue aujourd'hui, sans bloc pending qui la
+// porte : la carte le signale pendant que le moment est encore rattrapable.
+// Avant l'heure, la routine viendra d'elle-même ; bien après, les combleurs
+// prennent le relais. Plusieurs candidates → la plus récemment passée.
+
+CoachMoment? _idealHourMoment(
+    DateTime now, AppState st, List<ScheduleBlock> blocks) {
+  final nowMin = now.hour * 60 + now.minute;
+  final planned = {
+    for (final b in blocks)
+      if (b.status == 'pending' && b.activityId != null) b.activityId!
+  };
+  ({Activity a, int tm, int delta})? best;
+  for (final a in st.activities) {
+    if (a.deleted || !a.isHabit || a.effHabitFreq != HabitFreq.daily) continue;
+    if (planned.contains(a.id)) continue;
+    if (st.habitHits.any((h) => h.habitId == a.id && _sameDay(h.ts, now))) {
+      continue;
+    }
+    final tm = typicalMinuteOf(a.id, st.habitHits, now);
+    if (tm == null) continue;
+    final delta = nowMin - tm;
+    if (delta < 10 || delta > 90) continue;
+    if (best == null || delta < best.delta) best = (a: a, tm: tm, delta: delta);
+  }
+  if (best == null) return null;
+  final a = best.a;
+  final streak = streakOf(a.id, st.habitHits, now);
+  final dur = (a.timerMin ?? 0) > 0 ? a.timerMin : null;
+  final suffix =
+      streak >= 3 ? ' $streak jours d\'affilée, on continue ?' : '';
+  return CoachMoment(
+    type: CoachMomentType.idealHour,
+    tagLabel: 'ORION · C\'ÉTAIT TON HEURE',
+    title: a.name,
+    message:
+        'D\'habitude tu fais « ${a.name} » vers ${_minToFr(best.tm)} — il est '
+        '${_minToFr(nowMin)} et rien n\'est coché. Encore le bon moment.$suffix',
+    actions: [
+      _fillerAction(
+          now,
+          GapFiller(
+              routine: a,
+              durationMin: dur,
+              typicalMinute: best.tm,
+              usualTime: true,
+              streakDays: streak)),
+    ],
+  );
+}
 
 /// « dans 238 min » est illisible : sous l'heure on parle en minutes, au-delà
 /// en heures (« dans 3 h 58 »). 0 ou moins = « maintenant ».

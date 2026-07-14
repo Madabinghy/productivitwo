@@ -413,7 +413,9 @@ export const proposeDayPlan = onRequest(
 
     try {
       // ── Contexte ────────────────────────────────────────────────────────────
-      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, metaSnap] = await Promise.all([
+      const hitsCutoff = new Date(Date.now() - 28 * 86400000)
+        .toISOString().slice(0, 19);
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, metaSnap, hitsSnap] = await Promise.all([
         db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
         db.doc(`users/${uid}/daily_schedules/${target}`).get(),
         db.collection(`users/${uid}/activities`).get(),
@@ -423,6 +425,8 @@ export const proposeDayPlan = onRequest(
         db.collection(`users/${uid}/domains`).get(),
         db.collection(`users/${uid}/artifacts`).get(),
         db.doc(`users/${uid}/data/meta`).get(),
+        // Hits de routines (28 j) → heures habituelles mesurées (programme idéal).
+        db.collection(`users/${uid}/habitHits`).where("ts", ">=", hitsCutoff).get(),
       ]);
 
       // ── Artefacts : entrées prévues pour la date cible + offSlots ───────────
@@ -532,16 +536,61 @@ export const proposeDayPlan = onRequest(
       });
       const dayReason = (refData.dayReason as string) ?? null;
 
-      const targetBlocks = targetSnap.exists
-        ? (((targetSnap.data()?.blocks as Array<Record<string, unknown>>) ?? [])
-            .filter((b) => b.status !== "deleted"))
+      // Tous statuts confondus : un bloc supprimé/sauté du jour cible compte
+      // comme « déjà couvert » pour le programme idéal (ne pas recréer).
+      const targetBlocksAll = targetSnap.exists
+        ? (((targetSnap.data()?.blocks as Array<Record<string, unknown>>) ?? []))
         : [];
+      const targetBlocks = targetBlocksAll.filter((b) => b.status !== "deleted");
 
       const acts = actsSnap.docs
         .map((d) => d.data() as Record<string, unknown>)
         .filter((a) => a.deleted !== true);
+
+      // ── Programme idéal : heure habituelle MESURÉE par routine (médiane des
+      // hits sur 28 j, hits nocturnes < 5 h rattachés à la journée vécue,
+      // < 3 hits = pas de fait). Le ts Flutter est un ISO local → l'heure se
+      // lit directement dans la chaîne.
+      const hmOf = (min: number) =>
+        `${String(Math.floor((min % 1440) / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+      const typicalByHabit = new Map<string, string>();
+      {
+        const byHabit = new Map<string, number[]>();
+        for (const d of hitsSnap.docs) {
+          const v = d.data() as Record<string, unknown>;
+          const ts = String(v.ts ?? "");
+          const habitId = String(v.habitId ?? "");
+          if (!habitId || ts.length < 16) continue;
+          let m = parseInt(ts.slice(11, 13), 10) * 60 + parseInt(ts.slice(14, 16), 10);
+          if (isNaN(m)) continue;
+          if (m < 5 * 60) m += 24 * 60;
+          byHabit.set(habitId, [...(byHabit.get(habitId) ?? []), m]);
+        }
+        byHabit.forEach((mins, habitId) => {
+          if (mins.length < 3) return;
+          mins.sort((a, b) => a - b);
+          typicalByHabit.set(habitId, hmOf(mins[Math.floor(mins.length / 2)] % 1440));
+        });
+      }
+      const isDailyHabit = (a: Record<string, unknown>) =>
+        a.type === "habit" && (a.habitFreq === 0 || a.habitFreq === "daily");
+      // Hits du jour CIBLE (une routine déjà tenue est morte pour ce jour).
+      const doneOnTarget = new Set<string>();
+      for (const d of hitsSnap.docs) {
+        const v = d.data() as Record<string, unknown>;
+        if (String(v.ts ?? "").slice(0, 10) === target) {
+          doneOnTarget.add(String(v.habitId ?? ""));
+        }
+      }
+
       const routineList = acts.filter((a) => a.type === "habit")
-        .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
+        .map((a) =>
+          `  · "${a.name}" (activityId: ${a.id})` +
+          (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
+          (typicalByHabit.has(String(a.id))
+            ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
+            : ""))
+        .join("\n") || "  Aucune.";
       const activityList = acts.filter((a) => a.type !== "habit")
         .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
 
@@ -597,6 +646,7 @@ export const proposeDayPlan = onRequest(
           : `3. Charge réaliste : ne pas dépasser la veille.`,
         `4. Réutilise les activityId/projectId/taskId existants ci-dessous (chrono ciblé) — jamais d'id inventé.`,
         `4bis. Un bloc = UNE SEULE routine/activité, avec SON activityId — ne regroupe JAMAIS plusieurs routines dans un bloc (« Ménage + hygiène » interdit : ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs consécutifs.`,
+        `4ter. PROGRAMME IDÉAL : pose chaque routine QUOTIDIENNE à son heure habituelle quand elle est indiquée (c'est l'heure réelle mesurée de l'utilisateur) — celles que tu omets seront ajoutées automatiquement.`,
         `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
         ``,
         ...(domainLines.length > 0
@@ -739,17 +789,56 @@ export const proposeDayPlan = onRequest(
           : b;
       };
 
+      const outBlocks = (proposal.blocks ?? []).filter((b) => {
+        if (!/^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) || !b.title) return false;
+        // offSlots = contrainte dure, appliquée aussi en déterministe (le
+        // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
+        const hour = parseInt(String(b.startTime).slice(0, 2), 10);
+        const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
+        return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
+      }).flatMap(splitCombined).map(linkByTitle);
+
+      // Programme idéal — garantie déterministe : chaque routine QUOTIDIENNE
+      // a son bloc (le prompt le demande, mais le LLM en oublie). À son heure
+      // habituelle MESURÉE quand on la connaît, sinon en cascade après le
+      // lever. Sauf : déjà tenue le jour cible, déjà couverte (proposition ou
+      // blocs existants), ou semaine minimale/rush (charge volontairement
+      // réduite — rien ne s'ajoute).
+      if (!weekMode) {
+        const covered = new Set<string>();
+        for (const b of outBlocks) if (b.activityId) covered.add(String(b.activityId));
+        for (const b of targetBlocksAll) {
+          if (b.activityId) covered.add(String(b.activityId));
+        }
+        let fallbackMin = Math.max(toMin(wake) + 90, 9 * 60);
+        for (const a of acts) {
+          if (!isDailyHabit(a)) continue;
+          const id = String(a.id);
+          if (covered.has(id) || doneOnTarget.has(id)) continue;
+          const typical = typicalByHabit.get(id);
+          const startTime = typical ?? toHm(fallbackMin);
+          if (!typical) fallbackMin += 30;
+          const timerMin = Number(a.timerMin ?? 0);
+          outBlocks.push({
+            startTime,
+            durationMin: timerMin > 0 ? timerMin : 15,
+            title: String(a.name),
+            category: "routine",
+            activityId: id,
+            projectId: null,
+            taskId: null,
+            subtitle: typical
+              ? "programme idéal — ton heure habituelle"
+              : "programme idéal",
+            reproposed: false,
+          });
+        }
+      }
+
       res.status(200).json({
         message: proposal.message ?? "",
         sources: proposal.sources ?? [],
-        blocks: repackAfterWake((proposal.blocks ?? []).filter((b) => {
-          if (!/^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) || !b.title) return false;
-          // offSlots = contrainte dure, appliquée aussi en déterministe (le
-          // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
-          const hour = parseInt(String(b.startTime).slice(0, 2), 10);
-          const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-          return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
-        }).flatMap(splitCombined).map(linkByTitle)),
+        blocks: repackAfterWake(outBlocks),
         refDate,
         dayReason,
       });
