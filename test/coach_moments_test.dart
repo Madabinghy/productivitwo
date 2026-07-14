@@ -1807,6 +1807,73 @@ void main() {
           isEmpty);
     });
 
+    test(
+        'routine en dérive : le temps sur l\'activité LIÉE compte, la coche '
+        'du jour aussi', () {
+      final now = DateTime(2026, 7, 7, 16, 0);
+      final st = AppState(
+        domains: [
+          Domain(
+              name: 'Spiritualité',
+              definitionStatus: 'active',
+              intention: 'tenir le rythme'),
+        ],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Prier',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              linkedActivityId: 'a-priere'),
+          Activity(id: 'a-priere', name: 'Prière', domainId: 'd1'),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      final sched = _sched(today, [
+        _block(
+            startTime: '08:30',
+            durationMin: 20,
+            title: 'Prier',
+            activityId: 'r1'),
+      ]);
+      // 9 min logguées sur l'activité-temps liée → PAS de dérive.
+      final prayed = [
+        Session(
+            activityId: 'a-priere',
+            startAt: DateTime(2026, 7, 7, 10, 55),
+            endAt: DateTime(2026, 7, 7, 11, 4)),
+      ];
+      final m1 = computeCoachMoment(now, st, sched, null, prayed);
+      expect(m1.type, isNot(CoachMomentType.drift));
+      // Routine cochée aujourd'hui → pas de dérive non plus.
+      st.habitHits
+          .add(HabitHit(habitId: 'r1', ts: DateTime(2026, 7, 7, 9, 0)));
+      final m2 = computeCoachMoment(now, st, sched, null, []);
+      expect(m2.type, isNot(CoachMomentType.drift));
+      // Rien du tout → la dérive reste légitime.
+      st.habitHits.clear();
+      final m3 = computeCoachMoment(now, st, sched, null, []);
+      expect(m3.type, CoachMomentType.drift);
+    });
+
+    test('renégociation faite → la dérive respire (pas de rafale)', () {
+      final now = DateTime(2026, 7, 7, 16, 0);
+      // Deux blocs liés en dérive : normalement la carte prend le premier.
+      final sched = _sched(today, [
+        _block(startTime: '08:30', durationMin: 20, title: 'Prier',
+            activityId: 'a1'),
+        _block(startTime: '09:00', durationMin: 30, title: 'Revue',
+            activityId: 'a2'),
+      ]);
+      final normal = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(normal.type, CoachMomentType.drift);
+      final snoozed = computeCoachMoment(now, _st([]), sched, null, [],
+          driftSnoozed: true);
+      expect(snoozed.type, isNot(CoachMomentType.drift));
+    });
+
     test('après-midi : prochain bloc à > 90 min → pas de CTA Lancer', () {
       final now = DateTime(2026, 7, 7, 15, 0);
       final far = computeCoachMoment(

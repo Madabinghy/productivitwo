@@ -2325,6 +2325,27 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
+  /// Renommage d'un bloc (timeline) — n'écrit que le titre.
+  Future<void> updateBlockTitle(
+      String date, String blockId, String title) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    for (final b in blocks) {
+      if (b['id'] == blockId) {
+        b['title'] = title;
+        break;
+      }
+    }
+    await ref.update({'blocks': blocks});
+  }
+
   /// Mode soirée réversible (23c) : « Terminer l'après-midi » ↔ « Revenir ».
   /// N'écrit QUE le mode — les blocs ne sont jamais touchés par la bascule.
   Future<void> setDayMode(String date, String mode) async {

@@ -154,6 +154,10 @@ CoachMoment computeCoachMoment(
   String? nextSessionLabel,
   bool nudgeDismissed = false,
   bool microTargetDismissed = false,
+  // Une renégociation vient d'être faite : la carte dérive RESPIRE (~45 min,
+  // géré par l'appelant) — pas de rafale « dérive suivante » juste après
+  // avoir trié la précédente (constaté sur build). Le check-in rattrape tout.
+  bool driftSnoozed = false,
   ChallengeProposal? challenge,
   GanttMicroAction? ganttAction,
 }) {
@@ -253,7 +257,7 @@ CoachMoment computeCoachMoment(
         ? _weeklyTeaser(weeklyReport)
         : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
   } else if (minutes >= 14 * 60) {
-    clock = _driftMoment(now, blocks, sessionsToday) ??
+    clock = (driftSnoozed ? null : _driftMoment(now, st, blocks, sessionsToday)) ??
         _idealHourMoment(now, st, blocks) ??
         _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
@@ -647,8 +651,8 @@ _MealInfo? _todayMeal(DateTime now, List<Artifact> artifacts) {
 
 /// Retourne un moment `drift` si un bloc source est posé depuis > 45 min avec
 /// 0 min logguée, sinon null.
-CoachMoment? _driftMoment(
-    DateTime now, List<ScheduleBlock> blocks, List<Session> sessionsToday) {
+CoachMoment? _driftMoment(DateTime now, AppState st,
+    List<ScheduleBlock> blocks, List<Session> sessionsToday) {
   ScheduleBlock? drifting;
   DateTime? driftStart;
   for (final b in blocks) {
@@ -656,7 +660,30 @@ CoachMoment? _driftMoment(
     if (b.activityId == null && b.taskId == null) continue;
     final start = _blockStart(b, now);
     if (now.difference(start).inMinutes <= 45) continue;
-    final logged = _blockLoggedMin(b, sessionsToday, start, now);
+    // Bloc-routine : l'engagement se tient AUSSI par le temps loggué sur
+    // l'activité-temps LIÉE (« Prier » routine ↔ « Prière » activité —
+    // constaté sur build : 9 min priées, carte à « 0 min logguée »), et par
+    // une COCHE de la routine aujourd'hui — dans les deux cas, pas de dérive.
+    Activity? act;
+    for (final a in st.activities) {
+      if (a.id == b.activityId) {
+        act = a;
+        break;
+      }
+    }
+    final extraIds = <String>{
+      if (act != null &&
+          act.isHabit &&
+          (act.linkedActivityId ?? '').trim().isNotEmpty)
+        act.linkedActivityId!.trim(),
+    };
+    if (act != null &&
+        act.isHabit &&
+        st.habitHits.any((h) => h.habitId == act!.id && _sameDay(h.ts, now))) {
+      continue; // routine tenue aujourd'hui — l'engagement est honoré
+    }
+    final logged =
+        _blockLoggedMin(b, sessionsToday, start, now, extraIds: extraIds);
     if (logged > 0) continue;
     if (driftStart == null || start.isBefore(driftStart)) {
       drifting = b;
@@ -1618,10 +1645,12 @@ int? _morningRank(
 }
 
 int _blockLoggedMin(ScheduleBlock b, List<Session> sessions, DateTime start,
-    DateTime now) {
+    DateTime now,
+    {Set<String> extraIds = const {}}) {
   var total = 0;
   for (final s in sessions) {
     final matches = (b.activityId != null && s.activityId == b.activityId) ||
+        extraIds.contains(s.activityId) ||
         (b.taskId != null && s.taskId == b.taskId);
     if (!matches) continue;
     total += _overlapMin(s.startAt, s.endAt ?? now, start, now);
