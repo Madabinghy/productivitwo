@@ -1055,15 +1055,14 @@ class _FocusViewState extends State<FocusView> {
         final day = DateTime.now();
         final tgt = logic.activeHabitTarget(a);
         if (tgt > 0 && logic.habitValueOn(a.id, day) >= tgt) return;
-        // Routine COMPTÉE (palier > 1 : pompes, tractions…) → le ✓ ne vaut
-        // pas +1 aveugle : sheet cible préremplie + boutons − / +.
+        // Routine COMPTÉE (palier > 1 : pompes, tractions, verres d'eau…) →
+        // le ✓ ne vaut pas +1 aveugle : compteur du jour + boutons − / +.
         if (tgt > 1) {
-          final n = await showHabitCountSheet(context,
+          final total = await showHabitCountSheet(context,
               logic: logic, activity: a);
-          if (n == null || !context.mounted) return;
-          final total = logic.habitValueOn(a.id, DateTime.now());
+          if (total == null || !context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('💪 ${a.name} : +$n — $total/$tgt aujourd\'hui'),
+            content: Text('💪 ${a.name} : $total/$tgt aujourd\'hui'),
             duration: const Duration(seconds: 2),
           ));
           return;

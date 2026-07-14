@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 
-/// Saisie directe d'une routine COMPTÉE (Pompes, Tractions… palier > 1).
+/// Saisie directe d'une routine COMPTÉE (Pompes, Tractions, verres d'eau…
+/// palier > 1).
 ///
-/// Le ✓ d'une routine à cible 1 coche ; une routine comptée mérite mieux :
-/// le sheet propose la CIBLE restante du jour préremplie (palier − déjà fait),
-/// boutons − / + pour ajuster au réel, validation = un seul incrément.
-/// Retourne le nombre loggué (null si annulé). 0 LLM.
+/// Compteur ABSOLU du jour : le gros chiffre = ce qui est déjà fait
+/// aujourd'hui, le user ajuste avec − / + en fonction de ce qu'il vient de
+/// faire (appui long = défilement rapide), la cible du palier reste affichée.
+/// Validation = un seul incrément du delta (corrections à la baisse permises).
+/// Retourne le nouveau total du jour (null si annulé ou inchangé). 0 LLM.
 Future<int?> showHabitCountSheet(
   BuildContext context, {
   required AppLogic logic,
@@ -40,26 +44,48 @@ class _HabitCountSheet extends StatefulWidget {
 
 class _HabitCountSheetState extends State<_HabitCountSheet> {
   late int _count;
+  Timer? _repeat;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    // Proposition = ce qui reste pour tenir le palier du jour (au moins 1).
-    final remaining = widget.target - widget.done;
-    _count = remaining >= 1 ? remaining : 1;
+    _count = widget.done; // le réel du jour — le user ajuste depuis là
+  }
+
+  @override
+  void dispose() {
+    _repeat?.cancel();
+    super.dispose();
   }
 
   void _bump(int delta) {
-    setState(() => _count = (_count + delta).clamp(1, 9999));
+    setState(() => _count = (_count + delta).clamp(0, 9999));
+  }
+
+  // Appui long : défilement rapide (utile pour poser une série de 12 pompes).
+  void _startRepeat(int delta) {
+    _repeat?.cancel();
+    _repeat = Timer.periodic(
+        const Duration(milliseconds: 110), (_) => _bump(delta));
+  }
+
+  void _stopRepeat() {
+    _repeat?.cancel();
+    _repeat = null;
   }
 
   Future<void> _validate() async {
     if (_saving) return;
+    final delta = _count - widget.done;
+    if (delta == 0) {
+      Navigator.pop(context);
+      return;
+    }
     setState(() => _saving = true);
     final now = DateTime.now();
     widget.logic
-        .incHabit(widget.activity.id, _count, DateTime(now.year, now.month, now.day));
+        .incHabit(widget.activity.id, delta, DateTime(now.year, now.month, now.day));
     if (mounted) Navigator.pop(context, _count);
   }
 
@@ -67,17 +93,22 @@ class _HabitCountSheetState extends State<_HabitCountSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final a = widget.activity;
-    final after = widget.done + _count;
-    final reached = widget.target > 0 && after >= widget.target;
+    final reached = widget.target > 0 && _count >= widget.target;
 
-    Widget stepBtn(IconData icon, VoidCallback? onTap) => SizedBox(
-          width: 56,
-          height: 56,
-          child: FilledButton.tonal(
-            onPressed: onTap,
-            style: FilledButton.styleFrom(
-                padding: EdgeInsets.zero, shape: const CircleBorder()),
-            child: Icon(icon, size: 26),
+    Widget stepBtn(IconData icon, int delta, {bool enabled = true}) =>
+        GestureDetector(
+          onLongPressStart: enabled ? (_) => _startRepeat(delta) : null,
+          onLongPressEnd: (_) => _stopRepeat(),
+          onLongPressCancel: _stopRepeat,
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: FilledButton.tonal(
+              onPressed: enabled ? () => _bump(delta) : null,
+              style: FilledButton.styleFrom(
+                  padding: EdgeInsets.zero, shape: const CircleBorder()),
+              child: Icon(icon, size: 26),
+            ),
           ),
         );
 
@@ -93,9 +124,9 @@ class _HabitCountSheetState extends State<_HabitCountSheet> {
           const SizedBox(height: 3),
           Text(
             widget.target > 0
-                ? 'AUJOURD\'HUI : ${widget.done}/${widget.target}'
+                ? 'CIBLE DU JOUR : ${widget.target}'
                     '${a.finalTarget != null && a.finalTarget! > widget.target ? ' · CAP ${a.finalTarget}' : ''}'
-                : 'AUJOURD\'HUI : ${widget.done}',
+                : 'AUJOURD\'HUI',
             style: TextStyle(
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
@@ -106,27 +137,30 @@ class _HabitCountSheetState extends State<_HabitCountSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              stepBtn(Icons.remove_rounded, _count > 1 ? () => _bump(-1) : null),
+              stepBtn(Icons.remove_rounded, -1, enabled: _count > 0),
               SizedBox(
                 width: 110,
                 child: Text(
                   '$_count',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 44, fontWeight: FontWeight.w800, height: 1),
+                  style: TextStyle(
+                      fontSize: 44,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                      color: reached ? cs.primary : cs.onSurface),
                 ),
               ),
-              stepBtn(Icons.add_rounded, () => _bump(1)),
+              stepBtn(Icons.add_rounded, 1),
             ],
           ),
           const SizedBox(height: 8),
           Center(
             child: Text(
               reached
-                  ? '→ ${after}/${widget.target} — palier tenu ✓'
+                  ? '$_count/${widget.target} — palier tenu ✓'
                   : widget.target > 0
-                      ? '→ ${after}/${widget.target} aujourd\'hui'
-                      : '→ $after aujourd\'hui',
+                      ? '$_count/${widget.target} aujourd\'hui'
+                      : '$_count aujourd\'hui',
               style: TextStyle(
                   fontSize: 12.5, color: cs.onSurface.withOpacity(.6)),
             ),
@@ -137,7 +171,9 @@ class _HabitCountSheetState extends State<_HabitCountSheet> {
             child: FilledButton.icon(
               onPressed: _saving ? null : _validate,
               icon: const Icon(Icons.check_rounded),
-              label: Text('Valider +$_count'),
+              label: Text(_count == widget.done
+                  ? 'Fermer'
+                  : 'Valider ${_count - widget.done > 0 ? '+' : ''}${_count - widget.done}'),
             ),
           ),
         ],
