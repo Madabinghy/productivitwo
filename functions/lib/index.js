@@ -1379,7 +1379,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 else if (toolName === "sweep_inbox") {
                     const r = await (0, orion_inbox_1.processInboxToProjects)(uid, { force: true });
                     text = r
-                        ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) créé(s), ${r.appended} tâche(s) ajoutée(s), ${r.skipped} idée(s) laissée(s).`
+                        ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) proposé(s), ${r.appended} tâche(s) proposée(s), ${r.scheduled} défi(s) programmé(s) 🔥, ${r.skipped} idée(s) laissée(s).`
                         : "Routage indisponible (erreur LLM). Réessaie.";
                 }
                 else if (toolName === "propose_change") {
