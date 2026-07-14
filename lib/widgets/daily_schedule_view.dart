@@ -57,6 +57,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     return widget.date == today;
   }
 
+  Timer? _nowTick;
+
   @override
   void initState() {
     super.initState();
@@ -66,10 +68,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
       }
     });
+    // Le trait « maintenant » suit la minute (affichage seul, zéro écriture).
+    if (_isToday) {
+      _nowTick = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
   void dispose() {
+    _nowTick?.cancel();
     _sub?.cancel();
     super.dispose();
   }
@@ -339,14 +348,63 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (visible.isEmpty)
           _buildEmptyState(cs)
         else
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: visible.length,
-            itemBuilder: (context, i) =>
-                _buildBlock(context, cs, visible[i], key: ValueKey(visible[i].id)),
-          ),
+          Builder(builder: (context) {
+            // Trait « maintenant » (comme Calendar) : inséré à sa position
+            // chronologique — on voit d'un coup d'œil ce qui est derrière et
+            // ce qui vient. Aujourd'hui uniquement (demain n'a pas de présent).
+            final now = DateTime.now();
+            final nowMin = now.hour * 60 + now.minute;
+            int toMin(String hm) =>
+                (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
+                (int.tryParse(hm.substring(3, 5)) ?? 0);
+            var nowIndex =
+                _isToday ? visible.indexWhere((b) => toMin(b.startTime) > nowMin) : -1;
+            final nowAtEnd = _isToday && nowIndex == -1;
+            if (nowAtEnd) nowIndex = visible.length;
+            return Column(children: [
+              for (var i = 0; i < visible.length; i++) ...[
+                if (i == nowIndex) _nowLine(now),
+                _buildBlock(context, cs, visible[i],
+                    key: ValueKey(visible[i].id)),
+              ],
+              if (nowAtEnd) _nowLine(now),
+            ]);
+          }),
       ],
+    );
+  }
+
+  /// Le trait rouge « maintenant » — pastille heure + ligne, comme Calendar.
+  Widget _nowLine(DateTime now) {
+    const red = Color(0xFFE53935);
+    final hm =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 2),
+      child: Row(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: red,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(hm,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800)),
+        ),
+        Expanded(
+          child: Container(
+            height: 2,
+            margin: const EdgeInsets.only(left: 6),
+            decoration: BoxDecoration(
+              color: red,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
+      ]),
     );
   }
 
