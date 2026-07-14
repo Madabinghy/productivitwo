@@ -41,6 +41,9 @@ class CoachMomentCard extends StatelessWidget {
   // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
   final void Function(ScheduleBlock block)? onDefineSteps;
   final void Function(ScheduleBlock block)? onScheduleStep;
+  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
+  final void Function(ScheduleBlock block)? onKeepMicroTarget;
+  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const CoachMomentCard({
     super.key,
@@ -66,6 +69,8 @@ class CoachMomentCard extends StatelessWidget {
     this.onCheckRoutine,
     this.onDefineSteps,
     this.onScheduleStep,
+    this.onKeepMicroTarget,
+    this.onCalibrateTarget,
   });
 
   @override
@@ -109,6 +114,8 @@ class CoachMomentCard extends StatelessWidget {
               onCheckRoutine: onCheckRoutine,
               onDefineSteps: onDefineSteps,
               onScheduleStep: onScheduleStep,
+              onKeepMicroTarget: onKeepMicroTarget,
+              onCalibrateTarget: onCalibrateTarget,
             ),
     );
   }
@@ -138,6 +145,9 @@ class _Card extends StatelessWidget {
   // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
   final void Function(ScheduleBlock block)? onDefineSteps;
   final void Function(ScheduleBlock block)? onScheduleStep;
+  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
+  final void Function(ScheduleBlock block)? onKeepMicroTarget;
+  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const _Card({
     super.key,
@@ -163,6 +173,8 @@ class _Card extends StatelessWidget {
     this.onCheckRoutine,
     this.onDefineSteps,
     this.onScheduleStep,
+    this.onKeepMicroTarget,
+    this.onCalibrateTarget,
   });
 
   @override
@@ -283,6 +295,8 @@ class _Card extends StatelessWidget {
               onCheckRoutine: onCheckRoutine,
               onDefineSteps: onDefineSteps,
               onScheduleStep: onScheduleStep,
+              onKeepMicroTarget: onKeepMicroTarget,
+              onCalibrateTarget: onCalibrateTarget,
             ),
           ],
         ],
@@ -373,6 +387,9 @@ class _Actions extends StatelessWidget {
   // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
   final void Function(ScheduleBlock block)? onDefineSteps;
   final void Function(ScheduleBlock block)? onScheduleStep;
+  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
+  final void Function(ScheduleBlock block)? onKeepMicroTarget;
+  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const _Actions({
     required this.actions,
@@ -398,6 +415,8 @@ class _Actions extends StatelessWidget {
     this.onCheckRoutine,
     this.onDefineSteps,
     this.onScheduleStep,
+    this.onKeepMicroTarget,
+    this.onCalibrateTarget,
   });
 
   @override
@@ -451,6 +470,8 @@ class _Actions extends StatelessWidget {
       CoachActionKind.checkRoutine => Icons.check_rounded,
       CoachActionKind.defineSteps => Icons.checklist_rounded,
       CoachActionKind.scheduleStep => Icons.event_outlined,
+      CoachActionKind.keepMicroTarget => Icons.push_pin_outlined,
+      CoachActionKind.calibrateTarget => Icons.straighten_rounded,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -565,6 +586,14 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.scheduleStep:
         return a.block != null && onScheduleStep != null
             ? () => onScheduleStep!(a.block!)
+            : null;
+      case CoachActionKind.keepMicroTarget:
+        return a.block != null && onKeepMicroTarget != null
+            ? () => onKeepMicroTarget!(a.block!)
+            : null;
+      case CoachActionKind.calibrateTarget:
+        return a.block != null && onCalibrateTarget != null
+            ? () => onCalibrateTarget!(a.block!)
             : null;
     }
   }

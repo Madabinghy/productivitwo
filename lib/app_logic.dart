@@ -1800,6 +1800,10 @@ class AppLogic {
     for (final a in state.activeActivities.where((x) => !x.isHabit)) {
       // Épinglée à la main = vérité utilisateur — la calibration n'y touche pas.
       if (a.targetSource == 'user' || a.role == ActivityRole.shopping) continue;
+      // Micro-cible potentielle (< 10 min, jamais réglée) : peut être un
+      // déclencheur VOULU (10 pompes en 1 min) — c'est une QUESTION pour le
+      // user (carte « ORION · RÉGLAGE »), pas un réglage silencieux.
+      if (a.goalMin < 10 && a.targetSource == 'default') continue;
 
       final s30 = timeSliding(a.id, 30, now: t); // doneMin/targetMin/ratio
       final avg30 = (s30.doneMin / 30.0).round();
@@ -2119,10 +2123,13 @@ class AppLogic {
       if (a.isHabit || a.role == ActivityRole.shopping) continue;
       if (exclude.contains(a.id)) continue; // défi déjà programmé sur cette activité
       final target = a.goalMin;
-      // Cible < 10 min = défaut « plug and play » pas encore calibré (ou
-      // micro-cible assumée) : « il en manque 1 vers ta cible » n'est pas un
-      // défi — la calibration auto s'en occupe, le défi vise les vraies cibles.
-      if (target < 10) continue;
+      if (target <= 0) continue;
+      // Cible < 10 min NON confirmée = défaut « plug and play » pas encore
+      // réglé : « il en manque 1 vers ta cible » n'est pas un défi. La carte
+      // « ORION · RÉGLAGE » pose la question au user ; une micro-cible
+      // ÉPINGLÉE ('user' — déclencheur assumé : 10 pompes en 1 min) reste
+      // challengeable, à sa taille réelle.
+      if (target < 10 && a.targetSource != 'user') continue;
       final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
       if (doneMin >= target) continue; // déjà atteinte aujourd'hui
       final remaining = (target - doneMin) / target; // 1.0 = rien fait
@@ -2141,6 +2148,9 @@ class AppLogic {
     final todayStart = DateTime(now.year, now.month, now.day);
     final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
     final base = a.timerMin ?? (a.goalMin - doneMin);
+    // Micro-cible (déclencheur assumé) : la durée RÉELLE, jamais gonflée à
+    // 10 — « Défi : Musculation — 1 min », c'est exactement le contrat.
+    if (base < 10) return base.clamp(1, 45);
     final clamped = base.clamp(10, 45);
     return (clamped / 5).round() * 5;
   }

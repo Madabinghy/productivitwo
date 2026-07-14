@@ -41,24 +41,41 @@ List<Session> _daily(String id, DateTime now, int perDayMin, {int days = 30}) =>
 void main() {
   final now = DateTime(2026, 7, 14, 20, 0);
 
-  test('cible 1 min vécue à 40 min/j → montée par paliers, provenance orion',
+  test('cible 20 min vécue à 40 min/j → montée par paliers, provenance orion',
       () async {
-    final a = _time('a1', 'Louanges');
+    final a = _time('a1', 'Deep Work', goalMin: 20);
     final l = _logic([a], _daily('a1', now, 40));
     final notes = await l.autoAdjustStandardsRealtime(now: now);
-    expect(a.goalMin, 6); // +max(5, 20 %) par passage — sortie du défaut 1 min
+    expect(a.goalMin, 25); // +max(5, 20 %) par passage
     expect(a.targetSource, 'orion');
-    expect(notes.single, contains('Louanges : cible 1 → 6 min/j'));
+    expect(notes.single, contains('Deep Work : cible 20 → 25 min/j'));
     expect(notes.single, contains('mesuré ~40 min/j sur 30 j'));
 
     // Cooldown 48 h : re-passage immédiat = aucun mouvement.
     expect(await l.autoAdjustStandardsRealtime(now: now), isEmpty);
 
-    // 49 h plus tard : la montée continue (6 → 11).
+    // 49 h plus tard : la montée continue (25 → 30).
     final later = now.add(const Duration(hours: 49));
     l.state.sessions.addAll(_daily('a1', later, 40, days: 2));
     await l.autoAdjustStandardsRealtime(now: later);
-    expect(a.goalMin, 11);
+    expect(a.goalMin, 30);
+  });
+
+  test('micro-cible jamais réglée (< 10 min, default) → la calibration ne '
+      'tranche pas (question au user)', () async {
+    // 1 min/j vécue à 40 min/j : peut être un déclencheur voulu — silence auto.
+    final a = _time('a1', 'Louanges');
+    final l = _logic([a], _daily('a1', now, 40));
+    expect(await l.autoAdjustStandardsRealtime(now: now), isEmpty);
+    expect(a.goalMin, 1);
+    expect(a.targetSource, 'default');
+  });
+
+  test('après « caler sur mon réel » (orion) : la calibration suit', () async {
+    final a = _time('a1', 'Louanges', goalMin: 5, targetSource: 'orion');
+    final l = _logic([a], _daily('a1', now, 40));
+    await l.autoAdjustStandardsRealtime(now: now);
+    expect(a.goalMin, 10); // 5 + max(5, 20 %)
   });
 
   test('épinglée à la main (targetSource user) → jamais touchée', () async {
@@ -101,12 +118,19 @@ void main() {
     expect(notes.single, contains('Running : cible 60 → 48 min/j'));
   });
 
-  test('défi : jamais sur une cible < 10 min (défaut pas encore calibré)', () {
-    final tiny = _time('a1', 'Louanges'); // cible 1
+  test('défi : cible < 10 min NON réglée exclue — épinglée (déclencheur) '
+      'challengeable à sa taille réelle', () {
+    final tiny = _time('a1', 'Louanges'); // cible 1, jamais réglée
     final real = _time('a2', 'Deep Work', goalMin: 30);
     final l = _logic([tiny, real], []);
     expect(l.challengeActivity()?.id, 'a2');
-    final l2 = _logic([tiny], []);
-    expect(l2.challengeActivity(), isNull);
+    expect(_logic([tiny], []).challengeActivity(), isNull);
+
+    // « 10 pompes + 3 tractions en 1 min » : micro-cible ÉPINGLÉE → défi de
+    // 1 min, jamais gonflé à 10.
+    final micro = _time('a1', 'Musculation', targetSource: 'user');
+    final l2 = _logic([micro], []);
+    expect(l2.challengeActivity()?.id, 'a1');
+    expect(l2.challengeDurationFor(micro), 1);
   });
 }
