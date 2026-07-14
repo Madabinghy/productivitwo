@@ -1635,26 +1635,61 @@ void main() {
       expect(g, isNull);
     });
 
-    test('l\'après-midi sans rien d\'autre, la carte propose la micro-action',
+    test(
+        'étape définie → « Étape : X — 15 min » (chrono ciblé) + « Programmer »',
         () {
       final now = DateTime(2026, 7, 7, 15, 0);
       final g = ganttMicroAction([
         proj('Site', [
           task('t1', 'Maquette',
               deadline: DateTime(2026, 7, 20),
-              actions: [TaskAction(title: 'Choisir la palette')]),
+              actions: [
+                TaskAction(id: 'a0', title: 'Cadrer le brief', done: true),
+                TaskAction(id: 'a1', title: 'Choisir la palette'),
+              ]),
         ]),
       ]);
+      expect(g!.needsSteps, isFalse);
       final m = computeCoachMoment(now, _st([]), _sched(today, []), null, [],
           ganttAction: g);
       expect(m.type, CoachMomentType.afternoon);
       expect(m.message, contains('« Maquette » attend (deadline le 20/7)'));
-      expect(m.message, contains('Prochaine étape : Choisir la palette'));
+      expect(m.message,
+          contains('Prochaine étape : Choisir la palette (1/2 faites)'));
       final cta = m.actions
-          .firstWhere((a) => a.label == 'Avancer : Maquette — 15 min');
+          .firstWhere((a) => a.label == 'Étape : Choisir la palette — 15 min');
       expect(cta.kind, CoachActionKind.launchBlock);
       expect(cta.block?.projectId, 'p-Site');
       expect(cta.block?.taskId, 't1');
+      expect(cta.block?.actionId, 'a1'); // chrono ciblé sur l'ÉTAPE
+      final sched = m.actions
+          .firstWhere((a) => a.kind == CoachActionKind.scheduleStep);
+      expect(sched.block?.actionId, 'a1');
+    });
+
+    test('pas d\'étape définie → « Définir la prochaine étape » (GTD)', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette', deadline: DateTime(2026, 7, 20))]),
+      ]);
+      expect(g!.needsSteps, isTrue);
+      final m = computeCoachMoment(now, _st([]), _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.message, contains('n\'a pas de prochaine étape définie'));
+      expect(m.actions.where((a) => a.kind == CoachActionKind.launchBlock),
+          isEmpty); // rien ne se lance sur du flou
+      final cta = m.actions
+          .firstWhere((a) => a.kind == CoachActionKind.defineSteps);
+      expect(cta.block?.projectId, 'p-Site');
+      expect(cta.block?.taskId, 't1');
+    });
+
+    test('étape déjà programmée (aujourd\'hui ou futur) → le coach n\'insiste pas',
+        () {
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette')]),
+      ], excludeTaskIds: {'t1'});
+      expect(g, isNull);
     });
 
     test('un combleur routine disponible → la routine prime sur le Gantt', () {

@@ -53,6 +53,9 @@ enum CoachActionKind {
   challengeAccept, // « Je relève 🔥 » — chrono + minuteur-alarme + streak
   challengeSchedule, // « Programmer 📅 » — défi daté dans le programme
   checkRoutine, // ✓ — coche une routine sans minuteur (pas de chrono)
+  // ── Gantt invisible — GTD minimaliste (micro-projet) ────────────────────────
+  defineSteps, // la tâche n'a pas d'étape → définir la prochaine petite action
+  scheduleStep, // programmer l'étape au moment où le user sera dispo pour elle
 }
 
 class CoachAction {
@@ -889,7 +892,7 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
         if (tensionAction != null) tensionAction,
         ...challengeActions,
         if (f != null) _fillerAction(now, f),
-        if (g != null) _ganttCta(now, g),
+        if (g != null) ..._ganttCtas(now, g),
         advance,
       ],
       tone: CoachTone.neutral,
@@ -921,7 +924,7 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
       if (tensionAction != null) tensionAction,
       ...challengeActions,
       if (f != null) _fillerAction(now, f),
-      if (g != null) _ganttCta(now, g),
+      if (g != null) ..._ganttCtas(now, g),
       advance,
     ],
     tone: CoachTone.neutral,
@@ -943,20 +946,35 @@ class GanttMicroAction {
   final String taskTitle;
   final DateTime? deadline;
   final String? nextAction; // première sous-action non faite — null si aucune
+  final String? nextActionId; // son id → chrono ciblé (Session.actionId)
+  final int stepsDone; // étapes cochées (fait réel, cité)
+  final int stepsTotal;
   const GanttMicroAction(
       {required this.projectId,
       required this.projectTitle,
       required this.taskId,
       required this.taskTitle,
       this.deadline,
-      this.nextAction});
+      this.nextAction,
+      this.nextActionId,
+      this.stepsDone = 0,
+      this.stepsTotal = 0});
+
+  /// GTD minimaliste : la tâche n'a pas de prochaine étape définie — le coach
+  /// propose de la DÉFINIR (puis de choisir quand la faire) plutôt que de
+  /// lancer un chrono sur du flou.
+  bool get needsSteps => nextAction == null;
 }
 
 /// La micro-action Gantt du moment — null si aucun projet actif n'a de tâche
 /// pending, ou si la plus urgente est déjà portée par un bloc pending du jour.
+/// [excludeTaskIds] : tâches dont une étape est déjà PROGRAMMÉE (aujourd'hui
+/// ou plus tard) — le moment est choisi, le coach n'insiste pas.
 GanttMicroAction? ganttMicroAction(List<Project> projects,
-    {List<ScheduleBlock> blocks = const []}) {
+    {List<ScheduleBlock> blocks = const [],
+    Set<String> excludeTaskIds = const {}}) {
   final planned = {
+    ...excludeTaskIds,
     for (final b in blocks)
       if (b.status == 'pending' && b.taskId != null) b.taskId!
   };
@@ -978,15 +996,19 @@ GanttMicroAction? ganttMicroAction(List<Project> projects,
     }
   }
   if (best == null) return null;
-  final next =
-      best.t.actions.where((a) => !a.done).map((a) => a.title).firstOrNull;
+  final next = best.t.actions
+      .where((a) => !a.done && a.title.trim().isNotEmpty)
+      .firstOrNull;
   return GanttMicroAction(
     projectId: best.p.id,
     projectTitle: best.p.title,
     taskId: best.t.id,
     taskTitle: best.t.title,
     deadline: best.t.endDate,
-    nextAction: (next != null && next.trim().isNotEmpty) ? next.trim() : null,
+    nextAction: next?.title.trim(),
+    nextActionId: next?.id,
+    stepsDone: best.t.stepsDone,
+    stepsTotal: best.t.stepsTotal,
   );
 }
 
@@ -994,20 +1016,45 @@ String _ganttText(GanttMicroAction g) {
   final dl = g.deadline != null
       ? ' (deadline le ${g.deadline!.day}/${g.deadline!.month})'
       : '';
-  final step =
-      g.nextAction != null ? ' Prochaine étape : ${g.nextAction}.' : '';
-  return 'Côté « ${g.projectTitle} », la tâche « ${g.taskTitle} » attend$dl.$step 15 minutes la font avancer.';
+  if (g.needsSteps) {
+    // GTD minimaliste : pas d'étape définie → on ne lance rien sur du flou.
+    // Définir la prochaine petite action EST l'avancée du moment.
+    return 'Côté « ${g.projectTitle} », la tâche « ${g.taskTitle} » attend$dl '
+        'et n\'a pas de prochaine étape définie. 2 minutes pour la poser — '
+        'tu la feras au bon moment.';
+  }
+  final count = g.stepsTotal > 0 ? ' (${g.stepsDone}/${g.stepsTotal} faites)' : '';
+  return 'Côté « ${g.projectTitle} », la tâche « ${g.taskTitle} » attend$dl. '
+      'Prochaine étape : ${g.nextAction}$count — 15 minutes suffisent, '
+      'maintenant ou au moment que tu choisis.';
 }
 
-CoachAction _ganttCta(DateTime now, GanttMicroAction g) => CoachAction(
-    'Avancer : ${g.taskTitle} — 15 min', CoachActionKind.launchBlock,
-    block: ScheduleBlock(
-        startTime: _hm(now),
-        durationMin: 15,
-        title: g.taskTitle,
-        category: 'project',
-        projectId: g.projectId,
-        taskId: g.taskId));
+/// CTA(s) de la micro-action Gantt : sans étape → « Définir la prochaine
+/// étape » ; avec étape → la faire maintenant (chrono ciblé sur l'actionId)
+/// OU la programmer au moment où le user sait qu'il sera dispo pour ELLE.
+List<CoachAction> _ganttCtas(DateTime now, GanttMicroAction g) {
+  final block = ScheduleBlock(
+      startTime: _hm(now),
+      durationMin: 15,
+      title: g.nextAction ?? g.taskTitle,
+      category: 'project',
+      projectId: g.projectId,
+      taskId: g.taskId,
+      actionId: g.nextActionId);
+  if (g.needsSteps) {
+    return [
+      CoachAction('Définir la prochaine étape', CoachActionKind.defineSteps,
+          block: block),
+    ];
+  }
+  return [
+    CoachAction('Étape : ${g.nextAction} — 15 min',
+        CoachActionKind.launchBlock,
+        block: block),
+    CoachAction('Programmer l\'étape', CoachActionKind.scheduleStep,
+        block: block),
+  ];
+}
 
 /// Premier domaine défini dont le minimum vital hebdo (metric `sessions*`,
 /// period `week`) est en retard alors que la semaine se termine (jeudi ou

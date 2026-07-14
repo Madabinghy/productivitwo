@@ -2476,6 +2476,33 @@ class FirestoreSync {
     return ids;
   }
 
+  /// Renvoie les `taskId` (Gantt) portés par un bloc encore en attente,
+  /// aujourd'hui ou dans le futur — l'étape est déjà PROGRAMMÉE à un moment
+  /// choisi par le user : la carte coach ne re-propose pas la tâche.
+  Future<Set<String>> fetchScheduledTaskIds() async {
+    if (uid == null) return {};
+    final now = DateTime.now();
+    final todayYmd =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final ids = <String>{};
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: todayYmd)
+          .get();
+      for (final doc in snap.docs) {
+        final sched = DailySchedule.from(doc.data() as Map);
+        for (final b in sched.blocks) {
+          if (b.status == 'pending' && (b.taskId ?? '').isNotEmpty) {
+            ids.add(b.taskId!);
+          }
+        }
+      }
+    } catch (_) {
+      // pas de programme → aucune exclusion
+    }
+    return ids;
+  }
+
   /// `activityId` de tout bloc encore en attente planifié d'aujourd'hui à
   /// aujourd'hui+`days`-1 inclus (tout type de bloc, pas seulement les défis).
   /// Sert à ne pas re-proposer dans le donjon une routine déjà programmée.

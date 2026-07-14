@@ -38,6 +38,9 @@ class CoachMomentCard extends StatelessWidget {
   final void Function(ScheduleBlock block)? onChallengeSchedule;
   // ✓ — coche directe d'une routine sans minuteur (pas de chrono).
   final void Function(ScheduleBlock block)? onCheckRoutine;
+  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
+  final void Function(ScheduleBlock block)? onDefineSteps;
+  final void Function(ScheduleBlock block)? onScheduleStep;
 
   const CoachMomentCard({
     super.key,
@@ -61,6 +64,8 @@ class CoachMomentCard extends StatelessWidget {
     this.onChallengeAccept,
     this.onChallengeSchedule,
     this.onCheckRoutine,
+    this.onDefineSteps,
+    this.onScheduleStep,
   });
 
   @override
@@ -102,6 +107,8 @@ class CoachMomentCard extends StatelessWidget {
               onChallengeAccept: onChallengeAccept,
               onChallengeSchedule: onChallengeSchedule,
               onCheckRoutine: onCheckRoutine,
+              onDefineSteps: onDefineSteps,
+              onScheduleStep: onScheduleStep,
             ),
     );
   }
@@ -128,6 +135,9 @@ class _Card extends StatelessWidget {
   final void Function(ScheduleBlock block)? onChallengeAccept;
   final void Function(ScheduleBlock block)? onChallengeSchedule;
   final void Function(ScheduleBlock block)? onCheckRoutine;
+  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
+  final void Function(ScheduleBlock block)? onDefineSteps;
+  final void Function(ScheduleBlock block)? onScheduleStep;
 
   const _Card({
     super.key,
@@ -151,6 +161,8 @@ class _Card extends StatelessWidget {
     this.onChallengeAccept,
     this.onChallengeSchedule,
     this.onCheckRoutine,
+    this.onDefineSteps,
+    this.onScheduleStep,
   });
 
   @override
@@ -269,6 +281,8 @@ class _Card extends StatelessWidget {
               onChallengeAccept: onChallengeAccept,
               onChallengeSchedule: onChallengeSchedule,
               onCheckRoutine: onCheckRoutine,
+              onDefineSteps: onDefineSteps,
+              onScheduleStep: onScheduleStep,
             ),
           ],
         ],
@@ -356,6 +370,9 @@ class _Actions extends StatelessWidget {
   final void Function(ScheduleBlock block)? onChallengeAccept;
   final void Function(ScheduleBlock block)? onChallengeSchedule;
   final void Function(ScheduleBlock block)? onCheckRoutine;
+  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
+  final void Function(ScheduleBlock block)? onDefineSteps;
+  final void Function(ScheduleBlock block)? onScheduleStep;
 
   const _Actions({
     required this.actions,
@@ -379,6 +396,8 @@ class _Actions extends StatelessWidget {
     this.onChallengeAccept,
     this.onChallengeSchedule,
     this.onCheckRoutine,
+    this.onDefineSteps,
+    this.onScheduleStep,
   });
 
   @override
@@ -399,7 +418,8 @@ class _Actions extends StatelessWidget {
         a.kind == CoachActionKind.startSession ||
         a.kind == CoachActionKind.startSessionShort ||
         a.kind == CoachActionKind.planNext ||
-        a.kind == CoachActionKind.challengeAccept;
+        a.kind == CoachActionKind.challengeAccept ||
+        a.kind == CoachActionKind.defineSteps;
     // Secondaires du nudge / bascule système : liens discrets sous le CTA.
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
@@ -429,6 +449,8 @@ class _Actions extends StatelessWidget {
       CoachActionKind.challengeAccept => Icons.local_fire_department_rounded,
       CoachActionKind.challengeSchedule => Icons.event_outlined,
       CoachActionKind.checkRoutine => Icons.check_rounded,
+      CoachActionKind.defineSteps => Icons.checklist_rounded,
+      CoachActionKind.scheduleStep => Icons.event_outlined,
     };
     // Transition de moment / secondaires du nudge : bouton discret (texte).
     if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
@@ -535,6 +557,14 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.checkRoutine:
         return a.block != null && onCheckRoutine != null
             ? () => onCheckRoutine!(a.block!)
+            : null;
+      case CoachActionKind.defineSteps:
+        return a.block != null && onDefineSteps != null
+            ? () => onDefineSteps!(a.block!)
+            : null;
+      case CoachActionKind.scheduleStep:
+        return a.block != null && onScheduleStep != null
+            ? () => onScheduleStep!(a.block!)
             : null;
     }
   }
