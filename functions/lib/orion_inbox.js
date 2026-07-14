@@ -80,11 +80,27 @@ Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
  * la provenance des idées (originIdeas) pour le style distinct + l'effet « wow ».
  */
 async function processInboxToProjects(uid, opts) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
-    const today = todayParis();
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+    // Jour + heure VÉCUS (fait data/meta.tzOffsetMin posé par l'app) —
+    // fallback Paris tant que le fait n'existe pas.
+    const tzSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const tzOffsetMin = (_a = tzSnap.data()) === null || _a === void 0 ? void 0 : _a.tzOffsetMin;
+    const userParts = (d = new Date()) => {
+        if (typeof tzOffsetMin === "number" && isFinite(tzOffsetMin)) {
+            const iso = new Date(d.getTime() + tzOffsetMin * 60000).toISOString();
+            return { ymd: iso.slice(0, 10), hm: iso.slice(11, 16) };
+        }
+        return {
+            ymd: todayParis(d),
+            hm: new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+            }).format(d),
+        };
+    };
+    const today = userParts().ymd;
     const gateRef = db_1.db.doc(`users/${uid}/data/inbox_sweep`);
     const gate = await gateRef.get();
-    if (!(opts === null || opts === void 0 ? void 0 : opts.force) && gate.exists && ((_a = gate.data()) === null || _a === void 0 ? void 0 : _a.lastSweepYmd) === today) {
+    if (!(opts === null || opts === void 0 ? void 0 : opts.force) && gate.exists && ((_b = gate.data()) === null || _b === void 0 ? void 0 : _b.lastSweepYmd) === today) {
         return null; // déjà passé aujourd'hui
     }
     // Pas d'orderBy ici → évite un index composite (status+createdAt). On trie en
@@ -151,7 +167,7 @@ async function processInboxToProjects(uid, opts) {
         .map((d) => d.data())
         .filter((v) => v.deleted !== true)
         .map((v) => { var _a; return ({ id: v.id, name: v.name, type: (_a = v.type) !== null && _a !== void 0 ? _a : "time" }); });
-    const metaWake = (_b = metaSnap.data()) === null || _b === void 0 ? void 0 : _b.wakeTime;
+    const metaWake = (_c = metaSnap.data()) === null || _c === void 0 ? void 0 : _c.wakeTime;
     const wake = typeof metaWake === "string" && /^\d{2}:\d{2}$/.test(metaWake) ? metaWake : "07:00";
     const prompt = ROUTING_PROMPT.replace("{{IDEAS}}", JSON.stringify(ideas, null, 2))
         .replace("{{PROJECTS}}", JSON.stringify(projects, null, 2))
@@ -185,8 +201,8 @@ async function processInboxToProjects(uid, opts) {
     const ideaById = new Map(ideas.map((i) => [i.id, i]));
     let created = 0;
     let appended = 0;
-    for (const np of (_c = decision.newProjects) !== null && _c !== void 0 ? _c : []) {
-        const origin = ((_d = np.ideaIds) !== null && _d !== void 0 ? _d : [])
+    for (const np of (_d = decision.newProjects) !== null && _d !== void 0 ? _d : []) {
+        const origin = ((_e = np.ideaIds) !== null && _e !== void 0 ? _e : [])
             .map((id) => ideaById.get(id))
             .filter((i) => !!i)
             .map((i) => ({ text: i.text, date: i.date }));
@@ -194,9 +210,9 @@ async function processInboxToProjects(uid, opts) {
             continue;
         // Tâches ENCHAÎNÉES dans le temps (staircase Gantt) + sous-actions.
         // Démarrage décalé (startOffsetDays) pour étaler la charge vs les en-cours.
-        const offset = Math.min(120, Math.max(0, Math.round((_e = np.startOffsetDays) !== null && _e !== void 0 ? _e : 0)));
+        const offset = Math.min(120, Math.max(0, Math.round((_f = np.startOffsetDays) !== null && _f !== void 0 ? _f : 0)));
         const projectStart = addDays(today, offset);
-        const rawTasks = ((_f = np.tasks) === null || _f === void 0 ? void 0 : _f.length) ? np.tasks : [{ title: np.title }];
+        const rawTasks = ((_g = np.tasks) === null || _g === void 0 ? void 0 : _g.length) ? np.tasks : [{ title: np.title }];
         let cursor = projectStart;
         const tasks = rawTasks.map((t, i) => {
             var _a, _b;
@@ -213,20 +229,20 @@ async function processInboxToProjects(uid, opts) {
                 actions: ((_b = t.actions) !== null && _b !== void 0 ? _b : []).slice(0, 6),
             };
         });
-        const lastEnd = tasks.length ? (_g = tasks[tasks.length - 1].endDate) !== null && _g !== void 0 ? _g : projectStart : projectStart;
+        const lastEnd = tasks.length ? (_h = tasks[tasks.length - 1].endDate) !== null && _h !== void 0 ? _h : projectStart : projectStart;
         const phases = [
             { id: "phase-1", label: "Réalisation", startDate: projectStart, endDate: lastEnd },
         ];
-        const ids = ((_h = np.ideaIds) !== null && _h !== void 0 ? _h : []).filter((id) => ideaById.has(id));
+        const ids = ((_j = np.ideaIds) !== null && _j !== void 0 ? _j : []).filter((id) => ideaById.has(id));
         // Au lieu de créer le projet en silence → on PROPOSE (file « À valider »).
         await (0, execute_1.executeProposeChange)(uid, {
             kind: "new_project",
             title: `Créer le projet « ${np.title} »`,
-            rationale: (_j = np.description) !== null && _j !== void 0 ? _j : origin.map((o) => o.text).join(" · "),
+            rationale: (_k = np.description) !== null && _k !== void 0 ? _k : origin.map((o) => o.text).join(" · "),
             sourceCaptureId: ids[0],
             payload: {
                 projectTitle: np.title,
-                domainId: (_k = np.domainId) !== null && _k !== void 0 ? _k : undefined,
+                domainId: (_l = np.domainId) !== null && _l !== void 0 ? _l : undefined,
                 description: np.description,
                 startDate: projectStart,
                 endDate: lastEnd,
@@ -237,12 +253,12 @@ async function processInboxToProjects(uid, opts) {
         await Promise.all(ids.map((id) => db_1.db.doc(`users/${uid}/captures/${id}`).set({ status: "proposed" }, { merge: true })));
         created++;
     }
-    for (const ap of (_l = decision.appendTo) !== null && _l !== void 0 ? _l : []) {
+    for (const ap of (_m = decision.appendTo) !== null && _m !== void 0 ? _m : []) {
         const proj = projects.find((p) => p.id === ap.projectId);
         if (!proj)
             continue;
-        const ids = ((_m = ap.ideaIds) !== null && _m !== void 0 ? _m : []).filter((id) => ideaById.has(id));
-        for (const t of (_o = ap.tasks) !== null && _o !== void 0 ? _o : []) {
+        const ids = ((_o = ap.ideaIds) !== null && _o !== void 0 ? _o : []).filter((id) => ideaById.has(id));
+        for (const t of (_p = ap.tasks) !== null && _p !== void 0 ? _p : []) {
             await (0, execute_1.executeProposeChange)(uid, {
                 kind: "attach_idea_as_task",
                 title: `Ajouter « ${t.title} » à « ${proj.title} »`,
@@ -251,7 +267,7 @@ async function processInboxToProjects(uid, opts) {
                 payload: {
                     projectId: ap.projectId,
                     taskTitle: t.title,
-                    description: ((_p = t.actions) !== null && _p !== void 0 ? _p : []).slice(0, 6).join(" · "),
+                    description: ((_q = t.actions) !== null && _q !== void 0 ? _q : []).slice(0, 6).join(" · "),
                 },
             });
             appended++;
@@ -263,29 +279,26 @@ async function processInboxToProjects(uid, opts) {
     // déterministes : jamais avant le lever, heure passée → lendemain.
     const validActivityIds = new Set(activities.map((a) => a.id));
     let scheduled = 0;
-    // en-GB garantit le format « HH:mm » (fr-FR peut produire « 17 h 40 »).
-    const nowParis = new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-    }).format(new Date());
+    const nowHm = userParts().hm; // heure VÉCUE — « déjà passé » se juge là
     const toMin = (hm) => parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
-    for (const sc of (_q = decision.schedule) !== null && _q !== void 0 ? _q : []) {
+    for (const sc of (_r = decision.schedule) !== null && _r !== void 0 ? _r : []) {
         const idea = ideaById.get(sc.ideaId);
-        if (!idea || !((_r = sc.title) === null || _r === void 0 ? void 0 : _r.trim()))
+        if (!idea || !((_s = sc.title) === null || _s === void 0 ? void 0 : _s.trim()))
             continue;
-        let offset = Math.min(14, Math.max(0, Math.round((_s = sc.dayOffset) !== null && _s !== void 0 ? _s : 1)));
+        let offset = Math.min(14, Math.max(0, Math.round((_t = sc.dayOffset) !== null && _t !== void 0 ? _t : 1)));
         let startTime = typeof sc.startTime === "string" && /^\d{2}:\d{2}$/.test(sc.startTime)
             ? sc.startTime
             : "09:00";
         if (toMin(startTime) < toMin(wake))
             startTime = wake;
         // Aujourd'hui mais l'heure est déjà passée → demain.
-        if (offset === 0 && toMin(startTime) <= toMin(nowParis) + 15)
+        if (offset === 0 && toMin(startTime) <= toMin(nowHm) + 15)
             offset = 1;
         const ymd = addDays(today, offset);
         const block = {
             id: (0, uuid_1.v4)(),
             startTime,
-            durationMin: Math.min(60, Math.max(5, Math.round((_t = sc.durationMin) !== null && _t !== void 0 ? _t : 25))),
+            durationMin: Math.min(60, Math.max(5, Math.round((_u = sc.durationMin) !== null && _u !== void 0 ? _u : 25))),
             title: `🔥 Défi : ${sc.title.trim()}`,
             category: "personal",
             projectId: null,
@@ -307,7 +320,7 @@ async function processInboxToProjects(uid, opts) {
             });
         }
         else {
-            const blocks = (_u = snap.data().blocks) !== null && _u !== void 0 ? _u : [];
+            const blocks = (_v = snap.data().blocks) !== null && _v !== void 0 ? _v : [];
             blocks.push(block);
             await ref.update({ blocks });
         }
@@ -318,10 +331,10 @@ async function processInboxToProjects(uid, opts) {
         }, { merge: true });
         scheduled++;
     }
-    const skipped = ((_v = decision.skip) !== null && _v !== void 0 ? _v : []).filter((id) => ideaById.has(id)).length;
+    const skipped = ((_w = decision.skip) !== null && _w !== void 0 ? _w : []).filter((id) => ideaById.has(id)).length;
     // Silence sur les projets créés (effet « wow »). Seul message éventuel : un
     // nudge léger sur une idée laissée, sans révéler le traitement de l'inbox.
-    const nudgeText = (_x = (_w = decision.nudge) === null || _w === void 0 ? void 0 : _w.text) === null || _x === void 0 ? void 0 : _x.trim();
+    const nudgeText = (_y = (_x = decision.nudge) === null || _x === void 0 ? void 0 : _x.text) === null || _y === void 0 ? void 0 : _y.trim();
     if (nudgeText) {
         try {
             await (0, execute_1.executePushAssistantMessage)(uid, {

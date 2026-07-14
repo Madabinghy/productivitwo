@@ -854,6 +854,20 @@ class FirestoreSync {
     await _meta().set({'wakeTime': hm}, SetOptions(merge: true));
   }
 
+  /// Fuseau du TÉLÉPHONE = fait (`data/meta.tzOffsetMin`, minutes à ajouter à
+  /// l'UTC — ex : -240 en Guadeloupe). Posé à chaque ouverture : le serveur
+  /// (agenda Google, proposition, assistant) raisonne dans l'heure VÉCUE de
+  /// l'utilisateur, jamais dans un « Europe/Paris » supposé. Suit aussi les
+  /// voyages et les changements d'heure.
+  Future<void> setDeviceTimezone() async {
+    if (uid == null) return;
+    final now = DateTime.now();
+    await _meta().set({
+      'tzOffsetMin': now.timeZoneOffset.inMinutes,
+      'tzName': now.timeZoneName,
+    }, SetOptions(merge: true));
+  }
+
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
     await _col('sessions').doc(sessionId).delete();

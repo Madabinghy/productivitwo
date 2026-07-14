@@ -13,6 +13,21 @@ const SCOPES = "openid email https://www.googleapis.com/auth/calendar.events";
 const CAL_BASE = "https://www.googleapis.com/calendar/v3/calendars/primary";
 const GCAL_SECRETS = ["GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET"];
 const tokensRef = (uid) => db_1.db.doc(`gcal_tokens/${uid}`);
+/** Fuseau VÉCU de l'utilisateur : fait `data/meta.tzOffsetMin` (minutes à
+ *  ajouter à l'UTC, ex -240 en Guadeloupe) posé par l'app à l'ouverture.
+ *  Null = fait absent → fallback Europe/Paris via userDayParts. */
+async function userTzOffset(uid) {
+    var _a;
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const v = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.tzOffsetMin;
+    return typeof v === "number" && isFinite(v) ? v : null;
+}
+/** Offset RFC3339 (« -04:00 ») depuis des minutes. */
+function offsetStr(offsetMin) {
+    const sign = offsetMin < 0 ? "-" : "+";
+    const abs = Math.abs(offsetMin);
+    return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
 // ── Access token : lit le cache, sinon refresh. Null = pas connecté. ────────
 async function accessTokenFor(uid) {
     var _a, _b, _c;
@@ -70,7 +85,7 @@ function dateTimeOf(date, minutes) {
     };
 }
 async function syncDayToGcal(uid, date) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
     const none = { created: 0, updated: 0, deleted: 0 };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return Object.assign(Object.assign({ ok: false }, none), { reason: "bad_date" });
@@ -78,6 +93,9 @@ async function syncDayToGcal(uid, date) {
     if (!token)
         return Object.assign(Object.assign({ ok: false }, none), { reason: "not_connected" });
     const auth = { Authorization: `Bearer ${token}` };
+    // Les heures du programme sont des heures de MUR du téléphone : l'événement
+    // porte l'offset du fuseau vécu (fait) — sinon fallback Europe/Paris.
+    const tzOff = await userTzOffset(uid);
     // Blocs vivants du programme (doc absent = tout supprimer côté agenda).
     const snap = await db_1.db.doc(`users/${uid}/daily_schedules/${date}`).get();
     const blocks = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.blocks) !== null && _b !== void 0 ? _b : []).filter((b) => {
@@ -115,8 +133,12 @@ async function syncDayToGcal(uid, date) {
                 b.subtitle ? String(b.subtitle) : null,
                 "source: productivitwo",
             ].filter(Boolean).join("\n"),
-            start: { dateTime: `${start.ymd}T${start.hm}:00`, timeZone: "Europe/Paris" },
-            end: { dateTime: `${end.ymd}T${end.hm}:00`, timeZone: "Europe/Paris" },
+            start: tzOff != null
+                ? { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` }
+                : { dateTime: `${start.ymd}T${start.hm}:00`, timeZone: "Europe/Paris" },
+            end: tzOff != null
+                ? { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` }
+                : { dateTime: `${end.ymd}T${end.hm}:00`, timeZone: "Europe/Paris" },
             extendedProperties: { private: { pwo: "1", pwoBlockId: id, pwoDate: date } },
         };
         const ev = existing.get(id);
@@ -132,8 +154,16 @@ async function syncDayToGcal(uid, date) {
                 console.error("gcal insert failed:", r.status, await r.text());
         }
         else {
-            const sameStart = String((_h = (_g = ev.start) === null || _g === void 0 ? void 0 : _g.dateTime) !== null && _h !== void 0 ? _h : "").startsWith(`${start.ymd}T${start.hm}`);
-            const sameEnd = String((_k = (_j = ev.end) === null || _j === void 0 ? void 0 : _j.dateTime) !== null && _k !== void 0 ? _k : "").startsWith(`${end.ymd}T${end.hm}`);
+            // Avec offset connu : comparaison d'INSTANTS (Google peut renvoyer la
+            // même heure sous une autre représentation). Sinon, heure de mur.
+            const sameStart = tzOff != null
+                ? Date.parse(String((_h = (_g = ev.start) === null || _g === void 0 ? void 0 : _g.dateTime) !== null && _h !== void 0 ? _h : "")) ===
+                    Date.parse(`${start.ymd}T${start.hm}:00${offsetStr(tzOff)}`)
+                : String((_k = (_j = ev.start) === null || _j === void 0 ? void 0 : _j.dateTime) !== null && _k !== void 0 ? _k : "").startsWith(`${start.ymd}T${start.hm}`);
+            const sameEnd = tzOff != null
+                ? Date.parse(String((_m = (_l = ev.end) === null || _l === void 0 ? void 0 : _l.dateTime) !== null && _m !== void 0 ? _m : "")) ===
+                    Date.parse(`${end.ymd}T${end.hm}:00${offsetStr(tzOff)}`)
+                : String((_p = (_o = ev.end) === null || _o === void 0 ? void 0 : _o.dateTime) !== null && _p !== void 0 ? _p : "").startsWith(`${end.ymd}T${end.hm}`);
             if (ev.summary !== desired.summary || !sameStart || !sameEnd) {
                 const r = await fetch(`${CAL_BASE}/events/${ev.id}`, {
                     method: "PATCH",
@@ -223,7 +253,9 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
             return;
         }
         if (action === "syncDay") {
-            const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : (0, execute_1.todayInParis)();
+            const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+                ? date
+                : (0, execute_1.userDayParts)(await userTzOffset(uid)).ymd;
             res.status(200).json(await syncDayToGcal(uid, d));
             return;
         }
@@ -313,7 +345,8 @@ exports.gcalOauthCallback = (0, https_1.onRequest)({ cors: true, invoker: "publi
             revoked: firestore_2.FieldValue.delete(),
         }, { merge: true });
         // Première sync immédiate (best-effort) : le programme du jour apparaît.
-        await syncDayToGcal(uid, (0, execute_1.todayInParis)()).catch(() => null);
+        await syncDayToGcal(uid, (0, execute_1.userDayParts)(await userTzOffset(uid)).ymd)
+            .catch(() => null);
         res.status(200).send(htmlPage("✅ Google Agenda connecté", `Ton programme du jour est synchronisé${email ? ` sur <b>${email}</b>` : ""}. Tu peux fermer cette page et revenir dans Productivitwo.`));
     }
     catch (e) {
@@ -331,8 +364,8 @@ exports.gcalOnScheduleWrite = (0, firestore_1.onDocumentWritten)({ document: "us
     const date = event.params.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return; // brouillons & docs annexes
-    if (date < (0, execute_1.todayInParis)())
-        return;
+    if (date < (0, execute_1.userDayParts)(await userTzOffset(uid)).ymd)
+        return; // jour vécu
     const snap = await tokensRef(uid).get();
     const d = snap.data();
     if (!snap.exists || !(d === null || d === void 0 ? void 0 : d.refreshToken) || d.autoSync === false)

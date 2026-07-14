@@ -135,7 +135,7 @@ const ADD_BLOCKS_TODAY_TOOL = {
     },
 };
 exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -160,11 +160,13 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
         return;
     }
     // Limite quotidienne (garde de coût) — compteur simple par jour.
-    const today = (0, execute_1.todayInParis)();
+    // Fuseau vécu (fait data/meta.tzOffsetMin) — fallback Paris.
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const { ymd: today, hm: nowHm } = (0, execute_1.userDayParts)((_b = metaSnap.data()) === null || _b === void 0 ? void 0 : _b.tzOffsetMin);
     const limitRef = db_1.db.doc(`users/${uid}/rate_limits/now_assist`);
     const limitSnap = await limitRef.get();
     const limitData = limitSnap.data();
-    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_b = limitData.count) !== null && _b !== void 0 ? _b : 0) : 0;
+    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_c = limitData.count) !== null && _c !== void 0 ? _c : 0) : 0;
     if (count >= NOW_ASSIST_MAX_PER_DAY) {
         res.status(429).json({ error: `Limite atteinte (${NOW_ASSIST_MAX_PER_DAY}/jour) — réessaie demain.` });
         return;
@@ -176,9 +178,6 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
         return;
     }
     const client = new sdk_1.default({ apiKey });
-    const nowHm = new Date().toLocaleTimeString("fr-FR", {
-        timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-    });
     // Contexte : programme restant + routines/activités existantes (anti-doublon).
     const [schedule, actsSnap] = await Promise.all([
         (0, execute_1.executeGetDaySchedule)(uid, today),
@@ -192,7 +191,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
     const activityList = acts.filter((a) => a.type !== "habit")
         .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
     const systemPrompt = [
-        `Tu es l'assistant « Maintenant » de Productivitwo. L'utilisateur te dit ce qu'il veut faire là, tout de suite. Il est ${nowHm} (${today}, Europe/Paris).`,
+        `Tu es l'assistant « Maintenant » de Productivitwo. L'utilisateur te dit ce qu'il veut faire là, tout de suite. Il est ${nowHm} (${today}, heure locale de l'utilisateur).`,
         ``,
         `RÈGLES STRICTES :`,
         `1. Ta mission PAR DÉFAUT est de PROGRAMMER les prochaines heures avec add_blocks_today — blocs UNIQUEMENT ≥ ${nowHm}, jamais le passé, jamais toute la journée (2-3 blocs max).`,
@@ -277,7 +276,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
                 let result = "";
                 try {
                     if (block.name === "add_blocks_today") {
-                        const blocks = (_c = args.blocks) !== null && _c !== void 0 ? _c : [];
+                        const blocks = (_d = args.blocks) !== null && _d !== void 0 ? _d : [];
                         result = await addBlocksToday(blocks);
                         blocksAdded += blocks.length;
                     }
@@ -317,7 +316,7 @@ exports.nowAssist = (0, https_1.onRequest)({ cors: true, invoker: "public", secr
 // saveDailySchedule + add_prep_block). 1 appel Haiku par ouverture d'écran.
 const PROPOSE_PLAN_MAX_PER_DAY = 20;
 exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -341,15 +340,23 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         res.status(401).json({ error: "Token invalide ou révoqué" });
         return;
     }
-    const today = (0, execute_1.todayInParis)();
+    // Fuseau VÉCU (fait data/meta.tzOffsetMin posé par l'app — fallback
+    // Paris) : « aujourd'hui » et « il est »  sont ceux du téléphone, pas de
+    // Paris (constaté sur build : UTC-4 → 6 h d'écart, blocs et « jour même »
+    // faux). La méta est lue en premier — elle porte aussi weekMode et lever.
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const tzOffsetMin = (_b = metaSnap.data()) === null || _b === void 0 ? void 0 : _b.tzOffsetMin;
+    const { ymd: today, hm: nowHm } = (0, execute_1.userDayParts)(tzOffsetMin);
     const target = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : today;
-    // Jour de référence = la veille de la cible (son programme + ses causes).
-    const refDate = (0, execute_1.todayInParis)(new Date(new Date(target).getTime() - 24 * 60 * 60 * 1000));
+    // Jour de référence = la veille de la cible (arithmétique de date pure).
+    const refD = new Date(`${target}T12:00:00Z`);
+    refD.setUTCDate(refD.getUTCDate() - 1);
+    const refDate = refD.toISOString().slice(0, 10);
     // Garde de coût quotidienne.
     const limitRef = db_1.db.doc(`users/${uid}/rate_limits/plan_proposal`);
     const limitSnap = await limitRef.get();
     const limitData = limitSnap.data();
-    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_b = limitData.count) !== null && _b !== void 0 ? _b : 0) : 0;
+    const count = (limitData === null || limitData === void 0 ? void 0 : limitData.ymd) === today ? ((_c = limitData.count) !== null && _c !== void 0 ? _c : 0) : 0;
     if (count >= PROPOSE_PLAN_MAX_PER_DAY) {
         res.status(429).json({ error: `Limite atteinte (${PROPOSE_PLAN_MAX_PER_DAY}/jour).` });
         return;
@@ -359,7 +366,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
     const dateLimitRef = db_1.db.doc(`users/${uid}/rate_limits/plan_proposal_${target}`);
     const dateLimitSnap = await dateLimitRef.get();
     const dateLimitData = dateLimitSnap.data();
-    const dateCount = (dateLimitData === null || dateLimitData === void 0 ? void 0 : dateLimitData.ymd) === today ? ((_c = dateLimitData.count) !== null && _c !== void 0 ? _c : 0) : 0;
+    const dateCount = (dateLimitData === null || dateLimitData === void 0 ? void 0 : dateLimitData.ymd) === today ? ((_d = dateLimitData.count) !== null && _d !== void 0 ? _d : 0) : 0;
     if (dateCount >= 5) {
         res.status(429).json({ error: "Limite atteinte pour cette date (5 générations/jour) — le brouillon existant reste utilisable." });
         return;
@@ -373,15 +380,12 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" });
         return;
     }
-    const nowHm = new Date().toLocaleTimeString("fr-FR", {
-        timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-    });
     const sameDay = target === today;
     try {
         // ── Contexte ────────────────────────────────────────────────────────────
         const hitsCutoff = new Date(Date.now() - 28 * 86400000)
             .toISOString().slice(0, 19);
-        const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, metaSnap, hitsSnap] = await Promise.all([
+        const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, hitsSnap] = await Promise.all([
             db_1.db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
             db_1.db.doc(`users/${uid}/daily_schedules/${target}`).get(),
             db_1.db.collection(`users/${uid}/activities`).get(),
@@ -390,7 +394,6 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 .catch(() => db_1.db.collection(`users/${uid}/documents`).limit(10).get()),
             db_1.db.collection(`users/${uid}/domains`).get(),
             db_1.db.collection(`users/${uid}/artifacts`).get(),
-            db_1.db.doc(`users/${uid}/data/meta`).get(),
             // Hits de routines (28 j) → heures habituelles mesurées (programme idéal).
             db_1.db.collection(`users/${uid}/habitHits`).where("ts", ">=", hitsCutoff).get(),
         ]);
@@ -403,7 +406,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // hebdo, lue ici. 'minimal' = vital + essentiel du Gantt, plan recalé ;
         // 'vital' = vital seul (encore une semaine de rush). Dans les deux cas :
         // les blocs morts de la semaine ratée ne sont PAS reportés.
-        const weekModeRaw = ((_e = (_d = metaSnap.data()) === null || _d === void 0 ? void 0 : _d.weekMode) !== null && _e !== void 0 ? _e : null);
+        const weekModeRaw = ((_f = (_e = metaSnap.data()) === null || _e === void 0 ? void 0 : _e.weekMode) !== null && _f !== void 0 ? _f : null);
         let weekMode = null;
         if ((weekModeRaw === null || weekModeRaw === void 0 ? void 0 : weekModeRaw.weekStart) && weekModeRaw.mode) {
             const end = new Date(`${weekModeRaw.weekStart}T12:00:00Z`);
@@ -416,7 +419,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // Heure de lever : fait tracké (client à la 1ʳᵉ planification, stocké
         // dans data/meta) — contrainte DURE : rien ne se pose avant le lever.
         const hmRe = /^\d{2}:\d{2}$/;
-        const metaWake = (_f = metaSnap.data()) === null || _f === void 0 ? void 0 : _f.wakeTime;
+        const metaWake = (_g = metaSnap.data()) === null || _g === void 0 ? void 0 : _g.wakeTime;
         const wake = (typeof wakeTime === "string" && hmRe.test(wakeTime) && wakeTime) ||
             (typeof metaWake === "string" && hmRe.test(metaWake) && metaWake) ||
             "07:00";
@@ -426,15 +429,15 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             const a = doc.data();
             if (a.deleted === true)
                 continue;
-            for (const slot of (_g = a.offSlots) !== null && _g !== void 0 ? _g : [])
+            for (const slot of (_h = a.offSlots) !== null && _h !== void 0 ? _h : [])
                 offSlots.add(slot);
             const label = a.kind === "weekly_menu" ? "Menu de la semaine" : "Plan de reprise";
-            for (const e of (_h = a.entries) !== null && _h !== void 0 ? _h : []) {
+            for (const e of (_j = a.entries) !== null && _j !== void 0 ? _j : []) {
                 const matches = e.date === target ||
                     (!e.date && e.weekday === targetWeekday);
                 if (!matches)
                     continue;
-                artifactEntryLines.push(`  ${e.time} "${e.title}" (${(_j = e.durationMin) !== null && _j !== void 0 ? _j : 30} min)` +
+                artifactEntryLines.push(`  ${e.time} "${e.title}" (${(_l = e.durationMin) !== null && _l !== void 0 ? _l : 30} min)` +
                     `${e.detail ? ` — ${e.detail}` : ""} · provenance: ${label}` +
                     `${e.optional ? " · optionnelle, hors vital" : ""}`);
             }
@@ -484,7 +487,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (mods ? `\n    modalités : ${mods}` : "") + essai;
         });
         const refData = refSnap.exists ? refSnap.data() : {};
-        const refBlocks = ((_l = refData.blocks) !== null && _l !== void 0 ? _l : [])
+        const refBlocks = ((_m = refData.blocks) !== null && _m !== void 0 ? _m : [])
             .filter((b) => b.status !== "deleted" && b.kind !== "prep");
         const refLines = refBlocks.map((b) => {
             var _a;
@@ -498,11 +501,11 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (b.activityId ? ` activityId=${b.activityId}` : "") +
                 (b.projectId ? ` projectId=${b.projectId} taskId=${(_a = b.taskId) !== null && _a !== void 0 ? _a : ""}` : "");
         });
-        const dayReason = (_m = refData.dayReason) !== null && _m !== void 0 ? _m : null;
+        const dayReason = (_o = refData.dayReason) !== null && _o !== void 0 ? _o : null;
         // Tous statuts confondus : un bloc supprimé/sauté du jour cible compte
         // comme « déjà couvert » pour le programme idéal (ne pas recréer).
         const targetBlocksAll = targetSnap.exists
-            ? (((_p = (_o = targetSnap.data()) === null || _o === void 0 ? void 0 : _o.blocks) !== null && _p !== void 0 ? _p : []))
+            ? (((_q = (_p = targetSnap.data()) === null || _p === void 0 ? void 0 : _p.blocks) !== null && _q !== void 0 ? _q : []))
             : [];
         const targetBlocks = targetBlocksAll.filter((b) => b.status !== "deleted");
         const acts = actsSnap.docs
@@ -518,8 +521,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             const byHabit = new Map();
             for (const d of hitsSnap.docs) {
                 const v = d.data();
-                const ts = String((_q = v.ts) !== null && _q !== void 0 ? _q : "");
-                const habitId = String((_r = v.habitId) !== null && _r !== void 0 ? _r : "");
+                const ts = String((_r = v.ts) !== null && _r !== void 0 ? _r : "");
+                const habitId = String((_s = v.habitId) !== null && _s !== void 0 ? _s : "");
                 if (!habitId || ts.length < 16)
                     continue;
                 let m = parseInt(ts.slice(11, 13), 10) * 60 + parseInt(ts.slice(14, 16), 10);
@@ -527,7 +530,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     continue;
                 if (m < 5 * 60)
                     m += 24 * 60;
-                byHabit.set(habitId, [...((_s = byHabit.get(habitId)) !== null && _s !== void 0 ? _s : []), m]);
+                byHabit.set(habitId, [...((_t = byHabit.get(habitId)) !== null && _t !== void 0 ? _t : []), m]);
             }
             byHabit.forEach((mins, habitId) => {
                 if (mins.length < 3)
@@ -541,8 +544,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         const doneOnTarget = new Set();
         for (const d of hitsSnap.docs) {
             const v = d.data();
-            if (String((_t = v.ts) !== null && _t !== void 0 ? _t : "").slice(0, 10) === target) {
-                doneOnTarget.add(String((_u = v.habitId) !== null && _u !== void 0 ? _u : ""));
+            if (String((_u = v.ts) !== null && _u !== void 0 ? _u : "").slice(0, 10) === target) {
+                doneOnTarget.add(String((_v = v.habitId) !== null && _v !== void 0 ? _v : ""));
             }
         }
         const routineList = acts.filter((a) => a.type === "habit")
@@ -577,7 +580,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             return `  · "${(_a = doc.title) !== null && _a !== void 0 ? _a : d.id}" (documentId: ${d.id})`;
         });
         const systemPrompt = [
-            `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, Europe/Paris).`,
+            `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, heure locale de l'utilisateur).`,
             sameDay
                 ? `⚠️ La cible est AUJOURD'HUI (rattrapage express) : ne propose AUCUN bloc avant ${nowHm}. Horizon = ce qui reste de la journée.`
                 : `La cible est un jour complet. ⚠️ LEVER À ${wake} : ne propose AUCUN bloc avant ${wake} — la journée utile va de ${wake} à 21h30 environ (les blocs reproposés aussi : ils reprennent une heure PLAUSIBLE de la journée, jamais leur heure d'hier si elle tombe la nuit).`,
@@ -730,7 +733,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             return matches.length === 1
                 ? Object.assign(Object.assign({}, b), { activityId: matches[0].id, category: "routine" }) : b;
         };
-        const outBlocks = ((_v = proposal.blocks) !== null && _v !== void 0 ? _v : []).filter((b) => {
+        const outBlocks = ((_w = proposal.blocks) !== null && _w !== void 0 ? _w : []).filter((b) => {
             var _a;
             if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
                 return false;
@@ -766,7 +769,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 const startTime = typical !== null && typical !== void 0 ? typical : toHm(fallbackMin);
                 if (!typical)
                     fallbackMin += 30;
-                const timerMin = Number((_w = a.timerMin) !== null && _w !== void 0 ? _w : 0);
+                const timerMin = Number((_x = a.timerMin) !== null && _x !== void 0 ? _x : 0);
                 outBlocks.push({
                     startTime,
                     durationMin: timerMin > 0 ? timerMin : 15,
@@ -783,8 +786,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             }
         }
         res.status(200).json({
-            message: (_x = proposal.message) !== null && _x !== void 0 ? _x : "",
-            sources: (_y = proposal.sources) !== null && _y !== void 0 ? _y : [],
+            message: (_y = proposal.message) !== null && _y !== void 0 ? _y : "",
+            sources: (_z = proposal.sources) !== null && _z !== void 0 ? _z : [],
             blocks: repackAfterWake(outBlocks),
             refDate,
             dayReason,

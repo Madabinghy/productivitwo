@@ -2182,6 +2182,9 @@ class _AppRootState extends State<AppRoot>
       _state = s;
       logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
 
+      // Fuseau vécu → fait serveur (agenda, proposition, assistant).
+      _sync.setDeviceTimezone().catchError((_) {});
+
       () async {
         final bumps = await logic.scanAllActivities();
         if (bumps > 0 && mounted) {
