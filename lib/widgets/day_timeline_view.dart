@@ -228,6 +228,126 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     await _sync.updateBlockTitle(widget.date, b.id, v);
   }
 
+  // ── Édition précise heure + durée (tap sur « HH:mm · X min ») ────────────────
+  //
+  // Les poignées snappent à 15 min — impossible d'obtenir 20 ou 25 min au
+  // doigt. Le label de la barre d'actions ouvre l'édition EXACTE : heure
+  // libre (time picker) + durée fine (chips + pas de 5 min).
+  Future<void> _editTime(ScheduleBlock b) async {
+    var startMin = _startOf(b);
+    var dur = _durOf(b);
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        final cs = Theme.of(ctx).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Heure et durée — ${b.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 14),
+              Row(children: [
+                Text('Début',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.7))),
+                const Spacer(),
+                FilledButton.tonal(
+                  onPressed: () async {
+                    final t = await showTimePicker(
+                        context: ctx,
+                        initialTime: TimeOfDay(
+                            hour: startMin ~/ 60, minute: startMin % 60));
+                    if (t != null) {
+                      setSheet(() => startMin = t.hour * 60 + t.minute);
+                    }
+                  },
+                  child: Text(_toHm(startMin),
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800)),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                Text('Durée',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface.withOpacity(.7))),
+                const Spacer(),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: dur > 5
+                      ? () => setSheet(() => dur = dur - 5)
+                      : null,
+                  icon: const Icon(Icons.remove_rounded),
+                ),
+                SizedBox(
+                  width: 68,
+                  child: Text('$dur min',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800)),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setSheet(() => dur = dur + 5),
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ]),
+              const SizedBox(height: 4),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final m in const [5, 10, 15, 20, 25, 30, 45, 60, 90])
+                  ChoiceChip(
+                    label: Text('$m'),
+                    visualDensity: VisualDensity.compact,
+                    selected: dur == m,
+                    onSelected: (_) => setSheet(() => dur = m),
+                  ),
+              ]),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Valider'),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+    if (ok != true) return;
+    final newStart = _toHm(startMin.clamp(0, 24 * 60 - 1));
+    if (newStart == b.startTime && dur == b.durationMin) return;
+    final oldStart = b.startTime;
+    b.startTime = newStart;
+    b.durationMin = dur;
+    setState(() {});
+    try {
+      await _sync.updateScheduleBlockTime(widget.date, b.id,
+          startTime: newStart, durationMin: dur);
+      // Bloc-défi : l'alarme et les rappels suivent la nouvelle heure/durée.
+      await rescheduleChallengeNotifications(
+          block: b,
+          date: widget.date,
+          oldStartTime: oldStart,
+          alarmSoundKey: widget.logic.state.alarmSound);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Échec réseau — le bloc reprendra sa place.')));
+      }
+    }
+  }
+
   // ── Ajout au créneau (appui long dans le vide) ───────────────────────────────
 
   Future<void> _addAt(int minute) async {
@@ -269,7 +389,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                       color: cs.onSurface.withOpacity(.7))),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final m in const [5, 15, 25, 30, 45, 60, 90, 120])
+                for (final m in const [5, 10, 15, 20, 25, 30, 45, 60, 90, 120])
                   ChoiceChip(
                     label: Text('$m min'),
                     selected: duration == m,
@@ -666,11 +786,27 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                     ),
                   ])
                 : Row(mainAxisSize: MainAxisSize.min, children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text('${_toHm(start)} · $dur min',
-                          style: const TextStyle(
-                              fontSize: 11.5, fontWeight: FontWeight.w800)),
+                    // Tap sur le label → édition EXACTE heure + durée (les
+                    // poignées snappent à 15 min, ici tout est libre).
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: _editable(b) ? () => _editTime(b) : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 4, vertical: 6),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('${_toHm(start)} · $dur min',
+                              style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800)),
+                          if (_editable(b)) ...[
+                            const SizedBox(width: 3),
+                            Icon(Icons.edit_outlined,
+                                size: 12,
+                                color: cs.onSurface.withOpacity(.55)),
+                          ],
+                        ]),
+                      ),
                     ),
                     btn(
                         b.status == 'done'
