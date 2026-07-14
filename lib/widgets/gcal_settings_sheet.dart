@@ -15,6 +15,38 @@ import 'package:url_launcher/url_launcher.dart';
 
 const _kGcalApiUrl = 'https://gcalapi-dzos75b65q-uc.a.run.app';
 
+/// Sync silencieuse BIDIRECTIONNELLE (import des rendez-vous → miroirs, puis
+/// push du programme) pour aujourd'hui et demain — appelée à l'ouverture de
+/// l'app. Agenda non connecté → le serveur répond « not_connected », coût
+/// quasi nul. Toute erreur est avalée : jamais bloquant pour le démarrage.
+Future<void> gcalBackgroundSync(FirestoreSync sync) async {
+  try {
+    final token = await sync.ensureWidgetToken();
+    final raw = token.rawToken;
+    final uid = sync.uid;
+    if (raw == null || raw.isEmpty || uid == null) return;
+    String ymd(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final now = DateTime.now();
+    for (final d in [now, now.add(const Duration(days: 1))]) {
+      await http
+          .post(
+            Uri.parse(_kGcalApiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $raw',
+            },
+            body: jsonEncode(
+                {'uid': uid, 'action': 'syncDay', 'date': ymd(d)}),
+          )
+          .timeout(const Duration(seconds: 25));
+    }
+  } catch (_) {
+    // Hors-ligne / pas connecté : rien à faire, on réessaiera à la prochaine
+    // ouverture.
+  }
+}
+
 Future<void> showGcalSettingsSheet(BuildContext context,
     {required FirestoreSync sync}) {
   return showModalBottomSheet<void>(

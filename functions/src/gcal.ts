@@ -65,6 +65,17 @@ function offsetStr(offsetMin: number): string {
   return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
 }
 
+/** Offset Europe/Paris (minutes) pour un jour donné — fallback quand le fait
+ *  tzOffsetMin n'existe pas encore (gère l'heure d'été/hiver). */
+function parisOffsetMin(ymd: string): number {
+  const utcNoon = new Date(`${ymd}T12:00:00Z`);
+  // sv-SE → « YYYY-MM-DD HH:mm » ; l'écart avec midi UTC = l'offset.
+  const wall = utcNoon.toLocaleString("sv-SE", { timeZone: "Europe/Paris" });
+  const h = parseInt(wall.slice(11, 13), 10);
+  const m = parseInt(wall.slice(14, 16), 10);
+  return (h - 12) * 60 + m;
+}
+
 // ── Access token : lit le cache, sinon refresh. Null = pas connecté. ────────
 async function accessTokenFor(uid: string): Promise<string | null> {
   const snap = await tokensRef(uid).get();
@@ -126,6 +137,125 @@ function dateTimeOf(date: string, minutes: number): { ymd: string; hm: string } 
   };
 }
 
+// ── Import agenda → programme (blocs MIROIRS) ────────────────────────────────
+//
+// Les événements de l'agenda qui ne viennent PAS de nous deviennent des blocs
+// « miroirs » (gcalEventId) dans le programme : le coach les voit (trous,
+// horizon, proposition AUTOUR). L'AGENDA est leur source de vérité — déplacé
+// dans GCal → le bloc suit ; supprimé dans GCal → le bloc part ; swipé dans
+// l'app → masqué SANS toucher au vrai rendez-vous (jamais recréé). La sync
+// sortante les ignore : chaque objet ne se supprime que chez son propriétaire.
+
+export async function importGcalDay(
+  uid: string,
+  date: string
+): Promise<{ ok: boolean; imported: number; updated: number; removed: number; reason?: string }> {
+  const none = { imported: 0, updated: 0, removed: 0 };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, ...none, reason: "bad_date" };
+  const token = await accessTokenFor(uid);
+  if (!token) return { ok: false, ...none, reason: "not_connected" };
+  const tzOff = (await userTzOffset(uid)) ?? parisOffsetMin(date);
+  const off = offsetStr(tzOff);
+
+  const listRes = await fetch(
+    `${CAL_BASE}/events?` +
+      new URLSearchParams({
+        timeMin: `${date}T00:00:00${off}`,
+        timeMax: `${date}T23:59:59${off}`,
+        singleEvents: "true",
+        orderBy: "startTime",
+        maxResults: "100",
+      }).toString(),
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!listRes.ok) {
+    console.error("gcal import list failed:", listRes.status, await listRes.text());
+    return { ok: false, ...none, reason: `list_http_${listRes.status}` };
+  }
+  const items = (((await listRes.json()) as Json).items as Json[]) ?? [];
+
+  // Événements retenus : PAS les nôtres (pwo), avec une heure (pas de
+  // « journée entière » en v1), non annulés, non refusés par l'utilisateur.
+  const events = new Map<string, { title: string; startMin: number; durationMin: number }>();
+  for (const ev of items) {
+    if (ev.status === "cancelled") continue;
+    if (ev.extendedProperties?.private?.pwo === "1") continue;
+    const startIso = ev.start?.dateTime as string | undefined;
+    const endIso = ev.end?.dateTime as string | undefined;
+    if (!startIso || !endIso) continue; // journée entière
+    const self = ((ev.attendees as Json[]) ?? []).find((a) => a.self === true);
+    if (self?.responseStatus === "declined") continue;
+    const startMs = Date.parse(startIso);
+    const endMs = Date.parse(endIso);
+    if (!isFinite(startMs) || !isFinite(endMs)) continue;
+    const local = new Date(startMs + tzOff * 60_000).toISOString();
+    if (local.slice(0, 10) !== date) continue; // instance d'un autre jour vécu
+    events.set(String(ev.id), {
+      title: String(ev.summary ?? "(Sans titre)").trim() || "(Sans titre)",
+      startMin: parseInt(local.slice(11, 13), 10) * 60 + parseInt(local.slice(14, 16), 10),
+      durationMin: Math.max(5, Math.round((endMs - startMs) / 60_000)),
+    });
+  }
+
+  // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  const blocks = ((snap.data()?.blocks as Json[]) ?? []).slice();
+  let imported = 0, updated = 0, removed = 0;
+
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (!b.gcalEventId) continue;
+    const ev = events.get(String(b.gcalEventId));
+    if (ev == null) {
+      blocks.splice(i, 1); // l'événement a disparu de l'agenda → le miroir part
+      removed++;
+      continue;
+    }
+    events.delete(String(b.gcalEventId)); // déjà représenté
+    if (b.status === "deleted") continue; // swipé : masqué, on respecte
+    const hm = `${String(Math.floor(ev.startMin / 60)).padStart(2, "0")}:${String(ev.startMin % 60).padStart(2, "0")}`;
+    if (b.startTime !== hm || b.durationMin !== ev.durationMin || b.title !== ev.title) {
+      b.startTime = hm;
+      b.durationMin = ev.durationMin;
+      b.title = ev.title;
+      updated++;
+    }
+  }
+  for (const [eventId, ev] of events) {
+    blocks.push({
+      id: `gcal-${eventId}`,
+      startTime: `${String(Math.floor(ev.startMin / 60)).padStart(2, "0")}:${String(ev.startMin % 60).padStart(2, "0")}`,
+      durationMin: ev.durationMin,
+      title: ev.title,
+      category: "personal",
+      projectId: null,
+      taskId: null,
+      activityId: null,
+      actionId: null,
+      status: "pending",
+      doneAt: null,
+      subtitle: "Agenda Google",
+      gcalEventId: eventId,
+    });
+    imported++;
+  }
+
+  if (imported + updated + removed > 0) {
+    if (snap.exists) {
+      await ref.update({ blocks });
+    } else {
+      await ref.set({
+        date,
+        generatedBy: "gcal",
+        generatedAt: FieldValue.serverTimestamp(),
+        blocks,
+      });
+    }
+  }
+  return { ok: true, imported, updated, removed };
+}
+
 export async function syncDayToGcal(
   uid: string,
   date: string
@@ -140,9 +270,12 @@ export async function syncDayToGcal(
   const tzOff = await userTzOffset(uid);
 
   // Blocs vivants du programme (doc absent = tout supprimer côté agenda).
+  // Les MIROIRS (gcalEventId) sont ignorés : l'événement existe déjà dans
+  // l'agenda et lui appartient — jamais re-poussé, jamais dupliqué.
   const snap = await db.doc(`users/${uid}/daily_schedules/${date}`).get();
   const blocks = ((snap.data()?.blocks as Json[]) ?? []).filter(
     (b) =>
+      !b.gcalEventId &&
       (b.status === "pending" || b.status === "done") &&
       /^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) &&
       String(b.title ?? "").trim() !== "" &&
@@ -286,10 +419,20 @@ export const gcalApi = onRequest(
         return;
       }
       if (action === "syncDay") {
+        // Bidirectionnel : import (agenda → miroirs) PUIS push (programme →
+        // agenda) — l'import écrit le doc, le trigger re-poussera de toute
+        // façon, mais on répond avec l'état complet tout de suite.
         const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
           ? date
           : userDayParts(await userTzOffset(uid)).ymd;
-        res.status(200).json(await syncDayToGcal(uid, d));
+        const imp = await importGcalDay(uid, d);
+        const push = await syncDayToGcal(uid, d);
+        res.status(200).json({
+          ...push,
+          imported: imp.imported,
+          updatedFromCal: imp.updated,
+          removedFromCal: imp.removed,
+        });
         return;
       }
       if (action === "disconnect") {
@@ -381,9 +524,12 @@ export const gcalOauthCallback = onRequest(
         revoked: FieldValue.delete(),
       }, { merge: true });
 
-      // Première sync immédiate (best-effort) : le programme du jour apparaît.
-      await syncDayToGcal(uid, userDayParts(await userTzOffset(uid)).ymd)
-        .catch(() => null);
+      // Première sync immédiate (best-effort), dans les deux sens : le
+      // programme du jour apparaît dans l'agenda ET les rendez-vous du jour
+      // apparaissent dans le programme.
+      const ymd0 = userDayParts(await userTzOffset(uid)).ymd;
+      await importGcalDay(uid, ymd0).catch(() => null);
+      await syncDayToGcal(uid, ymd0).catch(() => null);
 
       res.status(200).send(htmlPage(
         "✅ Google Agenda connecté",

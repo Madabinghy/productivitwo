@@ -2184,6 +2184,9 @@ class _AppRootState extends State<AppRoot>
 
       // Fuseau vécu → fait serveur (agenda, proposition, assistant).
       _sync.setDeviceTimezone().catchError((_) {});
+      // Agenda Google : sync silencieuse bidirectionnelle (aujourd'hui +
+      // demain) — les rendez-vous réels entrent dans le programme en miroirs.
+      gcalBackgroundSync(_sync);
 
       () async {
         final bumps = await logic.scanAllActivities();

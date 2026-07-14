@@ -1648,11 +1648,14 @@ async function executeScheduleDay(uid, date, blocks) {
     const prev = await ref.get();
     const prevData = prev.exists ? prev.data() : {};
     // Les blocs posés par d'autres flux survivent au remplacement : preps du
-    // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14)
-    // et sessions de définition de domaine (onboarding 18b).
+    // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14),
+    // sessions de définition de domaine (onboarding 18b) — et les MIROIRS
+    // d'événements Google Agenda (tous statuts : un remplacement de programme
+    // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
     const preserved = ((_a = prevData.blocks) !== null && _a !== void 0 ? _a : [])
-        .filter((b) => (b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
-        b.status !== "deleted");
+        .filter((b) => b.gcalEventId != null ||
+        ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
+            b.status !== "deleted"));
     await ref.set({
         date,
         generatedBy: "claude",

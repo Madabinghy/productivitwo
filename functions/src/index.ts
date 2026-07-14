@@ -12,6 +12,7 @@ import { runDeterministicTask } from "./orion_tasks";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { buildDomainDossier } from "./domain_facts";
 import { routineTimeContext } from "./routine_context";
+import { importGcalDay } from "./gcal";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue, effectivePro } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate, defineDomainSystemPrompt } from "./prompts";
@@ -417,6 +418,10 @@ export const proposeDayPlan = onRequest(
     const sameDay = target === today;
 
     try {
+      // Agenda connecté : rafraîchir les MIROIRS de la date cible d'abord —
+      // la proposition planifie AUTOUR des rendez-vous réels (best-effort).
+      await importGcalDay(uid, target).catch(() => null);
+
       // ── Contexte ────────────────────────────────────────────────────────────
       const hitsCutoff = new Date(Date.now() - 28 * 86400000)
         .toISOString().slice(0, 19);
@@ -546,6 +551,16 @@ export const proposeDayPlan = onRequest(
         ? (((targetSnap.data()?.blocks as Array<Record<string, unknown>>) ?? []))
         : [];
       const targetBlocks = targetBlocksAll.filter((b) => b.status !== "deleted");
+      // Rendez-vous réels de la cible (miroirs agenda, vivants) : contrainte
+      // DURE — cités au LLM et respectés par le repack déterministe.
+      const fixedEvents = targetBlocks
+        .filter((b) => b.gcalEventId && b.status === "pending")
+        .map((b) => ({
+          startTime: String(b.startTime),
+          durationMin: Number(b.durationMin ?? 30),
+          title: String(b.title ?? ""),
+        }))
+        .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
 
       const acts = actsSnap.docs
         .map((d) => d.data() as Record<string, unknown>)
@@ -659,6 +674,12 @@ export const proposeDayPlan = onRequest(
         `4bis. Un bloc = UNE SEULE routine/activité, avec SON activityId — ne regroupe JAMAIS plusieurs routines dans un bloc (« Ménage + hygiène » interdit : ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs consécutifs.`,
         `4ter. PROGRAMME IDÉAL : pose chaque routine QUOTIDIENNE à son heure habituelle quand elle est indiquée (c'est l'heure réelle mesurée de l'utilisateur) — celles que tu omets seront ajoutées automatiquement.`,
         `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
+        ...(fixedEvents.length > 0
+          ? [
+              `6. RENDEZ-VOUS RÉELS (agenda, FIXES — ne les repose pas, ne pose RIEN dessus, planifie AUTOUR) :`,
+              ...fixedEvents.map((e) => `  · ${e.startTime} « ${e.title} » (${e.durationMin} min)`),
+            ]
+          : []),
         ``,
         ...(domainLines.length > 0
           ? [
@@ -767,6 +788,16 @@ export const proposeDayPlan = onRequest(
         parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
       const toHm = (min: number) =>
         `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+      // Créneaux OCCUPÉS par les rendez-vous réels : jamais une cible de pose.
+      const busy = fixedEvents
+        .map((e) => [toMin(e.startTime), toMin(e.startTime) + e.durationMin] as [number, number])
+        .sort((a, b) => a[0] - b[0]);
+      const skipBusy = (st: number, dur: number): number => {
+        for (const [a, b] of busy) {
+          if (st < b && st + dur > a) return skipBusy(b, dur); // chevauche → après
+        }
+        return st;
+      };
       const repackAfterWake = (
         blocks: Array<Record<string, unknown>>
       ): Array<Record<string, unknown>> => {
@@ -777,10 +808,11 @@ export const proposeDayPlan = onRequest(
         const out: Array<Record<string, unknown>> = [];
         for (const b of sorted) {
           const orig = toMin(String(b.startTime));
-          const st = Math.max(orig, cursor);
+          const dur = Math.max(5, Number(b.durationMin ?? 30));
+          const st = skipBusy(Math.max(orig, cursor), dur);
           if (st > 23 * 60 + 30) continue; // journée pleine — abandonné
           out.push(st === orig ? b : { ...b, startTime: toHm(st) });
-          cursor = st + Math.max(5, Number(b.durationMin ?? 30));
+          cursor = st + dur;
         }
         return out;
       };
