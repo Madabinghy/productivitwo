@@ -4421,3 +4421,6 @@ export const getDemoToken = onRequest(
 export const resetDemoData = onSchedule("0 4 * * *", async () => {
   await _seedDemoData(DEMO_UID);
 });
+
+// ── Google Agenda natif (Direction D) — voir gcal.ts et docs/gcal_setup.md ───
+export { gcalApi, gcalOauthCallback, gcalOnScheduleWrite } from "./gcal";
