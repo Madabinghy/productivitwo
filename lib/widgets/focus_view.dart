@@ -123,6 +123,8 @@ class _FocusViewState extends State<FocusView> {
   // GTD Gantt : tâches dont une étape est déjà programmée (aujourd'hui/futur)
   // — le moment est choisi, la carte n'insiste pas.
   Set<String> _scheduledStepTaskIds = const {};
+  // « Plus tard » sur la question micro-cible — silence pour la session.
+  bool _microTargetDismissed = false;
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -921,6 +923,7 @@ class _FocusViewState extends State<FocusView> {
         sessionSkipCount: _sessionSkipCount,
         nextSessionLabel: _nextSessionLabel,
         nudgeDismissed: _nudgeDismissed,
+        microTargetDismissed: _microTargetDismissed,
         challenge: _challengeProposal(now),
         // Gantt invisible : micro-action du projet le plus urgent — la carte
         // ne la sort que quand rien d'autre n'a la priorité.
@@ -951,10 +954,13 @@ class _FocusViewState extends State<FocusView> {
               notBefore: _schedule?.unavailableUntil);
         }
       },
-      // « Garder [créneau] » du nudge : silence pour la journée seulement.
+      // « Garder [créneau] » du nudge / « Plus tard » (micro-cible) /
+      // « À la volée » : silence pour la journée seulement.
       onDismiss: isNudge
           ? () => setState(() => _nudgeDismissed = true)
-          : () => setState(() => _unplannedDismissed = true),
+          : moment.type == CoachMomentType.microTarget
+              ? () => setState(() => _microTargetDismissed = true)
+              : () => setState(() => _unplannedDismissed = true),
       onLaunch: widget.onLaunchScheduledBlock,
       // Renégocier (12a) : trois issues générées depuis le réel — réduire /
       // déplacer / reporter. Remplace l'ouverture de fiche v1.
@@ -995,6 +1001,38 @@ class _FocusViewState extends State<FocusView> {
       // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
       onDefineSteps: _defineGanttSteps,
       onScheduleStep: _scheduleGanttStep,
+      // Réglage micro-cible : la réponse devient un FAIT (targetSource).
+      onKeepMicroTarget: (block) {
+        final a =
+            st.activities.where((x) => x.id == block.activityId).firstOrNull;
+        if (a == null) return;
+        a.targetSource = 'user'; // déclencheur assumé — épinglé, plus touché
+        logic.onChange();
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '📌 Micro-cible gardée : ${a.name} — ${a.goalMin} min/j (épinglée, ORION n\'y touchera plus)'),
+          duration: const Duration(seconds: 3),
+        ));
+      },
+      onCalibrateTarget: (block) {
+        final a =
+            st.activities.where((x) => x.id == block.activityId).firstOrNull;
+        if (a == null) return;
+        final avg30 =
+            (logic.timeSliding(a.id, 30).doneMin / 30.0).round();
+        final old = a.goalMin;
+        a.goalMin = ((avg30 / 5).round() * 5).clamp(5, 720);
+        a.targetSource = 'orion'; // la calibration continue de la suivre
+        a.lastTuneAt = DateTime.now();
+        logic.onChange();
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '📏 ${a.name} : cible $old → ${a.goalMin} min/j (mesuré ~$avg30 min/j sur 30 j)'),
+          duration: const Duration(seconds: 3),
+        ));
+      },
       // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
       // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
       onCheckRoutine: (block) {

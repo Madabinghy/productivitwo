@@ -1763,7 +1763,15 @@ class AppLogic {
     return null;
   }
 
-  Future<void> autoAdjustStandardsRealtime({
+  /// Calibration DÉTERMINISTE des cibles de temps (« plug and play ») : la
+  /// cible quotidienne suit le RÉEL mesuré sur 30 jours glissants — une
+  /// activité créée à 1 min/j qui vit à 40 min/j voit sa cible monter par
+  /// paliers (±20 %/sem, cooldown 48 h, zone morte 0,80-1,10 : pas de churn).
+  /// L'épinglage manuel est la vérité : `targetSource == 'user'` n'est JAMAIS
+  /// touché (posé quand le user édite la cible à la main). Un ajustement
+  /// auto trace sa provenance (`targetSource = 'orion'`) et retourne son fait
+  /// (« Louanges : cible 1 → 5 min/j — mesuré ~4 min/j sur 30 j »).
+  Future<List<String>> autoAdjustStandardsRealtime({
     DateTime? now,
     int floorMin = kMinDailyGoalMin,
     int maxPerDayMin = 12 * 60,
@@ -1778,10 +1786,31 @@ class AppLogic {
     Duration coolDown = const Duration(hours: 48),
   }) async {
     final t = now ?? DateTime.now();
+    final notes = <String>[];
     bool touched = false;
 
+    void applied(Activity a, int oldGoal, int measuredAvg) {
+      a.targetSource = 'orion';
+      a.lastTuneAt = t;
+      touched = true;
+      notes.add(
+          '${a.name} : cible $oldGoal → ${a.goalMin} min/j (mesuré ~$measuredAvg min/j sur 30 j)');
+    }
+
     for (final a in state.activeActivities.where((x) => !x.isHabit)) {
-      final s30 = timeSliding(a.id, 30); // doneMin/targetMin/ratio
+      // Épinglée à la main = vérité utilisateur — la calibration n'y touche pas.
+      if (a.targetSource == 'user' || a.role == ActivityRole.shopping) continue;
+      // Micro-cible potentielle (< 10 min, jamais réglée) : peut être un
+      // déclencheur VOULU (10 pompes en 1 min) — c'est une QUESTION pour le
+      // user (carte « ORION · RÉGLAGE »), pas un réglage silencieux.
+      if (a.goalMin < 10 && a.targetSource == 'default') continue;
+
+      final s30 = timeSliding(a.id, 30, now: t); // doneMin/targetMin/ratio
+      final avg30 = (s30.doneMin / 30.0).round();
+      // Ratio NON clampé : timeSliding plafonne à 1,0 (affichage) — le
+      // déclencheur de hausse (≥ 1,20) ne partirait jamais avec lui.
+      final ratio30 =
+          s30.targetMin > 0 ? s30.doneMin / s30.targetMin : 0.0;
 
       if (a.goalMin < floorMin) a.goalMin = floorMin;
 
@@ -1795,57 +1824,66 @@ class AppLogic {
             .clamp(floorMin.toDouble(), maxPerDayMin.toDouble());
         final seed = _roundTo5(avg * 0.80);
         if (seed > a.goalMin) {
+          final old = a.goalMin;
           a.goalMin = seed;
-          a.lastTuneAt = t;
-          touched = true;
+          applied(a, old, avg30);
         }
         continue;
       }
 
-      if (s30.ratio >= deadbandLow && s30.ratio <= deadbandHigh) continue;
+      if (ratio30 >= deadbandLow && ratio30 <= deadbandHigh) continue;
+
+      // Matérialité : un écart mesuré < pas mini (5 min/j) ne justifie aucun
+      // mouvement — sinon une cible minuscule oscillerait (1 ↔ 6) à chaque
+      // passage, le ratio étant hors zone morte des deux côtés.
+      if ((avg30 - a.goalMin).abs() < minStepMin) continue;
+
+      // max(pas mini, 20 %) : sur une cible minuscule (1 min), 20 % = 0 min
+      // bloquait toute croissance — le pas de 5 min garantit la sortie du
+      // défaut « plug and play ».
+      final maxDelta = math.max(minStepMin, (a.goalMin * maxWeeklyPct).round());
 
       int capUp(int proposed) {
-        final maxDelta = (a.goalMin * maxWeeklyPct).round();
         final ceil = (a.goalMin + maxDelta).clamp(floorMin, maxPerDayMin);
         return proposed.clamp(floorMin, ceil);
       }
 
       int capDown(int proposed) {
-        final maxDelta = (a.goalMin * maxWeeklyPct).round();
         final floor = (a.goalMin - maxDelta).clamp(floorMin, maxPerDayMin);
         return proposed.clamp(floor, a.goalMin);
       }
 
-      if (s30.ratio >= raiseTrigger) {
+      if (ratio30 >= raiseTrigger) {
         final desired = (s30.doneMin / 30.0) / aimUp;
         var proposed = _roundTo5(desired);
         if (proposed < a.goalMin + minStepMin)
           proposed = a.goalMin + minStepMin;
         proposed = capUp(proposed);
         if (proposed > a.goalMin) {
+          final old = a.goalMin;
           a.goalMin = proposed;
-          a.lastTuneAt = t;
-          touched = true;
+          applied(a, old, avg30);
         }
         continue;
       }
 
-      if (s30.ratio <= lowerHard) {
+      if (ratio30 <= lowerHard && a.goalMin > floorMin) {
         final desired = (s30.doneMin / 30.0) / aimDown;
         var proposed = _roundTo5(desired);
         if (proposed > a.goalMin - minStepMin)
           proposed = a.goalMin - minStepMin;
         proposed = capDown(proposed);
         if (proposed < a.goalMin) {
+          final old = a.goalMin;
           a.goalMin = proposed;
           if (a.goalMin < floorMin) a.goalMin = floorMin;
-          a.lastTuneAt = t;
-          touched = true;
+          applied(a, old, avg30);
         }
       }
     }
 
     if (touched) onChange();
+    return notes;
   }
 
   // ---------- Mesures glissantes ----------
@@ -2086,6 +2124,12 @@ class AppLogic {
       if (exclude.contains(a.id)) continue; // défi déjà programmé sur cette activité
       final target = a.goalMin;
       if (target <= 0) continue;
+      // Cible < 10 min NON confirmée = défaut « plug and play » pas encore
+      // réglé : « il en manque 1 vers ta cible » n'est pas un défi. La carte
+      // « ORION · RÉGLAGE » pose la question au user ; une micro-cible
+      // ÉPINGLÉE ('user' — déclencheur assumé : 10 pompes en 1 min) reste
+      // challengeable, à sa taille réelle.
+      if (target < 10 && a.targetSource != 'user') continue;
       final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
       if (doneMin >= target) continue; // déjà atteinte aujourd'hui
       final remaining = (target - doneMin) / target; // 1.0 = rien fait
@@ -2104,6 +2148,9 @@ class AppLogic {
     final todayStart = DateTime(now.year, now.month, now.day);
     final doneMin = totalForRangeByActivity(a.id, todayStart, now).inMinutes;
     final base = a.timerMin ?? (a.goalMin - doneMin);
+    // Micro-cible (déclencheur assumé) : la durée RÉELLE, jamais gonflée à
+    // 10 — « Défi : Musculation — 1 min », c'est exactement le contrat.
+    if (base < 10) return base.clamp(1, 45);
     final clamped = base.clamp(10, 45);
     return (clamped / 5).round() * 5;
   }

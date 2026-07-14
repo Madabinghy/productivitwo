@@ -1723,4 +1723,80 @@ void main() {
       expect(m.message, isNot(contains('Maquette')));
     });
   });
+
+  group('micro-cible : la question du réglage (ORION · RÉGLAGE)', () {
+    AppState stTime({int goalMin = 1, String targetSource = 'default'}) =>
+        AppState(
+          domains: [
+            Domain(
+                name: 'Spiritualité',
+                definitionStatus: 'active',
+                intention: 'tenir le rythme'),
+          ],
+          activities: [
+            Activity(
+                id: 'a1',
+                name: 'Louanges',
+                domainId: 'd1',
+                type: 'time',
+                goalMin: goalMin,
+                targetSource: targetSource),
+          ],
+          sessions: [],
+          habitProgress: [],
+        );
+
+    List<Session> sess(DateTime now, int days, int perDayMin) => [
+          for (var i = 0; i < days; i++)
+            Session(
+                activityId: 'a1',
+                startAt: DateTime(now.year, now.month, now.day - i, 9, 0),
+                endAt:
+                    DateTime(now.year, now.month, now.day - i, 9, perDayMin)),
+        ];
+
+    final other = _block(startTime: '14:00', title: 'Dossier');
+
+    test('cible 1 min, vécue 4 j à ~40 min → la question, avec les faits', () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final m = computeCoachMoment(
+          now, stTime(), _sched(today, [other]), null, sess(now, 4, 40));
+      expect(m.type, CoachMomentType.microTarget);
+      expect(m.tagLabel, 'ORION · RÉGLAGE');
+      expect(m.message, contains('restée à 1 min/j'));
+      expect(m.message, contains('4 jours sur les 28 derniers'));
+      expect(m.message, contains('~40 min quand tu t\'y mets'));
+      expect(m.actions.map((a) => a.kind), [
+        CoachActionKind.keepMicroTarget,
+        CoachActionKind.calibrateTarget,
+        CoachActionKind.dismiss,
+      ]);
+      expect(m.actions.first.label, 'Garder 1 min — déclencheur');
+      expect(m.actions.first.block?.activityId, 'a1');
+      // « Plus tard » → silence pour la session.
+      final d = computeCoachMoment(
+          now, stTime(), _sched(today, [other]), null, sess(now, 4, 40),
+          microTargetDismissed: true);
+      expect(d.type, isNot(CoachMomentType.microTarget));
+    });
+
+    test('réel COHÉRENT avec la micro-cible (sessions ~1 min) → pas de question',
+        () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final m = computeCoachMoment(
+          now, stTime(), _sched(today, [other]), null, sess(now, 5, 1));
+      expect(m.type, isNot(CoachMomentType.microTarget));
+    });
+
+    test('déjà réglée (user/orion) ou pas assez de faits → pas de question',
+        () {
+      final now = DateTime(2026, 7, 7, 10, 0);
+      final pinned = computeCoachMoment(now, stTime(targetSource: 'user'),
+          _sched(today, [other]), null, sess(now, 4, 40));
+      expect(pinned.type, isNot(CoachMomentType.microTarget));
+      final few = computeCoachMoment(
+          now, stTime(), _sched(today, [other]), null, sess(now, 2, 40));
+      expect(few.type, isNot(CoachMomentType.microTarget));
+    });
+  });
 }

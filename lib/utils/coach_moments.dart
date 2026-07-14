@@ -23,6 +23,7 @@ enum CoachMomentType {
   defineNudge, // domaines absents/nommés → l'app invite (Partie D, 21a-21c)
   chain, // un chrono vient de finir → « Et ensuite ? » (enchaînement immédiat)
   idealHour, // routine quotidienne juste après son heure habituelle, pas cochée
+  microTarget, // cible restée au défaut (< 10 min) mais activité vécue → question
   hidden,
 }
 
@@ -56,6 +57,9 @@ enum CoachActionKind {
   // ── Gantt invisible — GTD minimaliste (micro-projet) ────────────────────────
   defineSteps, // la tâche n'a pas d'étape → définir la prochaine petite action
   scheduleStep, // programmer l'étape au moment où le user sera dispo pour elle
+  // ── Réglage micro-cible (carte « ORION · RÉGLAGE ») ─────────────────────────
+  keepMicroTarget, // « c'est un déclencheur voulu » → épingle (targetSource user)
+  calibrateTarget, // « cale sur mon réel » → cible = mesuré 30 j (source orion)
 }
 
 class CoachAction {
@@ -148,6 +152,7 @@ CoachMoment computeCoachMoment(
   int sessionSkipCount = 0,
   String? nextSessionLabel,
   bool nudgeDismissed = false,
+  bool microTargetDismissed = false,
   ChallengeProposal? challenge,
   GanttMicroAction? ganttAction,
 }) {
@@ -255,6 +260,9 @@ CoachMoment computeCoachMoment(
     clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
     clock = _idealHourMoment(now, st, blocks) ??
+        (microTargetDismissed
+            ? null
+            : _microTargetMoment(now, st, recentSessions)) ??
         _morningMoment(now, st, blocks);
   } else {
     clock = _idealHourMoment(now, st, blocks) ??
@@ -292,6 +300,7 @@ int _dayOrder(CoachMomentType t) => switch (t) {
       CoachMomentType.drift => 3,
       CoachMomentType.afternoon => 3,
       CoachMomentType.idealHour => 3, // seule la soirée passe devant
+      CoachMomentType.microTarget => 1, // question du matin — tout la dépasse
 
       CoachMomentType.evening => 4,
       CoachMomentType.weekly => 4,
@@ -1377,6 +1386,69 @@ CoachMoment? _idealHourMoment(
               typicalMinute: best.tm,
               usualTime: true,
               streakDays: streak)),
+    ],
+  );
+}
+
+// ── Micro-cible : la question du réglage, posée au fil de l'eau ──────────────
+//
+// Une activité-temps restée à sa cible de DÉPART (< 10 min, targetSource
+// 'default') mais réellement vécue (≥ 3 jours de sessions sur 28 j) est
+// ambiguë : micro-cible VOULUE (« 10 pompes + 3 tractions en 1 min, juste
+// pour démarrer ») ou réglage jamais fait ? On ne tranche pas à sa place —
+// la carte pose la question UNE fois, avec les faits mesurés. La réponse
+// devient un fait (targetSource 'user' ou 'orion') et la question disparaît.
+// Fenêtre du matin uniquement, jamais au-dessus d'une proposition d'action.
+
+CoachMoment? _microTargetMoment(
+    DateTime now, AppState st, List<Session> sessions) {
+  final cutoff = now.subtract(const Duration(days: 28));
+  ({Activity a, int days, int median})? best;
+  for (final a in st.activities) {
+    if (a.deleted || a.isHabit || a.role == ActivityRole.shopping) continue;
+    if (a.targetSource != 'default') continue; // déjà réglée (user/orion)
+    if (a.goalMin <= 0 || a.goalMin >= 10) continue;
+    final byDay = <String, int>{};
+    for (final s in sessions) {
+      if (s.activityId != a.id || s.startAt.isBefore(cutoff)) continue;
+      final min = (s.endAt ?? now).difference(s.startAt).inMinutes;
+      if (min <= 0) continue;
+      byDay[_ymd(s.startAt)] = (byDay[_ymd(s.startAt)] ?? 0) + min;
+    }
+    if (byDay.length < 3) continue; // pas assez de faits pour poser la question
+    final totals = byDay.values.toList()..sort();
+    final median = totals[totals.length ~/ 2];
+    // Micro-cible vécue en micro-sessions (médiane sous 10 min) : cohérente —
+    // rien à demander. La question ne vaut que si le réel CONTREDIT la cible.
+    if (median < 10) continue;
+    if (best == null || byDay.length > best.days) {
+      best = (a: a, days: byDay.length, median: median);
+    }
+  }
+  if (best == null) return null;
+  final a = best.a;
+  final block = ScheduleBlock(
+      startTime: _hm(now),
+      durationMin: a.goalMin,
+      title: a.name,
+      category: 'personal',
+      activityId: a.id);
+  return CoachMoment(
+    type: CoachMomentType.microTarget,
+    tagLabel: 'ORION · RÉGLAGE',
+    title: a.name,
+    message:
+        'Ta cible « ${a.name} » est restée à ${a.goalMin} min/j (réglage de '
+        'départ) — mais tu l\'as pratiquée ${best.days} jours sur les 28 '
+        'derniers, ~${best.median} min quand tu t\'y mets. C\'est une '
+        'micro-cible voulue (déclencheur), ou on la cale sur ton réel ?',
+    actions: [
+      CoachAction('Garder ${a.goalMin} min — déclencheur',
+          CoachActionKind.keepMicroTarget,
+          block: block),
+      CoachAction('Caler sur mon réel', CoachActionKind.calibrateTarget,
+          block: block),
+      const CoachAction('Plus tard', CoachActionKind.dismiss),
     ],
   );
 }
