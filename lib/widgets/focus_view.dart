@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -1168,9 +1169,14 @@ class _FocusViewState extends State<FocusView> {
   /// (même règle que DailyScheduleView : pas de double incrément si la cible
   /// est déjà atteinte ou si ce bloc a déjà validé).
   Future<void> _markBlockDone(ScheduleBlock b) async {
-    final id = b.activityId;
+    Activity? matched = b.activityId != null
+        ? st.activities.where((a) => a.id == b.activityId).firstOrNull
+        : null;
+    // Bloc sans lien : routine du même nom validée quand même (match unique).
+    matched ??= routineForBlockTitle(b.title, st.activities);
+    final id = matched?.id;
     if (id != null && !_routineHit.contains(b.id)) {
-      final act = st.activities.where((a) => a.id == id).firstOrNull;
+      final act = matched;
       if (act != null && act.isHabit) {
         final day = DateTime.now();
         final tgt = logic.activeHabitTarget(act);

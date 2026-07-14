@@ -724,6 +724,21 @@ export const proposeDayPlan = onRequest(
         return out;
       };
 
+      // Lien déterministe bloc → routine : un bloc SANS activityId dont le
+      // titre correspond à UNE seule routine la porte (le prompt demande les
+      // ids mais le LLM en oublie — et sans lien, cocher le bloc ne validait
+      // pas la routine).
+      const linkByTitle = (
+        b: Record<string, unknown>
+      ): Record<string, unknown> => {
+        if (b.activityId) return b;
+        const title = normName(String(b.title ?? ""));
+        const matches = routineNames.filter((a) => title.includes(normName(a.name)));
+        return matches.length === 1
+          ? { ...b, activityId: matches[0].id, category: "routine" }
+          : b;
+      };
+
       res.status(200).json({
         message: proposal.message ?? "",
         sources: proposal.sources ?? [],
@@ -734,7 +749,7 @@ export const proposeDayPlan = onRequest(
           const hour = parseInt(String(b.startTime).slice(0, 2), 10);
           const part = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
           return !offSlots.has(`${targetWeekday}_${part}`) && !offSlots.has(`${targetWeekday}_day`);
-        }).flatMap(splitCombined)),
+        }).flatMap(splitCombined).map(linkByTitle)),
         refDate,
         dayReason,
       });
