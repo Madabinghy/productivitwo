@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
+import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
@@ -1047,13 +1048,25 @@ class _FocusViewState extends State<FocusView> {
       },
       // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
       // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
-      onCheckRoutine: (block) {
+      onCheckRoutine: (block) async {
         final a =
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
         if (a == null || !a.isHabit) return;
         final day = DateTime.now();
         final tgt = logic.activeHabitTarget(a);
         if (tgt > 0 && logic.habitValueOn(a.id, day) >= tgt) return;
+        // Routine COMPTÉE (palier > 1 : pompes, tractions, verres d'eau…) →
+        // le ✓ ne vaut pas +1 aveugle : compteur du jour + boutons − / +.
+        if (tgt > 1) {
+          final total = await showHabitCountSheet(context,
+              logic: logic, activity: a);
+          if (total == null || !context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('💪 ${a.name} : $total/$tgt aujourd\'hui'),
+            duration: const Duration(seconds: 2),
+          ));
+          return;
+        }
         logic.incHabit(a.id, 1, DateTime(day.year, day.month, day.day));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('✅ Routine validée : ${a.name}'),

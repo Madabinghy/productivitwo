@@ -1654,6 +1654,9 @@ async function executeScheduleDay(uid, date, blocks) {
     // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
     const preserved = ((_a = prevData.blocks) !== null && _a !== void 0 ? _a : [])
         .filter((b) => b.gcalEventId != null ||
+        // Défi programmé 🔥 = engagement pris (alarme locale armée côté app) —
+        // un remplacement de programme ne l'efface jamais en silence.
+        (b.challenge === true && b.status !== "deleted") ||
         ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
             b.status !== "deleted"));
     await ref.set({

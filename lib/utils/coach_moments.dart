@@ -1363,7 +1363,13 @@ CoachAction _fillerAction(DateTime now, GapFiller f) => f.durationMin != null
             title: f.routine.name,
             category: 'routine',
             activityId: f.routine.id))
-    : CoachAction('✓ ${f.routine.name}', CoachActionKind.checkRoutine,
+    : CoachAction(
+        // Routine comptée (palier > 1 : pompes, tractions…) → la cible est
+        // annoncée sur le bouton ; le tap ouvre la saisie − / + préremplie.
+        f.routine.effHabitTarget > 1
+            ? '✓ ${f.routine.name} — cible ${f.routine.effHabitTarget}'
+            : '✓ ${f.routine.name}',
+        CoachActionKind.checkRoutine,
         block: ScheduleBlock(
             startTime: _hm(now),
             durationMin: 5,
