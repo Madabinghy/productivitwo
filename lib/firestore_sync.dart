@@ -177,6 +177,7 @@ class FirestoreSync {
     _pushedJson.clear();
     _reconciledCollections.clear();
     _pushedMetaJson = null;
+    _pushedSnapshotJson = null;
     _pushCacheUid = uid;
   }
 
@@ -2755,8 +2756,19 @@ class FirestoreSync {
 
   /// Snapshot productivité du jour → lu par ORION (Cloud Function) pour générer
   /// le « levier du jour » de son brief. Doc singleton, écrit en merge.
+  String? _pushedSnapshotJson;
+
   void pushProductivitySnapshot(Map<String, dynamic> snap) {
     if (uid == null) return;
+    _resetPushCacheIfUserChanged();
+    // Garde d'empreinte (même principe que _pushMeta) : appelé sur CHAQUE
+    // onChange + chaque event du stream projets, et `updatedAt` étant un
+    // serverTimestamp, chaque écriture était « nouvelle » — 1 écriture
+    // Firestore par tap (constaté : pic d'écritures quotidiennes). Le contenu
+    // RÉEL ne change que quelques fois par jour : on n'écrit que là.
+    final json = _stableJson(snap);
+    if (json == _pushedSnapshotJson) return;
+    _pushedSnapshotJson = json;
     _db.doc('users/$uid/data/productivity_today').set(
       {...snap, 'updatedAt': FieldValue.serverTimestamp()},
       SetOptions(merge: true),

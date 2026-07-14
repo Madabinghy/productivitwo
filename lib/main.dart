@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -2287,10 +2288,14 @@ class _AppRootState extends State<AppRoot>
       _projectsSub?.cancel();
       _projectsSub = _sync.streamProjects().listen((projects) {
         if (!mounted) return;
+        // Persiste `ganttActionsByDay` réconcilié UNIQUEMENT s'il a réellement
+        // changé — chaque event du stream déclenchait une sauvegarde complète
+        // (écritures Firestore à chaque écriture de projet par le web/ORION).
+        final before = jsonEncode(_state?.ganttActionsByDay ?? const {});
         logic.updateGanttCounts(projects); // met à jour les compteurs + currentProjects
-        // Persiste le compteur `ganttActionsByDay` réconcilié (actions cochées
-        // sur n'importe quelle surface) → le banking du soir lit la même source.
-        unawaited(_doSave());
+        if (jsonEncode(_state?.ganttActionsByDay ?? const {}) != before) {
+          unawaited(_doSave());
+        }
         setState(() => _dashboardProjects = projects);
         _checkGanttBadges();
         WidgetService.update(logic); // widget Large : tâches Gantt fraîches
