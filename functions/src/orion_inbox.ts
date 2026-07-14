@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue } from "./db";
 import { getModel, logTokenUsage } from "./models";
 import {
@@ -52,6 +53,17 @@ type RoutingDecision = {
     ideaIds: string[];
     tasks: RoutingTask[];
   }[];
+  // Idées ACTIONNABLES en un coup (corvée, course, appel…) → défi 🔥 daté,
+  // posé DIRECTEMENT dans le programme (un bloc se refuse d'un swipe — pas
+  // besoin de file de validation, contrairement à la structure Gantt).
+  schedule?: {
+    ideaId: string;
+    title: string;
+    dayOffset?: number; // 0 = aujourd'hui (si l'heure est encore devant), 1..14
+    startTime?: string; // "HH:mm" plausible
+    durationMin?: number;
+    activityId?: string | null; // routine/activité existante du même sujet
+  }[];
   skip?: string[];
   // Message léger optionnel sur UNE idée laissée — ne révèle jamais le traitement.
   nudge?: { text: string };
@@ -61,13 +73,14 @@ const ROUTING_PROMPT = `Tu es ORION, l'assistant de Productivitwo. Tu traites la
 
 ## RÈGLE D'OR (granularité — la plus importante)
 Ne crée un projet QUE pour une idée (ou un groupe d'idées) qui décrit un VRAI travail multi-étapes, stratégique, méritant un suivi sur plusieurs jours/semaines.
-Une simple tâche isolée, une course, un achat, une note vague, un rappel ponctuel → NE PAS créer de projet → mets-la dans "skip".
-Dans le doute : skip. Mieux vaut laisser une idée que créer un projet bidon.
+Une idée ACTIONNABLE EN UN COUP (corvée, course, appel, petite réparation, message à envoyer) → "schedule" : pose-la comme un DÉFI daté dans les 14 prochains jours — jour et heure PLAUSIBLES (jamais avant {{WAKE}} ni après 21h, corvée extérieure en journée, etc.), durée réaliste (5-60 min), charge étalée (max 2 défis posés par jour, tiens compte des blocs existants). Si une routine/activité existante correspond au sujet (voir liste), mets son activityId (le chrono sera ciblé).
+Une note vague, non actionnable, ou qui demande une décision de l'utilisateur → "skip".
+Dans le doute : skip. Mieux vaut laisser une idée que créer un projet bidon ou un défi absurde.
 
 ## Règles
 1. Préfère TOUJOURS enrichir un projet ACTIF existant (appendTo) plutôt que créer, si l'idée s'y rattache sémantiquement.
 2. AGRÈGE : si plusieurs idées concernent le même sujet, regroupe-les — soit dans UN seul newProject (plusieurs ideaIds), soit en plusieurs tâches d'un même projet.
-3. Chaque idée apparaît EXACTEMENT une fois (dans newProjects, appendTo, OU skip).
+3. Chaque idée apparaît EXACTEMENT une fois (dans newProjects, appendTo, schedule, OU skip).
 4. Pour un nouveau projet : titre court et clair, domainId le plus cohérent parmi les domaines (ou null), et 2-4 tâches qui forment un VRAI Gantt :
    - chaque tâche = un verbe d'action + 2-4 **sous-actions** concrètes (\`actions\`) qui détaillent comment la faire,
    - chaque tâche a une **durée réaliste** en jours (\`durationDays\`, 1 à 15) — les tâches seront ENCHAÎNÉES dans le temps (l'une après l'autre), donne donc un ordre logique d'exécution.
@@ -90,12 +103,16 @@ Omets le nudge si rien ne le mérite.
 ## Domaines
 {{DOMAINS}}
 
-Date du jour : {{TODAY}}
+## Routines & activités existantes (pour l'activityId des défis)
+{{ACTIVITIES}}
+
+Date du jour : {{TODAY}} — heure de lever de l'utilisateur : {{WAKE}}
 
 Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 {
   "newProjects": [ { "title": "...", "description": "...", "domainId": "<id|null>", "ideaIds": ["..."], "startOffsetDays": 0, "tasks": [ {"title":"...", "actions":["...","..."], "durationDays": 2} ] } ],
   "appendTo": [ { "projectId": "...", "ideaIds": ["..."], "tasks": [ {"title":"...", "actions":["..."]} ] } ],
+  "schedule": [ { "ideaId": "...", "title": "...", "dayOffset": 1, "startTime": "10:00", "durationMin": 25, "activityId": null } ],
   "skip": ["ideaId", ...],
   "nudge": { "text": "..." }
 }`;
@@ -109,7 +126,7 @@ Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 export async function processInboxToProjects(
   uid: string,
   opts?: { force?: boolean }
-): Promise<{ found: number; created: number; appended: number; skipped: number } | null> {
+): Promise<{ found: number; created: number; appended: number; scheduled: number; skipped: number } | null> {
   const today = todayParis();
   const gateRef = db.doc(`users/${uid}/data/inbox_sweep`);
 
@@ -127,7 +144,7 @@ export async function processInboxToProjects(
 
   if (inboxSnap.empty) {
     await gateRef.set({ lastSweepYmd: today }, { merge: true });
-    return { found: 0, created: 0, appended: 0, skipped: 0 };
+    return { found: 0, created: 0, appended: 0, scheduled: 0, skipped: 0 };
   }
 
   const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
@@ -150,9 +167,11 @@ export async function processInboxToProjects(
     };
   });
 
-  const [projSnap, domSnap] = await Promise.all([
+  const [projSnap, domSnap, actsSnap, metaSnap] = await Promise.all([
     db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
     db.collection(`users/${uid}/domains`).get(),
+    db.collection(`users/${uid}/activities`).get(),
+    db.doc(`users/${uid}/data/meta`).get(),
   ]);
   const projects = projSnap.docs.map((d) => {
     const v = d.data();
@@ -177,10 +196,18 @@ export async function processInboxToProjects(
     .map((d) => d.data())
     .filter((v) => !v.deleted)
     .map((v) => ({ id: v.id as string, name: v.name as string }));
+  const activities = actsSnap.docs
+    .map((d) => d.data())
+    .filter((v) => v.deleted !== true)
+    .map((v) => ({ id: v.id as string, name: v.name as string, type: (v.type as string) ?? "time" }));
+  const metaWake = metaSnap.data()?.wakeTime as string | undefined;
+  const wake = typeof metaWake === "string" && /^\d{2}:\d{2}$/.test(metaWake) ? metaWake : "07:00";
 
   const prompt = ROUTING_PROMPT.replace("{{IDEAS}}", JSON.stringify(ideas, null, 2))
     .replace("{{PROJECTS}}", JSON.stringify(projects, null, 2))
     .replace("{{DOMAINS}}", JSON.stringify(domains, null, 2))
+    .replace("{{ACTIVITIES}}", JSON.stringify(activities, null, 2))
+    .replace(/\{\{WAKE\}\}/g, wake)
     .replace("{{TODAY}}", today);
 
   let decision: RoutingDecision;
@@ -293,6 +320,72 @@ export async function processInboxToProjects(
     );
   }
 
+  // Défis datés : posés DIRECTEMENT (un bloc se refuse d'un swipe, sans
+  // pénalité) — l'idée est marquée traitée avec sa provenance. Garde-fous
+  // déterministes : jamais avant le lever, heure passée → lendemain.
+  const validActivityIds = new Set(activities.map((a) => a.id));
+  let scheduled = 0;
+  // en-GB garantit le format « HH:mm » (fr-FR peut produire « 17 h 40 »).
+  const nowParis = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date());
+  const toMin = (hm: string) =>
+    parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
+  for (const sc of decision.schedule ?? []) {
+    const idea = ideaById.get(sc.ideaId);
+    if (!idea || !sc.title?.trim()) continue;
+    let offset = Math.min(14, Math.max(0, Math.round(sc.dayOffset ?? 1)));
+    let startTime =
+      typeof sc.startTime === "string" && /^\d{2}:\d{2}$/.test(sc.startTime)
+        ? sc.startTime
+        : "09:00";
+    if (toMin(startTime) < toMin(wake)) startTime = wake;
+    // Aujourd'hui mais l'heure est déjà passée → demain.
+    if (offset === 0 && toMin(startTime) <= toMin(nowParis) + 15) offset = 1;
+    const ymd = addDays(today, offset);
+    const block = {
+      id: uuidv4(),
+      startTime,
+      durationMin: Math.min(60, Math.max(5, Math.round(sc.durationMin ?? 25))),
+      title: `🔥 Défi : ${sc.title.trim()}`,
+      category: "personal",
+      projectId: null,
+      taskId: null,
+      activityId:
+        sc.activityId && validActivityIds.has(sc.activityId) ? sc.activityId : null,
+      actionId: null,
+      status: "pending",
+      doneAt: null,
+      challenge: true,
+    };
+    const ref = db.doc(`users/${uid}/daily_schedules/${ymd}`);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        date: ymd,
+        generatedBy: "orion",
+        generatedAt: FieldValue.serverTimestamp(),
+        blocks: [block],
+      });
+    } else {
+      const blocks =
+        ((snap.data() as Record<string, unknown>).blocks as Array<
+          Record<string, unknown>
+        >) ?? [];
+      blocks.push(block);
+      await ref.update({ blocks });
+    }
+    await db.doc(`users/${uid}/captures/${sc.ideaId}`).set(
+      {
+        status: "processed",
+        orionNote: `Défi posé le ${ymd} à ${startTime} — « ${sc.title.trim()} »`,
+        processedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    scheduled++;
+  }
+
   const skipped = (decision.skip ?? []).filter((id) => ideaById.has(id)).length;
 
   // Silence sur les projets créés (effet « wow »). Seul message éventuel : un
@@ -315,11 +408,11 @@ export async function processInboxToProjects(
   await gateRef.set(
     {
       lastSweepYmd: today,
-      lastResult: { found: ideas.length, created, appended, skipped },
+      lastResult: { found: ideas.length, created, appended, scheduled, skipped },
       at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
 
-  return { found: ideas.length, created, appended, skipped };
+  return { found: ideas.length, created, appended, scheduled, skipped };
 }

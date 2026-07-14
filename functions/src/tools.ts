@@ -90,8 +90,8 @@ const COMPUTE_TIME_BUDGET_TOOL = {
 const SWEEP_INBOX_TOOL = {
   name: "sweep_inbox",
   description:
-    "Balaie la boîte à idées (inbox) : transforme les idées vraiment stratégiques en projets Gantt (taggés ORION) ou les rattache à un projet actif existant, agrège les idées liées, et vide les idées traitées. " +
-    "Garde-fou granularité : une simple tâche / course / note vague est laissée, pas transformée en projet. Force l'exécution même si déjà fait aujourd'hui (utile pour tester).",
+    "Balaie la boîte à idées (inbox) : les idées stratégiques deviennent des PROPOSITIONS de projets Gantt / de tâches sur un projet actif (file « À valider »), les idées ACTIONNABLES en un coup (corvée, course, appel) deviennent des DÉFIS 🔥 datés posés directement dans le programme des prochains jours (refusables d'un swipe), et les notes vagues sont laissées. " +
+    "Force l'exécution même si déjà fait aujourd'hui (utile pour tester).",
   inputSchema: { type: "object", properties: {}, required: [] },
 };
 
