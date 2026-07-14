@@ -45,6 +45,7 @@ exports.executeGenerateWeeklyReport = executeGenerateWeeklyReport;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
 exports.executeAddPrepBlock = executeAddPrepBlock;
+exports.executeAddEvent = executeAddEvent;
 exports.executeSaveDomainDefinition = executeSaveDomainDefinition;
 exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
 exports.executeComputeTimeBudget = executeComputeTimeBudget;
@@ -806,7 +807,7 @@ async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     return `${emoji} Tâche "${taskTitle}" → ${status}.`;
 }
 async function executeUpdateActivity(uid, activityId, updates) {
-    var _a, _b;
+    var _a, _b, _c, _d, _e;
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -825,7 +826,16 @@ async function executeUpdateActivity(uid, activityId, updates) {
         patch.habitFreq = updates.habitFreq;
     if (updates.habitTarget !== undefined)
         patch.habitTarget = updates.habitTarget;
+    if (updates.finalTarget !== undefined) {
+        // Cap de progression : habitTarget devient le palier courant. Nouveau cap
+        // = nouveau départ — l'évaluation hebdo attend une semaine pleine.
+        patch.finalTarget = updates.finalTarget > 0 ? updates.finalTarget : null;
+        patch.stepUpdatedWeek = null;
+    }
     await ref.update(patch);
+    if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
+        return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${(_e = (_c = updates.habitTarget) !== null && _c !== void 0 ? _c : (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.habitTarget) !== null && _e !== void 0 ? _e : 1}/j (évalué chaque lundi sur les hits réels).`;
+    }
     return `✅ Activité "${currentName}" mise à jour.`;
 }
 async function executeDeleteRoutine(uid, routineId) {
@@ -1688,6 +1698,82 @@ async function executeAddPrepBlock(uid, args) {
     blocks.push(prepBlock);
     await ref.update({ blocks });
     return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
+}
+// ── Événement daté : « J'accompagne maman le 12 à son RDV à 14h » — un bloc
+// posé DIRECTEMENT dans le programme du jour concerné. La durée est un fait
+// utilisateur : sans durationMin, l'outil REFUSE et demande de la demander
+// (jamais de durée inventée). Retourne aussi les instructions Google Calendar
+// (connecteur GCal côté conversation, en attendant l'API native).
+async function executeAddEvent(uid, args) {
+    var _a;
+    const { date, startTime, title } = args;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date !== null && date !== void 0 ? date : "")) {
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    }
+    if (!/^\d{2}:\d{2}$/.test(startTime !== null && startTime !== void 0 ? startTime : "")) {
+        return `Heure invalide : ${startTime}. Format attendu : HH:mm`;
+    }
+    if (!(title === null || title === void 0 ? void 0 : title.trim()))
+        return "title est requis.";
+    if (!args.durationMin || args.durationMin <= 0) {
+        return ("⛔ Durée manquante — ne l'invente pas. Demande à l'utilisateur : " +
+            `« Combien de temps estimes-tu pour “${title}” ? » puis rappelle ` +
+            "add_event avec durationMin.");
+    }
+    const durationMin = Math.min(720, Math.round(args.durationMin));
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    const block = {
+        id: (0, uuid_1.v4)(),
+        startTime,
+        durationMin,
+        title: title.trim(),
+        category: "personal",
+        projectId: null,
+        taskId: null,
+        activityId: null,
+        actionId: null,
+        status: "pending",
+        doneAt: null,
+        subtitle: "événement",
+    };
+    if (!snap.exists) {
+        await ref.set({
+            date,
+            generatedBy: "claude",
+            generatedAt: db_1.FieldValue.serverTimestamp(),
+            blocks: [block],
+        });
+    }
+    else {
+        const data = snap.data();
+        const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
+        // Idempotence : même titre non supprimé à la même heure le même jour.
+        const exists = blocks.some((b) => {
+            var _a;
+            return b.status !== "deleted" &&
+                b.startTime === startTime &&
+                String((_a = b.title) !== null && _a !== void 0 ? _a : "").trim().toLowerCase() === title.trim().toLowerCase();
+        });
+        if (exists) {
+            return `ℹ️ « ${title} » existe déjà le ${date} à ${startTime} — rien ajouté (idempotent).`;
+        }
+        blocks.push(block);
+        await ref.update({ blocks });
+    }
+    const endMin = parseInt(startTime.slice(0, 2), 10) * 60 +
+        parseInt(startTime.slice(3, 5), 10) +
+        durationMin;
+    const endTime = `${String(Math.floor((endMin % 1440) / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+    let out = `✅ « ${title} » posé le ${date} à ${startTime} (${durationMin} min) dans le programme.`;
+    if (args.syncToCalendar !== false) {
+        out +=
+            `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
+                `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
+                `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
+                `Sans connecteur : dis-le simplement, le bloc programme suffit.`;
+    }
+    return out;
 }
 // ── Session de définition : écrit la fiche domaine (intention/vital/modalités)
 // sur la collection domains EXISTANTE. Appelé à chaque élément validé.

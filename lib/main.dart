@@ -2191,6 +2191,16 @@ class _AppRootState extends State<AppRoot>
           );
           await store.save(_state!);
         }
+        // Progression par paliers : évaluation hebdo déterministe des routines
+        // à cap — chaque changement de palier est annoncé avec ses faits.
+        final steps = logic.applyWeeklyProgression();
+        if (steps.isNotEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Progression — ${steps.join(' · ')}'),
+                duration: const Duration(seconds: 4)),
+          );
+        }
       }();
 
       // Migration : utilisateurs existants avec des données → onboarding déjà fait
@@ -2892,22 +2902,19 @@ class _AppRootState extends State<AppRoot>
   }
 
 // 1) Helpers d'index <-> enum
+  /// Onglets visibles dans la barre : « Projets » disparaît quand le Gantt
+  /// passe en coulisse (hideProjectsTab). La pile de vues (IndexedStack) garde
+  /// ses 4 index — seule la barre change.
+  List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
+      ? const [_Tab.dashboard, _Tab.aujourdhui, _Tab.maintenant]
+      : const [_Tab.dashboard, _Tab.projets, _Tab.aujourdhui, _Tab.maintenant];
+
   int _tabIndex(_Tab t) {
     switch (t) {
       case _Tab.dashboard:   return 0;
       case _Tab.projets:     return 1;
       case _Tab.aujourdhui:  return 2;
       case _Tab.maintenant:  return 3;
-    }
-  }
-
-  _Tab _tabFromIndex(int i) {
-    switch (i) {
-      case 0:  return _Tab.dashboard;
-      case 1:  return _Tab.projets;
-      case 2:  return _Tab.aujourdhui;
-      case 3:  return _Tab.maintenant;
-      default: return _Tab.dashboard;
     }
   }
 
@@ -4687,9 +4694,13 @@ class _AppRootState extends State<AppRoot>
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
 
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _tabIndex(_tab),
+        // Onglet courant absent de la barre (Projets ouvert via un widget
+        // alors qu'il est masqué) : on surligne Accueil sans casser la vue.
+        currentIndex: _visibleTabs.contains(_tab)
+            ? _visibleTabs.indexOf(_tab)
+            : 0,
         onTap: (i) {
-          final tapped = _tabFromIndex(i);
+          final tapped = _visibleTabs[i];
           _tabFadeController.forward(from: 0);
           setState(() => _tab = tapped);
         },
@@ -4697,22 +4708,25 @@ class _AppRootState extends State<AppRoot>
         selectedFontSize: 11,
         unselectedFontSize: 11,
         items: [
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Accueil'),
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.account_tree_outlined),
-              activeIcon: Icon(Icons.account_tree),
-              label: 'Projets'),
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.today_outlined),
-              activeIcon: Icon(Icons.today),
-              label: 'Aujourd\'hui'),
-          const BottomNavigationBarItem(
-              icon: Icon(Icons.play_circle_outline),
-              activeIcon: Icon(Icons.play_circle),
-              label: 'Maintenant'),
+          for (final t in _visibleTabs)
+            switch (t) {
+              _Tab.dashboard => const BottomNavigationBarItem(
+                  icon: Icon(Icons.dashboard_outlined),
+                  activeIcon: Icon(Icons.dashboard),
+                  label: 'Accueil'),
+              _Tab.projets => const BottomNavigationBarItem(
+                  icon: Icon(Icons.account_tree_outlined),
+                  activeIcon: Icon(Icons.account_tree),
+                  label: 'Projets'),
+              _Tab.aujourdhui => const BottomNavigationBarItem(
+                  icon: Icon(Icons.today_outlined),
+                  activeIcon: Icon(Icons.today),
+                  label: 'Aujourd\'hui'),
+              _Tab.maintenant => const BottomNavigationBarItem(
+                  icon: Icon(Icons.play_circle_outline),
+                  activeIcon: Icon(Icons.play_circle),
+                  label: 'Maintenant'),
+            },
         ],
       ),
 
@@ -4844,6 +4858,25 @@ class _AppRootState extends State<AppRoot>
                   value: logic.state.showTodayPriorities,
                   onChanged: (v) {
                     logic.state.showTodayPriorities = v;
+                    logic.onChange();
+                    setLocal(() {});
+                    setState(() {});
+                  },
+                ),
+              ),
+              // Gantt invisible : masquer l'onglet Projets — le coach porte
+              // les micro-actions dans Maintenant, le Gantt vit en coulisse.
+              StatefulBuilder(
+                builder: (ctx, setLocal) => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.visibility_off_outlined),
+                  title: const Text('Masquer l\'onglet Projets'),
+                  subtitle: const Text(
+                      'Le coach propose les micro-actions des projets au fil de l\'eau — le Gantt reste accessible sur le web'),
+                  value: logic.state.hideProjectsTab,
+                  onChanged: (v) {
+                    logic.state.hideProjectsTab = v;
+                    if (v && _tab == _Tab.projets) _tab = _Tab.dashboard;
                     logic.onChange();
                     setLocal(() {});
                     setState(() {});

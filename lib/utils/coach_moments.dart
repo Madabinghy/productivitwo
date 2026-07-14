@@ -146,6 +146,7 @@ CoachMoment computeCoachMoment(
   String? nextSessionLabel,
   bool nudgeDismissed = false,
   ChallengeProposal? challenge,
+  GanttMicroAction? ganttAction,
 }) {
   final minutes = now.hour * 60 + now.minute;
   // Défi ORION proactif : une sollicitation par jour maximum — passé
@@ -245,7 +246,8 @@ CoachMoment computeCoachMoment(
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
         _idealHourMoment(now, st, blocks) ??
-        _afternoonMoment(now, st, blocks, recentSessions, challenge: chal);
+        _afternoonMoment(now, st, blocks, recentSessions,
+            challenge: chal, gantt: ganttAction);
   } else if (minutes >= 11 * 60 + 45) {
     clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
   } else if (minutes >= 9 * 60) {
@@ -267,7 +269,7 @@ CoachMoment computeCoachMoment(
         return _middayMoment(now, blocks, recentSessions, vitals, meal);
       case CoachMomentType.afternoon:
         return _afternoonMoment(now, st, blocks, recentSessions,
-            challenge: chal);
+            challenge: chal, gantt: ganttAction);
       case CoachMomentType.evening:
         return _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
       default:
@@ -808,7 +810,7 @@ CoachMoment _eveningModeMoment(
 
 CoachMoment _afternoonMoment(DateTime now, AppState st,
     List<ScheduleBlock> blocks, List<Session> sessions,
-    {ChallengeProposal? challenge}) {
+    {ChallengeProposal? challenge, GanttMicroAction? gantt}) {
   // 23b/23c : « Passer en soirée » (bascule invisible) devient la bascule
   // système EXPLICITE — nommée, conséquence visible, réversible (dayMode).
   const advance = CoachAction('Terminer l\'après-midi — mode soirée',
@@ -866,10 +868,16 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
     final f = tension == null && chal == null && gap >= 60
         ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
         : null;
+    // Gantt invisible : quand rien d'autre ne se propose, une micro-action de
+    // projet fait avancer le fond — dernier de la hiérarchie (tension > défi >
+    // combleur > Gantt), 30 min de trou suffisent.
+    final g =
+        tension == null && chal == null && f == null && gap >= 30 ? gantt : null;
     var message =
         'Rien de posé pour la suite. 2 minutes et l\'après-midi a une colonne vertébrale.$tensionText';
     if (chal != null) message = '$message ${_challengeText(chal)}';
     if (f != null) message = '$message ${_fillerText(f, hasNext: false)}';
+    if (g != null) message = '$message ${_ganttText(g)}';
     return CoachMoment(
       type: CoachMomentType.afternoon,
       tagLabel: 'ORION · APRÈS-MIDI',
@@ -881,6 +889,7 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
         if (tensionAction != null) tensionAction,
         ...challengeActions,
         if (f != null) _fillerAction(now, f),
+        if (g != null) _ganttCta(now, g),
         advance,
       ],
       tone: CoachTone.neutral,
@@ -890,9 +899,12 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
   final f = tension == null && chal == null && gap >= 60
       ? gapFillers(now, st, gap, blocks: blocks).firstOrNull
       : null;
+  final g =
+      tension == null && chal == null && f == null && gap >= 30 ? gantt : null;
   var message = 'Prochain : ${next.title} $whenStr.$tensionText';
   if (chal != null) message = '$message ${_challengeText(chal)}';
   if (f != null) message = '$message ${_fillerText(f, hasNext: true)}';
+  if (g != null) message = '$message ${_ganttText(g)}';
   return CoachMoment(
     type: CoachMomentType.afternoon,
     tagLabel: 'ORION · APRÈS-MIDI',
@@ -909,11 +921,93 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
       if (tensionAction != null) tensionAction,
       ...challengeActions,
       if (f != null) _fillerAction(now, f),
+      if (g != null) _ganttCta(now, g),
       advance,
     ],
     tone: CoachTone.neutral,
   );
 }
+
+// ── Gantt invisible : micro-action de projet dans la carte ──────────────────
+//
+// « Le coach me challenge à avancer sur des petites actions du Gantt qu'il
+// maintient » : la tâche la plus urgente (deadline la plus proche, puis date
+// de début) des projets ACTIFS, proposée en 15 min quand rien d'autre n'a la
+// priorité. Faits réels uniquement : la deadline n'est citée que si la tâche
+// en a une, la prochaine sous-action que si elle existe.
+
+class GanttMicroAction {
+  final String projectId;
+  final String projectTitle;
+  final String taskId;
+  final String taskTitle;
+  final DateTime? deadline;
+  final String? nextAction; // première sous-action non faite — null si aucune
+  const GanttMicroAction(
+      {required this.projectId,
+      required this.projectTitle,
+      required this.taskId,
+      required this.taskTitle,
+      this.deadline,
+      this.nextAction});
+}
+
+/// La micro-action Gantt du moment — null si aucun projet actif n'a de tâche
+/// pending, ou si la plus urgente est déjà portée par un bloc pending du jour.
+GanttMicroAction? ganttMicroAction(List<Project> projects,
+    {List<ScheduleBlock> blocks = const []}) {
+  final planned = {
+    for (final b in blocks)
+      if (b.status == 'pending' && b.taskId != null) b.taskId!
+  };
+  ({Project p, ProjectTask t})? best;
+  for (final p in projects) {
+    if (p.status != 'active') continue;
+    for (final t in p.tasks) {
+      if (t.status != 'pending' || t.isMilestone) continue;
+      if (planned.contains(t.id)) continue;
+      if (best == null) {
+        best = (p: p, t: t);
+        continue;
+      }
+      final a = t.endDate;
+      final b = best.t.endDate;
+      final earlier = a != null && (b == null || a.isBefore(b)) ||
+          (a == null && b == null && t.startDate.isBefore(best.t.startDate));
+      if (earlier) best = (p: p, t: t);
+    }
+  }
+  if (best == null) return null;
+  final next =
+      best.t.actions.where((a) => !a.done).map((a) => a.title).firstOrNull;
+  return GanttMicroAction(
+    projectId: best.p.id,
+    projectTitle: best.p.title,
+    taskId: best.t.id,
+    taskTitle: best.t.title,
+    deadline: best.t.endDate,
+    nextAction: (next != null && next.trim().isNotEmpty) ? next.trim() : null,
+  );
+}
+
+String _ganttText(GanttMicroAction g) {
+  final dl = g.deadline != null
+      ? ' (deadline le ${g.deadline!.day}/${g.deadline!.month})'
+      : '';
+  final step =
+      g.nextAction != null ? ' Prochaine étape : ${g.nextAction}.' : '';
+  return 'Côté « ${g.projectTitle} », la tâche « ${g.taskTitle} » attend$dl.$step 15 minutes la font avancer.';
+}
+
+CoachAction _ganttCta(DateTime now, GanttMicroAction g) => CoachAction(
+    'Avancer : ${g.taskTitle} — 15 min', CoachActionKind.launchBlock,
+    block: ScheduleBlock(
+        startTime: _hm(now),
+        durationMin: 15,
+        title: g.taskTitle,
+        category: 'project',
+        projectId: g.projectId,
+        taskId: g.taskId));
 
 /// Premier domaine défini dont le minimum vital hebdo (metric `sessions*`,
 /// period `week`) est en retard alors que la semaine se termine (jeudi ou
@@ -1152,6 +1246,8 @@ String _fillerText(GapFiller f, {required bool hasNext}) {
   final facts = <String>[
     if (f.usualTime && f.typicalMinute != null)
       'c\'est ton heure habituelle (vers ${_minToFr(f.typicalMinute!)})',
+    if (f.routine.finalTarget != null)
+      'palier ${f.routine.effHabitTarget}/j, cap ${f.routine.finalTarget}',
     if (f.streakDays >= 3) '${f.streakDays} jours d\'affilée, on continue ?',
   ];
   final suffix = facts.isEmpty ? '' : ' — ${facts.join(' · ')}';
@@ -1212,8 +1308,12 @@ CoachMoment? _idealHourMoment(
   final a = best.a;
   final streak = streakOf(a.id, st.habitHits, now);
   final dur = (a.timerMin ?? 0) > 0 ? a.timerMin : null;
-  final suffix =
-      streak >= 3 ? ' $streak jours d\'affilée, on continue ?' : '';
+  final endFacts = <String>[
+    if (a.finalTarget != null)
+      'Palier : ${a.effHabitTarget}/j — cap ${a.finalTarget}.',
+    if (streak >= 3) '$streak jours d\'affilée, on continue ?',
+  ];
+  final suffix = endFacts.isEmpty ? '' : ' ${endFacts.join(' ')}';
   return CoachMoment(
     type: CoachMomentType.idealHour,
     tagLabel: 'ORION · C\'ÉTAIT TON HEURE',

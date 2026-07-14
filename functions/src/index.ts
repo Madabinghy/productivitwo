@@ -27,7 +27,7 @@ import {
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
-  GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
+  GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
   SAVE_DOMAIN_DEFINITION_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
@@ -50,7 +50,7 @@ import {
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
   executeLinkActionToActivity, executeAddActivityAction,
   executeLogRoutineHit, executeMarkBlockDone,
-  executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock,
+  executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
@@ -587,6 +587,9 @@ export const proposeDayPlan = onRequest(
         .map((a) =>
           `  · "${a.name}" (activityId: ${a.id})` +
           (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
+          (a.finalTarget
+            ? ` · palier ${a.habitTarget ?? 1}/j (cap ${a.finalTarget})`
+            : "") +
           (typicalByHabit.has(String(a.id))
             ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
             : ""))
@@ -1465,7 +1468,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
-            GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL,
+            GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
             SAVE_DOMAIN_DEFINITION_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
@@ -1564,6 +1567,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
         } else if (toolName === "add_prep_block") {
           text = await executeAddPrepBlock(uid, args as Parameters<typeof executeAddPrepBlock>[1]);
+        } else if (toolName === "add_event") {
+          text = await executeAddEvent(uid, args as Parameters<typeof executeAddEvent>[1]);
         } else if (toolName === "save_domain_definition") {
           text = await executeSaveDomainDefinition(uid, args as Parameters<typeof executeSaveDomainDefinition>[1]);
         } else if (toolName === "generate_weekly_report") {

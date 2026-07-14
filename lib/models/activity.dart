@@ -36,6 +36,16 @@ class Activity {
   /// Si true, on n’applique pas l’auto-tune (l’utilisateur pilote la cible).
   bool manualTarget;
 
+  // ---------- Progression par paliers (routines quotidiennes) ----------
+  /// Cap déclaré (ex : 50 pompes/jour). `habitTarget` devient le PALIER
+  /// courant, démarré bas, ajusté chaque semaine selon les hits RÉELS.
+  /// Null = pas de progression — la routine garde sa cible fixe.
+  int? finalTarget;
+
+  /// Lundi (YYYY-MM-DD) de la dernière évaluation hebdo du palier — fait
+  /// anti-double : une seule évaluation par semaine.
+  String? stepUpdatedWeek;
+
   /// Si true (par défaut), la routine peut être ajustée automatiquement.
   bool autoTune;
 
@@ -77,6 +87,8 @@ class Activity {
     this.habitFreq,
     this.habitTarget,
     this.manualTarget = false,
+    this.finalTarget,
+    this.stepUpdatedWeek,
     this.autoTune = true,
     this.targetSource = 'default',
     DateTime? createdAt,
@@ -114,6 +126,8 @@ class Activity {
         'habitFreq': habitFreq?.index,
         'habitTarget': habitTarget,
         'manualTarget': manualTarget,
+        'finalTarget': finalTarget,
+        'stepUpdatedWeek': stepUpdatedWeek,
         'autoTune': autoTune,
         'targetSource': targetSource,
         'linkedActivityId':linkedActivityId,
@@ -161,6 +175,8 @@ class Activity {
       habitFreq: parsedFreq,
       habitTarget: parsedTarget,
       manualTarget: j['manualTarget'] ?? false,
+      finalTarget: (j['finalTarget'] as num?)?.toInt(),
+      stepUpdatedWeek: j['stepUpdatedWeek'] as String?,
       autoTune: j['autoTune'] ?? true,
       targetSource: j['targetSource'] ?? 'default',
       linkedActivityId:j['linkedActivityId'],

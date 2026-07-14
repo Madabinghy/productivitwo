@@ -915,7 +915,11 @@ class _FocusViewState extends State<FocusView> {
         sessionSkipCount: _sessionSkipCount,
         nextSessionLabel: _nextSessionLabel,
         nudgeDismissed: _nudgeDismissed,
-        challenge: _challengeProposal(now));
+        challenge: _challengeProposal(now),
+        // Gantt invisible : micro-action du projet le plus urgent — la carte
+        // ne la sort que quand rien d'autre n'a la priorité.
+        ganttAction: ganttMicroAction(logic.currentProjects,
+            blocks: _schedule?.blocks ?? const []));
     final isNudge = moment.type == CoachMomentType.defineNudge;
     return CoachMomentCard(
       moment: moment,

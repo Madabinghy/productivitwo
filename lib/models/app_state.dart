@@ -20,6 +20,7 @@ class AppState {
   List<String> focusTodayIds;
   bool sortTodayByDashboard;
   bool showTodayPriorities; // section "Priorités du jour" en tête de l'onglet Projets
+  bool hideProjectsTab; // Gantt invisible : le coach porte les micro-actions
   bool onboardingDone;
 
   // ✅ Habits context (associations)
@@ -190,6 +191,7 @@ class AppState {
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
     this.showTodayPriorities = false,
+    this.hideProjectsTab = false,
     this.onboardingDone = false,
     this.lastRolloverYmd,
     this.lastCarryYmd,
@@ -354,6 +356,7 @@ class AppState {
         'focusTodayIds': focusTodayIds,
         'sortTodayByDashboard': sortTodayByDashboard,
         'showTodayPriorities': showTodayPriorities,
+        'hideProjectsTab': hideProjectsTab,
         'onboardingDone': onboardingDone,
 
         // ✅ persist
@@ -506,6 +509,7 @@ class AppState {
           (j['focusTodayIds'] as List?)?.cast<String>() ?? <String>[],
       sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
       showTodayPriorities: (j['showTodayPriorities'] as bool?) ?? false,
+      hideProjectsTab: (j['hideProjectsTab'] as bool?) ?? false,
       onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       redemptions: _list(j['redemptions'], (e) => Redemption.from(e)),

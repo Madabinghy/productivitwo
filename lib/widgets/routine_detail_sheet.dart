@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
@@ -788,9 +789,93 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
               ],
             ),
+
+            // Progression par paliers : cap déclaré, la cible devient le
+            // palier courant — évalué chaque lundi sur les hits réels.
+            if (freq == HabitFreq.daily) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Text('Objectif final (cap)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.75),
+                      )),
+                  const Spacer(),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => _askFinalTarget(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest.withOpacity(.5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        act.finalTarget?.toString() ?? '—',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                          color: act.finalTarget != null
+                              ? accentColor
+                              : cs.onSurface.withOpacity(.4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (act.finalTarget != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    '${palierLabel(act)} · évalué chaque lundi : '
+                    'tenu ≥ 5 j/7 → palier suivant, ≤ 1 j/7 → on redescend.',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.onSurface.withOpacity(.55)),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// Cap de progression : saisie libre (vider = retirer la progression, la
+  /// cible du jour redevient fixe).
+  Future<void> _askFinalTarget(BuildContext context) async {
+    final ctrl =
+        TextEditingController(text: act.finalTarget?.toString() ?? '');
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Objectif final'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'ex : 50 (vide = pas de progression)',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('OK')),
+        ],
+      ),
+    );
+    if (res == null) return;
+    final v = int.tryParse(res);
+    act.finalTarget = (v != null && v > 0) ? v : null;
+    // Nouveau cap = nouveau départ : la prochaine évaluation attend une
+    // semaine pleine (le fait `stepUpdatedWeek` repart de cette semaine).
+    act.stepUpdatedWeek = null;
+    _applySetting();
   }
 }

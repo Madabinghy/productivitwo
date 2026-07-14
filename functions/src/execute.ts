@@ -918,6 +918,7 @@ async function executeUpdateActivity(
     unit?: string;
     habitFreq?: number;
     habitTarget?: number;
+    finalTarget?: number;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -932,8 +933,17 @@ async function executeUpdateActivity(
   if (updates.unit !== undefined) patch.unit = updates.unit;
   if (updates.habitFreq !== undefined) patch.habitFreq = updates.habitFreq;
   if (updates.habitTarget !== undefined) patch.habitTarget = updates.habitTarget;
+  if (updates.finalTarget !== undefined) {
+    // Cap de progression : habitTarget devient le palier courant. Nouveau cap
+    // = nouveau départ — l'évaluation hebdo attend une semaine pleine.
+    patch.finalTarget = updates.finalTarget > 0 ? updates.finalTarget : null;
+    patch.stepUpdatedWeek = null;
+  }
 
   await ref.update(patch);
+  if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
+    return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${updates.habitTarget ?? snap.data()?.habitTarget ?? 1}/j (évalué chaque lundi sur les hits réels).`;
+  }
   return `✅ Activité "${currentName}" mise à jour.`;
 }
 
@@ -1935,6 +1945,96 @@ async function executeAddPrepBlock(
   return `✅ Bloc de préparation ajouté le ${date} à ${startTime} — « ${title} » (pour le bloc du ${prepForDate}).`;
 }
 
+// ── Événement daté : « J'accompagne maman le 12 à son RDV à 14h » — un bloc
+// posé DIRECTEMENT dans le programme du jour concerné. La durée est un fait
+// utilisateur : sans durationMin, l'outil REFUSE et demande de la demander
+// (jamais de durée inventée). Retourne aussi les instructions Google Calendar
+// (connecteur GCal côté conversation, en attendant l'API native).
+async function executeAddEvent(
+  uid: string,
+  args: {
+    date: string;
+    startTime: string;
+    title: string;
+    durationMin?: number;
+    syncToCalendar?: boolean;
+  }
+): Promise<string> {
+  const { date, startTime, title } = args;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  }
+  if (!/^\d{2}:\d{2}$/.test(startTime ?? "")) {
+    return `Heure invalide : ${startTime}. Format attendu : HH:mm`;
+  }
+  if (!title?.trim()) return "title est requis.";
+  if (!args.durationMin || args.durationMin <= 0) {
+    return (
+      "⛔ Durée manquante — ne l'invente pas. Demande à l'utilisateur : " +
+      `« Combien de temps estimes-tu pour “${title}” ? » puis rappelle ` +
+      "add_event avec durationMin."
+    );
+  }
+  const durationMin = Math.min(720, Math.round(args.durationMin));
+
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  const block = {
+    id: uuidv4(),
+    startTime,
+    durationMin,
+    title: title.trim(),
+    category: "personal",
+    projectId: null,
+    taskId: null,
+    activityId: null,
+    actionId: null,
+    status: "pending",
+    doneAt: null,
+    subtitle: "événement",
+  };
+
+  if (!snap.exists) {
+    await ref.set({
+      date,
+      generatedBy: "claude",
+      generatedAt: FieldValue.serverTimestamp(),
+      blocks: [block],
+    });
+  } else {
+    const data = snap.data() as Record<string, unknown>;
+    const blocks = (data.blocks as Array<Record<string, unknown>>) ?? [];
+    // Idempotence : même titre non supprimé à la même heure le même jour.
+    const exists = blocks.some(
+      (b) =>
+        b.status !== "deleted" &&
+        b.startTime === startTime &&
+        String(b.title ?? "").trim().toLowerCase() === title.trim().toLowerCase()
+    );
+    if (exists) {
+      return `ℹ️ « ${title} » existe déjà le ${date} à ${startTime} — rien ajouté (idempotent).`;
+    }
+    blocks.push(block);
+    await ref.update({ blocks });
+  }
+
+  const endMin =
+    parseInt(startTime.slice(0, 2), 10) * 60 +
+    parseInt(startTime.slice(3, 5), 10) +
+    durationMin;
+  const endTime = `${String(Math.floor((endMin % 1440) / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
+
+  let out = `✅ « ${title} » posé le ${date} à ${startTime} (${durationMin} min) dans le programme.`;
+  if (args.syncToCalendar !== false) {
+    out +=
+      `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
+      `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
+      `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
+      `Sans connecteur : dis-le simplement, le bloc programme suffit.`;
+  }
+  return out;
+}
+
 // ── Session de définition : écrit la fiche domaine (intention/vital/modalités)
 // sur la collection domains EXISTANTE. Appelé à chaque élément validé.
 async function executeSaveDomainDefinition(
@@ -2224,6 +2324,7 @@ export {
   executeGetDaySchedule,
   executeScheduleDay,
   executeAddPrepBlock,
+  executeAddEvent,
   executeSaveDomainDefinition,
   executeUpdateScheduleBlock,
   executeComputeTimeBudget,

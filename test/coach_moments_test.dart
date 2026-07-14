@@ -1588,4 +1588,104 @@ void main() {
       expect(m2.message, contains('4 jours d\'affilée'));
     });
   });
+
+  group('Gantt invisible : micro-action de projet', () {
+    Project proj(String title, List<ProjectTask> tasks, {String status = 'active'}) =>
+        Project(
+            id: 'p-$title',
+            title: title,
+            startDate: DateTime(2026, 6, 1),
+            status: status,
+            createdBy: 'u1',
+            tasks: tasks);
+    ProjectTask task(String id, String title,
+            {DateTime? deadline,
+            String status = 'pending',
+            List<TaskAction>? actions}) =>
+        ProjectTask(
+            id: id,
+            title: title,
+            startDate: DateTime(2026, 6, 10),
+            endDate: deadline,
+            status: status,
+            actions: actions);
+
+    test('la tâche à la deadline la plus proche gagne ; done/milestone exclus',
+        () {
+      final g = ganttMicroAction([
+        proj('Site', [
+          task('t1', 'Maquette', deadline: DateTime(2026, 7, 30)),
+          task('t2', 'Contenu', deadline: DateTime(2026, 7, 20)),
+          task('t3', 'Vieille', deadline: DateTime(2026, 7, 1), status: 'done'),
+        ]),
+        proj('Archivé', [task('t9', 'X', deadline: DateTime(2026, 7, 2))],
+            status: 'archived'),
+      ]);
+      expect(g!.taskTitle, 'Contenu');
+      expect(g.projectTitle, 'Site');
+      expect(g.deadline, DateTime(2026, 7, 20));
+    });
+
+    test('tâche déjà portée par un bloc pending du jour → exclue', () {
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette', deadline: DateTime(2026, 7, 20))]),
+      ], blocks: [
+        _block(startTime: '16:00', title: 'Maquette', taskId: 't1'),
+      ]);
+      expect(g, isNull);
+    });
+
+    test('l\'après-midi sans rien d\'autre, la carte propose la micro-action',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final g = ganttMicroAction([
+        proj('Site', [
+          task('t1', 'Maquette',
+              deadline: DateTime(2026, 7, 20),
+              actions: [TaskAction(title: 'Choisir la palette')]),
+        ]),
+      ]);
+      final m = computeCoachMoment(now, _st([]), _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.message, contains('« Maquette » attend (deadline le 20/7)'));
+      expect(m.message, contains('Prochaine étape : Choisir la palette'));
+      final cta = m.actions
+          .firstWhere((a) => a.label == 'Avancer : Maquette — 15 min');
+      expect(cta.kind, CoachActionKind.launchBlock);
+      expect(cta.block?.projectId, 'p-Site');
+      expect(cta.block?.taskId, 't1');
+    });
+
+    test('un combleur routine disponible → la routine prime sur le Gantt', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final st = AppState(
+        domains: [
+          Domain(
+              name: 'Santé',
+              definitionStatus: 'active',
+              intention: 'tenir le rythme'),
+        ],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Méditation',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              timerMin: 10,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette')]),
+      ]);
+      final m = computeCoachMoment(now, st, _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.message, contains('Méditation'));
+      expect(m.message, isNot(contains('Maquette')));
+    });
+  });
 }

@@ -484,7 +484,8 @@ const UPDATE_ACTIVITY_TOOL = {
       goalMin:     { type: "number" },
       unit:        { type: "string" },
       habitFreq:   { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
-      habitTarget: { type: "number" },
+      habitTarget: { type: "number", description: "cible par période — avec finalTarget, c'est le PALIER courant" },
+      finalTarget: { type: "number", description: "cap de progression d'une routine quotidienne (ex: 50 pompes/j) — habitTarget devient le palier courant, démarré bas, ajusté chaque lundi selon les hits réels. 0 = retirer la progression" },
     },
   },
 };
@@ -1076,6 +1077,27 @@ export const ADD_PREP_BLOCK_TOOL = {
       title:          { type: "string", description: "Intitulé, ex: 'Préparer les affaires de sport'" },
       prepForDate:    { type: "string", description: "YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
       prepForBlockId: { type: "string", description: "id du bloc cible dans le programme de prepForDate (via get_day_schedule)" },
+    },
+  },
+};
+
+export const ADD_EVENT_TOOL = {
+  name: "add_event",
+  description:
+    "Pose un ÉVÉNEMENT daté dans le programme du jour concerné (« J'accompagne maman le 12 à son RDV " +
+    "à 14h ») SANS remplacer le reste. ⚠️ La durée est un fait utilisateur : si durationMin manque, " +
+    "l'outil refuse — demande « Combien de temps estimes-tu ? » PUIS rappelle l'outil. La réponse " +
+    "inclut les instructions Google Calendar (connecteur GCal) si syncToCalendar n'est pas false. " +
+    "Idempotent : même titre à la même heure le même jour → rien ajouté. Crée le doc du jour au besoin.",
+  inputSchema: {
+    type: "object",
+    required: ["date", "startTime", "title"],
+    properties: {
+      date:           { type: "string", description: "YYYY-MM-DD — jour de l'événement" },
+      startTime:      { type: "string", description: "Heure de début HH:mm" },
+      title:          { type: "string", description: "Intitulé, ex: 'Accompagner maman — RDV médecin'" },
+      durationMin:    { type: "integer", description: "Durée estimée en minutes — TOUJOURS demandée à l'utilisateur, jamais inventée" },
+      syncToCalendar: { type: "boolean", description: "false = pas d'instructions Google Calendar (défaut : true)" },
     },
   },
 };
