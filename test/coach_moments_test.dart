@@ -241,14 +241,29 @@ void main() {
       expect(m.hidden, isTrue);
     });
 
-    test('indispo : le check-in du soir reprend la main (≥ 19 h)', () {
+    test('pause : le check-in du soir attend AUSSI la fin de la fenêtre', () {
       final now = DateTime(2026, 7, 11, 20, 0);
       final sched = DailySchedule(
         date: today,
         unavailableUntil: DateTime(2026, 7, 11, 22, 0),
       );
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.evening);
+      // La pause prime sur tout — le check-in reprend à 22 h, pas avant.
+      expect(m.hidden, isTrue);
+      // Fenêtre finie → check-in normal.
+      final after = computeCoachMoment(
+          DateTime(2026, 7, 11, 22, 5), _st([]), sched, null, []);
+      expect(after.type, CoachMomentType.evening);
+    });
+
+    test('pause « pas aujourd\'hui » posée hier : silence aussi à minuit', () {
+      final now = DateTime(2026, 7, 8, 0, 30);
+      final yest = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 8, 5, 0),
+      );
+      final m = computeCoachMoment(now, _st([]), null, yest, []);
+      expect(m.hidden, isTrue);
     });
 
     test('fenêtre expirée → le flow normal reprend', () {

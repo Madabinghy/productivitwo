@@ -167,19 +167,21 @@ CoachMoment computeCoachMoment(
 
   // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
   // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
-  // le programme d'HIER (et leur bloc cible est désormais ce matin).
+  // le programme d'HIER (et leur bloc cible est désormais ce matin). Une pause
+  // posée hier soir (« pas aujourd'hui » → jusqu'à 5 h) vit sur le doc d'HIER.
   if (minutes < 60) {
+    if (yesterday?.unavailableAt(now) == true) return CoachMoment.none;
     return _eveningMoment(_liveBlocks(yesterday), const [],
         reviewedAt: yesterday?.reviewedAt);
   }
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
 
   // Pause déclarée (« pas dispo avant X ») : le coach SUIT LE FLOW — AUCUNE
-  // carte, aucune relance (nudge et défi compris) avant l'heure dite. Le
-  // guide « que souhaites-tu faire ? » prend la place : lui est PULL, pas
-  // push. Le soir (≥ 19 h) le check-in reprend : rendre des comptes reste
-  // sacré. L'état et la sortie de pause vivent sur le bouton ⏸ de l'en-tête.
-  if (today?.unavailableAt(now) == true && minutes < 19 * 60) {
+  // carte, aucune relance (nudge, défi ET check-in du soir compris) avant
+  // l'heure dite. Le guide « que souhaites-tu faire ? » prend la place : lui
+  // est PULL, pas push. L'état et la sortie de pause vivent sur le bouton ⏸
+  // de l'en-tête ; le check-in redevient possible dès la fin de la fenêtre.
+  if (today?.unavailableAt(now) == true) {
     return CoachMoment.none;
   }
 

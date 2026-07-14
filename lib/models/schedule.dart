@@ -155,8 +155,9 @@ class DailySchedule {
   String dayMode; // "normal" | "evening"
   DateTime? dayModeActivatedAt;
   // Disponibilité déclarée : « pas dispo avant X » (posé au report ou depuis
-  // « Me poser »). Jusqu'à cette heure le coach SUIT LE FLOW — pas de relance,
-  // pas de dérive ; le check-in du soir et le rapport restent intouchés.
+  // « Me poser »). Jusqu'à cette heure le coach SUIT LE FLOW — aucune carte,
+  // aucune relance, check-in du soir compris (il reprend à la fin de la
+  // fenêtre).
   DateTime? unavailableUntil;
   String? unavailableReason; // souvent la raison du report (« pas sur place »)
   // « Point fait » : posé quand le check-in du soir atteint son verdict — la
