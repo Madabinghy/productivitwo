@@ -2194,10 +2194,14 @@ class _AppRootState extends State<AppRoot>
         // Progression par paliers : évaluation hebdo déterministe des routines
         // à cap — chaque changement de palier est annoncé avec ses faits.
         final steps = logic.applyWeeklyProgression();
-        if (steps.isNotEmpty && mounted) {
+        // Calibration des cibles de temps (« plug and play ») : la cible
+        // quotidienne suit le réel mesuré — sauf épinglage manuel ('user').
+        final tuned = await logic.autoAdjustStandardsRealtime();
+        final facts = [...steps, ...tuned];
+        if (facts.isNotEmpty && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-                content: Text('Progression — ${steps.join(' · ')}'),
+                content: Text('Ajustements — ${facts.join(' · ')}'),
                 duration: const Duration(seconds: 4)),
           );
         }
