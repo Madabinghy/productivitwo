@@ -8,6 +8,9 @@ import 'package:productivitwo_v1/models.dart';
 // à la casse et aux accents — zéro ou plusieurs candidates = pas de lien
 // deviné (jamais d'incrément dans le doute).
 
+/// Repli casse + accents — partagé avec le catalogue de contextes horaires.
+String foldName(String s) => _fold(s);
+
 String _fold(String s) {
   const map = {
     'à': 'a', 'â': 'a', 'ä': 'a',

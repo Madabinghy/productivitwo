@@ -25,6 +25,7 @@ const sgMail = require("@sendgrid/mail");
 const orion_tasks_1 = require("./orion_tasks");
 const weekly_report_1 = require("./weekly_report");
 const domain_facts_1 = require("./domain_facts");
+const routine_context_1 = require("./routine_context");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
 const prompts_1 = require("./prompts");
@@ -551,6 +552,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         const routineList = acts.filter((a) => a.type === "habit")
             .map((a) => {
             var _a;
+            // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
+            const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
             return `  · "${a.name}" (activityId: ${a.id})` +
                 (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
                 (a.finalTarget
@@ -558,7 +561,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     : "") +
                 (typicalByHabit.has(String(a.id))
                     ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
-                    : "");
+                    : "") +
+                (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "");
         })
             .join("\n") || "  Aucune.";
         const activityList = acts.filter((a) => a.type !== "habit")
@@ -766,8 +770,12 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 if (covered.has(id) || doneOnTarget.has(id))
                     continue;
                 const typical = typicalByHabit.get(id);
-                const startTime = typical !== null && typical !== void 0 ? typical : toHm(fallbackMin);
-                if (!typical)
+                // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
+                // contexte) prime sur la cascade aveugle — « Hygiène du soir » se
+                // pose le soir, pas à lever+90.
+                const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
+                const startTime = typical !== null && typical !== void 0 ? typical : (ctx ? toHm(ctx.anchorMin) : toHm(fallbackMin));
+                if (!typical && !ctx)
                     fallbackMin += 30;
                 const timerMin = Number((_x = a.timerMin) !== null && _x !== void 0 ? _x : 0);
                 outBlocks.push({

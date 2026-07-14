@@ -11,6 +11,7 @@ import sgMail = require("@sendgrid/mail");
 import { runDeterministicTask } from "./orion_tasks";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { buildDomainDossier } from "./domain_facts";
+import { routineTimeContext } from "./routine_context";
 import { v4 as uuidv4 } from "uuid";
 import { db, FieldValue, effectivePro } from "./db";
 import { MCP_PROMPTS, getPromptMessages, executeGetDocumentTemplate, defineDomainSystemPrompt } from "./prompts";
@@ -587,15 +588,19 @@ export const proposeDayPlan = onRequest(
       }
 
       const routineList = acts.filter((a) => a.type === "habit")
-        .map((a) =>
-          `  · "${a.name}" (activityId: ${a.id})` +
-          (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
-          (a.finalTarget
-            ? ` · palier ${a.habitTarget ?? 1}/j (cap ${a.finalTarget})`
-            : "") +
-          (typicalByHabit.has(String(a.id))
-            ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
-            : ""))
+        .map((a) => {
+          // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
+          const ctx = routineTimeContext(String(a.name), a.timeContext as string | undefined);
+          return `  · "${a.name}" (activityId: ${a.id})` +
+            (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
+            (a.finalTarget
+              ? ` · palier ${a.habitTarget ?? 1}/j (cap ${a.finalTarget})`
+              : "") +
+            (typicalByHabit.has(String(a.id))
+              ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
+              : "") +
+            (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "");
+        })
         .join("\n") || "  Aucune.";
       const activityList = acts.filter((a) => a.type !== "habit")
         .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
@@ -822,8 +827,13 @@ export const proposeDayPlan = onRequest(
           const id = String(a.id);
           if (covered.has(id) || doneOnTarget.has(id)) continue;
           const typical = typicalByHabit.get(id);
-          const startTime = typical ?? toHm(fallbackMin);
-          if (!typical) fallbackMin += 30;
+          // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
+          // contexte) prime sur la cascade aveugle — « Hygiène du soir » se
+          // pose le soir, pas à lever+90.
+          const ctx = routineTimeContext(String(a.name), a.timeContext as string | undefined);
+          const startTime =
+            typical ?? (ctx ? toHm(ctx.anchorMin) : toHm(fallbackMin));
+          if (!typical && !ctx) fallbackMin += 30;
           const timerMin = Number(a.timerMin ?? 0);
           outBlocks.push({
             startTime,

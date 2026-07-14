@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/evening_verdict.dart';
+import 'package:productivitwo_v1/utils/routine_context.dart';
 
 // ─── CARTE COACH « MAINTENANT » ──────────────────────────────────────────────
 //
@@ -437,7 +438,7 @@ CoachMoment _wakeMoment(DateTime now, AppState st, List<ScheduleBlock> blocks,
         prepReady ? ', les affaires sont prêtes depuis hier' : '';
     message =
         'Là tout de suite : ${first.title} $whenStr$prepSuffix. On y va tranquille.';
-    if (_launchable(first)) {
+    if (_launchable(first) && mins <= 90) {
       actions.add(CoachAction('Lancer', CoachActionKind.launchBlock,
           block: first));
     }
@@ -510,7 +511,7 @@ CoachMoment _morningMoment(
     final whenStr = _inFr(gap);
     stats.add(StatItem('Prochain', _hhmmToFr(next.startTime), sub: next.title));
     message = 'Prochain rendez-vous : ${next.title} $whenStr.';
-    if (_launchable(next)) {
+    if (_launchable(next) && gap <= 90) {
       actions.add(
           CoachAction('Lancer', CoachActionKind.launchBlock, block: next));
     }
@@ -556,9 +557,14 @@ CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
   ];
 
   final key = _afternoonKeyBlock(now, blocks);
+  // Le soir n'est pas l'affaire de l'après-midi : mention factuelle à part.
+  final evening = _eveningPreview(now, blocks);
+  final eveningNote = evening != null
+      ? ' Ce soir : ${evening.title} à ${_hhmmToFr(evening.startTime)}.'
+      : '';
   var message = key != null
-      ? 'L\'après-midi n\'a qu\'une chose à tenir : ${key.title}. Tout le reste est du bonus.'
-      : 'Belle matinée. L\'après-midi est à toi.';
+      ? 'L\'après-midi n\'a qu\'une chose à tenir : ${key.title}. Tout le reste est du bonus.$eveningNote'
+      : 'Belle matinée. L\'après-midi est à toi.$eveningNote';
 
   final actions = <CoachAction>[];
   // Repas du menu (15c) : « zéro décision » — le fait mangé/autre est tracké.
@@ -575,7 +581,9 @@ CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
         CoachActionKind.mealShift,
         artifactId: meal.artifactId));
   }
-  if (key != null && _launchable(key)) {
+  if (key != null &&
+      _launchable(key) &&
+      _minutesUntil(now, key.startTime) <= 90) {
     actions
         .add(CoachAction('Lancer', CoachActionKind.launchBlock, block: key));
   }
@@ -928,7 +936,8 @@ CoachMoment _afternoonMoment(DateTime now, AppState st,
       ...chalStats,
     ],
     actions: [
-      if (_launchable(next))
+      // Horizon actionnable : un bloc à > 90 min n'est pas « le moment ».
+      if (_launchable(next) && gap <= 90)
         CoachAction('Lancer', CoachActionKind.launchBlock, block: next),
       if (tensionAction != null) tensionAction,
       ...challengeActions,
@@ -1272,6 +1281,9 @@ List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
     final tm = typicalMinuteOf(a.id, st.habitHits, now);
     final dist = tm != null ? _circDist(tm, nowMin) : null;
     if (dist != null && dist > 240) continue;
+    // Sans historique MESURÉ, le méta-contexte tranche : « Hygiène du soir »
+    // n'est pas un combleur de 10 h du matin (le réel, lui, bat le catalogue).
+    if (tm == null && !(effTimeContextOf(a)?.allows(nowMin) ?? true)) continue;
     entries.add((
       f: GapFiller(
           routine: a,
@@ -1551,20 +1563,35 @@ ScheduleBlock? _firstDoneEngagement(List<ScheduleBlock> blocks) {
   return null;
 }
 
-/// Le bloc-clé de l'après-midi : premier bloc pending à partir de 12h, projet en
-/// priorité.
+/// Le bloc-clé de l'après-midi : premier bloc pending entre 12 h et 19 h,
+/// projet en priorité. Les blocs du SOIR (≥ 19 h) ne sont pas l'affaire de
+/// l'après-midi (constaté sur build : « l'après-midi n'a qu'une chose à
+/// tenir : Hygiène du soir, 21 h ») — ils sont cités à part (_eveningPreview).
 ScheduleBlock? _afternoonKeyBlock(DateTime now, List<ScheduleBlock> blocks) {
   final noon = DateTime(now.year, now.month, now.day, 12);
+  final evening = DateTime(now.year, now.month, now.day, 19);
   final afternoon = blocks
       .where((b) =>
           !b.isPrep &&
           b.category != 'break' &&
           b.status == 'pending' &&
-          !_blockStart(b, now).isBefore(noon))
+          !_blockStart(b, now).isBefore(noon) &&
+          _blockStart(b, now).isBefore(evening))
       .toList();
   if (afternoon.isEmpty) return null;
   final projects = afternoon.where((b) => b.category == 'project').toList();
   return (projects.isNotEmpty ? projects : afternoon).first;
+}
+
+/// Premier bloc pending du SOIR (≥ 19 h) — mentionné, jamais proposé au
+/// lancement en pleine journée.
+ScheduleBlock? _eveningPreview(DateTime now, List<ScheduleBlock> blocks) {
+  final evening = DateTime(now.year, now.month, now.day, 19);
+  for (final b in blocks) {
+    if (b.isPrep || b.category == 'break' || b.status != 'pending') continue;
+    if (!_blockStart(b, now).isBefore(evening)) return b;
+  }
+  return null;
 }
 
 bool _prepReadyFrom(DailySchedule? yesterday, String todayStr) {

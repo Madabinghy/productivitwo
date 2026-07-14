@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/renegotiation.dart';
+import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
 
@@ -105,6 +106,15 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
 
   ScheduleBlock get b => widget.block;
 
+  /// Routine du bloc (si liée) — porte son contexte horaire et sa
+  /// méta-intention (utils/routine_context.dart).
+  Activity? _routine() {
+    for (final a in widget.logic.state.activities) {
+      if (a.id == b.activityId) return a;
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -165,7 +175,14 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
   /// « garder quand même » en dernier (déconseillé mais possible).
   List<_ModOption> _buildOptions(StructuralDiagnosis d) {
     final opts = <_ModOption>[];
-    final alt = d.alternatives.isNotEmpty ? d.alternatives.first : null;
+    // Contexte horaire de la routine (override user sinon catalogue) : une
+    // tranche HORS fenêtre n'est jamais une option — « Hygiène du soir à
+    // midi » contredit la nature de la routine (constaté sur build).
+    final act = _routine();
+    final ctx = act != null ? effTimeContextOf(act) : null;
+    final alts =
+        d.alternatives.where((a) => contextAllowsBucket(ctx, a.bucket)).toList();
+    final alt = alts.isNotEmpty ? alts.first : null;
     if (alt != null) {
       final morning = alt.typicalTime.compareTo('09:30') < 0;
       opts.add(_ModOption(
@@ -178,18 +195,30 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
         recommended: true,
       ));
     } else {
-      // Aucun créneau prouvé : proposition honnête, étiquetée sans données.
-      final bucket = d.bucket == 'matin' ? 'midi' : 'matin';
+      // Aucun créneau prouvé (ou tous hors fenêtre) : essai honnête, DANS la
+      // fenêtre naturelle de la routine si elle en a une — à une AUTRE heure
+      // que celle qui casse.
+      final bucket = ctx != null
+          ? bucketOfContext(ctx)
+          : (d.bucket == 'matin' ? 'midi' : 'matin');
+      final anchor = ctx != null
+          ? '${(ctx.anchorMin ~/ 60).toString().padLeft(2, '0')}:${(ctx.anchorMin % 60).toString().padLeft(2, '0')}'
+          : (bucket == 'matin' ? '07:30' : '12:45');
       opts.add(_ModOption(
         bucket: bucket,
-        time: bucket == 'matin' ? '07:30' : '12:45',
+        time: anchor == d.slotHm && ctx != null
+            // L'ancre tombe pile sur l'heure qui casse : décale de 45 min.
+            ? '${((ctx.anchorMin + 45) ~/ 60).toString().padLeft(2, '0')}:${((ctx.anchorMin + 45) % 60).toString().padLeft(2, '0')}'
+            : anchor,
         durationMin: b.durationMin > 25 ? 25 : b.durationMin,
         freq: d.weeklyFreq,
-        subtitle: 'À tester — aucune donnée sur ce créneau pour l\'instant',
+        subtitle: ctx != null
+            ? 'À tester — autre heure dans sa fenêtre naturelle (${ctx.label.toLowerCase()})'
+            : 'À tester — aucune donnée sur ce créneau pour l\'instant',
         recommended: true,
       ));
     }
-    final alt2 = d.alternatives.length > 1 ? d.alternatives[1] : null;
+    final alt2 = alts.length > 1 ? alts[1] : null;
     if (alt2 != null) {
       opts.add(_ModOption(
         bucket: alt2.bucket,
@@ -199,7 +228,10 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
         subtitle:
             'À tester si le premier ne suit pas — voilure réduite, pas zéro (${alt2.held}/${alt2.total} tenues)',
       ));
-    } else if (alt != null && d.bucket != 'midi' && alt.bucket != 'midi') {
+    } else if (alt != null &&
+        d.bucket != 'midi' &&
+        alt.bucket != 'midi' &&
+        contextAllowsBucket(ctx, 'midi')) {
       opts.add(_ModOption(
         bucket: 'midi',
         time: '12:45',
@@ -770,6 +802,12 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     final domain = _domain();
     final alt = d.alternatives.isNotEmpty ? d.alternatives.first : null;
     final keepChosen = _options[_chosenOpt].keep;
+    // L'intention citée est celle de la ROUTINE (méta-intention du catalogue)
+    // quand elle existe — celle du domaine (« manger équilibré ») n'a rien à
+    // faire sur une routine d'hygiène (constaté sur build).
+    final act0 = _routine();
+    final intention =
+        (act0 != null ? metaIntentionOf(act0) : null) ?? domain?.intention;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -792,9 +830,9 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
             const TextSpan(
                 text:
                     'Ce n\'est plus un accident, c\'est le créneau. Ton intention ne bouge pas'),
-            if (domain?.intention != null)
+            if (intention != null)
               TextSpan(
-                  text: ' — « ${domain!.intention} »',
+                  text: ' — « $intention »',
                   style: TextStyle(
                       fontStyle: FontStyle.italic, color: cs.primary)),
             const TextSpan(text: ' — on change la modalité.'),

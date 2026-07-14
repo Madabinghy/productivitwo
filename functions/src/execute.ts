@@ -941,6 +941,7 @@ async function executeUpdateActivity(
     habitFreq?: number;
     habitTarget?: number;
     finalTarget?: number;
+    timeContext?: string;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -955,6 +956,10 @@ async function executeUpdateActivity(
   if (updates.unit !== undefined) patch.unit = updates.unit;
   if (updates.habitFreq !== undefined) patch.habitFreq = updates.habitFreq;
   if (updates.habitTarget !== undefined) patch.habitTarget = updates.habitTarget;
+  if (updates.timeContext !== undefined) {
+    // Fenêtre naturelle de la routine — chaîne vide = retour à l'auto.
+    patch.timeContext = updates.timeContext.trim() === "" ? null : updates.timeContext.trim();
+  }
   if (updates.finalTarget !== undefined) {
     // Cap de progression : habitTarget devient le palier courant. Nouveau cap
     // = nouveau départ — l'évaluation hebdo attend une semaine pleine.

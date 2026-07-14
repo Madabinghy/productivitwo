@@ -486,6 +486,7 @@ const UPDATE_ACTIVITY_TOOL = {
       habitFreq:   { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
       habitTarget: { type: "number", description: "cible par période — avec finalTarget, c'est le PALIER courant" },
       finalTarget: { type: "number", description: "cap de progression d'une routine quotidienne (ex: 50 pompes/j) — habitTarget devient le palier courant, démarré bas, ajusté chaque lundi selon les hits réels. 0 = retirer la progression" },
+      timeContext: { type: "string", description: "contexte horaire de la routine : morning|midday|afternoon|evening|meal|day|allday|any — fenêtre naturelle (hygiène du soir=evening, boire de l'eau=allday). Vide = revenir à l'auto (catalogue)" },
     },
   },
 };
