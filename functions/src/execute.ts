@@ -2026,11 +2026,19 @@ async function executeAddEvent(
 
   let out = `✅ « ${title} » posé le ${date} à ${startTime} (${durationMin} min) dans le programme.`;
   if (args.syncToCalendar !== false) {
-    out +=
-      `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
-      `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
-      `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
-      `Sans connecteur : dis-le simplement, le bloc programme suffit.`;
+    // Agenda natif connecté : le trigger Firestore synchronise ce bloc tout
+    // seul — aucune instruction connecteur à donner.
+    const gcalSnap = await db.doc(`gcal_tokens/${uid}`).get();
+    if (gcalSnap.exists && gcalSnap.data()?.refreshToken) {
+      out += `\n\n🗓️ Google Agenda : synchronisé automatiquement (agenda connecté dans l'app) — rien d'autre à faire.`;
+    } else {
+      out +=
+        `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
+        `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
+        `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
+        `Sans connecteur : dis-le simplement, le bloc programme suffit. ` +
+        `(L'utilisateur peut aussi connecter Google Agenda dans Paramètres → l'app synchronisera toute seule.)`;
+    }
   }
   return out;
 }

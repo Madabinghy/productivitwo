@@ -1705,7 +1705,7 @@ async function executeAddPrepBlock(uid, args) {
 // (jamais de durée inventée). Retourne aussi les instructions Google Calendar
 // (connecteur GCal côté conversation, en attendant l'API native).
 async function executeAddEvent(uid, args) {
-    var _a;
+    var _a, _b;
     const { date, startTime, title } = args;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date !== null && date !== void 0 ? date : "")) {
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1767,11 +1767,20 @@ async function executeAddEvent(uid, args) {
     const endTime = `${String(Math.floor((endMin % 1440) / 60)).padStart(2, "0")}:${String(endMin % 60).padStart(2, "0")}`;
     let out = `✅ « ${title} » posé le ${date} à ${startTime} (${durationMin} min) dans le programme.`;
     if (args.syncToCalendar !== false) {
-        out +=
-            `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
-                `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
-                `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
-                `Sans connecteur : dis-le simplement, le bloc programme suffit.`;
+        // Agenda natif connecté : le trigger Firestore synchronise ce bloc tout
+        // seul — aucune instruction connecteur à donner.
+        const gcalSnap = await db_1.db.doc(`gcal_tokens/${uid}`).get();
+        if (gcalSnap.exists && ((_b = gcalSnap.data()) === null || _b === void 0 ? void 0 : _b.refreshToken)) {
+            out += `\n\n🗓️ Google Agenda : synchronisé automatiquement (agenda connecté dans l'app) — rien d'autre à faire.`;
+        }
+        else {
+            out +=
+                `\n\n📅 Google Calendar (si le connecteur est disponible) : ` +
+                    `create_event { summary: "${title.trim()}", start: "${date}T${startTime}:00", ` +
+                    `end: "${date}T${endTime}:00", description: "source: productivitwo" }. ` +
+                    `Sans connecteur : dis-le simplement, le bloc programme suffit. ` +
+                    `(L'utilisateur peut aussi connecter Google Agenda dans Paramètres → l'app synchronisera toute seule.)`;
+        }
     }
     return out;
 }

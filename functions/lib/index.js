@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
+exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -4293,4 +4293,9 @@ exports.getDemoToken = (0, https_1.onRequest)({ cors: true, invoker: "public" },
 exports.resetDemoData = (0, scheduler_1.onSchedule)("0 4 * * *", async () => {
     await _seedDemoData(DEMO_UID);
 });
+// ── Google Agenda natif (Direction D) — voir gcal.ts et docs/gcal_setup.md ───
+var gcal_1 = require("./gcal");
+Object.defineProperty(exports, "gcalApi", { enumerable: true, get: function () { return gcal_1.gcalApi; } });
+Object.defineProperty(exports, "gcalOauthCallback", { enumerable: true, get: function () { return gcal_1.gcalOauthCallback; } });
+Object.defineProperty(exports, "gcalOnScheduleWrite", { enumerable: true, get: function () { return gcal_1.gcalOnScheduleWrite; } });
 //# sourceMappingURL=index.js.map

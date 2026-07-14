@@ -12,6 +12,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
@@ -4886,6 +4887,17 @@ class _AppRootState extends State<AppRoot>
                     setState(() {});
                   },
                 ),
+              ),
+              // Google Agenda natif : le programme suit dans l'agenda,
+              // sans passer par le connecteur Claude (OAuth côté serveur).
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_month_outlined),
+                title: const Text('Google Agenda'),
+                subtitle: const Text(
+                    'Programme synchronisé automatiquement dans ton agenda'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showGcalSettingsSheet(context, sync: _sync),
               ),
               // Sonnerie de l'alarme
               StatefulBuilder(
