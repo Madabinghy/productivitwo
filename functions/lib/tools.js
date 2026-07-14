@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -461,7 +461,8 @@ const UPDATE_ACTIVITY_TOOL = {
             goalMin: { type: "number" },
             unit: { type: "string" },
             habitFreq: { type: "number", description: "0=daily, 1=weekly, 2=monthly" },
-            habitTarget: { type: "number" },
+            habitTarget: { type: "number", description: "cible par période — avec finalTarget, c'est le PALIER courant" },
+            finalTarget: { type: "number", description: "cap de progression d'une routine quotidienne (ex: 50 pompes/j) — habitTarget devient le palier courant, démarré bas, ajusté chaque lundi selon les hits réels. 0 = retirer la progression" },
         },
     },
 };
@@ -979,6 +980,25 @@ exports.ADD_PREP_BLOCK_TOOL = {
             title: { type: "string", description: "Intitulé, ex: 'Préparer les affaires de sport'" },
             prepForDate: { type: "string", description: "YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
             prepForBlockId: { type: "string", description: "id du bloc cible dans le programme de prepForDate (via get_day_schedule)" },
+        },
+    },
+};
+exports.ADD_EVENT_TOOL = {
+    name: "add_event",
+    description: "Pose un ÉVÉNEMENT daté dans le programme du jour concerné (« J'accompagne maman le 12 à son RDV " +
+        "à 14h ») SANS remplacer le reste. ⚠️ La durée est un fait utilisateur : si durationMin manque, " +
+        "l'outil refuse — demande « Combien de temps estimes-tu ? » PUIS rappelle l'outil. La réponse " +
+        "inclut les instructions Google Calendar (connecteur GCal) si syncToCalendar n'est pas false. " +
+        "Idempotent : même titre à la même heure le même jour → rien ajouté. Crée le doc du jour au besoin.",
+    inputSchema: {
+        type: "object",
+        required: ["date", "startTime", "title"],
+        properties: {
+            date: { type: "string", description: "YYYY-MM-DD — jour de l'événement" },
+            startTime: { type: "string", description: "Heure de début HH:mm" },
+            title: { type: "string", description: "Intitulé, ex: 'Accompagner maman — RDV médecin'" },
+            durationMin: { type: "integer", description: "Durée estimée en minutes — TOUJOURS demandée à l'utilisateur, jamais inventée" },
+            syncToCalendar: { type: "boolean", description: "false = pas d'instructions Google Calendar (défaut : true)" },
         },
     },
 };

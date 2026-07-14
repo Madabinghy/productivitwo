@@ -241,14 +241,29 @@ void main() {
       expect(m.hidden, isTrue);
     });
 
-    test('indispo : le check-in du soir reprend la main (≥ 19 h)', () {
+    test('pause : le check-in du soir attend AUSSI la fin de la fenêtre', () {
       final now = DateTime(2026, 7, 11, 20, 0);
       final sched = DailySchedule(
         date: today,
         unavailableUntil: DateTime(2026, 7, 11, 22, 0),
       );
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.evening);
+      // La pause prime sur tout — le check-in reprend à 22 h, pas avant.
+      expect(m.hidden, isTrue);
+      // Fenêtre finie → check-in normal.
+      final after = computeCoachMoment(
+          DateTime(2026, 7, 11, 22, 5), _st([]), sched, null, []);
+      expect(after.type, CoachMomentType.evening);
+    });
+
+    test('pause « pas aujourd\'hui » posée hier : silence aussi à minuit', () {
+      final now = DateTime(2026, 7, 8, 0, 30);
+      final yest = DailySchedule(
+        date: today,
+        unavailableUntil: DateTime(2026, 7, 8, 5, 0),
+      );
+      final m = computeCoachMoment(now, _st([]), null, yest, []);
+      expect(m.hidden, isTrue);
     });
 
     test('fenêtre expirée → le flow normal reprend', () {
@@ -732,6 +747,33 @@ void main() {
       expect(
           m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
           isTrue);
+    });
+
+    test('point fait (reviewedAt) → carte du soir clôturée, pas de re-proposition',
+        () {
+      final now = DateTime(2026, 7, 7, 21, 30);
+      final sched = DailySchedule(
+        date: today,
+        reviewedAt: DateTime(2026, 7, 7, 21, 10),
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.tagLabel, contains('JOURNÉE CLÔTURÉE'));
+      expect(m.message, isNot(contains('Prends deux minutes')));
+      expect(m.tone, CoachTone.positive);
+      // « Revoir le point » reste accessible, sans insister.
+      expect(m.actions.single.kind, CoachActionKind.openDayReview);
+      expect(m.actions.single.label, 'Revoir le point');
+      // Round-trip : le fait survit à la sérialisation.
+      expect(DailySchedule.from(sched.toJson()).reviewedAt, isNotNull);
+    });
+
+    test('point non fait → check-in normal (inchangé)', () {
+      final now = DateTime(2026, 7, 7, 21, 30);
+      final m = computeCoachMoment(
+          now, _st([]), DailySchedule(date: today), null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.message, contains('clôturer ta journée'));
     });
 
     test('rapport LU (fait readAt) → le teaser se tait, check-in normal', () {
@@ -1403,6 +1445,282 @@ void main() {
       expect(m2.type, CoachMomentType.chain);
       expect(m2.message, isNot(contains('ORION te défie')));
       expect(m2.message, contains('Méditation'));
+    });
+  });
+
+  group('« C\'était ton heure » (programme idéal)', () {
+    List<HabitHit> hitsAt(String id, DateTime now,
+            List<({int daysAgo, int h, int m})> specs) =>
+        [
+          for (final s in specs)
+            HabitHit(
+                habitId: id,
+                ts: DateTime(
+                    now.year, now.month, now.day - s.daysAgo, s.h, s.m)),
+        ];
+
+    AppState stRoutines(List<HabitHit> hits, {int? timerMin = 10}) => AppState(
+          domains: [
+            Domain(
+                name: 'Santé',
+                definitionStatus: 'active',
+                intention: 'tenir le rythme'),
+          ],
+          activities: [
+            Activity(
+                id: 'r1',
+                name: 'Méditation',
+                domainId: 'd1',
+                type: 'habit',
+                habitFreq: HabitFreq.daily,
+                timerMin: timerMin,
+                order: 0),
+          ],
+          sessions: [],
+          habitProgress: [],
+          habitHits: hits,
+        );
+
+    // Un bloc pending SANS rapport pour que « journée non planifiée » se taise.
+    final other = _block(startTime: '14:00', title: 'Dossier', status: 'pending');
+
+    test('heure habituelle passée de 10-90 min, rien de coché → la carte', () {
+      final now = DateTime(2026, 7, 7, 10, 20);
+      final hits = hitsAt('r1', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 40)]);
+      final m = computeCoachMoment(
+          now, stRoutines(hits), _sched(today, [other]), null, []);
+      expect(m.type, CoachMomentType.idealHour);
+      expect(m.tagLabel, 'ORION · C\'ÉTAIT TON HEURE');
+      expect(m.message, contains('vers 9h40')); // heure RÉELLE mesurée
+      expect(m.message, contains('il est 10h20'));
+      expect(
+          m.actions.single.kind, CoachActionKind.launchBlock); // minutée → ▶
+      expect(m.actions.single.block?.activityId, 'r1');
+      expect(m.actions.single.block?.durationMin, 10);
+    });
+
+    test('avant l\'heure ou bien après (> 90 min) → pas de carte', () {
+      final hits = hitsAt('r1', DateTime(2026, 7, 7),
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 40)]);
+      // 9 h 45 : 5 min de retard seulement — elle viendra d'elle-même.
+      final early = computeCoachMoment(DateTime(2026, 7, 7, 9, 45),
+          stRoutines(hits), _sched(today, [other]), null, []);
+      expect(early.type, isNot(CoachMomentType.idealHour));
+      // 11 h 20 : 100 min — le moment est passé, les combleurs reprennent.
+      final late = computeCoachMoment(DateTime(2026, 7, 7, 11, 20),
+          stRoutines(hits), _sched(today, [other]), null, []);
+      expect(late.type, isNot(CoachMomentType.idealHour));
+    });
+
+    test('déjà cochée aujourd\'hui ou portée par un bloc pending → silence',
+        () {
+      final now = DateTime(2026, 7, 7, 10, 20);
+      final hits = hitsAt('r1', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 40)]);
+      final done = [...hits, ...hitsAt('r1', now, [(daysAgo: 0, h: 9, m: 45)])];
+      final m1 = computeCoachMoment(
+          now, stRoutines(done), _sched(today, [other]), null, []);
+      expect(m1.type, isNot(CoachMomentType.idealHour));
+      final withBlock = _sched(today, [
+        other,
+        _block(startTime: '17:00', title: 'Méditation', activityId: 'r1'),
+      ]);
+      final m2 = computeCoachMoment(
+          now, stRoutines(hits), withBlock, null, []);
+      expect(m2.type, isNot(CoachMomentType.idealHour));
+    });
+
+    test('routine sans minuteur → coche directe (✓), pas de durée inventée',
+        () {
+      final now = DateTime(2026, 7, 7, 10, 20);
+      final hits = hitsAt('r1', now,
+          [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 40)]);
+      final m = computeCoachMoment(now, stRoutines(hits, timerMin: null),
+          _sched(today, [other]), null, []);
+      expect(m.type, CoachMomentType.idealHour);
+      expect(m.actions.single.kind, CoachActionKind.checkRoutine);
+      expect(m.message, isNot(contains(' min')));
+    });
+
+    test('plusieurs candidates → la plus récemment passée', () {
+      final now = DateTime(2026, 7, 7, 10, 20);
+      final st = stRoutines([]);
+      st.activities.add(Activity(
+          id: 'r2',
+          name: 'Marche',
+          domainId: 'd1',
+          type: 'habit',
+          habitFreq: HabitFreq.daily,
+          timerMin: 30,
+          order: 1));
+      st.habitHits.addAll([
+        ...hitsAt('r1', now,
+            [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 9, m: 0)]),
+        ...hitsAt('r2', now,
+            [for (var i = 1; i <= 3; i++) (daysAgo: i, h: 10, m: 0)]),
+      ]);
+      final m =
+          computeCoachMoment(now, st, _sched(today, [other]), null, []);
+      expect(m.type, CoachMomentType.idealHour);
+      expect(m.title, 'Marche'); // 20 min de retard < 80 min
+    });
+
+    test('l\'après-midi, la dérive prime ; la série réelle est citée', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final hits = hitsAt('r1', now,
+          [for (var i = 1; i <= 4; i++) (daysAgo: i, h: 14, m: 20)]);
+      // Bloc lié du début d'après-midi laissé pending → dérive d'abord.
+      final drifting = _sched(today, [
+        _block(
+            startTime: '14:00',
+            durationMin: 30,
+            title: 'Dossier',
+            activityId: 'a9'),
+      ]);
+      final m1 =
+          computeCoachMoment(now, stRoutines(hits), drifting, null, []);
+      expect(m1.type, CoachMomentType.drift);
+      // Sans dérive : la carte, avec la série mesurée (4 jours).
+      final m2 = computeCoachMoment(
+          now, stRoutines(hits), _sched(today, [other]), null, []);
+      expect(m2.type, CoachMomentType.idealHour);
+      expect(m2.message, contains('4 jours d\'affilée'));
+    });
+  });
+
+  group('Gantt invisible : micro-action de projet', () {
+    Project proj(String title, List<ProjectTask> tasks, {String status = 'active'}) =>
+        Project(
+            id: 'p-$title',
+            title: title,
+            startDate: DateTime(2026, 6, 1),
+            status: status,
+            createdBy: 'u1',
+            tasks: tasks);
+    ProjectTask task(String id, String title,
+            {DateTime? deadline,
+            String status = 'pending',
+            List<TaskAction>? actions}) =>
+        ProjectTask(
+            id: id,
+            title: title,
+            startDate: DateTime(2026, 6, 10),
+            endDate: deadline,
+            status: status,
+            actions: actions);
+
+    test('la tâche à la deadline la plus proche gagne ; done/milestone exclus',
+        () {
+      final g = ganttMicroAction([
+        proj('Site', [
+          task('t1', 'Maquette', deadline: DateTime(2026, 7, 30)),
+          task('t2', 'Contenu', deadline: DateTime(2026, 7, 20)),
+          task('t3', 'Vieille', deadline: DateTime(2026, 7, 1), status: 'done'),
+        ]),
+        proj('Archivé', [task('t9', 'X', deadline: DateTime(2026, 7, 2))],
+            status: 'archived'),
+      ]);
+      expect(g!.taskTitle, 'Contenu');
+      expect(g.projectTitle, 'Site');
+      expect(g.deadline, DateTime(2026, 7, 20));
+    });
+
+    test('tâche déjà portée par un bloc pending du jour → exclue', () {
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette', deadline: DateTime(2026, 7, 20))]),
+      ], blocks: [
+        _block(startTime: '16:00', title: 'Maquette', taskId: 't1'),
+      ]);
+      expect(g, isNull);
+    });
+
+    test(
+        'étape définie → « Étape : X — 15 min » (chrono ciblé) + « Programmer »',
+        () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final g = ganttMicroAction([
+        proj('Site', [
+          task('t1', 'Maquette',
+              deadline: DateTime(2026, 7, 20),
+              actions: [
+                TaskAction(id: 'a0', title: 'Cadrer le brief', done: true),
+                TaskAction(id: 'a1', title: 'Choisir la palette'),
+              ]),
+        ]),
+      ]);
+      expect(g!.needsSteps, isFalse);
+      final m = computeCoachMoment(now, _st([]), _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.type, CoachMomentType.afternoon);
+      expect(m.message, contains('« Maquette » attend (deadline le 20/7)'));
+      expect(m.message,
+          contains('Prochaine étape : Choisir la palette (1/2 faites)'));
+      final cta = m.actions
+          .firstWhere((a) => a.label == 'Étape : Choisir la palette — 15 min');
+      expect(cta.kind, CoachActionKind.launchBlock);
+      expect(cta.block?.projectId, 'p-Site');
+      expect(cta.block?.taskId, 't1');
+      expect(cta.block?.actionId, 'a1'); // chrono ciblé sur l'ÉTAPE
+      final sched = m.actions
+          .firstWhere((a) => a.kind == CoachActionKind.scheduleStep);
+      expect(sched.block?.actionId, 'a1');
+    });
+
+    test('pas d\'étape définie → « Définir la prochaine étape » (GTD)', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette', deadline: DateTime(2026, 7, 20))]),
+      ]);
+      expect(g!.needsSteps, isTrue);
+      final m = computeCoachMoment(now, _st([]), _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.message, contains('n\'a pas de prochaine étape définie'));
+      expect(m.actions.where((a) => a.kind == CoachActionKind.launchBlock),
+          isEmpty); // rien ne se lance sur du flou
+      final cta = m.actions
+          .firstWhere((a) => a.kind == CoachActionKind.defineSteps);
+      expect(cta.block?.projectId, 'p-Site');
+      expect(cta.block?.taskId, 't1');
+    });
+
+    test('étape déjà programmée (aujourd\'hui ou futur) → le coach n\'insiste pas',
+        () {
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette')]),
+      ], excludeTaskIds: {'t1'});
+      expect(g, isNull);
+    });
+
+    test('un combleur routine disponible → la routine prime sur le Gantt', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final st = AppState(
+        domains: [
+          Domain(
+              name: 'Santé',
+              definitionStatus: 'active',
+              intention: 'tenir le rythme'),
+        ],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Méditation',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              timerMin: 10,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      final g = ganttMicroAction([
+        proj('Site', [task('t1', 'Maquette')]),
+      ]);
+      final m = computeCoachMoment(now, st, _sched(today, []), null, [],
+          ganttAction: g);
+      expect(m.message, contains('Méditation'));
+      expect(m.message, isNot(contains('Maquette')));
     });
   });
 }

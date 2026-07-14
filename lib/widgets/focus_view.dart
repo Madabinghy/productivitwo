@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -119,6 +120,9 @@ class _FocusViewState extends State<FocusView> {
   // Défi ORION : activités ayant déjà un défi 🔥 programmé (aujourd'hui/futur)
   // — exclues pour que le défi propose autre chose (même règle que le bouton).
   Set<String> _scheduledChallengeIds = const {};
+  // GTD Gantt : tâches dont une étape est déjà programmée (aujourd'hui/futur)
+  // — le moment est choisi, la carte n'insiste pas.
+  Set<String> _scheduledStepTaskIds = const {};
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -144,6 +148,9 @@ class _FocusViewState extends State<FocusView> {
     });
     _sync.fetchScheduledChallengeActivityIds().then((ids) {
       if (mounted) setState(() => _scheduledChallengeIds = ids);
+    });
+    _sync.fetchScheduledTaskIds().then((ids) {
+      if (mounted) setState(() => _scheduledStepTaskIds = ids);
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -914,7 +921,12 @@ class _FocusViewState extends State<FocusView> {
         sessionSkipCount: _sessionSkipCount,
         nextSessionLabel: _nextSessionLabel,
         nudgeDismissed: _nudgeDismissed,
-        challenge: _challengeProposal(now));
+        challenge: _challengeProposal(now),
+        // Gantt invisible : micro-action du projet le plus urgent — la carte
+        // ne la sort que quand rien d'autre n'a la priorité.
+        ganttAction: ganttMicroAction(logic.currentProjects,
+            blocks: _schedule?.blocks ?? const [],
+            excludeTaskIds: _scheduledStepTaskIds));
     final isNudge = moment.type == CoachMomentType.defineNudge;
     return CoachMomentCard(
       moment: moment,
@@ -980,6 +992,9 @@ class _FocusViewState extends State<FocusView> {
         final ids = await _sync.fetchScheduledChallengeActivityIds();
         if (mounted) setState(() => _scheduledChallengeIds = ids);
       },
+      // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
+      onDefineSteps: _defineGanttSteps,
+      onScheduleStep: _scheduleGanttStep,
       // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
       // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
       onCheckRoutine: (block) {
@@ -996,6 +1011,244 @@ class _FocusViewState extends State<FocusView> {
         ));
       },
     );
+  }
+
+  // ── GTD minimaliste sur la micro-action Gantt ────────────────────────────
+  //
+  // La tâche proposée n'a pas d'étape définie : le user pose la (les)
+  // prochaine(s) petite(s) action(s) — FAIT structurel écrit sur le projet
+  // (TaskAction), pas un souvenir de carte. Puis il choisit : faire la
+  // première tout de suite, la PROGRAMMER au moment où il sait qu'il sera
+  // dispo pour elle, ou plus tard (la carte la reproposera).
+
+  Future<void> _defineGanttSteps(ScheduleBlock block) async {
+    final project = logic.currentProjects
+        .where((p) => p.id == block.projectId)
+        .firstOrNull;
+    final task =
+        project?.tasks.where((t) => t.id == block.taskId).firstOrNull;
+    if (project == null || task == null) return;
+
+    final ctrl = TextEditingController();
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Prochaine étape'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('« ${task.title} » — quelle est la prochaine petite action '
+                'concrète ? (une par ligne si tu en vois plusieurs)'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLines: 4,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                  hintText: 'ex : Appeler le fournisseur pour le devis'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, ctrl.text),
+              child: const Text('Poser')),
+        ],
+      ),
+    );
+    final steps = (raw ?? '')
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+    if (steps.isEmpty) return;
+    for (final t in steps) {
+      task.actions.add(TaskAction(title: t));
+    }
+    await _sync.saveProjectTasks(project.id, project.tasks);
+    if (!mounted) return;
+    setState(() {}); // la carte reprend avec l'étape définie
+
+    // L'étape existe — maintenant, QUAND ? (GTD : l'action + son moment.)
+    final first = task.actions.firstWhere((a) => !a.done);
+    final next = ScheduleBlock(
+        startTime: block.startTime,
+        durationMin: 15,
+        title: first.title,
+        category: 'project',
+        projectId: project.id,
+        taskId: task.id,
+        actionId: first.id);
+    final cs = Theme.of(context).colorScheme;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Étape posée'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('« ${first.title} »',
+                textAlign: TextAlign.center,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text('Tu la fais maintenant, ou tu choisis le moment où tu seras '
+                'dispo pour elle ?',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
+          ],
+        ),
+        actionsOverflowDirection: VerticalDirection.down,
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d),
+              child: const Text('Plus tard')),
+          TextButton(
+              onPressed: () => Navigator.pop(d, 'schedule'),
+              child: const Text('Programmer 📅')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, 'now'),
+              child: const Text('Maintenant — 15 min')),
+        ],
+      ),
+    );
+    if (choice == 'now') widget.onLaunchScheduledBlock?.call(next);
+    if (choice == 'schedule') await _scheduleGanttStep(next);
+  }
+
+  /// « Programmer l'étape » : le user SAIT quand il sera dispo pour cette
+  /// action en particulier (chez lui, à la salle, en déplacement…) — il pose
+  /// le jour et l'heure, le bloc daté porte projet/tâche/étape (chrono ciblé).
+  Future<void> _scheduleGanttStep(ScheduleBlock block) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    var day = today;
+    var time = TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0);
+
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        final cs = Theme.of(ctx).colorScheme;
+        final tomorrow = today.add(const Duration(days: 1));
+        final afterTomorrow = today.add(const Duration(days: 2));
+        String dayLabel() {
+          if (day == today) return 'aujourd\'hui';
+          if (day == tomorrow) return 'demain';
+          if (day == afterTomorrow) return 'après-demain';
+          return 'le ${day.day}/${day.month}';
+        }
+
+        final at =
+            DateTime(day.year, day.month, day.day, time.hour, time.minute);
+        final past = !at.isAfter(now);
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+              left: 20,
+              right: 20,
+              top: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Programmer l\'étape',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 4),
+              Text('📋 ${block.title} — 15 min',
+                  style: TextStyle(color: cs.onSurface.withOpacity(.7))),
+              const SizedBox(height: 16),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                ChoiceChip(
+                    label: const Text('Aujourd\'hui'),
+                    selected: day == today,
+                    onSelected: (_) => setSheet(() => day = today)),
+                ChoiceChip(
+                    label: const Text('Demain'),
+                    selected: day == tomorrow,
+                    onSelected: (_) => setSheet(() => day = tomorrow)),
+                ChoiceChip(
+                    label: const Text('Après-demain'),
+                    selected: day == afterTomorrow,
+                    onSelected: (_) => setSheet(() => day = afterTomorrow)),
+                ActionChip(
+                  avatar: const Icon(Icons.calendar_month_rounded, size: 18),
+                  label: const Text('Autre…'),
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: day,
+                        firstDate: today,
+                        lastDate: today.add(const Duration(days: 365)));
+                    if (picked != null) {
+                      setSheet(() => day =
+                          DateTime(picked.year, picked.month, picked.day));
+                    }
+                  },
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                Icon(Icons.schedule_rounded,
+                    size: 18, color: cs.onSurface.withOpacity(.6)),
+                const SizedBox(width: 8),
+                Text('${dayLabel()} à ${time.format(ctx)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                const Spacer(),
+                TextButton(
+                  onPressed: () async {
+                    final t =
+                        await showTimePicker(context: ctx, initialTime: time);
+                    if (t != null) setSheet(() => time = t);
+                  },
+                  child: const Text('Modifier l\'heure'),
+                ),
+              ]),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: past ? null : () => Navigator.pop(ctx, true),
+                  icon: const Icon(Icons.event_available_rounded),
+                  label:
+                      Text(past ? 'Choisis un horaire futur' : 'Programmer'),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final ymd =
+        '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    final hhmm =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    await _sync.addScheduleBlock(
+        ymd,
+        ScheduleBlock(
+            startTime: hhmm,
+            durationMin: block.durationMin,
+            title: block.title,
+            category: 'project',
+            projectId: block.projectId,
+            taskId: block.taskId,
+            actionId: block.actionId));
+    final ids = await _sync.fetchScheduledTaskIds();
+    if (!mounted) return;
+    setState(() => _scheduledStepTaskIds = ids);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          '📋 Étape programmée ${day == today ? 'aujourd\'hui' : day == today.add(const Duration(days: 1)) ? 'demain' : 'le ${day.day}/${day.month}'} à $hhmm'),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   /// Confirmation du défi (même dialog que le bouton doré) : le nom et la
@@ -1168,9 +1421,14 @@ class _FocusViewState extends State<FocusView> {
   /// (même règle que DailyScheduleView : pas de double incrément si la cible
   /// est déjà atteinte ou si ce bloc a déjà validé).
   Future<void> _markBlockDone(ScheduleBlock b) async {
-    final id = b.activityId;
+    Activity? matched = b.activityId != null
+        ? st.activities.where((a) => a.id == b.activityId).firstOrNull
+        : null;
+    // Bloc sans lien : routine du même nom validée quand même (match unique).
+    matched ??= routineForBlockTitle(b.title, st.activities);
+    final id = matched?.id;
     if (id != null && !_routineHit.contains(b.id)) {
-      final act = st.activities.where((a) => a.id == id).firstOrNull;
+      final act = matched;
       if (act != null && act.isHabit) {
         final day = DateTime.now();
         final tgt = logic.activeHabitTarget(act);

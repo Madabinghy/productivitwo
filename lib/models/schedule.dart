@@ -155,10 +155,14 @@ class DailySchedule {
   String dayMode; // "normal" | "evening"
   DateTime? dayModeActivatedAt;
   // Disponibilité déclarée : « pas dispo avant X » (posé au report ou depuis
-  // « Me poser »). Jusqu'à cette heure le coach SUIT LE FLOW — pas de relance,
-  // pas de dérive ; le check-in du soir et le rapport restent intouchés.
+  // « Me poser »). Jusqu'à cette heure le coach SUIT LE FLOW — aucune carte,
+  // aucune relance, check-in du soir compris (il reprend à la fin de la
+  // fenêtre).
   DateTime? unavailableUntil;
   String? unavailableReason; // souvent la raison du report (« pas sur place »)
+  // « Point fait » : posé quand le check-in du soir atteint son verdict — la
+  // carte du soir se tait ensuite (elle ne re-propose pas ce qui est fait).
+  DateTime? reviewedAt;
 
   DailySchedule({
     required this.date,
@@ -172,6 +176,7 @@ class DailySchedule {
     this.dayModeActivatedAt,
     this.unavailableUntil,
     this.unavailableReason,
+    this.reviewedAt,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
 
@@ -193,6 +198,7 @@ class DailySchedule {
         'dayModeActivatedAt': dayModeActivatedAt?.toIso8601String(),
         'unavailableUntil': unavailableUntil?.toIso8601String(),
         'unavailableReason': unavailableReason,
+        'reviewedAt': reviewedAt?.toIso8601String(),
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -210,5 +216,6 @@ class DailySchedule {
         dayModeActivatedAt: _parseDateOrNull(j['dayModeActivatedAt']),
         unavailableUntil: _parseDateOrNull(j['unavailableUntil']),
         unavailableReason: j['unavailableReason'],
+        reviewedAt: _parseDateOrNull(j['reviewedAt']),
       );
 }

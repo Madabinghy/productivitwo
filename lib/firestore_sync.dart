@@ -819,6 +819,14 @@ class FirestoreSync {
         .set({'weekModeChosen': mode}, SetOptions(merge: true));
   }
 
+  /// Fait « point fait » : posé quand le check-in du soir atteint son verdict
+  /// — la carte du soir se tait ensuite.
+  Future<void> markDayReviewed(String date) async {
+    if (uid == null) return;
+    await _col('daily_schedules').doc(date).set(
+        {'reviewedAt': DateTime.now().toIso8601String()}, SetOptions(merge: true));
+  }
+
   /// Fait « rapport lu » : posé à la première ouverture de l'écran du rapport
   /// — le teaser du dimanche soir se tait ensuite, la carte reprend son cours.
   Future<void> markWeeklyReportRead(String weekStart) async {
@@ -2464,6 +2472,33 @@ class FirestoreSync {
       }
     } catch (_) {
       // pas de programme / index manquant → aucune exclusion
+    }
+    return ids;
+  }
+
+  /// Renvoie les `taskId` (Gantt) portés par un bloc encore en attente,
+  /// aujourd'hui ou dans le futur — l'étape est déjà PROGRAMMÉE à un moment
+  /// choisi par le user : la carte coach ne re-propose pas la tâche.
+  Future<Set<String>> fetchScheduledTaskIds() async {
+    if (uid == null) return {};
+    final now = DateTime.now();
+    final todayYmd =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final ids = <String>{};
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: todayYmd)
+          .get();
+      for (final doc in snap.docs) {
+        final sched = DailySchedule.from(doc.data() as Map);
+        for (final b in sched.blocks) {
+          if (b.status == 'pending' && (b.taskId ?? '').isNotEmpty) {
+            ids.add(b.taskId!);
+          }
+        }
+      }
+    } catch (_) {
+      // pas de programme → aucune exclusion
     }
     return ids;
   }

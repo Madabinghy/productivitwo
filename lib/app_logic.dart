@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
@@ -1574,6 +1575,35 @@ class AppLogic {
 
     // auto = ce que tu as calculé
     return (a.habitTarget ?? 1).clamp(1, 999999);
+  }
+
+  /// Progression par paliers : évaluation hebdo DÉTERMINISTE de chaque routine
+  /// quotidienne à cap (`finalTarget`). Une seule évaluation par semaine
+  /// (`stepUpdatedWeek`), décision par les hits réels (utils/progression).
+  /// Retourne les changements à annoncer (« Pompes : palier 3 → 5, tenu 6 j/7 »).
+  List<String> applyWeeklyProgression({DateTime? now}) {
+    final t = now ?? DateTime.now();
+    final monday = mondayOf(t);
+    final mondayYmd =
+        '${monday.year.toString().padLeft(4, '0')}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+    final notes = <String>[];
+    var touched = false;
+    for (final a in state.activities) {
+      if (a.deleted) continue;
+      final d = weeklyStepDecision(a, state.habitHits, t);
+      if (d == null) continue;
+      a.stepUpdatedWeek = mondayYmd; // fait posé même sur « hold »
+      touched = true;
+      if (d.newTarget != a.effHabitTarget) {
+        final old = a.effHabitTarget;
+        a.habitTarget = d.newTarget;
+        notes.add(d.verdict == 'up'
+            ? '${a.name} : palier $old → ${d.newTarget} (tenu ${d.daysMet} j/7)'
+            : '${a.name} : palier $old → ${d.newTarget} (tenu ${d.daysMet} j/7 — on consolide)');
+      }
+    }
+    if (touched) onChange();
+    return notes;
   }
 
   // Période active -> "fait" & "cible" (utile à l'UI)

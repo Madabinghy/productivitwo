@@ -132,7 +132,18 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
 
   // ── Navigation du flux ─────────────────────────────────────────────────────
 
+  bool _reviewedMarked = false;
+
+  /// « Point fait » = le verdict est atteint — fait posé une seule fois, sur
+  /// la journée VÉCUE (_todayYmd suit l'ancre : à 00 h 25 c'est bien hier).
+  void _markReviewed() {
+    if (_reviewedMarked) return;
+    _reviewedMarked = true;
+    _sync.markDayReviewed(_todayYmd);
+  }
+
   void _continueFromStep1() {
+    if (_broken.isEmpty) _markReviewed();
     setState(() => _step = _broken.isEmpty ? 2 : 1);
   }
 
@@ -147,10 +158,14 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
         await _sync.updateBlockSkipReason(_todayYmd, e.key, e.value);
       }
     }
+    _markReviewed();
     if (mounted) setState(() => _step = 2);
   }
 
-  void _skipStep2() => setState(() => _step = 2);
+  void _skipStep2() {
+    _markReviewed();
+    setState(() => _step = 2);
+  }
 
   Future<void> _openPlanTomorrow() async {
     // « Demain » relatif à la journée vécue : à 00:25 c'est bien AUJOURD'HUI

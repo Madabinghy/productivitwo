@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -171,10 +172,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Valide la routine liée à un bloc (si activité de type habit), 1 incrément,
   /// sans dépasser la cible ni recompter pour un même bloc.
   void _completeLinkedRoutine(ScheduleBlock block) {
-    final id = block.activityId;
-    if (id == null || _routineHit.contains(block.id)) return;
-    final act = _activityById(id);
+    if (_routineHit.contains(block.id)) return;
+    Activity? act =
+        block.activityId != null ? _activityById(block.activityId!) : null;
+    // Bloc sans lien (proposition LLM qui a omis l'activityId) : la routine
+    // du même nom est validée quand même — correspondance UNIQUE par titre.
+    act ??= routineForBlockTitle(block.title, widget.logic.state.activities);
     if (act == null || !act.isHabit) return;
+    final id = act.id;
     final day = _blockDay();
     final tgt = widget.logic.activeHabitTarget(act);
     if (tgt > 0 && widget.logic.habitValueOn(id, day) >= tgt) {
@@ -287,6 +292,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       dayModeActivatedAt: schedule.dayModeActivatedAt,
       unavailableUntil: schedule.unavailableUntil,
       unavailableReason: schedule.unavailableReason,
+      reviewedAt: schedule.reviewedAt,
     ));
   }
 
