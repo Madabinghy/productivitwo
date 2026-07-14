@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/renegotiation.dart';
 
 /// Déplacer un bloc à la main (maquette 23a) : les cibles sont les créneaux
@@ -88,10 +89,17 @@ class _MoveSheetState extends State<_MoveSheet> {
   Future<void> _moveTo(String startTime) async {
     if (_saving) return;
     setState(() => _saving = true);
+    final oldStart = b.startTime;
     try {
       await _sync.updateScheduleBlockTime(widget.date, b.id,
           startTime: startTime);
       b.startTime = startTime;
+      // Bloc-défi : l'alarme et les rappels suivent la nouvelle heure.
+      await rescheduleChallengeNotifications(
+          block: b,
+          date: widget.date,
+          oldStartTime: oldStart,
+          alarmSoundKey: widget.logic.state.alarmSound);
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

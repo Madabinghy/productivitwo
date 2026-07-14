@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
@@ -157,12 +158,19 @@ class _DayTimelineViewState extends State<DayTimelineView> {
       return;
     }
     // Optimiste — le stream confirme.
+    final oldStart = b.startTime;
     if (newStart != null) b.startTime = newStart;
     if (dur != null) b.durationMin = dur;
     setState(() {});
     try {
       await _sync.updateScheduleBlockTime(widget.date, b.id,
           startTime: newStart, durationMin: dur);
+      // Bloc-défi : l'alarme et les rappels suivent la nouvelle heure/durée.
+      await rescheduleChallengeNotifications(
+          block: b,
+          date: widget.date,
+          oldStartTime: oldStart,
+          alarmSoundKey: widget.logic.state.alarmSound);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -176,11 +184,14 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     b.status = to;
     setState(() => _selectedId = null);
     await _sync.updateBlockStatus(widget.date, b.id, to);
+    // Défi coché → plus rien à rappeler.
+    if (to == 'done') await cancelChallengeNotifications(b);
   }
 
   Future<void> _deleteSelected(ScheduleBlock b) async {
     setState(() => _selectedId = null);
     await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
+    await cancelChallengeNotifications(b);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('« ${b.title} » retiré du programme.'),

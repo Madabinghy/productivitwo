@@ -1885,6 +1885,9 @@ async function executeScheduleDay(
   const preserved = ((prevData.blocks as Array<Record<string, unknown>>) ?? [])
     .filter((b) =>
       b.gcalEventId != null ||
+      // Défi programmé 🔥 = engagement pris (alarme locale armée côté app) —
+      // un remplacement de programme ne l'efface jamais en silence.
+      (b.challenge === true && b.status !== "deleted") ||
       ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
         b.status !== "deleted"));
 

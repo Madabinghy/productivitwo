@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -109,6 +110,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     }
     final newStatus = block.status == 'done' ? 'pending' : 'done';
     await _sync.updateBlockStatus(widget.date, block.id, newStatus);
+    // Défi coché → plus rien à rappeler.
+    if (newStatus == 'done') await cancelChallengeNotifications(block);
     if (block.challenge && newStatus == 'done' && !_won.contains(block.id)) {
       _won.add(block.id);
       widget.logic.recordChallengeAccepted(widget.date.replaceAll('-', ''));
@@ -255,6 +258,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         _won.add(b.id);
         _routineHit.add(b.id); // source déjà validée → pas de ré-incrément
         _sync.updateBlockStatus(widget.date, b.id, 'done');
+        cancelChallengeNotifications(b);
         // Comptage défi + feedback UNIQUEMENT pour les blocs « défi » 🔥 ;
         // un bloc routine/activité simple se coche sans fanfare.
         if (b.challenge) {
@@ -787,6 +791,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               Navigator.pop(sctx);
               await _sync.updateBlockStatus(widget.date, block.id, 'skipped');
               await _sync.updateBlockSkipReason(widget.date, block.id, 'reporte');
+              // Défi reporté → l'alarme du jour n'a plus lieu d'être.
+              await cancelChallengeNotifications(block);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text(

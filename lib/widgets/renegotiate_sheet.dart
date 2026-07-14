@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/renegotiation.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
@@ -258,10 +259,17 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     final nowHm =
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
     try {
+      final oldStart = b.startTime;
       await _sync.updateScheduleBlockTime(widget.date, b.id,
           startTime: nowHm, durationMin: 25);
       b.startTime = nowHm;
       b.durationMin = 25;
+      // Défi lancé maintenant → l'alarme à l'ancienne heure n'a plus lieu d'être.
+      await rescheduleChallengeNotifications(
+          block: b,
+          date: widget.date,
+          oldStartTime: oldStart,
+          alarmSoundKey: widget.logic.state.alarmSound);
       if (mounted) Navigator.pop(context);
       if (b.projectId != null || b.activityId != null) {
         widget.onLaunch?.call(b);
@@ -276,8 +284,16 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     if (_saving || _moveSlot == null) return;
     setState(() => _saving = true);
     try {
+      final oldStart = b.startTime;
       await _sync.updateScheduleBlockTime(widget.date, b.id,
           startTime: _moveSlot!);
+      b.startTime = _moveSlot!;
+      // Bloc-défi : l'alarme et les rappels suivent la nouvelle heure.
+      await rescheduleChallengeNotifications(
+          block: b,
+          date: widget.date,
+          oldStartTime: oldStart,
+          alarmSoundKey: widget.logic.state.alarmSound);
       if (mounted) Navigator.pop(context);
     } catch (_) {
       _fail();
@@ -300,6 +316,8 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
       await _sync.updateBlockStatus(widget.date, b.id, 'skipped');
       await _sync.updateBlockSkipReason(widget.date, b.id, 'reporte',
           reportReason: reason.isEmpty ? null : reason);
+      // Défi reporté → l'alarme du jour n'a plus lieu d'être.
+      await cancelChallengeNotifications(b);
       if (availability != null && availability != kAvailableNow) {
         await _sync.setUnavailability(widget.date, availability,
             reason: reason.isEmpty ? null : reason);
@@ -409,6 +427,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     setState(() => _saving = true);
     try {
       await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
+      await cancelChallengeNotifications(b);
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -455,6 +474,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
   /// demandera le pourquoi), aucune pénalité cachée.
   Future<void> _abandon() async {
     await _sync.updateBlockStatus(widget.date, b.id, 'skipped');
+    await cancelChallengeNotifications(b);
     if (mounted) Navigator.pop(context);
   }
 
