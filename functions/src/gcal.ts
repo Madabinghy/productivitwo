@@ -3,7 +3,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue } from "firebase-admin/firestore";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { validateToken, todayInParis } from "./execute";
+import { validateToken, userDayParts } from "./execute";
 
 // ─── GOOGLE AGENDA NATIF (Direction D) ───────────────────────────────────────
 //
@@ -48,6 +48,22 @@ const GCAL_SECRETS = ["GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET"];
 type Json = Record<string, any>;
 
 const tokensRef = (uid: string) => db.doc(`gcal_tokens/${uid}`);
+
+/** Fuseau VÉCU de l'utilisateur : fait `data/meta.tzOffsetMin` (minutes à
+ *  ajouter à l'UTC, ex -240 en Guadeloupe) posé par l'app à l'ouverture.
+ *  Null = fait absent → fallback Europe/Paris via userDayParts. */
+async function userTzOffset(uid: string): Promise<number | null> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const v = snap.data()?.tzOffsetMin;
+  return typeof v === "number" && isFinite(v) ? v : null;
+}
+
+/** Offset RFC3339 (« -04:00 ») depuis des minutes. */
+function offsetStr(offsetMin: number): string {
+  const sign = offsetMin < 0 ? "-" : "+";
+  const abs = Math.abs(offsetMin);
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
 
 // ── Access token : lit le cache, sinon refresh. Null = pas connecté. ────────
 async function accessTokenFor(uid: string): Promise<string | null> {
@@ -119,6 +135,9 @@ export async function syncDayToGcal(
   const token = await accessTokenFor(uid);
   if (!token) return { ok: false, ...none, reason: "not_connected" };
   const auth = { Authorization: `Bearer ${token}` };
+  // Les heures du programme sont des heures de MUR du téléphone : l'événement
+  // porte l'offset du fuseau vécu (fait) — sinon fallback Europe/Paris.
+  const tzOff = await userTzOffset(uid);
 
   // Blocs vivants du programme (doc absent = tout supprimer côté agenda).
   const snap = await db.doc(`users/${uid}/daily_schedules/${date}`).get();
@@ -161,8 +180,12 @@ export async function syncDayToGcal(
         b.subtitle ? String(b.subtitle) : null,
         "source: productivitwo",
       ].filter(Boolean).join("\n"),
-      start: { dateTime: `${start.ymd}T${start.hm}:00`, timeZone: "Europe/Paris" },
-      end: { dateTime: `${end.ymd}T${end.hm}:00`, timeZone: "Europe/Paris" },
+      start: tzOff != null
+        ? { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` }
+        : { dateTime: `${start.ymd}T${start.hm}:00`, timeZone: "Europe/Paris" },
+      end: tzOff != null
+        ? { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` }
+        : { dateTime: `${end.ymd}T${end.hm}:00`, timeZone: "Europe/Paris" },
       extendedProperties: { private: { pwo: "1", pwoBlockId: id, pwoDate: date } },
     };
     const ev = existing.get(id);
@@ -175,8 +198,16 @@ export async function syncDayToGcal(
       if (r.ok) created++;
       else console.error("gcal insert failed:", r.status, await r.text());
     } else {
-      const sameStart = String(ev.start?.dateTime ?? "").startsWith(`${start.ymd}T${start.hm}`);
-      const sameEnd = String(ev.end?.dateTime ?? "").startsWith(`${end.ymd}T${end.hm}`);
+      // Avec offset connu : comparaison d'INSTANTS (Google peut renvoyer la
+      // même heure sous une autre représentation). Sinon, heure de mur.
+      const sameStart = tzOff != null
+        ? Date.parse(String(ev.start?.dateTime ?? "")) ===
+            Date.parse(`${start.ymd}T${start.hm}:00${offsetStr(tzOff)}`)
+        : String(ev.start?.dateTime ?? "").startsWith(`${start.ymd}T${start.hm}`);
+      const sameEnd = tzOff != null
+        ? Date.parse(String(ev.end?.dateTime ?? "")) ===
+            Date.parse(`${end.ymd}T${end.hm}:00${offsetStr(tzOff)}`)
+        : String(ev.end?.dateTime ?? "").startsWith(`${end.ymd}T${end.hm}`);
       if (ev.summary !== desired.summary || !sameStart || !sameEnd) {
         const r = await fetch(`${CAL_BASE}/events/${ev.id}`, {
           method: "PATCH",
@@ -255,7 +286,9 @@ export const gcalApi = onRequest(
         return;
       }
       if (action === "syncDay") {
-        const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayInParis();
+        const d = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+          ? date
+          : userDayParts(await userTzOffset(uid)).ymd;
         res.status(200).json(await syncDayToGcal(uid, d));
         return;
       }
@@ -349,7 +382,8 @@ export const gcalOauthCallback = onRequest(
       }, { merge: true });
 
       // Première sync immédiate (best-effort) : le programme du jour apparaît.
-      await syncDayToGcal(uid, todayInParis()).catch(() => null);
+      await syncDayToGcal(uid, userDayParts(await userTzOffset(uid)).ymd)
+        .catch(() => null);
 
       res.status(200).send(htmlPage(
         "✅ Google Agenda connecté",
@@ -374,7 +408,7 @@ export const gcalOnScheduleWrite = onDocumentWritten(
     const uid = event.params.uid;
     const date = event.params.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return; // brouillons & docs annexes
-    if (date < todayInParis()) return;
+    if (date < userDayParts(await userTzOffset(uid)).ymd) return; // jour vécu
     const snap = await tokensRef(uid).get();
     const d = snap.data() as Json | undefined;
     if (!snap.exists || !d?.refreshToken || d.autoSync === false) return;

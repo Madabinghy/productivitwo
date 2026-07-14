@@ -6,18 +6,24 @@ Claude** : OAuth côté serveur, refresh token stocké dans Firestore
 (`gcal_tokens/{uid}`, admin uniquement), synchronisation automatique par
 trigger Firestore sur `users/{uid}/daily_schedules/{date}`.
 
-## 1. Console Google Cloud (projet Firebase Productivitwo)
+## 1. Console Google Cloud (⚠️ pas la console Firebase)
 
-1. **Activer l'API** : APIs & Services → Library → « Google Calendar API » → Enable.
-2. **Écran de consentement OAuth** (s'il n'existe pas déjà) : External,
-   nom « Productivitwo », scopes : `calendar.events`, `openid`, `email`.
-   En mode *Testing*, ajouter les comptes Google des testeurs dans « Test users »
-   (sinon Google refuse la connexion).
-3. **Identifiants** : APIs & Services → Credentials → Create credentials →
-   OAuth client ID → type **Web application** :
-   - Authorized redirect URI (EXACTE) :
-     `https://gcaloauthcallback-dzos75b65q-uc.a.run.app`
-   - Noter le **Client ID** et le **Client secret**.
+Tout se passe sur **console.cloud.google.com** (même projet `productivitwo-app`
+que Firebase — la console Firebase n'a pas ces menus). Liens directs :
+
+1. **Activer l'API Calendar** (bouton « Enable » sur la page) :
+   <https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=productivitwo-app>
+2. **Écran de consentement OAuth** — désormais sous « **Google Auth Platform** » :
+   <https://console.cloud.google.com/auth/overview?project=productivitwo-app>
+   Première fois : « Get started », nom « Productivitwo », audience External.
+   Puis onglet **Audience** → ajouter les comptes Google des testeurs dans
+   **Test users** (obligatoire en mode Testing, sinon Google refuse la
+   connexion).
+3. **Créer le client OAuth** :
+   <https://console.cloud.google.com/auth/clients?project=productivitwo-app>
+   → « Create client » → type **Web application** → Authorized redirect URI
+   (EXACTE) : `https://gcaloauthcallback-dzos75b65q-uc.a.run.app`
+   → noter le **Client ID** et le **Client secret**.
 
 ## 2. Secrets Cloud Functions
 

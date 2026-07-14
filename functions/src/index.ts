@@ -36,7 +36,7 @@ import {
   GENERATE_WEEKLY_REPORT_TOOL,
 } from "./tools";
 import {
-  validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis,
+  validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis, userDayParts,
   executePushAssistantMessage, executeGetAssistantMessages, executeDeleteAssistantMessage,
   executeGetUserContext, executeUpdateActivityGoal,
   executeSetActivityTargets, executeComputeTimeBudget,
@@ -196,7 +196,10 @@ export const nowAssist = onRequest(
     if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
 
     // Limite quotidienne (garde de coût) — compteur simple par jour.
-    const today = todayInParis();
+    // Fuseau vécu (fait data/meta.tzOffsetMin) — fallback Paris.
+    const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+    const { ymd: today, hm: nowHm } =
+      userDayParts(metaSnap.data()?.tzOffsetMin as number | undefined);
     const limitRef = db.doc(`users/${uid}/rate_limits/now_assist`);
     const limitSnap = await limitRef.get();
     const limitData = limitSnap.data() as { ymd?: string; count?: number } | undefined;
@@ -210,10 +213,6 @@ export const nowAssist = onRequest(
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
     const client = new Anthropic({ apiKey });
-
-    const nowHm = new Date().toLocaleTimeString("fr-FR", {
-      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-    });
 
     // Contexte : programme restant + routines/activités existantes (anti-doublon).
     const [schedule, actsSnap] = await Promise.all([
@@ -229,7 +228,7 @@ export const nowAssist = onRequest(
       .map((a) => `  · "${a.name}" (activityId: ${a.id})`).join("\n") || "  Aucune.";
 
     const systemPrompt = [
-      `Tu es l'assistant « Maintenant » de Productivitwo. L'utilisateur te dit ce qu'il veut faire là, tout de suite. Il est ${nowHm} (${today}, Europe/Paris).`,
+      `Tu es l'assistant « Maintenant » de Productivitwo. L'utilisateur te dit ce qu'il veut faire là, tout de suite. Il est ${nowHm} (${today}, heure locale de l'utilisateur).`,
       ``,
       `RÈGLES STRICTES :`,
       `1. Ta mission PAR DÉFAUT est de PROGRAMMER les prochaines heures avec add_blocks_today — blocs UNIQUEMENT ≥ ${nowHm}, jamais le passé, jamais toute la journée (2-3 blocs max).`,
@@ -374,10 +373,18 @@ export const proposeDayPlan = onRequest(
     const valid = await validateToken(uid, authHeader.slice(7).trim());
     if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
 
-    const today = todayInParis();
+    // Fuseau VÉCU (fait data/meta.tzOffsetMin posé par l'app — fallback
+    // Paris) : « aujourd'hui » et « il est »  sont ceux du téléphone, pas de
+    // Paris (constaté sur build : UTC-4 → 6 h d'écart, blocs et « jour même »
+    // faux). La méta est lue en premier — elle porte aussi weekMode et lever.
+    const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+    const tzOffsetMin = metaSnap.data()?.tzOffsetMin as number | undefined;
+    const { ymd: today, hm: nowHm } = userDayParts(tzOffsetMin);
     const target = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : today;
-    // Jour de référence = la veille de la cible (son programme + ses causes).
-    const refDate = todayInParis(new Date(new Date(target).getTime() - 24 * 60 * 60 * 1000));
+    // Jour de référence = la veille de la cible (arithmétique de date pure).
+    const refD = new Date(`${target}T12:00:00Z`);
+    refD.setUTCDate(refD.getUTCDate() - 1);
+    const refDate = refD.toISOString().slice(0, 10);
 
     // Garde de coût quotidienne.
     const limitRef = db.doc(`users/${uid}/rate_limits/plan_proposal`);
@@ -406,16 +413,13 @@ export const proposeDayPlan = onRequest(
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
 
-    const nowHm = new Date().toLocaleTimeString("fr-FR", {
-      timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-    });
     const sameDay = target === today;
 
     try {
       // ── Contexte ────────────────────────────────────────────────────────────
       const hitsCutoff = new Date(Date.now() - 28 * 86400000)
         .toISOString().slice(0, 19);
-      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, metaSnap, hitsSnap] = await Promise.all([
+      const [refSnap, targetSnap, actsSnap, projSnap, docsSnap, domainsSnap, artifactsSnap, hitsSnap] = await Promise.all([
         db.doc(`users/${uid}/daily_schedules/${refDate}`).get(),
         db.doc(`users/${uid}/daily_schedules/${target}`).get(),
         db.collection(`users/${uid}/activities`).get(),
@@ -424,7 +428,6 @@ export const proposeDayPlan = onRequest(
           .catch(() => db.collection(`users/${uid}/documents`).limit(10).get()),
         db.collection(`users/${uid}/domains`).get(),
         db.collection(`users/${uid}/artifacts`).get(),
-        db.doc(`users/${uid}/data/meta`).get(),
         // Hits de routines (28 j) → heures habituelles mesurées (programme idéal).
         db.collection(`users/${uid}/habitHits`).where("ts", ">=", hitsCutoff).get(),
       ]);
@@ -615,7 +618,7 @@ export const proposeDayPlan = onRequest(
       });
 
       const systemPrompt = [
-        `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, Europe/Paris).`,
+        `Tu prépares la PROPOSITION de programme du ${target} pour l'écran de planification de Productivitwo. Il est ${nowHm} (${today}, heure locale de l'utilisateur).`,
         sameDay
           ? `⚠️ La cible est AUJOURD'HUI (rattrapage express) : ne propose AUCUN bloc avant ${nowHm}. Horizon = ce qui reste de la journée.`
           : `La cible est un jour complet. ⚠️ LEVER À ${wake} : ne propose AUCUN bloc avant ${wake} — la journée utile va de ${wake} à 21h30 environ (les blocs reproposés aussi : ils reprennent une heure PLAUSIBLE de la journée, jamais leur heure d'hier si elle tombe la nuit).`,

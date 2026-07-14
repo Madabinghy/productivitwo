@@ -202,6 +202,47 @@ class _MoveSheetState extends State<_MoveSheet> {
                 ],
               ),
             ),
+          // Heure LIBRE : les créneaux proposés sont des suggestions, jamais
+          // une contrainte — le user reste maître de son programme.
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: _saving
+                ? null
+                : () async {
+                    final p = b.startTime.split(':');
+                    final t = await showTimePicker(
+                      context: context,
+                      initialTime: TimeOfDay(
+                          hour: int.tryParse(p.first) ?? 9,
+                          minute:
+                              p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0),
+                    );
+                    if (t == null) return;
+                    await _moveTo(
+                        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
+                  },
+            child: Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cs.onSurface.withOpacity(.25)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule_rounded,
+                      size: 18, color: cs.onSurface.withOpacity(.7)),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Choisir l\'heure moi-même…',
+                        style: TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 4),
           Text(
             'C\'est un déplacement, pas un report — pas compté comme sauté.',

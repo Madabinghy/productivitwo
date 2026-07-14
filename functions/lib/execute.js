@@ -56,6 +56,7 @@ exports.pickProject = pickProject;
 exports.pickStrategicObjective = pickStrategicObjective;
 exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
+exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
@@ -66,6 +67,24 @@ const weekly_report_1 = require("./weekly_report");
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
 function todayInParis(d = new Date()) {
     return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
+}
+/** Jour + heure VÉCUS par l'utilisateur : fuseau du téléphone posé en fait par
+ *  l'app (`data/meta.tzOffsetMin`, minutes à ajouter à l'UTC — ex : -240 pour
+ *  la Guadeloupe). Fallback Europe/Paris (comportement historique) tant que le
+ *  fait n'existe pas. Tout le serveur (agenda, proposition, ORION) doit passer
+ *  par ici — jamais de « Paris » en dur pour un raisonnement utilisateur. */
+function userDayParts(offsetMin, d = new Date()) {
+    if (typeof offsetMin === "number" && isFinite(offsetMin)) {
+        const t = new Date(d.getTime() + offsetMin * 60000);
+        const iso = t.toISOString();
+        return { ymd: iso.slice(0, 10), hm: iso.slice(11, 16) };
+    }
+    return {
+        ymd: todayInParis(d),
+        hm: d.toLocaleTimeString("fr-FR", {
+            timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+        }),
+    };
 }
 /** Heure actuelle dans le fuseau Europe/Paris. */
 function nowInParis() {

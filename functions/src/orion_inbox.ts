@@ -127,7 +127,23 @@ export async function processInboxToProjects(
   uid: string,
   opts?: { force?: boolean }
 ): Promise<{ found: number; created: number; appended: number; scheduled: number; skipped: number } | null> {
-  const today = todayParis();
+  // Jour + heure VÉCUS (fait data/meta.tzOffsetMin posé par l'app) —
+  // fallback Paris tant que le fait n'existe pas.
+  const tzSnap = await db.doc(`users/${uid}/data/meta`).get();
+  const tzOffsetMin = tzSnap.data()?.tzOffsetMin as number | undefined;
+  const userParts = (d: Date = new Date()) => {
+    if (typeof tzOffsetMin === "number" && isFinite(tzOffsetMin)) {
+      const iso = new Date(d.getTime() + tzOffsetMin * 60_000).toISOString();
+      return { ymd: iso.slice(0, 10), hm: iso.slice(11, 16) };
+    }
+    return {
+      ymd: todayParis(d),
+      hm: new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
+      }).format(d),
+    };
+  };
+  const today = userParts().ymd;
   const gateRef = db.doc(`users/${uid}/data/inbox_sweep`);
 
   const gate = await gateRef.get();
@@ -325,10 +341,7 @@ export async function processInboxToProjects(
   // déterministes : jamais avant le lever, heure passée → lendemain.
   const validActivityIds = new Set(activities.map((a) => a.id));
   let scheduled = 0;
-  // en-GB garantit le format « HH:mm » (fr-FR peut produire « 17 h 40 »).
-  const nowParis = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Paris", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(new Date());
+  const nowHm = userParts().hm; // heure VÉCUE — « déjà passé » se juge là
   const toMin = (hm: string) =>
     parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
   for (const sc of decision.schedule ?? []) {
@@ -341,7 +354,7 @@ export async function processInboxToProjects(
         : "09:00";
     if (toMin(startTime) < toMin(wake)) startTime = wake;
     // Aujourd'hui mais l'heure est déjà passée → demain.
-    if (offset === 0 && toMin(startTime) <= toMin(nowParis) + 15) offset = 1;
+    if (offset === 0 && toMin(startTime) <= toMin(nowHm) + 15) offset = 1;
     const ymd = addDays(today, offset);
     const block = {
       id: uuidv4(),
