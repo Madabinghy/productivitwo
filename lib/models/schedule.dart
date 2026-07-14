@@ -64,6 +64,12 @@ class ScheduleBlock {
   // "energie" | "pas_le_moment" | texte libre. Le check-in et la proposition
   // du lendemain la citent telle quelle.
   String? reportReason;
+  // ── Miroir Google Agenda ───────────────────────────────────────────────────
+  // Bloc IMPORTÉ d'un événement de l'agenda (≠ créé par Productivitwo).
+  // L'agenda est sa source de vérité : la sync sortante l'ignore (jamais
+  // re-poussé), l'import le met à jour/le retire, un swipe le masque sans
+  // toucher au vrai rendez-vous. Null = bloc Productivitwo normal.
+  String? gcalEventId;
 
   ScheduleBlock({
     String? id,
@@ -85,6 +91,7 @@ class ScheduleBlock {
     this.domainId,
     this.skipReason,
     this.reportReason,
+    this.gcalEventId,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
 
@@ -110,6 +117,7 @@ class ScheduleBlock {
         'domainId': domainId,
         'skipReason': skipReason,
         'reportReason': reportReason,
+        'gcalEventId': gcalEventId,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -132,6 +140,7 @@ class ScheduleBlock {
         domainId: j['domainId'],
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
+        gcalEventId: j['gcalEventId'],
       );
 }
 

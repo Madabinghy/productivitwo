@@ -941,6 +941,7 @@ async function executeUpdateActivity(
     habitFreq?: number;
     habitTarget?: number;
     finalTarget?: number;
+    timeContext?: string;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -955,6 +956,10 @@ async function executeUpdateActivity(
   if (updates.unit !== undefined) patch.unit = updates.unit;
   if (updates.habitFreq !== undefined) patch.habitFreq = updates.habitFreq;
   if (updates.habitTarget !== undefined) patch.habitTarget = updates.habitTarget;
+  if (updates.timeContext !== undefined) {
+    // Fenêtre naturelle de la routine — chaîne vide = retour à l'auto.
+    patch.timeContext = updates.timeContext.trim() === "" ? null : updates.timeContext.trim();
+  }
   if (updates.finalTarget !== undefined) {
     // Cap de progression : habitTarget devient le palier courant. Nouveau cap
     // = nouveau départ — l'évaluation hebdo attend une semaine pleine.
@@ -1873,12 +1878,15 @@ async function executeScheduleDay(
   const prev = await ref.get();
   const prevData = prev.exists ? (prev.data() as Record<string, unknown>) : {};
   // Les blocs posés par d'autres flux survivent au remplacement : preps du
-  // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14)
-  // et sessions de définition de domaine (onboarding 18b).
+  // soir (add_prep_block), bilans d'essai (renégociation 12c, posés à J+14),
+  // sessions de définition de domaine (onboarding 18b) — et les MIROIRS
+  // d'événements Google Agenda (tous statuts : un remplacement de programme
+  // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
   const preserved = ((prevData.blocks as Array<Record<string, unknown>>) ?? [])
     .filter((b) =>
-      (b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
-      b.status !== "deleted");
+      b.gcalEventId != null ||
+      ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
+        b.status !== "deleted"));
 
   await ref.set({
     date,

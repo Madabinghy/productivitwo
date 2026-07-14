@@ -71,6 +71,11 @@ class Activity {
   /// Durée minuteur préférée en minutes (null = chrono libre).
   int? timerMin;
 
+  /// Contexte horaire choisi par l'utilisateur (clé de kTimeContexts :
+  /// morning/midday/afternoon/evening/meal/day/allday/any). Null = dérivé du
+  /// catalogue d'archétypes (utils/routine_context.dart), lui-même optionnel.
+  String? timeContext;
+
   /// Actions « propres » de l'activité : des TaskAction qui appartiennent
   /// directement à l'activité (sans tâche/projet). Le chrono ciblé fonctionne
   /// via Session.actionId. Persisté dans la collection `activities`.
@@ -99,6 +104,7 @@ class Activity {
     this.deleted = false,
     this.todayFlag = false,
     this.timerMin,
+    this.timeContext,
     List<TaskAction>? ownActions,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         ownActions = ownActions ?? <TaskAction>[],
@@ -138,6 +144,7 @@ class Activity {
         'deleted': deleted,
         'todayFlag': todayFlag,
         'timerMin': timerMin,
+        'timeContext': timeContext,
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
       };
 
@@ -187,6 +194,7 @@ class Activity {
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
       timerMin: (j['timerMin'] as num?)?.toInt(),
+      timeContext: j['timeContext'] as String?,
       ownActions: (j['ownActions'] as List?)
           ?.map((e) => TaskAction.from(e as Map))
           .toList(),

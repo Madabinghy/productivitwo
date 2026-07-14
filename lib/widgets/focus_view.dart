@@ -1423,13 +1423,32 @@ class _FocusViewState extends State<FocusView> {
   /// Le bloc à afficher : celui dont la fenêtre couvre l'heure actuelle,
   /// sinon le prochain à venir. Les blocs passés non faits ne squattent pas le
   /// focus (ils restent visibles dans Aujourd'hui + ligne « en retard » ici).
+  /// Horizon actionnable : un bloc qui démarre à plus de 90 min n'est pas
+  /// « le moment » — il ne mérite pas la grande carte avec Lancer (constaté
+  /// sur build : « Hygiène du soir, 21 h » proposée en plein 13 h 46). Il
+  /// reste visible en hint discret (_laterBlock) et lançable explicitement.
+  static const int _kActionHorizonMin = 90;
+
   ScheduleBlock? _focusBlock(DateTime now) {
     for (final b in _pendingBlocks) {
       final start = _blockStart(b, now);
       final end = start.add(Duration(minutes: b.durationMin));
       final current = !now.isBefore(start) && now.isBefore(end);
-      final upcoming = now.isBefore(start);
+      final upcoming = now.isBefore(start) &&
+          start.difference(now).inMinutes <= _kActionHorizonMin;
       if (current || upcoming) return b;
+    }
+    return null;
+  }
+
+  /// Premier bloc pending AU-DELÀ de l'horizon — l'affaire de plus tard.
+  ScheduleBlock? _laterBlock(DateTime now) {
+    for (final b in _pendingBlocks) {
+      final start = _blockStart(b, now);
+      if (now.isBefore(start) &&
+          start.difference(now).inMinutes > _kActionHorizonMin) {
+        return b;
+      }
     }
     return null;
   }
@@ -1740,6 +1759,43 @@ class _FocusViewState extends State<FocusView> {
     ]);
   }
 
+  /// Hint discret du bloc au-delà de l'horizon (> 90 min) : visible, datable,
+  /// lançable en avance d'un tap explicite (heure/durée = libres) — mais
+  /// jamais présenté comme LE truc à faire maintenant.
+  Widget _laterHint(ColorScheme cs, ScheduleBlock b) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.onSurface.withOpacity(.12)),
+      ),
+      child: Row(children: [
+        Icon(Icons.schedule, size: 15, color: cs.onSurface.withOpacity(.4)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Plus tard · ${b.startTime} — ${b.title} (${fmtMin(b.durationMin)})',
+            style: TextStyle(
+                fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
+          ),
+        ),
+        if (widget.onLaunchScheduledBlock != null &&
+            (b.projectId != null || b.activityId != null))
+          TextButton(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              foregroundColor: cs.onSurface.withOpacity(.5),
+            ),
+            onPressed: () => widget.onLaunchScheduledBlock!(b),
+            child: const Text('Lancer quand même',
+                style: TextStyle(fontSize: 11.5)),
+          ),
+      ]),
+    );
+  }
+
   Widget _overdueHint(ColorScheme cs, DateTime now) {
     final n = _overdueCount(now);
     if (n == 0) return const SizedBox.shrink();
@@ -1768,6 +1824,10 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
+            // Bloc au-delà de l'horizon (ex : Hygiène du soir à 21 h vu à
+            // 13 h 46) : l'affaire de PLUS TARD — hint discret, pas la grande
+            // carte. Le moment présent revient au guide ci-dessous.
+            if (_laterBlock(now) != null) _laterHint(cs, _laterBlock(now)!),
             const SizedBox(height: 8),
             // ── Guide du moment libre : intention → propositions réelles ──────
             ..._freeMomentSection(cs, now),

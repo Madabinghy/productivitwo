@@ -25,6 +25,8 @@ const sgMail = require("@sendgrid/mail");
 const orion_tasks_1 = require("./orion_tasks");
 const weekly_report_1 = require("./weekly_report");
 const domain_facts_1 = require("./domain_facts");
+const routine_context_1 = require("./routine_context");
+const gcal_1 = require("./gcal");
 const uuid_1 = require("uuid");
 const db_1 = require("./db");
 const prompts_1 = require("./prompts");
@@ -382,6 +384,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
     }
     const sameDay = target === today;
     try {
+        // Agenda connecté : rafraîchir les MIROIRS de la date cible d'abord —
+        // la proposition planifie AUTOUR des rendez-vous réels (best-effort).
+        await (0, gcal_1.importGcalDay)(uid, target).catch(() => null);
         // ── Contexte ────────────────────────────────────────────────────────────
         const hitsCutoff = new Date(Date.now() - 28 * 86400000)
             .toISOString().slice(0, 19);
@@ -508,6 +513,19 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             ? (((_q = (_p = targetSnap.data()) === null || _p === void 0 ? void 0 : _p.blocks) !== null && _q !== void 0 ? _q : []))
             : [];
         const targetBlocks = targetBlocksAll.filter((b) => b.status !== "deleted");
+        // Rendez-vous réels de la cible (miroirs agenda, vivants) : contrainte
+        // DURE — cités au LLM et respectés par le repack déterministe.
+        const fixedEvents = targetBlocks
+            .filter((b) => b.gcalEventId && b.status === "pending")
+            .map((b) => {
+            var _a, _b;
+            return ({
+                startTime: String(b.startTime),
+                durationMin: Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 30),
+                title: String((_b = b.title) !== null && _b !== void 0 ? _b : ""),
+            });
+        })
+            .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
         const acts = actsSnap.docs
             .map((d) => d.data())
             .filter((a) => a.deleted !== true);
@@ -551,6 +569,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         const routineList = acts.filter((a) => a.type === "habit")
             .map((a) => {
             var _a;
+            // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
+            const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
             return `  · "${a.name}" (activityId: ${a.id})` +
                 (isDailyHabit(a) ? " · QUOTIDIENNE" : "") +
                 (a.finalTarget
@@ -558,7 +578,8 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                     : "") +
                 (typicalByHabit.has(String(a.id))
                     ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
-                    : "");
+                    : "") +
+                (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "");
         })
             .join("\n") || "  Aucune.";
         const activityList = acts.filter((a) => a.type !== "habit")
@@ -616,6 +637,12 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             `4bis. Un bloc = UNE SEULE routine/activité, avec SON activityId — ne regroupe JAMAIS plusieurs routines dans un bloc (« Ménage + hygiène » interdit : ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs consécutifs.`,
             `4ter. PROGRAMME IDÉAL : pose chaque routine QUOTIDIENNE à son heure habituelle quand elle est indiquée (c'est l'heure réelle mesurée de l'utilisateur) — celles que tu omets seront ajoutées automatiquement.`,
             `5. Chiffres et provenances réels uniquement (deadlines, plans listés). Si aucune provenance : sources: [].`,
+            ...(fixedEvents.length > 0
+                ? [
+                    `6. RENDEZ-VOUS RÉELS (agenda, FIXES — ne les repose pas, ne pose RIEN dessus, planifie AUTOUR) :`,
+                    ...fixedEvents.map((e) => `  · ${e.startTime} « ${e.title} » (${e.durationMin} min)`),
+                ]
+                : []),
             ``,
             ...(domainLines.length > 0
                 ? [
@@ -704,6 +731,17 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // repoussé au-delà de 23 h 30 est abandonné.
         const toMin = (hm) => parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
         const toHm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+        // Créneaux OCCUPÉS par les rendez-vous réels : jamais une cible de pose.
+        const busy = fixedEvents
+            .map((e) => [toMin(e.startTime), toMin(e.startTime) + e.durationMin])
+            .sort((a, b) => a[0] - b[0]);
+        const skipBusy = (st, dur) => {
+            for (const [a, b] of busy) {
+                if (st < b && st + dur > a)
+                    return skipBusy(b, dur); // chevauche → après
+            }
+            return st;
+        };
         const repackAfterWake = (blocks) => {
             var _a;
             const floor = Math.max(toMin(wake), sameDay ? toMin(nowHm) : 0);
@@ -712,11 +750,12 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             const out = [];
             for (const b of sorted) {
                 const orig = toMin(String(b.startTime));
-                const st = Math.max(orig, cursor);
+                const dur = Math.max(5, Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 30));
+                const st = skipBusy(Math.max(orig, cursor), dur);
                 if (st > 23 * 60 + 30)
                     continue; // journée pleine — abandonné
                 out.push(st === orig ? b : Object.assign(Object.assign({}, b), { startTime: toHm(st) }));
-                cursor = st + Math.max(5, Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 30));
+                cursor = st + dur;
             }
             return out;
         };
@@ -766,8 +805,12 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 if (covered.has(id) || doneOnTarget.has(id))
                     continue;
                 const typical = typicalByHabit.get(id);
-                const startTime = typical !== null && typical !== void 0 ? typical : toHm(fallbackMin);
-                if (!typical)
+                // Sans heure MESURÉE : la fenêtre naturelle de la routine (méta-
+                // contexte) prime sur la cascade aveugle — « Hygiène du soir » se
+                // pose le soir, pas à lever+90.
+                const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
+                const startTime = typical !== null && typical !== void 0 ? typical : (ctx ? toHm(ctx.anchorMin) : toHm(fallbackMin));
+                if (!typical && !ctx)
                     fallbackMin += 30;
                 const timerMin = Number((_x = a.timerMin) !== null && _x !== void 0 ? _x : 0);
                 outBlocks.push({
@@ -4297,8 +4340,8 @@ exports.resetDemoData = (0, scheduler_1.onSchedule)("0 4 * * *", async () => {
     await _seedDemoData(DEMO_UID);
 });
 // ── Google Agenda natif (Direction D) — voir gcal.ts et docs/gcal_setup.md ───
-var gcal_1 = require("./gcal");
-Object.defineProperty(exports, "gcalApi", { enumerable: true, get: function () { return gcal_1.gcalApi; } });
-Object.defineProperty(exports, "gcalOauthCallback", { enumerable: true, get: function () { return gcal_1.gcalOauthCallback; } });
-Object.defineProperty(exports, "gcalOnScheduleWrite", { enumerable: true, get: function () { return gcal_1.gcalOnScheduleWrite; } });
+var gcal_2 = require("./gcal");
+Object.defineProperty(exports, "gcalApi", { enumerable: true, get: function () { return gcal_2.gcalApi; } });
+Object.defineProperty(exports, "gcalOauthCallback", { enumerable: true, get: function () { return gcal_2.gcalOauthCallback; } });
+Object.defineProperty(exports, "gcalOnScheduleWrite", { enumerable: true, get: function () { return gcal_2.gcalOnScheduleWrite; } });
 //# sourceMappingURL=index.js.map

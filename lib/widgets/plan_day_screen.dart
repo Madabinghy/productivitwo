@@ -418,7 +418,10 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
               b.status == 'deleted' ||
               b.isPrep ||
               b.kind == 'bilan' ||
-              b.kind == 'session')
+              b.kind == 'session' ||
+              // Miroirs Google Agenda : un remplacement de programme ne peut
+              // pas effacer un rendez-vous (l'agenda est leur vérité).
+              b.gcalEventId != null)
           .toList();
       final blocks = <ScheduleBlock>[
         ...kept,

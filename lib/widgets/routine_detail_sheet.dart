@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
+import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
@@ -837,6 +838,42 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                   ),
                 ),
             ],
+
+            // Contexte horaire : la fenêtre NATURELLE de la routine (hygiène
+            // du soir = le soir, boire de l'eau = toute la journée). « Auto »
+            // = dérivé du nom via le catalogue ; le coach, la proposition et
+            // la renégociation respectent cette fenêtre.
+            const SizedBox(height: 14),
+            Text('Contexte horaire',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface.withOpacity(.75),
+                )),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              ChoiceChip(
+                label: Text(() {
+                  final arch = routineArchetype(act.name);
+                  final derived =
+                      arch != null ? kTimeContexts[arch.contextKey] : null;
+                  return derived != null ? 'Auto · ${derived.label}' : 'Auto';
+                }()),
+                selected: act.timeContext == null,
+                onSelected: (_) {
+                  act.timeContext = null;
+                  _applySetting();
+                },
+              ),
+              for (final c in kTimeContexts.values)
+                ChoiceChip(
+                  label: Text(c.label),
+                  selected: act.timeContext == c.key,
+                  onSelected: (_) {
+                    act.timeContext = c.key;
+                    _applySetting();
+                  },
+                ),
+            ]),
           ],
         ),
       ),

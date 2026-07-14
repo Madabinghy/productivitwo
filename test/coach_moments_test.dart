@@ -1032,6 +1032,42 @@ void main() {
       expect(fillers.map((f) => f.routine.id), ['r1']);
     });
 
+    test('sans historique, le méta-contexte tranche : pas d\'« Hygiène du '
+        'soir » en combleur du matin', () {
+      final now = DateTime(2026, 7, 7, 9, 30);
+      final st = AppState(
+        domains: [
+          Domain(
+              name: 'Santé',
+              definitionStatus: 'active',
+              intention: 'tenir le rythme'),
+        ],
+        activities: [
+          Activity(
+              id: 'r1',
+              name: 'Hygiène du soir',
+              domainId: 'd1',
+              type: 'habit',
+              habitFreq: HabitFreq.daily,
+              timerMin: 5,
+              order: 0),
+        ],
+        sessions: [],
+        habitProgress: [],
+      );
+      expect(gapFillers(now, st, 120), isEmpty); // fenêtre soir ≠ 9 h 30
+      // Le soir, elle redevient un combleur légitime.
+      final evening = DateTime(2026, 7, 7, 20, 0);
+      expect(gapFillers(evening, st, 120).map((f) => f.routine.id), ['r1']);
+      // L'heure MESURÉE bat le catalogue : tenue le matin 3 fois → proposée.
+      st.habitHits.addAll([
+        for (var i = 1; i <= 3; i++)
+          HabitHit(
+              habitId: 'r1', ts: DateTime(2026, 7, 7 - i, 9, 40)),
+      ]);
+      expect(gapFillers(now, st, 120).map((f) => f.routine.id), ['r1']);
+    });
+
     test('routine sans minuteur : pas de durée inventée — coche directe (✓)',
         () {
       final now = DateTime(2026, 7, 7, 9, 30);
@@ -1721,6 +1757,79 @@ void main() {
           ganttAction: g);
       expect(m.message, contains('Méditation'));
       expect(m.message, isNot(contains('Maquette')));
+    });
+  });
+
+  group('horizon actionnable (90 min) : le soir n\'est pas l\'affaire du midi',
+      () {
+    test('midi : bloc de 21 h → mention « ce soir », jamais le bloc-clé ni Lancer',
+        () {
+      final now = DateTime(2026, 7, 7, 13, 0);
+      final sched = _sched(today, [
+        _block(
+            startTime: '21:00',
+            durationMin: 5,
+            title: 'Hygiène du soir',
+            activityId: 'r1'),
+      ]);
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.midday);
+      expect(m.message, contains('L\'après-midi est à toi.'));
+      expect(m.message, contains('Ce soir : Hygiène du soir à 21h.'));
+      expect(m.actions.where((a) => a.kind == CoachActionKind.launchBlock),
+          isEmpty);
+    });
+
+    test('midi : bloc d\'après-midi PROCHE → bloc-clé + Lancer ; loin → pas de Lancer',
+        () {
+      final now = DateTime(2026, 7, 7, 13, 0);
+      final near = computeCoachMoment(
+          now,
+          _st([]),
+          _sched(today, [
+            _block(startTime: '14:00', title: 'Dossier', activityId: 'a1'),
+          ]),
+          null,
+          []);
+      expect(near.message, contains('qu\'une chose à tenir : Dossier'));
+      expect(
+          near.actions.any((a) => a.kind == CoachActionKind.launchBlock), isTrue);
+      final far = computeCoachMoment(
+          now,
+          _st([]),
+          _sched(today, [
+            _block(startTime: '17:30', title: 'Dossier', activityId: 'a1'),
+          ]),
+          null,
+          []);
+      expect(far.message, contains('qu\'une chose à tenir : Dossier'));
+      expect(far.actions.where((a) => a.kind == CoachActionKind.launchBlock),
+          isEmpty);
+    });
+
+    test('après-midi : prochain bloc à > 90 min → pas de CTA Lancer', () {
+      final now = DateTime(2026, 7, 7, 15, 0);
+      final far = computeCoachMoment(
+          now,
+          _st([]),
+          _sched(today, [
+            _block(startTime: '18:00', title: 'Dossier', activityId: 'a1'),
+          ]),
+          null,
+          []);
+      expect(far.type, CoachMomentType.afternoon);
+      expect(far.actions.where((a) => a.kind == CoachActionKind.launchBlock),
+          isEmpty);
+      final near = computeCoachMoment(
+          now,
+          _st([]),
+          _sched(today, [
+            _block(startTime: '16:00', title: 'Dossier', activityId: 'a1'),
+          ]),
+          null,
+          []);
+      expect(near.actions.any((a) => a.kind == CoachActionKind.launchBlock),
+          isTrue);
     });
   });
 
