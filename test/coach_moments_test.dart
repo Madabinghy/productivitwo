@@ -734,6 +734,33 @@ void main() {
           isTrue);
     });
 
+    test('point fait (reviewedAt) → carte du soir clôturée, pas de re-proposition',
+        () {
+      final now = DateTime(2026, 7, 7, 21, 30);
+      final sched = DailySchedule(
+        date: today,
+        reviewedAt: DateTime(2026, 7, 7, 21, 10),
+      );
+      final m = computeCoachMoment(now, _st([]), sched, null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.tagLabel, contains('JOURNÉE CLÔTURÉE'));
+      expect(m.message, isNot(contains('Prends deux minutes')));
+      expect(m.tone, CoachTone.positive);
+      // « Revoir le point » reste accessible, sans insister.
+      expect(m.actions.single.kind, CoachActionKind.openDayReview);
+      expect(m.actions.single.label, 'Revoir le point');
+      // Round-trip : le fait survit à la sérialisation.
+      expect(DailySchedule.from(sched.toJson()).reviewedAt, isNotNull);
+    });
+
+    test('point non fait → check-in normal (inchangé)', () {
+      final now = DateTime(2026, 7, 7, 21, 30);
+      final m = computeCoachMoment(
+          now, _st([]), DailySchedule(date: today), null, []);
+      expect(m.type, CoachMomentType.evening);
+      expect(m.message, contains('clôturer ta journée'));
+    });
+
     test('rapport LU (fait readAt) → le teaser se tait, check-in normal', () {
       final now = DateTime(2026, 7, 12, 20, 0); // dimanche
       final report = WeeklyReport(

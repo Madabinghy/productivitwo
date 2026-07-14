@@ -819,6 +819,14 @@ class FirestoreSync {
         .set({'weekModeChosen': mode}, SetOptions(merge: true));
   }
 
+  /// Fait « point fait » : posé quand le check-in du soir atteint son verdict
+  /// — la carte du soir se tait ensuite.
+  Future<void> markDayReviewed(String date) async {
+    if (uid == null) return;
+    await _col('daily_schedules').doc(date).set(
+        {'reviewedAt': DateTime.now().toIso8601String()}, SetOptions(merge: true));
+  }
+
   /// Fait « rapport lu » : posé à la première ouverture de l'écran du rapport
   /// — le teaser du dimanche soir se tait ensuite, la carte reprend son cours.
   Future<void> markWeeklyReportRead(String weekStart) async {

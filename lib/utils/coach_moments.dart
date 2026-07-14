@@ -168,7 +168,10 @@ CoachMoment computeCoachMoment(
   // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
   // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
   // le programme d'HIER (et leur bloc cible est désormais ce matin).
-  if (minutes < 60) return _eveningMoment(_liveBlocks(yesterday), const []);
+  if (minutes < 60) {
+    return _eveningMoment(_liveBlocks(yesterday), const [],
+        reviewedAt: yesterday?.reviewedAt);
+  }
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
 
   // Pause déclarée (« pas dispo avant X ») : le coach SUIT LE FLOW — AUCUNE
@@ -235,7 +238,7 @@ CoachMoment computeCoachMoment(
     // semaine se juge avant de se clore. Une fois LU, le check-in reprend.
     clock = (now.weekday == DateTime.sunday && unreadReport)
         ? _weeklyTeaser(weeklyReport)
-        : _eveningMoment(blocks, vitals);
+        : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
   } else if (minutes >= 14 * 60) {
     clock = _driftMoment(now, blocks, sessionsToday) ??
         _afternoonMoment(now, st, blocks, recentSessions, challenge: chal);
@@ -260,7 +263,7 @@ CoachMoment computeCoachMoment(
         return _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal);
       case CoachMomentType.evening:
-        return _eveningMoment(blocks, vitals);
+        return _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
       default:
         break;
     }
@@ -963,9 +966,26 @@ CoachMoment _weeklyTeaser(WeeklyReport r) {
   );
 }
 
-CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals) {
+CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals,
+    {DateTime? reviewedAt}) {
   final pendingPreps =
       blocks.where((b) => b.isPrep && b.status == 'pending').length;
+  // Point déjà fait (fait reviewedAt) : la carte ne re-propose pas ce qui est
+  // fait — clôture calme, la soirée est à toi. « Revoir » reste accessible.
+  if (reviewedAt != null) {
+    return CoachMoment(
+      type: CoachMomentType.evening,
+      tagLabel: 'ORION · JOURNÉE CLÔTURÉE',
+      message: pendingPreps > 0
+          ? 'Le point est fait — il reste $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher pour armer demain, puis la soirée est à toi.'
+          : 'Le point est fait, demain est armé — la soirée est à toi.',
+      stats: vitals,
+      actions: const [
+        CoachAction('Revoir le point', CoachActionKind.openDayReview),
+      ],
+      tone: CoachTone.positive,
+    );
+  }
   final stats = <StatItem>[
     if (pendingPreps > 0)
       StatItem('À préparer', '$pendingPreps bloc${pendingPreps > 1 ? 's' : ''}'),
