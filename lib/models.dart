@@ -8,6 +8,7 @@ part 'models/app_state.dart';
 part 'models/projects.dart';
 part 'models/integrations.dart';
 part 'models/schedule.dart';
+part 'models/session_template.dart';
 part 'models/artifact.dart';
 part 'models/weekly_report.dart';
 part 'models/world.dart';

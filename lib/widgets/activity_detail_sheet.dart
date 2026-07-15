@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/widgets/session_template_editor.dart';
 
 /// Sheet d'une activité-temps, calqué sur le sheet du FAB mobile (stats semaine
 /// + progression, aujourd'hui/mois, courbe 60 j, heatmap 12 sem). Réutilisable
@@ -86,11 +87,17 @@ Future<void> showActivitySheet(
   final referenceCount =
       percentileOf(countByYmd.values.toList(), 0.90).clamp(1.0, double.infinity);
 
+  // Déroulés réutilisables de cette activité (séances) — lus une fois,
+  // rafraîchis après création/édition via le StatefulBuilder.
+  final sync = FirestoreSync();
+  var templates = await sync.fetchSessionTemplates(activityId: a.id);
+  if (!context.mounted) return;
+
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (ctx) {
+    builder: (bctx) => StatefulBuilder(builder: (ctx, setSheet) {
       final cs = Theme.of(ctx).colorScheme;
       Widget miniStat(String label, String value) => Column(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -142,6 +149,114 @@ Future<void> showActivitySheet(
                   ),
                 ]),
                 const SizedBox(height: 16),
+                // ── Déroulés (séances réutilisables de cette activité) ────────
+                // ▶ = chrono sur l'activité + player d'étapes dans Maintenant.
+                Row(children: [
+                  Text('DÉROULÉS',
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2,
+                          color: cs.onSurface.withOpacity(.4))),
+                  const Spacer(),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact),
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Nouveau',
+                        style: TextStyle(fontSize: 12.5)),
+                    onPressed: () async {
+                      final t = await Navigator.of(ctx).push<SessionTemplate>(
+                          MaterialPageRoute(
+                              builder: (_) => SessionTemplateEditor(
+                                  logic: logic, activity: a)));
+                      if (t != null) {
+                        templates =
+                            await sync.fetchSessionTemplates(activityId: a.id);
+                        setSheet(() {});
+                      }
+                    },
+                  ),
+                ]),
+                if (templates.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      'Une séance réutilisable : les étapes s\'égrènent dans '
+                      'Maintenant, le temps se trace ici.',
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurface.withOpacity(.45)),
+                    ),
+                  ),
+                for (final t in templates)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      final r = await Navigator.of(ctx)
+                          .push<SessionTemplate>(MaterialPageRoute(
+                              builder: (_) => SessionTemplateEditor(
+                                  logic: logic,
+                                  activity: a,
+                                  existing: t)));
+                      if (r != null) {
+                        templates =
+                            await sync.fetchSessionTemplates(activityId: a.id);
+                        setSheet(() {});
+                      }
+                    },
+                    onLongPress: () async {
+                      await sync.archiveSessionTemplate(t.id);
+                      templates =
+                          await sync.fetchSessionTemplates(activityId: a.id);
+                      setSheet(() {});
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: color.withOpacity(.3)),
+                      ),
+                      child: Row(children: [
+                        Icon(Icons.playlist_play_rounded,
+                            size: 20, color: color),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.title,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700)),
+                              Text('${t.steps.length} étape(s)',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withOpacity(.5))),
+                            ],
+                          ),
+                        ),
+                        // ▶ chrono + player — le déroulé attend dans Maintenant.
+                        IconButton(
+                          icon: Icon(Icons.play_circle_fill_rounded,
+                              size: 30, color: color),
+                          tooltip: 'Lancer la séance',
+                          onPressed: () {
+                            logic.startTemplate(t);
+                            Navigator.pop(ctx);
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(
+                                  '▶ « ${t.title} » lancée — le déroulé t\'attend dans Maintenant.'),
+                              duration: const Duration(seconds: 3),
+                            ));
+                          },
+                        ),
+                      ]),
+                    ),
+                  ),
+                const SizedBox(height: 10),
                 // Hero semaine + progression, stats secondaires.
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -490,7 +605,7 @@ Future<void> showActivitySheet(
           ),
         ),
       );
-    },
+    }),
   );
 }
 

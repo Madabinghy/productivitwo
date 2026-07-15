@@ -2136,6 +2136,46 @@ class _FocusViewState extends State<FocusView> {
   // de la tâche focus → actions propres de l'activité → routines liées à
   // l'activité en cours. 0 nouveau modèle : le déroulé est DÉRIVÉ de l'existant
   // (les templates réutilisables viendront s'y brancher).
+  /// Étape-routine du déroulé (compteur − / + si comptée, coche gardée sinon,
+  /// checklist imbriquée) — partagée entre le déroulé dérivé et les templates.
+  ({
+    String title,
+    String? sub,
+    bool done,
+    Future<void> Function() onTap,
+    List<Widget> nested,
+  }) _routineStep(ColorScheme cs, Color color, Activity r, DateTime now) {
+    final tgt = logic.activeHabitTarget(r);
+    final val = logic.habitValueOn(r.id, now);
+    final rDone = tgt > 0 ? val >= tgt : val > 0;
+    final counted = tgt > 1;
+    final items = logic.checklistForHabit(r.id);
+    final doneSet =
+        items.isEmpty ? const <int>{} : logic.checklistDoneSet(r.id, now);
+    return (
+      title: r.name,
+      sub: counted ? '$val/$tgt aujourd\'hui' : null,
+      done: rDone,
+      onTap: () async {
+        if (counted) {
+          await showHabitCountSheet(context, logic: logic, activity: r);
+          if (mounted) setState(() {});
+          return;
+        }
+        if (rDone) return; // pas de double coche
+        logic.incHabit(r.id, 1, DateTime(now.year, now.month, now.day));
+        setState(() {});
+      },
+      nested: [
+        for (var i = 0; i < items.length; i++)
+          _checkRow(cs, color, items[i], doneSet.contains(i), () {
+            logic.toggleChecklistItem(r.id, DateTime.now(), i);
+            setState(() {});
+          }),
+      ],
+    );
+  }
+
   List<Widget> _derouleSection(ColorScheme cs, Color color, Activity running) {
     final task = widget.focusTask;
     final project = widget.focusProject;
@@ -2148,6 +2188,46 @@ class _FocusViewState extends State<FocusView> {
       Future<void> Function() onTap,
       List<Widget> nested,
     })>[];
+
+    // ── Template ACTIF (séance lancée depuis la fiche activité) : il prend le
+    // contrôle total du déroulé — c'est SON ordre, celui que le user a posé.
+    // Étapes simples : état éphémère de CETTE session (un déroulé se rejoue) ;
+    // étapes-routines : l'état vit chez la routine (compteur, palier, streak).
+    final tpl = logic.activeSessionTemplate;
+    if (tpl != null && tpl.activityId == running.id) {
+      for (final stp in tpl.steps) {
+        if (stp.kind == 'routine') {
+          Activity? r;
+          for (final x in st.activities) {
+            if (x.id == stp.routineId) { r = x; break; }
+          }
+          if (r != null && r.isHabit && !r.deleted) {
+            steps.add(_routineStep(cs, color, r, now));
+            continue;
+          }
+        }
+        final sDone = logic.sessionStepDone.contains(stp.id);
+        steps.add((
+          title: stp.title,
+          sub: null,
+          done: sDone,
+          onTap: () async {
+            logic.toggleSessionStep(stp.id);
+            setState(() {});
+          },
+          nested: [
+            for (var i = 0; i < stp.checklist.length; i++)
+              _checkRow(cs, color, stp.checklist[i],
+                  logic.sessionStepDone.contains('${stp.id}:$i'), () {
+                logic.toggleSessionStep('${stp.id}:$i');
+                setState(() {});
+              }),
+          ],
+        ));
+      }
+      return _renderDeroule(cs, color, steps,
+          label: 'DÉROULÉ · ${tpl.title.toUpperCase()}');
+    }
 
     if (task != null && project != null) {
       for (final a in task.actions) {
@@ -2182,37 +2262,26 @@ class _FocusViewState extends State<FocusView> {
         .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
     for (final r in linked) {
-      final tgt = logic.activeHabitTarget(r);
-      final val = logic.habitValueOn(r.id, now);
-      final rDone = tgt > 0 ? val >= tgt : val > 0;
-      final counted = tgt > 1;
-      final items = logic.checklistForHabit(r.id);
-      final doneSet =
-          items.isEmpty ? const <int>{} : logic.checklistDoneSet(r.id, now);
-      steps.add((
-        title: r.name,
-        sub: counted ? '$val/$tgt aujourd\'hui' : null,
-        done: rDone,
-        onTap: () async {
-          if (counted) {
-            await showHabitCountSheet(context, logic: logic, activity: r);
-            if (mounted) setState(() {});
-            return;
-          }
-          if (rDone) return; // pas de double coche
-          logic.incHabit(r.id, 1, DateTime(now.year, now.month, now.day));
-          setState(() {});
-        },
-        nested: [
-          for (var i = 0; i < items.length; i++)
-            _checkRow(cs, color, items[i], doneSet.contains(i), () {
-              logic.toggleChecklistItem(r.id, DateTime.now(), i);
-              setState(() {});
-            }),
-        ],
-      ));
+      steps.add(_routineStep(cs, color, r, now));
     }
 
+    return _renderDeroule(cs, color, steps, label: 'DÉROULÉ');
+  }
+
+  List<Widget> _renderDeroule(
+    ColorScheme cs,
+    Color color,
+    List<
+            ({
+              String title,
+              String? sub,
+              bool done,
+              Future<void> Function() onTap,
+              List<Widget> nested,
+            })>
+        steps, {
+    required String label,
+  }) {
     if (steps.isEmpty) return const [];
     final doneCount = steps.where((s) => s.done).length;
     final currentIdx = steps.indexWhere((s) => !s.done);
@@ -2220,8 +2289,7 @@ class _FocusViewState extends State<FocusView> {
     return [
       const SizedBox(height: 28),
       Row(children: [
-        _sectionLabel(cs, 'DÉROULÉ'),
-        const Spacer(),
+        Expanded(child: _sectionLabel(cs, label)),
         Text('$doneCount/${steps.length}',
             style: TextStyle(
                 fontSize: 11,
