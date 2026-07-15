@@ -1980,12 +1980,6 @@ class _FocusViewState extends State<FocusView> {
     final remaining = endsAt != null ? endsAt.difference(now) : null;
     final isCountdown = remaining != null && remaining > Duration.zero;
 
-    // Routine liée à l'activité en cours → sa checklist s'affiche pendant la
-    // session (ex. routine « Sport » minutée sur l'activité « Sport »).
-    final linkedRoutine = st.activities
-        .where((a) =>
-            a.isHabit && !a.deleted && a.linkedActivityId == running.id)
-        .firstOrNull;
     final next = _focusBlock(now);
 
     return SafeArea(
@@ -2105,53 +2099,12 @@ class _FocusViewState extends State<FocusView> {
               ),
             ],
 
-            // Sous-actions de la tâche
-            if (task != null && task.actions.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              _sectionLabel(cs, 'SOUS-ACTIONS'),
-              const SizedBox(height: 8),
-              ...task.actions.map((a) => _ActionCheckTile(
-                    action: a,
-                    color: color,
-                    onToggle: (value) => _toggleAction(a, value),
-                  )),
-            ],
-
-            // Actions PROPRES de l'activité en cours.
-            if (logic.ownActionsOf(running.id).isNotEmpty) ...[
-              const SizedBox(height: 24),
-              _sectionLabel(cs, 'ACTIONS DE L\'ACTIVITÉ'),
-              const SizedBox(height: 8),
-              ...logic.ownActionsOf(running.id).map((a) => _ActionCheckTile(
-                    action: a,
-                    color: color,
-                    onToggle: (value) {
-                      logic.toggleOwnAction(running.id, a.id, value);
-                      setState(() {});
-                    },
-                  )),
-            ],
-
-            // Checklist de la routine liée à l'activité en cours.
-            if (linkedRoutine != null &&
-                logic.checklistForHabit(linkedRoutine.id).isNotEmpty) ...[
-              const SizedBox(height: 24),
-              _sectionLabel(cs, 'CHECKLIST · ${linkedRoutine.name.toUpperCase()}'),
-              const SizedBox(height: 8),
-              ...() {
-                final items = logic.checklistForHabit(linkedRoutine.id);
-                final done =
-                    logic.checklistDoneSet(linkedRoutine.id, DateTime.now());
-                return [
-                  for (var i = 0; i < items.length; i++)
-                    _checkRow(cs, color, items[i], done.contains(i), () {
-                      logic.toggleChecklistItem(
-                          linkedRoutine.id, DateTime.now(), i);
-                      setState(() {});
-                    }),
-                ];
-              }(),
-            ],
+            // ── DÉROULÉ : toutes les étapes de la session en cours, unifiées —
+            // sous-actions de la tâche + actions propres de l'activité +
+            // routines LIÉES (Pompes, Tractions… avec leur compteur) + leurs
+            // checklists. Le chrono parent trace le temps ; les étapes
+            // s'égrènent librement, la première non faite est mise en avant.
+            ..._derouleSection(cs, color, running),
 
             if (task == null) ...[
               const SizedBox(height: 24),
@@ -2175,6 +2128,183 @@ class _FocusViewState extends State<FocusView> {
       ),
     );
   }
+
+  // ── Déroulé de la session en cours (player v1) ───────────────────────────────
+  //
+  // Une étape = { titre, sous-titre (compteur), fait, action au tap, lignes
+  // imbriquées (checklist d'une routine) }. Sources dans l'ordre : sous-actions
+  // de la tâche focus → actions propres de l'activité → routines liées à
+  // l'activité en cours. 0 nouveau modèle : le déroulé est DÉRIVÉ de l'existant
+  // (les templates réutilisables viendront s'y brancher).
+  List<Widget> _derouleSection(ColorScheme cs, Color color, Activity running) {
+    final task = widget.focusTask;
+    final project = widget.focusProject;
+    final now = DateTime.now();
+
+    final steps = <({
+      String title,
+      String? sub,
+      bool done,
+      Future<void> Function() onTap,
+      List<Widget> nested,
+    })>[];
+
+    if (task != null && project != null) {
+      for (final a in task.actions) {
+        steps.add((
+          title: a.title,
+          sub: null,
+          done: a.done,
+          onTap: () => _toggleAction(a, !a.done),
+          nested: const <Widget>[],
+        ));
+      }
+    }
+    for (final a in logic.ownActionsOf(running.id)) {
+      steps.add((
+        title: a.title,
+        sub: null,
+        done: a.done,
+        onTap: () async {
+          logic.toggleOwnAction(running.id, a.id, !a.done);
+          setState(() {});
+        },
+        nested: const <Widget>[],
+      ));
+    }
+    // Routines liées à l'activité en cours : étapes à part entière — « 10
+    // pompes puis 5 tractions », pendant que le temps reste sur Musculation.
+    final linked = st.activities
+        .where((a) =>
+            a.isHabit &&
+            !a.deleted &&
+            (a.linkedActivityId ?? '') == running.id)
+        .toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    for (final r in linked) {
+      final tgt = logic.activeHabitTarget(r);
+      final val = logic.habitValueOn(r.id, now);
+      final rDone = tgt > 0 ? val >= tgt : val > 0;
+      final counted = tgt > 1;
+      final items = logic.checklistForHabit(r.id);
+      final doneSet =
+          items.isEmpty ? const <int>{} : logic.checklistDoneSet(r.id, now);
+      steps.add((
+        title: r.name,
+        sub: counted ? '$val/$tgt aujourd\'hui' : null,
+        done: rDone,
+        onTap: () async {
+          if (counted) {
+            await showHabitCountSheet(context, logic: logic, activity: r);
+            if (mounted) setState(() {});
+            return;
+          }
+          if (rDone) return; // pas de double coche
+          logic.incHabit(r.id, 1, DateTime(now.year, now.month, now.day));
+          setState(() {});
+        },
+        nested: [
+          for (var i = 0; i < items.length; i++)
+            _checkRow(cs, color, items[i], doneSet.contains(i), () {
+              logic.toggleChecklistItem(r.id, DateTime.now(), i);
+              setState(() {});
+            }),
+        ],
+      ));
+    }
+
+    if (steps.isEmpty) return const [];
+    final doneCount = steps.where((s) => s.done).length;
+    final currentIdx = steps.indexWhere((s) => !s.done);
+
+    return [
+      const SizedBox(height: 28),
+      Row(children: [
+        _sectionLabel(cs, 'DÉROULÉ'),
+        const Spacer(),
+        Text('$doneCount/${steps.length}',
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface.withOpacity(.45))),
+      ]),
+      const SizedBox(height: 8),
+      for (var i = 0; i < steps.length; i++) ...[
+        _stepTile(cs, color, steps[i], current: i == currentIdx),
+        // Checklist imbriquée : visible tant que l'étape n'est pas faite.
+        if (!steps[i].done && steps[i].nested.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(left: 26, bottom: 4),
+            child: Column(children: steps[i].nested),
+          ),
+      ],
+    ];
+  }
+
+  Widget _stepTile(
+    ColorScheme cs,
+    Color color,
+    ({
+      String title,
+      String? sub,
+      bool done,
+      Future<void> Function() onTap,
+      List<Widget> nested,
+    }) step, {
+    required bool current,
+  }) =>
+      InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: step.onTap,
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: current ? color.withOpacity(.10) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+                color: current
+                    ? color.withOpacity(.5)
+                    : cs.onSurface.withOpacity(.10),
+                width: current ? 1.4 : 1),
+          ),
+          child: Row(children: [
+            Icon(
+              step.done
+                  ? Icons.check_circle_rounded
+                  : current
+                      ? Icons.play_circle_outline_rounded
+                      : Icons.circle_outlined,
+              size: 20,
+              color: step.done || current
+                  ? color
+                  : cs.onSurface.withOpacity(.35),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(step.title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: current ? FontWeight.w700 : FontWeight.w600,
+                        decoration:
+                            step.done ? TextDecoration.lineThrough : null,
+                        color: cs.onSurface.withOpacity(step.done ? .45 : .95),
+                      )),
+                  if (step.sub != null)
+                    Text(step.sub!,
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: cs.onSurface.withOpacity(.55))),
+                ],
+              ),
+            ),
+          ]),
+        ),
+      );
 
   Widget _sectionLabel(ColorScheme cs, String text) => Text(
         text,
