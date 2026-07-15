@@ -110,8 +110,13 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
     return StreamBuilder<DailySchedule?>(
       stream: widget.sync.streamDailySchedule(_todayStr),
       builder: (context, snap) {
-        final blocks =
-            snap.data?.blocks.where((b) => b.status != 'deleted').toList() ?? [];
+        // Tri chronologique — le tableau Firestore n'est pas trié (blocs
+        // préservés + ajouts en fin), chaque client trie à l'affichage.
+        final blocks = (snap.data?.blocks
+                .where((b) => b.status != 'deleted')
+                .toList() ??
+            [])
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
         if (blocks.isEmpty) {
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
