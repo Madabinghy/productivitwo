@@ -2359,6 +2359,140 @@ async function executeSaveDomainDefinition(
   return parts.join(" · ");
 }
 
+async function executeListObjectives(uid: string): Promise<string> {
+  const now = new Date();
+  const todayStr = todayInParis(now);
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const [objectivesSnap, activitiesSnap, sessionsSnap, habitHitsSnap] = await Promise.all([
+    db.collection(`users/${uid}/strategic_objectives`).get(),
+    db.collection(`users/${uid}/activities`).get(),
+    db.collection(`users/${uid}/sessions`)
+      .where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
+    db.collection(`users/${uid}/habitHits`)
+      .where("ts", ">=", sevenDaysAgo).get(),
+  ]);
+
+  const active = objectivesSnap.docs
+    .map((d): Record<string, unknown> => ({ ...d.data(), id: d.data().id ?? d.id }))
+    .filter((v) => String(v.status ?? "active") === "active");
+  if (active.length === 0) {
+    return "Aucun objectif stratégique actif. Propose une session de définition (prompt definir-objectif) ou save_objective directement.";
+  }
+
+  const summaries = summarizeObjectives(
+    active,
+    activitiesSnap.docs.map((d) => d.data()),
+    sessionsSnap.docs.map((d) => d.data()),
+    habitHitsSnap.docs.map((d) => d.data()),
+    todayStr
+  );
+
+  // Détail complet (description, dates, projets) + progression compacte
+  const byId = new Map(active.map((o) => [String(o.id), o]));
+  const result = summaries.map((s) => {
+    const raw = byId.get(s.id);
+    return {
+      ...s,
+      description: raw?.description ?? null,
+      domainId: raw?.domainId ?? null,
+      startDate: raw?.startDate ?? null,
+      projectIds: Array.isArray(raw?.projectIds) ? raw?.projectIds : [],
+    };
+  });
+  return JSON.stringify({ today: todayStr, objectives: result }, null, 2);
+}
+
+async function executeSaveObjective(
+  uid: string,
+  args: StrategicObjectivePayload & { objectiveId?: string; projectIds?: string[] }
+): Promise<string> {
+  if (!args.title?.trim()) return "title requis.";
+  const col = db.collection(`users/${uid}/strategic_objectives`);
+
+  let picked: Record<string, unknown>;
+  try {
+    picked = pickStrategicObjective(args);
+  } catch (e) {
+    return `❌ ${(e as Error).message}`;
+  }
+
+  // Les engagements doivent référencer des activités existantes du bon type.
+  const hasCommitments =
+    (args.timeCommitments?.length ?? 0) > 0 || (args.routineCommitments?.length ?? 0) > 0;
+  if (hasCommitments) {
+    const actsSnap = await db.collection(`users/${uid}/activities`).get();
+    const actById = new Map<string, Record<string, unknown>>();
+    actsSnap.docs.forEach((d) => {
+      const v = d.data();
+      if (!v.deleted) actById.set(String(v.id ?? d.id), v);
+    });
+    const problems: string[] = [];
+    for (const c of args.timeCommitments ?? []) {
+      const a = actById.get(c.activityId);
+      if (!a) problems.push(`timeCommitment : activité introuvable ${c.activityId}`);
+      else if (a.type !== "time") problems.push(`timeCommitment : "${a.name}" n'est pas une activité-temps (type=${a.type})`);
+    }
+    for (const c of args.routineCommitments ?? []) {
+      const a = actById.get(c.activityId);
+      if (!a) problems.push(`routineCommitment : activité introuvable ${c.activityId}`);
+      else if (a.type !== "habit" && a.type !== "action") problems.push(`routineCommitment : "${a.name}" n'est pas une routine (type=${a.type})`);
+    }
+    if (problems.length > 0) {
+      return `❌ Engagements invalides :\n- ${problems.join("\n- ")}\nRécupère les ids via get_user_context et réessaie.`;
+    }
+  }
+
+  // Upsert : id connu → doc ; sinon match par titre (insensible à la casse,
+  // objectifs non archivés) ; sinon création.
+  let docId = args.objectiveId;
+  let exists = false;
+  if (docId) {
+    const snap = await col.doc(docId).get();
+    if (snap.exists) exists = true;
+    else docId = undefined;
+  }
+  if (!docId) {
+    const all = await col.get();
+    const match = all.docs.find((d) => {
+      const v = d.data();
+      return String(v.status ?? "active") !== "archived" &&
+        String(v.title ?? "").trim().toLowerCase() === args.title.trim().toLowerCase();
+    });
+    if (match) {
+      docId = match.id;
+      exists = true;
+    }
+  }
+  if (!docId) docId = uuidv4();
+
+  const update: Record<string, unknown> = {
+    ...picked,
+    id: docId,
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (!exists) {
+    update.createdAt = FieldValue.serverTimestamp();
+    if (update.status === undefined) update.status = "active";
+  }
+  if (args.projectIds !== undefined && args.projectIds.length > 0) {
+    update.projectIds = FieldValue.arrayUnion(...args.projectIds.map(String));
+  }
+  await col.doc(docId).set(update, { merge: true });
+
+  const parts: string[] = [
+    `✅ Objectif « ${args.title.trim()} » ${exists ? "mis à jour" : "créé"} (id: ${docId})`,
+  ];
+  if (args.kpiTarget) parts.push(`KPI : ${args.kpiTarget}`);
+  if (args.endDate || args.horizonLabel) parts.push(`échéance : ${args.endDate ?? args.horizonLabel}`);
+  if (args.timeCommitments?.length) parts.push(`${args.timeCommitments.length} engagement(s) temps`);
+  if (args.routineCommitments?.length) parts.push(`${args.routineCommitments.length} routine(s) suivie(s)`);
+  if (args.projectIds?.length) parts.push(`${args.projectIds.length} projet(s) lié(s)`);
+  if (args.status === "archived") parts.push(`ARCHIVÉ`);
+  if (args.status === "done") parts.push(`🎉 ATTEINT`);
+  return parts.join(" · ");
+}
+
 async function executeComputeTimeBudget(uid: string): Promise<string> {
   const now = new Date();
   const today = todayInParis(now);
@@ -2563,6 +2697,8 @@ export {
   executeAddPrepBlock,
   executeAddEvent,
   executeSaveDomainDefinition,
+  executeListObjectives,
+  executeSaveObjective,
   executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executePlanDay,

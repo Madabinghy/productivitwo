@@ -17,6 +17,7 @@ import {
   executeGetDaySchedule, executeScheduleDay, executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executeGetOrionQueue, executeDeleteOrionQueueItem,
+  executeSaveObjective,
   todayInParis,
 } from "./execute";
 // Descriptions compactes pour ORION — ~10x moins de tokens que les tools MCP complets
@@ -56,6 +57,7 @@ const ORION_TOOLS: PromptCachingBetaTool[] = [
   { name: "get_day_schedule",        description: "Lit le programme horaire d'une journée.",                                                                                               input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" } }, required: ["date"] } },
   { name: "update_schedule_block",   description: "Met à jour le statut d'un bloc du programme du jour (done/skipped/deleted/pending) sans écraser tout le programme.",                   input_schema: { type: "object", properties: { date: { type: "string", description: "YYYY-MM-DD" }, blockTitle: { type: "string", description: "Titre (partiel) du bloc à modifier" }, status: { type: "string", enum: ["done", "skipped", "deleted", "pending"] } }, required: ["date", "blockTitle", "status"] } },
   { name: "compute_time_budget",     description: "Analyse 12 semaines de sessions → cible quotidienne par activité (recommendedGoalMin) : médiane des jours actifs si <30 jours loggués, p90 si ≥30. Sommeil découplé (8h défaut). Suivre le champ 'workflow' retourné, puis appliquer via set_activity_targets.",                input_schema: { type: "object", properties: {}, required: [] } },
+  { name: "save_objective",          description: "Crée ou met à jour un objectif stratégique (SMART) et ses moyens : engagements de minutes/semaine sur des activités-temps (timeCommitments), routines suivies (routineCommitments), projets liés (projectIds). Upsert par objectiveId ou titre. status:'archived' = suppression soft. Ne JAMAIS modifier un objectif sans accord explicite de l'utilisateur.", input_schema: { type: "object", required: ["title"], properties: { objectiveId: { type: "string" }, title: { type: "string" }, description: { type: "string" }, domainId: { type: "string" }, kpiTarget: { type: "string", description: "indicateur mesurable, ex: '100 payants · MRR 500€'" }, horizonLabel: { type: "string" }, startDate: { type: "string" }, endDate: { type: "string" }, status: { type: "string", enum: ["active", "done", "archived"] }, projectIds: { type: "array", items: { type: "string" } }, timeCommitments: { type: "array", items: { type: "object", required: ["activityId", "weeklyMin"], properties: { activityId: { type: "string" }, weeklyMin: { type: "number" } } } }, routineCommitments: { type: "array", items: { type: "object", required: ["activityId"], properties: { activityId: { type: "string" } } } } } } },
   { name: "schedule_day",            description: "Crée ou remplace le programme horaire complet d'une journée.",                                                                          input_schema: { type: "object", properties: { date: { type: "string" }, blocks: { type: "array", items: { type: "object", required: ["startTime", "durationMin", "title", "category"], properties: { startTime: { type: "string" }, durationMin: { type: "number" }, title: { type: "string" }, category: { type: "string", enum: ["project", "routine", "personal", "break"] }, projectId: { type: "string" }, taskId: { type: "string" }, activityId: { type: "string" } } } } }, required: ["date", "blocks"], }, cache_control: { type: "ephemeral" } },
 ];
 import type { PushGanttBody } from "./types";
@@ -220,6 +222,16 @@ process_inbox_item sur la même idée (la capture est déjà retirée de l'inbox
 
 Ne répète jamais un message récent — vérifie recentShown pour éviter les doublons.
 
+## Objectifs stratégiques
+
+Le contexte contient objectives[] : les objectifs actifs avec la progression hebdo de leurs
+engagements (temps d'activités, routines). Dans tes bilans et plans de rattrapage, cite
+l'objectif concerné et l'écart chiffré. Quand tu planifies, favorise les engagements en
+retard (onTrack:false). Si un engagement semble intenable plusieurs semaines de suite,
+propose une révision via un message requiresReply:true — tu ne modifies JAMAIS un objectif
+(save_objective) sans accord explicite de l'utilisateur. status:'archived' = suppression,
+jamais de suppression physique.
+
 ## Types d'instructions et réponses attendues
 
 **"Analyse mes retards / propose un plan de rattrapage"**
@@ -251,6 +263,10 @@ Ne répète jamais un message récent — vérifie recentShown pour éviter les 
 → compute_time_budget (cible = p90 des jours actifs, sommeil découplé) → suis le champ "workflow" retourné : set_activity_targets EN UN SEUL appel avec toutes les activités à recommendedGoalMin non-null + les intentions de départ pour les non calibrées en targetSource='default'.
 → push_assistant_message : liste concise des cibles posées (ex: "Sport : 45→49min/j · Vaisselle : 5→15min/j · Sommeil : 8h")
 → Ne pas exécuter si déjà fait cette semaine (vérifie recentShown pour un message de type "budget")
+
+**"Où j'en suis sur mes objectifs" / bilan d'objectifs**
+→ Lis objectives[] dans le contexte : chaque objectif porte la progression hebdo de ses engagements (weekDone vs weeklyMin/weeklyTarget, onTrack)
+→ Pousse un message-résumé citant l'objectif et l'écart CHIFFRÉ (ex: "Deep Work 90/240 min cette semaine — objectif MRR 500€ : en retard")
 
 **Instruction ambiguë (sans supression/delete)**
 → Interprète au mieux, agis, puis pousse un message expliquant ce que tu as fait et demandant si c'est correct
@@ -473,6 +489,11 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
             case "schedule_day":
               result = await executeScheduleDay(uid, args.date as string, args.blocks as []);
               actionLog.push(`📅 Programme du jour enregistré`);
+              break;
+            // ── Objectifs stratégiques ─────────────────────────────────────
+            case "save_objective":
+              result = await executeSaveObjective(uid, args as unknown as Parameters<typeof executeSaveObjective>[1]);
+              actionLog.push(`🎯 Objectif : ${(args.title as string) ?? ""}`);
               break;
             default:
               result = `Outil inconnu dans ORION : ${block.name}`;

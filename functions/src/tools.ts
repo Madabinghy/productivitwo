@@ -1060,6 +1060,70 @@ export const SAVE_DOMAIN_DEFINITION_TOOL = {
   },
 };
 
+export const LIST_OBJECTIVES_TOOL = {
+  name: "list_objectives",
+  description:
+    "Liste les objectifs stratégiques ACTIFS avec leur progression hebdomadaire : pour chaque objectif, " +
+    "le résultat visé (kpiTarget), l'horizon, et l'avancement de chaque engagement opérationnel " +
+    "(minutes loggées vs engagement temps hebdo, hits vs cible de routine, onTrack). " +
+    "Appelle-le au début d'une session de définition/révision d'objectifs, ou quand l'utilisateur " +
+    "demande « où j'en suis sur mes objectifs ».",
+  inputSchema: { type: "object", properties: {} },
+};
+
+export const SAVE_OBJECTIVE_TOOL = {
+  name: "save_objective",
+  description:
+    "Crée ou met à jour un objectif stratégique (SMART) relié à ses moyens opérationnels. " +
+    "Appelé par la session de définition à CHAQUE élément validé par l'utilisateur (jamais en bloc à la fin). " +
+    "Un objectif complet exige : un titre SPÉCIFIQUE dans les mots de l'utilisateur, un kpiTarget MESURABLE " +
+    "(chiffre + unité, ex: '100 clients payants · MRR 500€'), une échéance (endDate ou horizonLabel), " +
+    "et AU MOINS un moyen opérationnel : timeCommitment (engagement de minutes/semaine sur une activité-temps " +
+    "existante — ids via get_user_context) et/ou routineCommitment (routine dont la cible vit déjà sur " +
+    "habitFreq/habitTarget) et/ou projectIds (projets Gantt). weeklyMin RÉALISTE : sous-engager au début, " +
+    "la révision est gratuite. Upsert : objectiveId si connu, sinon match par titre (insensible à la casse), " +
+    "sinon création. status:'archived' = suppression (soft) — jamais de suppression physique.",
+  inputSchema: {
+    type: "object",
+    required: ["title"],
+    properties: {
+      objectiveId:  { type: "string", description: "id de l'objectif si connu (sinon match par titre / création)" },
+      title:        { type: "string", description: "résultat visé, spécifique, dans les mots de l'utilisateur" },
+      description:  { type: "string", description: "pourquoi cet objectif compte (motivation, contexte)" },
+      domainId:     { type: "string", description: "domaine de vie rattaché (ids via get_user_context)" },
+      kpiTarget:    { type: "string", description: "indicateur MESURABLE du succès, ex: '100 payants · MRR 500€'" },
+      horizonLabel: { type: "string", description: "horizon lisible, ex: '3 mois', 'Q2 2026'" },
+      startDate:    { type: "string", description: "YYYY-MM-DD — début de l'objectif" },
+      endDate:      { type: "string", description: "YYYY-MM-DD — échéance" },
+      status:       { type: "string", enum: ["active", "done", "archived"], description: "archived = suppression soft ; done = objectif atteint" },
+      projectIds:   { type: "array", items: { type: "string" }, description: "projets Gantt rattachés (arrayUnion — n'enlève jamais)" },
+      timeCommitments: {
+        type: "array",
+        description: "engagements de temps hebdo sur des activités type 'time' — REMPLACE la liste existante si fourni",
+        items: {
+          type: "object",
+          required: ["activityId", "weeklyMin"],
+          properties: {
+            activityId: { type: "string", description: "id d'une activité-temps existante" },
+            weeklyMin:  { type: "integer", description: "minutes par semaine (1..3000) — réaliste, révisable" },
+          },
+        },
+      },
+      routineCommitments: {
+        type: "array",
+        description: "routines suivies par cet objectif (leur cible reste habitFreq/habitTarget) — REMPLACE la liste existante si fourni",
+        items: {
+          type: "object",
+          required: ["activityId"],
+          properties: {
+            activityId: { type: "string", description: "id d'une routine (activité type 'habit') existante" },
+          },
+        },
+      },
+    },
+  },
+};
+
 export const ADD_PREP_BLOCK_TOOL = {
   name: "add_prep_block",
   description:

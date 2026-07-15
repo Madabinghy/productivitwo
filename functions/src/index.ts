@@ -32,6 +32,7 @@ import {
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
   SAVE_DOMAIN_DEFINITION_TOOL,
+  LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -57,6 +58,7 @@ import {
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
+  executeListObjectives, executeSaveObjective,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
   executeGenerateWeeklyReport,
@@ -1529,6 +1531,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
             SAVE_DOMAIN_DEFINITION_TOOL,
+            LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
@@ -1632,6 +1635,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddEvent(uid, args as Parameters<typeof executeAddEvent>[1]);
         } else if (toolName === "save_domain_definition") {
           text = await executeSaveDomainDefinition(uid, args as Parameters<typeof executeSaveDomainDefinition>[1]);
+        } else if (toolName === "list_objectives") {
+          text = await executeListObjectives(uid);
+        } else if (toolName === "save_objective") {
+          text = await executeSaveObjective(uid, args as Parameters<typeof executeSaveObjective>[1]);
         } else if (toolName === "list_session_templates") {
           text = await executeListSessionTemplates(uid);
         } else if (toolName === "create_session_template") {
