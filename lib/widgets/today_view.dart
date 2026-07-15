@@ -64,8 +64,9 @@ class _TodayViewState extends State<TodayView> {
   // noir : le vide n'est pas une faute, et le noir disparaît en thème
   // sombre). Tap/drag = minimap → la timeline saute à cette heure.
 
-  List<({int start, int end, Color color})> _gaugeSegments(DateTime now) {
-    final day = DateTime(now.year, now.month, now.day);
+  /// Segments loggués d'un JOUR donné (minuit → minuit), bornés à la journée.
+  List<({int start, int end, Color color})> _gaugeSegments(
+      DateTime day, DateTime now) {
     final dayEnd = day.add(const Duration(days: 1));
     final out = <({int start, int end, Color color})>[];
     for (final s in widget.logic.state.sessions) {
@@ -99,8 +100,59 @@ class _TodayViewState extends State<TodayView> {
         duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
+  /// Une bande verticale 00:00 → 23:59 d'un jour. [thin] = jauge d'HIER :
+  /// plus étroite, tamisée, sans trait ni interaction — le point de
+  /// comparaison, pas l'objet du jour.
+  Widget _gaugeStrip(
+    ColorScheme cs,
+    List<({int start, int end, Color color})> segments,
+    double h, {
+    int? nowMin,
+    bool thin = false,
+  }) {
+    double y(int min) => min / 1440.0 * h;
+    final opacity = thin ? .45 : .85;
+    return Container(
+      width: thin ? 7 : 14,
+      height: h,
+      decoration: BoxDecoration(
+        color: cs.onSurface.withOpacity(thin ? .05 : .08),
+        borderRadius: BorderRadius.circular(thin ? 4 : 7),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(children: [
+        for (final s in segments)
+          Positioned(
+            top: y(s.start),
+            left: thin ? 1 : 2,
+            right: thin ? 1 : 2,
+            height: (y(s.end) - y(s.start)).clamp(2.0, h),
+            child: Container(
+              decoration: BoxDecoration(
+                color: s.color.withOpacity(opacity),
+                borderRadius: BorderRadius.circular(thin ? 2 : 4),
+              ),
+            ),
+          ),
+        if (nowMin != null)
+          Positioned(
+            top: y(nowMin) - 1,
+            left: 0,
+            right: 0,
+            height: 2,
+            child: Container(color: const Color(0xFFE53935)),
+          ),
+      ]),
+    );
+  }
+
   Widget _dayGauge(ColorScheme cs, DateTime now) {
-    final segments = _gaugeSegments(now);
+    final today = DateTime(now.year, now.month, now.day);
+    final segments = _gaugeSegments(today, now);
+    // Hier COLLÉ à aujourd'hui (bande fine et tamisée) : la comparaison des
+    // deux journées d'un coup d'œil — le benchmark, pas l'objet du jour.
+    final ySegments =
+        _gaugeSegments(today.subtract(const Duration(days: 1)), now);
     final nowMin = now.hour * 60 + now.minute;
     // À GAUCHE (demande user) : rien d'épinglé de ce côté, la jauge descend
     // plus haut et plus bas, et ne gêne ni le toggle ni la pile de FAB.
@@ -108,49 +160,23 @@ class _TodayViewState extends State<TodayView> {
       top: 12,
       bottom: 140,
       left: 3,
-      width: 14,
+      width: 23,
       child: LayoutBuilder(builder: (gctx, box) {
         final h = box.maxHeight;
-        double y(int min) => min / 1440.0 * h;
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapDown: (d) =>
               _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
           onVerticalDragUpdate: (d) =>
               _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
-          child: Stack(children: [
-            // Fond neutre — le « pas mesuré ».
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: cs.onSurface.withOpacity(.08),
-                  borderRadius: BorderRadius.circular(7),
-                ),
-              ),
-            ),
-            // Le réel loggué, couleur du domaine.
-            for (final s in segments)
-              Positioned(
-                top: y(s.start),
-                left: 2,
-                right: 2,
-                height: (y(s.end) - y(s.start)).clamp(2.0, h),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: s.color.withOpacity(.85),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            // Trait « maintenant ».
-            Positioned(
-              top: y(nowMin) - 1,
-              left: 0,
-              right: 0,
-              height: 2,
-              child: Container(color: const Color(0xFFE53935)),
-            ),
-          ]),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _gaugeStrip(cs, ySegments, h, thin: true),
+              const SizedBox(width: 2),
+              _gaugeStrip(cs, segments, h, nowMin: nowMin),
+            ],
+          ),
         );
       }),
     );
