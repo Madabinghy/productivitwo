@@ -249,6 +249,8 @@ function render() {
       : (u.email ? `<button class="ghost" style="padding:4px 8px" onclick="addAllow('${em}')">autoriser</button>` : "");
     const delBtn = u.uid
       ? `<button class="danger" onclick="delUser('${u.uid}','${em}')">🗑 supprimer</button>` : "";
+    const coachBtn = u.uid
+      ? `<button class="ghost" style="padding:4px 8px${u.isCoach ? ";border-color:#1a9e6e;color:#1a9e6e" : ""}" title="${u.isCoach ? "Révoquer le droit coach" : "Donner le droit coach (console coaching)"}" onclick="setCoach('${u.uid}','${em}',${u.isCoach ? "false" : "true"})">🎓${u.isCoach ? " coach ✓" : ""}</button>` : "";
     const cb = u.uid ? `<input type="checkbox" ${SELECTED.has(u.uid) ? "checked" : ""} onclick="toggleSel('${u.uid}',this.checked)">` : "";
     const dataCell = u.uid
       ? `<span class="${u.anonymous && (u.projects || u.activities) ? "warn" : "muted"}">${u.projects}p · ${u.activities}a</span>`
@@ -270,7 +272,7 @@ function render() {
       <td>${fmt(u.purchasedAt)}</td>
       <td>${fmt(u.lastSignIn)}</td>
       <td>${u.allowlisted ? "<span class='tag ok'>✓</span>" : "<span class='muted'>—</span>"}</td>
-      <td style="display:flex;gap:6px;">${allowBtn}${delBtn}</td>
+      <td style="display:flex;gap:6px;">${allowBtn}${coachBtn}${delBtn}</td>
     </tr>`; }).join("");
   renderGroupFilter();
   updateBulk();
@@ -305,6 +307,15 @@ async function setPro(uid, untilIso) {
   try {
     await call("setPro", { uid, until });
     flash(until ? `✅ Pro accordé jusqu'au ${until}.` : "Pro révoqué.", true);
+    load();
+  } catch (e) { flash(e.message, false); }
+}
+async function setCoach(uid, email, active) {
+  const verb = active ? "Donner" : "Révoquer";
+  if (!confirm(`${verb} le droit COACH à ${email || uid} ?\n\nUn coach peut créer des fiches coachés et, avec leur consentement, lire leurs données et leur écrire dans l'app.`)) return;
+  try {
+    await call("setCoach", { uid, active });
+    flash(active ? `🎓 ${email || uid} est coach.` : `Droit coach révoqué pour ${email || uid}.`, true);
     load();
   } catch (e) { flash(e.message, false); }
 }
