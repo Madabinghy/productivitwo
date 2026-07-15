@@ -3358,11 +3358,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
     // ── Actions globales (sans uid) : gestion des utilisateurs / allowlist ──────
     try {
         if (action === "listUsers") {
-            const [authList, allowSnap, faSnap] = await Promise.all([
+            const [authList, allowSnap, faSnap, coachSnap] = await Promise.all([
                 admin.auth().listUsers(1000),
                 db_1.db.collection("allowlist").get(),
                 db_1.db.collection("formation_access").get(),
+                db_1.db.collection("coaches").get(),
             ]);
+            const coachUids = new Set(coachSnap.docs.filter((d) => d.data().active === true).map((d) => d.id));
             const allowEmails = new Set(allowSnap.docs.map((d) => d.id.toLowerCase()));
             const allowGroups = {};
             allowSnap.docs.forEach((d) => { var _a; allowGroups[d.id.toLowerCase()] = (_a = d.data().groups) !== null && _a !== void 0 ? _a : []; });
@@ -3416,6 +3418,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                     ])),
                     projects,
                     activities,
+                    isCoach: coachUids.has(u.uid),
                 };
             }));
             // Emails dans l'allowlist sans compte encore créé (invités en attente).
