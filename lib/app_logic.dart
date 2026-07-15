@@ -926,7 +926,31 @@ class AppLogic {
   }
 
   // ---------- TEMPS (type=time) ----------
+  // ── Déroulé actif (player de Maintenant) ─────────────────────────────────────
+  // La séance lancée (template) + les étapes « check » cochées de CETTE
+  // session — éphémères par nature : un déroulé se rejoue à chaque séance
+  // (les étapes-routines, elles, persistent chez leur routine).
+  SessionTemplate? activeSessionTemplate;
+  final Set<String> sessionStepDone = {};
+
+  void startTemplate(SessionTemplate t) {
+    activeSessionTemplate = t;
+    sessionStepDone.clear();
+    start(t.activityId);
+  }
+
+  void toggleSessionStep(String key) {
+    if (!sessionStepDone.remove(key)) sessionStepDone.add(key);
+    onChange();
+  }
+
   void start(String activityId, {String? taskId, String? actionId}) {
+    // Nouveau chrono hors template → le déroulé précédent ne s'applique plus.
+    if (activeSessionTemplate != null &&
+        activeSessionTemplate!.activityId != activityId) {
+      activeSessionTemplate = null;
+      sessionStepDone.clear();
+    }
     // ✅ si l’utilisateur démarre l’activité, on casse le snooze
     clearSnooze(activityId);
 
@@ -1182,6 +1206,10 @@ class AppLogic {
   Session? stopActive() {
     final run = state.sessions.where((s) => s.endAt == null).toList();
     if (run.isEmpty) return null;
+
+    // Fin de séance → le déroulé se referme (il se rejouera au prochain ▶).
+    activeSessionTemplate = null;
+    sessionStepDone.clear();
 
     final ended = run.last;
     ended.endAt = DateTime.now();

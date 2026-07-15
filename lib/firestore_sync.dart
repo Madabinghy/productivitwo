@@ -1055,6 +1055,50 @@ class FirestoreSync {
     return child;
   }
 
+  // ── Déroulés réutilisables (session_templates) ──────────────────────────────
+  // Playlist ordonnée d'une séance sur UNE activité-temps — créés/édités dans
+  // la fiche activité, lancés par ▶ (chrono + player). Soft-delete (archived).
+
+  Stream<List<SessionTemplate>> streamSessionTemplates() {
+    if (uid == null) return const Stream.empty();
+    return _col('session_templates').snapshots().map((snap) => snap.docs
+        .map((d) => SessionTemplate.from(
+            Map<String, dynamic>.from(d.data() as Map)))
+        .where((t) => !t.archived)
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
+  }
+
+  Future<List<SessionTemplate>> fetchSessionTemplates(
+      {String? activityId}) async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('session_templates').get();
+      return snap.docs
+          .map((d) => SessionTemplate.from(
+              Map<String, dynamic>.from(d.data() as Map)))
+          .where((t) =>
+              !t.archived &&
+              (activityId == null || t.activityId == activityId))
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveSessionTemplate(SessionTemplate t) async {
+    if (uid == null) return;
+    await _col('session_templates').doc(t.id).set(t.toJson());
+  }
+
+  Future<void> archiveSessionTemplate(String id) async {
+    if (uid == null) return;
+    await _col('session_templates')
+        .doc(id)
+        .set({'archived': true}, SetOptions(merge: true));
+  }
+
   // ── Propositions ORION (« À valider ») ──────────────────────────────────────
   // ORION autonome propose ; l'utilisateur dispose. L'acceptation applique la
   // mutation côté client via les helpers ci-dessus (déterministe, sans LLM).
