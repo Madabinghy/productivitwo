@@ -10,13 +10,14 @@ import 'package:productivitwo_v1/utils/routine_match.dart';
 
 class ScheduleSuggestion {
   final String title; // titre posé sur le bloc
-  final String sublabel; // « Routine », « Projet · X », « Étape · Y »…
-  final String kind; // routine | activity | task | action
+  final String sublabel; // « Routine », « Projet · X », « Séance · Z »…
+  final String kind; // routine | activity | task | action | template
   final String category; // catégorie du bloc créé
   final String? activityId;
   final String? projectId;
   final String? taskId;
   final String? actionId;
+  final String? sessionTemplateId; // séance (déroulé) → ▶ = chrono + player
   final int? durationMin; // durée suggérée (minuteur de la routine/activité)
 
   const ScheduleSuggestion({
@@ -28,6 +29,7 @@ class ScheduleSuggestion {
     this.projectId,
     this.taskId,
     this.actionId,
+    this.sessionTemplateId,
     this.durationMin,
   });
 }
@@ -38,6 +40,7 @@ List<ScheduleSuggestion> scheduleSuggestions(
   String query, {
   required List<Activity> activities,
   required List<Project> projects,
+  List<SessionTemplate> templates = const [],
   int max = 6,
 }) {
   final q = foldName(query.trim());
@@ -83,6 +86,27 @@ List<ScheduleSuggestion> scheduleSuggestions(
           act.title,
           2);
     }
+  }
+
+  // Séances réutilisables : le bloc naît avec activityId + sessionTemplateId
+  // → ▶ = chrono sur l'activité + player sur le déroulé.
+  for (final t in templates) {
+    if (t.archived) continue;
+    String actName = '';
+    for (final a in activities) {
+      if (a.id == t.activityId) { actName = a.name; break; }
+    }
+    add(
+        ScheduleSuggestion(
+          title: t.title,
+          sublabel: actName.isEmpty ? 'Séance' : 'Séance · $actName',
+          kind: 'template',
+          category: 'personal',
+          activityId: t.activityId,
+          sessionTemplateId: t.id,
+        ),
+        t.title,
+        0);
   }
 
   for (final p in projects) {

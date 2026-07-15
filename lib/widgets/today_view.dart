@@ -88,7 +88,9 @@ class _TodayViewState extends State<TodayView> {
         _showTomorrow ? _ymd(now.add(const Duration(days: 1))) : _ymd(now);
 
     return SafeArea(
-      child: SingleChildScrollView(
+      child: Stack(
+        children: [
+          SingleChildScrollView(
         // Padding bas généreux : dégage la pile de boutons du FAB (~156px) pour
         // que les derniers items du programme restent cochables.
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
@@ -132,17 +134,9 @@ class _TodayViewState extends State<TodayView> {
                       : const Icon(Icons.sync_rounded, size: 20),
                   onPressed: _syncing ? null : _forceSync,
                 ),
-                // Timeline 24 h ⇄ liste compacte.
-                IconButton(
-                  tooltip: _timeline ? 'Vue liste' : 'Vue agenda',
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                      _timeline
-                          ? Icons.view_list_outlined
-                          : Icons.calendar_view_day_outlined,
-                      size: 20),
-                  onPressed: () => setState(() => _timeline = !_timeline),
-                ),
+                // Espace réservé au toggle liste⇄agenda ÉPINGLÉ (voir Stack) —
+                // il ne défile pas avec le contenu, plus besoin de remonter.
+                const SizedBox(width: 44),
               ],
             ),
             const SizedBox(height: 16),
@@ -193,6 +187,28 @@ class _TodayViewState extends State<TodayView> {
             ],
           ],
         ),
+          ),
+          // Toggle liste ⇄ agenda ÉPINGLÉ en haut à droite : accessible sans
+          // remonter les 24 h de timeline (demande user).
+          Positioned(
+            top: 6,
+            right: 16,
+            child: Material(
+              color: cs.surfaceContainerHighest.withOpacity(.92),
+              shape: const CircleBorder(),
+              elevation: 2,
+              child: IconButton(
+                tooltip: _timeline ? 'Vue liste' : 'Vue agenda',
+                icon: Icon(
+                    _timeline
+                        ? Icons.view_list_outlined
+                        : Icons.calendar_view_day_outlined,
+                    size: 20),
+                onPressed: () => setState(() => _timeline = !_timeline),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

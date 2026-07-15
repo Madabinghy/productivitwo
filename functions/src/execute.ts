@@ -1829,6 +1829,119 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
   return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 
+// ── Déroulés réutilisables (session_templates) ────────────────────────────────
+// La playlist ordonnée d'une séance sur UNE activité-temps : le chrono trace
+// le temps sur l'activité, le player de Maintenant égrène les étapes.
+
+type SessionStepArg = { title: string; routineId?: string; checklist?: string[] };
+
+async function normalizeSessionSteps(
+  uid: string,
+  steps: SessionStepArg[]
+): Promise<{ steps: Array<Record<string, unknown>>; error?: string }> {
+  const actsSnap = await db.collection(`users/${uid}/activities`).get();
+  const routines = new Map(
+    actsSnap.docs
+      .map((d) => d.data() as Record<string, unknown>)
+      .filter((a) => a.type === "habit" && a.deleted !== true)
+      .map((a) => [a.id as string, a.name as string])
+  );
+  const out: Array<Record<string, unknown>> = [];
+  for (const s of steps) {
+    const title = (s.title ?? "").trim();
+    if (!title) continue;
+    if (s.routineId != null && !routines.has(s.routineId)) {
+      return { steps: [], error: `Routine introuvable : ${s.routineId} (étape « ${title} »). Vérifie les ids via get_user_context.` };
+    }
+    out.push({
+      id: uuidv4(),
+      title,
+      kind: s.routineId != null ? "routine" : "check",
+      routineId: s.routineId ?? null,
+      checklist: (s.checklist ?? []).map((c) => String(c).trim()).filter((c) => c !== ""),
+    });
+  }
+  if (!out.length) return { steps: [], error: "Aucune étape valide fournie." };
+  return { steps: out };
+}
+
+async function executeListSessionTemplates(uid: string): Promise<string> {
+  const snap = await db.collection(`users/${uid}/session_templates`).get();
+  const tpls = snap.docs
+    .map((d) => d.data() as Record<string, unknown>)
+    .filter((t) => t.archived !== true);
+  if (!tpls.length) {
+    return "Aucun déroulé — crée une séance avec create_session_template.";
+  }
+  const actsSnap = await db.collection(`users/${uid}/activities`).get();
+  const names = new Map(
+    actsSnap.docs.map((d) => [d.data().id as string, d.data().name as string])
+  );
+  return tpls
+    .map((t) => {
+      const steps = ((t.steps as Array<Record<string, unknown>>) ?? [])
+        .map((s, i) =>
+          `  ${i + 1}. ${s.title}${s.kind === "routine" ? " · routine" : ""}` +
+          `${((s.checklist as unknown[]) ?? []).length > 0 ? ` · checklist ×${(s.checklist as unknown[]).length}` : ""}`)
+        .join("\n");
+      return `• « ${t.title} » (id: ${t.id}) — activité : ${names.get(t.activityId as string) ?? t.activityId}\n${steps}`;
+    })
+    .join("\n");
+}
+
+async function executeCreateSessionTemplate(
+  uid: string,
+  args: { activityId: string; title: string; steps: SessionStepArg[] }
+): Promise<string> {
+  const actSnap = await db.collection(`users/${uid}/activities`).doc(args.activityId).get();
+  const act = actSnap.data() as Record<string, unknown> | undefined;
+  if (!actSnap.exists || act?.deleted === true) {
+    return `Activité introuvable : ${args.activityId}`;
+  }
+  if (act?.type !== "time") {
+    return `« ${act?.name ?? args.activityId} » n'est pas une activité-temps — un déroulé trace son temps sur une activité-temps (la routine est une ÉTAPE, pas le contenant).`;
+  }
+  const title = (args.title ?? "").trim();
+  if (!title) return "Titre requis.";
+  const norm = await normalizeSessionSteps(uid, args.steps ?? []);
+  if (norm.error) return `❌ ${norm.error}`;
+  const id = uuidv4();
+  await db.collection(`users/${uid}/session_templates`).doc(id).set({
+    id,
+    title,
+    activityId: args.activityId,
+    steps: norm.steps,
+    archived: false,
+    createdAt: new Date().toISOString(),
+  });
+  return `✅ Déroulé « ${title} » créé (id: ${id}) sur « ${act?.name} » — ${norm.steps.length} étape(s). Il apparaît dans la fiche de l'activité ; programmable via schedule_day (sessionTemplateId + activityId).`;
+}
+
+async function executeUpdateSessionTemplate(
+  uid: string,
+  args: { templateId: string; title?: string; steps?: SessionStepArg[]; archived?: boolean }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/session_templates`).doc(args.templateId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Déroulé introuvable : ${args.templateId}`;
+  const patch: Record<string, unknown> = {};
+  if (typeof args.title === "string" && args.title.trim() !== "") {
+    patch.title = args.title.trim();
+  }
+  if (args.steps != null) {
+    const norm = await normalizeSessionSteps(uid, args.steps);
+    if (norm.error) return `❌ ${norm.error}`;
+    patch.steps = norm.steps;
+  }
+  if (typeof args.archived === "boolean") patch.archived = args.archived;
+  if (!Object.keys(patch).length) return "Rien à modifier (title, steps ou archived).";
+  await ref.set(patch, { merge: true });
+  const t = (snap.data() as Record<string, unknown>).title;
+  return args.archived === true
+    ? `✅ Déroulé « ${t} » archivé.`
+    : `✅ Déroulé « ${patch.title ?? t} » mis à jour${patch.steps ? ` — ${(patch.steps as unknown[]).length} étape(s)` : ""}.`;
+}
+
 async function executeScheduleDay(
   uid: string,
   date: string,
@@ -1847,6 +1960,7 @@ async function executeScheduleDay(
     domainId?: string;
     skipReason?: string;
     reportReason?: string;
+    sessionTemplateId?: string;
   }>
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
@@ -1870,6 +1984,7 @@ async function executeScheduleDay(
     domainId: b.domainId ?? null, // domaine ciblé (kind:"session")
     skipReason: b.skipReason ?? null, // pourquoi l'engagement a sauté (check-in)
     reportReason: b.reportReason ?? null, // raison donnée au moment du report
+    sessionTemplateId: b.sessionTemplateId ?? null, // séance (déroulé) → ▶ = player
   }));
 
   // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du
@@ -2362,6 +2477,9 @@ export {
   executeProcessInboxItem,
   executeProposeChange,
   executeGenerateWeeklyReport,
+  executeListSessionTemplates,
+  executeCreateSessionTemplate,
+  executeUpdateSessionTemplate,
   executeGetDaySchedule,
   executeScheduleDay,
   executeAddPrepBlock,

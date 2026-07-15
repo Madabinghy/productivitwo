@@ -1087,6 +1087,19 @@ class FirestoreSync {
     }
   }
 
+  Future<SessionTemplate?> fetchSessionTemplate(String id) async {
+    if (uid == null) return null;
+    try {
+      final snap = await _col('session_templates').doc(id).get();
+      if (!snap.exists) return null;
+      final t = SessionTemplate.from(
+          Map<String, dynamic>.from(snap.data() as Map));
+      return t.archived ? null : t;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> saveSessionTemplate(SessionTemplate t) async {
     if (uid == null) return;
     await _col('session_templates').doc(t.id).set(t.toJson());

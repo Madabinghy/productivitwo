@@ -42,6 +42,9 @@ exports.executeGetInbox = executeGetInbox;
 exports.executeProcessInboxItem = executeProcessInboxItem;
 exports.executeProposeChange = executeProposeChange;
 exports.executeGenerateWeeklyReport = executeGenerateWeeklyReport;
+exports.executeListSessionTemplates = executeListSessionTemplates;
+exports.executeCreateSessionTemplate = executeCreateSessionTemplate;
+exports.executeUpdateSessionTemplate = executeUpdateSessionTemplate;
 exports.executeGetDaySchedule = executeGetDaySchedule;
 exports.executeScheduleDay = executeScheduleDay;
 exports.executeAddPrepBlock = executeAddPrepBlock;
@@ -1614,6 +1617,110 @@ async function executeGetDaySchedule(uid, date) {
     });
     return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
+async function normalizeSessionSteps(uid, steps) {
+    var _a, _b, _c;
+    const actsSnap = await db_1.db.collection(`users/${uid}/activities`).get();
+    const routines = new Map(actsSnap.docs
+        .map((d) => d.data())
+        .filter((a) => a.type === "habit" && a.deleted !== true)
+        .map((a) => [a.id, a.name]));
+    const out = [];
+    for (const s of steps) {
+        const title = ((_a = s.title) !== null && _a !== void 0 ? _a : "").trim();
+        if (!title)
+            continue;
+        if (s.routineId != null && !routines.has(s.routineId)) {
+            return { steps: [], error: `Routine introuvable : ${s.routineId} (étape « ${title} »). Vérifie les ids via get_user_context.` };
+        }
+        out.push({
+            id: (0, uuid_1.v4)(),
+            title,
+            kind: s.routineId != null ? "routine" : "check",
+            routineId: (_b = s.routineId) !== null && _b !== void 0 ? _b : null,
+            checklist: ((_c = s.checklist) !== null && _c !== void 0 ? _c : []).map((c) => String(c).trim()).filter((c) => c !== ""),
+        });
+    }
+    if (!out.length)
+        return { steps: [], error: "Aucune étape valide fournie." };
+    return { steps: out };
+}
+async function executeListSessionTemplates(uid) {
+    const snap = await db_1.db.collection(`users/${uid}/session_templates`).get();
+    const tpls = snap.docs
+        .map((d) => d.data())
+        .filter((t) => t.archived !== true);
+    if (!tpls.length) {
+        return "Aucun déroulé — crée une séance avec create_session_template.";
+    }
+    const actsSnap = await db_1.db.collection(`users/${uid}/activities`).get();
+    const names = new Map(actsSnap.docs.map((d) => [d.data().id, d.data().name]));
+    return tpls
+        .map((t) => {
+        var _a, _b;
+        const steps = ((_a = t.steps) !== null && _a !== void 0 ? _a : [])
+            .map((s, i) => {
+            var _a;
+            return `  ${i + 1}. ${s.title}${s.kind === "routine" ? " · routine" : ""}` +
+                `${((_a = s.checklist) !== null && _a !== void 0 ? _a : []).length > 0 ? ` · checklist ×${s.checklist.length}` : ""}`;
+        })
+            .join("\n");
+        return `• « ${t.title} » (id: ${t.id}) — activité : ${(_b = names.get(t.activityId)) !== null && _b !== void 0 ? _b : t.activityId}\n${steps}`;
+    })
+        .join("\n");
+}
+async function executeCreateSessionTemplate(uid, args) {
+    var _a, _b, _c;
+    const actSnap = await db_1.db.collection(`users/${uid}/activities`).doc(args.activityId).get();
+    const act = actSnap.data();
+    if (!actSnap.exists || (act === null || act === void 0 ? void 0 : act.deleted) === true) {
+        return `Activité introuvable : ${args.activityId}`;
+    }
+    if ((act === null || act === void 0 ? void 0 : act.type) !== "time") {
+        return `« ${(_a = act === null || act === void 0 ? void 0 : act.name) !== null && _a !== void 0 ? _a : args.activityId} » n'est pas une activité-temps — un déroulé trace son temps sur une activité-temps (la routine est une ÉTAPE, pas le contenant).`;
+    }
+    const title = ((_b = args.title) !== null && _b !== void 0 ? _b : "").trim();
+    if (!title)
+        return "Titre requis.";
+    const norm = await normalizeSessionSteps(uid, (_c = args.steps) !== null && _c !== void 0 ? _c : []);
+    if (norm.error)
+        return `❌ ${norm.error}`;
+    const id = (0, uuid_1.v4)();
+    await db_1.db.collection(`users/${uid}/session_templates`).doc(id).set({
+        id,
+        title,
+        activityId: args.activityId,
+        steps: norm.steps,
+        archived: false,
+        createdAt: new Date().toISOString(),
+    });
+    return `✅ Déroulé « ${title} » créé (id: ${id}) sur « ${act === null || act === void 0 ? void 0 : act.name} » — ${norm.steps.length} étape(s). Il apparaît dans la fiche de l'activité ; programmable via schedule_day (sessionTemplateId + activityId).`;
+}
+async function executeUpdateSessionTemplate(uid, args) {
+    var _a;
+    const ref = db_1.db.collection(`users/${uid}/session_templates`).doc(args.templateId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Déroulé introuvable : ${args.templateId}`;
+    const patch = {};
+    if (typeof args.title === "string" && args.title.trim() !== "") {
+        patch.title = args.title.trim();
+    }
+    if (args.steps != null) {
+        const norm = await normalizeSessionSteps(uid, args.steps);
+        if (norm.error)
+            return `❌ ${norm.error}`;
+        patch.steps = norm.steps;
+    }
+    if (typeof args.archived === "boolean")
+        patch.archived = args.archived;
+    if (!Object.keys(patch).length)
+        return "Rien à modifier (title, steps ou archived).";
+    await ref.set(patch, { merge: true });
+    const t = snap.data().title;
+    return args.archived === true
+        ? `✅ Déroulé « ${t} » archivé.`
+        : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
+}
 async function executeScheduleDay(uid, date, blocks) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
@@ -1621,7 +1728,7 @@ async function executeScheduleDay(uid, date, blocks) {
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
     const normalizedBlocks = blocks.map((b) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
         return ({
             id: (0, uuid_1.v4)(),
             startTime: b.startTime,
@@ -1640,6 +1747,7 @@ async function executeScheduleDay(uid, date, blocks) {
             domainId: (_h = b.domainId) !== null && _h !== void 0 ? _h : null, // domaine ciblé (kind:"session")
             skipReason: (_j = b.skipReason) !== null && _j !== void 0 ? _j : null, // pourquoi l'engagement a sauté (check-in)
             reportReason: (_l = b.reportReason) !== null && _l !== void 0 ? _l : null, // raison donnée au moment du report
+            sessionTemplateId: (_m = b.sessionTemplateId) !== null && _m !== void 0 ? _m : null, // séance (déroulé) → ▶ = player
         });
     });
     // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du

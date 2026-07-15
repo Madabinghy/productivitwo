@@ -70,6 +70,10 @@ class ScheduleBlock {
   // re-poussé), l'import le met à jour/le retire, un swipe le masque sans
   // toucher au vrai rendez-vous. Null = bloc Productivitwo normal.
   String? gcalEventId;
+  // ── Séance programmée ──────────────────────────────────────────────────────
+  // Déroulé réutilisable (session_templates) attaché au bloc : ▶ lance le
+  // chrono sur l'activité ET ouvre le player sur ce déroulé.
+  String? sessionTemplateId;
 
   ScheduleBlock({
     String? id,
@@ -92,6 +96,7 @@ class ScheduleBlock {
     this.skipReason,
     this.reportReason,
     this.gcalEventId,
+    this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
 
@@ -118,6 +123,7 @@ class ScheduleBlock {
         'skipReason': skipReason,
         'reportReason': reportReason,
         'gcalEventId': gcalEventId,
+        'sessionTemplateId': sessionTemplateId,
       };
 
   static ScheduleBlock from(Map j) => ScheduleBlock(
@@ -141,6 +147,7 @@ class ScheduleBlock {
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
         gcalEventId: j['gcalEventId'],
+        sessionTemplateId: j['sessionTemplateId'],
       );
 }
 

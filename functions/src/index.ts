@@ -36,6 +36,8 @@ import {
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
+  LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
+  UPDATE_SESSION_TEMPLATE_TOOL,
 } from "./tools";
 import {
   validateToken, sendFcmPush, pickProject, pickStrategicObjective, checkRateLimit, todayInParis, userDayParts,
@@ -57,6 +59,8 @@ import {
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
   executeGenerateWeeklyReport,
+  executeListSessionTemplates, executeCreateSessionTemplate,
+  executeUpdateSessionTemplate,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -1526,6 +1530,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
+            LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
+            UPDATE_SESSION_TEMPLATE_TOOL,
           ],
         },
       });
@@ -1622,6 +1628,12 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddEvent(uid, args as Parameters<typeof executeAddEvent>[1]);
         } else if (toolName === "save_domain_definition") {
           text = await executeSaveDomainDefinition(uid, args as Parameters<typeof executeSaveDomainDefinition>[1]);
+        } else if (toolName === "list_session_templates") {
+          text = await executeListSessionTemplates(uid);
+        } else if (toolName === "create_session_template") {
+          text = await executeCreateSessionTemplate(uid, args as Parameters<typeof executeCreateSessionTemplate>[1]);
+        } else if (toolName === "update_session_template") {
+          text = await executeUpdateSessionTemplate(uid, args as Parameters<typeof executeUpdateSessionTemplate>[1]);
         } else if (toolName === "generate_weekly_report") {
           text = await executeGenerateWeeklyReport(
             uid,
