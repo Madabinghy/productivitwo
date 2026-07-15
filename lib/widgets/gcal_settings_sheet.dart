@@ -87,6 +87,8 @@ class _GcalSheetState extends State<_GcalSheet> {
   bool _autoSync = true;
   bool _revoked = false;
   String? _email;
+  String? _calendarId;
+  String? _calendarSummary;
   String? _error;
 
   @override
@@ -136,6 +138,8 @@ class _GcalSheetState extends State<_GcalSheet> {
         _autoSync = s['autoSync'] != false;
         _revoked = s['revoked'] == true;
         _email = s['email'] as String?;
+        _calendarId = s['calendarId'] as String?;
+        _calendarSummary = s['calendarSummary'] as String?;
       }
     });
   }
@@ -148,6 +152,78 @@ class _GcalSheetState extends State<_GcalSheet> {
     final url = r?['url'] as String?;
     if (url == null) return;
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  /// Choisir le calendrier CIBLE de la sync — l'agenda principal peut être
+  /// partagé (raisons pro) : l'app écrit alors sur un calendrier dédié.
+  /// L'ancien calendrier est nettoyé (fenêtre de sync) côté serveur.
+  Future<void> _pickCalendar() async {
+    setState(() => _busy = true);
+    final r = await _call('listCalendars');
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (r == null) return;
+    if (r['ok'] != true) {
+      final rescope = r['reason'] == 'rescope';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(rescope
+            ? 'Reconnecte ton agenda pour lister tes calendriers (nouvelle permission de lecture).'
+            : 'Liste des calendriers indisponible (${r['reason']}).'),
+        duration: const Duration(seconds: 4),
+      ));
+      if (rescope) await _connect();
+      return;
+    }
+    final calendars = (r['calendars'] as List? ?? [])
+        .map((c) => Map<String, dynamic>.from(c as Map))
+        .toList();
+    final current = r['current'] as String? ?? 'primary';
+    if (!mounted || calendars.isEmpty) return;
+
+    final picked = await showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.only(bottom: 16),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text('Calendrier de synchronisation',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            for (final c in calendars)
+              ListTile(
+                leading: Icon(
+                    (c['id'] == current || (current == 'primary' && c['primary'] == true))
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off),
+                title: Text('${c['summary']}'),
+                subtitle: c['primary'] == true ? const Text('Principal') : null,
+                onTap: () => Navigator.pop(ctx, c),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _busy = true);
+    final set = await _call('setCalendar', extra: {
+      'calendarId': picked['id'],
+      'calendarSummary': picked['summary'],
+    });
+    if (set?['ok'] == true) {
+      // Re-sync immédiate de la fenêtre : les événements renaissent sur le
+      // nouveau calendrier (l'ancien a été nettoyé côté serveur).
+      await _call('syncDay');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('🗓️ La sync écrit désormais sur « ${picked['summary']} ».')));
+      }
+    }
+    await _refresh();
+    if (mounted) setState(() => _busy = false);
   }
 
   Future<void> _syncToday() async {
@@ -272,6 +348,16 @@ class _GcalSheetState extends State<_GcalSheet> {
                         setState(() => _autoSync = v);
                         await _call('setAutoSync', extra: {'value': v});
                       },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_month_outlined),
+                title: const Text('Calendrier de synchronisation'),
+                subtitle: Text(_calendarSummary ??
+                    (_calendarId == null || _calendarId == 'primary'
+                        ? 'Principal'
+                        : _calendarId!)),
+                onTap: _busy ? null : _pickCalendar,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

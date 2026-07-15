@@ -10,10 +10,22 @@ const crypto_1 = require("crypto");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
 const CALLBACK_URL = "https://gcaloauthcallback-dzos75b65q-uc.a.run.app";
-const SCOPES = "openid email https://www.googleapis.com/auth/calendar.events";
-const CAL_BASE = "https://www.googleapis.com/calendar/v3/calendars/primary";
+// calendarlist.readonly : uniquement pour LISTER les calendriers (choix du
+// calendrier cible) — les connexions antérieures sans ce scope reçoivent
+// « rescope » et doivent se reconnecter pour choisir.
+const SCOPES = "openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 const GCAL_SECRETS = ["GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET"];
 const tokensRef = (uid) => db_1.db.doc(`gcal_tokens/${uid}`);
+const calBase = (calId) => `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}`;
+/** Calendrier cible de la sync — « primary » par défaut, modifiable via
+ *  l'action setCalendar (agenda principal partagé pour raisons pro → l'app
+ *  écrit sur un calendrier dédié). */
+async function calendarIdFor(uid) {
+    var _a;
+    const snap = await tokensRef(uid).get();
+    const v = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.calendarId;
+    return typeof v === "string" && v.trim() !== "" ? v.trim() : "primary";
+}
 /** Fuseau VÉCU de l'utilisateur : fait `data/meta.tzOffsetMin` (minutes à
  *  ajouter à l'UTC, ex -240 en Guadeloupe) posé par l'app à l'ouverture.
  *  Null = fait absent → fallback Europe/Paris via userDayParts. */
@@ -111,9 +123,10 @@ async function importGcalDay(uid, date) {
     const token = await accessTokenFor(uid);
     if (!token)
         return Object.assign(Object.assign({ ok: false }, none), { reason: "not_connected" });
+    const base = calBase(await calendarIdFor(uid));
     const tzOff = (_a = (await userTzOffset(uid))) !== null && _a !== void 0 ? _a : parisOffsetMin(date);
     const off = offsetStr(tzOff);
-    const listRes = await fetch(`${CAL_BASE}/events?` +
+    const listRes = await fetch(`${base}/events?` +
         new URLSearchParams({
             timeMin: `${date}T00:00:00${off}`,
             timeMax: `${date}T23:59:59${off}`,
@@ -222,6 +235,7 @@ async function syncDayToGcal(uid, date) {
     if (!token)
         return Object.assign(Object.assign({ ok: false }, none), { reason: "not_connected" });
     const auth = { Authorization: `Bearer ${token}` };
+    const base = calBase(await calendarIdFor(uid));
     // Les heures du programme sont des heures de MUR du téléphone : l'événement
     // porte l'offset du fuseau vécu (fait) — sinon fallback Europe/Paris.
     const tzOff = await userTzOffset(uid);
@@ -238,7 +252,7 @@ async function syncDayToGcal(uid, date) {
             b.id;
     });
     // Événements Productivitwo existants pour CE jour (jamais les personnels).
-    const listRes = await fetch(`${CAL_BASE}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${date}`)}&maxResults=250&showDeleted=false`, { headers: auth });
+    const listRes = await fetch(`${base}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${date}`)}&maxResults=250&showDeleted=false`, { headers: auth });
     if (!listRes.ok) {
         console.error("gcal list failed:", listRes.status, await listRes.text());
         return Object.assign(Object.assign({ ok: false }, none), { reason: `list_http_${listRes.status}` });
@@ -275,7 +289,7 @@ async function syncDayToGcal(uid, date) {
         };
         const ev = existing.get(id);
         if (ev == null) {
-            const r = await fetch(`${CAL_BASE}/events`, {
+            const r = await fetch(`${base}/events`, {
                 method: "POST",
                 headers: Object.assign(Object.assign({}, auth), { "Content-Type": "application/json" }),
                 body: JSON.stringify(desired),
@@ -297,7 +311,7 @@ async function syncDayToGcal(uid, date) {
                     Date.parse(`${end.ymd}T${end.hm}:00${offsetStr(tzOff)}`)
                 : String((_p = (_o = ev.end) === null || _o === void 0 ? void 0 : _o.dateTime) !== null && _p !== void 0 ? _p : "").startsWith(`${end.ymd}T${end.hm}`);
             if (ev.summary !== desired.summary || !sameStart || !sameEnd) {
-                const r = await fetch(`${CAL_BASE}/events/${ev.id}`, {
+                const r = await fetch(`${base}/events/${ev.id}`, {
                     method: "PATCH",
                     headers: Object.assign(Object.assign({}, auth), { "Content-Type": "application/json" }),
                     body: JSON.stringify(desired),
@@ -313,7 +327,7 @@ async function syncDayToGcal(uid, date) {
     for (const [bid, ev] of existing) {
         if (seen.has(bid))
             continue;
-        const r = await fetch(`${CAL_BASE}/events/${ev.id}`, { method: "DELETE", headers: auth });
+        const r = await fetch(`${base}/events/${ev.id}`, { method: "DELETE", headers: auth });
         if (r.ok || r.status === 404 || r.status === 410)
             deleted++;
         else
@@ -323,7 +337,7 @@ async function syncDayToGcal(uid, date) {
 }
 // ── API app : status / authUrl / setAutoSync / syncDay / disconnect ──────────
 exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: GCAL_SECRETS }, async (req, res) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -337,7 +351,7 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
         res.status(401).json({ error: "Missing Authorization header" });
         return;
     }
-    const { uid, action, date, value } = req.body;
+    const { uid, action, date, value, calendarId, calendarSummary } = req.body;
     if (!uid || !action) {
         res.status(400).json({ error: "uid et action requis" });
         return;
@@ -356,7 +370,78 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
                 email: (_b = d === null || d === void 0 ? void 0 : d.email) !== null && _b !== void 0 ? _b : null,
                 autoSync: (d === null || d === void 0 ? void 0 : d.autoSync) !== false,
                 revoked: (d === null || d === void 0 ? void 0 : d.revoked) === true,
+                calendarId: (_c = d === null || d === void 0 ? void 0 : d.calendarId) !== null && _c !== void 0 ? _c : "primary",
+                calendarSummary: (_d = d === null || d === void 0 ? void 0 : d.calendarSummary) !== null && _d !== void 0 ? _d : null,
             });
+            return;
+        }
+        // Calendriers ACCESSIBLES EN ÉCRITURE du compte — pour choisir la cible
+        // de la sync (agenda principal partagé → calendrier dédié). Connexions
+        // antérieures sans le scope calendarlist → « rescope » (reconnexion).
+        if (action === "listCalendars") {
+            const token = await accessTokenFor(uid);
+            if (!token) {
+                res.status(200).json({ ok: false, reason: "not_connected" });
+                return;
+            }
+            const r = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer&maxResults=100", { headers: { Authorization: `Bearer ${token}` } });
+            if (r.status === 403) {
+                res.status(200).json({ ok: false, reason: "rescope" });
+                return;
+            }
+            if (!r.ok) {
+                res.status(200).json({ ok: false, reason: `http_${r.status}` });
+                return;
+            }
+            const body = (await r.json());
+            res.status(200).json({
+                ok: true,
+                current: await calendarIdFor(uid),
+                calendars: ((_e = body.items) !== null && _e !== void 0 ? _e : []).map((c) => {
+                    var _a, _b;
+                    return ({
+                        id: c.id,
+                        summary: (_b = (_a = c.summaryOverride) !== null && _a !== void 0 ? _a : c.summary) !== null && _b !== void 0 ? _b : c.id,
+                        primary: c.primary === true,
+                    });
+                }),
+            });
+            return;
+        }
+        if (action === "setCalendar") {
+            const newId = typeof calendarId === "string" && calendarId.trim() !== ""
+                ? calendarId.trim()
+                : "primary";
+            const oldId = await calendarIdFor(uid);
+            // Nettoyage best-effort de l'ANCIEN calendrier sur la fenêtre de sync
+            // (aujourd'hui + demain) : sans lui, les événements Productivitwo
+            // existeraient en double après la re-sync sur le nouveau.
+            if (newId !== oldId) {
+                const token = await accessTokenFor(uid);
+                if (token) {
+                    const auth = { Authorization: `Bearer ${token}` };
+                    const today = (0, execute_1.userDayParts)(await userTzOffset(uid)).ymd;
+                    const tmr = new Date(`${today}T12:00:00Z`);
+                    tmr.setUTCDate(tmr.getUTCDate() + 1);
+                    for (const d of [today, tmr.toISOString().slice(0, 10)]) {
+                        try {
+                            const lr = await fetch(`${calBase(oldId)}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${d}`)}&maxResults=250&showDeleted=false`, { headers: auth });
+                            if (!lr.ok)
+                                continue;
+                            const items = (_f = (await lr.json()).items) !== null && _f !== void 0 ? _f : [];
+                            for (const ev of items) {
+                                await fetch(`${calBase(oldId)}/events/${ev.id}`, {
+                                    method: "DELETE",
+                                    headers: auth,
+                                }).catch(() => null);
+                            }
+                        }
+                        catch ( /* best-effort */_j) { /* best-effort */ }
+                    }
+                }
+            }
+            await tokensRef(uid).set({ calendarId: newId, calendarSummary: calendarSummary !== null && calendarSummary !== void 0 ? calendarSummary : null }, { merge: true });
+            res.status(200).json({ ok: true, calendarId: newId });
             return;
         }
         if (action === "authUrl") {
@@ -368,7 +453,7 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
             });
             const url = "https://accounts.google.com/o/oauth2/v2/auth?" +
                 new URLSearchParams({
-                    client_id: (_c = process.env.GCAL_CLIENT_ID) !== null && _c !== void 0 ? _c : "",
+                    client_id: (_g = process.env.GCAL_CLIENT_ID) !== null && _g !== void 0 ? _g : "",
                     redirect_uri: CALLBACK_URL,
                     response_type: "code",
                     scope: SCOPES,
@@ -398,7 +483,7 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
         }
         if (action === "disconnect") {
             const snap = await tokensRef(uid).get();
-            const refresh = (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.refreshToken;
+            const refresh = (_h = snap.data()) === null || _h === void 0 ? void 0 : _h.refreshToken;
             if (refresh) {
                 // Révocation best-effort — la suppression du doc fait foi.
                 await fetch("https://oauth2.googleapis.com/revoke", {

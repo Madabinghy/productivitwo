@@ -41,13 +41,28 @@ declare function fetch(
 }>;
 
 const CALLBACK_URL = "https://gcaloauthcallback-dzos75b65q-uc.a.run.app";
-const SCOPES = "openid email https://www.googleapis.com/auth/calendar.events";
-const CAL_BASE = "https://www.googleapis.com/calendar/v3/calendars/primary";
+// calendarlist.readonly : uniquement pour LISTER les calendriers (choix du
+// calendrier cible) — les connexions antérieures sans ce scope reçoivent
+// « rescope » et doivent se reconnecter pour choisir.
+const SCOPES =
+  "openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 const GCAL_SECRETS = ["GCAL_CLIENT_ID", "GCAL_CLIENT_SECRET"];
 
 type Json = Record<string, any>;
 
 const tokensRef = (uid: string) => db.doc(`gcal_tokens/${uid}`);
+
+const calBase = (calId: string) =>
+  `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}`;
+
+/** Calendrier cible de la sync — « primary » par défaut, modifiable via
+ *  l'action setCalendar (agenda principal partagé pour raisons pro → l'app
+ *  écrit sur un calendrier dédié). */
+async function calendarIdFor(uid: string): Promise<string> {
+  const snap = await tokensRef(uid).get();
+  const v = (snap.data() as Json | undefined)?.calendarId;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : "primary";
+}
 
 /** Fuseau VÉCU de l'utilisateur : fait `data/meta.tzOffsetMin` (minutes à
  *  ajouter à l'UTC, ex -240 en Guadeloupe) posé par l'app à l'ouverture.
@@ -154,11 +169,12 @@ export async function importGcalDay(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, ...none, reason: "bad_date" };
   const token = await accessTokenFor(uid);
   if (!token) return { ok: false, ...none, reason: "not_connected" };
+  const base = calBase(await calendarIdFor(uid));
   const tzOff = (await userTzOffset(uid)) ?? parisOffsetMin(date);
   const off = offsetStr(tzOff);
 
   const listRes = await fetch(
-    `${CAL_BASE}/events?` +
+    `${base}/events?` +
       new URLSearchParams({
         timeMin: `${date}T00:00:00${off}`,
         timeMax: `${date}T23:59:59${off}`,
@@ -265,6 +281,7 @@ export async function syncDayToGcal(
   const token = await accessTokenFor(uid);
   if (!token) return { ok: false, ...none, reason: "not_connected" };
   const auth = { Authorization: `Bearer ${token}` };
+  const base = calBase(await calendarIdFor(uid));
   // Les heures du programme sont des heures de MUR du téléphone : l'événement
   // porte l'offset du fuseau vécu (fait) — sinon fallback Europe/Paris.
   const tzOff = await userTzOffset(uid);
@@ -284,7 +301,7 @@ export async function syncDayToGcal(
 
   // Événements Productivitwo existants pour CE jour (jamais les personnels).
   const listRes = await fetch(
-    `${CAL_BASE}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${date}`)}&maxResults=250&showDeleted=false`,
+    `${base}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${date}`)}&maxResults=250&showDeleted=false`,
     { headers: auth }
   );
   if (!listRes.ok) {
@@ -323,7 +340,7 @@ export async function syncDayToGcal(
     };
     const ev = existing.get(id);
     if (ev == null) {
-      const r = await fetch(`${CAL_BASE}/events`, {
+      const r = await fetch(`${base}/events`, {
         method: "POST",
         headers: { ...auth, "Content-Type": "application/json" },
         body: JSON.stringify(desired),
@@ -342,7 +359,7 @@ export async function syncDayToGcal(
             Date.parse(`${end.ymd}T${end.hm}:00${offsetStr(tzOff)}`)
         : String(ev.end?.dateTime ?? "").startsWith(`${end.ymd}T${end.hm}`);
       if (ev.summary !== desired.summary || !sameStart || !sameEnd) {
-        const r = await fetch(`${CAL_BASE}/events/${ev.id}`, {
+        const r = await fetch(`${base}/events/${ev.id}`, {
           method: "PATCH",
           headers: { ...auth, "Content-Type": "application/json" },
           body: JSON.stringify(desired),
@@ -355,7 +372,7 @@ export async function syncDayToGcal(
   // Blocs supprimés/sautés du programme → leurs événements partent aussi.
   for (const [bid, ev] of existing) {
     if (seen.has(bid)) continue;
-    const r = await fetch(`${CAL_BASE}/events/${ev.id}`, { method: "DELETE", headers: auth });
+    const r = await fetch(`${base}/events/${ev.id}`, { method: "DELETE", headers: auth });
     if (r.ok || r.status === 404 || r.status === 410) deleted++;
     else console.error("gcal delete failed:", r.status, await r.text());
   }
@@ -373,8 +390,9 @@ export const gcalApi = onRequest(
     if (!authHeader.startsWith("Bearer ")) {
       res.status(401).json({ error: "Missing Authorization header" }); return;
     }
-    const { uid, action, date, value } = req.body as {
+    const { uid, action, date, value, calendarId, calendarSummary } = req.body as {
       uid?: string; action?: string; date?: string; value?: boolean;
+      calendarId?: string; calendarSummary?: string;
     };
     if (!uid || !action) { res.status(400).json({ error: "uid et action requis" }); return; }
     const valid = await validateToken(uid, authHeader.slice(7).trim());
@@ -389,7 +407,74 @@ export const gcalApi = onRequest(
           email: d?.email ?? null,
           autoSync: d?.autoSync !== false,
           revoked: d?.revoked === true,
+          calendarId: d?.calendarId ?? "primary",
+          calendarSummary: d?.calendarSummary ?? null,
         });
+        return;
+      }
+      // Calendriers ACCESSIBLES EN ÉCRITURE du compte — pour choisir la cible
+      // de la sync (agenda principal partagé → calendrier dédié). Connexions
+      // antérieures sans le scope calendarlist → « rescope » (reconnexion).
+      if (action === "listCalendars") {
+        const token = await accessTokenFor(uid);
+        if (!token) { res.status(200).json({ ok: false, reason: "not_connected" }); return; }
+        const r = await fetch(
+          "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=writer&maxResults=100",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (r.status === 403) { res.status(200).json({ ok: false, reason: "rescope" }); return; }
+        if (!r.ok) { res.status(200).json({ ok: false, reason: `http_${r.status}` }); return; }
+        const body = (await r.json()) as Json;
+        res.status(200).json({
+          ok: true,
+          current: await calendarIdFor(uid),
+          calendars: ((body.items as Json[]) ?? []).map((c) => ({
+            id: c.id,
+            summary: c.summaryOverride ?? c.summary ?? c.id,
+            primary: c.primary === true,
+          })),
+        });
+        return;
+      }
+      if (action === "setCalendar") {
+        const newId =
+          typeof calendarId === "string" && calendarId.trim() !== ""
+            ? calendarId.trim()
+            : "primary";
+        const oldId = await calendarIdFor(uid);
+        // Nettoyage best-effort de l'ANCIEN calendrier sur la fenêtre de sync
+        // (aujourd'hui + demain) : sans lui, les événements Productivitwo
+        // existeraient en double après la re-sync sur le nouveau.
+        if (newId !== oldId) {
+          const token = await accessTokenFor(uid);
+          if (token) {
+            const auth = { Authorization: `Bearer ${token}` };
+            const today = userDayParts(await userTzOffset(uid)).ymd;
+            const tmr = new Date(`${today}T12:00:00Z`);
+            tmr.setUTCDate(tmr.getUTCDate() + 1);
+            for (const d of [today, tmr.toISOString().slice(0, 10)]) {
+              try {
+                const lr = await fetch(
+                  `${calBase(oldId)}/events?privateExtendedProperty=${encodeURIComponent(`pwoDate=${d}`)}&maxResults=250&showDeleted=false`,
+                  { headers: auth }
+                );
+                if (!lr.ok) continue;
+                const items = (((await lr.json()) as Json).items as Json[]) ?? [];
+                for (const ev of items) {
+                  await fetch(`${calBase(oldId)}/events/${ev.id}`, {
+                    method: "DELETE",
+                    headers: auth,
+                  }).catch(() => null);
+                }
+              } catch { /* best-effort */ }
+            }
+          }
+        }
+        await tokensRef(uid).set(
+          { calendarId: newId, calendarSummary: calendarSummary ?? null },
+          { merge: true }
+        );
+        res.status(200).json({ ok: true, calendarId: newId });
         return;
       }
       if (action === "authUrl") {

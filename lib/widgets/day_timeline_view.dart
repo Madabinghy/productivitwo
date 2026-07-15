@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/challenge_reminders.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/schedule_suggest.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
@@ -529,6 +530,105 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         ));
   }
 
+  // ── Couche « réalisé » : sessions loggées du jour ────────────────────────────
+
+  /// Sessions du jour affiché (terminées + chrono en cours), bornées à la
+  /// journée. Le réel MESURÉ, jamais estimé — une session sur une activité
+  /// supprimée disparaît avec elle.
+  List<({int start, int end, String title, Color color, bool running})>
+      _daySessions(DateTime now) {
+    final p = widget.date.split('-');
+    final y = int.tryParse(p[0]);
+    final mo = p.length > 1 ? int.tryParse(p[1]) : null;
+    final da = p.length > 2 ? int.tryParse(p[2]) : null;
+    if (y == null || mo == null || da == null) return const [];
+    final day = DateTime(y, mo, da);
+    final dayEnd = day.add(const Duration(days: 1));
+
+    final out =
+        <({int start, int end, String title, Color color, bool running})>[];
+    for (final s in widget.logic.state.sessions) {
+      final running = s.endAt == null;
+      final end = s.endAt ?? now;
+      if (running && !_isToday) continue;
+      if (!end.isAfter(day) || !s.startAt.isBefore(dayEnd)) continue;
+      Activity? a;
+      for (final x in widget.logic.state.activities) {
+        if (x.id == s.activityId) { a = x; break; }
+      }
+      if (a == null || a.deleted) continue;
+      final startMin =
+          s.startAt.isBefore(day) ? 0 : s.startAt.difference(day).inMinutes;
+      final endMin =
+          end.isAfter(dayEnd) ? 1440 : end.difference(day).inMinutes;
+      if (endMin - startMin < 1) continue;
+      out.add((
+        start: startMin,
+        end: endMin,
+        title: a.name,
+        color: domainColor(a.domainId, widget.logic.state.activeDomains) ??
+            Colors.teal,
+        running: running,
+      ));
+    }
+    return out;
+  }
+
+  Widget _sessionWidget(
+    ColorScheme cs,
+    ({int start, int end, String title, Color color, bool running}) s,
+  ) {
+    final top = s.start / 60 * _hourH + 6;
+    final height =
+        ((s.end - s.start) / 60 * _hourH).clamp(3.0, 24 * _hourH);
+    return Positioned(
+      top: top,
+      left: _leftGutter + 2,
+      right: 2,
+      height: height,
+      child: IgnorePointer(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 3,
+              decoration: BoxDecoration(
+                color: s.color.withOpacity(.6),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                alignment: Alignment.topRight,
+                padding: const EdgeInsets.only(right: 6, top: 1),
+                decoration: BoxDecoration(
+                  color: s.color.withOpacity(.09),
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(6),
+                    bottomRight: Radius.circular(6),
+                  ),
+                ),
+                child: height >= 15
+                    ? Text(
+                        '⏱ ${s.title}${s.running ? ' · en cours' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontStyle: FontStyle.italic,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withOpacity(.45),
+                        ),
+                      )
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Layout : clusters de blocs qui se chevauchent → colonnes ─────────────────
 
   /// Durée d'ENCOMBREMENT visuel : un bloc court est dessiné à la hauteur
@@ -669,6 +769,11 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                           height: 1, color: cs.onSurface.withOpacity(.08)),
                     ),
                   ],
+                  // ── Couche « réalisé » : les sessions LOGGUÉES du jour
+                  // (dont le chrono en cours) en sous-couche translucide —
+                  // le prévu se compare au réel d'un coup d'œil, même quand
+                  // rien n'était programmé. Lecture seule, sous les blocs.
+                  for (final s in _daySessions(now)) _sessionWidget(cs, s),
                   // Blocs (le sélectionné en dernier = au-dessus).
                   for (final e in laid.where((e) => e.b.id != _selectedId))
                     _blockWidget(cs, e, laneW),
