@@ -1550,6 +1550,178 @@ class _FocusViewState extends State<FocusView> {
         : _buildEmpty(context, cs, now);
   }
 
+  // ── « Je suis dans ce contexte » : actions GTD réalisables ici ─────────────
+  // Chips des contextes ayant ≥1 action en attente ; sélection → liste des
+  // actions du contexte (projets actifs + actions propres), chrono ciblé au ▶.
+
+  List<({TaskAction action, String source, String? chronoActivityId, String? taskId, String? projectId})>
+      _actionsForContext(String ctx) {
+    final out = <({TaskAction action, String source, String? chronoActivityId, String? taskId, String? projectId})>[];
+    for (final p in widget.logic.currentProjects) {
+      if (p.status != 'active') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        for (final a in t.actions) {
+          if (a.done || a.context != ctx) continue;
+          out.add((
+            action: a,
+            source: p.title,
+            chronoActivityId: a.linkedActivityId,
+            taskId: t.id,
+            projectId: p.id,
+          ));
+        }
+      }
+    }
+    for (final act in widget.state.activeActivities) {
+      for (final a in act.ownActions) {
+        if (a.done || a.context != ctx) continue;
+        out.add((
+          action: a,
+          source: act.name,
+          chronoActivityId: act.id,
+          taskId: null,
+          projectId: null,
+        ));
+      }
+    }
+    return out;
+  }
+
+  Set<String> _contextsWithActions() {
+    final s = <String>{};
+    for (final p in widget.logic.currentProjects) {
+      if (p.status != 'active') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        for (final a in t.actions) {
+          if (!a.done && a.context != null) s.add(a.context!);
+        }
+      }
+    }
+    for (final act in widget.state.activeActivities) {
+      for (final a in act.ownActions) {
+        if (!a.done && a.context != null) s.add(a.context!);
+      }
+    }
+    return s;
+  }
+
+  Widget _contextSection(ColorScheme cs) {
+    final contexts = _contextsWithActions().toList()..sort();
+    if (contexts.isEmpty) return const SizedBox.shrink();
+    var selected = widget.state.nowContext;
+    if (selected != null && !contexts.contains(selected)) selected = null;
+    final items = selected != null
+        ? _actionsForContext(selected)
+        : const <({TaskAction action, String source, String? chronoActivityId, String? taskId, String? projectId})>[];
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.place_outlined,
+                size: 14, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 6),
+            Text('JE SUIS…',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: cs.onSurface.withOpacity(.45))),
+          ]),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final c in contexts)
+                ChoiceChip(
+                  selected: selected == c,
+                  onSelected: (_) {
+                    widget.state.nowContext = selected == c ? null : c;
+                    widget.logic.onChange();
+                    setState(() {});
+                  },
+                  showCheckmark: false,
+                  label: Text(c),
+                  labelStyle: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight:
+                        selected == c ? FontWeight.w600 : FontWeight.w500,
+                    color: selected == c
+                        ? cs.primary
+                        : cs.onSurface.withOpacity(.65),
+                  ),
+                  selectedColor: cs.primary.withOpacity(.14),
+                  backgroundColor: cs.surfaceVariant.withOpacity(.35),
+                  side: BorderSide(
+                      color: selected == c
+                          ? cs.primary.withOpacity(.5)
+                          : Colors.transparent),
+                  visualDensity: VisualDensity.compact,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+            ],
+          ),
+          if (selected != null) ...[
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              Text('Aucune action en attente dans ce contexte.',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.5)))
+            else
+              for (final it in items.take(6))
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(.35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(it.action.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600)),
+                          Text(it.source,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: cs.onSurface.withOpacity(.5))),
+                        ],
+                      ),
+                    ),
+                    if (it.chronoActivityId != null)
+                      IconButton(
+                        tooltip: 'Lancer le chrono',
+                        icon: Icon(Icons.play_circle_fill,
+                            size: 26, color: cs.primary),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          widget.logic.start(it.chronoActivityId!,
+                              taskId: it.taskId, actionId: it.action.id);
+                          setState(() {});
+                        },
+                      ),
+                  ]),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
   // ── État 2 : carte focus (rien en cours, programme restant) ─────────────────
 
   Widget _buildFocusIdle(
@@ -1565,6 +1737,7 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
+            _contextSection(cs),
             _focusCard(context, cs, b, now),
             if (next != null) ...[
               const SizedBox(height: 14),
@@ -1849,6 +2022,7 @@ class _FocusViewState extends State<FocusView> {
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachCard(now),
+            _contextSection(cs),
             // Bloc au-delà de l'horizon (ex : Hygiène du soir à 21 h vu à
             // 13 h 46) : l'affaire de PLUS TARD — hint discret, pas la grande
             // carte. Le moment présent revient au guide ci-dessous.

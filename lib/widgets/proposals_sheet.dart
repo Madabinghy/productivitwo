@@ -108,6 +108,7 @@ class _ProposalCardState extends State<_ProposalCard> {
     'archive_project': 'Archiver',
     'add_phase': 'Phase d\'un projet',
     'attach_action_to_task': 'Action d\'une tâche',
+    'add_own_action': 'Action d\'une activité',
     'restructure_project': 'Recaler un projet',
   };
 

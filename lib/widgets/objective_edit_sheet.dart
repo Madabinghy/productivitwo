@@ -366,7 +366,7 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
             }).toList(),
           ),
           for (final entry in _timeCommitments.entries) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -376,25 +376,53 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
                             .map((a) => a.name)
                             .firstOrNull ??
                         entry.key,
-                    style: const TextStyle(fontSize: 13.5),
+                    style: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                IconButton(
+                  onPressed: entry.value > 15
+                      ? () => setState(() => _timeCommitments[entry.key] =
+                          (entry.value - 15).clamp(15, 1200))
+                      : null,
+                  icon: const Icon(Icons.remove_circle_outline, size: 20),
+                  color: _accent,
+                  visualDensity: VisualDensity.compact,
+                ),
                 SizedBox(
-                  width: 120,
-                  child: TextFormField(
-                    initialValue: '${entry.value}',
-                    keyboardType: TextInputType.number,
+                  width: 84,
+                  child: Text(
+                    '${_fmtWeeklyMin(entry.value)}/sem',
                     textAlign: TextAlign.center,
-                    decoration: _dec(context, label: 'min/sem'),
-                    onChanged: (v) {
-                      final n = int.tryParse(v.trim());
-                      if (n != null && n > 0) {
-                        setState(() => _timeCommitments[entry.key] = n);
-                      }
-                    },
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700),
                   ),
                 ),
+                IconButton(
+                  onPressed: entry.value < 1200
+                      ? () => setState(() => _timeCommitments[entry.key] =
+                          (entry.value + 15).clamp(15, 1200))
+                      : null,
+                  icon: const Icon(Icons.add_circle_outline, size: 20),
+                  color: _accent,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final preset in const [30, 60, 120, 180, 300, 420])
+                  _chip(
+                    context,
+                    selected: entry.value == preset,
+                    label: _fmtWeeklyMin(preset),
+                    onTap: () => setState(
+                        () => _timeCommitments[entry.key] = preset),
+                  ),
               ],
             ),
           ],
@@ -617,3 +645,10 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
 
 String _ymd(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+/// « 30 min », « 2 h », « 2 h 30 » — affichage des engagements hebdo.
+String _fmtWeeklyMin(int min) {
+  final h = min ~/ 60, m = min % 60;
+  if (h == 0) return '$m min';
+  return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
+}

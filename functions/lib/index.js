@@ -1548,7 +1548,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 else if (toolName === "sweep_inbox") {
                     const r = await (0, orion_inbox_1.processInboxToProjects)(uid, { force: true });
                     text = r
-                        ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) proposé(s), ${r.appended} tâche(s) proposée(s), ${r.scheduled} défi(s) programmé(s) 🔥, ${r.skipped} idée(s) laissée(s).`
+                        ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) proposé(s), ${r.appended} tâche(s) proposée(s), ${r.scheduled} défi(s) programmé(s) 🔥, ${r.events} événement(s) posé(s), ${r.skipped} idée(s) laissée(s).`
                         : "Routage indisponible (erreur LLM). Réessaie.";
                 }
                 else if (toolName === "propose_change") {
@@ -1661,7 +1661,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeLinkActionToActivity)(uid, args.projectId, args.taskId, args.actionId, args.activityId);
                 }
                 else if (toolName === "add_activity_action") {
-                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title);
+                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context);
                 }
                 else if (toolName === "log_routine_hit") {
                     text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId, args.delta === undefined ? 1 : args.delta);

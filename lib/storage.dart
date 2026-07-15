@@ -26,6 +26,15 @@ class FileStore {
     await prefs.clear();
   }
 
+/// One-shot : le Gantt passe en retrait pour tout le monde (pivot GTD
+/// opérationnel). Les users existants avaient hideProjectsTab=false sérialisé ;
+/// on force une fois, puis leur choix ultérieur (Paramètres) persiste.
+void _migrateGanttHidden(AppState st) {
+  if (st.ganttHiddenV2Once) return;
+  st.hideProjectsTab = true;
+  st.ganttHiddenV2Once = true;
+}
+
 void _migrateLinkedActivities(AppState st) {
   if (st.linkedActivitiesMigratedOnce) return;
 
@@ -136,6 +145,7 @@ Future<AppState> loadOrInitCleaner() async {
     if (main != null) {
       _migrateLinkedActivities(main);
       _migrateVoitureActivity(main);
+      _migrateGanttHidden(main);
       await save(main);
       return main;
     }
@@ -145,6 +155,7 @@ Future<AppState> loadOrInitCleaner() async {
       if (b != null) {
         _migrateLinkedActivities(b);
         _migrateVoitureActivity(b);
+        _migrateGanttHidden(b);
         await save(b);
         return b;
       }
@@ -196,6 +207,7 @@ Future<AppState> loadOrInitCleaner() async {
       if (main != null) {
         _migrateLinkedActivities(main);
         _migrateVoitureActivity(main);
+        _migrateGanttHidden(main);
         await save(main);
         return main;
       }
@@ -205,6 +217,7 @@ Future<AppState> loadOrInitCleaner() async {
         if (b != null) {
           _migrateLinkedActivities(b);
           _migrateVoitureActivity(b);
+          _migrateGanttHidden(b);
           await save(b);
           return b;
         }

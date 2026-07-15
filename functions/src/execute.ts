@@ -1236,7 +1236,10 @@ async function executeUpdateTask(
       // renommage ou réordonnancement.
       const rawActions = Array.isArray(updates.actions) ? updates.actions : [];
       const oldActions = (tasks[idx].actions as Array<Record<string, unknown>>) ?? [];
-      const oldByTitle: Record<string, { done: boolean; doneAt: string | null; id?: string }> = {};
+      const oldByTitle: Record<string, {
+        done: boolean; doneAt: string | null; id?: string;
+        linkedActivityId: string | null; context: string | null;
+      }> = {};
       for (const a of oldActions) {
         const t = (a.title as string) ?? "";
         if (t) {
@@ -1244,13 +1247,16 @@ async function executeUpdateTask(
             done: (a.done as boolean) ?? false,
             doneAt: (a.doneAt as string) ?? null,
             id: a.id as string | undefined,
+            linkedActivityId: (a.linkedActivityId as string) ?? null,
+            context: (a.context as string) ?? null,
           };
         }
       }
       patch.actions = rawActions.map((a: unknown) => {
+        const obj = typeof a === "object" && a !== null ? a as Record<string, unknown> : null;
         const title = typeof a === "string"
           ? a
-          : (typeof a === "object" && a !== null && "title" in a ? String((a as { title: unknown }).title) : "");
+          : (obj && "title" in obj ? String(obj.title) : "");
         const previous = oldByTitle[title];
         return {
           id: previous?.id ?? uuidv4(),
@@ -1258,6 +1264,10 @@ async function executeUpdateTask(
           done: previous?.done ?? false,
           doneAt: previous?.doneAt ?? null,
           createdAt: new Date().toISOString(),
+          // Préserve le lien chrono et le contexte GTD d'une action conservée
+          // (le payload peut aussi poser un context explicite).
+          linkedActivityId: previous?.linkedActivityId ?? null,
+          context: (obj?.context as string | undefined) ?? previous?.context ?? null,
         };
       });
     }
@@ -1355,7 +1365,8 @@ async function executeLinkActionToActivity(
 async function executeAddActivityAction(
   uid: string,
   activityId: string,
-  title: string
+  title: string,
+  context?: string | null
 ): Promise<string> {
   if (!title?.trim()) return "Titre de l'action requis.";
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -1374,6 +1385,7 @@ async function executeAddActivityAction(
     doneAt: null,
     createdAt: new Date().toISOString(),
     linkedActivityId: activityId,
+    context: context?.trim() || null, // contexte GTD (@maison…)
   };
   own.push(action);
   await ref.update({ ownActions: own });
@@ -1647,7 +1659,7 @@ async function executeProposeChange(
     payload?: Record<string, unknown>;
   }
 ): Promise<string> {
-  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "restructure_project"];
+  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "add_own_action", "restructure_project"];
   if (!valid.includes(args.kind)) {
     return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
   }
@@ -1759,6 +1771,9 @@ async function executePlanDay(
     `2. Générer les blocs (${startLabel}-${endHour}h) : tâches Gantt + routines + activités-temps + pauses`,
     `   → Tâche la plus proche de la deadline en premier`,
     `   → Arbitre selon objectives[] du contexte : les engagements en retard (onTrack:false) passent en premier`,
+    `   → BATCHING GTD : les actions portent un champ "context" (@maison, @bureau, @courses…) —`,
+    `     regroupe en séquences ADJACENTES les blocs dont les actions partagent le même contexte`,
+    `     (toutes les courses ensemble, tout l'@ordinateur d'affilée…) pour éviter les allers-retours`,
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
     `3. schedule_day("${date}", blocks[])`,
     `4. PRÉPARATION LA VEILLE : pour tout bloc matinal (avant 9h30) qui exige du`,
@@ -1840,6 +1855,7 @@ async function executePlanWeek(
     `WORKFLOW :`,
     `1. Répartir les tâches Gantt sur les 5 jours (deadline proche = premier)`,
     `2. Max ~6h de travail projet par jour · inclure routines matin/soir`,
+    `   → BATCHING GTD : regroupe en séquences adjacentes les blocs dont les actions partagent le même "context" (@maison, @courses…)`,
     `3. Pour chaque jour, schedule_day("YYYY-MM-DD", blocks[])`,
     syncNote,
     `4. Afficher un résumé semaine`,

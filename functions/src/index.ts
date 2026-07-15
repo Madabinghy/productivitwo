@@ -1584,7 +1584,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
         } else if (toolName === "sweep_inbox") {
           const r = await processInboxToProjects(uid, { force: true });
           text = r
-            ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) proposé(s), ${r.appended} tâche(s) proposée(s), ${r.scheduled} défi(s) programmé(s) 🔥, ${r.skipped} idée(s) laissée(s).`
+            ? `✅ Inbox balayée (uid ${uid}) : ${r.found} idée(s) trouvée(s) → ${r.created} projet(s) proposé(s), ${r.appended} tâche(s) proposée(s), ${r.scheduled} défi(s) programmé(s) 🔥, ${r.events} événement(s) posé(s), ${r.skipped} idée(s) laissée(s).`
             : "Routage indisponible (erreur LLM). Réessaie.";
         } else if (toolName === "propose_change") {
           // Exposé au connecteur MCP distant (routine mails → propositions à valider)
@@ -1682,6 +1682,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             uid,
             args.activityId as string,
             args.title as string,
+            args.context as string | undefined,
           );
         } else if (toolName === "log_routine_hit") {
           text = await executeLogRoutineHit(
