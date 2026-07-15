@@ -20,6 +20,8 @@ import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
+import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 
 Color? _parseTaskColor(String? hex) {
   if (hex == null || hex.isEmpty) return null;
@@ -44,6 +46,10 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   final _sync = FirestoreSync();
   List<Project> _projects = [];
   List<Domain> _domains = [];
+  List<StrategicObjective> _objectives = [];
+  List<Activity> _activities = [];
+  List<Session> _recentSessions = [];
+  List<HabitHit> _recentHits = [];
   Map<String, List<Map<String, dynamic>>> _documentsByProject = {};
   bool _loading = true;
   late TabController _mainTabs;
@@ -96,6 +102,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchApiTokens(),
         _sync.fetchDomains(),
         _sync.fetchDocuments(),
+        _sync.fetchActivities(),
+        _sync.fetchRecentSessions(7),
+        _sync.fetchRecentHabitHits(7),
       ]);
       if (!mounted) return;
       final allDocs = results[4] as List<Map<String, dynamic>>;
@@ -115,6 +124,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       setState(() {
         _projects = loadedProjects;
         _domains = loadedDomains;
+        _objectives = (results[1] as List<StrategicObjective>)
+            .where((o) => o.status == 'active')
+            .toList();
+        _activities = results[5] as List<Activity>;
+        _recentSessions = results[6] as List<Session>;
+        _recentHits = results[7] as List<HabitHit>;
         _documentsByProject = byProject;
         _loading = false;
       });
@@ -283,6 +298,10 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       sync: _sync,
                       onRefresh: _load,
                       documentsByProject: _documentsByProject,
+                      objectives: _objectives,
+                      activities: _activities,
+                      recentSessions: _recentSessions,
+                      recentHits: _recentHits,
                     ),
                     _FocusView(
                       projects: _projects
@@ -5456,12 +5475,20 @@ class _SimpleProjectsView extends StatefulWidget {
   final FirestoreSync sync;
   final VoidCallback onRefresh;
   final Map<String, List<Map<String, dynamic>>> documentsByProject;
+  final List<StrategicObjective> objectives;
+  final List<Activity> activities;
+  final List<Session> recentSessions;
+  final List<HabitHit> recentHits;
   const _SimpleProjectsView({
     required this.projects,
     required this.domains,
     required this.sync,
     required this.onRefresh,
     required this.documentsByProject,
+    required this.objectives,
+    required this.activities,
+    required this.recentSessions,
+    required this.recentHits,
   });
   @override
   State<_SimpleProjectsView> createState() => _SimpleProjectsViewState();
@@ -5495,13 +5522,36 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final objectivesSection = _ObjectivesSection(
+      objectives: widget.objectives,
+      activities: widget.activities,
+      recentSessions: widget.recentSessions,
+      recentHits: widget.recentHits,
+      domains: widget.domains,
+      projects: widget.projects,
+      sync: widget.sync,
+      onRefresh: widget.onRefresh,
+      onOpenProject: (p) => Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) =>
+                  GanttScreen(project: p, domains: widget.domains))),
+    );
+
     if (widget.projects.isEmpty) {
-      return Center(
-        child: Text('Aucun projet Gantt',
-            style: TextStyle(
-                fontSize: 16,
-                color: cs.onSurface.withOpacity(.4),
-                fontWeight: FontWeight.w500)),
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          objectivesSection,
+          const SizedBox(height: 40),
+          Center(
+            child: Text('Aucun projet Gantt',
+                style: TextStyle(
+                    fontSize: 16,
+                    color: cs.onSurface.withOpacity(.4),
+                    fontWeight: FontWeight.w500)),
+          ),
+        ],
       );
     }
 
@@ -5529,6 +5579,9 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
       child: ListView(
         padding: const EdgeInsets.all(24),
         children: [
+          // Objectifs stratégiques (progression hebdo)
+          objectivesSection,
+
           // Filtre domaine
           if (widget.domains.isNotEmpty) ...[
             Wrap(
@@ -5620,6 +5673,289 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
               onRestore: (p) => _archiveProject(p, false),
               onTap: (p) => openGantt(p),
               onDelete: _deleteProject,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Objectifs stratégiques (section en tête de l'onglet Projets) ──────────────
+
+class _ObjectivesSection extends StatelessWidget {
+  static const _accent = Color(0xFF00897B);
+
+  final List<StrategicObjective> objectives;
+  final List<Activity> activities;
+  final List<Session> recentSessions;
+  final List<HabitHit> recentHits;
+  final List<Domain> domains;
+  final List<Project> projects;
+  final FirestoreSync sync;
+  final VoidCallback onRefresh;
+  final void Function(Project) onOpenProject;
+
+  const _ObjectivesSection({
+    required this.objectives,
+    required this.activities,
+    required this.recentSessions,
+    required this.recentHits,
+    required this.domains,
+    required this.projects,
+    required this.sync,
+    required this.onRefresh,
+    required this.onOpenProject,
+  });
+
+  Future<void> _edit(BuildContext context, StrategicObjective? o) async {
+    final saved = await showObjectiveEditSheet(
+      context,
+      existing: o,
+      domains: domains,
+      activities: activities,
+      projects: projects.where((p) => p.status != 'archived').toList(),
+      sync: sync,
+    );
+    if (saved != null) onRefresh();
+  }
+
+  Future<void> _setStatus(StrategicObjective o, String status) async {
+    o.status = status;
+    o.updatedAt = DateTime.now();
+    await sync.saveStrategicObjective(o);
+    onRefresh();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.flag, size: 16, color: _accent.withOpacity(.9)),
+            const SizedBox(width: 8),
+            Text('OBJECTIFS',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .8,
+                    color: cs.onSurface.withOpacity(.5))),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: () => _edit(context, null),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Objectif'),
+              style: TextButton.styleFrom(
+                foregroundColor: _accent,
+                textStyle: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        if (objectives.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              'Aucun objectif défini — un objectif relie un résultat visé à du temps hebdo et des routines.',
+              style: TextStyle(
+                  fontSize: 12.5, color: cs.onSurface.withOpacity(.45)),
+            ),
+          )
+        else ...[
+          const SizedBox(height: 4),
+          for (final o in objectives) ...[
+            _ObjectiveCard(
+              objective: o,
+              progress: computeObjectiveProgress(
+                  o, activities, recentSessions, recentHits, DateTime.now()),
+              projects: projects,
+              onEdit: () => _edit(context, o),
+              onDone: () => _setStatus(o, 'done'),
+              onArchive: () => _setStatus(o, 'archived'),
+              onOpenProject: onOpenProject,
+            ),
+            const SizedBox(height: 10),
+          ],
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _ObjectiveCard extends StatelessWidget {
+  static const _accent = Color(0xFF00897B);
+
+  final StrategicObjective objective;
+  final ObjectiveProgress progress;
+  final List<Project> projects;
+  final VoidCallback onEdit;
+  final VoidCallback onDone;
+  final VoidCallback onArchive;
+  final void Function(Project) onOpenProject;
+
+  const _ObjectiveCard({
+    required this.objective,
+    required this.progress,
+    required this.projects,
+    required this.onEdit,
+    required this.onDone,
+    required this.onArchive,
+    required this.onOpenProject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final o = objective;
+    final linkedProjects = projects
+        .where((p) => o.projectIds.contains(p.id) && p.status != 'archived')
+        .toList();
+    final horizon = o.horizonLabel ??
+        (progress.daysLeft != null ? '${progress.daysLeft} j restants' : null);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: cs.surfaceVariant.withOpacity(.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _accent.withOpacity(.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(o.title,
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w700)),
+                    if (o.kpiTarget != null && o.kpiTarget!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text('🎯 ${o.kpiTarget}',
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: cs.onSurface.withOpacity(.6))),
+                      ),
+                  ],
+                ),
+              ),
+              if (horizon != null)
+                Container(
+                  margin: const EdgeInsets.only(left: 8, top: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _accent.withOpacity(.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(horizon,
+                      style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: _accent)),
+                ),
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert,
+                    size: 18, color: cs.onSurface.withOpacity(.5)),
+                onSelected: (v) {
+                  if (v == 'edit') onEdit();
+                  if (v == 'done') onDone();
+                  if (v == 'archive') onArchive();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Éditer')),
+                  PopupMenuItem(value: 'done', child: Text('Marquer atteint 🎉')),
+                  PopupMenuItem(value: 'archive', child: Text('Archiver')),
+                ],
+              ),
+            ],
+          ),
+          if (progress.weekPercent != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: progress.weekPercent,
+                      minHeight: 6,
+                      backgroundColor: cs.onSurface.withOpacity(.08),
+                      valueColor:
+                          const AlwaysStoppedAnimation<Color>(_accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('${(progress.weekPercent! * 100).round()}% cette semaine',
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.55))),
+                const SizedBox(width: 8),
+              ],
+            ),
+            const SizedBox(height: 8),
+            for (final c in progress.items)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: c.onTrack
+                            ? const Color(0xFF43A047)
+                            : const Color(0xFFEF6C00),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(c.name,
+                          style: const TextStyle(fontSize: 12.5),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Text(
+                      c.type == 'time'
+                          ? '${c.done}/${c.target} min'
+                          : '${c.done}/${c.target} ×',
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withOpacity(.55)),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+          ],
+          if (linkedProjects.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: linkedProjects
+                  .map((p) => ActionChip(
+                        onPressed: () => onOpenProject(p),
+                        label: Text(p.title),
+                        labelStyle: const TextStyle(fontSize: 11.5),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ))
+                  .toList(),
             ),
           ],
         ],

@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
+import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -5889,6 +5890,9 @@ class _AppRootState extends State<AppRoot>
         // Compteur global de retards (version neutre du compteur de nuisibles
         // du jeu — mêmes données, présentation productivité).
         PestCounterCard(logic: logic),
+        // Objectifs stratégiques : progression hebdo des engagements.
+        ObjectivesCard(
+            logic: logic, sync: _sync, projects: _dashboardProjects),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
