@@ -21,29 +21,44 @@ const _kGcalApiUrl = 'https://gcalapi-dzos75b65q-uc.a.run.app';
 /// quasi nul. Toute erreur est avalée : jamais bloquant pour le démarrage.
 Future<void> gcalBackgroundSync(FirestoreSync sync) async {
   try {
-    final token = await sync.ensureWidgetToken();
-    final raw = token.rawToken;
-    final uid = sync.uid;
-    if (raw == null || raw.isEmpty || uid == null) return;
-    String ymd(DateTime d) =>
-        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
     final now = DateTime.now();
     for (final d in [now, now.add(const Duration(days: 1))]) {
-      await http
-          .post(
-            Uri.parse(_kGcalApiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $raw',
-            },
-            body: jsonEncode(
-                {'uid': uid, 'action': 'syncDay', 'date': ymd(d)}),
-          )
-          .timeout(const Duration(seconds: 25));
+      await gcalSyncDay(sync, _ymd(d));
     }
   } catch (_) {
     // Hors-ligne / pas connecté : rien à faire, on réessaiera à la prochaine
     // ouverture.
+  }
+}
+
+String _ymd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Sync bidirectionnelle d'UN jour (import miroirs + push du programme).
+/// Retourne la réponse serveur ({ok, created, updated, deleted, reason?…}) —
+/// null = réseau/token indisponible. Utilisée par la sync de fond et le
+/// bouton ⟳ agenda de l'onglet Aujourd'hui.
+Future<Map<String, dynamic>?> gcalSyncDay(
+    FirestoreSync sync, String date) async {
+  try {
+    final token = await sync.ensureWidgetToken();
+    final raw = token.rawToken;
+    final uid = sync.uid;
+    if (raw == null || raw.isEmpty || uid == null) return null;
+    final resp = await http
+        .post(
+          Uri.parse(_kGcalApiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $raw',
+          },
+          body: jsonEncode({'uid': uid, 'action': 'syncDay', 'date': date}),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (resp.statusCode != 200) return null;
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
   }
 }
 
