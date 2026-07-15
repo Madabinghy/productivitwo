@@ -374,6 +374,40 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Suppression DURE (fiche mal créée — mauvais email…) : le serveur retire
+  /// aussi l'invitation allowlist posée par ce coach et les jetons de
+  /// consentement. Les données du coaché, elles, ne sont jamais touchées.
+  Future<void> _deleteClient() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Supprimer la fiche « ${c['name'] ?? c['email']} » ?'),
+        content: const Text(
+            'La fiche, ses liens de consentement et l\'invitation partent. '
+            'Les données du coaché dans SON app ne sont pas touchées.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: const Text('Supprimer')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    try {
+      await coachCall({'action': 'deleteClient', 'id': c['id']});
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   Future<void> _sendMessage() async {
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
@@ -423,7 +457,17 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     final consent = (c['consent'] as String?) ?? 'pending';
 
     return Scaffold(
-      appBar: AppBar(title: Text((c['name'] as String?) ?? (c['email'] as String))),
+      appBar: AppBar(
+        title: Text((c['name'] as String?) ?? (c['email'] as String)),
+        actions: [
+          IconButton(
+            tooltip: 'Supprimer la fiche',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _busy ? null : _deleteClient,
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 48),
         children: [

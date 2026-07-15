@@ -109,7 +109,7 @@ async function buildDashboard(coacheeUid) {
 }
 // ── coachApi : POST + Authorization: Bearer <ID token Firebase du coach> ──────
 exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b;
+    var _a, _b, _c;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -200,6 +200,28 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
             res.status(200).json({ ok: true });
             return;
         }
+        if (action === "deleteClient") {
+            // Suppression DURE assumée (cas explicite : fiche mal créée — mauvais
+            // email). Collection racine server-only : aucun merge client ne peut
+            // la ressusciter. Nettoie aussi l'allowlist si C'EST CE COACH qui
+            // avait invité cet email, et les jetons de consentement du doc.
+            const doc = await ownDoc(id);
+            if (!doc) {
+                res.status(404).json({ error: "Fiche introuvable" });
+                return;
+            }
+            const allowRef = db_1.db.collection("allowlist").doc(doc.email);
+            const allowSnap = await allowRef.get();
+            if (allowSnap.exists && ((_b = allowSnap.data()) === null || _b === void 0 ? void 0 : _b.addedBy) === `coach:${coachUid}`) {
+                await allowRef.delete();
+            }
+            const toks = await db_1.db.collection("coaching_consents")
+                .where("coachingId", "==", doc.id).get();
+            await Promise.all(toks.docs.map((t) => t.ref.delete()));
+            await coachingRef(doc.id).delete();
+            res.status(200).json({ ok: true });
+            return;
+        }
         if (action === "invite") {
             // Ouvre l'accès app au coaché : allowlist → sendMagicLink passera.
             const doc = await ownDoc(id);
@@ -270,7 +292,7 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 res.status(400).json({ error: "text requis" });
                 return;
             }
-            const coachName = (_b = (await admin.auth().getUser(coachUid)).displayName) !== null && _b !== void 0 ? _b : "Ton coach";
+            const coachName = (_c = (await admin.auth().getUser(coachUid)).displayName) !== null && _c !== void 0 ? _c : "Ton coach";
             const date = targetDate && /^\d{4}-\d{2}-\d{2}$/.test(targetDate)
                 ? targetDate
                 : new Date().toISOString().slice(0, 10);

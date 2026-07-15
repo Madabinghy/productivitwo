@@ -102,10 +102,12 @@ class _TodayViewState extends State<TodayView> {
   Widget _dayGauge(ColorScheme cs, DateTime now) {
     final segments = _gaugeSegments(now);
     final nowMin = now.hour * 60 + now.minute;
+    // À GAUCHE (demande user) : rien d'épinglé de ce côté, la jauge descend
+    // plus haut et plus bas, et ne gêne ni le toggle ni la pile de FAB.
     return Positioned(
-      top: 64,
-      bottom: 170,
-      right: 3,
+      top: 12,
+      bottom: 140,
+      left: 3,
       width: 14,
       child: LayoutBuilder(builder: (gctx, box) {
         final h = box.maxHeight;
