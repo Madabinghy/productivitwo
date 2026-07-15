@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
+import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 
@@ -48,6 +49,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   late TabController _mainTabs;
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
+  // Console coaching : bouton 🎓 visible seulement si le compte est coach
+  // (sonde coachApi — 403 pour tout le monde d'autre).
+  bool _isCoach = false;
 
   @override
   void initState() {
@@ -55,6 +59,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     // Onglet « Arène » (ancienne gamification) supprimé avec la couche jeu.
     _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
     _load();
+    probeCoachAccess().then((ok) {
+      if (mounted && ok) setState(() => _isCoach = true);
+    });
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
     _projectsSub = _sync.streamProjects().listen((projects) {
@@ -179,6 +186,13 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               ),
             ),
             const HelpButton(),
+            if (_isCoach)
+              IconButton(
+                icon: const Icon(Icons.school_outlined, size: 18),
+                tooltip: 'Coaching — mes coachés',
+                onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CoachingScreen())),
+              ),
             IconButton(
               icon: Badge(
                 isLabelVisible: _assistantMessages.isNotEmpty,
