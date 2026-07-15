@@ -62,8 +62,13 @@ workflows:
 
       - name: Build IPA
         script: |
-          # Offset pour continuer la numérotation depuis Xcode Cloud (dernier build : 309)
-          BUILD_NUM=$((BUILD_NUMBER + 309))
+          # Numérotation : base = build number du pubspec (suit Xcode Cloud),
+          # + compteur Codemagic ($BUILD_NUMBER) pour rester strictement
+          # croissant entre builds Codemagic successifs. Remplace l'ancien
+          # offset figé (+309) devenu inférieur aux builds TestFlight réels.
+          PUBSPEC_BUILD=$(sed -n 's/^version: .*+//p' pubspec.yaml)
+          BUILD_NUM=$((PUBSPEC_BUILD + BUILD_NUMBER))
+          echo "Build number : $BUILD_NUM (pubspec $PUBSPEC_BUILD + compteur Codemagic $BUILD_NUMBER)"
           flutter build ipa --release \
             --no-tree-shake-icons \
             --build-number="$BUILD_NUM" \
