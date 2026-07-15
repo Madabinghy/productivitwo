@@ -45,6 +45,9 @@ class AppState {
   bool voitureMigratedOnce;
   // One-shot : passage du Gantt en retrait (hideProjectsTab=true par défaut).
   bool ganttHiddenV2Once;
+  // Contexte GTD « du moment » (@maison…) — préférence locale par device,
+  // sélectionnée dans Maintenant pour filtrer les actions réalisables ici.
+  String? nowContext;
 
   // Blocs journaliers
   List<DayBlock> blocks;
@@ -292,6 +295,7 @@ class AppState {
     this.linkedActivitiesMigratedOnce = false,
     this.voitureMigratedOnce = false,
     this.ganttHiddenV2Once = false,
+    this.nowContext,
     this.coursesRestoredOnce = false,
     this.coursesRestoredV2 = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
@@ -380,6 +384,7 @@ class AppState {
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
         'ganttHiddenV2Once': ganttHiddenV2Once,
+        'nowContext': nowContext,
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'todayItems': todayItems.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
@@ -529,6 +534,7 @@ class AppState {
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       ganttHiddenV2Once: (j['ganttHiddenV2Once'] as bool?) ?? false,
+      nowContext: j['nowContext'] as String?,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
       todayItems: _list(j['todayItems'], (e) => TodayItem.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),

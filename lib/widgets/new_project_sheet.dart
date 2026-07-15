@@ -1,16 +1,14 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:collection/collection.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/context_picker.dart';
 
-const _structureProjectUrl =
-    'https://structureproject-dzos75b65q-uc.a.run.app';
+// Création DÉTERMINISTE (pivot GTD) : plus d'appel LLM ici. L'endpoint
+// structureProject reste déployé côté functions mais n'a plus d'appelant.
 
 Future<void> showNewProjectSheet(
   BuildContext context, {
@@ -42,8 +40,9 @@ class _NewProjectSheet extends StatefulWidget {
 
 class _NewProjectSheetState extends State<_NewProjectSheet> {
   final _titleCtrl = TextEditingController();
-  final _ideasCtrl = TextEditingController();
+  final _firstActionCtrl = TextEditingController();
   final _titleFocus = FocusNode();
+  String? _actionContext; // contexte GTD de la première action
   String? _selectedDomainId;
   DateTime _endDate = DateTime.now().add(const Duration(days: 30));
   int? _presetDays = 30;
@@ -61,7 +60,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   @override
   void dispose() {
     _titleCtrl.dispose();
-    _ideasCtrl.dispose();
+    _firstActionCtrl.dispose();
     _titleFocus.dispose();
     super.dispose();
   }
@@ -88,80 +87,48 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
     });
   }
 
+  /// Création DÉTERMINISTE : nom + domaine + échéance + première action GTD
+  /// (optionnelle, avec son contexte). Pas de LLM — les actions suivantes sont
+  /// définies par l'utilisateur au fil de l'eau (fiche tâche).
   Future<void> _submit() async {
     final title = _titleCtrl.text.trim();
-    final ideas = _ideasCtrl.text.trim();
-    if (title.isEmpty || ideas.isEmpty) return;
-
+    if (title.isEmpty) return;
     setState(() {
       _loading = true;
       _error = null;
     });
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final idToken = await user?.getIdToken();
-      if (idToken == null) throw Exception('Non authentifié');
-
-      final domainName = widget.domains
-          .firstWhereOrNull((d) => d.id == _selectedDomainId)
-          ?.name;
-      final endDateStr =
-          '${_endDate.year}-${_endDate.month.toString().padLeft(2, '0')}-${_endDate.day.toString().padLeft(2, '0')}';
-
-      final resp = await http
-          .post(
-            Uri.parse(_structureProjectUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $idToken',
-            },
-            body: jsonEncode({
-              'title': title,
-              if (domainName != null) 'domainName': domainName,
-              if (_selectedDomainId != null) 'domainId': _selectedDomainId,
-              'endDate': endDateStr,
-              'ideas': ideas,
-            }),
-          )
-          .timeout(const Duration(seconds: 40));
-
-      final data = jsonDecode(resp.body) as Map<String, dynamic>;
-
-      if (resp.statusCode == 200) {
-        if (mounted) {
-          Navigator.pop(context);
-          widget.onCreated();
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                '✨ ${data['phasesCount']} phases · ${data['tasksCount']} tâches — ORION a structuré ton projet'),
-            duration: const Duration(seconds: 4),
-          ));
-        }
-      } else {
-        setState(() =>
-            _error = (data['error'] as String?) ?? 'Erreur inconnue');
-      }
-    } catch (e) {
-      setState(() => _error = _friendlyError(e));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  /// Création MANUELLE (sans IA) : un projet vide avec titre/domaine/dates.
-  /// L'utilisateur ajoute ensuite ses tâches à la main.
-  Future<void> _createManual() async {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) return;
-    setState(() => _loading = true);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final firstAction = _firstActionCtrl.text.trim();
+      final now = DateTime.now();
+
+      final phases = <ProjectPhase>[];
+      final tasks = <ProjectTask>[];
+      if (firstAction.isNotEmpty) {
+        phases.add(ProjectPhase(
+          id: 'phase-1',
+          label: 'Réalisation',
+          startDate: now,
+          endDate: _endDate,
+        ));
+        tasks.add(ProjectTask(
+          title: firstAction,
+          phaseId: 'phase-1',
+          startDate: now,
+          endDate: now.add(const Duration(days: 3)),
+          actions: [
+            TaskAction(title: firstAction, context: _actionContext),
+          ],
+        ));
+      }
+
       final project = Project(
         title: title,
         domainId: _selectedDomainId,
-        startDate: DateTime.now(),
+        startDate: now,
         endDate: _endDate,
+        phases: phases,
+        tasks: tasks,
         createdBy: uid,
         source: 'user',
         sourceType: 'manual',
@@ -171,8 +138,11 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
       if (!mounted) return;
       Navigator.pop(context);
       widget.onCreated();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Brouillon créé — ajoute tes tâches puis valide le plan.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(firstAction.isEmpty
+            ? 'Projet créé — ajoute tes actions au fil de l\'eau.'
+            : 'Projet créé — première action : « $firstAction »'),
+        duration: const Duration(seconds: 3),
       ));
     } catch (e) {
       setState(() {
@@ -319,8 +289,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final canSubmit =
-        _titleCtrl.text.trim().isNotEmpty && _ideasCtrl.text.trim().isNotEmpty;
+    final canSubmit = _titleCtrl.text.trim().isNotEmpty;
 
     return Padding(
       padding:
@@ -384,7 +353,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                                       fontWeight: FontWeight.w700)),
                               const SizedBox(height: 2),
                               Text(
-                                'Décris tes idées, ORION structure le plan.',
+                                'Nom, échéance, première action — tu complètes au fil de l\'eau.',
                                 style: TextStyle(
                                     fontSize: 12.5,
                                     color: cs.onSurface.withOpacity(.5)),
@@ -430,37 +399,24 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Idées libres
-                    _sectionLabel(context, 'Tes idées'),
+                    // Première action GTD (optionnelle)
+                    _sectionLabel(context, 'Première action'),
                     TextField(
-                      controller: _ideasCtrl,
-                      minLines: 5,
-                      maxLines: 10,
+                      controller: _firstActionCtrl,
                       textCapitalization: TextCapitalization.sentences,
                       decoration: _fieldDecoration(
                         context,
-                        label: 'Décris librement ton projet',
-                        hint:
-                            'Objectifs, contraintes, livrables, personnes '
-                            'impliquées, étapes importantes…\n\n'
-                            'ORION s\'occupe du reste.',
+                        label: 'La prochaine action concrète (optionnel)',
+                        hint: 'Ex : Appeler la mairie pour les horaires',
                       ),
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 10),
-
-                    // Info action stratégique
-                    Row(
-                      children: [
-                        Icon(Icons.bolt, size: 14, color: _accent),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Consomme 1 action stratégique ORION',
-                          style: TextStyle(
-                              fontSize: 11,
-                              color: cs.onSurface.withOpacity(.4)),
-                        ),
-                      ],
+                    // Contexte GTD de la première action
+                    ContextPicker(
+                      value: _actionContext,
+                      sync: widget.sync,
+                      onChanged: (c) => setState(() => _actionContext = c),
                     ),
 
                     // Erreur
@@ -490,7 +446,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                     ],
                     const SizedBox(height: 22),
 
-                    // Bouton IA
+                    // Bouton unique — création déterministe
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
@@ -501,11 +457,9 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                                 height: 16,
                                 child: CircularProgressIndicator(
                                     strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.auto_awesome, size: 18),
+                            : const Icon(Icons.flag, size: 18),
                         label: Text(
-                          _loading
-                              ? 'ORION structure le projet…'
-                              : 'Structurer avec ORION',
+                          _loading ? 'Création…' : 'Créer le projet',
                           style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600),
                         ),
@@ -516,25 +470,6 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    // Création manuelle (sans IA) — ne nécessite qu'un titre
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton.icon(
-                        onPressed: (_loading ||
-                                _titleCtrl.text.trim().isEmpty)
-                            ? null
-                            : _createManual,
-                        icon: const Icon(Icons.edit_outlined, size: 17),
-                        label:
-                            const Text('Créer un projet vide (sans IA)'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: cs.onSurface.withOpacity(.6),
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
                     ),

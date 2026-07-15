@@ -314,6 +314,8 @@ class _TodayViewState extends State<TodayView> {
                 logic: widget.logic,
                 onLaunch: _showTomorrow ? null : widget.onLaunch,
                 onOpenSource: widget.onOpenSource,
+                // Demain = préparation → regroupé par contexte GTD (batching).
+                groupByContext: _showTomorrow,
                 title:
                     _showTomorrow ? 'Programme de demain' : 'Programme du jour',
                 // Placeholder 21a/22c : sans domaine, le programme ne peut pas

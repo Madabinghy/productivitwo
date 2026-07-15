@@ -261,6 +261,37 @@ class AppLogic {
     plannedActivityIds = await s.fetchPlannedActivityIds(days: 30);
   }
 
+  /// Contexte GTD d'un bloc du programme : résolu à l'affichage via l'action
+  /// liée (sous-action de tâche Gantt via [currentProjects], ou action propre
+  /// d'une activité). Null si le bloc ne pointe vers aucune action contextualisée.
+  String? contextOfBlock(ScheduleBlock block) {
+    final actionId = block.actionId;
+    if (actionId == null) return null;
+    final taskId = block.taskId;
+    if (block.projectId != null && taskId != null) {
+      for (final p in currentProjects) {
+        if (p.id != block.projectId) continue;
+        for (final t in p.tasks) {
+          if (t.id != taskId) continue;
+          for (final a in t.actions) {
+            if (a.id == actionId) return a.context;
+          }
+        }
+      }
+      return null;
+    }
+    final activityId = block.activityId;
+    if (activityId != null) {
+      for (final act in state.activities) {
+        if (act.id != activityId) continue;
+        for (final a in act.ownActions) {
+          if (a.id == actionId) return a.context;
+        }
+      }
+    }
+    return null;
+  }
+
   // ── Clés du donjon ──────────────────────────────────────────────────────────
   // Une routine ayant atteint sa cible AUJOURD'HUI = 1 clé, utilisable UNE fois
   // pour franchir un nœud du donjon (puis « déjà utilisée »). Remis à zéro chaque
