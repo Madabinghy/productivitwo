@@ -1481,6 +1481,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL, tools_1.ADD_PREP_BLOCK_TOOL, tools_1.ADD_EVENT_TOOL,
                         tools_1.SAVE_DOMAIN_DEFINITION_TOOL,
+                        tools_1.LIST_OBJECTIVES_TOOL, tools_1.SAVE_OBJECTIVE_TOOL,
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
                         tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL, tools_1.MARK_ACTION_DONE_TOOL,
                         tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL,
@@ -1619,6 +1620,12 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "save_domain_definition") {
                     text = await (0, execute_1.executeSaveDomainDefinition)(uid, args);
+                }
+                else if (toolName === "list_objectives") {
+                    text = await (0, execute_1.executeListObjectives)(uid);
+                }
+                else if (toolName === "save_objective") {
+                    text = await (0, execute_1.executeSaveObjective)(uid, args);
                 }
                 else if (toolName === "list_session_templates") {
                     text = await (0, execute_1.executeListSessionTemplates)(uid);

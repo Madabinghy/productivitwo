@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -961,6 +962,66 @@ exports.SAVE_DOMAIN_DEFINITION_TOOL = {
                 description: "territoire défendu — créneaux où la proposition ne pose JAMAIS rien, quel que soit le retard ailleurs. Codes '{mon|tue|wed|thu|fri|sat|sun}_{morning|afternoon|evening|day}', ex: ['fri_evening','sat_evening','sun_day']",
             },
             finalize: { type: "boolean", description: "true en fin de session → domaine actif + definedAt" },
+        },
+    },
+};
+exports.LIST_OBJECTIVES_TOOL = {
+    name: "list_objectives",
+    description: "Liste les objectifs stratégiques ACTIFS avec leur progression hebdomadaire : pour chaque objectif, " +
+        "le résultat visé (kpiTarget), l'horizon, et l'avancement de chaque engagement opérationnel " +
+        "(minutes loggées vs engagement temps hebdo, hits vs cible de routine, onTrack). " +
+        "Appelle-le au début d'une session de définition/révision d'objectifs, ou quand l'utilisateur " +
+        "demande « où j'en suis sur mes objectifs ».",
+    inputSchema: { type: "object", properties: {} },
+};
+exports.SAVE_OBJECTIVE_TOOL = {
+    name: "save_objective",
+    description: "Crée ou met à jour un objectif stratégique (SMART) relié à ses moyens opérationnels. " +
+        "Appelé par la session de définition à CHAQUE élément validé par l'utilisateur (jamais en bloc à la fin). " +
+        "Un objectif complet exige : un titre SPÉCIFIQUE dans les mots de l'utilisateur, un kpiTarget MESURABLE " +
+        "(chiffre + unité, ex: '100 clients payants · MRR 500€'), une échéance (endDate ou horizonLabel), " +
+        "et AU MOINS un moyen opérationnel : timeCommitment (engagement de minutes/semaine sur une activité-temps " +
+        "existante — ids via get_user_context) et/ou routineCommitment (routine dont la cible vit déjà sur " +
+        "habitFreq/habitTarget) et/ou projectIds (projets Gantt). weeklyMin RÉALISTE : sous-engager au début, " +
+        "la révision est gratuite. Upsert : objectiveId si connu, sinon match par titre (insensible à la casse), " +
+        "sinon création. status:'archived' = suppression (soft) — jamais de suppression physique.",
+    inputSchema: {
+        type: "object",
+        required: ["title"],
+        properties: {
+            objectiveId: { type: "string", description: "id de l'objectif si connu (sinon match par titre / création)" },
+            title: { type: "string", description: "résultat visé, spécifique, dans les mots de l'utilisateur" },
+            description: { type: "string", description: "pourquoi cet objectif compte (motivation, contexte)" },
+            domainId: { type: "string", description: "domaine de vie rattaché (ids via get_user_context)" },
+            kpiTarget: { type: "string", description: "indicateur MESURABLE du succès, ex: '100 payants · MRR 500€'" },
+            horizonLabel: { type: "string", description: "horizon lisible, ex: '3 mois', 'Q2 2026'" },
+            startDate: { type: "string", description: "YYYY-MM-DD — début de l'objectif" },
+            endDate: { type: "string", description: "YYYY-MM-DD — échéance" },
+            status: { type: "string", enum: ["active", "done", "archived"], description: "archived = suppression soft ; done = objectif atteint" },
+            projectIds: { type: "array", items: { type: "string" }, description: "projets Gantt rattachés (arrayUnion — n'enlève jamais)" },
+            timeCommitments: {
+                type: "array",
+                description: "engagements de temps hebdo sur des activités type 'time' — REMPLACE la liste existante si fourni",
+                items: {
+                    type: "object",
+                    required: ["activityId", "weeklyMin"],
+                    properties: {
+                        activityId: { type: "string", description: "id d'une activité-temps existante" },
+                        weeklyMin: { type: "integer", description: "minutes par semaine (1..3000) — réaliste, révisable" },
+                    },
+                },
+            },
+            routineCommitments: {
+                type: "array",
+                description: "routines suivies par cet objectif (leur cible reste habitFreq/habitTarget) — REMPLACE la liste existante si fourni",
+                items: {
+                    type: "object",
+                    required: ["activityId"],
+                    properties: {
+                        activityId: { type: "string", description: "id d'une routine (activité type 'habit') existante" },
+                    },
+                },
+            },
         },
     },
 };

@@ -30,6 +30,13 @@ exports.MCP_PROMPTS = [
             { name: "domaine", description: "Nom du domaine (ex: Santé)", required: false },
         ],
     },
+    {
+        name: "definir-objectif",
+        description: "Session de définition d'un objectif SMART : résultat visé, indicateur mesurable, échéance, engagements temps/routines (10-15 min)",
+        arguments: [
+            { name: "objectif", description: "Le résultat visé, en une phrase (ex: 'Lancer mon app')", required: false },
+        ],
+    },
 ];
 // ── Prompt système de la session de définition (workflow define_domain) ──────
 // Utilisé par la Cloud Function defineDomainChat ET par le prompt MCP
@@ -133,6 +140,29 @@ function getPromptMessages(name, args) {
                         `   - Si oui, mets-le à jour avec save_document en passant son documentId (évite les doublons).\n` +
                         `   - Si non, propose-moi de le créer.\n` +
                         `7. Envoie-moi une notification push_notification : "Gantts alignés ✅"`,
+                },
+            },
+        ];
+    }
+    if (name === "definir-objectif") {
+        const goal = args.objectif ? `« ${args.objectif} »` : "à formuler ensemble";
+        return [
+            {
+                role: "user",
+                content: {
+                    type: "text",
+                    text: `Session de définition d'un objectif SMART : ${goal}.\n\n` +
+                        `Une vraie conversation, pas un formulaire. Messages courts (2-4 phrases), une question à la fois, tutoiement.\n\n` +
+                        `LES 5 TEMPS, DANS L'ORDRE (annonce la progression : « 3/5 · mesurable ») :\n` +
+                        `1. CONTEXTE — appelle get_user_context et list_objectives. Si un objectif similaire existe déjà, propose de le réviser plutôt que d'en créer un doublon.\n` +
+                        `2. SPÉCIFIQUE — creuse le résultat visé dans MES mots (« qu'est-ce qui aura changé, concrètement, quand ce sera atteint ? »). Quand tu tiens une formulation dans mes mots, propose-la entre guillemets et demande validation. Sauve via save_objective (title) dès validation.\n` +
+                        `3. MESURABLE + TEMPOREL — un indicateur chiffré du succès (kpiTarget : chiffre + unité) et une échéance (endDate ou horizonLabel). Refuse le vague (« être mieux ») : pousse vers du vérifiable. Sauve dès validation.\n` +
+                        `4. MOYENS — traduis l'objectif en engagements opérationnels : combien de minutes/semaine sur quelles activités-temps (timeCommitments), quelles routines suivre (routineCommitments), quels projets Gantt rattacher (projectIds). Propose d'abord les activités/routines EXISTANTES du contexte ; s'il en manque une, crée-la via create_activity ou create_routine. weeklyMin RÉALISTE : sous-engage au début, on révisera à la hausse. Sauve dès validation.\n` +
+                        `5. RÉCAP — relis l'objectif complet (résultat, KPI, échéance, moyens) en une phrase, et rappelle que la progression hebdo sera visible dans l'app et prise en compte dans la planification.\n\n` +
+                        `RÈGLES STRICTES :\n` +
+                        `- save_objective à CHAQUE élément validé (jamais en bloc à la fin) — « reprendre plus tard » doit être gratuit.\n` +
+                        `- Un objectif n'est complet qu'avec : titre spécifique, kpiTarget mesurable, échéance, ET au moins un moyen (engagement temps, routine ou projet).\n` +
+                        `- Chiffres réels uniquement ; tout vient de la conversation.`,
                 },
             },
         ];
