@@ -40,6 +40,11 @@ export interface StrategicObjectivePayload {
   horizonLabel?: string;
   startDate?: string;
   endDate?: string;
+  status?: string; // active | done | archived (archived = suppression soft)
+  // Moyens opérationnels : engagements de temps hebdo sur des activités `time`
+  // et routines suivies (leur cible vit sur habitFreq/habitTarget).
+  timeCommitments?: Array<{ activityId: string; weeklyMin: number }>;
+  routineCommitments?: Array<{ activityId: string }>;
 }
 
 export interface PushGanttBody {

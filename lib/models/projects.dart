@@ -258,6 +258,36 @@ class Project {
       );
 }
 
+/// Engagement de temps hebdo sur une activité `time` (moyen opérationnel d'un objectif).
+class ObjectiveTimeCommitment {
+  String activityId;
+  int weeklyMin; // minutes / semaine
+
+  ObjectiveTimeCommitment({required this.activityId, required this.weeklyMin});
+
+  Map<String, dynamic> toJson() => {
+        'activityId': activityId,
+        'weeklyMin': weeklyMin,
+      };
+
+  static ObjectiveTimeCommitment from(Map j) => ObjectiveTimeCommitment(
+        activityId: j['activityId'] ?? '',
+        weeklyMin: (j['weeklyMin'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// Engagement sur une routine — la cible vit déjà sur `habitFreq`/`habitTarget`.
+class ObjectiveRoutineCommitment {
+  String activityId;
+
+  ObjectiveRoutineCommitment({required this.activityId});
+
+  Map<String, dynamic> toJson() => {'activityId': activityId};
+
+  static ObjectiveRoutineCommitment from(Map j) =>
+      ObjectiveRoutineCommitment(activityId: j['activityId'] ?? '');
+}
+
 class StrategicObjective {
   String id;
   String title;
@@ -269,7 +299,10 @@ class StrategicObjective {
   DateTime? endDate;
   String status; // active | done | archived
   List<String> projectIds;
+  List<ObjectiveTimeCommitment> timeCommitments;
+  List<ObjectiveRoutineCommitment> routineCommitments;
   DateTime createdAt;
+  DateTime? updatedAt;
 
   StrategicObjective({
     String? id,
@@ -282,10 +315,15 @@ class StrategicObjective {
     this.endDate,
     this.status = 'active',
     List<String>? projectIds,
+    List<ObjectiveTimeCommitment>? timeCommitments,
+    List<ObjectiveRoutineCommitment>? routineCommitments,
     DateTime? createdAt,
+    this.updatedAt,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
-        projectIds = projectIds ?? [];
+        projectIds = projectIds ?? [],
+        timeCommitments = timeCommitments ?? [],
+        routineCommitments = routineCommitments ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -298,7 +336,11 @@ class StrategicObjective {
         'endDate': endDate?.toIso8601String(),
         'status': status,
         'projectIds': projectIds,
+        'timeCommitments': timeCommitments.map((c) => c.toJson()).toList(),
+        'routineCommitments':
+            routineCommitments.map((c) => c.toJson()).toList(),
         'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt?.toIso8601String(),
       };
 
   static StrategicObjective from(Map j) => StrategicObjective(
@@ -312,6 +354,15 @@ class StrategicObjective {
         endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
         projectIds: (j['projectIds'] as List?)?.cast<String>() ?? [],
+        timeCommitments: (j['timeCommitments'] as List?)
+                ?.map((c) => ObjectiveTimeCommitment.from(c as Map))
+                .toList() ??
+            [],
+        routineCommitments: (j['routineCommitments'] as List?)
+                ?.map((c) => ObjectiveRoutineCommitment.from(c as Map))
+                .toList() ??
+            [],
         createdAt: _parseDate(j['createdAt']),
+        updatedAt: _parseDateOrNull(j['updatedAt']),
       );
 }

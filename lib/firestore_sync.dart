@@ -2192,7 +2192,10 @@ class FirestoreSync {
 
   Future<void> deleteStrategicObjective(String id) async {
     if (uid == null) return;
-    await _col('strategic_objectives').doc(id).delete();
+    // Soft-delete : archive, jamais de delete() physique.
+    await _col('strategic_objectives')
+        .doc(id)
+        .set({'status': 'archived'}, SetOptions(merge: true));
   }
 
   // ── API tokens ───────────────────────────────────────────────────────────────

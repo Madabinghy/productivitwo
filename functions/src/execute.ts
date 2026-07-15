@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import { createHash } from "crypto";
 import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayload } from "./types";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
+import { summarizeObjectives } from "./objectives";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -167,6 +168,14 @@ function pickStrategicObjective(so: StrategicObjectivePayload): Record<string, u
     ? clampStr(so.description, 5000, "strategicObjective.description") : undefined;
   if (so.startDate !== undefined) assertDate(so.startDate, "strategicObjective.startDate");
   if (so.endDate   !== undefined) assertDate(so.endDate,   "strategicObjective.endDate");
+  const timeCommitments = so.timeCommitments !== undefined
+    ? pickTimeCommitments(so.timeCommitments) : undefined;
+  const routineCommitments = so.routineCommitments !== undefined
+    ? pickRoutineCommitments(so.routineCommitments) : undefined;
+  const status = so.status !== undefined ? String(so.status) : undefined;
+  if (status !== undefined && !["active", "done", "archived"].includes(status)) {
+    throw new Error(`strategicObjective.status invalide : ${status}`);
+  }
   return {
     title,
     ...(description       !== undefined ? { description }              : {}),
@@ -175,7 +184,38 @@ function pickStrategicObjective(so: StrategicObjectivePayload): Record<string, u
     ...(so.horizonLabel   !== undefined ? { horizonLabel: so.horizonLabel } : {}),
     ...(so.startDate      !== undefined ? { startDate: so.startDate }  : {}),
     ...(so.endDate        !== undefined ? { endDate: so.endDate }      : {}),
+    ...(status            !== undefined ? { status }                   : {}),
+    ...(timeCommitments   !== undefined ? { timeCommitments }          : {}),
+    ...(routineCommitments !== undefined ? { routineCommitments }      : {}),
   };
+}
+
+function pickTimeCommitments(
+  raw: Array<{ activityId: string; weeklyMin: number }>
+): Array<{ activityId: string; weeklyMin: number }> {
+  if (!Array.isArray(raw)) throw new Error("timeCommitments doit être un tableau");
+  if (raw.length > 20) throw new Error(`Trop de timeCommitments : ${raw.length} (max 20)`);
+  return raw.map((c, i) => {
+    const activityId = String(c?.activityId ?? "").trim();
+    if (!activityId) throw new Error(`timeCommitments[${i}].activityId manquant`);
+    const weeklyMin = Math.round(Number(c?.weeklyMin));
+    if (!Number.isFinite(weeklyMin) || weeklyMin < 1 || weeklyMin > 3000) {
+      throw new Error(`timeCommitments[${i}].weeklyMin invalide (attendu 1..3000)`);
+    }
+    return { activityId, weeklyMin };
+  });
+}
+
+function pickRoutineCommitments(
+  raw: Array<{ activityId: string }>
+): Array<{ activityId: string }> {
+  if (!Array.isArray(raw)) throw new Error("routineCommitments doit être un tableau");
+  if (raw.length > 20) throw new Error(`Trop de routineCommitments : ${raw.length} (max 20)`);
+  return raw.map((c, i) => {
+    const activityId = String(c?.activityId ?? "").trim();
+    if (!activityId) throw new Error(`routineCommitments[${i}].activityId manquant`);
+    return { activityId };
+  });
 }
 
 async function executePushAssistantMessage(
@@ -315,7 +355,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   const [domainsSnap, activitiesSnap,
          habitHitsSnap, sessionsSnap,
-         projectsSnap, scheduleSnap, inboxSnap] = await Promise.all([
+         projectsSnap, scheduleSnap, inboxSnap, objectivesSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     // Incréments de routines/habitudes sur 7 jours
@@ -332,6 +372,8 @@ async function executeGetUserContext(uid: string): Promise<string> {
     db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
     // Inbox (idées en attente)
     db.collection(`users/${uid}/captures`).where("status", "==", "pending").get(),
+    // Objectifs stratégiques (filtre actif en code : docs legacy sans champ status)
+    db.collection(`users/${uid}/strategic_objectives`).get(),
   ]);
 
   const domains = domainsSnap.docs
@@ -463,6 +505,21 @@ async function executeGetUserContext(uid: string): Promise<string> {
     return { id: v.id ?? d.id, text: v.text ?? v.content ?? "" };
   }).filter((v) => v.text);
 
+  // ── Objectifs stratégiques actifs + progression hebdo ─────────────────────
+  const objectivesRaw = objectivesSnap.docs
+    .map((d): Record<string, unknown> => ({ ...d.data(), id: d.data().id ?? d.id }))
+    .filter((v) => String(v.status ?? "active") === "active")
+    .slice(0, 10);
+  const objectives = objectivesRaw.length > 0
+    ? summarizeObjectives(
+        objectivesRaw,
+        activitiesSnap.docs.map((d) => d.data()),
+        sessionsSnap.docs.map((d) => d.data()),
+        habitHitsSnap.docs.map((d) => d.data()),
+        todayStr
+      )
+    : null;
+
   const coachingRules = {
     _instructions: [
       "AVANT de commencer tout travail long (programme, bilan, alignement Gantt) : annonce à l'utilisateur que ça prend ~1-2 min et que tu envoies une notification quand c'est prêt.",
@@ -473,6 +530,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
       "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
       "PRIORITÉ ABSOLUE : réponds d'abord à la demande de l'utilisateur. Ne fais jamais d'actions non demandées (schedule_day, push_assistant_message, modification Gantt…) avant d'avoir répondu. Les actions proactives viennent APRÈS la réponse, jamais à la place.",
+      "OBJECTIFS STRATÉGIQUES : le bloc objectives[] de ce contexte donne la progression hebdo des engagements (temps d'activités, routines) de chaque objectif actif. Quand tu planifies (schedule_day, plan_day) ou arbitres des priorités, favorise les activités/routines dont l'engagement est en retard (onTrack:false). Si un engagement semble irréaliste plusieurs semaines de suite, propose à l'utilisateur de le réviser via save_objective — ne le modifie jamais sans accord.",
       "ACTIONS D'ACTIVITÉ : une activité-temps peut avoir ses propres actions (champ ownActions de chaque activité dans ce contexte) — des sous-actions sans tâche/projet. Tu peux en créer via add_activity_action(activityId, title) puis les PROGRAMMER dans schedule_day en passant activityId + actionId (le chrono du bloc sera ciblé sur l'action). Quand tu programmes une action concrète qui correspond à une activité-temps existante, préfère la rattacher (action propre) plutôt qu'un bloc vague.",
       "LIER UNE ACTION À UNE ACTIVITÉ : quand tu vois une sous-action de tâche Gantt qui n'est PAS déjà liée à une activité (pas de linkedActivityId) et qu'une activité-temps du même domaine existe, PROPOSE à l'utilisateur de l'y associer via link_action_to_activity(projectId, taskId, actionId, activityId) — ainsi le temps passé dessus sera chronométré sur la bonne activité. Propose, n'impose pas ; ne touche pas à une action déjà liée.",
       "PROPOSITIONS DE FIN DE SESSION : après avoir terminé une action significative (programme créé, Gantt mis à jour, bilan fait, messages ORION programmés…), propose toujours 2 à 3 suites logiques sous forme de liste numérotée courte. " +
@@ -500,6 +558,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       today: todayStr,
       domains,
       activities,
+      objectives,
       activeProjects,
       todaySchedule,
       inboxItems: inboxItems.length > 0 ? inboxItems : null,
@@ -1015,8 +1074,10 @@ async function executeDeleteProject(
   await projectRef.delete();
 
   if (deleteObjective && objId) {
-    await db.collection(`users/${uid}/strategic_objectives`).doc(objId).delete();
-    return `✅ Projet "${title}" et son objectif stratégique supprimés.`;
+    // Soft-delete : l'objectif est archivé, jamais supprimé physiquement.
+    await db.collection(`users/${uid}/strategic_objectives`).doc(objId)
+      .set({ status: "archived", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return `✅ Projet "${title}" supprimé et son objectif stratégique archivé.`;
   }
 
   return `✅ Projet "${title}" supprimé.`;
@@ -1451,12 +1512,13 @@ async function executeGetOrionContext(uid: string): Promise<string> {
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const [domainsSnap, activitiesSnap,
-         habitHitsSnap, sessionsSnap, projectsSnap] = await Promise.all([
+         habitHitsSnap, sessionsSnap, projectsSnap, objectivesSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
     db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
     db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+    db.collection(`users/${uid}/strategic_objectives`).get(),
   ]);
 
   const domains = domainsSnap.docs
@@ -1502,7 +1564,22 @@ async function executeGetOrionContext(uid: string): Promise<string> {
     };
   });
 
-  return JSON.stringify({ today, domains, activities, habitStats, timeStats, projects }, null, 2);
+  // Objectifs stratégiques actifs + progression hebdo (résumé compact)
+  const objectivesRaw = objectivesSnap.docs
+    .map((d): Record<string, unknown> => ({ ...d.data(), id: d.data().id ?? d.id }))
+    .filter((v) => String(v.status ?? "active") === "active")
+    .slice(0, 10);
+  const objectives = objectivesRaw.length > 0
+    ? summarizeObjectives(
+        objectivesRaw,
+        activitiesSnap.docs.map((d) => d.data()),
+        sessionsSnap.docs.map((d) => d.data()),
+        habitHitsSnap.docs.map((d) => d.data()),
+        today
+      )
+    : null;
+
+  return JSON.stringify({ today, domains, activities, objectives, habitStats, timeStats, projects }, null, 2);
 }
 
 async function executeGetOrionQueue(uid: string): Promise<string> {
@@ -1681,6 +1758,7 @@ async function executePlanDay(
     `1. list_events() Google Calendar principal → identifier les créneaux occupés`,
     `2. Générer les blocs (${startLabel}-${endHour}h) : tâches Gantt + routines + activités-temps + pauses`,
     `   → Tâche la plus proche de la deadline en premier`,
+    `   → Arbitre selon objectives[] du contexte : les engagements en retard (onTrack:false) passent en premier`,
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
     `3. schedule_day("${date}", blocks[])`,
     `4. PRÉPARATION LA VEILLE : pour tout bloc matinal (avant 9h30) qui exige du`,
