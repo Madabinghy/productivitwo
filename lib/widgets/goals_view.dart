@@ -35,6 +35,8 @@ class _GoalsViewState extends State<GoalsView> {
   List<Project> _projects = [];
   final _sync = FirestoreSync();
   StreamSubscription<List<Project>>? _projectsSub;
+  // Objectifs actifs (id → titre) pour le chip 🎯 des cartes projet.
+  Map<String, String> _objectiveTitles = {};
   bool _showRealized = false;
   bool _showOutOfScope = false;
   bool _showArchived = false;
@@ -60,6 +62,43 @@ class _GoalsViewState extends State<GoalsView> {
     _projectsSub = _sync.streamProjects().listen((projects) {
       if (mounted) setState(() => _projects = projects);
     });
+    _sync.fetchStrategicObjectives().then((objs) {
+      if (!mounted) return;
+      setState(() => _objectiveTitles = {
+            for (final o in objs.where((o) => o.status == 'active'))
+              o.id: o.title,
+          });
+    });
+  }
+
+  /// Chip 🎯 quand le projet est rattaché à un objectif actif.
+  Widget? _objectiveChip(BuildContext context, Project p) {
+    final title = p.strategicObjectiveId == null
+        ? null
+        : _objectiveTitles[p.strategicObjectiveId];
+    if (title == null) return null;
+    const accent = Color(0xFF00897B);
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.flag, size: 11, color: accent),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: accent),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -368,6 +407,8 @@ class _GoalsViewState extends State<GoalsView> {
                       ],
                     ],
                   ),
+                  if (_objectiveChip(context, project) != null)
+                    _objectiveChip(context, project)!,
                 ],
               ),
             ),
@@ -518,6 +559,8 @@ class _GoalsViewState extends State<GoalsView> {
                     Text(project.title,
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w600)),
+                    if (_objectiveChip(context, project) != null)
+                      _objectiveChip(context, project)!,
                     Text(
                       '$doneTasks/$totalTasks tâches',
                       style: TextStyle(
