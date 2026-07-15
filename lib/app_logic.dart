@@ -80,14 +80,14 @@ class HabitTrendPoint {
 // ===============  LOGIQUE PRINCIPALE  ================
 // =====================================================
 
-/// Contexte de scoring d'une fenêtre : références p90 (temps / projets),
-/// minutes totales/jour, et quelles dimensions sont actives pour l'utilisateur.
+/// Contexte de scoring d'une fenêtre : référence p90 du temps, minutes
+/// totales/jour, et si la dimension temps est active pour l'utilisateur.
+/// (La dimension « projets » a été retirée du score : le nombre d'actions
+/// Gantt cochées est subjectif et pénalisait les journées deep work.)
 typedef ScoreCtx = ({
   double timeRef,
-  double ganttRef,
   Map<String, int> totalMinByDay,
   bool timeActive,
-  bool ganttActive,
 });
 
 /// Sous-score d'une dimension de productivité du jour (pour la triade visuelle).
@@ -245,12 +245,6 @@ class AppLogic {
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
 
-  // Score Gantt par jour (ymd -> 0.0..1.0) : progression moyenne des tâches travaillées ce jour
-  // Mis à jour depuis main.dart à chaque changement du stream projets
-  // Actions Gantt cochées par jour (yyyymmdd → nombre). Sert de signal "projets"
-  // dans le score de productivité, normalisé sur le standard propre de l'user (p90).
-  final Map<String, int> _ganttDonePerDay = {};
-
   // Snapshot des projets actifs — mis à jour par updateGanttCounts()
   List<Project> currentProjects = [];
 
@@ -302,27 +296,21 @@ class AppLogic {
 
   void updateGanttCounts(List<Project> projects) {
     currentProjects = projects;
-    _ganttDonePerDay.clear();
 
-    // Une seule passe sur les projets construit deux dérivés :
-    // • `_ganttDonePerDay` (projets ACTIFS seulement) → score de productivité,
-    //   normalisé ensuite sur le standard propre de l'user (p90).
-    // • `doneByDay` (tout projet NON-draft, statuts done/archivé inclus) →
-    //   source unique de l'OR des actions Gantt, alignée sur l'épée (1 action
-    //   cochée = 1 or/épée), quelle que soit la surface (web/mobile/focus).
+    // Une passe sur les projets construit `doneByDay` (tout projet NON-draft,
+    // statuts done/archivé inclus) → source unique de l'OR des actions Gantt,
+    // alignée sur l'épée (1 action cochée = 1 or/épée), quelle que soit la
+    // surface (web/mobile/focus). (Les actions Gantt ne comptent plus dans le
+    // score de productivité.)
     final doneByDay = <String, int>{};
     for (final project in projects) {
       if (project.status == 'draft') continue; // planification = hors économie
-      final activeForScore = project.status == 'active';
       for (final task in project.tasks) {
         if (task.status == 'skipped') continue;
         for (final action in task.actions) {
           if (action.done && action.doneAt != null) {
             final ymd = yyyymmdd(action.doneAt!);
             doneByDay[ymd] = (doneByDay[ymd] ?? 0) + 1;
-            if (activeForScore) {
-              _ganttDonePerDay[ymd] = (_ganttDonePerDay[ymd] ?? 0) + 1;
-            }
           }
         }
       }
@@ -2489,9 +2477,9 @@ class AppLogic {
     }).toList();
   }
 
-  /// Contexte de calcul du score de productivité sur une fenêtre : références
+  /// Contexte de calcul du score de productivité sur une fenêtre : référence
   /// "pleine journée" (p90 du standard propre de l'user) + minutes totales/jour
-  /// + dimensions actives. Calculé UNE fois par lot de scores (heatmap = 84 j).
+  /// + dimension temps active. Calculé UNE fois par lot de scores (heatmap = 84 j).
   ScoreCtx _scoreContext({int days = 84}) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -2509,23 +2497,12 @@ class AppLogic {
     final timeRef =
         percentileOf(totalMin.values.toList(), 0.90).clamp(60.0, double.infinity);
 
-    // Référence Gantt = p90 des actions cochées/jour dans la fenêtre, plancher 1.
-    final startYmd = yyyymmdd(start);
-    final ganttVals = <int>[];
-    _ganttDonePerDay.forEach((ymd, c) {
-      if (ymd.compareTo(startYmd) >= 0) ganttVals.add(c);
-    });
-    final ganttRef =
-        percentileOf(ganttVals, 0.90).clamp(1.0, double.infinity);
-
     // Une dimension n'entre dans le score que si l'user la pratique sur la
-    // fenêtre (sinon ne pas la pénaliser : un user sans projets ne plafonne pas).
+    // fenêtre (sinon ne pas la pénaliser).
     return (
       timeRef: timeRef,
-      ganttRef: ganttRef,
       totalMinByDay: totalMin,
       timeActive: totalMin.isNotEmpty,
-      ganttActive: ganttVals.isNotEmpty,
     );
   }
 
@@ -2537,11 +2514,9 @@ class AppLogic {
     final ctx = _scoreContext(days: days);
     final hasRoutines = state.activeActivities
         .any((a) => a.isHabit && effectiveHabitFreq(a) == HabitFreq.daily);
-    // Du contenu existe si l'user a des routines OU du temps loggué OU des
-    // actions Gantt cochées — sinon la heatmap reste grise.
-    final hasTracking = hasRoutines ||
-        ctx.totalMinByDay.isNotEmpty ||
-        _ganttDonePerDay.isNotEmpty;
+    // Du contenu existe si l'user a des routines OU du temps loggué —
+    // sinon la heatmap reste grise.
+    final hasTracking = hasRoutines || ctx.totalMinByDay.isNotEmpty;
 
     return List.generate(days, (i) {
       final d = today.subtract(Duration(days: days - 1 - i));
@@ -2569,7 +2544,7 @@ class AppLogic {
   static const double _scoreFloor = 0.20;
 
   /// Score de productivité du jour = moyenne GÉOMÉTRIQUE des dimensions actives
-  /// (routines / temps / projets), chacune normalisée sur le standard propre de
+  /// (routines / temps), chacune normalisée sur le standard propre de
   /// l'utilisateur (p90) puis planchée à [_scoreFloor]. La géométrique valorise
   /// l'équilibre : être bon partout bat cartonner sur une seule dimension, et
   /// négliger une dimension coûte plus qu'avec une moyenne simple.
@@ -2590,7 +2565,6 @@ class AppLogic {
     final scores = <double>[];
     if (routinesTotal > 0) scores.add(cap1(routinesDone / routinesTotal));
     if (ctx.timeActive) scores.add(cap1((ctx.totalMinByDay[ymd] ?? 0) / ctx.timeRef));
-    if (ctx.ganttActive) scores.add(cap1((_ganttDonePerDay[ymd] ?? 0) / ctx.ganttRef));
 
     if (scores.isEmpty) return 0.0;
     if (scores.length == 1) return scores.first; // une seule dimension : pas de plancher
@@ -2642,16 +2616,6 @@ class AppLogic {
         detail: _fmtHmShort(mins),
       ));
     }
-    if (ctx.ganttActive) {
-      final n = _ganttDonePerDay[ymd] ?? 0;
-      raw.add((
-        key: 'gantt',
-        label: 'Projets',
-        score: (n / ctx.ganttRef).clamp(0.0, 1.0),
-        detail: '$n action${n > 1 ? 's' : ''}',
-      ));
-    }
-
     if (raw.isEmpty) return const [];
     var minScore = 2.0;
     for (final r in raw) {

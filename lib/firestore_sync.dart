@@ -2288,6 +2288,25 @@ class FirestoreSync {
     }
   }
 
+  /// Visibilité du Gantt côté WEB (le mobile lit AppState.hideProjectsTab).
+  /// Champ `users/{uid}/data/meta.ganttVisible` — absent ⇒ false (masqué,
+  /// pivot GTD opérationnel). Écrit par le toggle Paramètres mobile.
+  Future<bool> fetchGanttVisible() async {
+    if (uid == null) return false;
+    try {
+      final snap = await _meta().get();
+      final data = snap.data() as Map<String, dynamic>?;
+      return (data?['ganttVisible'] as bool?) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setGanttVisible(bool visible) async {
+    if (uid == null) return;
+    await _meta().set({'ganttVisible': visible}, SetOptions(merge: true));
+  }
+
   /// Sessions des [days] derniers jours (web : progression des objectifs).
   Future<List<Session>> fetchRecentSessions(int days) async {
     if (uid == null) return [];

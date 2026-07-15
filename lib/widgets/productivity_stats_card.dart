@@ -43,7 +43,7 @@ class ProductivityStatsCard extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Équilibre : routines · temps · projets',
+                'Équilibre : routines · temps',
                 style: TextStyle(
                   fontSize: 11,
                   color: cs.onSurface.withOpacity(.4),

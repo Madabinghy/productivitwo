@@ -4993,14 +4993,16 @@ class _AppRootState extends State<AppRoot>
                 builder: (ctx, setLocal) => SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.visibility_off_outlined),
-                  title: const Text('Masquer l\'onglet Projets'),
+                  title: const Text('Masquer les projets Gantt'),
                   subtitle: const Text(
-                      'Le coach propose les micro-actions des projets au fil de l\'eau — le Gantt reste accessible sur le web'),
+                      'Le Gantt reste en coulisse (coach, ORION) : blocs du jour, chrono et fiches tâche continuent de fonctionner. S\'applique aussi à l\'app web.'),
                   value: logic.state.hideProjectsTab,
                   onChanged: (v) {
                     logic.state.hideProjectsTab = v;
                     if (v && _tab == _Tab.projets) _tab = _Tab.dashboard;
                     logic.onChange();
+                    // Pilote aussi la visibilité côté app web (flag Firestore).
+                    unawaited(_sync.setGanttVisible(!v));
                     setLocal(() {});
                     setState(() {});
                   },
@@ -5955,15 +5957,18 @@ class _AppRootState extends State<AppRoot>
                               null, startCal, endCal, days,
                               focus: 'habit'),
                         ),
-                        GaugeRing(
-                          label: 'Projets',
-                          labelIcon: Icons.account_tree_outlined,
-                          progress: ganttProg,
-                          centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
-                          color: _colorForProgress(ganttProg, context),
-                          size: 115,
-                          onTap: () => setState(() => _tab = _Tab.projets),
-                        ),
+                        // Jauge Projets gatée avec l'onglet : quand le Gantt
+                        // est en retrait, le user ne pilote plus par actions.
+                        if (!logic.state.hideProjectsTab)
+                          GaugeRing(
+                            label: 'Projets',
+                            labelIcon: Icons.account_tree_outlined,
+                            progress: ganttProg,
+                            centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
+                            color: _colorForProgress(ganttProg, context),
+                            size: 115,
+                            onTap: () => setState(() => _tab = _Tab.projets),
+                          ),
                       ],
                     );
                   }),

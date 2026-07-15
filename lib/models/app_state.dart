@@ -43,6 +43,8 @@ class AppState {
   bool coursesRestoredV2;
   bool linkedActivitiesMigratedOnce;
   bool voitureMigratedOnce;
+  // One-shot : passage du Gantt en retrait (hideProjectsTab=true par défaut).
+  bool ganttHiddenV2Once;
 
   // Blocs journaliers
   List<DayBlock> blocks;
@@ -191,7 +193,7 @@ class AppState {
     List<String>? focusTodayIds,
     this.sortTodayByDashboard = false,
     this.showTodayPriorities = false,
-    this.hideProjectsTab = false,
+    this.hideProjectsTab = true,
     this.onboardingDone = false,
     this.lastRolloverYmd,
     this.lastCarryYmd,
@@ -289,6 +291,7 @@ class AppState {
     this.coursesArchivedOnce = false,
     this.linkedActivitiesMigratedOnce = false,
     this.voitureMigratedOnce = false,
+    this.ganttHiddenV2Once = false,
     this.coursesRestoredOnce = false,
     this.coursesRestoredV2 = false,
   })  : snoozedUntil = snoozedUntil ?? <String, String>{},
@@ -376,6 +379,7 @@ class AppState {
         'coursesRestoredV2': coursesRestoredV2,
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
+        'ganttHiddenV2Once': ganttHiddenV2Once,
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'todayItems': todayItems.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
@@ -509,7 +513,7 @@ class AppState {
           (j['focusTodayIds'] as List?)?.cast<String>() ?? <String>[],
       sortTodayByDashboard: (j['sortTodayByDashboard'] as bool?) ?? false,
       showTodayPriorities: (j['showTodayPriorities'] as bool?) ?? false,
-      hideProjectsTab: (j['hideProjectsTab'] as bool?) ?? false,
+      hideProjectsTab: (j['hideProjectsTab'] as bool?) ?? true,
       onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       redemptions: _list(j['redemptions'], (e) => Redemption.from(e)),
@@ -524,6 +528,7 @@ class AppState {
       coursesRestoredV2: (j['coursesRestoredV2'] as bool?) ?? false,
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
+      ganttHiddenV2Once: (j['ganttHiddenV2Once'] as bool?) ?? false,
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
       todayItems: _list(j['todayItems'], (e) => TodayItem.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),

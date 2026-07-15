@@ -52,7 +52,12 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   List<HabitHit> _recentHits = [];
   Map<String, List<Map<String, dynamic>>> _documentsByProject = {};
   bool _loading = true;
+  // Gantt en retrait (pivot GTD) : l'onglet Projets et les cartes d'avancement
+  // ne s'affichent que si data/meta.ganttVisible=true (toggle Paramètres mobile).
+  bool _ganttVisible = false;
   late TabController _mainTabs;
+
+  int get _focusTabIndex => _ganttVisible ? 1 : 0;
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
@@ -64,7 +69,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void initState() {
     super.initState();
     // Onglet « Arène » (ancienne gamification) supprimé avec la couche jeu.
-    _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
+    // Gantt masqué par défaut → 3 onglets ; _load() recrée le controller si
+    // le flag Firestore dit que le Gantt est visible.
+    _mainTabs = TabController(length: 3, vsync: this, initialIndex: 0);
     _load();
     // Sonde coach accrochée à l'ÉTAT D'AUTH (pas one-shot) : au chargement,
     // Firebase restaure la session APRÈS initState — une sonde immédiate
@@ -105,8 +112,21 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _sync.fetchActivities(),
         _sync.fetchRecentSessions(7),
         _sync.fetchRecentHabitHits(7),
+        _sync.fetchGanttVisible(),
       ]);
       if (!mounted) return;
+      final ganttVisible = results[8] as bool;
+      if (ganttVisible != _ganttVisible) {
+        // Recrée le TabController (3 ⇄ 4 onglets), en gardant Focus visible.
+        final old = _mainTabs;
+        _mainTabs = TabController(
+          length: ganttVisible ? 4 : 3,
+          vsync: this,
+          initialIndex: ganttVisible ? 1 : 0,
+        );
+        _ganttVisible = ganttVisible;
+        old.dispose();
+      }
       final allDocs = results[4] as List<Map<String, dynamic>>;
       // Group documents by projectId (hors playbooks : ils ont leur vue dédiée
       // sous le Gantt — pas dans l'ancien viewer HTML « Voir le document »).
@@ -250,11 +270,11 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             children: [
               TabBar(
                 controller: _mainTabs,
-                tabs: const [
-                  Tab(text: 'Projets'),
-                  Tab(text: 'Focus'),
-                  Tab(text: 'Organisation'),
-                  Tab(text: 'ORION'),
+                tabs: [
+                  if (_ganttVisible) const Tab(text: 'Projets'),
+                  const Tab(text: 'Focus'),
+                  const Tab(text: 'Organisation'),
+                  const Tab(text: 'ORION'),
                 ],
               ),
               Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
@@ -292,17 +312,18 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       TabBarView(
                         controller: _mainTabs,
                         children: [
-                    _SimpleProjectsView(
-                      projects: _projects,
-                      domains: _domains,
-                      sync: _sync,
-                      onRefresh: _load,
-                      documentsByProject: _documentsByProject,
-                      objectives: _objectives,
-                      activities: _activities,
-                      recentSessions: _recentSessions,
-                      recentHits: _recentHits,
-                    ),
+                    if (_ganttVisible)
+                      _SimpleProjectsView(
+                        projects: _projects,
+                        domains: _domains,
+                        sync: _sync,
+                        onRefresh: _load,
+                        documentsByProject: _documentsByProject,
+                        objectives: _objectives,
+                        activities: _activities,
+                        recentSessions: _recentSessions,
+                        recentHits: _recentHits,
+                      ),
                     _FocusView(
                       projects: _projects
                           .where((p) => p.status != 'archived')
@@ -311,6 +332,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                       sync: _sync,
                       onRefresh: _load,
                       isDemo: widget.isDemo,
+                      ganttVisible: _ganttVisible,
                       onTaskColorChange: (project, task, color) async {
                         task.color = color;
                         await _sync.saveProjectTasks(project.id, project.tasks);
@@ -345,7 +367,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void _handleAssistantAction(AssistantActionData action) {
     switch (action.type) {
       case 'open_day_plan':
-        _mainTabs.animateTo(1);
+        _mainTabs.animateTo(_focusTabIndex);
       case 'open_project':
         final projectId = action.payload?['projectId'] as String?;
         if (projectId == null) return;
@@ -364,7 +386,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               builder: (_) => GanttScreen(project: p, targetTaskId: taskId, domains: _domains),
             ));
       case 'open_activity':
-        _mainTabs.animateTo(1);
+        _mainTabs.animateTo(_focusTabIndex);
     }
   }
 }
@@ -378,6 +400,8 @@ class _FocusView extends StatelessWidget {
   final VoidCallback? onRefresh;
   final Future<void> Function(Project, ProjectTask, String?) onTaskColorChange;
   final bool isDemo;
+  // Gantt en retrait : masque les cartes d'avancement projet et la vue 14 jours.
+  final bool ganttVisible;
   const _FocusView({
     required this.projects,
     required this.domains,
@@ -385,6 +409,7 @@ class _FocusView extends StatelessWidget {
     required this.onTaskColorChange,
     this.onRefresh,
     this.isDemo = false,
+    this.ganttVisible = false,
   });
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -966,6 +991,7 @@ class _FocusView extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (ganttVisible)
                 Tooltip(
                   message: 'Vue 14 jours',
                   child: InkWell(
@@ -1483,7 +1509,8 @@ class _FocusView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // ── Card Cette semaine ──────────────────────────────────────────
+          // ── Cartes Cette semaine + Avancement (Gantt visible uniquement) ─
+          if (ganttVisible) ...[
           _SidebarCard(
             title: 'Cette semaine',
             icon: Icons.calendar_view_week_outlined,
@@ -1584,6 +1611,7 @@ class _FocusView extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: 12),
+          ],
           // ── ORION Brief — Stratège quotidien ────────────────────────────
           const _OrionBriefSection(),
           const SizedBox(height: 12),
