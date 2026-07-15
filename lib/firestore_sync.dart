@@ -2288,6 +2288,35 @@ class FirestoreSync {
     }
   }
 
+  /// Sessions des [days] derniers jours (web : progression des objectifs).
+  Future<List<Session>> fetchRecentSessions(int days) async {
+    if (uid == null) return [];
+    try {
+      final since =
+          DateTime.now().subtract(Duration(days: days)).toIso8601String();
+      final snap = await _col('sessions')
+          .where('startAt', isGreaterThanOrEqualTo: since)
+          .get();
+      return snap.docs.map((d) => Session.from(d.data() as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Hits de routine des [days] derniers jours (web : progression objectifs).
+  Future<List<HabitHit>> fetchRecentHabitHits(int days) async {
+    if (uid == null) return [];
+    try {
+      final since = DateTime.now().subtract(Duration(days: days));
+      final snap = await _col('habitHits')
+          .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .get();
+      return snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> hardDelete(String collection, String docId) async {
     if (uid == null) return;
     await _col(collection).doc(docId).delete();

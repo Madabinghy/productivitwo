@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:uuid/uuid.dart';
@@ -92,6 +93,7 @@ class _GanttScreenState extends State<GanttScreen> {
   bool _forceLight = false;
   bool _docView = false; // false = Gantt, true = Document de pilotage
   StrategicObjective? _objective;
+  double? _objectiveWeekPct; // progression hebdo des engagements (0..1)
 
   @override
   void initState() {
@@ -112,7 +114,30 @@ class _GanttScreenState extends State<GanttScreen> {
       final matches = objs.where((o) => o.id == id).toList();
       if (matches.isNotEmpty && mounted) {
         setState(() => _objective = matches.first);
+        _loadObjectiveProgress(matches.first);
       }
+    } catch (_) {}
+  }
+
+  // Progression hebdo — fetch supplémentaire seulement si l'objectif porte
+  // des engagements (temps/routines).
+  Future<void> _loadObjectiveProgress(StrategicObjective o) async {
+    if (o.timeCommitments.isEmpty && o.routineCommitments.isEmpty) return;
+    try {
+      final results = await Future.wait([
+        _sync.fetchActivities(),
+        _sync.fetchRecentSessions(7),
+        _sync.fetchRecentHabitHits(7),
+      ]);
+      if (!mounted) return;
+      final progress = computeObjectiveProgress(
+        o,
+        results[0] as List<Activity>,
+        results[1] as List<Session>,
+        results[2] as List<HabitHit>,
+        DateTime.now(),
+      );
+      setState(() => _objectiveWeekPct = progress.weekPercent);
     } catch (_) {}
   }
 
@@ -458,6 +483,40 @@ class _GanttScreenState extends State<GanttScreen> {
                       const SizedBox(width: 6),
                       Text(
                         _objective!.kpiTarget!,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary.withOpacity(0.75)),
+                      ),
+                    ],
+                    if (_objective!.horizonLabel != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '· ${_objective!.horizonLabel!}',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary.withOpacity(0.55)),
+                      ),
+                    ],
+                    if (_objectiveWeekPct != null) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 60,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: _objectiveWeekPct,
+                            minHeight: 4,
+                            backgroundColor: cs.primary.withOpacity(.12),
+                            valueColor:
+                                AlwaysStoppedAnimation<Color>(cs.primary),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${(_objectiveWeekPct! * 100).round()}%',
                         style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
