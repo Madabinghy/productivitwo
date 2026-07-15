@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -30,9 +33,126 @@ class _TodayViewState extends State<TodayView> {
   // pour cocher vite.
   bool _timeline = true;
   bool _syncing = false;
+  // Scroll de la page — la jauge-minimap saute la timeline à l'heure tapée.
+  final _scroll = ScrollController();
+  Timer? _gaugeTick;
+
+  @override
+  void initState() {
+    super.initState();
+    // La jauge suit le chrono en cours + le trait « maintenant ».
+    _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted && !_showTomorrow) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _gaugeTick?.cancel();
+    _scroll.dispose();
+    super.dispose();
+  }
 
   String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  // ── Jauge verticale 00:00 → 23:59 (façon Waze) ────────────────────────────
+  //
+  // Le temps LOGGUÉ du jour (dont le chrono en cours), segmenté aux couleurs
+  // des DOMAINES — la composition de la journée en un coup d'œil, toute la
+  // journée visible sans scroller. Le vide reste neutre translucide (pas
+  // noir : le vide n'est pas une faute, et le noir disparaît en thème
+  // sombre). Tap/drag = minimap → la timeline saute à cette heure.
+
+  List<({int start, int end, Color color})> _gaugeSegments(DateTime now) {
+    final day = DateTime(now.year, now.month, now.day);
+    final dayEnd = day.add(const Duration(days: 1));
+    final out = <({int start, int end, Color color})>[];
+    for (final s in widget.logic.state.sessions) {
+      final end = s.endAt ?? now;
+      if (!end.isAfter(day) || !s.startAt.isBefore(dayEnd)) continue;
+      Activity? a;
+      for (final x in widget.logic.state.activities) {
+        if (x.id == s.activityId) { a = x; break; }
+      }
+      if (a == null || a.deleted) continue;
+      final st = s.startAt.isBefore(day) ? 0 : s.startAt.difference(day).inMinutes;
+      final en = end.isAfter(dayEnd) ? 1440 : end.difference(day).inMinutes;
+      if (en - st < 1) continue;
+      out.add((
+        start: st,
+        end: en,
+        color: domainColor(a.domainId, widget.logic.state.activeDomains) ??
+            Colors.teal,
+      ));
+    }
+    return out;
+  }
+
+  /// Saut minimap : minute du jour → offset de scroll de la timeline
+  /// (1 h = 100 px dans DayTimelineView, ~120 px d'en-tête avant 00:00).
+  void _jumpTo(int minute) {
+    if (!_timeline || !_scroll.hasClients) return;
+    final target = (120.0 + minute / 60.0 * 100.0 - 220.0)
+        .clamp(0.0, _scroll.position.maxScrollExtent);
+    _scroll.animateTo(target,
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+  }
+
+  Widget _dayGauge(ColorScheme cs, DateTime now) {
+    final segments = _gaugeSegments(now);
+    final nowMin = now.hour * 60 + now.minute;
+    return Positioned(
+      top: 64,
+      bottom: 170,
+      right: 3,
+      width: 14,
+      child: LayoutBuilder(builder: (gctx, box) {
+        final h = box.maxHeight;
+        double y(int min) => min / 1440.0 * h;
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (d) =>
+              _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
+          onVerticalDragUpdate: (d) =>
+              _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
+          child: Stack(children: [
+            // Fond neutre — le « pas mesuré ».
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cs.onSurface.withOpacity(.08),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+              ),
+            ),
+            // Le réel loggué, couleur du domaine.
+            for (final s in segments)
+              Positioned(
+                top: y(s.start),
+                left: 2,
+                right: 2,
+                height: (y(s.end) - y(s.start)).clamp(2.0, h),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: s.color.withOpacity(.85),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            // Trait « maintenant ».
+            Positioned(
+              top: y(nowMin) - 1,
+              left: 0,
+              right: 0,
+              height: 2,
+              child: Container(color: const Color(0xFFE53935)),
+            ),
+          ]),
+        );
+      }),
+    );
+  }
 
   /// Sync agenda À LA DEMANDE (aujourd'hui + demain) : un RDV modifié côté
   /// Google est repris immédiatement dans les miroirs — utile juste avant de
@@ -91,6 +211,7 @@ class _TodayViewState extends State<TodayView> {
       child: Stack(
         children: [
           SingleChildScrollView(
+        controller: _scroll,
         // Padding bas généreux : dégage la pile de boutons du FAB (~156px) pour
         // que les derniers items du programme restent cochables.
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
@@ -188,6 +309,9 @@ class _TodayViewState extends State<TodayView> {
           ],
         ),
           ),
+          // Jauge 00:00 → 23:59 (façon Waze) : le loggué du jour aux couleurs
+          // des domaines, minimap tappable — uniquement sur Aujourd'hui.
+          if (!_showTomorrow) _dayGauge(cs, now),
           // Toggle liste ⇄ agenda ÉPINGLÉ en haut à droite : accessible sans
           // remonter les 24 h de timeline (demande user).
           Positioned(

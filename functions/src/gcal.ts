@@ -390,9 +390,11 @@ export const gcalApi = onRequest(
     if (!authHeader.startsWith("Bearer ")) {
       res.status(401).json({ error: "Missing Authorization header" }); return;
     }
-    const { uid, action, date, value, calendarId, calendarSummary } = req.body as {
+    const { uid, action, date, value, calendarId, calendarSummary,
+      eventId, startTime, durationMin, title } = req.body as {
       uid?: string; action?: string; date?: string; value?: boolean;
       calendarId?: string; calendarSummary?: string;
+      eventId?: string; startTime?: string; durationMin?: number; title?: string;
     };
     if (!uid || !action) { res.status(400).json({ error: "uid et action requis" }); return; }
     const valid = await validateToken(uid, authHeader.slice(7).trim());
@@ -518,6 +520,52 @@ export const gcalApi = onRequest(
           updatedFromCal: imp.updated,
           removedFromCal: imp.removed,
         });
+        return;
+      }
+      // ── WYSIWYG bidirectionnel (test) : éditer/supprimer un ÉVÉNEMENT réel
+      // de l'agenda depuis l'app — le miroir modifié dans la timeline pousse
+      // sa nouvelle heure/durée/titre sur le vrai rendez-vous.
+      if (action === "updateEvent") {
+        if (!eventId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+            !startTime || !/^\d{2}:\d{2}$/.test(startTime) ||
+            typeof durationMin !== "number" || durationMin < 1) {
+          res.status(400).json({ ok: false, reason: "bad_args" }); return;
+        }
+        const token = await accessTokenFor(uid);
+        if (!token) { res.status(200).json({ ok: false, reason: "not_connected" }); return; }
+        const base = calBase(await calendarIdFor(uid));
+        const tzOff = (await userTzOffset(uid)) ?? parisOffsetMin(date);
+        const startMin = hmToMin(startTime);
+        const start = dateTimeOf(date, startMin);
+        const end = dateTimeOf(date, startMin + Math.round(durationMin));
+        const patch: Json = {
+          start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
+          end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
+        };
+        if (typeof title === "string" && title.trim() !== "") {
+          patch.summary = title.trim();
+        }
+        const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!r.ok) console.error("gcal updateEvent failed:", r.status, await r.text());
+        res.status(200).json({ ok: r.ok, status: r.status });
+        return;
+      }
+      if (action === "deleteEvent") {
+        if (!eventId) { res.status(400).json({ ok: false, reason: "bad_args" }); return; }
+        const token = await accessTokenFor(uid);
+        if (!token) { res.status(200).json({ ok: false, reason: "not_connected" }); return; }
+        const base = calBase(await calendarIdFor(uid));
+        const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const ok = r.ok || r.status === 404 || r.status === 410;
+        if (!ok) console.error("gcal deleteEvent failed:", r.status, await r.text());
+        res.status(200).json({ ok, status: r.status });
         return;
       }
       if (action === "disconnect") {

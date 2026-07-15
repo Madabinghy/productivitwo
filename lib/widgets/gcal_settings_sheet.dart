@@ -62,6 +62,58 @@ Future<Map<String, dynamic>?> gcalSyncDay(
   }
 }
 
+/// WYSIWYG bidirectionnel (test) : pousse la nouvelle heure/durée/titre d'un
+/// MIROIR modifié dans l'app vers le vrai événement Google. Best-effort —
+/// false = l'agenda n'a pas suivi (le user est prévenu par l'appelant).
+Future<bool> gcalUpdateEvent(
+  FirestoreSync sync, {
+  required String eventId,
+  required String date,
+  required String startTime,
+  required int durationMin,
+  String? title,
+}) async {
+  final r = await _gcalCall(sync, {
+    'action': 'updateEvent',
+    'eventId': eventId,
+    'date': date,
+    'startTime': startTime,
+    'durationMin': durationMin,
+    if (title != null) 'title': title,
+  });
+  return r?['ok'] == true;
+}
+
+/// Supprime le VRAI événement Google (choix explicite du user au swipe).
+Future<bool> gcalDeleteEvent(FirestoreSync sync, String eventId) async {
+  final r = await _gcalCall(sync, {'action': 'deleteEvent', 'eventId': eventId});
+  return r?['ok'] == true;
+}
+
+Future<Map<String, dynamic>?> _gcalCall(
+    FirestoreSync sync, Map<String, dynamic> body) async {
+  try {
+    final token = await sync.ensureWidgetToken();
+    final raw = token.rawToken;
+    final uid = sync.uid;
+    if (raw == null || raw.isEmpty || uid == null) return null;
+    final resp = await http
+        .post(
+          Uri.parse(_kGcalApiUrl),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $raw',
+          },
+          body: jsonEncode({'uid': uid, ...body}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (resp.statusCode != 200) return null;
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  } catch (_) {
+    return null;
+  }
+}
+
 Future<void> showGcalSettingsSheet(BuildContext context,
     {required FirestoreSync sync}) {
   return showModalBottomSheet<void>(

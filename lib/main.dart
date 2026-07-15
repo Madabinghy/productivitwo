@@ -62,6 +62,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
+import 'package:productivitwo_v1/widgets/session_template_editor.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
@@ -7335,6 +7336,139 @@ class _AppRootState extends State<AppRoot>
                     ],
                   ),
                 ),
+
+                // ── Déroulés (séances réutilisables) — activité-temps ────────
+                // ▶ = chrono ici + player d'étapes dans Maintenant. Le sheet
+                // est sans état : après édition on le rouvre à jour.
+                if (!a.isHabit)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                    child: FutureBuilder<List<SessionTemplate>>(
+                      future: FirestoreSync()
+                          .fetchSessionTemplates(activityId: a.id),
+                      builder: (fctx, snap) {
+                        final tpls = snap.data ?? const <SessionTemplate>[];
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Text('DÉROULÉS',
+                                  style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 2,
+                                      color: cs.onSurface.withOpacity(.4))),
+                              const Spacer(),
+                              TextButton.icon(
+                                style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact),
+                                icon: const Icon(Icons.add_rounded, size: 16),
+                                label: const Text('Nouveau',
+                                    style: TextStyle(fontSize: 12.5)),
+                                onPressed: () async {
+                                  Navigator.pop(ctx, false);
+                                  await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              SessionTemplateEditor(
+                                                  logic: logic,
+                                                  activity: a)));
+                                  if (mounted) _openActivitySheet(a);
+                                },
+                              ),
+                            ]),
+                            if (snap.connectionState ==
+                                    ConnectionState.done &&
+                                tpls.isEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Text(
+                                  'Une séance réutilisable : les étapes '
+                                  's\'égrènent dans Maintenant, le temps se '
+                                  'trace ici.',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: cs.onSurface.withOpacity(.45)),
+                                ),
+                              ),
+                            for (final t in tpls)
+                              InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () async {
+                                  Navigator.pop(ctx, false);
+                                  await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                          builder: (_) =>
+                                              SessionTemplateEditor(
+                                                  logic: logic,
+                                                  activity: a,
+                                                  existing: t)));
+                                  if (mounted) _openActivitySheet(a);
+                                },
+                                onLongPress: () async {
+                                  await FirestoreSync()
+                                      .archiveSessionTemplate(t.id);
+                                  if (ctx.mounted) {
+                                    Navigator.pop(ctx, false);
+                                  }
+                                  if (mounted) _openActivitySheet(a);
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: accentColor.withOpacity(.3)),
+                                  ),
+                                  child: Row(children: [
+                                    Icon(Icons.playlist_play_rounded,
+                                        size: 20, color: accentColor),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(t.title,
+                                              style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight:
+                                                      FontWeight.w700)),
+                                          Text('${t.steps.length} étape(s)',
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: cs.onSurface
+                                                      .withOpacity(.5))),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                          Icons.play_circle_fill_rounded,
+                                          size: 30,
+                                          color: accentColor),
+                                      tooltip: 'Lancer la séance',
+                                      onPressed: () {
+                                        logic.startTemplate(t);
+                                        Navigator.pop(ctx, true);
+                                        setState(() {
+                                          _focusProject = null;
+                                          _focusTask = null;
+                                          _tab = _Tab.maintenant;
+                                        });
+                                      },
+                                    ),
+                                  ]),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
 
                 // ── Stats hero ───────────────────────────────────────────────
                 Padding(
