@@ -60,6 +60,7 @@ import 'package:productivitwo_v1/widgets/inbox_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_review_sheet.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
+import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
@@ -2796,6 +2797,12 @@ class _AppRootState extends State<AppRoot>
             });
             return;
           }
+          // Routine NON liée : ne JAMAIS démarrer un chrono sur la routine
+          // elle-même — ça fabrique une fausse activité-temps (« Repas
+          // équilibré » à côté de « Manger »). Le temps a UN propriétaire :
+          // on demande une fois où le tracer, la réponse est mémorisée.
+          await _askRoutineTimeOwner(act);
+          return;
         }
         // Bloc ciblant une action propre de l'activité → chrono ciblé (actionId).
         logic.start(block.activityId!, actionId: block.actionId);
@@ -3949,6 +3956,89 @@ class _AppRootState extends State<AppRoot>
     logic.start(target.id);
     _startCountdown(minutes, target.name, routineId: r.id);
     setState(() => _tab = _Tab.maintenant);
+  }
+
+  /// ▶ sur une routine sans activité liée : « Où tracer le temps ? » — les
+  /// activités-temps du domaine d'abord, choix MÉMORISÉ (linkedActivityId).
+  /// « Juste cocher » = pas de chrono (compteur − / + si routine comptée) ;
+  /// le sheet reviendra au prochain ▶, laissant la porte ouverte au lien.
+  Future<void> _askRoutineTimeOwner(Activity r) async {
+    final acts = logic.state.activities
+        .where((a) =>
+            !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final sameDomain = acts.where((a) => a.domainId == r.domainId).toList();
+    final list = sameDomain.isNotEmpty ? sameDomain : acts;
+
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+                child: Text('Où tracer le temps de « ${r.name} » ?',
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w800)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  'Le chrono tournera sur l\'activité choisie, la routine se '
+                  'cochera comme d\'habitude — choix mémorisé.',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
+                ),
+              ),
+              for (final a in list)
+                ListTile(
+                  leading: const Icon(Icons.av_timer_rounded),
+                  title: Text(a.name),
+                  onTap: () => Navigator.pop(ctx, a.id),
+                ),
+              ListTile(
+                leading: const Icon(Icons.check_rounded),
+                title: const Text('Juste cocher — pas de chrono'),
+                onTap: () => Navigator.pop(ctx, '__check__'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+
+    if (picked == '__check__') {
+      final day = DateTime.now();
+      final tgt = logic.activeHabitTarget(r);
+      if (tgt > 1) {
+        await showHabitCountSheet(context, logic: logic, activity: r);
+        return;
+      }
+      if (tgt > 0 && logic.habitValueOn(r.id, day) >= tgt) return;
+      logic.incHabit(r.id, 1, DateTime(day.year, day.month, day.day));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('✅ Routine validée : ${r.name}'),
+        duration: const Duration(seconds: 2),
+      ));
+      return;
+    }
+
+    // Lien posé UNE fois — les prochains ▶ iront directement sur l'activité.
+    r.linkedActivityId = picked;
+    logic.onChange();
+    logic.start(picked);
+    setState(() {
+      _focusProject = null;
+      _focusTask = null;
+      _tab = _Tab.maintenant;
+    });
   }
 
   /// Menu au lancement (▶) d'un bloc routine minuté dans le programme du jour :
