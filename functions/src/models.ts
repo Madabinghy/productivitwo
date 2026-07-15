@@ -20,7 +20,8 @@ type TaskType =
   | "analyze_week"
   | "coaching"
   | "onboarding"
-  | "inbox_routing";
+  | "inbox_routing"
+  | "restructure_project";
 
 const MODEL_ROUTING: Record<TaskType, string> = {
   orion_cycle:       MODELS.HAIKU, // aligné sur le modèle réellement utilisé (orion.ts)
@@ -39,6 +40,7 @@ const MODEL_ROUTING: Record<TaskType, string> = {
   coaching:          MODELS.SONNET,
   onboarding:        MODELS.SONNET,
   inbox_routing:     MODELS.SONNET, // routage/agrégation idées→projets (jugement sémantique)
+  restructure_project: MODELS.HAIKU, // Direction C.3 : diff de restructuration JSON, tâche automatique
 };
 
 export function getModel(taskType: TaskType): string {

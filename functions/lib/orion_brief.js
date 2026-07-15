@@ -9,6 +9,7 @@ const sdk_1 = require("@anthropic-ai/sdk");
 const db_1 = require("./db");
 const models_1 = require("./models");
 const orion_inbox_1 = require("./orion_inbox");
+const orion_restructure_1 = require("./orion_restructure");
 function todayInParis(d = new Date()) {
     return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
 }
@@ -135,6 +136,14 @@ async function getOrCreateBrief(uid) {
     }
     catch (e) {
         console.error("inbox sweep failed (non bloquant)", e);
+    }
+    // Direction C.3 : les projets qui dévient reçoivent une proposition de
+    // restructuration « À valider » (gaté 1×/j côté module, best-effort).
+    try {
+        await (0, orion_restructure_1.evaluateProjectRestructures)(uid);
+    }
+    catch (e) {
+        console.error("restructure sweep failed (non bloquant)", e);
     }
     const existing = await ref.get();
     if (existing.exists) {

@@ -4,6 +4,7 @@ import * as admin from "firebase-admin";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { runOrionCycle, getOrionRunCount, incrementOrionRunCount, saveOrionConfig, writeCycleLog } from "./orion";
 import { processInboxToProjects } from "./orion_inbox";
+import { evaluateProjectRestructures } from "./orion_restructure";
 import { getOrCreateBrief, setFocus, getFocus, setBriefFeedback, listBriefs } from "./orion_brief";
 import { getModel, logTokenUsage } from "./models";
 import Anthropic from "@anthropic-ai/sdk";
@@ -427,6 +428,9 @@ export const proposeDayPlan = onRequest(
       // dans le programme cible), la structure part en « À valider » — la
       // planification prend donc les idées en compte sans dépendre du brief.
       await processInboxToProjects(uid).catch(() => null);
+      // Direction C.3 : projets qui dévient → proposition de restructuration
+      // (gaté 1×/j côté module, best-effort).
+      await evaluateProjectRestructures(uid).catch(() => null);
 
       // Agenda connecté : rafraîchir les MIROIRS de la date cible d'abord —
       // la proposition planifie AUTOUR des rendez-vous réels (best-effort).

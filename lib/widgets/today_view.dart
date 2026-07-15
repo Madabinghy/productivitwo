@@ -154,31 +154,38 @@ class _TodayViewState extends State<TodayView> {
     final ySegments =
         _gaugeSegments(today.subtract(const Duration(days: 1)), now);
     final nowMin = now.hour * 60 + now.minute;
-    // À GAUCHE (demande user) : rien d'épinglé de ce côté, la jauge descend
-    // plus haut et plus bas, et ne gêne ni le toggle ni la pile de FAB.
+    // À GAUCHE, CENTRÉES verticalement (demande user) : les jauges occupent
+    // la moitié de la hauteur, au milieu de la page — présentes d'un coup
+    // d'œil sans dominer le bord.
     return Positioned(
-      top: 12,
-      bottom: 140,
+      top: 0,
+      bottom: 0,
       left: 3,
       width: 23,
-      child: LayoutBuilder(builder: (gctx, box) {
-        final h = box.maxHeight;
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (d) =>
-              _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
-          onVerticalDragUpdate: (d) =>
-              _jumpTo((d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _gaugeStrip(cs, ySegments, h, thin: true),
-              const SizedBox(width: 2),
-              _gaugeStrip(cs, segments, h, nowMin: nowMin),
-            ],
-          ),
-        );
-      }),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          heightFactor: .5,
+          child: LayoutBuilder(builder: (gctx, box) {
+            final h = box.maxHeight;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: (d) => _jumpTo(
+                  (d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
+              onVerticalDragUpdate: (d) => _jumpTo(
+                  (d.localPosition.dy / h * 1440).round().clamp(0, 1439)),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _gaugeStrip(cs, ySegments, h, thin: true),
+                  const SizedBox(width: 2),
+                  _gaugeStrip(cs, segments, h, nowMin: nowMin),
+                ],
+              ),
+            );
+          }),
+        ),
+      ),
     );
   }
 

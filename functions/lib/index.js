@@ -18,6 +18,7 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const orion_1 = require("./orion");
 const orion_inbox_1 = require("./orion_inbox");
+const orion_restructure_1 = require("./orion_restructure");
 const orion_brief_1 = require("./orion_brief");
 const models_1 = require("./models");
 const sdk_1 = require("@anthropic-ai/sdk");
@@ -389,6 +390,9 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // dans le programme cible), la structure part en « À valider » — la
         // planification prend donc les idées en compte sans dépendre du brief.
         await (0, orion_inbox_1.processInboxToProjects)(uid).catch(() => null);
+        // Direction C.3 : projets qui dévient → proposition de restructuration
+        // (gaté 1×/j côté module, best-effort).
+        await (0, orion_restructure_1.evaluateProjectRestructures)(uid).catch(() => null);
         // Agenda connecté : rafraîchir les MIROIRS de la date cible d'abord —
         // la proposition planifie AUTOUR des rendez-vous réels (best-effort).
         await (0, gcal_1.importGcalDay)(uid, target).catch(() => null);

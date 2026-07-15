@@ -522,6 +522,81 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                     ),
                   ),
               ],
+              // Créer une ACTION PROPRE depuis la saisie : « Étirer le dos »
+              // devient une action de Musculation, et le bloc naît ciblé
+              // (activityId + actionId → chrono ciblé au ▶).
+              if (picked == null && ctrl.text.trim().length >= 2)
+                InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () async {
+                    final t = ctrl.text.trim();
+                    final acts = widget.logic.state.activities
+                        .where((a) => !a.isHabit && !a.deleted)
+                        .toList()
+                      ..sort((a, b) => a.name.compareTo(b.name));
+                    if (acts.isEmpty) return;
+                    final chosen = await showModalBottomSheet<Activity>(
+                      context: ctx,
+                      showDragHandle: true,
+                      builder: (actx) => SafeArea(
+                        child: ListView(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.only(bottom: 16),
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                              child: Text(
+                                  '« $t » — action de quelle activité ?',
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800)),
+                            ),
+                            for (final a in acts)
+                              ListTile(
+                                leading:
+                                    const Icon(Icons.av_timer_rounded),
+                                title: Text(a.name),
+                                onTap: () => Navigator.pop(actx, a),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                    if (chosen == null) return;
+                    final action = widget.logic.addOwnAction(chosen.id, t);
+                    if (action == null) return;
+                    setSheet(() {
+                      picked = ScheduleSuggestion(
+                        title: t,
+                        sublabel: 'Action · ${chosen.name}',
+                        kind: 'action',
+                        category: 'personal',
+                        activityId: chosen.id,
+                        actionId: action.id,
+                      );
+                    });
+                  },
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                    child: Row(children: [
+                      Icon(Icons.add_task_rounded,
+                          size: 16, color: cs.tertiary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                            'Créer « ${ctrl.text.trim()} » comme action d\'une activité…',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.tertiary)),
+                      ),
+                    ]),
+                  ),
+                ),
               if (picked != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),

@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db, FieldValue } from "./db";
 import { MODELS, logTokenUsage } from "./models";
 import { processInboxToProjects } from "./orion_inbox";
+import { evaluateProjectRestructures } from "./orion_restructure";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,6 +158,13 @@ export async function getOrCreateBrief(uid: string): Promise<Brief> {
     await processInboxToProjects(uid);
   } catch (e) {
     console.error("inbox sweep failed (non bloquant)", e);
+  }
+  // Direction C.3 : les projets qui dévient reçoivent une proposition de
+  // restructuration « À valider » (gaté 1×/j côté module, best-effort).
+  try {
+    await evaluateProjectRestructures(uid);
+  } catch (e) {
+    console.error("restructure sweep failed (non bloquant)", e);
   }
 
   const existing = await ref.get();

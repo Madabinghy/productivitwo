@@ -1255,6 +1255,59 @@ class FirestoreSync {
           }
         }
         break;
+      case 'restructure_project':
+        // Direction C.3 : le diff validé s'applique d'un coup — tâches
+        // hors-sujet sautées (jamais supprimées : l'historique reste),
+        // reformulations, ajouts enchaînés après la dernière fin.
+        final projectId = payload['projectId']?.toString();
+        if (projectId != null) {
+          final target = await _loadProject(projectId);
+          if (target != null) {
+            final archiveIds = ((payload['archiveTaskIds'] as List?) ?? [])
+                .map((e) => e.toString())
+                .toSet();
+            for (final t in target.tasks) {
+              if (archiveIds.contains(t.id) && t.status != 'done') {
+                t.status = 'skipped';
+              }
+            }
+            for (final r in (payload['reword'] as List?) ?? const []) {
+              final m = Map<String, dynamic>.from(r as Map);
+              final idx = target.tasks
+                  .indexWhere((t) => t.id == m['taskId'].toString());
+              if (idx >= 0 && target.tasks[idx].status != 'done') {
+                target.tasks[idx].title = (m['title'] ?? '').toString();
+              }
+            }
+            var cursor = DateTime.now();
+            for (final t in target.tasks) {
+              final e = t.endDate;
+              if (e != null && e.isAfter(cursor) && t.status == 'pending') {
+                cursor = e;
+              }
+            }
+            for (final a in (payload['addTasks'] as List?) ?? const []) {
+              final m = Map<String, dynamic>.from(a as Map);
+              final dur = ((m['durationDays'] as num?) ?? 3)
+                  .toInt()
+                  .clamp(1, 15);
+              final start = cursor.add(const Duration(days: 1));
+              final end = start.add(Duration(days: dur));
+              cursor = end;
+              target.tasks.add(ProjectTask(
+                title: (m['title'] ?? '').toString(),
+                startDate: start,
+                endDate: end,
+                actions: [
+                  for (final act in (m['actions'] as List?) ?? const [])
+                    TaskAction(title: act.toString()),
+                ],
+              ));
+            }
+            await saveProjectTasks(projectId, target.tasks);
+          }
+        }
+        break;
     }
 
     await _setProposalStatus(p.id, 'accepted');
