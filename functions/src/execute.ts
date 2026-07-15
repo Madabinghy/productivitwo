@@ -1570,7 +1570,7 @@ async function executeProposeChange(
     payload?: Record<string, unknown>;
   }
 ): Promise<string> {
-  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task"];
+  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "restructure_project"];
   if (!valid.includes(args.kind)) {
     return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
   }
