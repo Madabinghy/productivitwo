@@ -836,15 +836,15 @@ class FirestoreSync {
         {'readAt': DateTime.now().toIso8601String()}, SetOptions(merge: true));
   }
 
-  /// Heure de lever habituelle (« HH:mm ») — fait demandé UNE fois à la
-  /// première planification, contrainte dure de proposeDayPlan (rien ne se
-  /// pose avant le lever).
+  /// Heure de lever PRÉVUE (« HH:mm ») — demandée à chaque planification
+  /// (les jours ne se ressemblent pas), la dernière valeur sert de
+  /// présélection. Contrainte dure de proposeDayPlan (rien avant le lever).
   Future<String?> fetchWakeTime() async {
     if (uid == null) return null;
     try {
       final snap = await _meta().get();
       final v = (snap.data() as Map?)?['wakeTime'];
-      return v is String && RegExp(r'^\d{2}:\d{2}\$').hasMatch(v) ? v : null;
+      return v is String && RegExp(r'^\d{2}:\d{2}$').hasMatch(v) ? v : null;
     } catch (_) {
       return null;
     }

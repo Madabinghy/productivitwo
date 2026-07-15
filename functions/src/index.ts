@@ -418,6 +418,12 @@ export const proposeDayPlan = onRequest(
     const sameDay = target === today;
 
     try {
+      // Boîte à idées AVANT la proposition (gaté 1×/jour côté sweep) : les
+      // idées actionnables deviennent des défis datés (importés ci-dessous
+      // dans le programme cible), la structure part en « À valider » — la
+      // planification prend donc les idées en compte sans dépendre du brief.
+      await processInboxToProjects(uid).catch(() => null);
+
       // Agenda connecté : rafraîchir les MIROIRS de la date cible d'abord —
       // la proposition planifie AUTOUR des rendez-vous réels (best-effort).
       await importGcalDay(uid, target).catch(() => null);
@@ -1862,7 +1868,7 @@ export const orionBrief = onRequest(
     }
 
     const { action, focus, feedback, date, limit } = req.body as {
-      action?: "getBrief" | "setFocus" | "setFeedback" | "getFocus" | "history";
+      action?: "getBrief" | "setFocus" | "setFeedback" | "getFocus" | "history" | "sweepInbox";
       focus?: string;
       feedback?: "useful" | "skip";
       date?: string;
@@ -1870,6 +1876,14 @@ export const orionBrief = onRequest(
     };
 
     try {
+      // Tri de la boîte à idées à la demande (bouton de l'inbox) — force le
+      // sweep même s'il a déjà tourné aujourd'hui.
+      if (action === "sweepInbox") {
+        const r = await processInboxToProjects(uid, { force: true });
+        if (!r) { res.status(502).json({ error: "Routage indisponible — réessaie." }); return; }
+        res.status(200).json(r);
+        return;
+      }
       if (action === "getFocus") {
         const f = await getFocus(uid);
         res.status(200).json({ focus: f });

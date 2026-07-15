@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 
 /// Onglet « Aujourd'hui » : le programme horaire du jour, avec bascule vers
 /// « Demain » pour préparer la journée suivante (planif du lendemain).
@@ -27,9 +29,38 @@ class _TodayViewState extends State<TodayView> {
   // de planification (drag, resize, ajout au créneau) ; la liste reste là
   // pour cocher vite.
   bool _timeline = true;
+  bool _syncing = false;
 
   String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// Sync agenda À LA DEMANDE (aujourd'hui + demain) : un RDV modifié côté
+  /// Google est repris immédiatement dans les miroirs — utile juste avant de
+  /// planifier demain, sans attendre la sync d'ouverture.
+  Future<void> _forceSync() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    final sync = FirestoreSync();
+    final now = DateTime.now();
+    var ok = false;
+    String? reason;
+    for (final d in [now, now.add(const Duration(days: 1))]) {
+      final r = await gcalSyncDay(sync, _ymd(d));
+      if (r?['ok'] == true) ok = true;
+      reason ??= r?['reason'] as String?;
+    }
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? '🗓️ Agenda synchronisé — aujourd\'hui et demain sont à jour.'
+          : reason == 'not_connected'
+              ? 'Google Agenda non connecté — Paramètres → Google Agenda.'
+              : 'Synchronisation impossible — réessaie.'),
+      duration: const Duration(seconds: 3),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
 
   /// État vide du jour selon les domaines (Partie D) : rien de nommé → le
   /// programme ne peut pas exister ; nommé mais rien de défini → il attend le
@@ -89,6 +120,18 @@ class _TodayViewState extends State<TodayView> {
                   ),
                 ),
                 const Spacer(),
+                // Sync Google Agenda à la demande (aujourd'hui + demain).
+                IconButton(
+                  tooltip: 'Synchroniser Google Agenda',
+                  visualDensity: VisualDensity.compact,
+                  icon: _syncing
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.sync_rounded, size: 20),
+                  onPressed: _syncing ? null : _forceSync,
+                ),
                 // Timeline 24 h ⇄ liste compacte.
                 IconButton(
                   tooltip: _timeline ? 'Vue liste' : 'Vue agenda',

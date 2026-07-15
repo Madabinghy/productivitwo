@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+
+const _kOrionBriefUrl = 'https://orionbrief-dzos75b65q-uc.a.run.app';
 
 Future<void> showInboxSheet(BuildContext context, FirestoreSync sync) {
   return showModalBottomSheet<void>(
@@ -83,6 +88,50 @@ class _InboxSheetState extends State<_InboxSheet> {
     await widget.sync.deleteCaptureItem(item.id);
   }
 
+  bool _sweeping = false;
+
+  /// Tri à la demande par ORION (clé API serveur, force le passage du jour) :
+  /// idées actionnables → défis 🔥 datés dans le programme, structure →
+  /// propositions « À valider », notes vagues laissées. Résultat annoncé.
+  Future<void> _sweepNow() async {
+    if (_sweeping) return;
+    setState(() => _sweeping = true);
+    String msg;
+    try {
+      final idToken = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (idToken == null) throw Exception('non connecté');
+      final resp = await http
+          .post(
+            Uri.parse(_kOrionBriefUrl),
+            headers: {
+              'Authorization': 'Bearer $idToken',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'action': 'sweepInbox'}),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
+      final r = jsonDecode(resp.body) as Map<String, dynamic>;
+      final parts = <String>[
+        if ((r['scheduled'] ?? 0) > 0) '${r['scheduled']} défi(s) programmé(s) 🔥',
+        if ((r['created'] ?? 0) > 0) '${r['created']} projet(s) proposé(s)',
+        if ((r['appended'] ?? 0) > 0) '${r['appended']} tâche(s) proposée(s)',
+        if ((r['skipped'] ?? 0) > 0) '${r['skipped']} idée(s) laissée(s)',
+      ];
+      msg = (r['found'] ?? 0) == 0
+          ? 'Rien à trier — la boîte est vide.'
+          : parts.isEmpty
+              ? 'ORION a regardé ${r['found']} idée(s) — rien d\'actionnable pour l\'instant.'
+              : '✨ ${parts.join(' · ')} — les propositions sont dans « À valider ».';
+    } catch (_) {
+      msg = 'Tri impossible — réessaie dans un instant.';
+    }
+    if (!mounted) return;
+    setState(() => _sweeping = false);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 4)));
+  }
+
   Future<void> _saveEdit(CaptureItem item) async {
     final text = _editCtrl.text.trim();
     if (text.isEmpty) return;
@@ -132,6 +181,17 @@ class _InboxSheetState extends State<_InboxSheet> {
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                             color: Colors.white)),
+                  ),
+                if (_pending.isNotEmpty)
+                  IconButton(
+                    icon: _sweeping
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_awesome, size: 20),
+                    tooltip: 'Trier avec ORION',
+                    onPressed: _sweeping ? null : _sweepNow,
                   ),
                 IconButton(
                   icon: const Icon(Icons.add_rounded, size: 22),
