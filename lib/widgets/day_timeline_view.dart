@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
+import 'package:productivitwo_v1/utils/schedule_suggest.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 
@@ -43,8 +44,14 @@ class DayTimelineView extends StatefulWidget {
 }
 
 class _DayTimelineViewState extends State<DayTimelineView> {
-  static const double _hourH = 64; // 1 h = 64 px
+  // 1 h = 100 px : plus de profondeur = plus de précision d'affichage (un bloc
+  // de 10 min reste distinct du suivant), quitte à scroller davantage.
+  static const double _hourH = 100;
   static const double _leftGutter = 46; // colonne des heures
+  // Hauteur plancher d'un bloc (lisibilité du titre). Le layout en tient
+  // compte : deux blocs proches dans le temps mais dont les RENDUS se
+  // chevaucheraient passent en colonnes au lieu de se repeindre l'un l'autre.
+  static const double _minBlockH = 24;
   static const int _snapMin = 15;
   static const _red = Color(0xFFE53935);
 
@@ -354,12 +361,27 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     final startMin = _snap(minute);
     final ctrl = TextEditingController();
     var duration = 30;
+    // Suggestion choisie au tap → le bloc naît LIÉ (activité/routine/tâche/
+    // action Gantt) ; retaper dans le champ délie.
+    ScheduleSuggestion? picked;
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
         final cs = Theme.of(ctx).colorScheme;
+        final suggestions = picked == null
+            ? scheduleSuggestions(ctrl.text,
+                activities: widget.logic.state.activities,
+                projects: widget.logic.currentProjects,
+                max: 5)
+            : const <ScheduleSuggestion>[];
+        IconData iconOf(String kind) => switch (kind) {
+              'routine' => Icons.repeat_rounded,
+              'activity' => Icons.av_timer_rounded,
+              'task' => Icons.rocket_launch_outlined,
+              _ => Icons.check_circle_outline,
+            };
         return Padding(
           padding: EdgeInsets.only(
               bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
@@ -379,9 +401,75 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                 autofocus: true,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(
-                    hintText: 'Titre (une routine du même nom sera liée)'),
+                    hintText: 'Titre (tape pour lier une routine, tâche…)'),
+                onChanged: (v) => setSheet(() {
+                  if (picked != null && v.trim() != picked!.title) {
+                    picked = null; // retaper = délier
+                  }
+                }),
                 onSubmitted: (_) => Navigator.pop(ctx, true),
               ),
+              // Ce qui existe déjà et correspond à la saisie — un tap = lié.
+              if (suggestions.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                for (final s in suggestions)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => setSheet(() {
+                      picked = s;
+                      ctrl.text = s.title;
+                      ctrl.selection = TextSelection.collapsed(
+                          offset: s.title.length);
+                      if (s.durationMin != null) duration = s.durationMin!;
+                    }),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 7),
+                      child: Row(children: [
+                        Icon(iconOf(s.kind),
+                            size: 16, color: cs.primary.withOpacity(.8)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(s.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(s.sublabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withOpacity(.5))),
+                      ]),
+                    ),
+                  ),
+              ],
+              if (picked != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(children: [
+                    Icon(Icons.link_rounded, size: 15, color: cs.tertiary),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text('Lié — ${picked!.sublabel}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: cs.tertiary)),
+                    ),
+                    InkWell(
+                      onTap: () => setSheet(() => picked = null),
+                      child: Icon(Icons.close_rounded,
+                          size: 16, color: cs.onSurface.withOpacity(.5)),
+                    ),
+                  ]),
+                ),
               const SizedBox(height: 12),
               Text('Durée',
                   style: TextStyle(
@@ -411,6 +499,22 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     );
     final title = ctrl.text.trim();
     if (ok != true || title.isEmpty) return;
+    if (picked != null && title == picked!.title) {
+      // Suggestion choisie → lien EXPLICITE vers l'objet existant.
+      await _sync.addScheduleBlock(
+          widget.date,
+          ScheduleBlock(
+            startTime: _toHm(startMin),
+            durationMin: duration,
+            title: title,
+            category: picked!.category,
+            activityId: picked!.activityId,
+            projectId: picked!.projectId,
+            taskId: picked!.taskId,
+            actionId: picked!.actionId,
+          ));
+      return;
+    }
     // Lien routine par titre — même règle déterministe que partout : match
     // UNIQUE, sinon pas de lien deviné.
     final matched = routineForBlockTitle(title, widget.logic.state.activities);
@@ -427,6 +531,16 @@ class _DayTimelineViewState extends State<DayTimelineView> {
 
   // ── Layout : clusters de blocs qui se chevauchent → colonnes ─────────────────
 
+  /// Durée d'ENCOMBREMENT visuel : un bloc court est dessiné à la hauteur
+  /// plancher (_minBlockH) — pour le layout il « occupe » donc au moins ces
+  /// minutes-là, sinon il repeindrait le bloc suivant (Hygiène 20:00-20:10
+  /// par-dessus Lecture 20:15).
+  int _footprintOf(ScheduleBlock b) {
+    final minMin = (_minBlockH / _hourH * 60).ceil();
+    final d = _durOf(b);
+    return d < minMin ? minMin : d;
+  }
+
   List<({ScheduleBlock b, int col, int cols})> _layout(
       List<ScheduleBlock> blocks) {
     final sorted = [...blocks]
@@ -435,11 +549,11 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     var i = 0;
     while (i < sorted.length) {
       final cluster = <ScheduleBlock>[sorted[i]];
-      var clusterEnd = _startOf(sorted[i]) + _durOf(sorted[i]);
+      var clusterEnd = _startOf(sorted[i]) + _footprintOf(sorted[i]);
       var j = i + 1;
       while (j < sorted.length && _startOf(sorted[j]) < clusterEnd) {
         cluster.add(sorted[j]);
-        final e = _startOf(sorted[j]) + _durOf(sorted[j]);
+        final e = _startOf(sorted[j]) + _footprintOf(sorted[j]);
         if (e > clusterEnd) clusterEnd = e;
         j++;
       }
@@ -450,14 +564,14 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         for (var c = 0; c < colEnds.length; c++) {
           if (_startOf(b) >= colEnds[c]) {
             cols[b] = c;
-            colEnds[c] = _startOf(b) + _durOf(b);
+            colEnds[c] = _startOf(b) + _footprintOf(b);
             placed = true;
             break;
           }
         }
         if (!placed) {
           cols[b] = colEnds.length;
-          colEnds.add(_startOf(b) + _durOf(b));
+          colEnds.add(_startOf(b) + _footprintOf(b));
         }
       }
       for (final b in cluster) {
@@ -613,7 +727,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
             : _categoryColor(b.category, cs);
 
     final top = start / 60 * _hourH + 6;
-    final height = (dur / 60 * _hourH).clamp(22.0, 24 * _hourH);
+    final height = (dur / 60 * _hourH).clamp(_minBlockH, 24 * _hourH);
     final colW = laneW / e.cols;
     final left = _leftGutter + 2 + e.col * colW;
 
@@ -738,7 +852,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   Widget _actionBarPositioned(ColorScheme cs, ScheduleBlock b) {
     final start = _startOf(b);
     final dur = _durOf(b);
-    final below = start / 60 * _hourH + 6 + (dur / 60 * _hourH) + 16;
+    final blockH = (dur / 60 * _hourH).clamp(_minBlockH, 24 * _hourH);
+    final below = start / 60 * _hourH + 6 + blockH + 16;
     final fitsBelow = below < 24 * _hourH - 44;
     final top = fitsBelow ? below : start / 60 * _hourH + 6 - 52;
     final isMirror = b.gcalEventId != null;
