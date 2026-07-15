@@ -3420,7 +3420,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro" | "setGroups";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro" | "setGroups" | "setCoach";
       payload?: Record<string, unknown>;
     };
 
@@ -3511,6 +3511,18 @@ export const adminProductivitwo = onRequest(
           groups: allowGroups[e] ?? [],
         }));
         res.status(200).json({ users: [...users, ...invited] });
+        return;
+      }
+
+      // Droit d'être coach (brique coaching) : coaches/{uid}.active — lu par
+      // coachApi à chaque appel. payload: { uid, active }.
+      if (action === "setCoach") {
+        const coachUid = ((payload?.uid as string) ?? "").trim();
+        if (!coachUid) { res.status(400).json({ error: "payload.uid requis" }); return; }
+        const active = payload?.active !== false;
+        await db.collection("coaches").doc(coachUid).set(
+          { active, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        res.status(200).json({ success: true, uid: coachUid, active });
         return;
       }
 
@@ -4495,3 +4507,6 @@ export const resetDemoData = onSchedule("0 4 * * *", async () => {
 
 // ── Google Agenda natif (Direction D) — voir gcal.ts et docs/gcal_setup.md ───
 export { gcalApi, gcalOauthCallback, gcalOnScheduleWrite } from "./gcal";
+
+// ── Brique coaching v1 (mini-CRM + consentement + dashboard) — coaching.ts ───
+export { coachApi, coachConsent } from "./coaching";

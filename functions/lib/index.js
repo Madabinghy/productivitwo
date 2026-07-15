@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
+exports.coachConsent = exports.coachApi = exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -3330,7 +3330,7 @@ let _adminFailCount = 0;
 const _ADMIN_FAIL_MAX = 10;
 const _ADMIN_FAIL_WINDOW_MS = 10 * 60 * 1000;
 exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["ADMIN_PUSH_SECRET"] }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -3431,8 +3431,21 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             res.status(200).json({ users: [...users, ...invited] });
             return;
         }
+        // Droit d'être coach (brique coaching) : coaches/{uid}.active — lu par
+        // coachApi à chaque appel. payload: { uid, active }.
+        if (action === "setCoach") {
+            const coachUid = ((_b = payload === null || payload === void 0 ? void 0 : payload.uid) !== null && _b !== void 0 ? _b : "").trim();
+            if (!coachUid) {
+                res.status(400).json({ error: "payload.uid requis" });
+                return;
+            }
+            const active = (payload === null || payload === void 0 ? void 0 : payload.active) !== false;
+            await db_1.db.collection("coaches").doc(coachUid).set({ active, updatedAt: db_1.FieldValue.serverTimestamp() }, { merge: true });
+            res.status(200).json({ success: true, uid: coachUid, active });
+            return;
+        }
         if (action === "addAllowlist") {
-            const email = ((_b = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _b !== void 0 ? _b : "").trim().toLowerCase();
+            const email = ((_c = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _c !== void 0 ? _c : "").trim().toLowerCase();
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
                 res.status(400).json({ error: "Email invalide" });
                 return;
@@ -3442,7 +3455,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             return;
         }
         if (action === "removeAllowlist") {
-            const email = ((_c = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _c !== void 0 ? _c : "").trim().toLowerCase();
+            const email = ((_d = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _d !== void 0 ? _d : "").trim().toLowerCase();
             await db_1.db.collection("allowlist").doc(email).delete();
             res.status(200).json({ success: true, email });
             return;
@@ -3450,12 +3463,12 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         if (action === "setPro") {
             // Accorde / révoque un grant Pro daté sur formation_access/{uid}.
             // until = "YYYY-MM-DD" → Pro jusqu'à cette date (incluse) ; null → révoque.
-            const targetUid = (_d = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _d === void 0 ? void 0 : _d.trim();
+            const targetUid = (_e = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _e === void 0 ? void 0 : _e.trim();
             if (!targetUid) {
                 res.status(400).json({ error: "uid requis" });
                 return;
             }
-            const untilStr = (_e = payload === null || payload === void 0 ? void 0 : payload.until) !== null && _e !== void 0 ? _e : null;
+            const untilStr = (_f = payload === null || payload === void 0 ? void 0 : payload.until) !== null && _f !== void 0 ? _f : null;
             const patch = {
                 proSource: "admin",
                 proUpdatedAt: db_1.FieldValue.serverTimestamp(),
@@ -3487,8 +3500,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             // Gère les groupes/tags d'un user. Compte → formation_access/{uid} ;
             // invité (sans compte) → allowlist/{email}. payload : set[] (remplace)
             // OU add (1 groupe) OU remove (1 groupe).
-            const targetUid = (_f = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _f === void 0 ? void 0 : _f.trim();
-            const email = ((_g = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _g !== void 0 ? _g : "").trim().toLowerCase();
+            const targetUid = (_g = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _g === void 0 ? void 0 : _g.trim();
+            const email = ((_h = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _h !== void 0 ? _h : "").trim().toLowerCase();
             if (!targetUid && !email) {
                 res.status(400).json({ error: "uid ou email requis" });
                 return;
@@ -3497,8 +3510,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 ? db_1.db.collection("formation_access").doc(targetUid)
                 : db_1.db.collection("allowlist").doc(email);
             const set = payload === null || payload === void 0 ? void 0 : payload.set;
-            const add = (_h = payload === null || payload === void 0 ? void 0 : payload.add) === null || _h === void 0 ? void 0 : _h.trim();
-            const remove = (_j = payload === null || payload === void 0 ? void 0 : payload.remove) === null || _j === void 0 ? void 0 : _j.trim();
+            const add = (_j = payload === null || payload === void 0 ? void 0 : payload.add) === null || _j === void 0 ? void 0 : _j.trim();
+            const remove = (_l = payload === null || payload === void 0 ? void 0 : payload.remove) === null || _l === void 0 ? void 0 : _l.trim();
             if (set !== undefined) {
                 await ref.set({ groups: set.map((s) => s.trim()).filter(Boolean) }, { merge: true });
             }
@@ -3517,7 +3530,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         }
         if (action === "checkAccess") {
             // Rejoue la logique du gate sendMagicLink pour un email donné.
-            const email = ((_l = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _l !== void 0 ? _l : "").trim().toLowerCase();
+            const email = ((_m = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _m !== void 0 ? _m : "").trim().toLowerCase();
             if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
                 res.status(400).json({ error: "Email invalide" });
                 return;
@@ -3531,7 +3544,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 targetUid = u.uid;
                 providers = u.providerData.map((p) => p.providerId);
             }
-            catch ( /* pas de compte */_x) { /* pas de compte */ }
+            catch ( /* pas de compte */_y) { /* pas de compte */ }
             const allowlisted = (await db_1.db.collection("allowlist").doc(email).get()).exists;
             const pass = hasAccount || allowlisted;
             const reason = hasAccount ? "compte existant" : allowlisted ? "allowlisté" : "aucun compte, pas d'allowlist";
@@ -3541,8 +3554,8 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
         if (action === "deleteUser") {
             // Suppression DÉFINITIVE : compte Auth + toutes les données Firestore du
             // user + son formation_access + son entrée allowlist. Irréversible.
-            const targetUid = (_m = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _m === void 0 ? void 0 : _m.trim();
-            const email = ((_o = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _o !== void 0 ? _o : "").trim().toLowerCase();
+            const targetUid = (_o = payload === null || payload === void 0 ? void 0 : payload.uid) === null || _o === void 0 ? void 0 : _o.trim();
+            const email = ((_p = payload === null || payload === void 0 ? void 0 : payload.email) !== null && _p !== void 0 ? _p : "").trim().toLowerCase();
             if (!targetUid && !email) {
                 res.status(400).json({ error: "uid ou email requis" });
                 return;
@@ -3620,7 +3633,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const rawTasks = (_q = (_p = snap.data()) === null || _p === void 0 ? void 0 : _p.tasks) !== null && _q !== void 0 ? _q : [];
+            const rawTasks = (_r = (_q = snap.data()) === null || _q === void 0 ? void 0 : _q.tasks) !== null && _r !== void 0 ? _r : [];
             const tasks = rawTasks.map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
@@ -3670,13 +3683,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_s = (_r = snap.data()) === null || _r === void 0 ? void 0 : _r.tasks) !== null && _s !== void 0 ? _s : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_t = (_s = snap.data()) === null || _s === void 0 ? void 0 : _s.tasks) !== null && _t !== void 0 ? _t : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const idx = tasks.findIndex(t => t.id === taskId);
             if (idx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_t = tasks[idx].actions) !== null && _t !== void 0 ? _t : []).slice();
+            const actions = ((_u = tasks[idx].actions) !== null && _u !== void 0 ? _u : []).slice();
             const newAction = { id: (0, uuid_1.v4)(), title, done: false, doneAt: null, createdAt: new Date().toISOString() };
             actions.push(newAction);
             tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), { actions });
@@ -3692,13 +3705,13 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
                 res.status(404).json({ error: "Projet introuvable" });
                 return;
             }
-            const tasks = ((_v = (_u = snap.data()) === null || _u === void 0 ? void 0 : _u.tasks) !== null && _v !== void 0 ? _v : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+            const tasks = ((_w = (_v = snap.data()) === null || _v === void 0 ? void 0 : _v.tasks) !== null && _w !== void 0 ? _w : []).map(t => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
             const tIdx = tasks.findIndex(t => t.id === taskId);
             if (tIdx === -1) {
                 res.status(404).json({ error: "Tâche introuvable" });
                 return;
             }
-            const actions = ((_w = tasks[tIdx].actions) !== null && _w !== void 0 ? _w : []).slice();
+            const actions = ((_x = tasks[tIdx].actions) !== null && _x !== void 0 ? _x : []).slice();
             const aIdx = actions.findIndex(a => a.id === actionId);
             if (aIdx === -1) {
                 res.status(404).json({ error: "Action introuvable" });
@@ -3766,7 +3779,7 @@ exports.adminProductivitwo = (0, https_1.onRequest)({ cors: true, invoker: "publ
             return;
         }
         if (action === "updateProject") {
-            const _y = payload, { projectId } = _y, updates = __rest(_y, ["projectId"]);
+            const _z = payload, { projectId } = _z, updates = __rest(_z, ["projectId"]);
             await db_1.db.collection(`users/${uid}/projects`).doc(projectId).update(Object.assign(Object.assign({}, updates), { updatedAt: db_1.FieldValue.serverTimestamp() }));
             res.status(200).json({ success: true });
             return;
@@ -4371,4 +4384,8 @@ var gcal_2 = require("./gcal");
 Object.defineProperty(exports, "gcalApi", { enumerable: true, get: function () { return gcal_2.gcalApi; } });
 Object.defineProperty(exports, "gcalOauthCallback", { enumerable: true, get: function () { return gcal_2.gcalOauthCallback; } });
 Object.defineProperty(exports, "gcalOnScheduleWrite", { enumerable: true, get: function () { return gcal_2.gcalOnScheduleWrite; } });
+// ── Brique coaching v1 (mini-CRM + consentement + dashboard) — coaching.ts ───
+var coaching_1 = require("./coaching");
+Object.defineProperty(exports, "coachApi", { enumerable: true, get: function () { return coaching_1.coachApi; } });
+Object.defineProperty(exports, "coachConsent", { enumerable: true, get: function () { return coaching_1.coachConsent; } });
 //# sourceMappingURL=index.js.map
