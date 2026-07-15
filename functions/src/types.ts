@@ -6,6 +6,16 @@ export interface ProjectPhase {
   endDate: string;
 }
 
+export interface TaskActionPayload {
+  id?: string;
+  title: string;
+  done?: boolean;
+  doneAt?: string | null;
+  createdAt?: string;
+  linkedActivityId?: string | null;
+  context?: string | null; // contexte GTD (@maison, @bureau…)
+}
+
 export interface ProjectTask {
   id?: string;
   title: string;
@@ -17,7 +27,7 @@ export interface ProjectTask {
   color?: string;
   barLabel?: string;
   status?: "pending" | "done" | "skipped";
-  actions?: string[];
+  actions?: Array<string | TaskActionPayload>;
 }
 
 export interface ProjectPayload {

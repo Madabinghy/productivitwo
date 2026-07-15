@@ -53,7 +53,7 @@ class CaptureItem {
   String id;
   String text;
   DateTime createdAt;
-  String status; // pending | processed
+  String status; // pending | proposed (dans « À valider ») | processed
   String? orionNote;
   DateTime? processedAt;
 

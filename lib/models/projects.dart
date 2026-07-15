@@ -4,6 +4,17 @@ part of '../models.dart';
 //
 // TaskAction : action opérationnelle liée à une tâche Gantt.
 
+/// Contextes GTD par défaut (« où/avec quoi » une action est réalisable).
+/// Les contextes personnalisés vivent dans `users/{uid}/data/meta.customContexts`.
+const List<String> kDefaultGtdContexts = [
+  '@maison',
+  '@bureau',
+  '@ordinateur',
+  '@courses',
+  '@extérieur',
+  '@téléphone',
+];
+
 class TaskAction {
   String id;
   String title;
@@ -11,6 +22,7 @@ class TaskAction {
   DateTime? doneAt;
   DateTime createdAt;
   String? linkedActivityId; // activité-temps liée → chrono ciblé sur cette action
+  String? context; // contexte GTD (@maison, @bureau…) — null = sans contexte
 
   TaskAction({
     String? id,
@@ -19,6 +31,7 @@ class TaskAction {
     this.doneAt,
     DateTime? createdAt,
     this.linkedActivityId,
+    this.context,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now();
 
@@ -29,6 +42,7 @@ class TaskAction {
         'doneAt': doneAt?.toIso8601String(),
         'createdAt': createdAt.toIso8601String(),
         'linkedActivityId': linkedActivityId,
+        'context': context,
       };
 
   static TaskAction from(Map j) => TaskAction(
@@ -40,6 +54,7 @@ class TaskAction {
             ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
             : DateTime.now(),
         linkedActivityId: j['linkedActivityId'] as String?,
+        context: j['context'] as String?,
       );
 }
 

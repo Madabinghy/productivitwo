@@ -1172,16 +1172,53 @@ class FirestoreSync {
 
     switch (kind) {
       case 'new_project':
-        await saveProject(Project(
+        // Applique le plan proposé par ORION : phases + tâches (niveau Gantt,
+        // sans sous-actions générées) + la PROCHAINE ACTION GTD contextualisée
+        // sur la première tâche. Anciens payloads sans ces champs → projet nu.
+        final phases = ((payload['phases'] as List?) ?? const [])
+            .map((ph) => ProjectPhase.from(Map<String, dynamic>.from(ph as Map)))
+            .toList();
+        final tasks = ((payload['tasks'] as List?) ?? const [])
+            .map((t) => ProjectTask.from(Map<String, dynamic>.from(t as Map)))
+            .toList();
+        final fa = payload['firstAction'];
+        if (fa is Map && tasks.isNotEmpty) {
+          final title = (fa['title'] ?? '').toString().trim();
+          if (title.isNotEmpty) {
+            tasks.first.actions.add(TaskAction(
+              title: title,
+              context: fa['context']?.toString(),
+            ));
+          }
+        }
+        final start =
+            DateTime.tryParse(payload['startDate']?.toString() ?? '') ??
+                DateTime.now();
+        final end = DateTime.tryParse(payload['endDate']?.toString() ?? '');
+        final project = Project(
           title: (payload['projectTitle'] ?? p.title).toString(),
           description: payload['description']?.toString(),
           domainId: payload['domainId']?.toString(),
-          startDate: DateTime.now(),
+          strategicObjectiveId: payload['objectiveId']?.toString(),
+          startDate: start,
+          endDate: end,
+          phases: phases,
+          tasks: tasks,
           createdBy: uid!,
           source: 'orion',
           status: 'draft',
           originIdeas: origin != null ? [origin] : [],
-        ));
+        );
+        await saveProject(project);
+        // Back-link objectif → projet (même convention que push_gantt).
+        final objectiveId = payload['objectiveId']?.toString();
+        if (objectiveId != null && objectiveId.isNotEmpty) {
+          try {
+            await _col('strategic_objectives').doc(objectiveId).update({
+              'projectIds': FieldValue.arrayUnion([project.id]),
+            });
+          } catch (_) {}
+        }
         break;
       case 'create_subproject':
         await saveProject(Project(
@@ -1249,9 +1286,33 @@ class FirestoreSync {
             final idx = target.tasks.indexWhere((t) => t.id == taskId);
             if (idx >= 0) {
               target.tasks[idx].actions.add(TaskAction(
-                  title: (payload['actionLabel'] ?? p.title).toString()));
+                  title: (payload['actionLabel'] ?? p.title).toString(),
+                  context: payload['context']?.toString()));
               await saveProjectTasks(projectId, target.tasks);
             }
+          }
+        }
+        break;
+      case 'add_own_action':
+        // Action simple sans projet → ownAction d'une activité-temps (chrono
+        // ciblé + programmation déjà câblés côté schedule_day).
+        final activityId = payload['activityId']?.toString();
+        if (activityId != null && activityId.isNotEmpty) {
+          final snap = await _col('activities').doc(activityId).get();
+          if (snap.exists) {
+            final data =
+                Map<String, dynamic>.from(snap.data() as Map);
+            final own = ((data['ownActions'] as List?) ?? const [])
+                .map((a) => Map<String, dynamic>.from(a as Map))
+                .toList();
+            own.add(TaskAction(
+              title: (payload['actionLabel'] ?? p.title).toString(),
+              linkedActivityId: activityId,
+              context: payload['context']?.toString(),
+            ).toJson());
+            await _col('activities')
+                .doc(activityId)
+                .update({'ownActions': own});
           }
         }
         break;
@@ -2305,6 +2366,33 @@ class FirestoreSync {
   Future<void> setGanttVisible(bool visible) async {
     if (uid == null) return;
     await _meta().set({'ganttVisible': visible}, SetOptions(merge: true));
+  }
+
+  /// Contextes GTD disponibles = défauts + personnalisés
+  /// (`users/{uid}/data/meta.customContexts`, lisible aussi par les functions).
+  Future<List<String>> fetchAvailableContexts() async {
+    if (uid == null) return List.of(kDefaultGtdContexts);
+    try {
+      final snap = await _meta().get();
+      final data = snap.data() as Map<String, dynamic>?;
+      final customs = (data?['customContexts'] as List?)?.cast<String>() ?? [];
+      return [
+        ...kDefaultGtdContexts,
+        ...customs.where((c) => !kDefaultGtdContexts.contains(c)),
+      ];
+    } catch (_) {
+      return List.of(kDefaultGtdContexts);
+    }
+  }
+
+  Future<void> addCustomContext(String context) async {
+    if (uid == null) return;
+    final c = context.trim();
+    if (c.isEmpty) return;
+    final normalized = c.startsWith('@') ? c : '@$c';
+    await _meta().set({
+      'customContexts': FieldValue.arrayUnion([normalized]),
+    }, SetOptions(merge: true));
   }
 
   /// Sessions des [days] derniers jours (web : progression des objectifs).

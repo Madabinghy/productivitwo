@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 
 const _kOrionBriefUrl = 'https://orionbrief-dzos75b65q-uc.a.run.app';
 
@@ -81,6 +82,9 @@ class _InboxSheetState extends State<_InboxSheet> {
 
   List<CaptureItem> get _pending =>
       _items.where((i) => i.status == 'pending').toList();
+  // Idées transformées en proposition ORION, en attente dans « À valider ».
+  List<CaptureItem> get _proposed =>
+      _items.where((i) => i.status == 'proposed').toList();
   List<CaptureItem> get _processed =>
       _items.where((i) => i.status == 'processed').toList();
 
@@ -114,6 +118,7 @@ class _InboxSheetState extends State<_InboxSheet> {
       final r = jsonDecode(resp.body) as Map<String, dynamic>;
       final parts = <String>[
         if ((r['scheduled'] ?? 0) > 0) '${r['scheduled']} défi(s) programmé(s) 🔥',
+        if ((r['events'] ?? 0) > 0) '${r['events']} événement(s) posé(s) 📅',
         if ((r['created'] ?? 0) > 0) '${r['created']} projet(s) proposé(s)',
         if ((r['appended'] ?? 0) > 0) '${r['appended']} tâche(s) proposée(s)',
         if ((r['skipped'] ?? 0) > 0) '${r['skipped']} idée(s) laissée(s)',
@@ -257,6 +262,13 @@ class _InboxSheetState extends State<_InboxSheet> {
                         : _buildPendingTile(item, cs),
                 ],
 
+                // ── Propositions en attente de validation ────────────────────
+                if (_proposed.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _sectionHeader('PROPOSÉ — EN ATTENTE DE VALIDATION', cs),
+                  for (final item in _proposed) _buildProposedTile(item, cs),
+                ],
+
                 // ── Historique ORION ─────────────────────────────────────────
                 if (_processed.isNotEmpty) ...[
                   const SizedBox(height: 16),
@@ -359,6 +371,33 @@ class _InboxSheetState extends State<_InboxSheet> {
               ),
             ],
           ),
+        ),
+      );
+
+  /// Idée devenue proposition ORION — tap = ouvrir la file « À valider ».
+  Widget _buildProposedTile(CaptureItem item, ColorScheme cs) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: cs.primaryContainer.withOpacity(.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.primary.withOpacity(.2)),
+        ),
+        child: ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          leading: Icon(Icons.fact_check_outlined,
+              size: 18, color: cs.primary.withOpacity(.8)),
+          title: Text(item.text,
+              style: TextStyle(
+                  fontSize: 14, color: cs.onSurface.withOpacity(.75))),
+          subtitle: Text(
+            'Proposition à valider — appuie pour ouvrir',
+            style: TextStyle(
+                fontSize: 11,
+                color: cs.primary.withOpacity(.7),
+                fontStyle: FontStyle.italic),
+          ),
+          onTap: () => showProposalsSheet(context, widget.sync),
         ),
       );
 

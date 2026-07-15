@@ -1034,7 +1034,7 @@ async function executeAddTask(uid, projectId, task) {
     return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).`;
 }
 async function executeUpdateTask(uid, projectId, taskId, updates) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e, _f;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1089,14 +1089,17 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         done: (_c = a.done) !== null && _c !== void 0 ? _c : false,
                         doneAt: (_d = a.doneAt) !== null && _d !== void 0 ? _d : null,
                         id: a.id,
+                        linkedActivityId: (_e = a.linkedActivityId) !== null && _e !== void 0 ? _e : null,
+                        context: (_f = a.context) !== null && _f !== void 0 ? _f : null,
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c;
+                var _a, _b, _c, _d, _e, _f;
+                const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
-                    : (typeof a === "object" && a !== null && "title" in a ? String(a.title) : "");
+                    : (obj && "title" in obj ? String(obj.title) : "");
                 const previous = oldByTitle[title];
                 return {
                     id: (_a = previous === null || previous === void 0 ? void 0 : previous.id) !== null && _a !== void 0 ? _a : (0, uuid_1.v4)(),
@@ -1104,6 +1107,10 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     done: (_b = previous === null || previous === void 0 ? void 0 : previous.done) !== null && _b !== void 0 ? _b : false,
                     doneAt: (_c = previous === null || previous === void 0 ? void 0 : previous.doneAt) !== null && _c !== void 0 ? _c : null,
                     createdAt: new Date().toISOString(),
+                    // Préserve le lien chrono et le contexte GTD d'une action conservée
+                    // (le payload peut aussi poser un context explicite).
+                    linkedActivityId: (_d = previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _d !== void 0 ? _d : null,
+                    context: (_f = (_e = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _e !== void 0 ? _e : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _f !== void 0 ? _f : null,
                 };
             });
         }
@@ -1177,7 +1184,7 @@ async function executeLinkActionToActivity(uid, projectId, taskId, actionId, act
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title) {
+async function executeAddActivityAction(uid, activityId, title, context) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
@@ -1198,6 +1205,7 @@ async function executeAddActivityAction(uid, activityId, title) {
         doneAt: null,
         createdAt: new Date().toISOString(),
         linkedActivityId: activityId,
+        context: (context === null || context === void 0 ? void 0 : context.trim()) || null, // contexte GTD (@maison…)
     };
     own.push(action);
     await ref.update({ ownActions: own });
@@ -1442,7 +1450,7 @@ async function executeProcessInboxItem(uid, itemId, note) {
 // (executeGetInbox ne lit que status=="pending") et n'est pas re-proposée.
 async function executeProposeChange(uid, args) {
     var _a, _b, _c;
-    const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "restructure_project"];
+    const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "add_own_action", "restructure_project"];
     if (!valid.includes(args.kind)) {
         return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
     }

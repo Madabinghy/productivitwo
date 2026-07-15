@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -951,16 +952,30 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
+    String? pickedContext;
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nouvelle action'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(hintText: 'Description…'),
-          onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Description…'),
+              onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
+            ),
+            const SizedBox(height: 12),
+            // Contexte GTD (où/avec quoi c'est réalisable)
+            ContextPicker(
+              value: pickedContext,
+              sync: widget.sync,
+              onChanged: (c) => pickedContext = c,
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
@@ -974,7 +989,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
       ),
     );
     if (result == null) return;
-    setState(() => _task.actions.add(TaskAction(title: result)));
+    setState(() =>
+        _task.actions.add(TaskAction(title: result, context: pickedContext)));
     _save();
   }
 
@@ -1663,19 +1679,34 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
                                       onLongPress: () async {
                                         final ctrl = TextEditingController(text: a.title);
+                                        String? pickedContext = a.context;
                                         final result = await showDialog<String>(
                                           context: context,
                                           builder: (c) => AlertDialog(
                                             title: const Text('Modifier l\'action'),
-                                            content: TextField(
-                                              controller: ctrl,
-                                              autofocus: true,
-                                              decoration: const InputDecoration(
-                                                  border: OutlineInputBorder()),
-                                              onSubmitted: (v) {
-                                                if (v.trim().isNotEmpty)
-                                                  Navigator.pop(c, v.trim());
-                                              },
+                                            content: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                TextField(
+                                                  controller: ctrl,
+                                                  autofocus: true,
+                                                  decoration: const InputDecoration(
+                                                      border: OutlineInputBorder()),
+                                                  onSubmitted: (v) {
+                                                    if (v.trim().isNotEmpty)
+                                                      Navigator.pop(c, v.trim());
+                                                  },
+                                                ),
+                                                const SizedBox(height: 12),
+                                                ContextPicker(
+                                                  value: pickedContext,
+                                                  sync: widget.sync,
+                                                  onChanged: (ctx2) =>
+                                                      pickedContext = ctx2,
+                                                ),
+                                              ],
                                             ),
                                             actions: [
                                               TextButton(
@@ -1693,7 +1724,10 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         );
                                         ctrl.dispose();
                                         if (result != null) {
-                                          setState(() => a.title = result);
+                                          setState(() {
+                                            a.title = result;
+                                            a.context = pickedContext;
+                                          });
                                           _save();
                                         }
                                       },
@@ -1712,6 +1746,15 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                             fontSize: 14,
                                             color: cs.onSurface,
                                           )),
+                                      subtitle: a.context == null
+                                          ? null
+                                          : Text(a.context!,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: cs.primary
+                                                    .withOpacity(.75),
+                                              )),
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [

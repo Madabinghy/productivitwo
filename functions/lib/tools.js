@@ -110,10 +110,11 @@ const PROPOSE_CHANGE_TOOL = {
         properties: {
             kind: {
                 type: "string",
-                enum: ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task"],
+                enum: ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "add_own_action"],
                 description: "new_project = nouveau projet · attach_idea_as_task = ajouter une tâche à un projet existant · " +
                     "create_subproject = sous-projet d'un projet existant · archive_project = archiver un projet inactif · " +
-                    "add_phase = ajouter une phase à un projet existant · attach_action_to_task = ajouter une action (sous-étape) à une tâche existante",
+                    "add_phase = ajouter une phase à un projet existant · attach_action_to_task = ajouter une action (sous-étape) à une tâche existante · " +
+                    "add_own_action = ajouter une action PROPRE (ownAction) à une activité-temps existante (action simple sans projet, GTD)",
             },
             title: { type: "string", description: "Résumé humain court, ex: 'Créer le projet « Refonte site »'" },
             rationale: { type: "string", description: "Pourquoi, en 1 phrase" },
@@ -126,15 +127,18 @@ const PROPOSE_CHANGE_TOOL = {
                     "create_subproject={parentProjectId, projectTitle, domainId?} · " +
                     "archive_project={projectId} · " +
                     "add_phase={projectId, phaseLabel, startDate?, endDate?, color?} · " +
-                    "attach_action_to_task={projectId, taskId, actionLabel}",
+                    "attach_action_to_task={projectId, taskId, actionLabel, context?} · " +
+                    "add_own_action={activityId, actionLabel, context?}",
                 properties: {
                     projectId: { type: "string" },
                     parentProjectId: { type: "string" },
                     taskId: { type: "string" },
+                    activityId: { type: "string", description: "add_own_action : activité-temps qui portera l'action" },
                     projectTitle: { type: "string" },
                     taskTitle: { type: "string" },
                     phaseLabel: { type: "string" },
                     actionLabel: { type: "string" },
+                    context: { type: "string", description: "contexte GTD de l'action, ex: '@maison' (défauts + data/meta.customContexts)" },
                     domainId: { type: "string" },
                     description: { type: "string" },
                     startDate: { type: "string", description: "YYYY-MM-DD" },
@@ -747,6 +751,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
         properties: {
             activityId: { type: "string", description: "id de l'activité-temps propriétaire (get_user_context)" },
             title: { type: "string", description: "intitulé court et actionnable de l'action" },
+            context: { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
         },
     },
 };

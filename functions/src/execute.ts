@@ -1236,7 +1236,10 @@ async function executeUpdateTask(
       // renommage ou réordonnancement.
       const rawActions = Array.isArray(updates.actions) ? updates.actions : [];
       const oldActions = (tasks[idx].actions as Array<Record<string, unknown>>) ?? [];
-      const oldByTitle: Record<string, { done: boolean; doneAt: string | null; id?: string }> = {};
+      const oldByTitle: Record<string, {
+        done: boolean; doneAt: string | null; id?: string;
+        linkedActivityId: string | null; context: string | null;
+      }> = {};
       for (const a of oldActions) {
         const t = (a.title as string) ?? "";
         if (t) {
@@ -1244,13 +1247,16 @@ async function executeUpdateTask(
             done: (a.done as boolean) ?? false,
             doneAt: (a.doneAt as string) ?? null,
             id: a.id as string | undefined,
+            linkedActivityId: (a.linkedActivityId as string) ?? null,
+            context: (a.context as string) ?? null,
           };
         }
       }
       patch.actions = rawActions.map((a: unknown) => {
+        const obj = typeof a === "object" && a !== null ? a as Record<string, unknown> : null;
         const title = typeof a === "string"
           ? a
-          : (typeof a === "object" && a !== null && "title" in a ? String((a as { title: unknown }).title) : "");
+          : (obj && "title" in obj ? String(obj.title) : "");
         const previous = oldByTitle[title];
         return {
           id: previous?.id ?? uuidv4(),
@@ -1258,6 +1264,10 @@ async function executeUpdateTask(
           done: previous?.done ?? false,
           doneAt: previous?.doneAt ?? null,
           createdAt: new Date().toISOString(),
+          // Préserve le lien chrono et le contexte GTD d'une action conservée
+          // (le payload peut aussi poser un context explicite).
+          linkedActivityId: previous?.linkedActivityId ?? null,
+          context: (obj?.context as string | undefined) ?? previous?.context ?? null,
         };
       });
     }
@@ -1355,7 +1365,8 @@ async function executeLinkActionToActivity(
 async function executeAddActivityAction(
   uid: string,
   activityId: string,
-  title: string
+  title: string,
+  context?: string | null
 ): Promise<string> {
   if (!title?.trim()) return "Titre de l'action requis.";
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -1374,6 +1385,7 @@ async function executeAddActivityAction(
     doneAt: null,
     createdAt: new Date().toISOString(),
     linkedActivityId: activityId,
+    context: context?.trim() || null, // contexte GTD (@maison…)
   };
   own.push(action);
   await ref.update({ ownActions: own });
@@ -1647,7 +1659,7 @@ async function executeProposeChange(
     payload?: Record<string, unknown>;
   }
 ): Promise<string> {
-  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "restructure_project"];
+  const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "add_own_action", "restructure_project"];
   if (!valid.includes(args.kind)) {
     return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
   }

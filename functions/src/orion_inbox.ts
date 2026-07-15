@@ -35,27 +35,34 @@ function daysBetween(a: string, b: string): number {
 
 type RoutingTask = {
   title: string;
-  actions?: string[];
+  actions?: string[]; // legacy — plus demandé au LLM (les actions sont définies par le user)
   durationDays?: number;
 };
+
+/// Contextes GTD par défaut — miroir de kDefaultGtdContexts (lib/models/projects.dart).
+const DEFAULT_GTD_CONTEXTS = [
+  "@maison", "@bureau", "@ordinateur", "@courses", "@extérieur", "@téléphone",
+];
 
 type RoutingDecision = {
   newProjects?: {
     title: string;
     description?: string;
     domainId?: string | null;
+    objectiveId?: string | null; // objectif stratégique existant à rattacher
     ideaIds: string[];
     startOffsetDays?: number; // dans combien de jours démarrer (étalement de charge)
     tasks?: RoutingTask[];
+    // Prochaine action GTD : LA première chose concrète à faire, avec son contexte.
+    firstAction?: { title: string; context?: string | null };
   }[];
   appendTo?: {
     projectId: string;
     ideaIds: string[];
     tasks: RoutingTask[];
   }[];
-  // Idées ACTIONNABLES en un coup (corvée, course, appel…) → défi 🔥 daté,
-  // posé DIRECTEMENT dans le programme (un bloc se refuse d'un swipe — pas
-  // besoin de file de validation, contrairement à la structure Gantt).
+  // ACTION ponctuelle (corvée, course, appel…) → défi 🔥 daté, posé DIRECTEMENT
+  // dans le programme (un bloc se refuse d'un swipe — pas besoin de validation).
   schedule?: {
     ideaId: string;
     title: string;
@@ -64,30 +71,42 @@ type RoutingDecision = {
     durationMin?: number;
     activityId?: string | null; // routine/activité existante du même sujet
   }[];
+  // ÉVÉNEMENT (rendez-vous à date/heure FIXE mentionnée dans l'idée) → bloc
+  // d'agenda ordinaire, sans préfixe défi.
+  events?: {
+    ideaId: string;
+    title: string;
+    dayOffset?: number;
+    startTime?: string;
+    durationMin?: number;
+  }[];
   skip?: string[];
   // Message léger optionnel sur UNE idée laissée — ne révèle jamais le traitement.
   nudge?: { text: string };
 };
 
-const ROUTING_PROMPT = `Tu es ORION, l'assistant de Productivitwo. Tu traites la boîte à idées de l'utilisateur : transformer des idées en projets Gantt, les rattacher à des projets existants, ou les laisser.
+const ROUTING_PROMPT = `Tu es ORION, l'assistant de Productivitwo. Tu traites la boîte à idées de l'utilisateur selon la méthode GTD : chaque idée est classée PROJET, ACTION ponctuelle, ÉVÉNEMENT, ou laissée.
 
-## RÈGLE D'OR (granularité — la plus importante)
-Ne crée un projet QUE pour une idée (ou un groupe d'idées) qui décrit un VRAI travail multi-étapes, stratégique, méritant un suivi sur plusieurs jours/semaines.
-Une idée ACTIONNABLE EN UN COUP (corvée, course, appel, petite réparation, message à envoyer) → "schedule" : pose-la comme un DÉFI daté dans les 14 prochains jours — jour et heure PLAUSIBLES (jamais avant {{WAKE}} ni après 21h, corvée extérieure en journée, etc.), durée réaliste (5-60 min), charge étalée (max 2 défis posés par jour, tiens compte des blocs existants). Si une routine/activité existante correspond au sujet (voir liste), mets son activityId (le chrono sera ciblé).
-Une note vague, non actionnable, ou qui demande une décision de l'utilisateur → "skip".
+## CLASSIFICATION GTD (la règle la plus importante)
+- **PROJET** ("newProjects") : un VRAI travail multi-étapes, stratégique, méritant un suivi sur plusieurs jours/semaines. Jamais pour une simple corvée.
+- **ACTION ponctuelle** ("schedule") : réalisable en un coup (corvée, course, appel, petite réparation, message) → DÉFI daté dans les 14 prochains jours — jour et heure PLAUSIBLES (jamais avant {{WAKE}} ni après 21h, corvée extérieure en journée), durée réaliste (5-60 min), charge étalée (max 2 défis/jour). Si une routine/activité existante correspond au sujet, mets son activityId (chrono ciblé).
+- **ÉVÉNEMENT** ("events") : l'idée mentionne un rendez-vous à date/heure FIXE (rdv médecin mardi 15h, réunion, anniversaire) → bloc d'agenda simple à cette date/heure, SANS le traiter comme un défi.
+- **Laisser** ("skip") : note vague, non actionnable, ou qui demande une décision de l'utilisateur.
 Dans le doute : skip. Mieux vaut laisser une idée que créer un projet bidon ou un défi absurde.
 
 ## Règles
 1. Préfère TOUJOURS enrichir un projet ACTIF existant (appendTo) plutôt que créer, si l'idée s'y rattache sémantiquement.
 2. AGRÈGE : si plusieurs idées concernent le même sujet, regroupe-les — soit dans UN seul newProject (plusieurs ideaIds), soit en plusieurs tâches d'un même projet.
-3. Chaque idée apparaît EXACTEMENT une fois (dans newProjects, appendTo, schedule, OU skip).
-4. Pour un nouveau projet : titre court et clair, domainId le plus cohérent parmi les domaines (ou null), et 2-4 tâches qui forment un VRAI Gantt :
-   - chaque tâche = un verbe d'action + 2-4 **sous-actions** concrètes (\`actions\`) qui détaillent comment la faire,
-   - chaque tâche a une **durée réaliste** en jours (\`durationDays\`, 1 à 15) — les tâches seront ENCHAÎNÉES dans le temps (l'une après l'autre), donne donc un ordre logique d'exécution.
-5. PLANIFICATION RÉALISTE (important) : l'utilisateur a DÉJÀ des projets en cours avec des tâches planifiées (voir leurs dates). Ne surcharge PAS les prochains jours. Donne à chaque nouveau projet un \`startOffsetDays\` (dans combien de jours il démarre) pour ÉTALER la charge : tiens compte des tâches existantes ET des autres nouveaux projets (ne les fais pas tous démarrer en même temps). Un projet peu urgent peut démarrer dans 1-3 semaines.
+3. Chaque idée apparaît EXACTEMENT une fois (dans newProjects, appendTo, schedule, events, OU skip).
+4. Pour un nouveau projet :
+   - titre court et clair, domainId le plus cohérent parmi les domaines (ou null) ;
+   - si un OBJECTIF stratégique existant (voir liste) correspond au projet, mets son id dans \`objectiveId\` (sinon null) ;
+   - 2-4 tâches de niveau PHASE (un verbe d'action, \`durationDays\` 1-15, enchaînées dans le temps) — SANS sous-actions : c'est l'utilisateur qui définira ses actions, pas toi ;
+   - \`firstAction\` = LA PROCHAINE ACTION GTD : la première chose physique et concrète à faire pour démarrer (ex: "Appeler la mairie pour les horaires"), avec son \`context\` choisi dans la liste des contextes ci-dessous (où/avec quoi c'est réalisable).
+5. PLANIFICATION RÉALISTE (important) : l'utilisateur a DÉJÀ des projets en cours avec des tâches planifiées (voir leurs dates). Ne surcharge PAS les prochains jours. Donne à chaque nouveau projet un \`startOffsetDays\` pour ÉTALER la charge. Un projet peu urgent peut démarrer dans 1-3 semaines.
 
 ## Message léger (nudge) — optionnel
-Les projets créés apparaissent EN SILENCE (effet de surprise). MAIS si une idée est laissée (skip), tu peux proposer "nudge": { "text": "..." } = UN message court à la 1ère personne d'ORION qui évoque cette idée — SANS JAMAIS dire que tu as traité l'inbox ni mentionner les projets créés. Un seul nudge max.
+Les propositions apparaissent EN SILENCE. MAIS si une idée est laissée (skip), tu peux proposer "nudge": { "text": "..." } = UN message court à la 1ère personne d'ORION qui évoque cette idée — SANS JAMAIS dire que tu as traité l'inbox. Un seul nudge max.
 PRIORISE l'idée laissée qui traîne depuis le PLUS LONGTEMPS (\`ageDays\` le plus élevé), et adapte le ton à l'âge :
 - récente (≤ 3j) : pas forcément de nudge (laisse infuser), ou rappel très léger ;
 - une à deux semaines : rappel amical (ex: "Pense à boucler ta facture SOF 😉") ;
@@ -100,6 +119,12 @@ Omets le nudge si rien ne le mérite.
 ## Projets actifs (pour rattacher)
 {{PROJECTS}}
 
+## Objectifs stratégiques actifs (pour objectiveId)
+{{OBJECTIVES}}
+
+## Contextes GTD disponibles (pour firstAction.context)
+{{CONTEXTS}}
+
 ## Domaines
 {{DOMAINS}}
 
@@ -110,9 +135,10 @@ Date du jour : {{TODAY}} — heure de lever de l'utilisateur : {{WAKE}}
 
 Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 {
-  "newProjects": [ { "title": "...", "description": "...", "domainId": "<id|null>", "ideaIds": ["..."], "startOffsetDays": 0, "tasks": [ {"title":"...", "actions":["...","..."], "durationDays": 2} ] } ],
-  "appendTo": [ { "projectId": "...", "ideaIds": ["..."], "tasks": [ {"title":"...", "actions":["..."]} ] } ],
+  "newProjects": [ { "title": "...", "description": "...", "domainId": "<id|null>", "objectiveId": "<id|null>", "ideaIds": ["..."], "startOffsetDays": 0, "tasks": [ {"title":"...", "durationDays": 2} ], "firstAction": { "title": "...", "context": "@maison" } } ],
+  "appendTo": [ { "projectId": "...", "ideaIds": ["..."], "tasks": [ {"title":"..."} ] } ],
   "schedule": [ { "ideaId": "...", "title": "...", "dayOffset": 1, "startTime": "10:00", "durationMin": 25, "activityId": null } ],
+  "events": [ { "ideaId": "...", "title": "...", "dayOffset": 3, "startTime": "15:00", "durationMin": 60 } ],
   "skip": ["ideaId", ...],
   "nudge": { "text": "..." }
 }`;
@@ -126,7 +152,7 @@ Réponds UNIQUEMENT avec ce JSON (rien d'autre) :
 export async function processInboxToProjects(
   uid: string,
   opts?: { force?: boolean }
-): Promise<{ found: number; created: number; appended: number; scheduled: number; skipped: number } | null> {
+): Promise<{ found: number; created: number; appended: number; scheduled: number; events: number; skipped: number } | null> {
   // Jour + heure VÉCUS (fait data/meta.tzOffsetMin posé par l'app) —
   // fallback Paris tant que le fait n'existe pas.
   const tzSnap = await db.doc(`users/${uid}/data/meta`).get();
@@ -160,7 +186,7 @@ export async function processInboxToProjects(
 
   if (inboxSnap.empty) {
     await gateRef.set({ lastSweepYmd: today }, { merge: true });
-    return { found: 0, created: 0, appended: 0, scheduled: 0, skipped: 0 };
+    return { found: 0, created: 0, appended: 0, scheduled: 0, events: 0, skipped: 0 };
   }
 
   const sortedDocs = inboxSnap.docs.slice().sort((a, b) => {
@@ -183,11 +209,12 @@ export async function processInboxToProjects(
     };
   });
 
-  const [projSnap, domSnap, actsSnap, metaSnap] = await Promise.all([
+  const [projSnap, domSnap, actsSnap, metaSnap, objSnap] = await Promise.all([
     db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     db.doc(`users/${uid}/data/meta`).get(),
+    db.collection(`users/${uid}/strategic_objectives`).get(),
   ]);
   const projects = projSnap.docs.map((d) => {
     const v = d.data();
@@ -219,8 +246,27 @@ export async function processInboxToProjects(
   const metaWake = metaSnap.data()?.wakeTime as string | undefined;
   const wake = typeof metaWake === "string" && /^\d{2}:\d{2}$/.test(metaWake) ? metaWake : "07:00";
 
+  // Objectifs stratégiques actifs (rattachement des nouveaux projets).
+  const objectives = objSnap.docs
+    .map((d) => ({ ...d.data(), id: (d.data().id as string) ?? d.id }))
+    .filter((v) => String((v as Record<string, unknown>).status ?? "active") === "active")
+    .map((v) => {
+      const o = v as Record<string, unknown>;
+      return { id: o.id as string, title: o.title as string, kpiTarget: (o.kpiTarget as string) ?? null };
+    });
+
+  // Contextes GTD = défauts + personnalisés (data/meta.customContexts).
+  const customContexts = ((metaSnap.data()?.customContexts as string[] | undefined) ?? [])
+    .filter((c) => typeof c === "string" && c.trim().length > 0);
+  const gtdContexts = [
+    ...DEFAULT_GTD_CONTEXTS,
+    ...customContexts.filter((c) => !DEFAULT_GTD_CONTEXTS.includes(c)),
+  ];
+
   const prompt = ROUTING_PROMPT.replace("{{IDEAS}}", JSON.stringify(ideas, null, 2))
     .replace("{{PROJECTS}}", JSON.stringify(projects, null, 2))
+    .replace("{{OBJECTIVES}}", JSON.stringify(objectives, null, 2))
+    .replace("{{CONTEXTS}}", JSON.stringify(gtdContexts))
     .replace("{{DOMAINS}}", JSON.stringify(domains, null, 2))
     .replace("{{ACTIVITIES}}", JSON.stringify(activities, null, 2))
     .replace(/\{\{WAKE\}\}/g, wake)
@@ -287,6 +333,17 @@ export async function processInboxToProjects(
       { id: "phase-1", label: "Réalisation", startDate: projectStart, endDate: lastEnd },
     ];
     const ids = (np.ideaIds ?? []).filter((id) => ideaById.has(id));
+    // Prochaine action GTD proposée : contexte validé contre la liste connue,
+    // objectif validé contre les objectifs actifs.
+    const firstActionTitle = np.firstAction?.title?.trim();
+    const firstActionContext =
+      np.firstAction?.context && gtdContexts.includes(np.firstAction.context)
+        ? np.firstAction.context
+        : null;
+    const objectiveId =
+      np.objectiveId && objectives.some((o) => o.id === np.objectiveId)
+        ? np.objectiveId
+        : undefined;
     // Au lieu de créer le projet en silence → on PROPOSE (file « À valider »).
     await executeProposeChange(uid, {
       kind: "new_project",
@@ -296,11 +353,15 @@ export async function processInboxToProjects(
       payload: {
         projectTitle: np.title,
         domainId: np.domainId ?? undefined,
+        objectiveId,
         description: np.description,
         startDate: projectStart,
         endDate: lastEnd,
         phases,
-        tasks, // conservé pour une application riche ultérieure (Option B)
+        tasks, // appliqué par acceptProposal (phases + tâches niveau Gantt)
+        ...(firstActionTitle
+          ? { firstAction: { title: firstActionTitle, context: firstActionContext } }
+          : {}),
       },
     });
     await Promise.all(
@@ -399,6 +460,60 @@ export async function processInboxToProjects(
     scheduled++;
   }
 
+  // Événements (rendez-vous à date/heure fixe) : bloc d'agenda simple, sans 🔥
+  // ni challenge — miroir d'executeAddEvent (category personal, subtitle).
+  let events = 0;
+  for (const ev of decision.events ?? []) {
+    const idea = ideaById.get(ev.ideaId);
+    if (!idea || !ev.title?.trim()) continue;
+    const offset = Math.min(60, Math.max(0, Math.round(ev.dayOffset ?? 1)));
+    const startTime =
+      typeof ev.startTime === "string" && /^\d{2}:\d{2}$/.test(ev.startTime)
+        ? ev.startTime
+        : "09:00";
+    const ymd = addDays(today, offset);
+    const block = {
+      id: uuidv4(),
+      startTime,
+      durationMin: Math.min(480, Math.max(15, Math.round(ev.durationMin ?? 60))),
+      title: ev.title.trim(),
+      subtitle: "événement",
+      category: "personal",
+      projectId: null,
+      taskId: null,
+      activityId: null,
+      actionId: null,
+      status: "pending",
+      doneAt: null,
+    };
+    const ref = db.doc(`users/${uid}/daily_schedules/${ymd}`);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set({
+        date: ymd,
+        generatedBy: "orion",
+        generatedAt: FieldValue.serverTimestamp(),
+        blocks: [block],
+      });
+    } else {
+      const blocks =
+        ((snap.data() as Record<string, unknown>).blocks as Array<
+          Record<string, unknown>
+        >) ?? [];
+      blocks.push(block);
+      await ref.update({ blocks });
+    }
+    await db.doc(`users/${uid}/captures/${ev.ideaId}`).set(
+      {
+        status: "processed",
+        orionNote: `Événement posé le ${ymd} à ${startTime} — « ${ev.title.trim()} »`,
+        processedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+    events++;
+  }
+
   const skipped = (decision.skip ?? []).filter((id) => ideaById.has(id)).length;
 
   // Silence sur les projets créés (effet « wow »). Seul message éventuel : un
@@ -421,11 +536,11 @@ export async function processInboxToProjects(
   await gateRef.set(
     {
       lastSweepYmd: today,
-      lastResult: { found: ideas.length, created, appended, scheduled, skipped },
+      lastResult: { found: ideas.length, created, appended, scheduled, events, skipped },
       at: FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
 
-  return { found: ideas.length, created, appended, scheduled, skipped };
+  return { found: ideas.length, created, appended, scheduled, events, skipped };
 }
