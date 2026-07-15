@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/schedule_suggest.dart';
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 
@@ -20,11 +21,12 @@ import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 //     durée, glisser le corps pour déplacer l'heure (snap 15 min), barre
 //     d'actions (heure · ✓ · ▶ · fiche · renégocier · 🗑) ;
 //   · tap ailleurs → désélection. Heure/durée = LIBRES (jamais un report).
-// Les MIROIRS Google Agenda sont en lecture seule (l'agenda est leur vérité) ;
-// les blocs faits sont grisés. Toutes les écritures passent par les chemins
-// existants (updateScheduleBlockTime/addScheduleBlock…) → la sync agenda suit
-// via le trigger. La proposition (« ✨ Étoffer ») reste le moteur pour remplir
-// une journée creuse.
+// Les MIROIRS Google Agenda s'éditent ici aussi (WYSIWYG bidirectionnel, en
+// test) : chaque modif est poussée sur le vrai rendez-vous via gcalApi
+// updateEvent ; la suppression demande « partout ou masquer ici ? ». Les blocs
+// faits sont grisés. Les écritures des blocs Productivitwo passent par les
+// chemins existants → la sync agenda suit via le trigger. La proposition
+// (« ✨ Étoffer ») reste le moteur pour remplir une journée creuse.
 
 class DayTimelineView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -125,8 +127,29 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         _ => cs.tertiary,
       };
 
-  bool _editable(ScheduleBlock b) =>
-      b.gcalEventId == null && b.status != 'done' && !b.isPrep;
+  // WYSIWYG bidirectionnel (test) : les MIROIRS Google Agenda s'éditent ici
+  // aussi — chaque modif est poussée sur le vrai événement (_pushMirror).
+  bool _editable(ScheduleBlock b) => b.status != 'done' && !b.isPrep;
+
+  /// Pousse l'état courant d'un miroir modifié vers son événement Google.
+  /// Best-effort : l'app garde la modif, l'agenda est prévenu — en cas
+  /// d'échec réseau, la prochaine sync réalignera (agenda → app).
+  Future<void> _pushMirror(ScheduleBlock b, {String? title}) async {
+    if (b.gcalEventId == null) return;
+    final ok = await gcalUpdateEvent(
+      _sync,
+      eventId: b.gcalEventId!,
+      date: widget.date,
+      startTime: b.startTime,
+      durationMin: b.durationMin,
+      title: title,
+    );
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Modifié ici — Google Agenda n\'a pas suivi (la prochaine sync réalignera).')));
+    }
+  }
 
   ScheduleBlock? get _selected {
     if (_selectedId == null) return null;
@@ -184,6 +207,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
           date: widget.date,
           oldStartTime: oldStart,
           alarmSoundKey: widget.logic.state.alarmSound);
+      // Miroir agenda : le vrai rendez-vous suit (WYSIWYG).
+      await _pushMirror(b);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -202,6 +227,43 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   }
 
   Future<void> _deleteSelected(ScheduleBlock b) async {
+    // Miroir agenda : supprimer un VRAI rendez-vous mérite un choix explicite
+    // — partout (WYSIWYG) ou juste masqué ici (l'agenda le garde).
+    if (b.gcalEventId != null) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text('« ${b.title} »'),
+          content: const Text(
+              'Ce bloc vient de Google Agenda. Supprimer aussi le rendez-vous, '
+              'ou seulement le masquer ici ?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(d),
+                child: const Text('Annuler')),
+            TextButton(
+                onPressed: () => Navigator.pop(d, 'hide'),
+                child: const Text('Masquer ici')),
+            FilledButton(
+                onPressed: () => Navigator.pop(d, 'both'),
+                child: const Text('Supprimer partout')),
+          ],
+        ),
+      );
+      if (choice == null) return;
+      setState(() => _selectedId = null);
+      await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
+      if (choice == 'both') {
+        final ok = await gcalDeleteEvent(_sync, b.gcalEventId!);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(ok
+                  ? '« ${b.title} » supprimé — ici et dans Google Agenda.'
+                  : 'Masqué ici — la suppression dans l\'agenda a échoué.')));
+        }
+      }
+      return;
+    }
     setState(() => _selectedId = null);
     await _sync.updateBlockStatus(widget.date, b.id, 'deleted');
     await cancelChallengeNotifications(b);
@@ -239,6 +301,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     b.title = v;
     setState(() {});
     await _sync.updateBlockTitle(widget.date, b.id, v);
+    // Miroir agenda : le titre du vrai rendez-vous suit (WYSIWYG).
+    await _pushMirror(b, title: v);
   }
 
   // ── Édition précise heure + durée (tap sur « HH:mm · X min ») ────────────────
@@ -353,6 +417,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
           date: widget.date,
           oldStartTime: oldStart,
           alarmSoundKey: widget.logic.state.alarmSound);
+      // Miroir agenda : le vrai rendez-vous suit (WYSIWYG).
+      await _pushMirror(b);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -969,7 +1035,6 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     final below = start / 60 * _hourH + 6 + blockH + 16;
     final fitsBelow = below < 24 * _hourH - 44;
     final top = fitsBelow ? below : start / 60 * _hourH + 6 - 52;
-    final isMirror = b.gcalEventId != null;
 
     Widget btn(IconData icon, String tip, VoidCallback? onTap) => IconButton(
           tooltip: tip,
@@ -993,27 +1058,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            child: isMirror
-                ? Row(mainAxisSize: MainAxisSize.min, children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Text('${_toHm(start)} · $dur min',
-                          style: const TextStyle(
-                              fontSize: 11.5, fontWeight: FontWeight.w800)),
-                    ),
-                    btn(
-                        b.status == 'done'
-                            ? Icons.check_circle
-                            : Icons.check_circle_outline,
-                        'Fait',
-                        () => _toggleDone(b)),
-                    const Padding(
-                      padding: EdgeInsets.only(left: 2, right: 6),
-                      child: Text('RDV Google — se modifie dans l\'agenda',
-                          style: TextStyle(fontSize: 10.5)),
-                    ),
-                  ])
-                : Row(mainAxisSize: MainAxisSize.min, children: [
+            // WYSIWYG (test) : les miroirs ont la barre complète — leurs
+            // modifs sont poussées sur le vrai rendez-vous (_pushMirror).
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
                     // Tap sur le label → édition EXACTE heure + durée (les
                     // poignées snappent à 15 min, ici tout est libre).
                     InkWell(

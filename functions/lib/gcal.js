@@ -337,7 +337,7 @@ async function syncDayToGcal(uid, date) {
 }
 // ── API app : status / authUrl / setAutoSync / syncDay / disconnect ──────────
 exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: GCAL_SECRETS }, async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
         return;
@@ -351,7 +351,7 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
         res.status(401).json({ error: "Missing Authorization header" });
         return;
     }
-    const { uid, action, date, value, calendarId, calendarSummary } = req.body;
+    const { uid, action, date, value, calendarId, calendarSummary, eventId, startTime, durationMin, title } = req.body;
     if (!uid || !action) {
         res.status(400).json({ error: "uid et action requis" });
         return;
@@ -436,7 +436,7 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
                                 }).catch(() => null);
                             }
                         }
-                        catch ( /* best-effort */_j) { /* best-effort */ }
+                        catch ( /* best-effort */_k) { /* best-effort */ }
                     }
                 }
             }
@@ -481,9 +481,67 @@ exports.gcalApi = (0, https_1.onRequest)({ cors: true, invoker: "public", secret
             res.status(200).json(Object.assign(Object.assign({}, push), { imported: imp.imported, updatedFromCal: imp.updated, removedFromCal: imp.removed }));
             return;
         }
+        // ── WYSIWYG bidirectionnel (test) : éditer/supprimer un ÉVÉNEMENT réel
+        // de l'agenda depuis l'app — le miroir modifié dans la timeline pousse
+        // sa nouvelle heure/durée/titre sur le vrai rendez-vous.
+        if (action === "updateEvent") {
+            if (!eventId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+                !startTime || !/^\d{2}:\d{2}$/.test(startTime) ||
+                typeof durationMin !== "number" || durationMin < 1) {
+                res.status(400).json({ ok: false, reason: "bad_args" });
+                return;
+            }
+            const token = await accessTokenFor(uid);
+            if (!token) {
+                res.status(200).json({ ok: false, reason: "not_connected" });
+                return;
+            }
+            const base = calBase(await calendarIdFor(uid));
+            const tzOff = (_h = (await userTzOffset(uid))) !== null && _h !== void 0 ? _h : parisOffsetMin(date);
+            const startMin = hmToMin(startTime);
+            const start = dateTimeOf(date, startMin);
+            const end = dateTimeOf(date, startMin + Math.round(durationMin));
+            const patch = {
+                start: { dateTime: `${start.ymd}T${start.hm}:00${offsetStr(tzOff)}` },
+                end: { dateTime: `${end.ymd}T${end.hm}:00${offsetStr(tzOff)}` },
+            };
+            if (typeof title === "string" && title.trim() !== "") {
+                patch.summary = title.trim();
+            }
+            const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+                method: "PATCH",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify(patch),
+            });
+            if (!r.ok)
+                console.error("gcal updateEvent failed:", r.status, await r.text());
+            res.status(200).json({ ok: r.ok, status: r.status });
+            return;
+        }
+        if (action === "deleteEvent") {
+            if (!eventId) {
+                res.status(400).json({ ok: false, reason: "bad_args" });
+                return;
+            }
+            const token = await accessTokenFor(uid);
+            if (!token) {
+                res.status(200).json({ ok: false, reason: "not_connected" });
+                return;
+            }
+            const base = calBase(await calendarIdFor(uid));
+            const r = await fetch(`${base}/events/${encodeURIComponent(eventId)}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const ok = r.ok || r.status === 404 || r.status === 410;
+            if (!ok)
+                console.error("gcal deleteEvent failed:", r.status, await r.text());
+            res.status(200).json({ ok, status: r.status });
+            return;
+        }
         if (action === "disconnect") {
             const snap = await tokensRef(uid).get();
-            const refresh = (_h = snap.data()) === null || _h === void 0 ? void 0 : _h.refreshToken;
+            const refresh = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.refreshToken;
             if (refresh) {
                 // Révocation best-effort — la suppression du doc fait foi.
                 await fetch("https://oauth2.googleapis.com/revoke", {

@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
+import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
 
@@ -209,6 +210,37 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Future<void> _deleteBlock(ScheduleBlock block) async {
+    // Miroir agenda (WYSIWYG, test) : choix explicite — supprimer le vrai
+    // rendez-vous ou seulement le masquer ici.
+    if (block.gcalEventId != null) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: Text('« ${block.title} »'),
+          content: const Text(
+              'Ce bloc vient de Google Agenda. Supprimer aussi le rendez-vous, '
+              'ou seulement le masquer ici ?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(d),
+                child: const Text('Annuler')),
+            TextButton(
+                onPressed: () => Navigator.pop(d, 'hide'),
+                child: const Text('Masquer ici')),
+            FilledButton(
+                onPressed: () => Navigator.pop(d, 'both'),
+                child: const Text('Supprimer partout')),
+          ],
+        ),
+      );
+      if (choice == null) {
+        if (mounted) setState(() {}); // ré-affiche le bloc swipé
+        return;
+      }
+      await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
+      if (choice == 'both') await gcalDeleteEvent(_sync, block.gcalEventId!);
+      return;
+    }
     await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
     if (block.challenge) {
       NotificationService.cancelChallengeAll(block.id);
