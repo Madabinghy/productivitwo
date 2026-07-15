@@ -214,6 +214,26 @@ export const coachApi = onRequest(
         return;
       }
 
+      if (action === "deleteClient") {
+        // Suppression DURE assumée (cas explicite : fiche mal créée — mauvais
+        // email). Collection racine server-only : aucun merge client ne peut
+        // la ressusciter. Nettoie aussi l'allowlist si C'EST CE COACH qui
+        // avait invité cet email, et les jetons de consentement du doc.
+        const doc = await ownDoc(id);
+        if (!doc) { res.status(404).json({ error: "Fiche introuvable" }); return; }
+        const allowRef = db.collection("allowlist").doc(doc.email as string);
+        const allowSnap = await allowRef.get();
+        if (allowSnap.exists && allowSnap.data()?.addedBy === `coach:${coachUid}`) {
+          await allowRef.delete();
+        }
+        const toks = await db.collection("coaching_consents")
+          .where("coachingId", "==", doc.id).get();
+        await Promise.all(toks.docs.map((t) => t.ref.delete()));
+        await coachingRef(doc.id as string).delete();
+        res.status(200).json({ ok: true });
+        return;
+      }
+
       if (action === "invite") {
         // Ouvre l'accès app au coaché : allowlist → sendMagicLink passera.
         const doc = await ownDoc(id);

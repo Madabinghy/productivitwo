@@ -52,6 +52,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
   // (sonde coachApi — 403 pour tout le monde d'autre).
   bool _isCoach = false;
+  StreamSubscription<User?>? _authSub;
 
   @override
   void initState() {
@@ -59,8 +60,17 @@ class _WebHomeScreenState extends State<WebHomeScreen>
     // Onglet « Arène » (ancienne gamification) supprimé avec la couche jeu.
     _mainTabs = TabController(length: 4, vsync: this, initialIndex: 1);
     _load();
-    probeCoachAccess().then((ok) {
-      if (mounted && ok) setState(() => _isCoach = true);
+    // Sonde coach accrochée à l'ÉTAT D'AUTH (pas one-shot) : au chargement,
+    // Firebase restaure la session APRÈS initState — une sonde immédiate
+    // répondait « non connecté » et le bouton 🎓 n'apparaissait jamais.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((u) {
+      if (u == null) {
+        if (mounted) setState(() => _isCoach = false);
+        return;
+      }
+      probeCoachAccess().then((ok) {
+        if (mounted) setState(() => _isCoach = ok);
+      });
     });
     // Sync temps réel des projets : les tâches/actions validées (ici, sur un
     // autre appareil, ou par Claude/MCP) se reflètent sans recharger la page.
@@ -72,6 +82,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void dispose() {
     _projectsSub?.cancel();
+    _authSub?.cancel();
     _mainTabs.dispose();
     super.dispose();
   }
