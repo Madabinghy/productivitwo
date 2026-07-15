@@ -382,9 +382,9 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
                   ),
                 ),
                 IconButton(
-                  onPressed: entry.value > 30
+                  onPressed: entry.value > 15
                       ? () => setState(() => _timeCommitments[entry.key] =
-                          (entry.value - 30).clamp(30, 1200))
+                          (entry.value - 15).clamp(15, 1200))
                       : null,
                   icon: const Icon(Icons.remove_circle_outline, size: 20),
                   color: _accent,
@@ -402,7 +402,7 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
                 IconButton(
                   onPressed: entry.value < 1200
                       ? () => setState(() => _timeCommitments[entry.key] =
-                          (entry.value + 30).clamp(30, 1200))
+                          (entry.value + 15).clamp(15, 1200))
                       : null,
                   icon: const Icon(Icons.add_circle_outline, size: 20),
                   color: _accent,
