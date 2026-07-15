@@ -79,15 +79,16 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     if (widget.rattrapage) {
       _countSameDayPlans();
     }
-    // Heure de lever : fait demandé UNE fois (sheet), puis contrainte dure de
-    // la proposition — plus jamais de bloc à 3 h du matin. Fait partie de
-    // l'empreinte : la changer invalide le brouillon.
-    final wake = await _ensureWakeTime();
+    // Heure de lever PRÉVUE : demandée à chaque vraie génération (les jours
+    // ne se ressemblent pas — flexibilité), dernière valeur = présélection.
+    // Rouvrir un brouillon encore valide ne repose PAS la question.
+    final storedWake = await _sync.fetchWakeTime();
+    final srcFp = await _sourceFingerprint();
     // ── Cache : l'ouverture répétée de l'écran coûte 0 appel LLM ─────────────
     // Le brouillon persiste sur le doc de la date cible et reste valable < 6 h
     // si le programme source (la veille) n'a pas changé. ⟳ = régénérer.
-    final fingerprint = '${await _sourceFingerprint()}|lever:$wake';
     if (!force) {
+      final cachedFp = '$srcFp|lever:${storedWake ?? '07:00'}';
       try {
         final cached = await _sync.fetchProposalDraft(widget.targetDate);
         final genAt = cached?['generatedAt'] is String
@@ -96,7 +97,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         if (cached != null &&
             genAt != null &&
             DateTime.now().difference(genAt).inHours < 6 &&
-            cached['fingerprint'] == fingerprint &&
+            cached['fingerprint'] == cachedFp &&
             cached['body'] is Map) {
           _applyProposal(Map<String, dynamic>.from(cached['body'] as Map));
           if (_draft.isNotEmpty) {
@@ -107,6 +108,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         }
       } catch (_) {}
     }
+    final wake = await _ensureWakeTime(storedWake);
+    final fingerprint = '$srcFp|lever:$wake';
     try {
       final token = await _sync.ensureWidgetToken();
       final raw = token.rawToken;
@@ -145,23 +148,24 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  /// Heure de lever habituelle : lue depuis le fait stocké, demandée via un
-  /// sheet à la toute première planification. Refus/fermeture → 07:00 pour
-  /// cette fois (rien n'est écrit, la question reviendra).
-  Future<String> _ensureWakeTime() async {
-    final stored = await _sync.fetchWakeTime();
-    if (stored != null) return stored;
-    if (!mounted) return '07:00';
-    final picked = await _askWakeTime();
+  /// Heure de lever PRÉVUE pour la journée cible : demandée à chaque
+  /// génération (chaque jour est différent), [last] = dernière valeur
+  /// utilisée, mise en avant. Fermeture du sheet → on garde la dernière
+  /// (sinon 07:00), rien n'est écrit.
+  Future<String> _ensureWakeTime(String? last) async {
+    if (!mounted) return last ?? '07:00';
+    final picked = await _askWakeTime(last);
     if (picked != null) {
       await _sync.setWakeTime(picked);
       return picked;
     }
-    return '07:00';
+    return last ?? '07:00';
   }
 
-  Future<String?> _askWakeTime() {
+  Future<String?> _askWakeTime(String? last) {
     const options = ['05:30', '06:00', '06:30', '07:00', '07:30', '08:00', '09:00'];
+    String fr(String hm) =>
+        hm.replaceFirst(':', ' h ').replaceFirst(' h 00', ' h');
     return showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
@@ -173,11 +177,11 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('À quelle heure te lèves-tu, en général ?',
+              const Text('À quelle heure comptes-tu te lever ?',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(
-                'Demandé une fois : le programme ne posera plus rien avant ton lever.',
+                'Chaque jour est différent — rien ne sera posé avant ton lever.',
                 style: TextStyle(
                     fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
               ),
@@ -186,20 +190,37 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final o in options)
+                  // La dernière valeur d'abord, mise en avant — un tap et
+                  // c'est reparti comme la veille.
+                  if (last != null)
                     ActionChip(
-                      label: Text(o.replaceFirst(':', ' h ')
-                          .replaceFirst(' h 00', ' h')),
-                      labelStyle: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w700),
-                      onPressed: () => Navigator.pop(ctx, o),
+                      avatar: Icon(Icons.history_rounded,
+                          size: 16, color: cs.primary),
+                      label: Text('${fr(last)} · comme la dernière fois'),
+                      labelStyle: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: cs.primary),
+                      side: BorderSide(color: cs.primary.withOpacity(.6)),
+                      onPressed: () => Navigator.pop(ctx, last),
                     ),
+                  for (final o in options)
+                    if (o != last)
+                      ActionChip(
+                        label: Text(fr(o)),
+                        labelStyle: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w700),
+                        onPressed: () => Navigator.pop(ctx, o),
+                      ),
                   ActionChip(
                     label: const Text('Autre…'),
                     onPressed: () async {
+                      final p = (last ?? '07:00').split(':');
                       final t = await showTimePicker(
                           context: ctx,
-                          initialTime: const TimeOfDay(hour: 7, minute: 0));
+                          initialTime: TimeOfDay(
+                              hour: int.tryParse(p.first) ?? 7,
+                              minute: int.tryParse(p.last) ?? 0));
                       if (t != null && ctx.mounted) {
                         Navigator.pop(
                             ctx,
