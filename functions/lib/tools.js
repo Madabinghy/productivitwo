@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -903,6 +903,7 @@ exports.SCHEDULE_DAY_TOOL = {
                         taskId: { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
                         activityId: { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
                         actionId: { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
+                        sessionTemplateId: { type: "string", description: "id d'un déroulé réutilisable (séance, via list_session_templates) — à poser AVEC l'activityId du déroulé : ▶ lance le chrono sur l'activité et ouvre le player d'étapes sur cette séance." },
                         kind: { type: "string", enum: ["normal", "prep"], description: "défaut 'normal'. 'prep' = mini-bloc de préparation la veille lié à un bloc du lendemain (préfère l'outil add_prep_block pour ajouter une prep sans remplacer le programme)." },
                         prepForDate: { type: "string", description: "si kind=prep : YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
                         prepForBlockId: { type: "string", description: "si kind=prep : id du bloc cible dans le programme de prepForDate" },
@@ -1000,6 +1001,62 @@ exports.ADD_EVENT_TOOL = {
             title: { type: "string", description: "Intitulé, ex: 'Accompagner maman — RDV médecin'" },
             durationMin: { type: "integer", description: "Durée estimée en minutes — TOUJOURS demandée à l'utilisateur, jamais inventée" },
             syncToCalendar: { type: "boolean", description: "false = pas d'instructions Google Calendar (défaut : true)" },
+        },
+    },
+};
+// ── Déroulés réutilisables (session_templates) ────────────────────────────────
+const SESSION_STEPS_SCHEMA = {
+    type: "array",
+    description: "Étapes dans l'ordre d'exécution de la séance",
+    items: {
+        type: "object",
+        required: ["title"],
+        properties: {
+            title: { type: "string", description: "Intitulé de l'étape" },
+            routineId: {
+                type: "string",
+                description: "id d'une routine existante (via get_user_context) → étape-routine : son compteur, son palier et son streak restent chez elle",
+            },
+            checklist: {
+                type: "array",
+                items: { type: "string" },
+                description: "sous-items d'une étape simple (ex: 'ranger le matos' → ['vider le bac', 'nettoyer la lame'])",
+            },
+        },
+    },
+};
+exports.LIST_SESSION_TEMPLATES_TOOL = {
+    name: "list_session_templates",
+    description: "Liste les déroulés réutilisables (séances) : la playlist ordonnée d'étapes d'une séance sur une activité-temps. " +
+        "Utilise leurs ids pour update_session_template, ou pose un bloc schedule_day avec sessionTemplateId + activityId → ▶ = chrono + player d'étapes.",
+    inputSchema: { type: "object", properties: {} },
+};
+exports.CREATE_SESSION_TEMPLATE_TOOL = {
+    name: "create_session_template",
+    description: "Crée un déroulé réutilisable (séance) sur une activité-temps : le chrono trace le temps sur l'activité pendant que le player de Maintenant égrène les étapes. " +
+        "Étape simple = titre (+ checklist optionnelle) ; étape-routine = routineId (compteur − / +, palier, streak). " +
+        "Idéal pour construire des programmes d'entraînement (Séance A / Séance B…) ou des procédures (Couper les herbes : préparer → couper → souffler → ranger).",
+    inputSchema: {
+        type: "object",
+        required: ["activityId", "title", "steps"],
+        properties: {
+            activityId: { type: "string", description: "id de l'activité-temps propriétaire du chrono (via get_user_context)" },
+            title: { type: "string", description: "Nom de la séance (ex: 'Séance A — haut du corps')" },
+            steps: SESSION_STEPS_SCHEMA,
+        },
+    },
+};
+exports.UPDATE_SESSION_TEMPLATE_TOOL = {
+    name: "update_session_template",
+    description: "Modifie un déroulé existant : titre, remplacement COMPLET des étapes, ou archivage (soft-delete). id via list_session_templates.",
+    inputSchema: {
+        type: "object",
+        required: ["templateId"],
+        properties: {
+            templateId: { type: "string" },
+            title: { type: "string" },
+            steps: SESSION_STEPS_SCHEMA,
+            archived: { type: "boolean", description: "true = archiver la séance" },
         },
     },
 };

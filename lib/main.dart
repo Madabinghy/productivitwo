@@ -2759,6 +2759,21 @@ class _AppRootState extends State<AppRoot>
   /// Lance un bloc du programme (▶) : démarre le chrono de l'activité liée et
   /// met la tâche en focus (ses actions s'affichent dans l'onglet Maintenant).
   Future<void> _launchScheduledBlock(ScheduleBlock block) async {
+    // Séance programmée : chrono sur l'activité + player sur SON déroulé.
+    if (block.sessionTemplateId != null && block.activityId != null) {
+      final tpl =
+          await FirestoreSync().fetchSessionTemplate(block.sessionTemplateId!);
+      if (tpl != null && tpl.activityId == block.activityId) {
+        logic.startTemplate(tpl);
+        setState(() {
+          _focusProject = null;
+          _focusTask = null;
+          _tab = _Tab.maintenant;
+        });
+        return;
+      }
+      // Template archivé/introuvable → lancement normal de l'activité.
+    }
     // Bloc routine/activité : on démarre directement son activité.
     if (block.projectId == null) {
       if (block.activityId != null) {

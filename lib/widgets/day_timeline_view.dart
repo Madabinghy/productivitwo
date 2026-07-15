@@ -68,6 +68,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   int? _dragStartMin;
   int? _dragDurationMin;
   double _dragAccum = 0;
+  // Séances réutilisables — proposées par le picker d'ajout (« Séance · X »).
+  List<SessionTemplate> _templates = const [];
 
   bool get _isToday {
     final now = DateTime.now();
@@ -90,6 +92,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         if (mounted) setState(() {});
       });
     }
+    _sync.fetchSessionTemplates().then((t) {
+      if (mounted) setState(() => _templates = t);
+    });
   }
 
   @override
@@ -375,12 +380,14 @@ class _DayTimelineViewState extends State<DayTimelineView> {
             ? scheduleSuggestions(ctrl.text,
                 activities: widget.logic.state.activities,
                 projects: widget.logic.currentProjects,
+                templates: _templates,
                 max: 5)
             : const <ScheduleSuggestion>[];
         IconData iconOf(String kind) => switch (kind) {
               'routine' => Icons.repeat_rounded,
               'activity' => Icons.av_timer_rounded,
               'task' => Icons.rocket_launch_outlined,
+              'template' => Icons.playlist_play_rounded,
               _ => Icons.check_circle_outline,
             };
         return Padding(
@@ -513,6 +520,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
             projectId: picked!.projectId,
             taskId: picked!.taskId,
             actionId: picked!.actionId,
+            sessionTemplateId: picked!.sessionTemplateId,
           ));
       return;
     }

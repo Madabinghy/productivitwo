@@ -1482,6 +1482,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL,
                         tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
+                        tools_1.LIST_SESSION_TEMPLATES_TOOL, tools_1.CREATE_SESSION_TEMPLATE_TOOL,
+                        tools_1.UPDATE_SESSION_TEMPLATE_TOOL,
                     ],
                 },
             });
@@ -1613,6 +1615,15 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "save_domain_definition") {
                     text = await (0, execute_1.executeSaveDomainDefinition)(uid, args);
+                }
+                else if (toolName === "list_session_templates") {
+                    text = await (0, execute_1.executeListSessionTemplates)(uid);
+                }
+                else if (toolName === "create_session_template") {
+                    text = await (0, execute_1.executeCreateSessionTemplate)(uid, args);
+                }
+                else if (toolName === "update_session_template") {
+                    text = await (0, execute_1.executeUpdateSessionTemplate)(uid, args);
                 }
                 else if (toolName === "generate_weekly_report") {
                     text = await (0, execute_1.executeGenerateWeeklyReport)(uid, (_s = process.env.ANTHROPIC_API_KEY) !== null && _s !== void 0 ? _s : "", args.weekStart);

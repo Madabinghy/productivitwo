@@ -996,6 +996,7 @@ export const SCHEDULE_DAY_TOOL = {
             taskId:      { type: "string", description: "id de la tâche Gantt liée (obtenu via get_project)" },
             activityId:  { type: "string", description: "id de l'activité liée (si category=routine, ou activité-temps d'une action propre)" },
             actionId:    { type: "string", description: "id de l'action ciblée — action PROPRE d'une activité (avec son activityId) OU sous-action d'une tâche de projet (avec projectId+taskId). Le chrono lancé depuis ce bloc pointera sur cette action." },
+            sessionTemplateId: { type: "string", description: "id d'un déroulé réutilisable (séance, via list_session_templates) — à poser AVEC l'activityId du déroulé : ▶ lance le chrono sur l'activité et ouvre le player d'étapes sur cette séance." },
             kind:           { type: "string", enum: ["normal", "prep"], description: "défaut 'normal'. 'prep' = mini-bloc de préparation la veille lié à un bloc du lendemain (préfère l'outil add_prep_block pour ajouter une prep sans remplacer le programme)." },
             prepForDate:    { type: "string", description: "si kind=prep : YYYY-MM-DD du bloc cible préparé (souvent J+1)" },
             prepForBlockId: { type: "string", description: "si kind=prep : id du bloc cible dans le programme de prepForDate" },
@@ -1099,6 +1100,71 @@ export const ADD_EVENT_TOOL = {
       title:          { type: "string", description: "Intitulé, ex: 'Accompagner maman — RDV médecin'" },
       durationMin:    { type: "integer", description: "Durée estimée en minutes — TOUJOURS demandée à l'utilisateur, jamais inventée" },
       syncToCalendar: { type: "boolean", description: "false = pas d'instructions Google Calendar (défaut : true)" },
+    },
+  },
+};
+
+// ── Déroulés réutilisables (session_templates) ────────────────────────────────
+
+const SESSION_STEPS_SCHEMA = {
+  type: "array",
+  description: "Étapes dans l'ordre d'exécution de la séance",
+  items: {
+    type: "object",
+    required: ["title"],
+    properties: {
+      title: { type: "string", description: "Intitulé de l'étape" },
+      routineId: {
+        type: "string",
+        description:
+          "id d'une routine existante (via get_user_context) → étape-routine : son compteur, son palier et son streak restent chez elle",
+      },
+      checklist: {
+        type: "array",
+        items: { type: "string" },
+        description: "sous-items d'une étape simple (ex: 'ranger le matos' → ['vider le bac', 'nettoyer la lame'])",
+      },
+    },
+  },
+};
+
+export const LIST_SESSION_TEMPLATES_TOOL = {
+  name: "list_session_templates",
+  description:
+    "Liste les déroulés réutilisables (séances) : la playlist ordonnée d'étapes d'une séance sur une activité-temps. " +
+    "Utilise leurs ids pour update_session_template, ou pose un bloc schedule_day avec sessionTemplateId + activityId → ▶ = chrono + player d'étapes.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+export const CREATE_SESSION_TEMPLATE_TOOL = {
+  name: "create_session_template",
+  description:
+    "Crée un déroulé réutilisable (séance) sur une activité-temps : le chrono trace le temps sur l'activité pendant que le player de Maintenant égrène les étapes. " +
+    "Étape simple = titre (+ checklist optionnelle) ; étape-routine = routineId (compteur − / +, palier, streak). " +
+    "Idéal pour construire des programmes d'entraînement (Séance A / Séance B…) ou des procédures (Couper les herbes : préparer → couper → souffler → ranger).",
+  inputSchema: {
+    type: "object",
+    required: ["activityId", "title", "steps"],
+    properties: {
+      activityId: { type: "string", description: "id de l'activité-temps propriétaire du chrono (via get_user_context)" },
+      title: { type: "string", description: "Nom de la séance (ex: 'Séance A — haut du corps')" },
+      steps: SESSION_STEPS_SCHEMA,
+    },
+  },
+};
+
+export const UPDATE_SESSION_TEMPLATE_TOOL = {
+  name: "update_session_template",
+  description:
+    "Modifie un déroulé existant : titre, remplacement COMPLET des étapes, ou archivage (soft-delete). id via list_session_templates.",
+  inputSchema: {
+    type: "object",
+    required: ["templateId"],
+    properties: {
+      templateId: { type: "string" },
+      title: { type: "string" },
+      steps: SESSION_STEPS_SCHEMA,
+      archived: { type: "boolean", description: "true = archiver la séance" },
     },
   },
 };
