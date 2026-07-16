@@ -57,6 +57,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
   final List<_Draft> _draft = [];
   // Prep « ce soir 21:45 » liée à un bloc matinal de la cible (target = J+1).
   _Draft? _eveningPrep;
+  // Blocs déjà posés sur la cible (contraintes) — affichés « déjà en place ».
+  List<ScheduleBlock> _existing = [];
   // Arbitrage rattrapage : bloc du créneau entamé + choix.
   _Draft? _arbitration;
   bool _launchOnValidate = false;
@@ -353,6 +355,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       final active = (existing?.blocks ?? const <ScheduleBlock>[])
           .where((b) => b.status == 'pending' || b.status == 'done')
           .toList();
+      // Affichés dans la liste comme « déjà en place » (intouchables).
+      _existing = active..sort((a, b) => a.startTime.compareTo(b.startTime));
       if (active.isEmpty) return;
       _draft.removeWhere((d) => _conflictsWithExisting(d.block, active));
       if (_arbitration != null &&
@@ -587,8 +591,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                   child: Text(_saving
                       ? 'Enregistrement…'
                       : widget.rattrapage
-                          ? 'Valider la journée — ${_totalBlocks()} blocs'
-                          : 'Valider — ${_totalBlocks()} blocs'),
+                          ? 'Valider la journée — +${_totalBlocks()} blocs'
+                          : 'Valider — +${_totalBlocks()} blocs'),
                 ),
               ),
             ),
@@ -596,6 +600,85 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
   }
 
   int _totalBlocks() => _draft.length + (_arbitration != null ? 1 : 0);
+
+  /// Liste fusionnée chronologique : brouillons (refusables) + blocs déjà en
+  /// place (hero vert, conservés tels quels à la validation).
+  List<Widget> _mergedRows(ColorScheme cs) {
+    final entries = <({String start, Widget w})>[
+      for (final d in _draft)
+        (start: d.block.startTime, w: _draftRow(cs, d)),
+      for (final b in _existing)
+        (start: b.startTime, w: _existingRow(cs, b)),
+    ]..sort((a, b) => a.start.compareTo(b.start));
+    return entries.map((e) => e.w).toList();
+  }
+
+  /// Bloc déjà posé sur la cible (manuel, reporté, agenda, défi…) : contrainte
+  /// respectée par la proposition — affiché en « hero » vert, non refusable.
+  Widget _existingRow(ColorScheme cs, ScheduleBlock b) {
+    const green = Color(0xFF2E9E6B);
+    final isDone = b.status == 'done';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: green.withOpacity(.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: green.withOpacity(.45), width: 1.4),
+      ),
+      child: Row(
+        children: [
+          Text(b.startTime,
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: green)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(b.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface,
+                      decoration:
+                          isDone ? TextDecoration.lineThrough : null,
+                    )),
+                const SizedBox(height: 2),
+                Row(children: [
+                  Icon(
+                      b.gcalEventId != null
+                          ? Icons.event_available
+                          : Icons.verified_rounded,
+                      size: 13,
+                      color: green),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${fmtMin(b.durationMin)} · '
+                      '${b.gcalEventId != null ? 'agenda — déjà en place' : isDone ? 'déjà fait' : 'déjà validé — conservé tel quel'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: green),
+                    ),
+                  ),
+                ]),
+              ],
+            ),
+          ),
+          Icon(Icons.lock_outline_rounded,
+              size: 16, color: green.withOpacity(.7)),
+        ],
+      ),
+    );
+  }
 
   Widget _buildProposal(ColorScheme cs) {
     return ListView(
@@ -660,7 +743,9 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                     fontStyle: FontStyle.italic,
                     color: cs.onSurface.withOpacity(.4))),
           ),
-        for (final d in _draft) _draftRow(cs, d),
+        // Fusion chronologique : blocs proposés + blocs DÉJÀ EN PLACE
+        // (contraintes intouchables — cartes hero vertes, non refusables).
+        ..._mergedRows(cs),
         if (_eveningPrep != null) _draftRow(cs, _eveningPrep!, discreet: true),
         // ── + Ajouter un bloc ───────────────────────────────────────────────
         InkWell(
