@@ -22,7 +22,10 @@ class TaskAction {
   DateTime? doneAt;
   DateTime createdAt;
   String? linkedActivityId; // activité-temps liée → chrono ciblé sur cette action
-  String? context; // contexte GTD (@maison, @bureau…) — null = sans contexte
+  String? context; // contexte GTD principal (@maison…) — compat lecteurs mono
+  // Multi-contextes GTD : une action peut être réalisable dans PLUSIEURS
+  // contextes (@ordinateur ET @bureau). `context` reste le principal (1er).
+  List<String> contexts;
 
   TaskAction({
     String? id,
@@ -32,8 +35,21 @@ class TaskAction {
     DateTime? createdAt,
     this.linkedActivityId,
     this.context,
+    List<String>? contexts,
   })  : id = id ?? _uuid.v4(),
-        createdAt = createdAt ?? DateTime.now();
+        createdAt = createdAt ?? DateTime.now(),
+        contexts = contexts ?? [];
+
+  /// Tous les contextes de l'action (multi + legacy mono), sans doublon.
+  Set<String> get allContexts =>
+      {...contexts, if (context != null && context!.isNotEmpty) context!};
+
+  /// Pose la liste des contextes (le principal = premier, pour les lecteurs
+  /// mono : badges, ORION, groupement de la vue Demain).
+  void setContexts(List<String> list) {
+    contexts = List.of(list);
+    context = list.isEmpty ? null : list.first;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -43,6 +59,7 @@ class TaskAction {
         'createdAt': createdAt.toIso8601String(),
         'linkedActivityId': linkedActivityId,
         'context': context,
+        'contexts': contexts,
       };
 
   static TaskAction from(Map j) => TaskAction(
@@ -55,6 +72,7 @@ class TaskAction {
             : DateTime.now(),
         linkedActivityId: j['linkedActivityId'] as String?,
         context: j['context'] as String?,
+        contexts: (j['contexts'] as List?)?.cast<String>() ?? [],
       );
 }
 
@@ -193,6 +211,9 @@ class Project {
   DateTime startDate;
   DateTime? endDate;
   String status; // draft | active | done | archived
+  /// Projet EN PAUSE (GTD « someday/maybe » léger) : reste actif mais ses
+  /// actions sortent des listes de contextes, du coach et de la planification.
+  bool paused;
   List<ProjectPhase> phases;
   List<ProjectTask> tasks;
   String createdBy; // uid Firebase
@@ -215,6 +236,7 @@ class Project {
     required this.startDate,
     this.endDate,
     this.status = 'active',
+    this.paused = false,
     List<ProjectPhase>? phases,
     List<ProjectTask>? tasks,
     required this.createdBy,
@@ -239,6 +261,7 @@ class Project {
         'startDate': startDate.toIso8601String(),
         'endDate': endDate?.toIso8601String(),
         'status': status,
+        'paused': paused,
         'phases': phases.map((p) => p.toJson()).toList(),
         'tasks': tasks.map((t) => t.toJson()).toList(),
         'createdBy': createdBy,
@@ -259,6 +282,7 @@ class Project {
         startDate: _parseDate(j['startDate']),
         endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
+        paused: j['paused'] == true,
         phases: (j['phases'] as List?)?.map((p) => ProjectPhase.from(p)).toList() ?? [],
         tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
         createdBy: j['createdBy'] ?? '',

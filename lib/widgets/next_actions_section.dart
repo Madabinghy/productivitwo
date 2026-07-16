@@ -63,7 +63,7 @@ class _NextActionsSectionState extends State<NextActionsSection> {
     final starredOut = <_NextAction>[];
 
     for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active') continue;
+      if (p.status != 'active' || p.paused) continue;
       final pending = p.tasks
           .where((t) =>
               !t.isMilestone && t.status != 'done' && t.status != 'skipped')

@@ -419,7 +419,9 @@ async function executeGetUserContext(uid) {
     };
     // ── Projets actifs (résumé) ────────────────────────────────────────────────
     const today = new Date(todayStr);
-    const activeProjects = projectsSnap.docs.map((d) => {
+    const activeProjects = projectsSnap.docs
+        .filter((d) => d.data().paused !== true) // en pause = hors radar IA
+        .map((d) => {
         var _a, _b;
         const p = d.data();
         const tasks = (p.tasks || []);
@@ -1091,11 +1093,12 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         id: a.id,
                         linkedActivityId: (_e = a.linkedActivityId) !== null && _e !== void 0 ? _e : null,
                         context: (_f = a.context) !== null && _f !== void 0 ? _f : null,
+                        contexts: Array.isArray(a.contexts) ? a.contexts : [],
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f;
+                var _a, _b, _c, _d, _e, _f, _g;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1111,6 +1114,9 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     // (le payload peut aussi poser un context explicite).
                     linkedActivityId: (_d = previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _d !== void 0 ? _d : null,
                     context: (_f = (_e = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _e !== void 0 ? _e : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _f !== void 0 ? _f : null,
+                    contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
+                        ? obj === null || obj === void 0 ? void 0 : obj.contexts
+                        : (_g = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _g !== void 0 ? _g : [],
                 };
             });
         }
@@ -1366,7 +1372,9 @@ async function executeGetOrionContext(uid) {
         .map(([id, mins]) => { var _a; return ({ name: (_a = activityMap.get(id)) !== null && _a !== void 0 ? _a : id, hours7d: Math.round(mins / 6) / 10 }); });
     // Projets actifs — résumé + tâches urgentes seulement
     const in30days = todayInParis(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000));
-    const projects = projectsSnap.docs.map((d) => {
+    const projects = projectsSnap.docs
+        .filter((d) => d.data().paused !== true) // en pause = hors radar ORION
+        .map((d) => {
         var _a, _b;
         const p = d.data();
         const tasks = (p.tasks || []);
@@ -1499,6 +1507,8 @@ async function executePlanDay(uid, args) {
         .where("status", "==", "active").get();
     const projectDetails = [];
     for (const doc of projectsSnap.docs) {
+        if (doc.data().paused === true)
+            continue; // en pause = pas planifié
         projectDetails.push(await executeGetProject(uid, doc.id));
     }
     // Activités-temps programmables : un bloc peut porter UNIQUEMENT activityId
@@ -1593,6 +1603,8 @@ async function executePlanWeek(uid, args) {
         .where("status", "==", "active").get();
     const projectDetails = [];
     for (const doc of projectsSnap.docs) {
+        if (doc.data().paused === true)
+            continue; // en pause = pas planifié
         projectDetails.push(await executeGetProject(uid, doc.id));
     }
     const schedules = [];

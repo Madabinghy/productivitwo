@@ -2415,6 +2415,15 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Retire un contexte personnalisé (les défauts ne sont pas supprimables —
+  /// les actions qui portaient ce contexte le gardent, simple tag orphelin).
+  Future<void> removeCustomContext(String context) async {
+    if (uid == null) return;
+    await _meta().set({
+      'customContexts': FieldValue.arrayRemove([context]),
+    }, SetOptions(merge: true));
+  }
+
   /// Sessions des [days] derniers jours (web : progression des objectifs).
   Future<List<Session>> fetchRecentSessions(int days) async {
     if (uid == null) return [];

@@ -452,7 +452,9 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   // ── Projets actifs (résumé) ────────────────────────────────────────────────
   const today = new Date(todayStr);
-  const activeProjects = projectsSnap.docs.map((d) => {
+  const activeProjects = projectsSnap.docs
+    .filter((d) => d.data().paused !== true) // en pause = hors radar IA
+    .map((d) => {
     const p = d.data();
     const tasks = (p.tasks || []) as Array<{
       status: string; endDate?: string; isMilestone?: boolean;
@@ -1239,6 +1241,7 @@ async function executeUpdateTask(
       const oldByTitle: Record<string, {
         done: boolean; doneAt: string | null; id?: string;
         linkedActivityId: string | null; context: string | null;
+        contexts: string[];
       }> = {};
       for (const a of oldActions) {
         const t = (a.title as string) ?? "";
@@ -1249,6 +1252,7 @@ async function executeUpdateTask(
             id: a.id as string | undefined,
             linkedActivityId: (a.linkedActivityId as string) ?? null,
             context: (a.context as string) ?? null,
+            contexts: Array.isArray(a.contexts) ? (a.contexts as string[]) : [],
           };
         }
       }
@@ -1268,6 +1272,9 @@ async function executeUpdateTask(
           // (le payload peut aussi poser un context explicite).
           linkedActivityId: previous?.linkedActivityId ?? null,
           context: (obj?.context as string | undefined) ?? previous?.context ?? null,
+          contexts: Array.isArray(obj?.contexts)
+            ? (obj?.contexts as string[])
+            : previous?.contexts ?? [],
         };
       });
     }
@@ -1562,7 +1569,9 @@ async function executeGetOrionContext(uid: string): Promise<string> {
 
   // Projets actifs — résumé + tâches urgentes seulement
   const in30days = todayInParis(new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000));
-  const projects = projectsSnap.docs.map((d) => {
+  const projects = projectsSnap.docs
+    .filter((d) => d.data().paused !== true) // en pause = hors radar ORION
+    .map((d) => {
     const p = d.data();
     const tasks = (p.tasks || []) as Array<{ id: string; title: string; status: string; startDate: string; endDate?: string }>;
     const activeTasks = tasks.filter((t) => t.status !== "done" && t.status !== "skipped");
@@ -1714,6 +1723,7 @@ async function executePlanDay(
     .where("status", "==", "active").get();
   const projectDetails: string[] = [];
   for (const doc of projectsSnap.docs) {
+    if (doc.data().paused === true) continue; // en pause = pas planifié
     projectDetails.push(await executeGetProject(uid, doc.id));
   }
 
@@ -1816,6 +1826,7 @@ async function executePlanWeek(
     .where("status", "==", "active").get();
   const projectDetails: string[] = [];
   for (const doc of projectsSnap.docs) {
+    if (doc.data().paused === true) continue; // en pause = pas planifié
     projectDetails.push(await executeGetProject(uid, doc.id));
   }
 

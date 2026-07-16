@@ -46,7 +46,7 @@ class _ActionsViewState extends State<ActionsView> {
   List<({Project project, List<_Entry> entries})> _projectGroups() {
     final out = <({Project project, List<_Entry> entries})>[];
     for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active') continue;
+      if (p.status != 'active' || p.paused) continue;
       final entries = <_Entry>[];
       final tasks = p.tasks
           .where((t) =>
@@ -88,12 +88,12 @@ class _ActionsViewState extends State<ActionsView> {
     final s = <String>{};
     for (final g in pGroups) {
       for (final e in g.entries) {
-        if (e.action.context != null) s.add(e.action.context!);
+        s.addAll(e.action.allContexts);
       }
     }
     for (final g in aGroups) {
       for (final e in g.entries) {
-        if (e.action.context != null) s.add(e.action.context!);
+        s.addAll(e.action.allContexts);
       }
     }
     return s;
@@ -133,6 +133,231 @@ class _ActionsViewState extends State<ActionsView> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _persistEntry(_Entry e) async {
+    if (e.project != null) {
+      await _sync.saveProjectTasks(e.project!.id, e.project!.tasks);
+    } else if (e.activity != null) {
+      await _sync.updateOwnActions(e.activity!.id, e.activity!.ownActions);
+    }
+    widget.logic.onChange();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _togglePause(Project p) async {
+    p.paused = !p.paused;
+    await _sync.saveProject(p);
+    widget.logic.onChange();
+    if (mounted) setState(() {});
+  }
+
+  // ── « Process » GTD : tap sur une action → multi-contextes ─────────────────
+
+  Future<void> _processAction(_Entry e) async {
+    final available = await _sync.fetchAvailableContexts();
+    if (!mounted) return;
+    final selected = Set<String>.of(e.action.allContexts);
+    // Un contexte orphelin (custom supprimé) reste sélectionnable ici.
+    final all = [
+      ...available,
+      ...selected.where((c) => !available.contains(c)),
+    ];
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(e.action.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text('Où / avec quoi cette action est-elle réalisable ?',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.55))),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final c in all)
+                    FilterChip(
+                      selected: selected.contains(c),
+                      onSelected: (v) => setLocal(() {
+                        v ? selected.add(c) : selected.remove(c);
+                      }),
+                      label: Text(c),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(children: [
+                if (e.project != null)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx, false);
+                      _openProject(e.project!, targetTaskId: e.task?.id);
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 15),
+                    label: const Text('Fiche tâche'),
+                  ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Enregistrer'),
+                ),
+              ]),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (saved == true) {
+      e.action.setContexts(selected.toList());
+      await _persistEntry(e);
+    }
+  }
+
+  // ── Bouton @ : « je suis » + CRUD des contextes ─────────────────────────────
+
+  Future<void> _showContextManager() async {
+    final available = await _sync.fetchAvailableContexts();
+    if (!mounted) return;
+    final customs =
+        available.where((c) => !kDefaultGtdContexts.contains(c)).toList();
+    final addCtrl = TextEditingController();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final cs2 = Theme.of(ctx).colorScheme;
+          final nowCtx = _state.nowContext;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+                20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Contextes',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                Text('JE SUIS…',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: cs2.onSurface.withOpacity(.45))),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final c in [...kDefaultGtdContexts, ...customs])
+                      ChoiceChip(
+                        selected: nowCtx == c,
+                        onSelected: (_) {
+                          _state.nowContext = nowCtx == c ? null : c;
+                          widget.logic.onChange();
+                          setLocal(() {});
+                          if (mounted) setState(() {});
+                        },
+                        showCheckmark: false,
+                        label: Text(c),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text('MES CONTEXTES PERSONNALISÉS',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: cs2.onSurface.withOpacity(.45))),
+                const SizedBox(height: 6),
+                if (customs.isEmpty)
+                  Text('Aucun — ajoute le tien ci-dessous.',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: cs2.onSurface.withOpacity(.5)))
+                else
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final c in customs)
+                        Chip(
+                          label: Text(c),
+                          visualDensity: VisualDensity.compact,
+                          onDeleted: () async {
+                            await _sync.removeCustomContext(c);
+                            if (_state.nowContext == c) {
+                              _state.nowContext = null;
+                              widget.logic.onChange();
+                            }
+                            setLocal(() => customs.remove(c));
+                            if (mounted) setState(() {});
+                          },
+                        ),
+                    ],
+                  ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: addCtrl,
+                      decoration: const InputDecoration(
+                          hintText: 'Ex : @atelier',
+                          isDense: true,
+                          border: OutlineInputBorder()),
+                      onSubmitted: (_) {},
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: () async {
+                      final v = addCtrl.text.trim();
+                      if (v.isEmpty) return;
+                      final normalized = v.startsWith('@') ? v : '@$v';
+                      await _sync.addCustomContext(normalized);
+                      addCtrl.clear();
+                      setLocal(() {
+                        if (!customs.contains(normalized)) {
+                          customs.add(normalized);
+                        }
+                      });
+                    },
+                    child: const Text('Ajouter'),
+                  ),
+                ]),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    addCtrl.dispose();
+    if (mounted) setState(() {});
+  }
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -147,7 +372,7 @@ class _ActionsViewState extends State<ActionsView> {
     }
 
     bool visible(_Entry e) =>
-        nowContext == null || e.action.context == nowContext;
+        nowContext == null || e.action.allContexts.contains(nowContext);
 
     final visibleProjectGroups = [
       for (final g in pGroups)
@@ -173,6 +398,11 @@ class _ActionsViewState extends State<ActionsView> {
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
             const Spacer(),
+            IconButton(
+              tooltip: 'Contextes : je suis… + gestion',
+              icon: Icon(Icons.alternate_email, color: cs.primary, size: 24),
+              onPressed: _showContextManager,
+            ),
             IconButton(
               tooltip: 'Créer une action ou un projet',
               icon: Icon(Icons.add_circle, color: cs.primary, size: 26),
@@ -273,10 +503,70 @@ class _ActionsViewState extends State<ActionsView> {
               domainColor(g.project.domainId, _state.activeDomains) ??
                   cs.primary,
               onTap: () => _openProject(g.project),
+              // Pause GTD : sort les actions du projet des contextes/listes
+              // sans l'archiver (il reste actif, juste « pas maintenant »).
+              trailing: IconButton(
+                tooltip: 'Mettre en pause',
+                icon: Icon(Icons.pause_circle_outline,
+                    size: 18, color: cs.onSurface.withOpacity(.4)),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(),
+                onPressed: () => _togglePause(g.project),
+              ),
             ),
             for (final e in g.entries) _entryTile(cs, e),
             const SizedBox(height: 10),
           ],
+
+          // ── Projets en pause : repliés, réactivables en un tap ─────────────
+          ...(() {
+            final paused = widget.logic.currentProjects
+                .where((p) => p.status == 'active' && p.paused)
+                .toList();
+            if (paused.isEmpty) return const <Widget>[];
+            return <Widget>[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text('EN PAUSE (${paused.length})',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: cs.onSurface.withOpacity(.4))),
+              ),
+              for (final p in paused)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest.withOpacity(.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.pause, size: 14,
+                        color: cs.onSurface.withOpacity(.35)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(p.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: cs.onSurface.withOpacity(.5))),
+                    ),
+                    IconButton(
+                      tooltip: 'Reprendre',
+                      icon: Icon(Icons.play_circle_outline,
+                          size: 20, color: cs.primary),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _togglePause(p),
+                    ),
+                  ]),
+                ),
+              const SizedBox(height: 10),
+            ];
+          })(),
 
           // ── Actions simples (activités) ────────────────────────────────────
           if (visibleActivityGroups.isNotEmpty) ...[
@@ -300,7 +590,7 @@ class _ActionsViewState extends State<ActionsView> {
   }
 
   Widget _groupHeader(ColorScheme cs, String title, Color color,
-      {VoidCallback? onTap}) {
+      {VoidCallback? onTap, Widget? trailing}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -323,6 +613,7 @@ class _ActionsViewState extends State<ActionsView> {
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface.withOpacity(.75))),
           ),
+          if (trailing != null) trailing,
           if (onTap != null)
             Icon(Icons.chevron_right,
                 size: 16, color: cs.onSurface.withOpacity(.3)),
@@ -346,7 +637,10 @@ class _ActionsViewState extends State<ActionsView> {
         ),
         Expanded(
           child: InkWell(
-            onTap: e.project != null
+            // Tap = « Process » GTD : assigner les contextes de l'action.
+            // Long press = fiche tâche (projets).
+            onTap: () => _processAction(e),
+            onLongPress: e.project != null
                 ? () => _openProject(e.project!, targetTaskId: e.task?.id)
                 : null,
             child: Padding(
@@ -359,7 +653,7 @@ class _ActionsViewState extends State<ActionsView> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  if (e.task != null || e.action.context != null)
+                  if (e.task != null || e.action.allContexts.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
                       child: Row(children: [
@@ -372,13 +666,19 @@ class _ActionsViewState extends State<ActionsView> {
                                     fontSize: 11,
                                     color: cs.onSurface.withOpacity(.5))),
                           ),
-                        if (e.action.context != null) ...[
+                        if (e.action.allContexts.isNotEmpty) ...[
                           if (e.task != null) const SizedBox(width: 6),
-                          Text(e.action.context!,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.primary.withOpacity(.75))),
+                          Flexible(
+                            child: Text(
+                                (e.action.allContexts.toList()..sort())
+                                    .join(' '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: cs.primary.withOpacity(.75))),
+                          ),
                         ],
                       ]),
                     ),
