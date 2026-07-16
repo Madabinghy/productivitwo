@@ -2395,6 +2395,16 @@ class FirestoreSync {
     await _col('activities').doc(activityId).update({'ownActions': own});
   }
 
+  /// Remplace les ownActions d'une activité (cocher/décocher une action
+  /// simple depuis l'onglet Actions).
+  Future<void> updateOwnActions(
+      String activityId, List<TaskAction> actions) async {
+    if (uid == null) return;
+    await _col('activities')
+        .doc(activityId)
+        .update({'ownActions': actions.map((a) => a.toJson()).toList()});
+  }
+
   Future<void> addCustomContext(String context) async {
     if (uid == null) return;
     final c = context.trim();
