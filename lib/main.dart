@@ -24,6 +24,7 @@ import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
+import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -74,7 +75,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
-enum _Tab { dashboard, projets, aujourdhui, maintenant }
+enum _Tab { dashboard, projets, aujourdhui, maintenant, actions }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -2945,8 +2946,10 @@ class _AppRootState extends State<AppRoot>
   /// Onglets visibles dans la barre : « Projets » disparaît quand le Gantt
   /// passe en coulisse (hideProjectsTab). La pile de vues (IndexedStack) garde
   /// ses 4 index — seule la barre change.
+  // Gantt en retrait → l'onglet « Actions » (liste GTD par projet) prend la
+  // place de « Projets » ; Gantt réactivé → « Projets » revient à sa place.
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
-      ? const [_Tab.dashboard, _Tab.aujourdhui, _Tab.maintenant]
+      ? const [_Tab.dashboard, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant]
       : const [_Tab.dashboard, _Tab.projets, _Tab.aujourdhui, _Tab.maintenant];
 
   int _tabIndex(_Tab t) {
@@ -2955,6 +2958,7 @@ class _AppRootState extends State<AppRoot>
       case _Tab.projets:     return 1;
       case _Tab.aujourdhui:  return 2;
       case _Tab.maintenant:  return 3;
+      case _Tab.actions:     return 4;
     }
   }
 
@@ -3106,6 +3110,9 @@ class _AppRootState extends State<AppRoot>
               activities: _state?.activities ?? const [],
             ),
           ),
+          // Onglet « Actions » (index 4) : liste GTD par projet + contexte du
+          // moment — remplace « Projets » quand le Gantt est en retrait.
+          ActionsView(logic: logic),
         ],
       ),
     );
@@ -4849,6 +4856,10 @@ class _AppRootState extends State<AppRoot>
                   icon: Icon(Icons.play_circle_outline),
                   activeIcon: Icon(Icons.play_circle),
                   label: 'Maintenant'),
+              _Tab.actions => const BottomNavigationBarItem(
+                  icon: Icon(Icons.checklist_rtl_outlined),
+                  activeIcon: Icon(Icons.checklist_rtl),
+                  label: 'Actions'),
             },
         ],
       ),
@@ -4999,7 +5010,8 @@ class _AppRootState extends State<AppRoot>
                   value: logic.state.hideProjectsTab,
                   onChanged: (v) {
                     logic.state.hideProjectsTab = v;
-                    if (v && _tab == _Tab.projets) _tab = _Tab.dashboard;
+                    if (v && _tab == _Tab.projets) _tab = _Tab.actions;
+                    if (!v && _tab == _Tab.actions) _tab = _Tab.projets;
                     logic.onChange();
                     // Pilote aussi la visibilité côté app web (flag Firestore).
                     unawaited(_sync.setGanttVisible(!v));
