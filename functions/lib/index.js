@@ -535,6 +535,26 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             });
         })
             .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
+        // TOUS les blocs actifs déjà posés sur la cible (manuels, reportés,
+        // défis, agenda…) = créneaux OCCUPÉS. Ils seront conservés tels quels à
+        // la validation : la proposition ne fait que REMPLIR LES TROUS — jamais
+        // les ré-émettre, jamais les chevaucher (contrainte dure + repack).
+        const occupiedBlocks = targetBlocks
+            .filter((b) => b.status === "pending" || b.status === "done")
+            .map((b) => {
+            var _a, _b;
+            return ({
+                startTime: String(b.startTime),
+                durationMin: Math.max(5, Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 30)),
+                title: String((_b = b.title) !== null && _b !== void 0 ? _b : ""),
+            });
+        })
+            .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
+        const toMinStr = (hm) => parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
+        const toHmStr = (min) => {
+            const m = Math.min(min, 23 * 60 + 59);
+            return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+        };
         const acts = actsSnap.docs
             .map((d) => d.data())
             .filter((a) => a.deleted !== true);
@@ -676,10 +696,19 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
             refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
             ``,
-            `── PROGRAMME DÉJÀ EN PLACE POUR ${target} (à intégrer, ne pas dupliquer) ──`,
-            targetBlocks.length > 0
-                ? targetBlocks.map((b) => `  ${b.startTime} "${b.title}" [${b.status}]`).join("\n")
-                : "  Aucun.",
+            `── CRÉNEAUX DÉJÀ OCCUPÉS POUR ${target} (CONTRAINTE DURE) ──`,
+            occupiedBlocks.length > 0
+                ? [
+                    `Ces blocs sont DÉJÀ posés par l'utilisateur (manuels, reportés, agenda, défis).`,
+                    `Ils seront CONSERVÉS tels quels : ne les ré-émets PAS, n'en propose pas de`,
+                    `variante, et ne pose RIEN qui chevauche leurs plages horaires — la journée`,
+                    `disponible = uniquement les trous entre ces créneaux :`,
+                    ...occupiedBlocks.map((e) => {
+                        const end = toHmStr(toMinStr(e.startTime) + e.durationMin);
+                        return `  · ${e.startTime} → ${end} « ${e.title} » (${e.durationMin} min)`;
+                    }),
+                ].join("\n")
+                : "  Aucun — la journée est libre.",
             ``,
             `── ROUTINES ──`, routineList,
             `── ACTIVITÉS-TEMPS ──`, activityList,
@@ -740,8 +769,10 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         // repoussé au-delà de 23 h 30 est abandonné.
         const toMin = (hm) => parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
         const toHm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-        // Créneaux OCCUPÉS par les rendez-vous réels : jamais une cible de pose.
-        const busy = fixedEvents
+        // Créneaux OCCUPÉS : rendez-vous agenda ET tout bloc actif déjà posé sur
+        // la cible (manuel, reporté, défi…) — jamais une cible de pose. La
+        // proposition ne remplit que les trous (le prompt ne suffit pas).
+        const busy = [...fixedEvents, ...occupiedBlocks]
             .map((e) => [toMin(e.startTime), toMin(e.startTime) + e.durationMin])
             .sort((a, b) => a[0] - b[0]);
         const skipBusy = (st, dur) => {
@@ -781,9 +812,14 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
             return matches.length === 1
                 ? Object.assign(Object.assign({}, b), { activityId: matches[0].id, category: "routine" }) : b;
         };
+        // Anti-doublon déterministe : le LLM ne doit pas ré-émettre un bloc déjà
+        // posé sur la cible (il sera conservé tel quel à la validation).
+        const occupiedTitles = new Set(occupiedBlocks.map((e) => normName(e.title)).filter((t) => t.length > 0));
         const outBlocks = ((_w = proposal.blocks) !== null && _w !== void 0 ? _w : []).filter((b) => {
             var _a;
             if (!/^\d{2}:\d{2}$/.test(String((_a = b.startTime) !== null && _a !== void 0 ? _a : "")) || !b.title)
+                return false;
+            if (occupiedTitles.has(normName(String(b.title))))
                 return false;
             // offSlots = contrainte dure, appliquée aussi en déterministe (le
             // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.

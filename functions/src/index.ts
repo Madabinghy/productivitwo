@@ -577,6 +577,24 @@ export const proposeDayPlan = onRequest(
           title: String(b.title ?? ""),
         }))
         .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
+      // TOUS les blocs actifs déjà posés sur la cible (manuels, reportés,
+      // défis, agenda…) = créneaux OCCUPÉS. Ils seront conservés tels quels à
+      // la validation : la proposition ne fait que REMPLIR LES TROUS — jamais
+      // les ré-émettre, jamais les chevaucher (contrainte dure + repack).
+      const occupiedBlocks = targetBlocks
+        .filter((b) => b.status === "pending" || b.status === "done")
+        .map((b) => ({
+          startTime: String(b.startTime),
+          durationMin: Math.max(5, Number(b.durationMin ?? 30)),
+          title: String(b.title ?? ""),
+        }))
+        .filter((e) => /^\d{2}:\d{2}$/.test(e.startTime));
+      const toMinStr = (hm: string) =>
+        parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
+      const toHmStr = (min: number) => {
+        const m = Math.min(min, 23 * 60 + 59);
+        return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+      };
 
       const acts = actsSnap.docs
         .map((d) => d.data() as Record<string, unknown>)
@@ -720,10 +738,19 @@ export const proposeDayPlan = onRequest(
         `── PROGRAMME DE LA VEILLE (${refDate})${dayReason ? ` — cause globale : ${dayReason}` : ""} ──`,
         refLines.length > 0 ? refLines.join("\n") : "  Aucun programme.",
         ``,
-        `── PROGRAMME DÉJÀ EN PLACE POUR ${target} (à intégrer, ne pas dupliquer) ──`,
-        targetBlocks.length > 0
-          ? targetBlocks.map((b) => `  ${b.startTime} "${b.title}" [${b.status}]`).join("\n")
-          : "  Aucun.",
+        `── CRÉNEAUX DÉJÀ OCCUPÉS POUR ${target} (CONTRAINTE DURE) ──`,
+        occupiedBlocks.length > 0
+          ? [
+              `Ces blocs sont DÉJÀ posés par l'utilisateur (manuels, reportés, agenda, défis).`,
+              `Ils seront CONSERVÉS tels quels : ne les ré-émets PAS, n'en propose pas de`,
+              `variante, et ne pose RIEN qui chevauche leurs plages horaires — la journée`,
+              `disponible = uniquement les trous entre ces créneaux :`,
+              ...occupiedBlocks.map((e) => {
+                const end = toHmStr(toMinStr(e.startTime) + e.durationMin);
+                return `  · ${e.startTime} → ${end} « ${e.title} » (${e.durationMin} min)`;
+              }),
+            ].join("\n")
+          : "  Aucun — la journée est libre.",
         ``,
         `── ROUTINES ──`, routineList,
         `── ACTIVITÉS-TEMPS ──`, activityList,
@@ -804,8 +831,10 @@ export const proposeDayPlan = onRequest(
         parseInt(hm.slice(0, 2), 10) * 60 + parseInt(hm.slice(3, 5), 10);
       const toHm = (min: number) =>
         `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-      // Créneaux OCCUPÉS par les rendez-vous réels : jamais une cible de pose.
-      const busy = fixedEvents
+      // Créneaux OCCUPÉS : rendez-vous agenda ET tout bloc actif déjà posé sur
+      // la cible (manuel, reporté, défi…) — jamais une cible de pose. La
+      // proposition ne remplit que les trous (le prompt ne suffit pas).
+      const busy = [...fixedEvents, ...occupiedBlocks]
         .map((e) => [toMin(e.startTime), toMin(e.startTime) + e.durationMin] as [number, number])
         .sort((a, b) => a[0] - b[0]);
       const skipBusy = (st: number, dur: number): number => {
@@ -848,8 +877,14 @@ export const proposeDayPlan = onRequest(
           : b;
       };
 
+      // Anti-doublon déterministe : le LLM ne doit pas ré-émettre un bloc déjà
+      // posé sur la cible (il sera conservé tel quel à la validation).
+      const occupiedTitles = new Set(
+        occupiedBlocks.map((e) => normName(e.title)).filter((t) => t.length > 0)
+      );
       const outBlocks = (proposal.blocks ?? []).filter((b) => {
         if (!/^\d{2}:\d{2}$/.test(String(b.startTime ?? "")) || !b.title) return false;
+        if (occupiedTitles.has(normName(String(b.title)))) return false;
         // offSlots = contrainte dure, appliquée aussi en déterministe (le
         // prompt ne suffit pas) : rien ne se pose sur un créneau protégé.
         const hour = parseInt(String(b.startTime).slice(0, 2), 10);
