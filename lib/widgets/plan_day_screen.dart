@@ -101,6 +101,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
             cached['body'] is Map) {
           _applyProposal(Map<String, dynamic>.from(cached['body'] as Map));
           if (_draft.isNotEmpty) {
+            await _filterAgainstExisting();
             _postProcess();
             if (mounted) setState(() => _loading = false);
             return; // brouillon réutilisé — zéro appel réseau LLM
@@ -144,6 +145,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       // Fallback déterministe — l'écran ne doit jamais être vide ni bloquer.
       await _buildFallback();
     }
+    await _filterAgainstExisting();
     _postProcess();
     if (mounted) setState(() => _loading = false);
   }
@@ -340,6 +342,43 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     }
   }
 
+  /// Blocs déjà posés sur la cible (manuels, reportés, agenda, défis…) :
+  /// la proposition ne fait que REMPLIR LES TROUS. On retire du brouillon
+  /// tout doublon de titre ou chevauchement horaire avec un bloc actif
+  /// existant — le serveur filtre déjà, ceci couvre le fallback local et
+  /// les brouillons cachés générés avant le durcissement.
+  Future<void> _filterAgainstExisting() async {
+    try {
+      final existing = await _sync.fetchDailySchedule(widget.targetDate);
+      final active = (existing?.blocks ?? const <ScheduleBlock>[])
+          .where((b) => b.status == 'pending' || b.status == 'done')
+          .toList();
+      if (active.isEmpty) return;
+      _draft.removeWhere((d) => _conflictsWithExisting(d.block, active));
+      if (_arbitration != null &&
+          _conflictsWithExisting(_arbitration!.block, active)) {
+        _arbitration = null;
+      }
+    } catch (_) {}
+  }
+
+  static String _normTitle(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+  static int _minOf(String hm) =>
+      (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
+      (int.tryParse(hm.substring(3, 5)) ?? 0);
+
+  bool _conflictsWithExisting(ScheduleBlock b, List<ScheduleBlock> active) {
+    final bs = _minOf(b.startTime), be = bs + b.durationMin;
+    final bt = _normTitle(b.title);
+    for (final e in active) {
+      if (bt.isNotEmpty && _normTitle(e.title) == bt) return true;
+      final es = _minOf(e.startTime), ee = es + e.durationMin;
+      if (bs < ee && be > es) return true;
+    }
+    return false;
+  }
+
   /// Règles communes post-proposition : tri, horizon rattrapage, arbitrage,
   /// bloc check-in du soir, prep auto.
   void _postProcess() {
@@ -433,28 +472,20 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     final now = DateTime.now();
     try {
       final existing = await _sync.fetchDailySchedule(widget.targetDate);
-      // Ne pas écraser ce qui est déjà acté (fait / supprimé / prep existante).
-      // Les blocs prep / bilan d'essai / session de définition sont posés par
-      // d'autres flux : la proposition ne les connaît pas, on les garde.
-      final kept = (existing?.blocks ?? const <ScheduleBlock>[])
-          .where((b) =>
-              b.status == 'done' ||
-              b.status == 'deleted' ||
-              b.isPrep ||
-              b.kind == 'bilan' ||
-              b.kind == 'session' ||
-              // Miroirs Google Agenda : un remplacement de programme ne peut
-              // pas effacer un rendez-vous (l'agenda est leur vérité).
-              b.gcalEventId != null ||
-              // Défi programmé 🔥 = engagement pris (alarme armée) — une
-              // régénération ne l'efface jamais en silence.
-              b.challenge)
+      // La proposition est ADDITIVE : TOUT ce qui est déjà posé sur la cible
+      // est conservé tel quel (blocs manuels, reportés, agenda, défis, prep,
+      // done, deleted…) — elle ne fait que remplir les trous. Garde-fou
+      // déterministe au moment de l'écriture : tout bloc proposé qui double
+      // (titre) ou chevauche (plage) un bloc actif existant est écarté.
+      final kept = (existing?.blocks ?? const <ScheduleBlock>[]).toList();
+      final active = kept
+          .where((b) => b.status == 'pending' || b.status == 'done')
           .toList();
-      final blocks = <ScheduleBlock>[
-        ...kept,
+      final incoming = <ScheduleBlock>[
         if (_arbitration != null) _arbitration!.block,
         ..._draft.map((d) => d.block),
-      ];
+      ].where((b) => !_conflictsWithExisting(b, active)).toList();
+      final blocks = <ScheduleBlock>[...kept, ...incoming];
       final sameDay = widget.targetDate == _todayYmd && now.hour >= 5;
       await _sync.saveDailySchedule(DailySchedule(
         date: widget.targetDate,
