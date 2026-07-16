@@ -64,6 +64,11 @@ class ScheduleBlock {
   // "energie" | "pas_le_moment" | texte libre. Le check-in et la proposition
   // du lendemain la citent telle quelle.
   String? reportReason;
+  // ── Report effectif ────────────────────────────────────────────────────────
+  // « Reporter au lendemain » COPIE désormais le bloc dans le doc de demain :
+  // ce champ marque la copie (YYYY-MM-DD d'origine) — affichage « reporté
+  // d'hier » + idempotence (pas de double copie du même bloc source).
+  String? carriedFromDate;
   // ── Miroir Google Agenda ───────────────────────────────────────────────────
   // Bloc IMPORTÉ d'un événement de l'agenda (≠ créé par Productivitwo).
   // L'agenda est sa source de vérité : la sync sortante l'ignore (jamais
@@ -95,6 +100,7 @@ class ScheduleBlock {
     this.domainId,
     this.skipReason,
     this.reportReason,
+    this.carriedFromDate,
     this.gcalEventId,
     this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
@@ -122,6 +128,7 @@ class ScheduleBlock {
         'domainId': domainId,
         'skipReason': skipReason,
         'reportReason': reportReason,
+        'carriedFromDate': carriedFromDate,
         'gcalEventId': gcalEventId,
         'sessionTemplateId': sessionTemplateId,
       };
@@ -146,6 +153,7 @@ class ScheduleBlock {
         domainId: j['domainId'],
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
+        carriedFromDate: j['carriedFromDate'],
         gcalEventId: j['gcalEventId'],
         sessionTemplateId: j['sessionTemplateId'],
       );

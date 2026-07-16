@@ -310,6 +310,9 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       final refSched = await _sync.fetchDailySchedule(ref);
       for (final b in refSched?.blocks ?? const <ScheduleBlock>[]) {
         if (b.status == 'deleted' || b.isPrep) continue;
+        // « reporte » = déjà copié dans le programme du jour cible au moment
+        // du report effectif — ne pas le reproposer une seconde fois.
+        if (b.skipReason == 'reporte') continue;
         final skipped = b.status != 'done';
         _draft.add(_Draft(
           ScheduleBlock(

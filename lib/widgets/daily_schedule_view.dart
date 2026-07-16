@@ -625,6 +625,21 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                               color: cs.onSurface
                                   .withOpacity(isDone ? .2 : .4)),
                         ),
+                        // Bloc copié par « Reporter au lendemain » : provenance.
+                        if (block.carriedFromDate != null && !isDone) ...[
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '↩ reporté d\'hier',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontStyle: FontStyle.italic,
+                                  color: cs.tertiary.withOpacity(.9)),
+                            ),
+                          ),
+                        ],
                         // Mode soirée (23c) : les blocs non faits d'avant 19 h
                         // sont EN ATTENTE — jamais supprimés, recasés au
                         // check-in ; « Revenir » les restaure tels quels.
@@ -875,9 +890,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               _askDuration(context, block);
             }),
             row(Icons.redo_rounded, 'Reporter au lendemain',
-                'la date change : compté comme report — il reviendra reproposé',
+                'le bloc est posé dans le programme de demain, à la même heure',
                 () async {
               Navigator.pop(sctx);
+              // Report EFFECTIF : copie dans le doc de demain (décision
+              // explicite ≠ simple oubli), puis annotation sur l'original.
+              await _sync.reportBlockToTomorrow(widget.date, block);
               await _sync.updateBlockStatus(widget.date, block.id, 'skipped');
               await _sync.updateBlockSkipReason(widget.date, block.id, 'reporte');
               // Défi reporté → l'alarme du jour n'a plus lieu d'être.
@@ -885,7 +903,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                   content: Text(
-                      'Reporté — il revient demain dans la proposition, marqué reproposé.'),
+                      'Reporté — le bloc est posé dans le programme de demain.'),
                   duration: Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
                 ));
