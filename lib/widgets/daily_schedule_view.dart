@@ -53,6 +53,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   // Blocs « projet » déjà auto-cochés (tâche terminée ailleurs) — évite les
   // écritures répétées avant le retour du stream.
   final Set<String> _projectSynced = {};
+  // Auto-scroll vers le trait « maintenant » à la première ouverture du jour
+  // (même comportement que la timeline horaire).
+  final _nowKey = GlobalKey();
+  bool _scrolledToNow = false;
 
   /// La vue peut afficher une autre date (planif de demain) : les effets de
   /// bord « jour courant » (todayBlocks, auto-coche) ne valent qu'aujourd'hui.
@@ -360,6 +364,19 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       _maybeSyncProjectBlocks();
     });
 
+    // Auto-scroll vers « maintenant » à la première ouverture du jour —
+    // même comportement que la timeline horaire (mode agenda).
+    if (_isToday && !_scrolledToNow && _schedule != null && visible.isNotEmpty) {
+      _scrolledToNow = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _nowKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx,
+              alignment: .35, duration: const Duration(milliseconds: 300));
+        }
+      });
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -405,11 +422,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             if (nowAtEnd) nowIndex = visible.length;
             return Column(children: [
               for (var i = 0; i < visible.length; i++) ...[
-                if (i == nowIndex) _nowLine(now),
+                if (i == nowIndex)
+                  KeyedSubtree(key: _nowKey, child: _nowLine(now)),
                 _buildBlock(context, cs, visible[i],
                     key: ValueKey(visible[i].id)),
               ],
-              if (nowAtEnd) _nowLine(now),
+              if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
       ],
