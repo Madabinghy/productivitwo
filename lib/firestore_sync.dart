@@ -1298,22 +1298,11 @@ class FirestoreSync {
         // ciblé + programmation déjà câblés côté schedule_day).
         final activityId = payload['activityId']?.toString();
         if (activityId != null && activityId.isNotEmpty) {
-          final snap = await _col('activities').doc(activityId).get();
-          if (snap.exists) {
-            final data =
-                Map<String, dynamic>.from(snap.data() as Map);
-            final own = ((data['ownActions'] as List?) ?? const [])
-                .map((a) => Map<String, dynamic>.from(a as Map))
-                .toList();
-            own.add(TaskAction(
-              title: (payload['actionLabel'] ?? p.title).toString(),
-              linkedActivityId: activityId,
-              context: payload['context']?.toString(),
-            ).toJson());
-            await _col('activities')
-                .doc(activityId)
-                .update({'ownActions': own});
-          }
+          await addOwnActionToActivity(
+            activityId,
+            (payload['actionLabel'] ?? p.title).toString(),
+            context: payload['context']?.toString(),
+          );
         }
         break;
       case 'restructure_project':
@@ -2383,6 +2372,27 @@ class FirestoreSync {
     } catch (_) {
       return List.of(kDefaultGtdContexts);
     }
+  }
+
+  /// Ajoute une action PROPRE (ownAction) à une activité-temps — action simple
+  /// GTD sans projet, programmable (schedule_day) et chronométrable (▶ ciblé).
+  Future<void> addOwnActionToActivity(String activityId, String title,
+      {String? context}) async {
+    if (uid == null) return;
+    final t = title.trim();
+    if (t.isEmpty) return;
+    final snap = await _col('activities').doc(activityId).get();
+    if (!snap.exists) return;
+    final data = Map<String, dynamic>.from(snap.data() as Map);
+    final own = ((data['ownActions'] as List?) ?? const [])
+        .map((a) => Map<String, dynamic>.from(a as Map))
+        .toList();
+    own.add(TaskAction(
+      title: t,
+      linkedActivityId: activityId,
+      context: context,
+    ).toJson());
+    await _col('activities').doc(activityId).update({'ownActions': own});
   }
 
   Future<void> addCustomContext(String context) async {
