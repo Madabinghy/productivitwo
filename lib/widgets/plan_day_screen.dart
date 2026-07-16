@@ -660,7 +660,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                   Flexible(
                     child: Text(
                       '${fmtMin(b.durationMin)} · '
-                      '${b.gcalEventId != null ? 'agenda — déjà en place' : isDone ? 'déjà fait' : 'déjà validé — conservé tel quel'}',
+                      '${b.gcalEventId != null ? 'agenda — déjà en place' : isDone ? 'déjà fait' : 'déjà validé — conservé'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(

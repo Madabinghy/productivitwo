@@ -973,6 +973,56 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     );
   }
 
+  /// Suggestions d'association à la frappe (titre du bloc) : routines,
+  /// activités-temps, actions propres, actions de tâches Gantt — un tap
+  /// associe le bloc à la bonne source (chrono ciblé, coche liée).
+  List<BlockSuggestion> _buildSuggestions() {
+    final logic = widget.logic;
+    final out = <BlockSuggestion>[];
+    for (final a in logic.state.activeActivities) {
+      if (a.isHabit) {
+        out.add(BlockSuggestion(
+            title: a.name,
+            kindLabel: 'routine',
+            category: 'routine',
+            activityId: a.id));
+      } else {
+        if (a.role != ActivityRole.shopping) {
+          out.add(BlockSuggestion(
+              title: a.name,
+              kindLabel: 'activité',
+              category: 'personal',
+              activityId: a.id));
+        }
+        for (final act in a.ownActions.where((x) => !x.done)) {
+          out.add(BlockSuggestion(
+              title: act.title,
+              kindLabel: 'action · ${a.name}',
+              category: 'personal',
+              activityId: a.id,
+              actionId: act.id));
+        }
+      }
+    }
+    for (final p in logic.currentProjects) {
+      if (p.status != 'active') continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        for (final act in t.actions.where((x) => !x.done)) {
+          out.add(BlockSuggestion(
+              title: act.title,
+              kindLabel: 'action · ${p.title}',
+              category: 'project',
+              activityId: act.linkedActivityId,
+              projectId: p.id,
+              taskId: t.id,
+              actionId: act.id));
+        }
+      }
+    }
+    return out;
+  }
+
   /// Ajout manuel d'un bloc perso : ouvre la sheet d'édition vierge, puis
   /// pose le bloc dans le programme du jour (crée le doc au besoin).
   void _addManualBlock(BuildContext context) {
@@ -997,6 +1047,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             .toList()
           ..sort((a, b) =>
               a.name.toLowerCase().compareTo(b.name.toLowerCase())),
+        suggestions: _buildSuggestions(),
         onSave: (b) => _sync.addScheduleBlock(widget.date, b),
       ),
     );
@@ -1021,6 +1072,30 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       };
 }
 
+// ── Suggestion d'association d'un bloc ────────────────────────────────────────
+
+/// Source associable à un bloc (routine, activité-temps, action propre,
+/// action de tâche Gantt) — proposée à la frappe du titre, un tap = lié.
+class BlockSuggestion {
+  final String title;
+  final String kindLabel; // 'routine' | 'activité' | 'action · <porteur>'
+  final String category;
+  final String? activityId;
+  final String? projectId;
+  final String? taskId;
+  final String? actionId;
+
+  const BlockSuggestion({
+    required this.title,
+    required this.kindLabel,
+    required this.category,
+    this.activityId,
+    this.projectId,
+    this.taskId,
+    this.actionId,
+  });
+}
+
 // ── Sheet d'édition d'un bloc ─────────────────────────────────────────────────
 
 class _BlockEditSheet extends StatefulWidget {
@@ -1029,12 +1104,15 @@ class _BlockEditSheet extends StatefulWidget {
   final bool isNew;
   // Activités « temps » proposables pour lier le bloc (création seulement).
   final List<Activity> activities;
+  // Suggestions à la frappe (routines, activités, actions) — un tap associe.
+  final List<BlockSuggestion> suggestions;
 
   const _BlockEditSheet(
       {required this.block,
       required this.onSave,
       this.isNew = false,
-      this.activities = const []});
+      this.activities = const [],
+      this.suggestions = const []});
 
   @override
   State<_BlockEditSheet> createState() => _BlockEditSheetState();
@@ -1046,6 +1124,11 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   late int _durationMin;
   late String _category;
   late String? _activityId;
+  // Association posée par une suggestion (action Gantt/propre) — un tap.
+  String? _projectId;
+  String? _taskId;
+  String? _actionId;
+  String? _linkedLabel; // libellé de la source liée (chip), null = pas de lien
   bool _saving = false;
 
   @override
@@ -1056,12 +1139,47 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     _durationMin = widget.block.durationMin;
     _category = widget.block.category;
     _activityId = widget.block.activityId;
+    _projectId = widget.block.projectId;
+    _taskId = widget.block.taskId;
+    _actionId = widget.block.actionId;
   }
 
   @override
   void dispose() {
     _titleCtrl.dispose();
     super.dispose();
+  }
+
+  void _applySuggestion(BlockSuggestion s) {
+    setState(() {
+      _titleCtrl.text = s.title;
+      _category = s.category;
+      _activityId = s.activityId;
+      _projectId = s.projectId;
+      _taskId = s.taskId;
+      _actionId = s.actionId;
+      _linkedLabel = s.kindLabel;
+    });
+  }
+
+  void _clearLink() {
+    setState(() {
+      _linkedLabel = null;
+      _activityId = null;
+      _projectId = null;
+      _taskId = null;
+      _actionId = null;
+    });
+  }
+
+  List<BlockSuggestion> get _matches {
+    if (!widget.isNew || _linkedLabel != null) return const [];
+    final q = foldName(_titleCtrl.text.trim());
+    if (q.length < 2) return const [];
+    return widget.suggestions
+        .where((s) => foldName(s.title).contains(q))
+        .take(5)
+        .toList();
   }
 
   Future<void> _save() async {
@@ -1074,9 +1192,10 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       durationMin: _durationMin,
       title: title,
       category: _category,
-      projectId: widget.block.projectId,
-      taskId: widget.block.taskId,
+      projectId: _projectId,
+      taskId: _taskId,
       activityId: _activityId,
+      actionId: _actionId,
       status: widget.block.status,
       doneAt: widget.block.doneAt,
     ));
@@ -1113,7 +1232,91 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                 isDense: true),
             autofocus: true,
             textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) {
+              // La frappe invalide un lien posé par suggestion (le titre ne
+              // correspond plus) et rafraîchit les suggestions.
+              if (_linkedLabel != null) {
+                _clearLink();
+              } else {
+                setState(() {});
+              }
+            },
           ),
+          // ── Suggestions à la frappe : un tap = titre + association ────────
+          if (_matches.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              decoration: BoxDecoration(
+                color: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withOpacity(.4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  for (final s in _matches)
+                    ListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      leading: Icon(
+                        s.projectId != null
+                            ? Icons.rocket_launch_outlined
+                            : s.actionId != null
+                                ? Icons.bolt
+                                : s.category == 'routine'
+                                    ? Icons.loop
+                                    : Icons.timer_outlined,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      title: Text(s.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13.5)),
+                      subtitle: Text(s.kindLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(.5))),
+                      onTap: () => _applySuggestion(s),
+                    ),
+                ],
+              ),
+            ),
+          if (_linkedLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Icon(Icons.link,
+                    size: 14, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Lié : $_linkedLabel — ▶ chrono ciblé, coche synchronisée',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.primary),
+                  ),
+                ),
+                InkWell(
+                  onTap: _clearLink,
+                  child: Icon(Icons.close,
+                      size: 16,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(.5)),
+                ),
+              ]),
+            ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -1138,7 +1341,9 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
             value: _category,
             onChanged: (v) => setState(() => _category = v),
           ),
-          if (widget.isNew && widget.activities.isNotEmpty) ...[
+          if (widget.isNew &&
+              widget.activities.isNotEmpty &&
+              _linkedLabel == null) ...[
             const SizedBox(height: 12),
             InputDecorator(
               decoration: const InputDecoration(
