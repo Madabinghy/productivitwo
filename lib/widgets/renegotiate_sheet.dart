@@ -313,6 +313,9 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     final availability = await showAvailabilitySheet(context);
     setState(() => _saving = true);
     try {
+      // Report EFFECTIF : le bloc est copié dans le programme de demain
+      // (décision explicite), l'original garde la trace « reporte ».
+      await _sync.reportBlockToTomorrow(widget.date, b);
       await _sync.updateBlockStatus(widget.date, b.id, 'skipped');
       await _sync.updateBlockSkipReason(widget.date, b.id, 'reporte',
           reportReason: reason.isEmpty ? null : reason);

@@ -2704,6 +2704,60 @@ class FirestoreSync {
   /// Ajoute un bloc au programme d'un jour (read-modify-write). Crée le doc
   /// `daily_schedules/{date}` s'il n'existe pas encore. Utilisé pour poser un
   /// défi programmé dans le plan du jour cible.
+  /// Report EFFECTIF au lendemain : copie le bloc dans le doc de demain
+  /// (statut pending, même heure — ajustable là-bas), en plus de l'annotation
+  /// `skipReason:'reporte'` posée sur l'original. Idempotent : pas de double
+  /// copie si le bloc source a déjà été reporté (carriedFromDate + id source).
+  Future<void> reportBlockToTomorrow(String fromDate, ScheduleBlock b) async {
+    if (uid == null) return;
+    final from = DateTime.tryParse(fromDate);
+    if (from == null) return;
+    final t = from.add(const Duration(days: 1));
+    final tomorrow =
+        '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+
+    final ref = _db.doc('users/$uid/daily_schedules/$tomorrow');
+    final snap = await ref.get();
+    final existing = snap.exists
+        ? ((snap.data() as Map)['blocks'] as List?)
+                ?.map((x) => Map<String, dynamic>.from(x as Map))
+                .toList() ??
+            <Map<String, dynamic>>[]
+        : <Map<String, dynamic>>[];
+
+    // Déjà reporté ? (même bloc source, repérable par id — la copie garde
+    // l'id d'origine dans carriedFromDate + un id neuf à elle.)
+    final marker = '$fromDate:${b.id}';
+    if (existing.any((x) => x['carriedFromDate'] == marker)) return;
+
+    final copy = ScheduleBlock(
+      startTime: b.startTime,
+      durationMin: b.durationMin,
+      title: b.title,
+      category: b.category,
+      projectId: b.projectId,
+      taskId: b.taskId,
+      activityId: b.activityId,
+      actionId: b.actionId,
+      challenge: b.challenge,
+      kind: b.kind == 'normal' ? 'normal' : b.kind,
+      domainId: b.domainId,
+      sessionTemplateId: b.sessionTemplateId,
+      carriedFromDate: marker,
+    );
+
+    if (!snap.exists) {
+      await ref.set(DailySchedule(
+        date: tomorrow,
+        generatedBy: 'user',
+        blocks: [copy],
+      ).toJson());
+    } else {
+      existing.add(copy.toJson());
+      await ref.update({'blocks': existing});
+    }
+  }
+
   Future<void> addScheduleBlock(String date, ScheduleBlock block) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');
