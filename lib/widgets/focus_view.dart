@@ -1566,7 +1566,8 @@ class _FocusViewState extends State<FocusView> {
           out.add((
             action: a,
             source: p.title,
-            chronoActivityId: a.linkedActivityId,
+            // Lien propre de l'action, sinon hérité du projet.
+            chronoActivityId: a.linkedActivityId ?? p.linkedActivityId,
             taskId: t.id,
             projectId: p.id,
           ));
@@ -1610,11 +1611,16 @@ class _FocusViewState extends State<FocusView> {
   Widget _contextSection(ColorScheme cs) {
     final contexts = _contextsWithActions().toList()..sort();
     if (contexts.isEmpty) return const SizedBox.shrink();
-    var selected = widget.state.nowContext;
-    if (selected != null && !contexts.contains(selected)) selected = null;
-    final items = selected != null
-        ? _actionsForContext(selected)
-        : const <({TaskAction action, String source, String? chronoActivityId, String? taskId, String? projectId})>[];
+    // Multi : on peut être @maison ET @ordinateur — union des actions,
+    // dédupliquée par id.
+    final active =
+        widget.state.nowContexts.where(contexts.contains).toSet();
+    final seen = <String>{};
+    final items = [
+      for (final c in active.toList()..sort())
+        for (final it in _actionsForContext(c))
+          if (seen.add(it.action.id)) it,
+    ];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1639,9 +1645,11 @@ class _FocusViewState extends State<FocusView> {
             children: [
               for (final c in contexts)
                 ChoiceChip(
-                  selected: selected == c,
+                  selected: active.contains(c),
                   onSelected: (_) {
-                    widget.state.nowContext = selected == c ? null : c;
+                    active.contains(c)
+                        ? widget.state.nowContexts.remove(c)
+                        : widget.state.nowContexts.add(c);
                     widget.logic.onChange();
                     setState(() {});
                   },
@@ -1649,16 +1657,17 @@ class _FocusViewState extends State<FocusView> {
                   label: Text(c),
                   labelStyle: TextStyle(
                     fontSize: 12.5,
-                    fontWeight:
-                        selected == c ? FontWeight.w600 : FontWeight.w500,
-                    color: selected == c
+                    fontWeight: active.contains(c)
+                        ? FontWeight.w600
+                        : FontWeight.w500,
+                    color: active.contains(c)
                         ? cs.primary
                         : cs.onSurface.withOpacity(.65),
                   ),
                   selectedColor: cs.primary.withOpacity(.14),
                   backgroundColor: cs.surfaceVariant.withOpacity(.35),
                   side: BorderSide(
-                      color: selected == c
+                      color: active.contains(c)
                           ? cs.primary.withOpacity(.5)
                           : Colors.transparent),
                   visualDensity: VisualDensity.compact,
@@ -1667,7 +1676,7 @@ class _FocusViewState extends State<FocusView> {
                 ),
             ],
           ),
-          if (selected != null) ...[
+          if (active.isNotEmpty) ...[
             const SizedBox(height: 10),
             if (items.isEmpty)
               Text('Aucune action en attente dans ce contexte.',
@@ -2280,6 +2289,12 @@ class _FocusViewState extends State<FocusView> {
             // s'égrènent librement, la première non faite est mise en avant.
             ..._derouleSection(cs, color, running),
 
+            // ── POSSIBLE MAINTENANT : todo dynamique = actions des projets
+            // liés à l'activité en cours (lien propre ou hérité du projet),
+            // filtrées par les contextes actifs. Le chrono continue de
+            // tourner sur l'activité pendant qu'on égrène.
+            ..._possibleNowSection(cs, color, running),
+
             if (task == null) ...[
               const SizedBox(height: 24),
               Center(
@@ -2301,6 +2316,145 @@ class _FocusViewState extends State<FocusView> {
         ),
       ),
     );
+  }
+
+  // ── « Possible maintenant » : todo dynamique de l'activité en cours ─────────
+  // Actions de projets actifs dont l'activité EFFECTIVE (lien propre de
+  // l'action, sinon lien du projet) est celle du chrono, filtrées par les
+  // contextes actifs (une action sans contexte reste visible). Les sous-
+  // actions de la tâche focus sont exclues (déjà dans le déroulé).
+
+  List<({TaskAction action, Project project, ProjectTask task})>
+      _possibleNowItems(Activity running) {
+    final active = widget.state.nowContexts.toSet();
+    final focusTaskId = widget.focusTask?.id;
+    final out = <({TaskAction action, Project project, ProjectTask task})>[];
+    for (final p in widget.logic.currentProjects) {
+      if (p.status != 'active' || p.paused) continue;
+      for (final t in p.tasks) {
+        if (t.isMilestone || t.status == 'done' || t.status == 'skipped') {
+          continue;
+        }
+        if (t.id == focusTaskId) continue;
+        for (final a in t.actions) {
+          if (a.done) continue;
+          final effective = a.linkedActivityId ?? p.linkedActivityId;
+          if (effective != running.id) continue;
+          if (active.isNotEmpty &&
+              a.allContexts.isNotEmpty &&
+              !a.allContexts.any(active.contains)) {
+            continue;
+          }
+          out.add((action: a, project: p, task: t));
+        }
+      }
+    }
+    return out;
+  }
+
+  List<Widget> _possibleNowSection(
+      ColorScheme cs, Color color, Activity running) {
+    final items = _possibleNowItems(running);
+    if (items.isEmpty) return const [];
+    final active = widget.state.nowContexts.toList()..sort();
+    return [
+      const SizedBox(height: 26),
+      Row(children: [
+        Icon(Icons.checklist_rtl,
+            size: 14, color: cs.onSurface.withOpacity(.45)),
+        const SizedBox(width: 6),
+        Text('POSSIBLE MAINTENANT',
+            style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .8,
+                color: cs.onSurface.withOpacity(.45))),
+        if (active.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(active.join(' '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary.withOpacity(.7))),
+          ),
+        ],
+      ]),
+      const SizedBox(height: 8),
+      for (final it in items.take(8))
+        Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withOpacity(.35),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(children: [
+            Checkbox(
+              value: false,
+              shape: const CircleBorder(),
+              onChanged: (_) async {
+                it.action.done = true;
+                it.action.doneAt = DateTime.now();
+                await _sync.saveProjectTasks(
+                    it.project.id, it.project.tasks);
+                logic.onChange();
+                if (mounted) setState(() {});
+              },
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(it.action.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
+                    Row(children: [
+                      Flexible(
+                        child: Text(it.project.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: cs.onSurface.withOpacity(.5))),
+                      ),
+                      if (it.action.allContexts.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                              (it.action.allContexts.toList()..sort())
+                                  .join(' '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.primary.withOpacity(.75))),
+                        ),
+                      ],
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ]),
+        ),
+      if (items.length > 8)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text('+ ${items.length - 8} autres dans l\'onglet Actions',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontStyle: FontStyle.italic,
+                  color: cs.onSurface.withOpacity(.45))),
+        ),
+    ];
   }
 
   // ── Déroulé de la session en cours (player v1) ───────────────────────────────

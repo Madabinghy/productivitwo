@@ -214,6 +214,10 @@ class Project {
   /// Projet EN PAUSE (GTD « someday/maybe » léger) : reste actif mais ses
   /// actions sortent des listes de contextes, du coach et de la planification.
   bool paused;
+  /// Activité-temps liée : les actions du projet héritent de ce chrono
+  /// (sauf lien propre `TaskAction.linkedActivityId`) et remontent dans
+  /// « Possible maintenant » quand cette activité tourne.
+  String? linkedActivityId;
   List<ProjectPhase> phases;
   List<ProjectTask> tasks;
   String createdBy; // uid Firebase
@@ -237,6 +241,7 @@ class Project {
     this.endDate,
     this.status = 'active',
     this.paused = false,
+    this.linkedActivityId,
     List<ProjectPhase>? phases,
     List<ProjectTask>? tasks,
     required this.createdBy,
@@ -262,6 +267,7 @@ class Project {
         'endDate': endDate?.toIso8601String(),
         'status': status,
         'paused': paused,
+        'linkedActivityId': linkedActivityId,
         'phases': phases.map((p) => p.toJson()).toList(),
         'tasks': tasks.map((t) => t.toJson()).toList(),
         'createdBy': createdBy,
@@ -283,6 +289,7 @@ class Project {
         endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',
         paused: j['paused'] == true,
+        linkedActivityId: j['linkedActivityId'] as String?,
         phases: (j['phases'] as List?)?.map((p) => ProjectPhase.from(p)).toList() ?? [],
         tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
         createdBy: j['createdBy'] ?? '',

@@ -1,8 +1,10 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
@@ -32,8 +34,10 @@ class _Entry {
 
   _Entry({required this.action, this.project, this.task, this.activity});
 
+  /// Activité effective : porteur (action propre) > lien propre de l'action
+  /// > lien hérité du projet.
   String? get chronoActivityId =>
-      activity?.id ?? action.linkedActivityId;
+      activity?.id ?? action.linkedActivityId ?? project?.linkedActivityId;
 }
 
 class _ActionsViewState extends State<ActionsView> {
@@ -64,7 +68,9 @@ class _ActionsViewState extends State<ActionsView> {
           entries.add(_Entry(action: a, project: p, task: t));
         }
       }
-      if (entries.isNotEmpty) out.add((project: p, entries: entries));
+      // Groupe gardé même vide : un projet fraîchement créé (ou dont tout est
+      // fait) reste visible avec l'invitation « Définir la prochaine action ».
+      out.add((project: p, entries: entries));
     }
     return out;
   }
@@ -111,6 +117,134 @@ class _ActionsViewState extends State<ActionsView> {
     }
     widget.logic.onChange();
     if (mounted) setState(() {});
+    // Égrainage GTD : la dernière action du projet vient d'être cochée —
+    // c'est LE moment de définir la suivante (le réflexe se forge à la
+    // complétion, pas à la planification).
+    final p = e.project;
+    if (done && p != null && mounted) {
+      final hasPending = p.tasks
+          .where((t) =>
+              !t.isMilestone && t.status != 'done' && t.status != 'skipped')
+          .any((t) => t.actions.any((a) => !a.done));
+      if (!hasPending) await _quickAddAction(p, followUp: true);
+    }
+  }
+
+  // ── Ajout direct d'action au projet (la couche tâches est ignorée) ────────
+
+  /// Tâche-réceptacle des actions ajoutées au fil de l'eau : id stable,
+  /// invisible dans la liste (seules les actions s'affichent), visible dans
+  /// la fiche projet/Gantt comme n'importe quelle tâche.
+  static const _flowTaskId = 'gtd-flow';
+
+  ProjectTask _flowTask(Project p) {
+    final existing = p.tasks.firstWhereOrNull((t) => t.id == _flowTaskId);
+    if (existing != null) {
+      // Réactivée si elle avait été close (toutes actions faites).
+      if (existing.status != 'pending') existing.status = 'pending';
+      return existing;
+    }
+    final t = ProjectTask(
+      id: _flowTaskId,
+      title: 'Au fil de l\'eau',
+      startDate: DateTime.now(),
+      // endDate null → triée en dernier : les tâches datées gardent la
+      // priorité d'urgence (coach/ORION).
+    );
+    p.tasks.add(t);
+    return t;
+  }
+
+  /// Dialog rapide titre + contextes → action directement dans le projet.
+  /// CHAÎNABLE : « Ajouter » enregistre, vide le champ et garde le dialog
+  /// ouvert (contextes conservés) pour saisir plusieurs prochaines actions
+  /// d'affilée ; « Terminer » ferme.
+  /// [followUp] = égrainage après complétion (« Et la prochaine ? »).
+  Future<void> _quickAddAction(Project p, {bool followUp = false}) async {
+    final ctrl = TextEditingController();
+    var pickedContexts = <String>[];
+    var added = 0;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        Future<void> add() async {
+          final v = ctrl.text.trim();
+          if (v.isEmpty) return;
+          final t = _flowTask(p);
+          t.actions.add(TaskAction(
+            title: v,
+            context: pickedContexts.isEmpty ? null : pickedContexts.first,
+            contexts: List.of(pickedContexts),
+          ));
+          setLocal(() {
+            added++;
+            ctrl.clear();
+          });
+          await _sync.saveProjectTasks(p.id, p.tasks);
+          widget.logic.onChange();
+          if (mounted) setState(() {});
+        }
+
+        return AlertDialog(
+          title: Text(followUp
+              ? 'Et la prochaine action ?'
+              : 'Prochaine action'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(p.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface
+                          .withOpacity(.55))),
+              const SizedBox(height: 10),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    hintText: 'La prochaine action concrète…'),
+                onSubmitted: (_) => add(),
+              ),
+              const SizedBox(height: 12),
+              ContextPicker(
+                values: pickedContexts,
+                sync: _sync,
+                onValuesChanged: (list) => pickedContexts = list,
+              ),
+              if (added > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                      added == 1
+                          ? '1 action ajoutée — enchaîne ou termine.'
+                          : '$added actions ajoutées — enchaîne ou termine.',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(ctx).colorScheme.onSurface
+                              .withOpacity(.5))),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(added > 0
+                    ? 'Terminer'
+                    : (followUp ? 'Plus tard' : 'Annuler'))),
+            FilledButton(
+              onPressed: add,
+              child: const Text('Ajouter'),
+            ),
+          ],
+        );
+      }),
+    );
+    ctrl.dispose();
   }
 
   void _openProject(Project p, {String? targetTaskId}) {
@@ -161,6 +295,22 @@ class _ActionsViewState extends State<ActionsView> {
       ...available,
       ...selected.where((c) => !available.contains(c)),
     ];
+    // Lien chrono (actions de projet) : activité propre de l'action, sinon
+    // héritée du projet. Les activités du même domaine passent en premier.
+    final isProjectAction = e.project != null;
+    var linkedId = e.action.linkedActivityId;
+    final timeActivities = _state.activeActivities
+        .where((a) => a.type == 'time')
+        .toList()
+      ..sort((a, b) {
+        final ad = a.domainId == e.project?.domainId ? 0 : 1;
+        final bd = b.domainId == e.project?.domainId ? 0 : 1;
+        return ad != bd ? ad - bd : a.name.compareTo(b.name);
+      });
+    final inherited = e.project?.linkedActivityId == null
+        ? null
+        : _state.activities
+            .firstWhereOrNull((a) => a.id == e.project!.linkedActivityId);
     final saved = await showModalBottomSheet<bool>(
       context: context,
       useSafeArea: true,
@@ -202,6 +352,46 @@ class _ActionsViewState extends State<ActionsView> {
                     ),
                 ],
               ),
+              if (isProjectAction && timeActivities.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text('CHRONO SUR L\'ACTIVITÉ',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(.45))),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in timeActivities.take(8))
+                      ChoiceChip(
+                        selected: linkedId == a.id,
+                        onSelected: (_) => setLocal(() =>
+                            linkedId = linkedId == a.id ? null : a.id),
+                        showCheckmark: false,
+                        label: Text(a.name),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                if (linkedId == null && inherited != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Hérite du projet : ${inherited.name}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(.45))),
+                  ),
+              ],
               const SizedBox(height: 16),
               Row(children: [
                 if (e.project != null)
@@ -226,8 +416,68 @@ class _ActionsViewState extends State<ActionsView> {
     );
     if (saved == true) {
       e.action.setContexts(selected.toList());
+      if (isProjectAction) e.action.linkedActivityId = linkedId;
       await _persistEntry(e);
     }
+  }
+
+  /// Renomme un contexte custom : meta + propagation aux actions chargées qui
+  /// le portent (tâches de projets + actions propres). Retourne le nouveau nom.
+  Future<String?> _renameContext(String from) async {
+    final ctrl = TextEditingController(text: from);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer le contexte'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Ex : @atelier'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Renommer')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null || result.isEmpty) return null;
+    final to = result.startsWith('@') ? result : '@$result';
+    if (to == from) return null;
+
+    await _sync.renameCustomContext(from, to);
+    for (final p in widget.logic.currentProjects) {
+      var changed = false;
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          if (a.allContexts.contains(from)) {
+            a.setContexts(
+                [for (final c in a.allContexts) c == from ? to : c]);
+            changed = true;
+          }
+        }
+      }
+      if (changed) await _sync.saveProjectTasks(p.id, p.tasks);
+    }
+    for (final act in _state.activities) {
+      var changed = false;
+      for (final a in act.ownActions) {
+        if (a.allContexts.contains(from)) {
+          a.setContexts([for (final c in a.allContexts) c == from ? to : c]);
+          changed = true;
+        }
+      }
+      if (changed) await _sync.updateOwnActions(act.id, act.ownActions);
+    }
+    final ni = _state.nowContexts.indexOf(from);
+    if (ni >= 0) _state.nowContexts[ni] = to;
+    widget.logic.onChange();
+    return to;
   }
 
   // ── Bouton @ : « je suis » + CRUD des contextes ─────────────────────────────
@@ -247,7 +497,6 @@ class _ActionsViewState extends State<ActionsView> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
           final cs2 = Theme.of(ctx).colorScheme;
-          final nowCtx = _state.nowContext;
           return Padding(
             padding: EdgeInsets.fromLTRB(
                 20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
@@ -271,15 +520,17 @@ class _ActionsViewState extends State<ActionsView> {
                   runSpacing: 6,
                   children: [
                     for (final c in [...kDefaultGtdContexts, ...customs])
-                      ChoiceChip(
-                        selected: nowCtx == c,
-                        onSelected: (_) {
-                          _state.nowContext = nowCtx == c ? null : c;
+                      FilterChip(
+                        // Multi : on peut être @maison ET @ordinateur.
+                        selected: _state.nowContexts.contains(c),
+                        onSelected: (v) {
+                          v
+                              ? _state.nowContexts.add(c)
+                              : _state.nowContexts.remove(c);
                           widget.logic.onChange();
                           setLocal(() {});
                           if (mounted) setState(() {});
                         },
-                        showCheckmark: false,
                         label: Text(c),
                         visualDensity: VisualDensity.compact,
                       ),
@@ -298,19 +549,28 @@ class _ActionsViewState extends State<ActionsView> {
                       style: TextStyle(
                           fontSize: 12.5,
                           color: cs2.onSurface.withOpacity(.5)))
-                else
+                else ...[
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
                       for (final c in customs)
-                        Chip(
+                        InputChip(
                           label: Text(c),
                           visualDensity: VisualDensity.compact,
+                          // Tap = renommer (propagé aux actions qui le portent)
+                          onPressed: () async {
+                            final to = await _renameContext(c);
+                            if (to == null) return;
+                            setLocal(() {
+                              final i = customs.indexOf(c);
+                              if (i >= 0) customs[i] = to;
+                            });
+                            if (mounted) setState(() {});
+                          },
                           onDeleted: () async {
                             await _sync.removeCustomContext(c);
-                            if (_state.nowContext == c) {
-                              _state.nowContext = null;
+                            if (_state.nowContexts.remove(c)) {
                               widget.logic.onChange();
                             }
                             setLocal(() => customs.remove(c));
@@ -319,6 +579,15 @@ class _ActionsViewState extends State<ActionsView> {
                         ),
                     ],
                   ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Tap pour renommer · ✕ pour supprimer',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: cs2.onSurface.withOpacity(.4))),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
@@ -366,18 +635,28 @@ class _ActionsViewState extends State<ActionsView> {
     final pGroups = _projectGroups();
     final aGroups = _activityGroups();
     final contexts = _allContexts(pGroups, aGroups).toList()..sort();
-    var nowContext = _state.nowContext;
-    if (nowContext != null && !contexts.contains(nowContext)) {
-      nowContext = null;
-    }
+    // Contextes actifs = ceux qui existent encore dans la liste (un contexte
+    // sans action ne filtre pas — il resterait invisible et bloquerait tout).
+    final active = _state.nowContexts.where(contexts.contains).toSet();
 
+    // Multi : réalisable si l'action porte AU MOINS UN des contextes actifs.
     bool visible(_Entry e) =>
-        nowContext == null || e.action.allContexts.contains(nowContext);
+        active.isEmpty ||
+        e.action.allContexts.any(active.contains);
 
+    // Un groupe sans AUCUNE entrée (projet à définir) reste visible hors
+    // filtre de contexte ; un groupe vidé PAR le filtre est masqué.
     final visibleProjectGroups = [
       for (final g in pGroups)
-        (project: g.project, entries: g.entries.where(visible).toList()),
-    ].where((g) => g.entries.isNotEmpty).toList();
+        (
+          project: g.project,
+          entries: g.entries.where(visible).toList(),
+          needsNext: g.entries.isEmpty,
+        ),
+    ]
+        .where((g) =>
+            g.entries.isNotEmpty || (g.needsNext && active.isEmpty))
+        .toList();
     final visibleActivityGroups = [
       for (final g in aGroups)
         (activity: g.activity, entries: g.entries.where(visible).toList()),
@@ -437,9 +716,12 @@ class _ActionsViewState extends State<ActionsView> {
               children: [
                 for (final c in contexts)
                   ChoiceChip(
-                    selected: nowContext == c,
+                    selected: active.contains(c),
                     onSelected: (_) {
-                      _state.nowContext = nowContext == c ? null : c;
+                      // Multi : chaque tap ajoute/retire le contexte du set.
+                      active.contains(c)
+                          ? _state.nowContexts.remove(c)
+                          : _state.nowContexts.add(c);
                       widget.logic.onChange();
                       setState(() {});
                     },
@@ -447,17 +729,17 @@ class _ActionsViewState extends State<ActionsView> {
                     label: Text(c),
                     labelStyle: TextStyle(
                       fontSize: 12.5,
-                      fontWeight: nowContext == c
+                      fontWeight: active.contains(c)
                           ? FontWeight.w600
                           : FontWeight.w500,
-                      color: nowContext == c
+                      color: active.contains(c)
                           ? cs.primary
                           : cs.onSurface.withOpacity(.65),
                     ),
                     selectedColor: cs.primary.withOpacity(.14),
                     backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
                     side: BorderSide(
-                        color: nowContext == c
+                        color: active.contains(c)
                             ? cs.primary.withOpacity(.5)
                             : Colors.transparent),
                     visualDensity: VisualDensity.compact,
@@ -466,11 +748,11 @@ class _ActionsViewState extends State<ActionsView> {
                   ),
               ],
             ),
-            if (nowContext != null)
+            if (active.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Réalisable $nowContext — le reste est masqué.',
+                  'Réalisable ${(active.toList()..sort()).join(' ou ')} — le reste est masqué.',
                   style: TextStyle(
                       fontSize: 11.5,
                       fontStyle: FontStyle.italic,
@@ -485,8 +767,8 @@ class _ActionsViewState extends State<ActionsView> {
               padding: const EdgeInsets.only(top: 40),
               child: Center(
                 child: Text(
-                  nowContext != null
-                      ? 'Rien à faire $nowContext pour l\'instant.'
+                  active.isNotEmpty
+                      ? 'Rien à faire ${(active.toList()..sort()).join(' ou ')} pour l\'instant.'
                       : 'Aucune action en attente.\nCapture une idée ou crée une action avec +.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
@@ -503,18 +785,32 @@ class _ActionsViewState extends State<ActionsView> {
               domainColor(g.project.domainId, _state.activeDomains) ??
                   cs.primary,
               onTap: () => _openProject(g.project),
-              // Pause GTD : sort les actions du projet des contextes/listes
-              // sans l'archiver (il reste actif, juste « pas maintenant »).
-              trailing: IconButton(
-                tooltip: 'Mettre en pause',
-                icon: Icon(Icons.pause_circle_outline,
-                    size: 18, color: cs.onSurface.withOpacity(.4)),
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(),
-                onPressed: () => _togglePause(g.project),
-              ),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                // + direct : l'action atterrit dans le projet sans passer
+                // par la fiche tâche (couche tâches ignorée côté user).
+                IconButton(
+                  tooltip: 'Ajouter une action',
+                  icon: Icon(Icons.add,
+                      size: 18, color: cs.primary.withOpacity(.75)),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _quickAddAction(g.project),
+                ),
+                const SizedBox(width: 6),
+                // Pause GTD : sort les actions du projet des contextes/listes
+                // sans l'archiver (il reste actif, juste « pas maintenant »).
+                IconButton(
+                  tooltip: 'Mettre en pause',
+                  icon: Icon(Icons.pause_circle_outline,
+                      size: 18, color: cs.onSurface.withOpacity(.4)),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _togglePause(g.project),
+                ),
+              ]),
             ),
             for (final e in g.entries) _entryTile(cs, e),
+            if (g.entries.isEmpty) _defineTile(cs, g.project),
             const SizedBox(height: 10),
           ],
 
@@ -622,6 +918,38 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
+  /// Projet sans action en attente : invitation GTD à définir la suivante.
+  Widget _defineTile(ColorScheme cs, Project p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withOpacity(.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withOpacity(.25)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        // Tap = dialog rapide (titre + contextes) — la fiche projet reste
+        // accessible via l'en-tête de groupe / long press des actions.
+        onTap: () => _quickAddAction(p),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Icon(Icons.edit_note, size: 18, color: cs.primary.withOpacity(.8)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Définir la prochaine action',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _entryTile(ColorScheme cs, _Entry e) {
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -653,34 +981,19 @@ class _ActionsViewState extends State<ActionsView> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  if (e.task != null || e.action.allContexts.isNotEmpty)
+                  // Couche tâches ignorée côté user : projet → action →
+                  // @contextes, pas de niveau intermédiaire affiché.
+                  if (e.action.allContexts.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Row(children: [
-                        if (e.task != null)
-                          Flexible(
-                            child: Text(e.task!.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurface.withOpacity(.5))),
-                          ),
-                        if (e.action.allContexts.isNotEmpty) ...[
-                          if (e.task != null) const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                                (e.action.allContexts.toList()..sort())
-                                    .join(' '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.primary.withOpacity(.75))),
-                          ),
-                        ],
-                      ]),
+                      child: Text(
+                          (e.action.allContexts.toList()..sort()).join(' '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary.withOpacity(.75))),
                     ),
                 ],
               ),

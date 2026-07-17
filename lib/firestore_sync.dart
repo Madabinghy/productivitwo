@@ -2377,7 +2377,7 @@ class FirestoreSync {
   /// Ajoute une action PROPRE (ownAction) à une activité-temps — action simple
   /// GTD sans projet, programmable (schedule_day) et chronométrable (▶ ciblé).
   Future<void> addOwnActionToActivity(String activityId, String title,
-      {String? context}) async {
+      {String? context, List<String>? contexts}) async {
     if (uid == null) return;
     final t = title.trim();
     if (t.isEmpty) return;
@@ -2387,10 +2387,12 @@ class FirestoreSync {
     final own = ((data['ownActions'] as List?) ?? const [])
         .map((a) => Map<String, dynamic>.from(a as Map))
         .toList();
+    final multi = contexts ?? const <String>[];
     own.add(TaskAction(
       title: t,
       linkedActivityId: activityId,
-      context: context,
+      context: multi.isNotEmpty ? multi.first : context,
+      contexts: multi,
     ).toJson());
     await _col('activities').doc(activityId).update({'ownActions': own});
   }
@@ -2422,6 +2424,19 @@ class FirestoreSync {
     await _meta().set({
       'customContexts': FieldValue.arrayRemove([context]),
     }, SetOptions(merge: true));
+  }
+
+  /// Renomme un contexte personnalisé dans la liste meta. La propagation aux
+  /// actions qui le portent est faite par l'appelant (qui a l'état chargé).
+  Future<void> renameCustomContext(String from, String to) async {
+    if (uid == null) return;
+    final snap = await _meta().get();
+    final data = snap.data() as Map<String, dynamic>?;
+    final customs = ((data?['customContexts'] as List?)?.cast<String>() ?? [])
+        .map((c) => c == from ? to : c)
+        .toSet()
+        .toList();
+    await _meta().set({'customContexts': customs}, SetOptions(merge: true));
   }
 
   /// Sessions des [days] derniers jours (web : progression des objectifs).

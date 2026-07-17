@@ -45,9 +45,9 @@ class AppState {
   bool voitureMigratedOnce;
   // One-shot : passage du Gantt en retrait (hideProjectsTab=true par défaut).
   bool ganttHiddenV2Once;
-  // Contexte GTD « du moment » (@maison…) — préférence locale par device,
-  // sélectionnée dans Maintenant pour filtrer les actions réalisables ici.
-  String? nowContext;
+  // Contextes GTD « du moment » (@maison + @ordinateur…) — préférence locale
+  // par device, sélection MULTI pour filtrer les actions réalisables ici.
+  List<String> nowContexts;
 
   // Blocs journaliers
   List<DayBlock> blocks;
@@ -295,10 +295,11 @@ class AppState {
     this.linkedActivitiesMigratedOnce = false,
     this.voitureMigratedOnce = false,
     this.ganttHiddenV2Once = false,
-    this.nowContext,
+    List<String>? nowContexts,
     this.coursesRestoredOnce = false,
     this.coursesRestoredV2 = false,
-  })  : snoozedUntil = snoozedUntil ?? <String, String>{},
+  })  : nowContexts = nowContexts ?? <String>[],
+        snoozedUntil = snoozedUntil ?? <String, String>{},
         inbox = inbox ?? <InboxItem>[],
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
@@ -384,7 +385,7 @@ class AppState {
         'linkedActivitiesMigratedOnce': linkedActivitiesMigratedOnce,
         'voitureMigratedOnce': voitureMigratedOnce,
         'ganttHiddenV2Once': ganttHiddenV2Once,
-        'nowContext': nowContext,
+        'nowContexts': nowContexts,
         'blocks': blocks.map((e) => e.toJson()).toList(),
         'todayItems': todayItems.map((e) => e.toJson()).toList(),
         'disabledBlocksByYmd': disabledBlocksByYmd,
@@ -534,7 +535,9 @@ class AppState {
       linkedActivitiesMigratedOnce: (j['linkedActivitiesMigratedOnce'] as bool?) ?? false,
       voitureMigratedOnce: (j['voitureMigratedOnce'] as bool?) ?? false,
       ganttHiddenV2Once: (j['ganttHiddenV2Once'] as bool?) ?? false,
-      nowContext: j['nowContext'] as String?,
+      // Legacy : nowContext (mono) repris comme unique élément du set.
+      nowContexts: (j['nowContexts'] as List?)?.cast<String>() ??
+          [if (j['nowContext'] is String) j['nowContext'] as String],
       blocks: _list(j['blocks'], (e) => DayBlock.from(e)),
       todayItems: _list(j['todayItems'], (e) => TodayItem.from(e)),
       disabledBlocksByYmd: _mapSL(j['disabledBlocksByYmd']),

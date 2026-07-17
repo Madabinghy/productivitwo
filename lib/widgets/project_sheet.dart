@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -312,6 +313,101 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     return kDomainPalette[idx % kDomainPalette.length];
   }
 
+  // ── Activité liée : chrono hérité par toutes les actions du projet ────────
+
+  Widget _linkedActivityRow(ColorScheme cs) {
+    final linked = widget.activities
+        .firstWhereOrNull((a) => a.id == _project.linkedActivityId);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: _pickLinkedActivity,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(children: [
+          Icon(Icons.timer_outlined,
+              size: 13,
+              color: linked == null
+                  ? cs.onSurface.withOpacity(.4)
+                  : cs.primary.withOpacity(.8)),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              linked == null
+                  ? 'Lier à une activité (chrono des actions)'
+                  : 'Activité liée : ${linked.name}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight:
+                      linked == null ? FontWeight.w400 : FontWeight.w600,
+                  color: linked == null
+                      ? cs.onSurface.withOpacity(.45)
+                      : cs.primary.withOpacity(.85)),
+            ),
+          ),
+          Icon(Icons.chevron_right,
+              size: 14, color: cs.onSurface.withOpacity(.3)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _pickLinkedActivity() async {
+    // Activités-temps, celles du domaine du projet en premier.
+    final candidates = widget.activities
+        .where((a) => a.type == 'time')
+        .toList()
+      ..sort((a, b) {
+        final ad = a.domainId == _project.domainId ? 0 : 1;
+        final bd = b.domainId == _project.domainId ? 0 : 1;
+        return ad != bd ? ad - bd : a.name.compareTo(b.name);
+      });
+    if (candidates.isEmpty) return;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Text('Activité liée au projet',
+                  style:
+                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+            if (_project.linkedActivityId != null)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.link_off, size: 20),
+                title: const Text('Aucune (délier)'),
+                onTap: () => Navigator.pop(ctx, ''),
+              ),
+            for (final a in candidates)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                    _project.linkedActivityId == a.id
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 20),
+                title: Text(a.name),
+                onTap: () => Navigator.pop(ctx, a.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    setState(() =>
+        _project.linkedActivityId = picked.isEmpty ? null : picked);
+    await _sync.saveProject(_project);
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -515,6 +611,8 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                     backgroundColor: cs.onSurface.withOpacity(.08),
                     color: color,
                   ),
+                  const SizedBox(height: 8),
+                  _linkedActivityRow(cs),
                   if (_project.status == 'draft') ...[
                     const SizedBox(height: 12),
                     _DraftPlanBanner(onValidate: _validatePlan),
@@ -952,7 +1050,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
-    String? pickedContext;
+    var pickedContexts = <String>[];
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -969,11 +1067,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
               onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
             ),
             const SizedBox(height: 12),
-            // Contexte GTD (où/avec quoi c'est réalisable)
+            // Contextes GTD (où/avec quoi c'est réalisable — multi)
             ContextPicker(
-              value: pickedContext,
+              values: pickedContexts,
               sync: widget.sync,
-              onChanged: (c) => pickedContext = c,
+              onValuesChanged: (list) => pickedContexts = list,
             ),
           ],
         ),
@@ -989,8 +1087,10 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
       ),
     );
     if (result == null) return;
-    setState(() =>
-        _task.actions.add(TaskAction(title: result, context: pickedContext)));
+    setState(() => _task.actions.add(TaskAction(
+        title: result,
+        context: pickedContexts.isEmpty ? null : pickedContexts.first,
+        contexts: List.of(pickedContexts))));
     _save();
   }
 
@@ -1679,7 +1779,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
                                       onLongPress: () async {
                                         final ctrl = TextEditingController(text: a.title);
-                                        String? pickedContext = a.context;
+                                        var pickedContexts =
+                                            a.allContexts.toList();
                                         final result = await showDialog<String>(
                                           context: context,
                                           builder: (c) => AlertDialog(
@@ -1701,10 +1802,10 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                                 ),
                                                 const SizedBox(height: 12),
                                                 ContextPicker(
-                                                  value: pickedContext,
+                                                  values: pickedContexts,
                                                   sync: widget.sync,
-                                                  onChanged: (ctx2) =>
-                                                      pickedContext = ctx2,
+                                                  onValuesChanged: (list) =>
+                                                      pickedContexts = list,
                                                 ),
                                               ],
                                             ),
@@ -1726,7 +1827,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         if (result != null) {
                                           setState(() {
                                             a.title = result;
-                                            a.context = pickedContext;
+                                            a.setContexts(pickedContexts);
                                           });
                                           _save();
                                         }
@@ -1746,9 +1847,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                             fontSize: 14,
                                             color: cs.onSurface,
                                           )),
-                                      subtitle: a.context == null
+                                      subtitle: a.allContexts.isEmpty
                                           ? null
-                                          : Text(a.context!,
+                                          : Text(
+                                              (a.allContexts.toList()..sort())
+                                                  .join(' '),
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
