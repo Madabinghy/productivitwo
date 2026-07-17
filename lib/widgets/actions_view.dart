@@ -34,8 +34,10 @@ class _Entry {
 
   _Entry({required this.action, this.project, this.task, this.activity});
 
+  /// Activité effective : porteur (action propre) > lien propre de l'action
+  /// > lien hérité du projet.
   String? get chronoActivityId =>
-      activity?.id ?? action.linkedActivityId;
+      activity?.id ?? action.linkedActivityId ?? project?.linkedActivityId;
 }
 
 class _ActionsViewState extends State<ActionsView> {
@@ -293,6 +295,22 @@ class _ActionsViewState extends State<ActionsView> {
       ...available,
       ...selected.where((c) => !available.contains(c)),
     ];
+    // Lien chrono (actions de projet) : activité propre de l'action, sinon
+    // héritée du projet. Les activités du même domaine passent en premier.
+    final isProjectAction = e.project != null;
+    var linkedId = e.action.linkedActivityId;
+    final timeActivities = _state.activeActivities
+        .where((a) => a.type == 'time')
+        .toList()
+      ..sort((a, b) {
+        final ad = a.domainId == e.project?.domainId ? 0 : 1;
+        final bd = b.domainId == e.project?.domainId ? 0 : 1;
+        return ad != bd ? ad - bd : a.name.compareTo(b.name);
+      });
+    final inherited = e.project?.linkedActivityId == null
+        ? null
+        : _state.activities
+            .firstWhereOrNull((a) => a.id == e.project!.linkedActivityId);
     final saved = await showModalBottomSheet<bool>(
       context: context,
       useSafeArea: true,
@@ -334,6 +352,46 @@ class _ActionsViewState extends State<ActionsView> {
                     ),
                 ],
               ),
+              if (isProjectAction && timeActivities.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text('CHRONO SUR L\'ACTIVITÉ',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(.45))),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in timeActivities.take(8))
+                      ChoiceChip(
+                        selected: linkedId == a.id,
+                        onSelected: (_) => setLocal(() =>
+                            linkedId = linkedId == a.id ? null : a.id),
+                        showCheckmark: false,
+                        label: Text(a.name),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                if (linkedId == null && inherited != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Hérite du projet : ${inherited.name}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: Theme.of(ctx)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(.45))),
+                  ),
+              ],
               const SizedBox(height: 16),
               Row(children: [
                 if (e.project != null)
@@ -358,6 +416,7 @@ class _ActionsViewState extends State<ActionsView> {
     );
     if (saved == true) {
       e.action.setContexts(selected.toList());
+      if (isProjectAction) e.action.linkedActivityId = linkedId;
       await _persistEntry(e);
     }
   }
@@ -415,7 +474,8 @@ class _ActionsViewState extends State<ActionsView> {
       }
       if (changed) await _sync.updateOwnActions(act.id, act.ownActions);
     }
-    if (_state.nowContext == from) _state.nowContext = to;
+    final ni = _state.nowContexts.indexOf(from);
+    if (ni >= 0) _state.nowContexts[ni] = to;
     widget.logic.onChange();
     return to;
   }
@@ -437,7 +497,6 @@ class _ActionsViewState extends State<ActionsView> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) {
           final cs2 = Theme.of(ctx).colorScheme;
-          final nowCtx = _state.nowContext;
           return Padding(
             padding: EdgeInsets.fromLTRB(
                 20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
@@ -461,15 +520,17 @@ class _ActionsViewState extends State<ActionsView> {
                   runSpacing: 6,
                   children: [
                     for (final c in [...kDefaultGtdContexts, ...customs])
-                      ChoiceChip(
-                        selected: nowCtx == c,
-                        onSelected: (_) {
-                          _state.nowContext = nowCtx == c ? null : c;
+                      FilterChip(
+                        // Multi : on peut être @maison ET @ordinateur.
+                        selected: _state.nowContexts.contains(c),
+                        onSelected: (v) {
+                          v
+                              ? _state.nowContexts.add(c)
+                              : _state.nowContexts.remove(c);
                           widget.logic.onChange();
                           setLocal(() {});
                           if (mounted) setState(() {});
                         },
-                        showCheckmark: false,
                         label: Text(c),
                         visualDensity: VisualDensity.compact,
                       ),
@@ -509,8 +570,7 @@ class _ActionsViewState extends State<ActionsView> {
                           },
                           onDeleted: () async {
                             await _sync.removeCustomContext(c);
-                            if (_state.nowContext == c) {
-                              _state.nowContext = null;
+                            if (_state.nowContexts.remove(c)) {
                               widget.logic.onChange();
                             }
                             setLocal(() => customs.remove(c));
@@ -575,13 +635,14 @@ class _ActionsViewState extends State<ActionsView> {
     final pGroups = _projectGroups();
     final aGroups = _activityGroups();
     final contexts = _allContexts(pGroups, aGroups).toList()..sort();
-    var nowContext = _state.nowContext;
-    if (nowContext != null && !contexts.contains(nowContext)) {
-      nowContext = null;
-    }
+    // Contextes actifs = ceux qui existent encore dans la liste (un contexte
+    // sans action ne filtre pas — il resterait invisible et bloquerait tout).
+    final active = _state.nowContexts.where(contexts.contains).toSet();
 
+    // Multi : réalisable si l'action porte AU MOINS UN des contextes actifs.
     bool visible(_Entry e) =>
-        nowContext == null || e.action.allContexts.contains(nowContext);
+        active.isEmpty ||
+        e.action.allContexts.any(active.contains);
 
     // Un groupe sans AUCUNE entrée (projet à définir) reste visible hors
     // filtre de contexte ; un groupe vidé PAR le filtre est masqué.
@@ -594,7 +655,7 @@ class _ActionsViewState extends State<ActionsView> {
         ),
     ]
         .where((g) =>
-            g.entries.isNotEmpty || (g.needsNext && nowContext == null))
+            g.entries.isNotEmpty || (g.needsNext && active.isEmpty))
         .toList();
     final visibleActivityGroups = [
       for (final g in aGroups)
@@ -655,9 +716,12 @@ class _ActionsViewState extends State<ActionsView> {
               children: [
                 for (final c in contexts)
                   ChoiceChip(
-                    selected: nowContext == c,
+                    selected: active.contains(c),
                     onSelected: (_) {
-                      _state.nowContext = nowContext == c ? null : c;
+                      // Multi : chaque tap ajoute/retire le contexte du set.
+                      active.contains(c)
+                          ? _state.nowContexts.remove(c)
+                          : _state.nowContexts.add(c);
                       widget.logic.onChange();
                       setState(() {});
                     },
@@ -665,17 +729,17 @@ class _ActionsViewState extends State<ActionsView> {
                     label: Text(c),
                     labelStyle: TextStyle(
                       fontSize: 12.5,
-                      fontWeight: nowContext == c
+                      fontWeight: active.contains(c)
                           ? FontWeight.w600
                           : FontWeight.w500,
-                      color: nowContext == c
+                      color: active.contains(c)
                           ? cs.primary
                           : cs.onSurface.withOpacity(.65),
                     ),
                     selectedColor: cs.primary.withOpacity(.14),
                     backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
                     side: BorderSide(
-                        color: nowContext == c
+                        color: active.contains(c)
                             ? cs.primary.withOpacity(.5)
                             : Colors.transparent),
                     visualDensity: VisualDensity.compact,
@@ -684,11 +748,11 @@ class _ActionsViewState extends State<ActionsView> {
                   ),
               ],
             ),
-            if (nowContext != null)
+            if (active.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  'Réalisable $nowContext — le reste est masqué.',
+                  'Réalisable ${(active.toList()..sort()).join(' ou ')} — le reste est masqué.',
                   style: TextStyle(
                       fontSize: 11.5,
                       fontStyle: FontStyle.italic,
@@ -703,8 +767,8 @@ class _ActionsViewState extends State<ActionsView> {
               padding: const EdgeInsets.only(top: 40),
               child: Center(
                 child: Text(
-                  nowContext != null
-                      ? 'Rien à faire $nowContext pour l\'instant.'
+                  active.isNotEmpty
+                      ? 'Rien à faire ${(active.toList()..sort()).join(' ou ')} pour l\'instant.'
                       : 'Aucune action en attente.\nCapture une idée ou crée une action avec +.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
