@@ -1,8 +1,10 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
@@ -111,6 +113,111 @@ class _ActionsViewState extends State<ActionsView> {
     } else if (e.activity != null) {
       await _sync.updateOwnActions(e.activity!.id, e.activity!.ownActions);
     }
+    widget.logic.onChange();
+    if (mounted) setState(() {});
+    // Égrainage GTD : la dernière action du projet vient d'être cochée —
+    // c'est LE moment de définir la suivante (le réflexe se forge à la
+    // complétion, pas à la planification).
+    final p = e.project;
+    if (done && p != null && mounted) {
+      final hasPending = p.tasks
+          .where((t) =>
+              !t.isMilestone && t.status != 'done' && t.status != 'skipped')
+          .any((t) => t.actions.any((a) => !a.done));
+      if (!hasPending) await _quickAddAction(p, followUp: true);
+    }
+  }
+
+  // ── Ajout direct d'action au projet (la couche tâches est ignorée) ────────
+
+  /// Tâche-réceptacle des actions ajoutées au fil de l'eau : id stable,
+  /// invisible dans la liste (seules les actions s'affichent), visible dans
+  /// la fiche projet/Gantt comme n'importe quelle tâche.
+  static const _flowTaskId = 'gtd-flow';
+
+  ProjectTask _flowTask(Project p) {
+    final existing = p.tasks.firstWhereOrNull((t) => t.id == _flowTaskId);
+    if (existing != null) {
+      // Réactivée si elle avait été close (toutes actions faites).
+      if (existing.status != 'pending') existing.status = 'pending';
+      return existing;
+    }
+    final t = ProjectTask(
+      id: _flowTaskId,
+      title: 'Au fil de l\'eau',
+      startDate: DateTime.now(),
+      // endDate null → triée en dernier : les tâches datées gardent la
+      // priorité d'urgence (coach/ORION).
+    );
+    p.tasks.add(t);
+    return t;
+  }
+
+  /// Dialog rapide titre + contextes → action directement dans le projet.
+  /// [followUp] = égrainage après complétion (« Et la prochaine ? »).
+  Future<void> _quickAddAction(Project p, {bool followUp = false}) async {
+    final ctrl = TextEditingController();
+    var pickedContexts = <String>[];
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(followUp
+            ? 'Et la prochaine action ?'
+            : 'Prochaine action'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(p.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    color: Theme.of(ctx).colorScheme.onSurface
+                        .withOpacity(.55))),
+            const SizedBox(height: 10),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                  hintText: 'La prochaine action concrète…'),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim());
+              },
+            ),
+            const SizedBox(height: 12),
+            ContextPicker(
+              values: pickedContexts,
+              sync: _sync,
+              onValuesChanged: (list) => pickedContexts = list,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(followUp ? 'Plus tard' : 'Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isNotEmpty) {
+                Navigator.pop(ctx, ctrl.text.trim());
+              }
+            },
+            child: const Text('Ajouter'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null) return;
+    final t = _flowTask(p);
+    t.actions.add(TaskAction(
+      title: result,
+      context: pickedContexts.isEmpty ? null : pickedContexts.first,
+      contexts: List.of(pickedContexts),
+    ));
+    await _sync.saveProjectTasks(p.id, p.tasks);
     widget.logic.onChange();
     if (mounted) setState(() {});
   }
@@ -591,16 +698,29 @@ class _ActionsViewState extends State<ActionsView> {
               domainColor(g.project.domainId, _state.activeDomains) ??
                   cs.primary,
               onTap: () => _openProject(g.project),
-              // Pause GTD : sort les actions du projet des contextes/listes
-              // sans l'archiver (il reste actif, juste « pas maintenant »).
-              trailing: IconButton(
-                tooltip: 'Mettre en pause',
-                icon: Icon(Icons.pause_circle_outline,
-                    size: 18, color: cs.onSurface.withOpacity(.4)),
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(),
-                onPressed: () => _togglePause(g.project),
-              ),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                // + direct : l'action atterrit dans le projet sans passer
+                // par la fiche tâche (couche tâches ignorée côté user).
+                IconButton(
+                  tooltip: 'Ajouter une action',
+                  icon: Icon(Icons.add,
+                      size: 18, color: cs.primary.withOpacity(.75)),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _quickAddAction(g.project),
+                ),
+                const SizedBox(width: 6),
+                // Pause GTD : sort les actions du projet des contextes/listes
+                // sans l'archiver (il reste actif, juste « pas maintenant »).
+                IconButton(
+                  tooltip: 'Mettre en pause',
+                  icon: Icon(Icons.pause_circle_outline,
+                      size: 18, color: cs.onSurface.withOpacity(.4)),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _togglePause(g.project),
+                ),
+              ]),
             ),
             for (final e in g.entries) _entryTile(cs, e),
             if (g.entries.isEmpty) _defineTile(cs, g.project),
@@ -722,7 +842,9 @@ class _ActionsViewState extends State<ActionsView> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _openProject(p),
+        // Tap = dialog rapide (titre + contextes) — la fiche projet reste
+        // accessible via l'en-tête de groupe / long press des actions.
+        onTap: () => _quickAddAction(p),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(children: [
@@ -772,34 +894,19 @@ class _ActionsViewState extends State<ActionsView> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  if (e.task != null || e.action.allContexts.isNotEmpty)
+                  // Couche tâches ignorée côté user : projet → action →
+                  // @contextes, pas de niveau intermédiaire affiché.
+                  if (e.action.allContexts.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Row(children: [
-                        if (e.task != null)
-                          Flexible(
-                            child: Text(e.task!.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: cs.onSurface.withOpacity(.5))),
-                          ),
-                        if (e.action.allContexts.isNotEmpty) ...[
-                          if (e.task != null) const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                                (e.action.allContexts.toList()..sort())
-                                    .join(' '),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: cs.primary.withOpacity(.75))),
-                          ),
-                        ],
-                      ]),
+                      child: Text(
+                          (e.action.allContexts.toList()..sort()).join(' '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: cs.primary.withOpacity(.75))),
                     ),
                 ],
               ),
