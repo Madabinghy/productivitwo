@@ -154,72 +154,95 @@ class _ActionsViewState extends State<ActionsView> {
   }
 
   /// Dialog rapide titre + contextes → action directement dans le projet.
+  /// CHAÎNABLE : « Ajouter » enregistre, vide le champ et garde le dialog
+  /// ouvert (contextes conservés) pour saisir plusieurs prochaines actions
+  /// d'affilée ; « Terminer » ferme.
   /// [followUp] = égrainage après complétion (« Et la prochaine ? »).
   Future<void> _quickAddAction(Project p, {bool followUp = false}) async {
     final ctrl = TextEditingController();
     var pickedContexts = <String>[];
-    final result = await showDialog<String>(
+    var added = 0;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(followUp
-            ? 'Et la prochaine action ?'
-            : 'Prochaine action'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(p.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: Theme.of(ctx).colorScheme.onSurface
-                        .withOpacity(.55))),
-            const SizedBox(height: 10),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                  hintText: 'La prochaine action concrète…'),
-              onSubmitted: (v) {
-                if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim());
-              },
-            ),
-            const SizedBox(height: 12),
-            ContextPicker(
-              values: pickedContexts,
-              sync: _sync,
-              onValuesChanged: (list) => pickedContexts = list,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        Future<void> add() async {
+          final v = ctrl.text.trim();
+          if (v.isEmpty) return;
+          final t = _flowTask(p);
+          t.actions.add(TaskAction(
+            title: v,
+            context: pickedContexts.isEmpty ? null : pickedContexts.first,
+            contexts: List.of(pickedContexts),
+          ));
+          setLocal(() {
+            added++;
+            ctrl.clear();
+          });
+          await _sync.saveProjectTasks(p.id, p.tasks);
+          widget.logic.onChange();
+          if (mounted) setState(() {});
+        }
+
+        return AlertDialog(
+          title: Text(followUp
+              ? 'Et la prochaine action ?'
+              : 'Prochaine action'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(p.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface
+                          .withOpacity(.55))),
+              const SizedBox(height: 10),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    hintText: 'La prochaine action concrète…'),
+                onSubmitted: (_) => add(),
+              ),
+              const SizedBox(height: 12),
+              ContextPicker(
+                values: pickedContexts,
+                sync: _sync,
+                onValuesChanged: (list) => pickedContexts = list,
+              ),
+              if (added > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                      added == 1
+                          ? '1 action ajoutée — enchaîne ou termine.'
+                          : '$added actions ajoutées — enchaîne ou termine.',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(ctx).colorScheme.onSurface
+                              .withOpacity(.5))),
+                ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(added > 0
+                    ? 'Terminer'
+                    : (followUp ? 'Plus tard' : 'Annuler'))),
+            FilledButton(
+              onPressed: add,
+              child: const Text('Ajouter'),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(followUp ? 'Plus tard' : 'Annuler')),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text.trim().isNotEmpty) {
-                Navigator.pop(ctx, ctrl.text.trim());
-              }
-            },
-            child: const Text('Ajouter'),
-          ),
-        ],
-      ),
+        );
+      }),
     );
     ctrl.dispose();
-    if (result == null) return;
-    final t = _flowTask(p);
-    t.actions.add(TaskAction(
-      title: result,
-      context: pickedContexts.isEmpty ? null : pickedContexts.first,
-      contexts: List.of(pickedContexts),
-    ));
-    await _sync.saveProjectTasks(p.id, p.tasks);
-    widget.logic.onChange();
-    if (mounted) setState(() {});
   }
 
   void _openProject(Project p, {String? targetTaskId}) {
