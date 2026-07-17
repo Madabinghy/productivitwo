@@ -26,6 +26,11 @@ class DailyScheduleView extends StatefulWidget {
   // Vue « Demain » : regroupe les blocs par contexte GTD (@maison, @courses…)
   // pour préparer le batching — le programme du jour reste une timeline pure.
   final bool groupByContext;
+  // Minimap (jauge d'Aujourd'hui) : la vue expose son « scroll vers HH:mm »
+  // au parent via ce registre — les offsets d'une liste de blocs ne sont pas
+  // linéaires en temps, seul la vue sait où vit chaque bloc.
+  final void Function(void Function(int minute) scrollToMinute)?
+      onRegisterScrollToMinute;
 
   const DailyScheduleView(
       {super.key,
@@ -35,7 +40,8 @@ class DailyScheduleView extends StatefulWidget {
       this.onOpenSource,
       this.title = 'Programme du jour',
       this.emptyText,
-      this.groupByContext = false});
+      this.groupByContext = false,
+      this.onRegisterScrollToMinute});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -53,6 +59,36 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   // Blocs « projet » déjà auto-cochés (tâche terminée ailleurs) — évite les
   // écritures répétées avant le retour du stream.
   final Set<String> _projectSynced = {};
+  // Auto-scroll vers le trait « maintenant » à la première ouverture du jour
+  // (même comportement que la timeline horaire).
+  final _nowKey = GlobalKey();
+  bool _scrolledToNow = false;
+  // Clés par bloc (id) — cibles du saut minimap « scroll vers HH:mm ».
+  final Map<String, GlobalKey> _blockKeys = {};
+
+  GlobalKey _keyFor(String id) =>
+      _blockKeys.putIfAbsent(id, () => GlobalKey());
+
+  /// Saut minimap : scrolle vers le premier bloc qui commence à/at après
+  /// [minute] (sinon le dernier). Enregistré auprès du parent (jauge).
+  void _scrollToMinute(int minute) {
+    final blocks =
+        (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (blocks.isEmpty) return;
+    int toMin(String hm) =>
+        (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
+        (int.tryParse(hm.substring(3, 5)) ?? 0);
+    final target = blocks.firstWhere(
+      (b) => toMin(b.startTime) >= minute,
+      orElse: () => blocks.last,
+    );
+    final ctx = _blockKeys[target.id]?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(ctx,
+          alignment: .2, duration: const Duration(milliseconds: 250));
+    }
+  }
 
   /// La vue peut afficher une autre date (planif de demain) : les effets de
   /// bord « jour courant » (todayBlocks, auto-coche) ne valent qu'aujourd'hui.
@@ -68,6 +104,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   @override
   void initState() {
     super.initState();
+    // Expose « scroll vers HH:mm » au parent (saut minimap de la jauge).
+    widget.onRegisterScrollToMinute?.call(_scrollToMinute);
     _sub = _sync.streamDailySchedule(widget.date).listen((s) {
       if (mounted) {
         setState(() => _schedule = s);
@@ -360,6 +398,19 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       _maybeSyncProjectBlocks();
     });
 
+    // Auto-scroll vers « maintenant » à la première ouverture du jour —
+    // même comportement que la timeline horaire (mode agenda).
+    if (_isToday && !_scrolledToNow && _schedule != null && visible.isNotEmpty) {
+      _scrolledToNow = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _nowKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx,
+              alignment: .35, duration: const Duration(milliseconds: 300));
+        }
+      });
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -405,11 +456,16 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             if (nowAtEnd) nowIndex = visible.length;
             return Column(children: [
               for (var i = 0; i < visible.length; i++) ...[
-                if (i == nowIndex) _nowLine(now),
-                _buildBlock(context, cs, visible[i],
-                    key: ValueKey(visible[i].id)),
+                if (i == nowIndex)
+                  KeyedSubtree(key: _nowKey, child: _nowLine(now)),
+                // GlobalKey par bloc : cible du saut minimap (jauge).
+                KeyedSubtree(
+                  key: _keyFor(visible[i].id),
+                  child: _buildBlock(context, cs, visible[i],
+                      key: ValueKey(visible[i].id)),
+                ),
               ],
-              if (nowAtEnd) _nowLine(now),
+              if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
       ],

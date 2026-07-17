@@ -1558,11 +1558,11 @@ class _FocusViewState extends State<FocusView> {
       _actionsForContext(String ctx) {
     final out = <({TaskAction action, String source, String? chronoActivityId, String? taskId, String? projectId})>[];
     for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active') continue;
+      if (p.status != 'active' || p.paused) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         for (final a in t.actions) {
-          if (a.done || a.context != ctx) continue;
+          if (a.done || !a.allContexts.contains(ctx)) continue;
           out.add((
             action: a,
             source: p.title,
@@ -1575,7 +1575,7 @@ class _FocusViewState extends State<FocusView> {
     }
     for (final act in widget.state.activeActivities) {
       for (final a in act.ownActions) {
-        if (a.done || a.context != ctx) continue;
+        if (a.done || !a.allContexts.contains(ctx)) continue;
         out.add((
           action: a,
           source: act.name,
@@ -1591,17 +1591,17 @@ class _FocusViewState extends State<FocusView> {
   Set<String> _contextsWithActions() {
     final s = <String>{};
     for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active') continue;
+      if (p.status != 'active' || p.paused) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         for (final a in t.actions) {
-          if (!a.done && a.context != null) s.add(a.context!);
+          if (!a.done) s.addAll(a.allContexts);
         }
       }
     }
     for (final act in widget.state.activeActivities) {
       for (final a in act.ownActions) {
-        if (!a.done && a.context != null) s.add(a.context!);
+        if (!a.done) s.addAll(a.allContexts);
       }
     }
     return s;

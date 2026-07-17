@@ -1025,7 +1025,8 @@ GanttMicroAction? ganttMicroAction(List<Project> projects,
   };
   ({Project p, ProjectTask t})? best;
   for (final p in projects) {
-    if (p.status != 'active') continue;
+    // Projet en pause (GTD) : le coach ne pousse pas ses micro-actions.
+    if (p.status != 'active' || p.paused) continue;
     for (final t in p.tasks) {
       if (t.status != 'pending' || t.isMilestone) continue;
       if (planned.contains(t.id)) continue;

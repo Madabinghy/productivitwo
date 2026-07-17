@@ -92,10 +92,19 @@ class _TodayViewState extends State<TodayView> {
     return out;
   }
 
-  /// Saut minimap : minute du jour → offset de scroll de la timeline
-  /// (1 h = 100 px dans DayTimelineView, ~120 px d'en-tête avant 00:00).
+  // « Scroll vers HH:mm » exposé par la vue liste (les offsets d'une liste de
+  // blocs ne sont pas linéaires en temps — seule la vue sait où vit chaque bloc).
+  void Function(int minute)? _listScrollToMinute;
+
+  /// Saut minimap : minute du jour → scroll de la vue active.
+  /// Timeline : offset linéaire (1 h = 100 px, ~120 px d'en-tête avant 00:00).
+  /// Liste (blocs) : délégué à DailyScheduleView (bloc le plus proche).
   void _jumpTo(int minute) {
-    if (!_timeline || !_scroll.hasClients) return;
+    if (!_timeline) {
+      _listScrollToMinute?.call(minute);
+      return;
+    }
+    if (!_scroll.hasClients) return;
     final target = (120.0 + minute / 60.0 * 100.0 - 220.0)
         .clamp(0.0, _scroll.position.maxScrollExtent);
     _scroll.animateTo(target,
@@ -318,6 +327,8 @@ class _TodayViewState extends State<TodayView> {
                 onOpenSource: widget.onOpenSource,
                 // Demain = préparation → regroupé par contexte GTD (batching).
                 groupByContext: _showTomorrow,
+                // Saut minimap (jauge) en mode liste.
+                onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
                 title:
                     _showTomorrow ? 'Programme de demain' : 'Programme du jour',
                 // Placeholder 21a/22c : sans domaine, le programme ne peut pas

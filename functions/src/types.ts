@@ -13,7 +13,8 @@ export interface TaskActionPayload {
   doneAt?: string | null;
   createdAt?: string;
   linkedActivityId?: string | null;
-  context?: string | null; // contexte GTD (@maison, @bureau…)
+  context?: string | null; // contexte GTD principal (@maison…)
+  contexts?: string[]; // multi-contextes GTD (context = le premier)
 }
 
 export interface ProjectTask {
