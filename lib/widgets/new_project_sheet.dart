@@ -42,7 +42,7 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   final _titleCtrl = TextEditingController();
   final _firstActionCtrl = TextEditingController();
   final _titleFocus = FocusNode();
-  String? _actionContext; // contexte GTD de la première action
+  List<String> _actionContexts = []; // contextes GTD de la première action
   String? _selectedDomainId;
   DateTime _endDate = DateTime.now().add(const Duration(days: 30));
   int? _presetDays = 30;
@@ -117,7 +117,12 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
           startDate: now,
           endDate: now.add(const Duration(days: 3)),
           actions: [
-            TaskAction(title: firstAction, context: _actionContext),
+            TaskAction(
+              title: firstAction,
+              context:
+                  _actionContexts.isEmpty ? null : _actionContexts.first,
+              contexts: List.of(_actionContexts),
+            ),
           ],
         ));
       }
@@ -132,7 +137,10 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
         createdBy: uid,
         source: 'user',
         sourceType: 'manual',
-        status: 'draft',
+        // 'active' direct : le flux est déterministe et saisi par le user —
+        // 'draft' (héritage du flux LLM à valider) le rendrait invisible dans
+        // les listes GTD (Actions / Prochaines actions filtrent sur active).
+        status: 'active',
       );
       await widget.sync.saveProject(project);
       if (!mounted) return;
@@ -412,11 +420,12 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 10),
-                    // Contexte GTD de la première action
+                    // Contextes GTD de la première action (multi)
                     ContextPicker(
-                      value: _actionContext,
+                      values: _actionContexts,
                       sync: widget.sync,
-                      onChanged: (c) => setState(() => _actionContext = c),
+                      onValuesChanged: (list) =>
+                          setState(() => _actionContexts = list),
                     ),
 
                     // Erreur

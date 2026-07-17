@@ -64,7 +64,9 @@ class _ActionsViewState extends State<ActionsView> {
           entries.add(_Entry(action: a, project: p, task: t));
         }
       }
-      if (entries.isNotEmpty) out.add((project: p, entries: entries));
+      // Groupe gardé même vide : un projet fraîchement créé (ou dont tout est
+      // fait) reste visible avec l'invitation « Définir la prochaine action ».
+      out.add((project: p, entries: entries));
     }
     return out;
   }
@@ -230,6 +232,64 @@ class _ActionsViewState extends State<ActionsView> {
     }
   }
 
+  /// Renomme un contexte custom : meta + propagation aux actions chargées qui
+  /// le portent (tâches de projets + actions propres). Retourne le nouveau nom.
+  Future<String?> _renameContext(String from) async {
+    final ctrl = TextEditingController(text: from);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer le contexte'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Ex : @atelier'),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Renommer')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null || result.isEmpty) return null;
+    final to = result.startsWith('@') ? result : '@$result';
+    if (to == from) return null;
+
+    await _sync.renameCustomContext(from, to);
+    for (final p in widget.logic.currentProjects) {
+      var changed = false;
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          if (a.allContexts.contains(from)) {
+            a.setContexts(
+                [for (final c in a.allContexts) c == from ? to : c]);
+            changed = true;
+          }
+        }
+      }
+      if (changed) await _sync.saveProjectTasks(p.id, p.tasks);
+    }
+    for (final act in _state.activities) {
+      var changed = false;
+      for (final a in act.ownActions) {
+        if (a.allContexts.contains(from)) {
+          a.setContexts([for (final c in a.allContexts) c == from ? to : c]);
+          changed = true;
+        }
+      }
+      if (changed) await _sync.updateOwnActions(act.id, act.ownActions);
+    }
+    if (_state.nowContext == from) _state.nowContext = to;
+    widget.logic.onChange();
+    return to;
+  }
+
   // ── Bouton @ : « je suis » + CRUD des contextes ─────────────────────────────
 
   Future<void> _showContextManager() async {
@@ -298,15 +358,25 @@ class _ActionsViewState extends State<ActionsView> {
                       style: TextStyle(
                           fontSize: 12.5,
                           color: cs2.onSurface.withOpacity(.5)))
-                else
+                else ...[
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
                       for (final c in customs)
-                        Chip(
+                        InputChip(
                           label: Text(c),
                           visualDensity: VisualDensity.compact,
+                          // Tap = renommer (propagé aux actions qui le portent)
+                          onPressed: () async {
+                            final to = await _renameContext(c);
+                            if (to == null) return;
+                            setLocal(() {
+                              final i = customs.indexOf(c);
+                              if (i >= 0) customs[i] = to;
+                            });
+                            if (mounted) setState(() {});
+                          },
                           onDeleted: () async {
                             await _sync.removeCustomContext(c);
                             if (_state.nowContext == c) {
@@ -319,6 +389,15 @@ class _ActionsViewState extends State<ActionsView> {
                         ),
                     ],
                   ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text('Tap pour renommer · ✕ pour supprimer',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: cs2.onSurface.withOpacity(.4))),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
@@ -374,10 +453,19 @@ class _ActionsViewState extends State<ActionsView> {
     bool visible(_Entry e) =>
         nowContext == null || e.action.allContexts.contains(nowContext);
 
+    // Un groupe sans AUCUNE entrée (projet à définir) reste visible hors
+    // filtre de contexte ; un groupe vidé PAR le filtre est masqué.
     final visibleProjectGroups = [
       for (final g in pGroups)
-        (project: g.project, entries: g.entries.where(visible).toList()),
-    ].where((g) => g.entries.isNotEmpty).toList();
+        (
+          project: g.project,
+          entries: g.entries.where(visible).toList(),
+          needsNext: g.entries.isEmpty,
+        ),
+    ]
+        .where((g) =>
+            g.entries.isNotEmpty || (g.needsNext && nowContext == null))
+        .toList();
     final visibleActivityGroups = [
       for (final g in aGroups)
         (activity: g.activity, entries: g.entries.where(visible).toList()),
@@ -515,6 +603,7 @@ class _ActionsViewState extends State<ActionsView> {
               ),
             ),
             for (final e in g.entries) _entryTile(cs, e),
+            if (g.entries.isEmpty) _defineTile(cs, g.project),
             const SizedBox(height: 10),
           ],
 
@@ -618,6 +707,36 @@ class _ActionsViewState extends State<ActionsView> {
             Icon(Icons.chevron_right,
                 size: 16, color: cs.onSurface.withOpacity(.3)),
         ]),
+      ),
+    );
+  }
+
+  /// Projet sans action en attente : invitation GTD à définir la suivante.
+  Widget _defineTile(ColorScheme cs, Project p) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withOpacity(.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withOpacity(.25)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openProject(p),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Icon(Icons.edit_note, size: 18, color: cs.primary.withOpacity(.8)),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('Définir la prochaine action',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic)),
+            ),
+          ]),
+        ),
       ),
     );
   }

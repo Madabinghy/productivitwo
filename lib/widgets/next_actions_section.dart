@@ -75,7 +75,17 @@ class _NextActionsSectionState extends State<NextActionsSection> {
           if (be == null) return -1;
           return ae.compareTo(be);
         });
-      if (pending.isEmpty) continue;
+      if (pending.isEmpty) {
+        // Projet sans tâche en attente (créé sans première action, ou tout
+        // est fait) : il reste visible, avec l'invitation GTD à définir.
+        out.add(_NextAction(
+          title: 'Définir la prochaine action',
+          source: p.title,
+          needsDefinition: true,
+          project: p,
+        ));
+        continue;
+      }
 
       // Étoilées : chaque tâche todayFlag remonte (sa 1ʳᵉ action pending,
       // ou la tâche elle-même si elle n'a pas d'action).
@@ -356,7 +366,7 @@ Future<void> showCreateActionOrProjectSheet(
   VoidCallback? onCreated,
 }) async {
   final titleCtrl = TextEditingController();
-  String? pickedContext;
+  var pickedContexts = <String>[];
   String mode = 'action'; // 'action' | 'project'
   String? activityId;
   final timeActivities =
@@ -370,7 +380,9 @@ Future<void> showCreateActionOrProjectSheet(
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => Padding(
+        // Scrollable : quand le clavier est ouvert, le bouton « Créer » reste
+        // atteignable (le viewInset pousse le contenu, le scroll fait le reste).
+        builder: (ctx, setLocal) => SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
               20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
           child: Column(
@@ -416,9 +428,10 @@ Future<void> showCreateActionOrProjectSheet(
                 ),
                 const SizedBox(height: 12),
                 ContextPicker(
-                  value: pickedContext,
+                  values: pickedContexts,
                   sync: sync,
-                  onChanged: (c) => setLocal(() => pickedContext = c),
+                  onValuesChanged: (list) =>
+                      setLocal(() => pickedContexts = list),
                 ),
                 if (timeActivities.isNotEmpty) ...[
                   const SizedBox(height: 12),
@@ -476,7 +489,7 @@ Future<void> showCreateActionOrProjectSheet(
                     final actId = activityId;
                     if (title.isEmpty || actId == null) return;
                     await sync.addOwnActionToActivity(actId, title,
-                        context: pickedContext);
+                        contexts: pickedContexts);
                     // Reflète immédiatement dans l'état local (le doc Firestore
                     // est la source ; le prochain pull réconciliera par ID).
                     final act = logic.state.activities
@@ -485,7 +498,10 @@ Future<void> showCreateActionOrProjectSheet(
                     act?.ownActions.add(TaskAction(
                         title: title,
                         linkedActivityId: actId,
-                        context: pickedContext));
+                        context: pickedContexts.isEmpty
+                            ? null
+                            : pickedContexts.first,
+                        contexts: List.of(pickedContexts)));
                     logic.onChange();
                     if (ctx.mounted) Navigator.pop(ctx);
                     onCreated?.call();
@@ -500,6 +516,5 @@ Future<void> showCreateActionOrProjectSheet(
         ),
       ),
     );
-    titleCtrl.dispose();
   titleCtrl.dispose();
 }

@@ -952,7 +952,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
 
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
-    String? pickedContext;
+    var pickedContexts = <String>[];
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -969,11 +969,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
               onSubmitted: (v) { if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim()); },
             ),
             const SizedBox(height: 12),
-            // Contexte GTD (où/avec quoi c'est réalisable)
+            // Contextes GTD (où/avec quoi c'est réalisable — multi)
             ContextPicker(
-              value: pickedContext,
+              values: pickedContexts,
               sync: widget.sync,
-              onChanged: (c) => pickedContext = c,
+              onValuesChanged: (list) => pickedContexts = list,
             ),
           ],
         ),
@@ -989,8 +989,10 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
       ),
     );
     if (result == null) return;
-    setState(() =>
-        _task.actions.add(TaskAction(title: result, context: pickedContext)));
+    setState(() => _task.actions.add(TaskAction(
+        title: result,
+        context: pickedContexts.isEmpty ? null : pickedContexts.first,
+        contexts: List.of(pickedContexts))));
     _save();
   }
 
@@ -1679,7 +1681,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
                                       onLongPress: () async {
                                         final ctrl = TextEditingController(text: a.title);
-                                        String? pickedContext = a.context;
+                                        var pickedContexts =
+                                            a.allContexts.toList();
                                         final result = await showDialog<String>(
                                           context: context,
                                           builder: (c) => AlertDialog(
@@ -1701,10 +1704,10 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                                 ),
                                                 const SizedBox(height: 12),
                                                 ContextPicker(
-                                                  value: pickedContext,
+                                                  values: pickedContexts,
                                                   sync: widget.sync,
-                                                  onChanged: (ctx2) =>
-                                                      pickedContext = ctx2,
+                                                  onValuesChanged: (list) =>
+                                                      pickedContexts = list,
                                                 ),
                                               ],
                                             ),
@@ -1726,7 +1729,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         if (result != null) {
                                           setState(() {
                                             a.title = result;
-                                            a.context = pickedContext;
+                                            a.setContexts(pickedContexts);
                                           });
                                           _save();
                                         }
@@ -1746,9 +1749,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                             fontSize: 14,
                                             color: cs.onSurface,
                                           )),
-                                      subtitle: a.context == null
+                                      subtitle: a.allContexts.isEmpty
                                           ? null
-                                          : Text(a.context!,
+                                          : Text(
+                                              (a.allContexts.toList()..sort())
+                                                  .join(' '),
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 fontWeight: FontWeight.w600,
