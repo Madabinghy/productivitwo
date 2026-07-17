@@ -8,7 +8,6 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
-import 'package:productivitwo_v1/widgets/next_actions_section.dart';
 
 /// Onglet « Aujourd'hui » : le programme horaire du jour, avec bascule vers
 /// « Demain » pour préparer la journée suivante (planif du lendemain).
@@ -28,7 +27,6 @@ class TodayView extends StatefulWidget {
 }
 
 class _TodayViewState extends State<TodayView> {
-  final _sync = FirestoreSync();
   bool _showTomorrow = false;
   // Timeline 24 h (façon Calendar) ⇄ liste compacte. La timeline est l'outil
   // de planification (drag, resize, ajout au créneau) ; la liste reste là
@@ -356,9 +354,9 @@ class _TodayViewState extends State<TodayView> {
                 ),
               ),
             ],
-            // « Prochaines actions » (GTD) : le canal pull des actions quand
-            // le Gantt est en retrait — consultation, création (+), chrono.
-            NextActionsSection(logic: widget.logic, sync: _sync),
+            // « Prochaines actions » a migré dans l'onglet Actions (le canal
+            // pull GTD y vit désormais en entier) — Aujourd'hui reste le
+            // programme du jour.
           ],
         ),
           ),
