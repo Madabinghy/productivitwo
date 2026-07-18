@@ -71,6 +71,52 @@ class ShoppingItem {
       checked: j['checked'] == true);
 }
 
+// ── Bibliothèque de plats (users/{uid}/recipes/{id}) ─────────────────────────
+// Archive RÉEXPLOITABLE de ce que le user cuisine VRAIMENT : chaque plat ajouté
+// au menu y entre avec ses ingrédients ; « ✓ Mangé » incrémente son compteur.
+// 100 % déterministe — le menu se compose plat par plat depuis cette liste.
+
+class Recipe {
+  String id;
+  String title;
+  List<ShoppingItem> ingredients;
+  int timesCooked;
+  DateTime? lastCookedAt;
+  bool deleted;
+
+  Recipe({
+    String? id,
+    required this.title,
+    List<ShoppingItem>? ingredients,
+    this.timesCooked = 0,
+    this.lastCookedAt,
+    this.deleted = false,
+  })  : id = id ?? _uuid.v4(),
+        ingredients = ingredients ?? [];
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'ingredients': ingredients.map((i) => i.toJson()).toList(),
+        'timesCooked': timesCooked,
+        'lastCookedAt': lastCookedAt?.toIso8601String(),
+        'deleted': deleted,
+      };
+
+  static Recipe from(Map j) => Recipe(
+        id: j['id'],
+        title: j['title'] ?? '',
+        ingredients: ((j['ingredients'] as List?) ?? const [])
+            .map((i) => ShoppingItem.from(i as Map))
+            .toList(),
+        timesCooked: (j['timesCooked'] as num?)?.toInt() ?? 0,
+        lastCookedAt: j['lastCookedAt'] != null
+            ? DateTime.tryParse(j['lastCookedAt'])
+            : null,
+        deleted: j['deleted'] == true,
+      );
+}
+
 class Artifact {
   String id;
   String kind; // "training_plan" | "weekly_menu"

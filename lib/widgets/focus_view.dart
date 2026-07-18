@@ -1370,6 +1370,18 @@ class _FocusViewState extends State<FocusView> {
     if (a == null) return;
     a.mealLog[_schedDate] = eaten ? 'eaten' : 'other';
     if (!eaten) shiftMenuOneDay(a, _schedDate);
+    // Plat mangé → bibliothèque de plats (archive réexploitable du menu
+    // déterministe : ce qui est vraiment cuisiné compte).
+    if (eaten) {
+      const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      final wd = codes[DateTime.now().weekday - 1];
+      for (final e in a.entries) {
+        if (e.date == _schedDate || (e.date == null && e.weekday == wd)) {
+          unawaited(_sync.recordMealCooked(e.title));
+          break;
+        }
+      }
+    }
     await _sync.saveArtifact(a);
     if (mounted) {
       setState(() {});

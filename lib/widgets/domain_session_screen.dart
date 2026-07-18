@@ -680,12 +680,10 @@ class _DomainSessionScreenState extends State<DomainSessionScreen> {
             InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: () {
-                // Génération structurée : la rangée pointe vers le CADRAGE
-                // (14a/15a) — 3-4 paramètres pré-remplis depuis la fiche.
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => ArtifactSetupScreen(
-                      domain: d, kind: artifactKindFromLabel(a)),
-                ));
+                // Flux 100 % déterministe (plus de cadrage IA) : ouvre
+                // l'artefact manuel du domaine, créé vide au besoin.
+                openOrCreateManualArtifact(context,
+                    domain: d, kind: artifactKindFromLabel(a));
               },
               child: Container(
                 margin: const EdgeInsets.only(bottom: 8),

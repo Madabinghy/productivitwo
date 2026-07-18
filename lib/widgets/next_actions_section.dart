@@ -24,11 +24,24 @@ Future<void> showCreateActionOrProjectSheet(
   final timeActivities =
       logic.state.activeActivities.where((a) => a.type == 'time').toList();
   if (timeActivities.isNotEmpty) activityId = timeActivities.first.id;
+  // « Sur l'activité » groupé PAR DOMAINE — plus lisible qu'une nappe de chips.
+  final domains = logic.state.activeDomains;
+  final actGroups = <({String label, List<Activity> acts})>[];
+  for (final d in domains) {
+    final acts = timeActivities.where((a) => a.domainId == d.id).toList();
+    if (acts.isNotEmpty) actGroups.add((label: d.name, acts: acts));
+  }
+  final orphans = timeActivities
+      .where((a) => domains.every((d) => d.id != a.domainId))
+      .toList();
+  if (orphans.isNotEmpty) actGroups.add((label: 'Autres', acts: orphans));
 
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    // La poignée rend le tirer-vers-le-bas évident (comme la sheet projet).
+    showDragHandle: true,
     shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => StatefulBuilder(
@@ -41,10 +54,19 @@ Future<void> showCreateActionOrProjectSheet(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Créer',
-                style:
-                    TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 14),
+            Row(children: [
+              const Text('Créer',
+                  style:
+                      TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Fermer',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ]),
+            const SizedBox(height: 8),
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(
@@ -97,22 +119,32 @@ Future<void> showCreateActionOrProjectSheet(
                         letterSpacing: .8,
                         color: Theme.of(ctx).colorScheme.onSurface
                             .withOpacity(.45))),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final a in timeActivities)
-                      ChoiceChip(
-                        selected: activityId == a.id,
-                        onSelected: (_) =>
-                            setLocal(() => activityId = a.id),
-                        showCheckmark: false,
-                        label: Text(a.name),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                  ],
-                ),
+                for (final g in actGroups) ...[
+                  const SizedBox(height: 8),
+                  Text(g.label.toUpperCase(),
+                      style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: .8,
+                          color: Theme.of(ctx).colorScheme.onSurface
+                              .withOpacity(.35))),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final a in g.acts)
+                        ChoiceChip(
+                          selected: activityId == a.id,
+                          onSelected: (_) =>
+                              setLocal(() => activityId = a.id),
+                          showCheckmark: false,
+                          label: Text(a.name),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ],
               ] else
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
