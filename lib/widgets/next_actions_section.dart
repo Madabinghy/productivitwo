@@ -20,7 +20,6 @@ Future<void> showCreateActionOrProjectSheet(
 }) async {
   final titleCtrl = TextEditingController();
   var pickedContexts = <String>[];
-  String mode = 'action'; // 'action' | 'project'
   String? activityId;
   final timeActivities =
       logic.state.activeActivities.where((a) => a.type == 'time').toList();
@@ -57,19 +56,22 @@ Future<void> showCreateActionOrProjectSheet(
                     label: Text('Nouveau projet'),
                     icon: Icon(Icons.flag, size: 16)),
               ],
-              selected: {mode},
-              onSelectionChanged: (s) => setLocal(() => mode = s.first),
+              selected: const {'action'},
+              // « Nouveau projet » ouvre DIRECTEMENT le formulaire — l'étape
+              // intermédiaire « Continuer » ne servait à rien (retour user).
+              onSelectionChanged: (s) {
+                if (s.first != 'project') return;
+                Navigator.pop(ctx);
+                showNewProjectSheet(
+                  context,
+                  domains: logic.state.activeDomains,
+                  sync: sync,
+                  onCreated: () => onCreated?.call(),
+                );
+              },
             ),
             const SizedBox(height: 14),
-            if (mode == 'project')
-              Text(
-                'Nom, échéance, première action — dans la fiche qui suit.',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    color: Theme.of(ctx).colorScheme.onSurface
-                        .withOpacity(.55)),
-              )
-            else ...[
+            ...[
               TextField(
                 controller: titleCtrl,
                 autofocus: true,
@@ -128,16 +130,6 @@ Future<void> showCreateActionOrProjectSheet(
               width: double.infinity,
               child: FilledButton(
                 onPressed: () async {
-                  if (mode == 'project') {
-                    Navigator.pop(ctx);
-                    await showNewProjectSheet(
-                      context,
-                      domains: logic.state.activeDomains,
-                      sync: sync,
-                      onCreated: () => onCreated?.call(),
-                    );
-                    return;
-                  }
                   final title = titleCtrl.text.trim();
                   final actId = activityId;
                   if (title.isEmpty || actId == null) return;
@@ -159,9 +151,7 @@ Future<void> showCreateActionOrProjectSheet(
                   if (ctx.mounted) Navigator.pop(ctx);
                   onCreated?.call();
                 },
-                child: Text(mode == 'project'
-                    ? 'Continuer'
-                    : 'Créer l\'action'),
+                child: const Text('Créer l\'action'),
               ),
             ),
           ],
