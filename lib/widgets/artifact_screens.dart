@@ -627,3 +627,74 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
         'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
       ][d.month];
 }
+
+// ── Raccourcis Accueil « Mes programmes » ────────────────────────────────────
+// Les artefacts (menu de la semaine, plan d'entraînement) étaient enterrés :
+// Accueil → Gérer → « Mes domaines » → chips. Cette section les remonte en
+// accès direct sur l'Accueil — masquée s'il n'y en a aucun.
+
+class ArtifactShortcuts extends StatelessWidget {
+  final List<Domain> domains;
+  const ArtifactShortcuts({super.key, required this.domains});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Artifact>>(
+      stream: FirestoreSync().streamArtifacts(),
+      builder: (ctx, snap) {
+        final arts =
+            (snap.data ?? const <Artifact>[]).where((a) => !a.deleted).toList();
+        if (arts.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mes programmes',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.4),
+                  letterSpacing: .5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final a in arts)
+                    ActionChip(
+                      avatar: Icon(
+                        a.kind == 'weekly_menu'
+                            ? Icons.restaurant_menu
+                            : Icons.fitness_center,
+                        size: 14,
+                        color: cs.primary,
+                      ),
+                      label: Text(a.title,
+                          style: const TextStyle(fontSize: 12)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        Domain? d;
+                        for (final x in domains) {
+                          if (x.id == a.domainId) d = x;
+                        }
+                        if (d == null) return;
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                              ArtifactViewScreen(artifact: a, domain: d!),
+                        ));
+                      },
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}

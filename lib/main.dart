@@ -25,6 +25,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
@@ -6216,6 +6217,9 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         ..._buildDomainListLive(context, now),
+        // Raccourcis vers les artefacts (menu, plan sport) — sinon enterrés
+        // derrière Gérer → « Mes domaines ».
+        ArtifactShortcuts(domains: logic.state.activeDomains),
         _buildDayReviewButton(context),
         _buildNotificationsButton(context),
       ],
