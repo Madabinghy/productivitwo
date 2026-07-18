@@ -539,6 +539,7 @@ class _Actions extends StatelessWidget {
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
         a.kind == CoachActionKind.endAfternoon ||
+        a.kind == CoachActionKind.cookFirst ||
         (a.kind == CoachActionKind.dismiss &&
             a.label.startsWith('Garder'));
     final onTap = _handlerFor(a);
@@ -552,6 +553,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.dismiss => Icons.skip_next_outlined,
       CoachActionKind.mealEaten => Icons.check_rounded,
       CoachActionKind.mealShift => Icons.swap_horiz_rounded,
+      CoachActionKind.cookFirst => Icons.soup_kitchen_outlined,
       CoachActionKind.openWeeklyReport => Icons.insights_rounded,
       CoachActionKind.nameDomains => Icons.flag_rounded,
       CoachActionKind.nameTonight => Icons.nightlight_outlined,
@@ -638,6 +640,12 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.mealShift:
         return a.artifactId != null && onMealShift != null
             ? () => onMealShift!(a.artifactId!)
+            : null;
+      case CoachActionKind.cookFirst:
+        // Bloc synthétique → même launcher que les blocs du programme (il ne
+        // fait que démarrer le chrono sur l'activité Cuisine).
+        return a.block != null && onLaunch != null
+            ? () => onLaunch!(a.block!)
             : null;
       case CoachActionKind.openWeeklyReport:
         return onOpenWeeklyReport;

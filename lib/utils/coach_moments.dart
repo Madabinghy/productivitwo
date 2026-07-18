@@ -40,6 +40,10 @@ enum CoachActionKind {
   dismiss, // « À la volée » / « Garder [créneau] » — masque la carte du jour
   mealEaten, // ✓ Mangé (carte midi menu, 15c)
   mealShift, // « Autre chose aujourd'hui » — glisse le menu d'un jour
+  // Subtilité d'accompagnement : un repas équilibré se CUISINE — la carte le
+  // propose discrètement (chrono sur l'activité Cuisine du user, via un bloc
+  // synthétique : rien n'est écrit au programme tant qu'on ne lance pas).
+  cookFirst,
   openWeeklyReport, // « Lire le rapport — 3 min » (16a)
   // ── Partie D — nudge domaines (21a-21c / 22a-22c) ──────────────────────────
   nameDomains, // ouvre le sheet de nommage in-place (22a)
@@ -186,6 +190,15 @@ CoachMoment computeCoachMoment(
   final vitals = _vitalStats(now, st, recentSessions);
   // Repas du jour du menu (15c) — zéro décision à midi.
   final meal = _todayMeal(now, artifacts);
+  // L'activité-temps « Cuisine/Cuisiner » du user, si elle existe — support
+  // de la proposition discrète « Cuisiner d'abord ? » sur la carte repas.
+  Activity? cookActivity;
+  for (final a in st.activeActivities) {
+    if (a.type == 'time' && a.name.toLowerCase().contains('cuisin')) {
+      cookActivity = a;
+      break;
+    }
+  }
 
   // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
   // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
@@ -269,7 +282,7 @@ CoachMoment computeCoachMoment(
         _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
   } else if (minutes >= 11 * 60 + 45) {
-    clock = _middayMoment(now, blocks, recentSessions, vitals, meal);
+    clock = _middayMoment(now, blocks, recentSessions, vitals, meal, cookActivity);
   } else if (minutes >= 9 * 60) {
     clock = _idealHourMoment(now, st, blocks) ??
         (microTargetDismissed
@@ -289,7 +302,7 @@ CoachMoment computeCoachMoment(
       case CoachMomentType.morning:
         return _morningMoment(now, st, blocks);
       case CoachMomentType.midday:
-        return _middayMoment(now, blocks, recentSessions, vitals, meal);
+        return _middayMoment(now, blocks, recentSessions, vitals, meal, cookActivity);
       case CoachMomentType.afternoon:
         return _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
@@ -544,8 +557,13 @@ CoachMoment _morningMoment(
   );
 }
 
-CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
-    List<Session> recentSessions, List<StatItem> vitals, _MealInfo? meal) {
+CoachMoment _middayMoment(
+    DateTime now,
+    List<ScheduleBlock> blocks,
+    List<Session> recentSessions,
+    List<StatItem> vitals,
+    _MealInfo? meal,
+    Activity? cookActivity) {
   final dayStart = DateTime(now.year, now.month, now.day);
   final noon = dayStart.add(const Duration(hours: 12));
   final loggedBeforeNoon =
@@ -588,6 +606,22 @@ CoachMoment _middayMoment(DateTime now, List<ScheduleBlock> blocks,
     }
     actions.add(CoachAction('✓ Mangé', CoachActionKind.mealEaten,
         artifactId: meal.artifactId));
+    // Règle implicite d'accompagnement : parler d'un repas équilibré, c'est
+    // proposer de le cuisiner — discrètement (lien texte), chrono prêt sur
+    // l'activité Cuisine. Bloc SYNTHÉTIQUE : le launcher ne fait que
+    // démarrer le chrono, rien n'est écrit dans le programme.
+    if (cookActivity != null) {
+      final hhmm =
+          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      actions.add(CoachAction('Cuisiner d\'abord ?', CoachActionKind.cookFirst,
+          block: ScheduleBlock(
+            startTime: hhmm,
+            durationMin: 30,
+            title: 'Cuisiner — ${meal.title}',
+            category: 'personal',
+            activityId: cookActivity.id,
+          )));
+    }
     actions.add(CoachAction('Autre chose aujourd\'hui',
         CoachActionKind.mealShift,
         artifactId: meal.artifactId));
