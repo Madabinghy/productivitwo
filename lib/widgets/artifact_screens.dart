@@ -23,6 +23,28 @@ String artifactKindFromLabel(String label) =>
         ? 'weekly_menu'
         : 'training_plan';
 
+/// Flux 100 % DÉTERMINISTE partagé (Accueil « Mes programmes », fin de session
+/// de définition) : ouvre l'artefact manuel du domaine — créé VIDE s'il
+/// n'existe pas (un seul par domaine et par kind). Aucune génération IA :
+/// menu = plat par plat, plan = séance par séance.
+Future<void> openOrCreateManualArtifact(BuildContext context,
+    {required Domain domain, required String kind}) async {
+  final sync = FirestoreSync();
+  final all = await sync.fetchArtifacts();
+  Artifact? artifact;
+  for (final a in all) {
+    if (a.kind == kind && a.domainId == domain.id) artifact = a;
+  }
+  if (artifact == null) {
+    artifact = Artifact(kind: kind, domainId: domain.id, params: {'manual': true});
+    await sync.saveArtifact(artifact);
+  }
+  if (!context.mounted) return;
+  await Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => ArtifactViewScreen(artifact: artifact!, domain: domain),
+  ));
+}
+
 // ── Cadrage (14a / 15a) ───────────────────────────────────────────────────────
 
 class ArtifactSetupScreen extends StatefulWidget {
@@ -561,6 +583,155 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Ajoute une séance RÉCURRENTE (motif hebdo) : jour + heure + durée +
+  /// titre + détail. La planification l'instancie chaque semaine (le serveur
+  /// matche `weekday` sur le jour cible, comme pour les menus).
+  Future<void> _addSession() async {
+    const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const labels = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+    final titleCtrl = TextEditingController();
+    final detailCtrl = TextEditingController();
+    var pickedDay = codes[DateTime.now().weekday - 1];
+    var time = const TimeOfDay(hour: 18, minute: 0);
+    var duration = 45;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final cs = Theme.of(ctx).colorScheme;
+          String hhmm() =>
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+          Text sectionLabel(String t) => Text(t,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                  color: cs.onSurface.withOpacity(.45)));
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 4, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Ajouter une séance',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                sectionLabel('QUEL JOUR ? — CHAQUE SEMAINE'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var i = 0; i < 7; i++)
+                      ChoiceChip(
+                        selected: pickedDay == codes[i],
+                        onSelected: (_) =>
+                            setLocal(() => pickedDay = codes[i]),
+                        showCheckmark: false,
+                        label: Text(labels[i]),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Icon(Icons.schedule_rounded,
+                      size: 16, color: cs.onSurface.withOpacity(.55)),
+                  const SizedBox(width: 6),
+                  Text('À ${hhmm()}',
+                      style:
+                          const TextStyle(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () async {
+                      final t = await showTimePicker(
+                          context: ctx, initialTime: time);
+                      if (t != null) setLocal(() => time = t);
+                    },
+                    child: const Text('Modifier'),
+                  ),
+                ]),
+                sectionLabel('DURÉE'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final d in const [20, 30, 45, 60, 90])
+                      ChoiceChip(
+                        selected: duration == d,
+                        onSelected: (_) => setLocal(() => duration = d),
+                        showCheckmark: false,
+                        label: Text(fmtMin(d)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: titleCtrl,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Séance',
+                    hintText: 'Ex : Muscu haut du corps',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: detailCtrl,
+                  minLines: 1,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Contenu (optionnel)',
+                    hintText: 'Ex : squats · fentes · gainage — 3×10',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.fitness_center, size: 16),
+                    label: const Text('Ajouter au plan'),
+                    onPressed: () {
+                      if (titleCtrl.text.trim().isNotEmpty) {
+                        Navigator.pop(ctx, true);
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    final title = titleCtrl.text.trim();
+    final detail = detailCtrl.text.trim();
+    final hhmm =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    titleCtrl.dispose();
+    detailCtrl.dispose();
+    if (saved != true || title.isEmpty) return;
+    _artifact.entries.add(ArtifactEntry(
+      weekday: pickedDay,
+      time: hhmm,
+      title: title,
+      durationMin: duration,
+      detail: detail.isEmpty ? null : detail,
+    ));
+    await _sync.saveArtifact(_artifact);
+    if (mounted) setState(() {});
+  }
+
   Future<void> _removeEntry(ArtifactEntry e) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -689,27 +860,31 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
                 for (final e in later) _entryRow(cs, e, dated: true),
               ],
             ),
-          // Composition déterministe : plat par plat, courses au fil de l'eau.
-          if (_isMenu) ...[
-            if (_artifact.entries.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  'Menu vide — ajoute un premier plat : pas besoin de '
-                  'remplir la semaine d\'un coup, un jour à la fois suffit.',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.4,
-                      color: cs.onSurface.withOpacity(.55)),
-                ),
+          // Composition déterministe : plat par plat / séance par séance.
+          if (_artifact.entries.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                _isMenu
+                    ? 'Menu vide — ajoute un premier plat : pas besoin de '
+                        'remplir la semaine d\'un coup, un jour à la fois '
+                        'suffit.'
+                    : 'Plan vide — pose ta première séance récurrente '
+                        '(jour + heure), la planification l\'instancie '
+                        'chaque semaine.',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    height: 1.4,
+                    color: cs.onSurface.withOpacity(.55)),
               ),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.add, size: 16),
-              label: const Text('Ajouter un plat'),
-              onPressed: _addDish,
             ),
-            const SizedBox(height: 10),
-          ],
+          OutlinedButton.icon(
+            icon: const Icon(Icons.add, size: 16),
+            label: Text(
+                _isMenu ? 'Ajouter un plat' : 'Ajouter une séance'),
+            onPressed: _isMenu ? _addDish : _addSession,
+          ),
+          const SizedBox(height: 10),
           // Courses — dérivées du menu.
           if (_isMenu && _artifact.shoppingList.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -791,9 +966,9 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
         ? _shortDay(DateTime.tryParse(e.date!))
         : _weekdayFr(e.weekday);
     return GestureDetector(
-      // Menu : long press = retirer le plat (la liste de courses ne bouge
-      // pas — ses articles peuvent servir d'autres plats).
-      onLongPress: _isMenu ? () => _removeEntry(e) : null,
+      // Long press = retirer le plat / la séance (pour les menus, la liste
+      // de courses ne bouge pas — ses articles peuvent servir d'autres plats).
+      onLongPress: () => _removeEntry(e),
       child: _entryRowBody(cs, e, lead),
     );
   }
@@ -884,11 +1059,10 @@ class ArtifactShortcuts extends StatelessWidget {
   final List<Domain> domains;
   const ArtifactShortcuts({super.key, required this.domains});
 
-  /// Création SANS session Orion. Menu = 100 % DÉTERMINISTE (pas d'IA) : un
-  /// menu vide qu'on compose plat par plat depuis la bibliothèque, courses au
-  /// fil de l'eau. Plan sport = cadrage → génération (inchangé).
-  Future<void> _create(
-      BuildContext context, List<Artifact> existing) async {
+  /// Création SANS session Orion — 100 % DÉTERMINISTE pour les deux kinds :
+  /// menu = plat par plat (bibliothèque, courses au fil de l'eau), plan =
+  /// séance par séance (motif hebdo). Aucune génération IA.
+  Future<void> _create(BuildContext context) async {
     var kind = 'weekly_menu';
     Domain? domain = domains.isNotEmpty ? domains.first : null;
     await showModalBottomSheet<void>(
@@ -946,17 +1120,18 @@ class ArtifactShortcuts extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (kind == 'weekly_menu') ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    'Zéro IA : tu composes ton menu plat par plat depuis '
-                    'tes plats déjà cuisinés, les courses suivent toutes '
-                    'seules.',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: cs.onSurface.withOpacity(.55)),
-                  ),
-                ],
+                const SizedBox(height: 10),
+                Text(
+                  kind == 'weekly_menu'
+                      ? 'Zéro IA : tu composes ton menu plat par plat depuis '
+                          'tes plats déjà cuisinés, les courses suivent '
+                          'toutes seules.'
+                      : 'Zéro IA : tu poses tes séances récurrentes '
+                          '(mardi 18 h — muscu…), la planification les '
+                          'instancie chaque semaine.',
+                  style: TextStyle(
+                      fontSize: 12, color: cs.onSurface.withOpacity(.55)),
+                ),
                 const SizedBox(height: 18),
                 SizedBox(
                   width: double.infinity,
@@ -964,44 +1139,18 @@ class ArtifactShortcuts extends StatelessWidget {
                     icon: Icon(
                         kind == 'weekly_menu'
                             ? Icons.restaurant_menu
-                            : Icons.auto_awesome,
+                            : Icons.fitness_center,
                         size: 16),
                     label: Text(kind == 'weekly_menu'
                         ? 'Créer mon menu — plat par plat'
-                        : 'Cadrer puis générer'),
+                        : 'Créer mon plan — séance par séance'),
                     onPressed: domain == null
                         ? null
-                        : () async {
+                        : () {
                             final d = domain!;
                             Navigator.pop(ctx);
-                            if (kind == 'weekly_menu') {
-                              // Un seul menu par domaine : s'il existe déjà,
-                              // on l'ouvre au lieu d'en empiler un second.
-                              Artifact? menu;
-                              for (final a in existing) {
-                                if (a.kind == 'weekly_menu' &&
-                                    a.domainId == d.id) {
-                                  menu = a;
-                                }
-                              }
-                              if (menu == null) {
-                                menu = Artifact(
-                                    kind: 'weekly_menu',
-                                    domainId: d.id,
-                                    params: {'manual': true});
-                                await FirestoreSync().saveArtifact(menu);
-                              }
-                              if (!context.mounted) return;
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => ArtifactViewScreen(
-                                    artifact: menu!, domain: d),
-                              ));
-                              return;
-                            }
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => ArtifactSetupScreen(
-                                  domain: d, kind: kind),
-                            ));
+                            openOrCreateManualArtifact(context,
+                                domain: d, kind: kind);
                           },
                   ),
                 ),
@@ -1073,7 +1222,7 @@ class ArtifactShortcuts extends StatelessWidget {
                       label: const Text('Créer…',
                           style: TextStyle(fontSize: 12)),
                       visualDensity: VisualDensity.compact,
-                      onPressed: () => _create(context, arts),
+                      onPressed: () => _create(context),
                     ),
                 ],
               ),

@@ -773,6 +773,19 @@ class FirestoreSync {
     return snap.exists ? Artifact.from(snap.data() as Map) : null;
   }
 
+  Future<List<Artifact>> fetchArtifacts() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('artifacts').get();
+      return snap.docs
+          .map((d) => Artifact.from(d.data() as Map))
+          .where((a) => !a.deleted)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> saveArtifact(Artifact artifact) async {
     if (uid == null) return;
     await _col('artifacts').doc(artifact.id).set(artifact.toJson());
