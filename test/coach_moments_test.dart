@@ -649,10 +649,18 @@ void main() {
       ]);
       final m = computeCoachMoment(now, st, sched, null, st.sessions);
       expect(m.type, CoachMomentType.midday);
-      // Cible journalière ramenée à la semaine (7 h × 7 = 49 h), réel mesuré.
-      expect(
-          m.stats.any((s) => s.label == 'Sommeil' && s.value == '7,5/49 h · sem.'),
-          isTrue);
+      // Cible journalière → MOYENNE de la semaine en cours (7,5 h dormies /
+      // 3 jours écoulés lun-mer = 2,5 h/j), cible citée — plus la somme hebdo.
+      final stat =
+          m.stats.where((s) => s.label == 'Sommeil').toList();
+      expect(stat, hasLength(1));
+      expect(stat.first.value, '2,5 h/j · moy. (cible 7)');
+      // Histogramme : 7 emplacements (lun → dim), la nuit de mardi mesurée,
+      // cible journalière en pointillés, 3 jours écoulés.
+      expect(stat.first.bars, hasLength(7));
+      expect(stat.first.bars![1], closeTo(7.5, 0.01));
+      expect(stat.first.barTarget, 7);
+      expect(stat.first.barsElapsed, 3);
     });
 
     test('vital omis sans domaine défini (jamais de chiffre inventé)', () {
