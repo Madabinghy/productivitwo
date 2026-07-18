@@ -23,6 +23,10 @@ Future<int?> pickDurationMin(
 }) {
   return showModalBottomSheet<int>(
     context: context,
+    // Sans scroll contrôlé, presets (2-3 lignes) + roue dépassaient la
+    // hauteur max par défaut : le bas du bouton « Valider » était rendu HORS
+    // de la zone cliquable (constaté sur build — seul le haut répondait).
+    isScrollControlled: true,
     showDragHandle: true,
     builder: (ctx) => _DurationPickerSheet(
         initial: initial, title: title, allowZero: allowZero),
@@ -63,8 +67,9 @@ class _DurationPickerSheetState extends State<_DurationPickerSheet> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+            20, 0, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,

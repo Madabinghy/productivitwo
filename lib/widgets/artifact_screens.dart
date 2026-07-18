@@ -512,8 +512,15 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      // Cochable (fait en magasin) — persisté sur l'artefact,
+                      // partagé avec la section @courses de l'onglet Actions.
                       for (final s in _artifact.shoppingList)
-                        Chip(
+                        FilterChip(
+                          selected: s.checked,
+                          onSelected: (v) {
+                            setState(() => s.checked = v);
+                            _sync.saveArtifact(_artifact);
+                          },
                           label: Text(
                               s.qty.isEmpty ? s.label : '${s.label} ${s.qty}',
                               style: const TextStyle(fontSize: 12)),
@@ -626,4 +633,170 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
         '', 'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
         'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'
       ][d.month];
+}
+
+// ── Raccourcis Accueil « Mes programmes » ────────────────────────────────────
+// Les artefacts (menu de la semaine, plan d'entraînement) étaient enterrés :
+// Accueil → Gérer → « Mes domaines » → chips. Cette section les remonte en
+// accès direct sur l'Accueil — masquée s'il n'y en a aucun.
+
+class ArtifactShortcuts extends StatelessWidget {
+  final List<Domain> domains;
+  const ArtifactShortcuts({super.key, required this.domains});
+
+  /// Création SANS session Orion : choix menu/plan + domaine → cadrage
+  /// (ArtifactSetupScreen, 3-4 paramètres pré-remplis depuis la fiche).
+  Future<void> _create(BuildContext context) async {
+    var kind = 'weekly_menu';
+    Domain? domain = domains.isNotEmpty ? domains.first : null;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final cs = Theme.of(ctx).colorScheme;
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Nouveau programme',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(
+                        value: 'weekly_menu',
+                        label: Text('Menu semaine'),
+                        icon: Icon(Icons.restaurant_menu, size: 16)),
+                    ButtonSegment(
+                        value: 'training_plan',
+                        label: Text('Plan sport'),
+                        icon: Icon(Icons.fitness_center, size: 16)),
+                  ],
+                  selected: {kind},
+                  onSelectionChanged: (s) => setLocal(() => kind = s.first),
+                ),
+                const SizedBox(height: 14),
+                Text('SUR LE DOMAINE',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: cs.onSurface.withOpacity(.45))),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final d in domains)
+                      ChoiceChip(
+                        selected: domain?.id == d.id,
+                        onSelected: (_) => setLocal(() => domain = d),
+                        showCheckmark: false,
+                        label: Text(d.name),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.auto_awesome, size: 16),
+                    label: const Text('Cadrer puis générer'),
+                    onPressed: domain == null
+                        ? null
+                        : () {
+                            Navigator.pop(ctx);
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => ArtifactSetupScreen(
+                                  domain: domain!, kind: kind),
+                            ));
+                          },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Artifact>>(
+      stream: FirestoreSync().streamArtifacts(),
+      builder: (ctx, snap) {
+        final arts =
+            (snap.data ?? const <Artifact>[]).where((a) => !a.deleted).toList();
+        // Sans domaine, le cadrage n'a rien à pré-remplir — section muette.
+        if (arts.isEmpty && domains.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mes programmes',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(.4),
+                  letterSpacing: .5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final a in arts)
+                    ActionChip(
+                      avatar: Icon(
+                        a.kind == 'weekly_menu'
+                            ? Icons.restaurant_menu
+                            : Icons.fitness_center,
+                        size: 14,
+                        color: cs.primary,
+                      ),
+                      label: Text(a.title,
+                          style: const TextStyle(fontSize: 12)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        Domain? d;
+                        for (final x in domains) {
+                          if (x.id == a.domainId) d = x;
+                        }
+                        if (d == null) return;
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) =>
+                              ArtifactViewScreen(artifact: a, domain: d!),
+                        ));
+                      },
+                    ),
+                  if (domains.isNotEmpty)
+                    ActionChip(
+                      avatar: Icon(Icons.add,
+                          size: 14, color: cs.onSurface.withOpacity(.6)),
+                      label: const Text('Créer…',
+                          style: TextStyle(fontSize: 12)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _create(context),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 }

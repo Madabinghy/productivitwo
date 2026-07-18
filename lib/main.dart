@@ -25,6 +25,9 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/widgets/artifact_screens.dart';
+import 'package:productivitwo_v1/widgets/next_actions_section.dart'
+    show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -3933,9 +3936,10 @@ class _AppRootState extends State<AppRoot>
   }
 
   Widget _buildFab() {
-    return Column(
+    // RANGÉE horizontale (ergonomie pouce) : la pile verticale masquait le
+    // contenu. Capture (GTD), créer action/projet, routine, ▶ activité.
+    return Row(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         FloatingActionButton(
           heroTag: 'fab_capture',
@@ -3946,7 +3950,22 @@ class _AppRootState extends State<AppRoot>
           onPressed: () => _showCaptureSheet(context),
           child: const Icon(Icons.lightbulb_outline, size: 20),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(width: 10),
+        FloatingActionButton(
+          heroTag: 'fab_create_action',
+          mini: true,
+          tooltip: 'Créer une action ou un projet',
+          onPressed: () => showCreateActionOrProjectSheet(
+            context,
+            logic: logic,
+            sync: _sync,
+            onCreated: () {
+              if (mounted) setState(() {});
+            },
+          ),
+          child: const Icon(Icons.add_task, size: 20),
+        ),
+        const SizedBox(width: 10),
         FloatingActionButton(
           heroTag: 'fab_now_routine',
           mini: true,
@@ -3954,7 +3973,7 @@ class _AppRootState extends State<AppRoot>
           onPressed: () => _showRoutinesSheet(context),
           child: const Icon(Icons.repeat_rounded),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(width: 10),
         FloatingActionButton(
           heroTag: 'fab_launch_activity',
           tooltip: 'Lancer une activité',
@@ -6198,6 +6217,9 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         ..._buildDomainListLive(context, now),
+        // Raccourcis vers les artefacts (menu, plan sport) — sinon enterrés
+        // derrière Gérer → « Mes domaines ».
+        ArtifactShortcuts(domains: logic.state.activeDomains),
         _buildDayReviewButton(context),
         _buildNotificationsButton(context),
       ],

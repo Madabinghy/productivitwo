@@ -355,11 +355,107 @@ class _StatsRow extends StatelessWidget {
                         fontSize: 11, color: cs.onSurface.withOpacity(.65)),
                   ),
                 ),
+              if (s.bars != null) ...[
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 132,
+                  height: 32,
+                  child: CustomPaint(
+                    painter: _MiniBarsPainter(
+                      bars: s.bars!,
+                      target: s.barTarget,
+                      elapsed: s.barsElapsed,
+                      accent: accent,
+                      slot: cs.onSurface.withOpacity(.06),
+                      targetInk: cs.onSurface.withOpacity(.45),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
       ],
     );
   }
+}
+
+/// Mini-histogramme 7 jours (lun → dim) : barres fines arrondies en tête,
+/// ancrées à la ligne de base, cible en POINTILLÉS (encre atténuée — la
+/// couleur reste à la donnée). Les jours à venir gardent leur emplacement
+/// (fond de slot discret) sans barre.
+class _MiniBarsPainter extends CustomPainter {
+  final List<double> bars;
+  final double? target;
+  final int elapsed;
+  final Color accent;
+  final Color slot;
+  final Color targetInk;
+
+  const _MiniBarsPainter({
+    required this.bars,
+    required this.target,
+    required this.elapsed,
+    required this.accent,
+    required this.slot,
+    required this.targetInk,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const gap = 2.0;
+    final n = bars.length;
+    if (n == 0) return;
+    final bw = (size.width - gap * (n - 1)) / n;
+    // Échelle : le max des barres OU la cible (avec marge) — la cible reste
+    // toujours DANS le cadre, sinon les pointillés sortiraient du graphe.
+    var maxV = bars.fold<double>(0, (a, b) => a > b ? a : b);
+    if (target != null && target! > maxV) maxV = target!;
+    if (maxV <= 0) maxV = 1;
+    maxV *= 1.12;
+
+    final slotPaint = Paint()..color = slot;
+    final barPaint = Paint()..color = accent;
+    for (var i = 0; i < n; i++) {
+      final x = i * (bw + gap);
+      // Fond de slot : les 7 jours existent, même vides / à venir.
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, 0, bw, size.height), const Radius.circular(2)),
+        slotPaint,
+      );
+      final h = (bars[i] / maxV) * size.height;
+      if (h <= 0 || i >= elapsed) continue;
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTWH(x, size.height - h, bw, h),
+          topLeft: const Radius.circular(2),
+          topRight: const Radius.circular(2),
+        ),
+        barPaint,
+      );
+    }
+
+    // Cible en pointillés.
+    final t = target;
+    if (t != null && t > 0) {
+      final y = size.height - (t / maxV) * size.height;
+      final dash = Paint()
+        ..color = targetInk
+        ..strokeWidth = 1;
+      var x = 0.0;
+      while (x < size.width) {
+        canvas.drawLine(Offset(x, y), Offset((x + 3).clamp(0, size.width), y), dash);
+        x += 6;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MiniBarsPainter old) =>
+      old.bars != bars ||
+      old.target != target ||
+      old.elapsed != elapsed ||
+      old.accent != accent;
 }
 
 class _Actions extends StatelessWidget {
@@ -443,6 +539,7 @@ class _Actions extends StatelessWidget {
     final isQuiet = a.kind == CoachActionKind.nameTonight ||
         a.kind == CoachActionKind.poseSessions ||
         a.kind == CoachActionKind.endAfternoon ||
+        a.kind == CoachActionKind.cookFirst ||
         (a.kind == CoachActionKind.dismiss &&
             a.label.startsWith('Garder'));
     final onTap = _handlerFor(a);
@@ -456,6 +553,7 @@ class _Actions extends StatelessWidget {
       CoachActionKind.dismiss => Icons.skip_next_outlined,
       CoachActionKind.mealEaten => Icons.check_rounded,
       CoachActionKind.mealShift => Icons.swap_horiz_rounded,
+      CoachActionKind.cookFirst => Icons.soup_kitchen_outlined,
       CoachActionKind.openWeeklyReport => Icons.insights_rounded,
       CoachActionKind.nameDomains => Icons.flag_rounded,
       CoachActionKind.nameTonight => Icons.nightlight_outlined,
@@ -542,6 +640,12 @@ class _Actions extends StatelessWidget {
       case CoachActionKind.mealShift:
         return a.artifactId != null && onMealShift != null
             ? () => onMealShift!(a.artifactId!)
+            : null;
+      case CoachActionKind.cookFirst:
+        // Bloc synthétique → même launcher que les blocs du programme (il ne
+        // fait que démarrer le chrono sur l'activité Cuisine).
+        return a.block != null && onLaunch != null
+            ? () => onLaunch!(a.block!)
             : null;
       case CoachActionKind.openWeeklyReport:
         return onOpenWeeklyReport;

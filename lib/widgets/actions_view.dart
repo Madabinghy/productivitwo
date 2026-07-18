@@ -313,12 +313,16 @@ class _ActionsViewState extends State<ActionsView> {
             .firstWhereOrNull((a) => a.id == e.project!.linkedActivityId);
     final saved = await showModalBottomSheet<bool>(
       context: context,
+      // Scrollable : contextes + activités peuvent dépasser un écran — sans
+      // ça le bouton Enregistrer devient inaccessible (constaté sur build).
+      isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        builder: (ctx, setLocal) => SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -777,6 +781,11 @@ class _ActionsViewState extends State<ActionsView> {
               ),
             ),
 
+          // ── @courses actif → la liste de courses du menu, cochable ────────
+          // Subtilité d'accompagnement : être en courses, c'est avoir sa
+          // liste sous la main — dérivée du menu, sans rien ressaisir.
+          if (active.contains('@courses')) _CoursesSection(sync: _sync),
+
           // ── Par projet ─────────────────────────────────────────────────────
           for (final g in visibleProjectGroups) ...[
             _groupHeader(
@@ -1009,6 +1018,81 @@ class _ActionsViewState extends State<ActionsView> {
           ),
         const SizedBox(width: 2),
       ]),
+    );
+  }
+}
+
+/// Liste de courses du menu (artefact `weekly_menu`), cochable — affichée
+/// dans l'onglet Actions quand le contexte @courses est actif. L'état coché
+/// vit sur l'artefact (partagé avec la fiche menu de l'Accueil).
+class _CoursesSection extends StatelessWidget {
+  final FirestoreSync sync;
+  const _CoursesSection({required this.sync});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return StreamBuilder<List<Artifact>>(
+      stream: sync.streamArtifacts(),
+      builder: (ctx, snap) {
+        final menus = (snap.data ?? const <Artifact>[])
+            .where((a) =>
+                !a.deleted &&
+                a.kind == 'weekly_menu' &&
+                a.shoppingList.isNotEmpty)
+            .toList();
+        if (menus.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final m in menus) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 6),
+                child: Row(children: [
+                  Icon(Icons.shopping_cart_outlined,
+                      size: 14, color: cs.onSurface.withOpacity(.45)),
+                  const SizedBox(width: 6),
+                  Text('COURSES — MENU',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .8,
+                          color: cs.onSurface.withOpacity(.45))),
+                  const Spacer(),
+                  Text(
+                      '${m.shoppingList.where((s) => !s.checked).length} restants',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurface.withOpacity(.4))),
+                ]),
+              ),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final s in m.shoppingList)
+                    FilterChip(
+                      selected: s.checked,
+                      onSelected: (v) {
+                        s.checked = v;
+                        sync.saveArtifact(m);
+                      },
+                      label: Text(
+                          s.qty.isEmpty ? s.label : '${s.label} ${s.qty}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              decoration: s.checked
+                                  ? TextDecoration.lineThrough
+                                  : null)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        );
+      },
     );
   }
 }

@@ -57,12 +57,18 @@ class ArtifactEntry {
 class ShoppingItem {
   String label;
   String qty;
-  ShoppingItem({required this.label, this.qty = ''});
+  // Coché en faisant les courses (@courses) — remis à zéro à la régénération
+  // (la liste est réécrite par le serveur).
+  bool checked;
+  ShoppingItem({required this.label, this.qty = '', this.checked = false});
 
-  Map<String, dynamic> toJson() => {'label': label, 'qty': qty};
+  Map<String, dynamic> toJson() =>
+      {'label': label, 'qty': qty, 'checked': checked};
 
-  static ShoppingItem from(Map j) =>
-      ShoppingItem(label: j['label'] ?? '', qty: j['qty']?.toString() ?? '');
+  static ShoppingItem from(Map j) => ShoppingItem(
+      label: j['label'] ?? '',
+      qty: j['qty']?.toString() ?? '',
+      checked: j['checked'] == true);
 }
 
 class Artifact {
