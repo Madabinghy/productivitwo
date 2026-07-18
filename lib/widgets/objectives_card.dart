@@ -27,18 +27,31 @@ class ObjectivesCard extends StatefulWidget {
 class _ObjectivesCardState extends State<ObjectivesCard> {
   static const _accent = Color(0xFF00897B);
 
+  // Cache mémoire PARTAGÉ entre les recréations du State : la ListView de
+  // l'Accueil détruit les enfants sortis du viewport — sans cache, chaque
+  // retour en haut de page refaisait le fetch → carte vide → réapparition
+  // d'un bloc entier = saccade au scroll (constaté sur build). Rendu
+  // immédiat depuis le cache, rafraîchi silencieusement derrière.
+  static List<StrategicObjective>? _cache;
+
   List<StrategicObjective> _objectives = [];
   bool _loaded = false;
 
   @override
   void initState() {
     super.initState();
+    final cached = _cache;
+    if (cached != null) {
+      _objectives = cached.where((o) => o.status == 'active').toList();
+      _loaded = true;
+    }
     _load();
   }
 
   Future<void> _load() async {
     final all = await widget.sync.fetchStrategicObjectives();
     if (!mounted) return;
+    _cache = all;
     setState(() {
       _objectives = all.where((o) => o.status == 'active').toList();
       _loaded = true;

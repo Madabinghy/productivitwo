@@ -1038,7 +1038,9 @@ class _CoursesSectionState extends State<_CoursesSection> {
   // par build = StreamBuilder qui repart de zéro à chaque rebuild du parent).
   late final Stream<List<Artifact>> _stream =
       widget.sync.streamArtifacts();
-  List<Artifact> _last = const [];
+  // Partagé entre recréations du State (liste scrollée) — même leçon que
+  // ObjectivesCard/ArtifactShortcuts : pas de repli transitoire au retour.
+  static List<Artifact> _last = const [];
 
   @override
   Widget build(BuildContext context) {

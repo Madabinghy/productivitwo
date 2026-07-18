@@ -1069,7 +1069,10 @@ class _ArtifactShortcutsState extends State<ArtifactShortcuts> {
   // StreamBuilder de zéro (section repliée → réapparue = sauts de layout,
   // saccades au scroll) et ré-abonnait Firestore en boucle.
   late final Stream<List<Artifact>> _stream = FirestoreSync().streamArtifacts();
-  List<Artifact> _last = const [];
+  // Cache partagé entre recréations du State (la ListView de l'Accueil
+  // détruit les enfants hors viewport) : rendu immédiat au retour en haut,
+  // pas de section qui se replie puis réapparaît.
+  static List<Artifact> _last = const [];
 
   List<Domain> get domains => widget.domains;
 
