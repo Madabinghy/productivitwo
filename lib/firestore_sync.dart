@@ -778,6 +778,51 @@ class FirestoreSync {
     await _col('artifacts').doc(artifact.id).set(artifact.toJson());
   }
 
+  // ── Bibliothèque de plats (menu déterministe) ───────────────────────────────
+
+  Stream<List<Recipe>> streamRecipes() {
+    if (uid == null) return const Stream.empty();
+    return _col('recipes').snapshots().map((snap) => snap.docs
+        .map((d) => Recipe.from(d.data() as Map))
+        .where((r) => !r.deleted)
+        .toList());
+  }
+
+  Future<List<Recipe>> fetchRecipes() async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('recipes').get();
+      return snap.docs
+          .map((d) => Recipe.from(d.data() as Map))
+          .where((r) => !r.deleted)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> saveRecipe(Recipe recipe) async {
+    if (uid == null) return;
+    await _col('recipes').doc(recipe.id).set(recipe.toJson());
+  }
+
+  /// Plat MANGÉ → archive : incrémente le compteur du plat (créé s'il
+  /// n'existe pas — tout ce qui est cuisiné entre dans la bibliothèque).
+  Future<void> recordMealCooked(String title,
+      {List<ShoppingItem>? ingredients}) async {
+    final t = title.trim();
+    if (t.isEmpty || uid == null) return;
+    final all = await fetchRecipes();
+    Recipe? existing;
+    for (final r in all) {
+      if (r.title.toLowerCase() == t.toLowerCase()) existing = r;
+    }
+    final r = existing ?? Recipe(title: t, ingredients: ingredients);
+    r.timesCooked += 1;
+    r.lastCookedAt = DateTime.now();
+    await saveRecipe(r);
+  }
+
   // ── Rapport hebdo ────────────────────────────────────────────────────────
 
   Future<WeeklyReport?> fetchWeeklyReport(String weekStart) async {
