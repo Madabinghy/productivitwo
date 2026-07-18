@@ -1055,9 +1055,23 @@ class _ArtifactViewScreenState extends State<ArtifactViewScreen> {
 // Accueil → Gérer → « Mes domaines » → chips. Cette section les remonte en
 // accès direct sur l'Accueil — masquée s'il n'y en a aucun.
 
-class ArtifactShortcuts extends StatelessWidget {
+class ArtifactShortcuts extends StatefulWidget {
   final List<Domain> domains;
   const ArtifactShortcuts({super.key, required this.domains});
+
+  @override
+  State<ArtifactShortcuts> createState() => _ArtifactShortcutsState();
+}
+
+class _ArtifactShortcutsState extends State<ArtifactShortcuts> {
+  // Stream créé UNE FOIS : l'Accueil se rebuild souvent (tick minute,
+  // setState) — un stream neuf à chaque build faisait repartir le
+  // StreamBuilder de zéro (section repliée → réapparue = sauts de layout,
+  // saccades au scroll) et ré-abonnait Firestore en boucle.
+  late final Stream<List<Artifact>> _stream = FirestoreSync().streamArtifacts();
+  List<Artifact> _last = const [];
+
+  List<Domain> get domains => widget.domains;
 
   /// Création SANS session Orion — 100 % DÉTERMINISTE pour les deux kinds :
   /// menu = plat par plat (bibliothèque, courses au fil de l'eau), plan =
@@ -1166,10 +1180,13 @@ class ArtifactShortcuts extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return StreamBuilder<List<Artifact>>(
-      stream: FirestoreSync().streamArtifacts(),
+      stream: _stream,
       builder: (ctx, snap) {
-        final arts =
-            (snap.data ?? const <Artifact>[]).where((a) => !a.deleted).toList();
+        // La dernière valeur est gardée : jamais de repli transitoire.
+        if (snap.hasData) {
+          _last = snap.data!.where((a) => !a.deleted).toList();
+        }
+        final arts = _last;
         // Sans domaine, le cadrage n'a rien à pré-remplir — section muette.
         if (arts.isEmpty && domains.isEmpty) return const SizedBox.shrink();
         return Padding(
