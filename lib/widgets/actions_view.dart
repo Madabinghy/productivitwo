@@ -313,12 +313,16 @@ class _ActionsViewState extends State<ActionsView> {
             .firstWhereOrNull((a) => a.id == e.project!.linkedActivityId);
     final saved = await showModalBottomSheet<bool>(
       context: context,
+      // Scrollable : contextes + activités peuvent dépasser un écran — sans
+      // ça le bouton Enregistrer devient inaccessible (constaté sur build).
+      isScrollControlled: true,
       useSafeArea: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        builder: (ctx, setLocal) => SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+              20, 20, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,

@@ -2171,25 +2171,113 @@ class _FocusViewState extends State<FocusView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header domaine + activité
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${domain?.name.toUpperCase() ?? ''} · ${running.name}',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                      color: cs.onSurface.withOpacity(.5)),
-                ),
-              ],
+            // ── CADRE HERO : l'activité qui tourne. Le reste de Maintenant
+            // (carte ORION, contextes, bloc proposé) reste visible DESSOUS —
+            // plus besoin d'arrêter le chrono pour voir les propositions,
+            // ni de repasser par le widget d'app bar pour relancer.
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
+              decoration: BoxDecoration(
+                color: color.withOpacity(.07),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: color.withOpacity(.35), width: 1.5),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                            color: color, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${domain?.name.toUpperCase() ?? ''} · ${running.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                              color: cs.onSurface.withOpacity(.6)),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: color.withOpacity(.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text('EN COURS',
+                            style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: .8,
+                                color: color)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Minuteur (anneau de décompte) OU chrono (temps écoulé)
+                  if (isCountdown) ...[
+                    Center(
+                      child: _CountdownRing(
+                        remaining: remaining,
+                        totalSec:
+                            widget.countdownTotalSec ?? remaining.inSeconds,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.timer_off_outlined, size: 18),
+                        label: const Text('Arrêter le minuteur'),
+                        onPressed: widget.onStopCountdown,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(200, 44),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    Center(
+                      child: Text(
+                        _fmtDuration(elapsed),
+                        style: TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.w200,
+                          letterSpacing: 2,
+                          color: cs.onSurface,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.stop_rounded, size: 20),
+                        label: const Text('Arrêter'),
+                        onPressed: widget.onStopTimer,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: cs.error,
+                          foregroundColor: cs.onError,
+                          minimumSize: const Size(160, 44),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
@@ -2230,58 +2318,6 @@ class _FocusViewState extends State<FocusView> {
               const SizedBox(height: 20),
             ],
 
-            // Minuteur (anneau de décompte) OU chrono (temps écoulé)
-            if (isCountdown) ...[
-              Center(
-                child: _CountdownRing(
-                  remaining: remaining,
-                  totalSec: widget.countdownTotalSec ?? remaining.inSeconds,
-                  color: color,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.timer_off_outlined, size: 18),
-                  label: const Text('Arrêter le minuteur'),
-                  onPressed: widget.onStopCountdown,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(200, 48),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ] else ...[
-              Center(
-                child: Text(
-                  _fmtDuration(elapsed),
-                  style: TextStyle(
-                    fontSize: 52,
-                    fontWeight: FontWeight.w200,
-                    letterSpacing: 2,
-                    color: cs.onSurface,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.stop_rounded, size: 20),
-                  label: const Text('Arrêter'),
-                  onPressed: widget.onStopTimer,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: cs.error,
-                    foregroundColor: cs.onError,
-                    minimumSize: const Size(160, 48),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
-
             // ── DÉROULÉ : toutes les étapes de la session en cours, unifiées —
             // sous-actions de la tâche + actions propres de l'activité +
             // routines LIÉES (Pompes, Tractions… avec leur compteur) + leurs
@@ -2306,12 +2342,12 @@ class _FocusViewState extends State<FocusView> {
               ),
             ],
 
-            // Rappel discret du prochain bloc — pas de programme complet ici
-            // (mode focus pur ; le programme vit dans Aujourd'hui).
-            if (!isCountdown && next != null) ...[
-              const SizedBox(height: 28),
-              _nextHint(cs, next),
-            ],
+            // ── Le reste de Maintenant, VISIBLE pendant le chrono : carte
+            // ORION + bloc proposé — on consulte / on enchaîne sans arrêter.
+            const SizedBox(height: 26),
+            _coachCard(now),
+            if (next != null) _focusCard(context, cs, next, now),
+            _overdueHint(cs, now),
           ],
         ),
       ),
