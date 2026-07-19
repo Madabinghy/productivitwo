@@ -337,7 +337,7 @@ class _ActionsViewState extends State<ActionsView> {
         ? null
         : _state.activities
             .firstWhereOrNull((a) => a.id == e.project!.linkedActivityId);
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showModalBottomSheet<String>(
       context: context,
       // Scrollable : contextes + activités peuvent dépasser un écran — sans
       // ça le bouton Enregistrer devient inaccessible (constaté sur build).
@@ -424,10 +424,18 @@ class _ActionsViewState extends State<ActionsView> {
               ],
               const SizedBox(height: 16),
               Row(children: [
+                // Supprimer l'action (CRUD complet — confirmé après le pop).
+                IconButton(
+                  tooltip: 'Supprimer l\'action',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.delete_outline,
+                      size: 20, color: Theme.of(ctx).colorScheme.error),
+                  onPressed: () => Navigator.pop(ctx, 'delete'),
+                ),
                 if (e.project != null)
                   TextButton.icon(
                     onPressed: () {
-                      Navigator.pop(ctx, false);
+                      Navigator.pop(ctx);
                       _openProject(e.project!, targetTaskId: e.task?.id);
                     },
                     icon: const Icon(Icons.open_in_new, size: 15),
@@ -435,7 +443,7 @@ class _ActionsViewState extends State<ActionsView> {
                   ),
                 TextButton.icon(
                   onPressed: () {
-                    Navigator.pop(ctx, false);
+                    Navigator.pop(ctx);
                     _scheduleAction(e);
                   },
                   icon: const Icon(Icons.event_outlined, size: 15),
@@ -443,7 +451,7 @@ class _ActionsViewState extends State<ActionsView> {
                 ),
                 const Spacer(),
                 FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
+                  onPressed: () => Navigator.pop(ctx, 'save'),
                   child: const Text('Enregistrer'),
                 ),
               ]),
@@ -452,10 +460,38 @@ class _ActionsViewState extends State<ActionsView> {
         ),
       ),
     );
-    if (saved == true) {
+    if (saved == 'save') {
       e.action.setContexts(selected.toList());
       if (isProjectAction) e.action.linkedActivityId = linkedId;
       await _persistEntry(e);
+    } else if (saved == 'delete') {
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Supprimer « ${e.action.title} » ?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Supprimer')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      if (e.task != null) {
+        e.task!.actions.remove(e.action);
+      } else if (e.activity != null) {
+        e.activity!.ownActions.remove(e.action);
+      }
+      await _persistEntry(e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Action supprimée'),
+            duration: Duration(seconds: 2)));
+      }
     }
   }
 
