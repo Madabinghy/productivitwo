@@ -362,3 +362,9 @@ actions: [
   fiches tâche web (`gantt_screen.dart`) et mobile (`project_sheet.dart`). L'IA (Orion
   autonome) **propose**, l'utilisateur dispose ; le chemin MCP/conversation à la demande
   garde le write direct.
+
+---
+
+## Backlog mémorisé (demandes user, à faire plus tard)
+
+- **Export / import des données** (noté 2026-07-19) : demandé par l'utilisateur, reporté volontairement — à cadrer avant d'implémenter (portée : backup complet JSON ? migration ? partage ?).

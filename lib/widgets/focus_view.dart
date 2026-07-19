@@ -1616,8 +1616,26 @@ class _FocusViewState extends State<FocusView> {
       for (final a in act.ownActions) {
         if (!a.done) s.addAll(a.allContexts);
       }
+      // Routines contextualisées (@maison…) — comptent aussi.
+      if (act.isHabit) s.addAll(act.contexts);
     }
     return s;
+  }
+
+  /// Routines réalisables dans les contextes actifs, pas encore validées
+  /// aujourd'hui.
+  List<Activity> _routinesForContexts(Set<String> active) {
+    final now = DateTime.now();
+    final out = <Activity>[];
+    for (final r in widget.state.activeActivities) {
+      if (!r.isHabit || r.contexts.isEmpty) continue;
+      if (!r.contexts.any(active.contains)) continue;
+      final tgt = logic.activeHabitTarget(r);
+      final v = logic.habitValueOn(r.id, now);
+      final done = tgt > 0 ? v >= tgt : v > 0;
+      if (!done) out.add(r);
+    }
+    return out;
   }
 
   Widget _contextSection(ColorScheme cs) {
@@ -1633,6 +1651,7 @@ class _FocusViewState extends State<FocusView> {
         for (final it in _actionsForContext(c))
           if (seen.add(it.action.id)) it,
     ];
+    final ctxRoutines = _routinesForContexts(active);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1690,7 +1709,7 @@ class _FocusViewState extends State<FocusView> {
           ),
           if (active.isNotEmpty) ...[
             const SizedBox(height: 10),
-            if (items.isEmpty)
+            if (items.isEmpty && ctxRoutines.isEmpty)
               Text('Aucune action en attente dans ce contexte.',
                   style: TextStyle(
                       fontSize: 12.5, color: cs.onSurface.withOpacity(.5)))
@@ -1737,6 +1756,47 @@ class _FocusViewState extends State<FocusView> {
                       ),
                   ]),
                 ),
+            // Routines du contexte (pas encore validées aujourd'hui) — le ▶
+            // passe par le launcher de blocs (menu chrono/décompte/coche).
+            for (final r in ctxRoutines.take(4))
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest.withOpacity(.35),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(children: [
+                  Icon(Icons.repeat_rounded,
+                      size: 15, color: cs.onSurface.withOpacity(.45)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(r.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  ),
+                  if (widget.onLaunchScheduledBlock != null)
+                    IconButton(
+                      tooltip: 'Lancer',
+                      icon: Icon(Icons.play_circle_fill,
+                          size: 26, color: cs.primary),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        final now2 = DateTime.now();
+                        widget.onLaunchScheduledBlock!(ScheduleBlock(
+                          startTime:
+                              '${now2.hour.toString().padLeft(2, '0')}:${now2.minute.toString().padLeft(2, '0')}',
+                          durationMin: r.timerMin ?? 15,
+                          title: r.name,
+                          category: 'routine',
+                          activityId: r.id,
+                        ));
+                      },
+                    ),
+                ]),
+              ),
           ],
         ],
       ),

@@ -81,6 +81,11 @@ class Activity {
   /// via Session.actionId. Persisté dans la collection `activities`.
   List<TaskAction> ownActions;
 
+  /// Contextes GTD de l'activité/routine (@maison…) — additive. Sert au
+  /// filtre « je suis » (Maintenant) et aux CTA d'enchaînement (« tu viens de
+  /// finir X @maison — Y l'est aussi »).
+  List<String> contexts;
+
   Activity({
     String? id,
     required this.domainId,
@@ -106,8 +111,10 @@ class Activity {
     this.timerMin,
     this.timeContext,
     List<TaskAction>? ownActions,
+    List<String>? contexts,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
         ownActions = ownActions ?? <TaskAction>[],
+        contexts = contexts ?? <String>[],
         createdAt = createdAt ?? DateTime.now();
 
   // -------- Helpers --------
@@ -146,6 +153,7 @@ class Activity {
         'timerMin': timerMin,
         'timeContext': timeContext,
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
+        'contexts': contexts,
       };
 
   /// Migration douce :
@@ -198,6 +206,7 @@ class Activity {
       ownActions: (j['ownActions'] as List?)
           ?.map((e) => TaskAction.from(e as Map))
           .toList(),
+      contexts: (j['contexts'] as List?)?.cast<String>(),
     );
   }
 
