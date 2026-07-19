@@ -4560,4 +4560,4 @@ export const resetDemoData = onSchedule("0 4 * * *", async () => {
 export { gcalApi, gcalOauthCallback, gcalOnScheduleWrite } from "./gcal";
 
 // ── Brique coaching v1 (mini-CRM + consentement + dashboard) — coaching.ts ───
-export { coachApi, coachConsent } from "./coaching";
+export { coachApi, coachConsent, coacheeApi } from "./coaching";

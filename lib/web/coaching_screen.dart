@@ -242,7 +242,7 @@ class _CoachingScreenState extends State<CoachingScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            trailing: _consentBadge(cs, c['consent'] as String?),
+            trailing: _consentBadge(cs, c),
             onTap: () async {
               await Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => CoachClientScreen(client: c)));
@@ -253,9 +253,18 @@ class _CoachingScreenState extends State<CoachingScreen> {
     ];
   }
 
-  Widget _consentBadge(ColorScheme cs, String? consent) {
+  Widget _consentBadge(ColorScheme cs, Map<String, dynamic> c) {
+    final consent = c['consent'] as String?;
+    final sharing = (c['sharing'] as Map?) ?? const {};
+    final domainCount = (sharing['domainCount'] as num?)?.toInt() ?? 0;
+    final granLabel =
+        sharing['granularity'] == 'detail' ? 'détail' : 'statuts';
     final (label, color) = switch (consent) {
-      'granted' => ('accès ✓', const Color(0xFF1a9e6e)),
+      'granted' when domainCount > 0 => (
+          '✓ $domainCount dom. · $granLabel',
+          const Color(0xFF1a9e6e)
+        ),
+      'granted' => ('rien de partagé', const Color(0xFFB7791F)),
       'revoked' => ('révoqué', cs.error),
       _ => ('en attente', cs.onSurface.withOpacity(.4)),
     };
@@ -597,13 +606,19 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 16),
           child: Text(
-              d['reason'] == 'no_account'
-                  ? 'Pas encore de compte — invite-le d\'abord.'
-                  : 'Indisponible : ${d['reason']}',
+              switch (d['reason']) {
+                'no_account' => 'Pas encore de compte — invite-le d\'abord.',
+                'no_scope' =>
+                  'Consentement donné, mais rien de partagé pour l\'instant — '
+                      'il choisit ses domaines et le niveau de détail dans son '
+                      'app (Paramètres → Mon coach).',
+                _ => 'Indisponible : ${d['reason']}',
+              },
               style: TextStyle(color: cs.onSurface.withOpacity(.5))),
         ),
       ];
     }
+    final statusOnly = d['granularity'] == 'status';
     final activities = ((d['activities'] as List?) ?? [])
         .map((a) => Map<String, dynamic>.from(a as Map))
         .toList();
@@ -627,38 +642,50 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
         );
 
     return [
-      label('PROGRAMME DU JOUR (${d['date']})'),
-      if (((d['todayBlocks'] as List?) ?? []).isEmpty)
-        Text('Rien de programmé.',
-            style: TextStyle(color: cs.onSurface.withOpacity(.5)))
-      else
-        for (final b in (d['todayBlocks'] as List))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 3),
-            child: Text(
-              '${b['startTime']} · ${b['title']}'
-              '${b['status'] == 'done' ? '  ✓' : b['status'] == 'skipped' ? '  (sauté)' : ''}',
+      if (statusOnly)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+              '🔒 Partage en mode « statuts seulement » — pas de temps ni de '
+              'blocs de journée. Seuls les domaines et engagements partagés '
+              'apparaissent.',
               style: TextStyle(
-                  fontSize: 13.5,
-                  decoration: b['status'] == 'done'
-                      ? TextDecoration.lineThrough
-                      : null,
-                  color: cs.onSurface
-                      .withOpacity(b['status'] == 'pending' ? .9 : .5)),
+                  fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+        )
+      else ...[
+        label('PROGRAMME DU JOUR (${d['date']})'),
+        if (((d['todayBlocks'] as List?) ?? []).isEmpty)
+          Text('Rien de programmé.',
+              style: TextStyle(color: cs.onSurface.withOpacity(.5)))
+        else
+          for (final b in (d['todayBlocks'] as List))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                '${b['startTime']} · ${b['title']}'
+                '${b['status'] == 'done' ? '  ✓' : b['status'] == 'skipped' ? '  (sauté)' : ''}',
+                style: TextStyle(
+                    fontSize: 13.5,
+                    decoration: b['status'] == 'done'
+                        ? TextDecoration.lineThrough
+                        : null,
+                    color: cs.onSurface
+                        .withOpacity(b['status'] == 'pending' ? .9 : .5)),
+              ),
             ),
-          ),
-      label('TEMPS · 7 DERNIERS JOURS'),
-      if (topTime.isEmpty)
-        Text('Aucune session loggée.',
-            style: TextStyle(color: cs.onSurface.withOpacity(.5)))
-      else
-        for (final e in topTime.take(8))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 3),
-            child: Text(
-                '${nameOf[e.key] ?? e.key} — ${fmtMin(e.value as num)}',
-                style: const TextStyle(fontSize: 13.5)),
-          ),
+        label('TEMPS · 7 DERNIERS JOURS'),
+        if (topTime.isEmpty)
+          Text('Aucune session loggée.',
+              style: TextStyle(color: cs.onSurface.withOpacity(.5)))
+        else
+          for (final e in topTime.take(8))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Text(
+                  '${nameOf[e.key] ?? e.key} — ${fmtMin(e.value as num)}',
+                  style: const TextStyle(fontSize: 13.5)),
+            ),
+      ],
       label('DOMAINES'),
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (final dom in ((d['domains'] as List?) ?? []))
@@ -676,10 +703,12 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
             visualDensity: VisualDensity.compact,
           ),
       ]),
-      const SizedBox(height: 8),
-      Text('💡 ${d['pendingIdeas']} idée(s) en attente dans sa boîte.',
-          style: TextStyle(
-              fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+      if (d['pendingIdeas'] != null) ...[
+        const SizedBox(height: 8),
+        Text('💡 ${d['pendingIdeas']} idée(s) en attente dans sa boîte.',
+            style: TextStyle(
+                fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+      ],
     ];
   }
 }
