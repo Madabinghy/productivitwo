@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
+import 'package:productivitwo_v1/web/web_actions_view.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -69,9 +70,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void initState() {
     super.initState();
     // Onglet « Arène » (ancienne gamification) supprimé avec la couche jeu.
-    // Gantt masqué par défaut → 3 onglets ; _load() recrée le controller si
-    // le flag Firestore dit que le Gantt est visible.
-    _mainTabs = TabController(length: 3, vsync: this, initialIndex: 0);
+    // Gantt masqué par défaut → 4 onglets (Focus/Actions/Organisation/ORION) ;
+    // _load() recrée le controller si le flag Firestore montre le Gantt.
+    _mainTabs = TabController(length: 4, vsync: this, initialIndex: 0);
     _load();
     // Sonde coach accrochée à l'ÉTAT D'AUTH (pas one-shot) : au chargement,
     // Firebase restaure la session APRÈS initState — une sonde immédiate
@@ -117,10 +118,10 @@ class _WebHomeScreenState extends State<WebHomeScreen>
       if (!mounted) return;
       final ganttVisible = results[8] as bool;
       if (ganttVisible != _ganttVisible) {
-        // Recrée le TabController (3 ⇄ 4 onglets), en gardant Focus visible.
+        // Recrée le TabController (4 ⇄ 5 onglets), en gardant Focus visible.
         final old = _mainTabs;
         _mainTabs = TabController(
-          length: ganttVisible ? 4 : 3,
+          length: ganttVisible ? 5 : 4,
           vsync: this,
           initialIndex: ganttVisible ? 1 : 0,
         );
@@ -273,6 +274,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 tabs: [
                   if (_ganttVisible) const Tab(text: 'Projets'),
                   const Tab(text: 'Focus'),
+                  const Tab(text: 'Actions'),
                   const Tab(text: 'Organisation'),
                   const Tab(text: 'ORION'),
                 ],
@@ -338,6 +340,15 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                         await _sync.saveProjectTasks(project.id, project.tasks);
                         _load();
                       },
+                    ),
+                    // Pendant web de l'onglet Actions mobile : GTD d'abord
+                    // (contextes, process, CRUD), Gantt intégré en 2nd plan.
+                    WebActionsView(
+                      projects: _projects,
+                      domains: _domains,
+                      activities: _activities,
+                      sync: _sync,
+                      onRefresh: _load,
                     ),
                     _ArchivesView(sync: _sync),
                     _OrionView(sync: _sync),
