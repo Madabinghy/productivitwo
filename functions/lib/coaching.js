@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.coachConsent = exports.coachApi = void 0;
+exports.coacheeApi = exports.coachConsent = exports.coachApi = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-admin/firestore");
 const admin = require("firebase-admin");
@@ -10,6 +10,19 @@ const execute_1 = require("./execute");
 const COACHING_STATUSES = ["prospect", "explo", "actif", "autonome", "termine"];
 const CONSENT_URL = "https://coachconsent-dzos75b65q-uc.a.run.app";
 const coachingRef = (id) => db_1.db.doc(`coaching/${id}`);
+function sharingOf(data) {
+    var _a;
+    const s = ((_a = data.sharing) !== null && _a !== void 0 ? _a : {});
+    return {
+        domainIds: Array.isArray(s.domainIds) ? s.domainIds.map(String) : [],
+        granularity: s.granularity === "detail" ? "detail" : "status",
+    };
+}
+/** Journal RGPD : chaque transition de consentement/périmètre est horodatée,
+ *  avec un snapshot du périmètre alors en vigueur. Jamais purgé. */
+async function logConsentEvent(coachingId, event, scope) {
+    await db_1.db.collection(`coaching/${coachingId}/consent_log`).doc((0, crypto_1.randomUUID)()).set(Object.assign({ event, actor: "coachee", at: firestore_1.FieldValue.serverTimestamp() }, (scope ? { scope } : {})));
+}
 /** L'appelant (ID token Firebase) est-il un coach actif ? → uid ou null. */
 async function coachUidFrom(authHeader) {
     var _a;
@@ -39,9 +52,13 @@ async function resolveCoacheeUid(docId, data) {
     }
 }
 /** Tableau de bord LECTURE d'un coaché : composé côté serveur, jamais de
- *  passe-plat des règles Firestore d'un user vers un autre. */
-async function buildDashboard(coacheeUid) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+ *  passe-plat des règles Firestore d'un user vers un autre. Minimisation :
+ *  seuls les domaines du périmètre apparaissent — nulle part ailleurs, même
+ *  pas agrégés ; le mode "status" omet temps, blocs et boîte à idées. */
+async function buildDashboard(coacheeUid, sharing) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    const detail = sharing.granularity === "detail";
+    const sharedDomains = new Set(sharing.domainIds);
     const now = new Date();
     const today = new Date(now.getTime());
     const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -59,7 +76,7 @@ async function buildDashboard(coacheeUid) {
     ]);
     const domains = domSnap.docs
         .map((d) => d.data())
-        .filter((v) => v.deleted !== true)
+        .filter((v) => v.deleted !== true && sharedDomains.has(String(v.id)))
         .map((v) => {
         var _a, _b;
         return ({
@@ -68,9 +85,16 @@ async function buildDashboard(coacheeUid) {
             definitionStatus: (_b = v.definitionStatus) !== null && _b !== void 0 ? _b : null,
         });
     });
+    // Domaine de CHAQUE activité (partagée ou non) — sert à écarter les blocs
+    // rattachés à un domaine hors périmètre.
+    const domainOfActivity = {};
+    for (const d of actSnap.docs) {
+        const v = d.data();
+        domainOfActivity[String(v.id)] = String((_a = v.domainId) !== null && _a !== void 0 ? _a : "");
+    }
     const activities = actSnap.docs
         .map((d) => d.data())
-        .filter((v) => v.deleted !== true)
+        .filter((v) => { var _a; return v.deleted !== true && sharedDomains.has(String((_a = v.domainId) !== null && _a !== void 0 ? _a : "")); })
         .map((v) => {
         var _a, _b, _c, _d;
         return ({
@@ -80,31 +104,42 @@ async function buildDashboard(coacheeUid) {
             habitTarget: (_d = v.habitTarget) !== null && _d !== void 0 ? _d : null,
         });
     });
-    // Minutes loggées sur 7 jours, par activité (sessions terminées).
+    const sharedActivityIds = new Set(activities.map((a) => String(a.id)));
+    // Minutes loggées sur 7 jours, par activité partagée (mode détail seulement).
     const minutesByActivity = {};
-    for (const d of (_a = sessSnap === null || sessSnap === void 0 ? void 0 : sessSnap.docs) !== null && _a !== void 0 ? _a : []) {
+    for (const d of (_b = sessSnap === null || sessSnap === void 0 ? void 0 : sessSnap.docs) !== null && _b !== void 0 ? _b : []) {
         const v = d.data();
-        const start = Date.parse(String((_b = v.startAt) !== null && _b !== void 0 ? _b : ""));
-        const end = Date.parse(String((_c = v.endAt) !== null && _c !== void 0 ? _c : ""));
+        const start = Date.parse(String((_c = v.startAt) !== null && _c !== void 0 ? _c : ""));
+        const end = Date.parse(String((_d = v.endAt) !== null && _d !== void 0 ? _d : ""));
         if (!isFinite(start) || !isFinite(end) || end <= start)
             continue;
-        const id = String((_d = v.activityId) !== null && _d !== void 0 ? _d : "");
+        const id = String((_e = v.activityId) !== null && _e !== void 0 ? _e : "");
+        if (!sharedActivityIds.has(id))
+            continue;
         minutesByActivity[id] =
-            ((_e = minutesByActivity[id]) !== null && _e !== void 0 ? _e : 0) + Math.round((end - start) / 60000);
+            ((_f = minutesByActivity[id]) !== null && _f !== void 0 ? _f : 0) + Math.round((end - start) / 60000);
     }
-    const blocks = ((_g = (_f = schedSnap.data()) === null || _f === void 0 ? void 0 : _f.blocks) !== null && _g !== void 0 ? _g : [])
+    // Blocs du jour (mode détail) — un bloc rattaché à une activité d'un domaine
+    // NON partagé est écarté ; les blocs sans rattachement domaine passent.
+    const blocks = ((_h = (_g = schedSnap.data()) === null || _g === void 0 ? void 0 : _g.blocks) !== null && _h !== void 0 ? _h : [])
         .filter((b) => b.status !== "deleted")
+        .filter((b) => {
+        var _a, _b;
+        const actId = String((_a = b.activityId) !== null && _a !== void 0 ? _a : "");
+        return actId === "" || sharedDomains.has((_b = domainOfActivity[actId]) !== null && _b !== void 0 ? _b : "");
+    })
         .map((b) => ({
         startTime: b.startTime, durationMin: b.durationMin,
         title: b.title, status: b.status, challenge: b.challenge === true,
     }));
     return {
         date: ymd,
+        granularity: sharing.granularity,
         domains,
         activities,
-        todayBlocks: blocks,
-        weekMinutesByActivity: minutesByActivity,
-        pendingIdeas: (_h = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _h !== void 0 ? _h : 0,
+        todayBlocks: detail ? blocks : null,
+        weekMinutesByActivity: detail ? minutesByActivity : null,
+        pendingIdeas: detail ? ((_j = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _j !== void 0 ? _j : 0) : null,
     };
 }
 // ── coachApi : POST + Authorization: Bearer <ID token Firebase du coach> ──────
@@ -139,12 +174,17 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
             const clients = snap.docs.map((d) => {
                 var _a, _b, _c, _d, _e;
                 const v = d.data();
+                const sharing = sharingOf(v);
                 return {
                     id: d.id, email: v.email, name: (_a = v.name) !== null && _a !== void 0 ? _a : null,
                     coacheeUid: (_b = v.coacheeUid) !== null && _b !== void 0 ? _b : null,
                     status: v.status, notes: (_c = v.notes) !== null && _c !== void 0 ? _c : "",
                     nextSession: (_d = v.nextSession) !== null && _d !== void 0 ? _d : null,
                     consent: (_e = v.consent) !== null && _e !== void 0 ? _e : "pending",
+                    sharing: {
+                        domainCount: sharing.domainIds.length,
+                        granularity: sharing.granularity,
+                    },
                 };
             });
             res.status(200).json({ clients });
@@ -266,7 +306,12 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 res.status(200).json({ ok: false, reason: "no_account" });
                 return;
             }
-            const dash = await buildDashboard(coacheeUid);
+            const sharing = sharingOf(doc);
+            if (sharing.domainIds.length === 0) {
+                res.status(200).json({ ok: false, reason: "no_scope" });
+                return;
+            }
+            const dash = await buildDashboard(coacheeUid, sharing);
             res.status(200).json({ ok: true, dashboard: dash });
             return;
         }
@@ -323,7 +368,7 @@ main{text-align:center;padding:32px;max-width:440px}h1{font-size:20px}p{color:#9
 .ok{background:#1a9e6e;color:#fff}.no{background:#2a3440;color:#e8eef2}</style>
 </head><body><main><h1>${title}</h1>${body}</main></body></html>`;
 exports.coachConsent = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     const token = String((_a = req.query.token) !== null && _a !== void 0 ? _a : "");
     const decision = String((_b = req.query.decision) !== null && _b !== void 0 ? _b : "");
     const fail = (msg) => res.status(400).send(consentPage("Lien invalide", `<p>${msg}</p>`));
@@ -348,31 +393,43 @@ exports.coachConsent = (0, https_1.onRequest)({ cors: true, invoker: "public" },
         // Pas de décision → page de choix (jamais d'action sur simple ouverture :
         // les scanners d'emails ouvrent les liens).
         if (decision !== "accept" && decision !== "refuse") {
-            res.status(200).send(consentPage("Accompagnement Productivitwo", `<p><b>${coachName}</b> souhaite t'accompagner dans Productivitwo :
-           il pourra <b>voir</b> tes domaines, routines, programme et temps
-           passés, et t'envoyer des messages dans l'app. Rien n'est modifié
-           sans toi, et tu peux révoquer cet accès à tout moment avec ce même
-           lien.</p>
+            res.status(200).send(consentPage("Accompagnement Productivitwo", `<p><b>${coachName}</b> souhaite t'accompagner dans Productivitwo.
+           Accepter ouvre le lien, mais <b>ne partage rien</b> : c'est toi qui
+           choisiras ensuite, dans l'app (Paramètres → Mon coach), quels
+           domaines de vie il peut voir et à quel niveau de détail. Rien n'est
+           modifié sans toi, et tu peux tout révoquer à n'importe quel moment.</p>
            <a class="btn ok" href="?token=${token}&decision=accept">J'accepte</a>
            <a class="btn no" href="?token=${token}&decision=refuse">Je refuse</a>`));
             return;
         }
         const granted = decision === "accept";
-        await coachingRef(tok.coachingId).set({
-            consent: granted ? "granted" : "revoked",
-            consentAt: firestore_1.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        // Un seul coach par coaché (V1.1) : refuse l'acceptation si un AUTRE
+        // lien est déjà actif pour cet email.
+        if (granted) {
+            const others = await db_1.db.collection("coaching")
+                .where("email", "==", d.email).where("consent", "==", "granted").get();
+            if (others.docs.some((o) => o.id !== tok.coachingId)) {
+                res.status(200).send(consentPage("Un coach à la fois", `<p>Tu as déjà un accompagnement actif avec un autre coach.
+             Révoque d'abord cet accès (depuis ton app : Paramètres → Mon
+             coach) avant d'en accepter un nouveau.</p>`));
+                return;
+            }
+        }
+        const prevConsent = String((_e = d.consent) !== null && _e !== void 0 ? _e : "pending");
+        await coachingRef(tok.coachingId).set(Object.assign({ consent: granted ? "granted" : "revoked", consentAt: firestore_1.FieldValue.serverTimestamp() }, (granted ? { sharing: { domainIds: [], granularity: "status" } } : {})), { merge: true });
+        await logConsentEvent(tok.coachingId, granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused", granted ? { domainIds: [], granularity: "status" } : sharingOf(d));
         // Lier l'uid si le compte existe déjà (sinon il se liera plus tard).
         try {
             const user = await admin.auth().getUserByEmail(d.email);
             await coachingRef(tok.coachingId)
                 .set({ coacheeUid: user.uid }, { merge: true });
         }
-        catch ( /* pas encore de compte */_e) { /* pas encore de compte */ }
+        catch ( /* pas encore de compte */_f) { /* pas encore de compte */ }
         res.status(200).send(consentPage(granted ? "C'est noté ✓" : "Accès refusé", granted
-            ? `<p>${coachName} peut maintenant suivre ton avancée et t'écrire
-             dans l'app. Tu peux révoquer cet accès à tout moment en rouvrant
-             ce lien.</p>
+            ? `<p>Le lien avec ${coachName} est actif — mais il ne voit encore
+             <b>rien</b> : ouvre ton app (Paramètres → Mon coach) pour choisir
+             les domaines à partager et le niveau de détail. Tu peux révoquer
+             cet accès à tout moment, depuis l'app ou en rouvrant ce lien.</p>
              <a class="btn no" href="?token=${token}&decision=refuse">Révoquer l'accès</a>`
             : `<p>Aucun accès n'est ouvert. Tu peux changer d'avis avec ce même
              lien.</p>
@@ -381,6 +438,116 @@ exports.coachConsent = (0, https_1.onRequest)({ cors: true, invoker: "public" },
     catch (e) {
         console.error("coachConsent error:", e);
         fail("Erreur serveur — réessaie dans un instant.");
+    }
+});
+// ── coacheeApi : le CÔTÉ COACHÉ du lien (US-1) ────────────────────────────────
+//
+// POST + Authorization: Bearer <ID token Firebase du coaché>.
+// Le coaché gère seul son partage depuis son app : voir le lien (getLink),
+// choisir domaines + granularité (updateSharing), tout couper (revoke).
+// La fiche racine reste server-only — jamais d'accès Firestore direct.
+/** Fiche coaching du coaché appelant : par coacheeUid, sinon par email
+ *  (compte créé après la fiche — on mémorise alors l'uid). Lien actif
+ *  d'abord, sinon la plus pertinente. */
+async function coacheeFiche(uid, email) {
+    let snap = await db_1.db.collection("coaching").where("coacheeUid", "==", uid).get();
+    if (snap.empty && email) {
+        snap = await db_1.db.collection("coaching")
+            .where("email", "==", email.toLowerCase()).get();
+    }
+    if (snap.empty)
+        return null;
+    const rank = (v) => v.consent === "granted" ? 0 : v.consent === "pending" ? 1 : 2;
+    const doc = [...snap.docs].sort((a, b) => rank(a.data()) - rank(b.data()))[0];
+    if (doc.data().coacheeUid !== uid) {
+        await doc.ref.set({ coacheeUid: uid }, { merge: true });
+    }
+    return { id: doc.id, data: doc.data() };
+}
+exports.coacheeApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
+    var _a, _b, _c, _d;
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+    if (req.method !== "POST") {
+        res.status(405).json({ error: "Method Not Allowed" });
+        return;
+    }
+    const authHeader = (_a = req.headers.authorization) !== null && _a !== void 0 ? _a : "";
+    if (!authHeader.startsWith("Bearer ")) {
+        res.status(401).json({ error: "Authorization requis" });
+        return;
+    }
+    let uid;
+    let email;
+    try {
+        const decoded = await admin.auth().verifyIdToken(authHeader.slice(7).trim());
+        uid = decoded.uid;
+        email = (_b = decoded.email) !== null && _b !== void 0 ? _b : "";
+    }
+    catch (_e) {
+        res.status(401).json({ error: "Token invalide ou expiré" });
+        return;
+    }
+    const { action, domainIds, granularity } = req.body;
+    try {
+        const fiche = await coacheeFiche(uid, email);
+        if (action === "getLink") {
+            if (!fiche) {
+                res.status(200).json({ linked: false });
+                return;
+            }
+            const coachName = (_c = (await admin.auth().getUser(fiche.data.coachUid))
+                .displayName) !== null && _c !== void 0 ? _c : "Ton coach";
+            res.status(200).json({
+                linked: true,
+                coachName,
+                consent: (_d = fiche.data.consent) !== null && _d !== void 0 ? _d : "pending",
+                sharing: sharingOf(fiche.data),
+            });
+            return;
+        }
+        if (action === "updateSharing") {
+            if (!fiche || fiche.data.consent !== "granted") {
+                res.status(400).json({ error: "Aucun lien coach actif" });
+                return;
+            }
+            const gran = granularity === "detail" ? "detail" : "status";
+            const wanted = Array.isArray(domainIds) ? domainIds.map(String) : [];
+            // Uniquement des domaines existants (non supprimés) du coaché.
+            const domSnap = await db_1.db.collection(`users/${uid}/domains`).get();
+            const valid = new Set(domSnap.docs
+                .map((d) => d.data())
+                .filter((v) => v.deleted !== true)
+                .map((v) => String(v.id)));
+            const sharing = {
+                domainIds: [...new Set(wanted.filter((id) => valid.has(id)))],
+                granularity: gran,
+            };
+            await coachingRef(fiche.id).set({ sharing, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+            await logConsentEvent(fiche.id, "sharing_updated", sharing);
+            res.status(200).json({ ok: true, sharing });
+            return;
+        }
+        if (action === "revoke") {
+            if (!fiche) {
+                res.status(400).json({ error: "Aucun lien coach" });
+                return;
+            }
+            await coachingRef(fiche.id).set({
+                consent: "revoked",
+                consentAt: firestore_1.FieldValue.serverTimestamp(),
+            }, { merge: true });
+            await logConsentEvent(fiche.id, "revoked", sharingOf(fiche.data));
+            res.status(200).json({ ok: true });
+            return;
+        }
+        res.status(400).json({ error: `action inconnue : ${action}` });
+    }
+    catch (e) {
+        console.error("coacheeApi error:", e);
+        res.status(500).json({ error: "Erreur serveur coaching" });
     }
 });
 //# sourceMappingURL=coaching.js.map

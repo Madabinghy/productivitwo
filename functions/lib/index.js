@@ -11,7 +11,7 @@ var __rest = (this && this.__rest) || function (s, e) {
     return t;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.coachConsent = exports.coachApi = exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
+exports.coacheeApi = exports.coachConsent = exports.coachApi = exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.nowAssist = exports.pushGantt = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -4438,4 +4438,5 @@ Object.defineProperty(exports, "gcalOnScheduleWrite", { enumerable: true, get: f
 var coaching_1 = require("./coaching");
 Object.defineProperty(exports, "coachApi", { enumerable: true, get: function () { return coaching_1.coachApi; } });
 Object.defineProperty(exports, "coachConsent", { enumerable: true, get: function () { return coaching_1.coachConsent; } });
+Object.defineProperty(exports, "coacheeApi", { enumerable: true, get: function () { return coaching_1.coacheeApi; } });
 //# sourceMappingURL=index.js.map
