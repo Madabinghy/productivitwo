@@ -33,6 +33,37 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 
 ---
 
+## 🎯 Cap produit & business (2026-07) — lire avant tout développement
+
+**Référence** : business plan v1.0 → résumé dans `docs/VISION.md` ; spec prioritaire dans
+`docs/specs/espace-coach-v1.1.md`.
+
+**Le pari** : le problème n°1 des apps de productivité est l'abandon (~72 % de churn annuel B2C).
+Le levier anti-churn est la redevabilité humaine → Productivitwo est l'app quotidienne du coaché,
+avec une couche de visibilité pour le coach (**Contrat d'Engagement partagé** : objectifs +
+engagements hebdo formalisés en séance, mesurés automatiquement, cockpit coach avec alertes).
+Croisement vide sur le marché francophone.
+
+**Séquencement (ne pas développer en avance de phase)** :
+1. **Phase 1 (→ oct. 2026)** : coaching augmenté — 5 coachés actifs au 01/10/2026.
+2. **Phase 2 (6-18 mois)** : cohortes 8-12 semaines.
+3. **Phase 3 (12-36 mois)** : abonnement B2C (essai 14 j, PAS de freemium), puis licence B2B coachs.
+
+**Priorités de dev, dans cet ordre strict** :
+1. Finaliser la **V1** (échéance 17/08/2026) — périmètre GELÉ, aucune nouvelle feature avant.
+2. **Espace Coach V1.1** (`docs/specs/espace-coach-v1.1.md`) : invitation/consentement →
+   cockpit multi-coachés → rapport de pré-séance → message coach via ORION → alerte décrochage.
+3. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
+
+**Règles de décision** :
+- Privilégier ce qui renforce la boucle coaché → données d'exécution → coach.
+- Zéro double saisie : toute donnée montrée au coach vient de l'usage normal de l'app.
+- Partage coach-coaché : consentement explicite, granulaire, révocable (RGPD par conception).
+- Interface 100 % français ; cible particuliers + entrepreneurs/indépendants francophones.
+- Pricing cible : app 9,90 €/mois ou 79 €/an · app+coach 49-69 €/mois · licence coach 29-39 €/mois.
+
+---
+
 ## Workflow PR (important)
 
 L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussitôt
@@ -362,9 +393,3 @@ actions: [
   fiches tâche web (`gantt_screen.dart`) et mobile (`project_sheet.dart`). L'IA (Orion
   autonome) **propose**, l'utilisateur dispose ; le chemin MCP/conversation à la demande
   garde le write direct.
-
----
-
-## Backlog mémorisé (demandes user, à faire plus tard)
-
-- **Export / import des données** (noté 2026-07-19) : demandé par l'utilisateur, reporté volontairement — à cadrer avant d'implémenter (portée : backup complet JSON ? migration ? partage ?).
