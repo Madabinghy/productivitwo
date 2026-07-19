@@ -1025,17 +1025,31 @@ class _ActionsViewState extends State<ActionsView> {
 /// Liste de courses du menu (artefact `weekly_menu`), cochable — affichée
 /// dans l'onglet Actions quand le contexte @courses est actif. L'état coché
 /// vit sur l'artefact (partagé avec la fiche menu de l'Accueil).
-class _CoursesSection extends StatelessWidget {
+class _CoursesSection extends StatefulWidget {
   final FirestoreSync sync;
   const _CoursesSection({required this.sync});
+
+  @override
+  State<_CoursesSection> createState() => _CoursesSectionState();
+}
+
+class _CoursesSectionState extends State<_CoursesSection> {
+  // Stream créé UNE FOIS (même leçon que ArtifactShortcuts : un stream neuf
+  // par build = StreamBuilder qui repart de zéro à chaque rebuild du parent).
+  late final Stream<List<Artifact>> _stream =
+      widget.sync.streamArtifacts();
+  // Partagé entre recréations du State (liste scrollée) — même leçon que
+  // ObjectivesCard/ArtifactShortcuts : pas de repli transitoire au retour.
+  static List<Artifact> _last = const [];
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return StreamBuilder<List<Artifact>>(
-      stream: sync.streamArtifacts(),
+      stream: _stream,
       builder: (ctx, snap) {
-        final menus = (snap.data ?? const <Artifact>[])
+        if (snap.hasData) _last = snap.data!;
+        final menus = _last
             .where((a) =>
                 !a.deleted &&
                 a.kind == 'weekly_menu' &&
@@ -1075,7 +1089,7 @@ class _CoursesSection extends StatelessWidget {
                       selected: s.checked,
                       onSelected: (v) {
                         s.checked = v;
-                        sync.saveArtifact(m);
+                        widget.sync.saveArtifact(m);
                       },
                       label: Text(
                           s.qty.isEmpty ? s.label : '${s.label} ${s.qty}',
