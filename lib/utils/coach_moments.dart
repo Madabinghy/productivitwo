@@ -171,6 +171,9 @@ CoachMoment computeCoachMoment(
   bool driftSnoozed = false,
   ChallengeProposal? challenge,
   GanttMicroAction? ganttAction,
+  // Demain a déjà un programme (posé ce soir) : la carte du soir le
+  // RECONNAÎT au lieu de re-proposer « faire le point » comme si de rien.
+  bool tomorrowPlanned = false,
 }) {
   final minutes = now.hour * 60 + now.minute;
   // Défi ORION proactif : une sollicitation par jour maximum — passé
@@ -275,7 +278,7 @@ CoachMoment computeCoachMoment(
     // semaine se juge avant de se clore. Une fois LU, le check-in reprend.
     clock = (now.weekday == DateTime.sunday && unreadReport)
         ? _weeklyTeaser(weeklyReport)
-        : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
+        : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt, tomorrowPlanned: tomorrowPlanned);
   } else if (minutes >= 14 * 60) {
     clock = (driftSnoozed ? null : _driftMoment(now, st, blocks, sessionsToday)) ??
         _idealHourMoment(now, st, blocks) ??
@@ -307,7 +310,7 @@ CoachMoment computeCoachMoment(
         return _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
       case CoachMomentType.evening:
-        return _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt);
+        return _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt, tomorrowPlanned: tomorrowPlanned);
       default:
         break;
     }
@@ -1236,9 +1239,27 @@ CoachMoment _weeklyTeaser(WeeklyReport r) {
 }
 
 CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals,
-    {DateTime? reviewedAt}) {
+    {DateTime? reviewedAt, bool tomorrowPlanned = false}) {
   final pendingPreps =
       blocks.where((b) => b.isPrep && b.status == 'pending').length;
+  // Demain déjà POSÉ sans point formel (le user a planifié directement) :
+  // ne pas re-proposer « faire le point » comme si rien ne s'était passé
+  // (constaté sur build) — la carte le reconnaît, le point reste accessible
+  // sans pression pour qui veut clôturer aujourd'hui.
+  if (reviewedAt == null && tomorrowPlanned) {
+    return CoachMoment(
+      type: CoachMomentType.evening,
+      tagLabel: 'ORION · DEMAIN EST POSÉ',
+      message: pendingPreps > 0
+          ? 'Demain est déjà planifié 👌 — reste $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher. Et si tu veux clôturer aujourd\'hui, le point est là.'
+          : 'Demain est déjà planifié 👌. Si tu veux clôturer aujourd\'hui (ce qui a tenu, ce qui a sauté), le point est là — sinon bonne soirée.',
+      stats: vitals,
+      actions: const [
+        CoachAction('Faire le point', CoachActionKind.openDayReview),
+      ],
+      tone: CoachTone.positive,
+    );
+  }
   // Point déjà fait (fait reviewedAt) : la carte ne re-propose pas ce qui est
   // fait — clôture calme, la soirée est à toi. « Revoir » reste accessible.
   if (reviewedAt != null) {
