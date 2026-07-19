@@ -10,6 +10,18 @@ class _Entry {
 }
 
 const _changelog = [
+  _Entry('6.44', '19 juillet 2026', [
+    (Icons.checklist, 'GTD : nouvel onglet « Actions » (mobile + web) — projet → action → contexte (@maison, @bureau…), triage des captures avec « Process », prochaines actions chaînables, pause projet. Le Gantt passe en second plan'),
+    (Icons.flag_outlined, 'Objectifs : définis un objectif guidé (SMART) lié à un projet, avec engagements hebdo chiffrés (temps d\'activités, routines) et statut « en bonne voie » calculé chaque semaine — carte Accueil, section web, et ORION en tient compte'),
+    (Icons.calendar_month, 'Aujourd\'hui : timeline 24 h éditable façon Calendar — trait « maintenant », heure/durée exactes au tap, couche « réalisé » de tes sessions, toggle liste ⇄ agenda, « Reporter au lendemain » qui copie vraiment le bloc'),
+    (Icons.sync, 'Google Agenda natif : ton programme se synchronise tout seul et tes rendez-vous réels apparaissent en blocs miroirs dans la journée (édition bidirectionnelle en test)'),
+    (Icons.speed, 'Jauge verticale du jour (façon Waze) : ton temps loggué aux couleurs de tes domaines, avec la jauge d\'hier juste à côté pour comparer d\'un coup d\'œil'),
+    (Icons.playlist_play, 'Déroulés réutilisables : crée le déroulé d\'une séance (étapes guidées), programme-le, et laisse le player te guider étape par étape dans Maintenant'),
+    (Icons.smart_toy_outlined, 'Coach ORION plus fin : check-in du soir, défis 🔥 datés depuis ta boîte à idées, guide « Que souhaites-tu faire ? », heure de lever trackée (fini les blocs proposés à 3 h du matin), report avec raison, micro-routines 1 min, routines comptées − / +'),
+    (Icons.school_outlined, 'Accompagnement humain : ton coach peut te suivre dans l\'app — et c\'est TOI qui choisis quels domaines il voit et à quel niveau de détail (rien n\'est partagé par défaut, révocable à tout moment)'),
+    (Icons.restaurant_menu, 'Programmes déterministes : menu de la semaine au fil de l\'eau + liste de courses cochable, plan sport à séances récurrentes — dans « Mes programmes » sur l\'Accueil'),
+    (Icons.bolt, 'Accueil plus fluide : fini les saccades au scroll et le pop-in des cartes'),
+  ]),
   _Entry('6.43', '6 juillet 2026', [
     (Icons.center_focus_strong, 'Onglet « Maintenant » repensé : une seule carte focus — le bloc en cours (ou le prochain) avec ▶, ✓ et sa checklist cochable (sous-actions de tâche, actions d\'activité, checklist de routine). Le programme complet reste dans Aujourd\'hui'),
     (Icons.checklist, 'Pendant un chrono/minuteur : la checklist de la routine liée s\'affiche aussi, et le programme du jour ne s\'affiche plus (focus pur, avec un rappel « À suivre »)'),
