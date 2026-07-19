@@ -1054,6 +1054,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: const Text('Nouvelle action'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1784,6 +1785,7 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         final result = await showDialog<String>(
                                           context: context,
                                           builder: (c) => AlertDialog(
+                                            scrollable: true,
                                             title: const Text('Modifier l\'action'),
                                             content: Column(
                                               mainAxisSize: MainAxisSize.min,

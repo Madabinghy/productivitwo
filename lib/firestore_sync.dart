@@ -2439,20 +2439,20 @@ class FirestoreSync {
     if (uid == null) return;
     final t = title.trim();
     if (t.isEmpty) return;
-    final snap = await _col('activities').doc(activityId).get();
-    if (!snap.exists) return;
-    final data = Map<String, dynamic>.from(snap.data() as Map);
-    final own = ((data['ownActions'] as List?) ?? const [])
-        .map((a) => Map<String, dynamic>.from(a as Map))
-        .toList();
     final multi = contexts ?? const <String>[];
-    own.add(TaskAction(
-      title: t,
-      linkedActivityId: activityId,
-      context: multi.isNotEmpty ? multi.first : context,
-      contexts: multi,
-    ).toJson());
-    await _col('activities').doc(activityId).update({'ownActions': own});
+    // arrayUnion SANS lecture préalable : le get() bloquait hors-ligne
+    // (la création d'action simple moulinait sans réseau — constaté sur
+    // build). L'écriture, elle, est mise en file par le SDK.
+    await _col('activities').doc(activityId).update({
+      'ownActions': FieldValue.arrayUnion([
+        TaskAction(
+          title: t,
+          linkedActivityId: activityId,
+          context: multi.isNotEmpty ? multi.first : context,
+          contexts: multi,
+        ).toJson()
+      ]),
+    });
   }
 
   /// Remplace les ownActions d'une activité (cocher/décocher une action

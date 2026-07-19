@@ -1709,7 +1709,7 @@ class _FocusViewState extends State<FocusView> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(it.action.title,
-                              maxLines: 1,
+                              maxLines: 3,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                   fontSize: 13.5,
@@ -2343,16 +2343,8 @@ class _FocusViewState extends State<FocusView> {
             // tourner sur l'activité pendant qu'on égrène.
             ..._possibleNowSection(cs, color, running),
 
-            if (task == null) ...[
-              const SizedBox(height: 24),
-              Center(
-                child: TextButton.icon(
-                  icon: const Icon(Icons.account_tree_outlined, size: 16),
-                  label: const Text('Lier à une tâche'),
-                  onPressed: () => _showTaskPicker(context, running),
-                ),
-              ),
-            ],
+            // « Lier à une tâche » retiré (pivot GTD : le lien passe par les
+            // actions/projets liés à l'activité — « Possible maintenant »).
 
             // ── Le reste de Maintenant, VISIBLE pendant le chrono : carte
             // ORION + bloc proposé — on consulte / on enchaîne sans arrêter.
@@ -2373,7 +2365,7 @@ class _FocusViewState extends State<FocusView> {
   // actions de la tâche focus sont exclues (déjà dans le déroulé).
 
   List<({TaskAction action, Project project, ProjectTask task})>
-      _possibleNowItems(Activity running) {
+      _possibleNowItems(Activity running, {bool filtered = true}) {
     final active = widget.state.nowContexts.toSet();
     final focusTaskId = widget.focusTask?.id;
     final out = <({TaskAction action, Project project, ProjectTask task})>[];
@@ -2388,7 +2380,8 @@ class _FocusViewState extends State<FocusView> {
           if (a.done) continue;
           final effective = a.linkedActivityId ?? p.linkedActivityId;
           if (effective != running.id) continue;
-          if (active.isNotEmpty &&
+          if (filtered &&
+              active.isNotEmpty &&
               a.allContexts.isNotEmpty &&
               !a.allContexts.any(active.contains)) {
             continue;
@@ -2402,9 +2395,15 @@ class _FocusViewState extends State<FocusView> {
 
   List<Widget> _possibleNowSection(
       ColorScheme cs, Color color, Activity running) {
+    // Tous les candidats de l'activité (non filtrés) → chips de contextes
+    // ajustables SANS quitter le chrono ; la liste applique le filtre.
+    final all = _possibleNowItems(running, filtered: false);
+    if (all.isEmpty) return const [];
     final items = _possibleNowItems(running);
-    if (items.isEmpty) return const [];
-    final active = widget.state.nowContexts.toList()..sort();
+    final ctxs = <String>{for (final it in all) ...it.action.allContexts}
+        .toList()
+      ..sort();
+    final active = widget.state.nowContexts.toSet();
     return [
       const SizedBox(height: 26),
       Row(children: [
@@ -2417,19 +2416,40 @@ class _FocusViewState extends State<FocusView> {
                 fontWeight: FontWeight.w800,
                 letterSpacing: .8,
                 color: cs.onSurface.withOpacity(.45))),
-        if (active.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(active.join(' '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: cs.primary.withOpacity(.7))),
-          ),
-        ],
       ]),
+      if (ctxs.isNotEmpty) ...[
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final c in ctxs)
+              FilterChip(
+                selected: active.contains(c),
+                onSelected: (v) {
+                  v
+                      ? widget.state.nowContexts.add(c)
+                      : widget.state.nowContexts.remove(c);
+                  widget.logic.onChange();
+                  setState(() {});
+                },
+                label: Text(c),
+                labelStyle: const TextStyle(fontSize: 11.5),
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+      ],
+      if (items.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+              'Rien dans ces contextes — élargis le filtre ci-dessus.',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: cs.onSurface.withOpacity(.5))),
+        ),
       const SizedBox(height: 8),
       for (final it in items.take(8))
         Container(
@@ -2458,7 +2478,7 @@ class _FocusViewState extends State<FocusView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(it.action.title,
-                        maxLines: 2,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 13.5, fontWeight: FontWeight.w600)),
@@ -2790,86 +2810,6 @@ class _FocusViewState extends State<FocusView> {
     await _sync.saveProjectTasks(project.id, project.tasks);
   }
 
-  // ── Flow démarrage ───────────────────────────────────────────────────────────
-
-  Future<void> _showTaskPicker(BuildContext context, Activity activity) async {
-    final result = await _pickTask(context, activity);
-    if (result == null || !mounted) return;
-    widget.onStartTimer(activity, result.$1, result.$2);
-  }
-
-  Future<(Project, ProjectTask)?> _pickTask(
-      BuildContext context, Activity activity) async {
-    // Tâches actives aujourd'hui du même domaine
-    List<Project> projects = [];
-    try {
-      projects = await _sync.fetchProjects();
-    } catch (_) {}
-
-    final today = DateTime.now();
-    final todayD = DateTime(today.year, today.month, today.day);
-
-    final pairs = <(Project, ProjectTask)>[];
-    for (final p in projects) {
-      if (p.status == 'archived') continue;
-      if (p.domainId != activity.domainId) continue;
-      for (final t in p.tasks) {
-        if (t.status == 'done' || t.status == 'skipped') continue;
-        if (t.startDate.isAfter(todayD)) continue;
-        pairs.add((p, t));
-      }
-    }
-
-    if (!mounted) return null;
-
-    return showModalBottomSheet<(Project, ProjectTask)>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: Text('Sur quelle tâche ?',
-                  style:
-                      TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            ),
-            if (pairs.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Text(
-                  'Aucune tâche active aujourd\'hui dans ce domaine.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color:
-                          Theme.of(ctx).colorScheme.onSurface.withOpacity(.4)),
-                ),
-              ),
-            for (final pair in pairs)
-              ListTile(
-                title: Text(pair.$2.title),
-                subtitle: Text(pair.$1.title,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(ctx)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(.45))),
-                onTap: () => Navigator.pop(ctx, pair),
-              ),
-            ListTile(
-              leading: const Icon(Icons.skip_next_outlined),
-              title: const Text('Passer — sans tâche'),
-              onTap: () => Navigator.pop(ctx, null),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 // ── Anneau de décompte (mode minuteur) ───────────────────────────────────────

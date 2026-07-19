@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -180,12 +182,17 @@ class _ActionsViewState extends State<ActionsView> {
             added++;
             ctrl.clear();
           });
-          await _sync.saveProjectTasks(p.id, p.tasks);
+          // Optimiste : pas d'await sur l'ack serveur (hors-ligne il
+          // n'arrive jamais — l'ajout chaînable resterait bloqué).
+          unawaited(_sync.saveProjectTasks(p.id, p.tasks));
           widget.logic.onChange();
           if (mounted) setState(() {});
         }
 
         return AlertDialog(
+          // Beaucoup de contextes : sans scroll, les chips passaient SOUS
+          // les boutons Annuler/Ajouter (constaté sur build).
+          scrollable: true,
           title: Text(followUp
               ? 'Et la prochaine action ?'
               : 'Prochaine action'),
@@ -986,7 +993,7 @@ class _ActionsViewState extends State<ActionsView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(e.action.title,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w600)),
