@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -15,14 +15,18 @@ Future<void> showNewProjectSheet(
   required List<Domain> domains,
   required VoidCallback onCreated,
   required FirestoreSync sync,
+  List<Activity> activities = const [],
 }) async {
   await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    builder: (_) =>
-        _NewProjectSheet(domains: domains, onCreated: onCreated, sync: sync),
+    builder: (_) => _NewProjectSheet(
+        domains: domains,
+        onCreated: onCreated,
+        sync: sync,
+        activities: activities),
   );
 }
 
@@ -30,9 +34,13 @@ class _NewProjectSheet extends StatefulWidget {
   final List<Domain> domains;
   final VoidCallback onCreated;
   final FirestoreSync sync;
+  final List<Activity> activities;
 
   const _NewProjectSheet(
-      {required this.domains, required this.onCreated, required this.sync});
+      {required this.domains,
+      required this.onCreated,
+      required this.sync,
+      this.activities = const []});
 
   @override
   State<_NewProjectSheet> createState() => _NewProjectSheetState();
@@ -44,10 +52,9 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   final _titleFocus = FocusNode();
   List<String> _actionContexts = []; // contextes GTD de la première action
   String? _selectedDomainId;
+  String? _linkedActivityId; // activité-temps liée (chrono hérité)
   DateTime _endDate = DateTime.now().add(const Duration(days: 30));
   int? _presetDays = 30;
-  bool _loading = false;
-  String? _error;
 
   static const _accent = Color(0xFF7E57C2); // identité ORION (deepPurple 400)
 
@@ -88,76 +95,66 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
   }
 
   /// Création DÉTERMINISTE : nom + domaine + échéance + première action GTD
-  /// (optionnelle, avec son contexte). Pas de LLM — les actions suivantes sont
-  /// définies par l'utilisateur au fil de l'eau (fiche tâche).
-  Future<void> _submit() async {
+  /// (optionnelle, avec ses contextes) + activité liée (chrono hérité).
+  /// Écriture OPTIMISTE : Firestore met en file hors-ligne — attendre l'ack
+  /// serveur faisait mouliner la création sans réseau (constaté sur build).
+  void _submit() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-      final firstAction = _firstActionCtrl.text.trim();
-      final now = DateTime.now();
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final firstAction = _firstActionCtrl.text.trim();
+    final now = DateTime.now();
 
-      final phases = <ProjectPhase>[];
-      final tasks = <ProjectTask>[];
-      if (firstAction.isNotEmpty) {
-        phases.add(ProjectPhase(
-          id: 'phase-1',
-          label: 'Réalisation',
-          startDate: now,
-          endDate: _endDate,
-        ));
-        tasks.add(ProjectTask(
-          title: firstAction,
-          phaseId: 'phase-1',
-          startDate: now,
-          endDate: now.add(const Duration(days: 3)),
-          actions: [
-            TaskAction(
-              title: firstAction,
-              context:
-                  _actionContexts.isEmpty ? null : _actionContexts.first,
-              contexts: List.of(_actionContexts),
-            ),
-          ],
-        ));
-      }
-
-      final project = Project(
-        title: title,
-        domainId: _selectedDomainId,
+    final phases = <ProjectPhase>[];
+    final tasks = <ProjectTask>[];
+    if (firstAction.isNotEmpty) {
+      phases.add(ProjectPhase(
+        id: 'phase-1',
+        label: 'Réalisation',
         startDate: now,
         endDate: _endDate,
-        phases: phases,
-        tasks: tasks,
-        createdBy: uid,
-        source: 'user',
-        sourceType: 'manual',
-        // 'active' direct : le flux est déterministe et saisi par le user —
-        // 'draft' (héritage du flux LLM à valider) le rendrait invisible dans
-        // les listes GTD (Actions / Prochaines actions filtrent sur active).
-        status: 'active',
-      );
-      await widget.sync.saveProject(project);
-      if (!mounted) return;
-      Navigator.pop(context);
-      widget.onCreated();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(firstAction.isEmpty
-            ? 'Projet créé — ajoute tes actions au fil de l\'eau.'
-            : 'Projet créé — première action : « $firstAction »'),
-        duration: const Duration(seconds: 3),
       ));
-    } catch (e) {
-      setState(() {
-        _error = _friendlyError(e);
-        _loading = false;
-      });
+      tasks.add(ProjectTask(
+        title: firstAction,
+        phaseId: 'phase-1',
+        startDate: now,
+        endDate: now.add(const Duration(days: 3)),
+        actions: [
+          TaskAction(
+            title: firstAction,
+            context:
+                _actionContexts.isEmpty ? null : _actionContexts.first,
+            contexts: List.of(_actionContexts),
+          ),
+        ],
+      ));
     }
+
+    final project = Project(
+      title: title,
+      domainId: _selectedDomainId,
+      startDate: now,
+      endDate: _endDate,
+      phases: phases,
+      tasks: tasks,
+      createdBy: uid,
+      source: 'user',
+      sourceType: 'manual',
+      linkedActivityId: _linkedActivityId,
+      // 'active' direct : le flux est déterministe et saisi par le user —
+      // 'draft' (héritage du flux LLM à valider) le rendrait invisible dans
+      // les listes GTD (Actions / Prochaines actions filtrent sur active).
+      status: 'active',
+    );
+    unawaited(widget.sync.saveProject(project));
+    Navigator.pop(context);
+    widget.onCreated();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(firstAction.isEmpty
+          ? 'Projet créé — ajoute tes actions au fil de l\'eau.'
+          : 'Projet créé — première action : « $firstAction »'),
+      duration: const Duration(seconds: 3),
+    ));
   }
 
   InputDecoration _fieldDecoration(BuildContext context,
@@ -229,6 +226,50 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
           ),
         );
       }).toList(),
+    );
+  }
+
+  /// Activités-temps candidates au chrono du projet — même domaine d'abord.
+  Widget _activityChips(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final acts = widget.activities.where((a) => a.type == 'time').toList()
+      ..sort((a, b) {
+        final ad = a.domainId == _selectedDomainId ? 0 : 1;
+        final bd = b.domainId == _selectedDomainId ? 0 : 1;
+        return ad != bd ? ad - bd : a.name.compareTo(b.name);
+      });
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final a in acts.take(8))
+          ChoiceChip(
+            selected: _linkedActivityId == a.id,
+            onSelected: (_) => setState(() => _linkedActivityId =
+                _linkedActivityId == a.id ? null : a.id),
+            showCheckmark: false,
+            label: Text(a.name),
+            labelStyle: TextStyle(
+              fontSize: 13,
+              fontWeight: _linkedActivityId == a.id
+                  ? FontWeight.w600
+                  : FontWeight.w500,
+              color: _linkedActivityId == a.id
+                  ? _accent
+                  : cs.onSurface.withOpacity(.7),
+            ),
+            selectedColor: _accent.withOpacity(.14),
+            backgroundColor: cs.surfaceVariant.withOpacity(.35),
+            side: BorderSide(
+              color: _linkedActivityId == a.id
+                  ? _accent.withOpacity(.55)
+                  : Colors.transparent,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+      ],
     );
   }
 
@@ -428,30 +469,12 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                           setState(() => _actionContexts = list),
                     ),
 
-                    // Erreur
-                    if (_error != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: cs.errorContainer,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(Icons.error_outline,
-                                size: 16, color: cs.onErrorContainer),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(_error!,
-                                  style: TextStyle(
-                                      color: cs.onErrorContainer,
-                                      fontSize: 13)),
-                            ),
-                          ],
-                        ),
-                      ),
+                    // Activité liée (chrono hérité par les actions du projet)
+                    if (widget.activities
+                        .any((a) => a.type == 'time')) ...[
+                      const SizedBox(height: 20),
+                      _sectionLabel(context, 'Activité liée (chrono)'),
+                      _activityChips(context),
                     ],
                     const SizedBox(height: 22),
 
@@ -459,17 +482,11 @@ class _NewProjectSheetState extends State<_NewProjectSheet> {
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(
-                        onPressed: (_loading || !canSubmit) ? null : _submit,
-                        icon: _loading
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.flag, size: 18),
-                        label: Text(
-                          _loading ? 'Création…' : 'Créer le projet',
-                          style: const TextStyle(
+                        onPressed: !canSubmit ? null : _submit,
+                        icon: const Icon(Icons.flag, size: 18),
+                        label: const Text(
+                          'Créer le projet',
+                          style: TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600),
                         ),
                         style: FilledButton.styleFrom(
@@ -497,21 +514,3 @@ String _monthName(int month) => const [
       '', 'jan', 'fév', 'mar', 'avr', 'mai', 'juin',
       'juil', 'août', 'sep', 'oct', 'nov', 'déc'
     ][month];
-
-String _friendlyError(Object e) {
-  final s = e.toString();
-  if (e is SocketException ||
-      e is HandshakeException ||
-      s.contains('SocketException') ||
-      s.contains('Connection refused') ||
-      s.contains('Failed host lookup')) {
-    return 'Connexion impossible — vérifie ta connexion internet.';
-  }
-  if (s.contains('TimeoutException') || s.contains('timed out')) {
-    return 'Délai dépassé — ORION met parfois quelques secondes, réessaie.';
-  }
-  if (s.contains('429') || s.contains('Limite journalière')) {
-    return s.contains(':') ? s.split(':').last.trim() : 'Limite journalière atteinte.';
-  }
-  return 'Erreur : $s';
-}

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -44,6 +46,25 @@ class _ActionsViewState extends State<ActionsView> {
   final _sync = FirestoreSync();
 
   AppState get _state => widget.logic.state;
+
+  // À l'écoute d'AppLogic : un contexte ajouté depuis une fiche/dialog doit
+  // apparaître SANS changer d'onglet (constaté sur build — la vue n'était
+  // rafraîchie que par les rebuilds du parent).
+  @override
+  void initState() {
+    super.initState();
+    widget.logic.addListener(_onLogicChange);
+  }
+
+  @override
+  void dispose() {
+    widget.logic.removeListener(_onLogicChange);
+    super.dispose();
+  }
+
+  void _onLogicChange() {
+    if (mounted) setState(() {});
+  }
 
   // ── Dérivation : actions en attente, groupées par porteur ──────────────────
 
@@ -180,12 +201,17 @@ class _ActionsViewState extends State<ActionsView> {
             added++;
             ctrl.clear();
           });
-          await _sync.saveProjectTasks(p.id, p.tasks);
+          // Optimiste : pas d'await sur l'ack serveur (hors-ligne il
+          // n'arrive jamais — l'ajout chaînable resterait bloqué).
+          unawaited(_sync.saveProjectTasks(p.id, p.tasks));
           widget.logic.onChange();
           if (mounted) setState(() {});
         }
 
         return AlertDialog(
+          // Beaucoup de contextes : sans scroll, les chips passaient SOUS
+          // les boutons Annuler/Ajouter (constaté sur build).
+          scrollable: true,
           title: Text(followUp
               ? 'Et la prochaine action ?'
               : 'Prochaine action'),
@@ -407,6 +433,14 @@ class _ActionsViewState extends State<ActionsView> {
                     icon: const Icon(Icons.open_in_new, size: 15),
                     label: const Text('Fiche tâche'),
                   ),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx, false);
+                    _scheduleAction(e);
+                  },
+                  icon: const Icon(Icons.event_outlined, size: 15),
+                  label: const Text('Programmer'),
+                ),
                 const Spacer(),
                 FilledButton(
                   onPressed: () => Navigator.pop(ctx, true),
@@ -482,6 +516,153 @@ class _ActionsViewState extends State<ActionsView> {
     if (ni >= 0) _state.nowContexts[ni] = to;
     widget.logic.onChange();
     return to;
+  }
+
+  // ── Programmer une action dans le programme du jour ────────────────────────
+  // Demande user : date + heure + durée POUR LE PROGRAMME (pas le Gantt) —
+  // l'action devient un bloc lié (lançable ▶, cochable).
+
+  String _ymdOf(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _scheduleAction(_Entry e) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
+    const wd = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+    String dayLabel(DateTime d) {
+      final diff = d.difference(today).inDays;
+      if (diff == 0) return 'aujourd\'hui';
+      if (diff == 1) return 'demain';
+      return '${wd[d.weekday - 1]} ${d.day}';
+    }
+
+    var pickedDay = _ymdOf(today);
+    var time = TimeOfDay.now();
+    var duration = 30;
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final cs2 = Theme.of(ctx).colorScheme;
+          String hhmm() =>
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+          Text sectionLabel(String t) => Text(t,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                  color: cs2.onSurface.withOpacity(.45)));
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 4, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Programmer',
+                    style:
+                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(e.action.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: cs2.onSurface.withOpacity(.55))),
+                const SizedBox(height: 14),
+                sectionLabel('QUEL JOUR ?'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final d in days)
+                      ChoiceChip(
+                        selected: pickedDay == _ymdOf(d),
+                        onSelected: (_) =>
+                            setLocal(() => pickedDay = _ymdOf(d)),
+                        showCheckmark: false,
+                        label: Text(dayLabel(d)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Icon(Icons.schedule_rounded,
+                      size: 16, color: cs2.onSurface.withOpacity(.55)),
+                  const SizedBox(width: 6),
+                  Text('À ${hhmm()}',
+                      style:
+                          const TextStyle(fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () async {
+                      final t = await showTimePicker(
+                          context: ctx, initialTime: time);
+                      if (t != null) setLocal(() => time = t);
+                    },
+                    child: const Text('Modifier'),
+                  ),
+                ]),
+                sectionLabel('DURÉE'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final d in const [15, 30, 45, 60, 90])
+                      ChoiceChip(
+                        selected: duration == d,
+                        onSelected: (_) =>
+                            setLocal(() => duration = d),
+                        showCheckmark: false,
+                        label: Text('$d min'),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.event_available_rounded,
+                        size: 16),
+                    label: const Text('Programmer'),
+                    onPressed: () => Navigator.pop(ctx, true),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (saved != true) return;
+    final hhmm =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    unawaited(_sync.addScheduleBlock(
+        pickedDay,
+        ScheduleBlock(
+          startTime: hhmm,
+          durationMin: duration,
+          title: e.action.title,
+          category: e.project != null ? 'project' : 'personal',
+          projectId: e.project?.id,
+          taskId: e.task?.id,
+          activityId: e.chronoActivityId,
+          actionId: e.action.id,
+        )));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('📅 Programmé — $pickedDay à $hhmm ($duration min)'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
   }
 
   // ── Bouton @ : « je suis » + CRUD des contextes ─────────────────────────────
@@ -986,7 +1167,7 @@ class _ActionsViewState extends State<ActionsView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(e.action.title,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 13.5, fontWeight: FontWeight.w600)),

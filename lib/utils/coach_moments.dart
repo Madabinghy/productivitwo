@@ -804,6 +804,26 @@ CoachMoment? _chainMoment(DateTime now, AppState st,
   final gap = next != null
       ? _minutesUntil(now, next.startTime)
       : 19 * 60 - (now.hour * 60 + now.minute);
+  // CTA CONTEXTE PARTAGÉ : ce qu'on vient de finir portait @maison → une
+  // routine @maison pas encore validée est l'enchaînement le plus naturel
+  // (« je viens de laver la voiture @maison → vaisselle, aussi @maison »).
+  Activity? sameCtx;
+  String? sharedCtx;
+  final finishedCtxs = act?.contexts ?? const <String>[];
+  if (finishedCtxs.isNotEmpty) {
+    for (final r in st.activeActivities) {
+      if (!r.isHabit || r.id == last.activityId) continue;
+      final shared =
+          r.contexts.where(finishedCtxs.contains).toList();
+      if (shared.isEmpty) continue;
+      final hitToday = st.habitHits
+          .any((h) => h.habitId == r.id && _sameDay(h.ts, now));
+      if (hitToday) continue;
+      sameCtx = r;
+      sharedCtx = shared.first;
+      break;
+    }
+  }
   // Défi ORION comme suite : jamais sur l'activité qu'on vient de finir, et
   // seulement s'il tient dans le trou. Sinon : prochain bloc / routine.
   final chal = challenge != null &&
@@ -818,6 +838,19 @@ CoachMoment? _chainMoment(DateTime now, AppState st,
           CoachAction('Lancer ${next.title}', CoachActionKind.launchBlock,
               block: next));
     }
+  } else if (sameCtx != null) {
+    proposal =
+        'Tu es toujours $sharedCtx — « ${sameCtx.name} » l\'est aussi.';
+    actions.add(CoachAction(
+        'Enchaîner : ${sameCtx.name}', CoachActionKind.launchBlock,
+        block: ScheduleBlock(
+          startTime:
+              '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+          durationMin: sameCtx.timerMin ?? 15,
+          title: sameCtx.name,
+          category: 'routine',
+          activityId: sameCtx.id,
+        )));
   } else if (chal != null) {
     proposal = _challengeText(chal);
     actions.add(CoachAction(

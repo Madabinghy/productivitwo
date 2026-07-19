@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -88,6 +90,7 @@ Future<void> showCreateActionOrProjectSheet(
                   context,
                   domains: logic.state.activeDomains,
                   sync: sync,
+                  activities: logic.state.activeActivities,
                   onCreated: () => onCreated?.call(),
                 );
               },
@@ -165,10 +168,11 @@ Future<void> showCreateActionOrProjectSheet(
                   final title = titleCtrl.text.trim();
                   final actId = activityId;
                   if (title.isEmpty || actId == null) return;
-                  await sync.addOwnActionToActivity(actId, title,
-                      contexts: pickedContexts);
-                  // Reflète immédiatement dans l'état local (le doc Firestore
-                  // est la source ; le prochain pull réconciliera par ID).
+                  // OPTIMISTE : pas d'await sur l'ack serveur (hors-ligne il
+                  // n'arrive jamais → la sheet moulinait). Le SDK met
+                  // l'écriture en file ; l'état local reflète tout de suite.
+                  unawaited(sync.addOwnActionToActivity(actId, title,
+                      contexts: pickedContexts));
                   final act = logic.state.activities
                       .where((a) => a.id == actId)
                       .firstOrNull;

@@ -103,8 +103,23 @@ typedef DimScore = ({
 class AppLogic {
   AppState state;
 
-  final void Function() onChange;
-  AppLogic(this.state, this.onChange);
+  final void Function() _rootOnChange;
+  AppLogic(this.state, this._rootOnChange);
+
+  /// Écouteurs légers en plus du callback racine (AppLogic n'est PAS un
+  /// ChangeNotifier) : les vues qui doivent se redessiner sur TOUT onChange
+  /// (ex : onglet Actions après édition de contextes depuis une fiche)
+  /// s'abonnent ici. onChange reste l'unique canal de notification.
+  final List<void Function()> _listeners = [];
+  void addListener(void Function() l) => _listeners.add(l);
+  void removeListener(void Function() l) => _listeners.remove(l);
+
+  void onChange() {
+    _rootOnChange();
+    for (final l in List.of(_listeners)) {
+      l();
+    }
+  }
 
   /// Domaine ACTIF le plus négligé = celui qui cumule le plus d'araignées/scorpions
   /// (jours/temps en retard). Sert à diriger le boss du donjon. null = aucun domaine.

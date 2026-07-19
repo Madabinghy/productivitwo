@@ -3,7 +3,9 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
@@ -874,6 +876,25 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                   },
                 ),
             ]),
+
+            // Contextes GTD (@maison…) : où la routine est réalisable —
+            // filtre « je suis » de Maintenant + CTA d'enchaînement
+            // (« tu viens de finir X @maison — Y l'est aussi »).
+            const SizedBox(height: 14),
+            Text('Contextes (@)',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface.withOpacity(.75),
+                )),
+            const SizedBox(height: 8),
+            ContextPicker(
+              values: act.contexts,
+              sync: FirestoreSync(),
+              onValuesChanged: (list) {
+                act.contexts = List.of(list);
+                _applySetting();
+              },
+            ),
           ],
         ),
       ),
