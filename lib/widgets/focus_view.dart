@@ -1759,6 +1759,37 @@ class _FocusViewState extends State<FocusView> {
                         ],
                       ),
                     ),
+                    // ✓ valider SANS chrono (demande user : « on peut juste
+                    // lancer le chrono ») — persistance selon le porteur.
+                    IconButton(
+                      tooltip: 'Valider l\'action',
+                      icon: Icon(Icons.check_circle_outline,
+                          size: 24, color: cs.onSurface.withOpacity(.45)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        it.action.done = true;
+                        it.action.doneAt = DateTime.now();
+                        if (it.projectId != null) {
+                          final p = widget.logic.currentProjects
+                              .where((p) => p.id == it.projectId)
+                              .firstOrNull;
+                          if (p != null) {
+                            unawaited(
+                                _sync.saveProjectTasks(p.id, p.tasks));
+                          }
+                        } else {
+                          final act = st.activities
+                              .where((a) => a.id == it.chronoActivityId)
+                              .firstOrNull;
+                          if (act != null) {
+                            unawaited(_sync.updateOwnActions(
+                                act.id, act.ownActions));
+                          }
+                        }
+                        logic.onChange();
+                        setState(() {});
+                      },
+                    ),
                     if (it.chronoActivityId != null)
                       IconButton(
                         tooltip: 'Lancer le chrono',
@@ -1793,6 +1824,19 @@ class _FocusViewState extends State<FocusView> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  ),
+                  // ✓ valider la routine sans chrono (+1 sur aujourd'hui).
+                  IconButton(
+                    tooltip: 'Valider',
+                    icon: Icon(Icons.check_circle_outline,
+                        size: 24, color: cs.onSurface.withOpacity(.45)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      final d = DateTime.now();
+                      logic.incHabit(
+                          r.id, 1, DateTime(d.year, d.month, d.day));
+                      setState(() {});
+                    },
                   ),
                   if (widget.onLaunchScheduledBlock != null)
                     IconButton(
