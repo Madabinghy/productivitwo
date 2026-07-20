@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 
 /// Onglet « Aujourd'hui » : le programme horaire du jour, avec bascule vers
 /// « Demain » pour préparer la journée suivante (planif du lendemain).
@@ -55,6 +56,63 @@ class _TodayViewState extends State<TodayView> {
 
   String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// 🗑 « Reprogrammer la journée » (réveil tardif, maladie, imprévu) :
+  /// retire les blocs RESTANTS d'aujourd'hui (soft-delete — le fait reste,
+  /// les miroirs Google Agenda et ce qui est fait ne bougent pas), puis
+  /// rouvre la planification depuis maintenant (étape « tes blocs d'abord »
+  /// incluse, cache ignoré : les contraintes viennent de changer).
+  Future<void> _replanToday() async {
+    final today = _ymd(DateTime.now());
+    final sync = FirestoreSync();
+    final sched = await sync.fetchDailySchedule(today);
+    final pending = (sched?.blocks ?? const <ScheduleBlock>[])
+        .where((b) => b.status == 'pending' && b.gcalEventId == null)
+        .toList();
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reprogrammer la journée ?'),
+        content: Text(pending.isEmpty
+            ? 'Rien à retirer — on repart directement sur une '
+                'planification depuis maintenant.'
+            : 'Les ${pending.length} blocs restants d\'aujourd\'hui seront '
+                'retirés (ce qui est fait et tes rendez-vous Google Agenda '
+                'ne bougent pas), puis tu replanifies depuis maintenant.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler')),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.delete_outline, size: 16),
+            label: const Text('Vider et replanifier'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    for (final b in pending) {
+      unawaited(sync.updateBlockStatus(today, b.id, 'deleted'));
+    }
+    final count = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => PlanDayScreen(
+        logic: widget.logic,
+        targetDate: today,
+        rattrapage: true,
+        onLaunchBlock: widget.onLaunch,
+        forceRegenerate: true,
+      ),
+    ));
+    if (count != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Journée reposée — $count blocs'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
+    if (mounted) setState(() {});
+  }
 
   // ── Jauge verticale 00:00 → 23:59 (façon Waze) ────────────────────────────
   //
@@ -383,6 +441,24 @@ class _TodayViewState extends State<TodayView> {
               ),
             ),
           ),
+          // 🗑 « Reprogrammer la journée » (réveil tardif, maladie…) — vide
+          // les blocs restants puis replanifie depuis MAINTENANT.
+          if (!_showTomorrow)
+            Positioned(
+              top: 54,
+              right: 16,
+              child: Material(
+                color: cs.surfaceContainerHighest.withOpacity(.92),
+                shape: const CircleBorder(),
+                elevation: 2,
+                child: IconButton(
+                  tooltip: 'Reprogrammer la journée',
+                  icon: Icon(Icons.delete_sweep_outlined,
+                      size: 20, color: cs.error.withOpacity(.85)),
+                  onPressed: _replanToday,
+                ),
+              ),
+            ),
         ],
       ),
     );

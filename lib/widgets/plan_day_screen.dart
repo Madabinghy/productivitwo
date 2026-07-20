@@ -24,12 +24,17 @@ class PlanDayScreen extends StatefulWidget {
   // « ▶ Je pars » : lancer le chrono ciblé du bloc juste après validation.
   final void Function(ScheduleBlock block)? onLaunchBlock;
 
+  /// true = ignorer le brouillon caché et régénérer (ex : 🗑 « reprogrammer
+  /// la journée » — les contraintes viennent de changer, le cache ment).
+  final bool forceRegenerate;
+
   const PlanDayScreen({
     super.key,
     required this.logic,
     required this.targetDate,
     this.rattrapage = false,
     this.onLaunchBlock,
+    this.forceRegenerate = false,
   });
 
   @override
@@ -71,7 +76,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(force: widget.forceRegenerate);
   }
 
   // ── Chargement de la proposition ─────────────────────────────────────────────
