@@ -101,6 +101,10 @@ class _FocusViewState extends State<FocusView> {
   // Programme de la veille — nécessaire à la carte coach (« affaires prêtes
   // depuis hier »). Rarement modifié → simple fetch one-shot à l'init/minuit.
   DailySchedule? _yesterday;
+  // Programme de DEMAIN (temps réel) — la carte du soir reconnaît « demain
+  // est posé » dès que le user valide sa planification.
+  StreamSubscription<DailySchedule?>? _tomorrowSub;
+  DailySchedule? _tomorrow;
   // Avance manuelle de la carte coach (CTA « Attaquer la journée »…) — vaut
   // pour la journée en cours seulement, remise à zéro à minuit.
   CoachMomentType? _coachAdvancedTo;
@@ -169,6 +173,7 @@ class _FocusViewState extends State<FocusView> {
   void dispose() {
     _ticker?.cancel();
     _schedSub?.cancel();
+    _tomorrowSub?.cancel();
     _artifactsSub?.cancel();
     _assistCtrl.dispose();
     super.dispose();
@@ -294,6 +299,14 @@ class _FocusViewState extends State<FocusView> {
     _sync.streamDailySchedule(yesterday).first.then((s) {
       if (mounted) setState(() => _yesterday = s);
     }).catchError((_) {});
+    // Programme de DEMAIN (temps réel) : la carte du soir doit savoir que
+    // demain vient d'être posé — sinon elle re-propose « faire le point »
+    // comme si rien ne s'était passé (constaté sur build).
+    _tomorrowSub?.cancel();
+    final tomorrow = _ymd(now.add(const Duration(days: 1)));
+    _tomorrowSub = _sync.streamDailySchedule(tomorrow).listen((s) {
+      if (mounted) setState(() => _tomorrow = s);
+    });
     // Rapport hebdo de la semaine courante (16a) — one-shot, léger.
     final monday = _ymd(DateTime(now.year, now.month, now.day)
         .subtract(Duration(days: now.weekday - 1)));
@@ -934,7 +947,11 @@ class _FocusViewState extends State<FocusView> {
         // ne la sort que quand rien d'autre n'a la priorité.
         ganttAction: ganttMicroAction(logic.currentProjects,
             blocks: _schedule?.blocks ?? const [],
-            excludeTaskIds: _scheduledStepTaskIds));
+            excludeTaskIds: _scheduledStepTaskIds),
+        // Demain déjà posé → la carte du soir le reconnaît (pas de
+        // « faire le point » comme si de rien).
+        tomorrowPlanned:
+            _tomorrow?.blocks.any((b) => b.status != 'deleted') ?? false);
     final isNudge = moment.type == CoachMomentType.defineNudge;
     return CoachMomentCard(
       moment: moment,
@@ -1742,6 +1759,37 @@ class _FocusViewState extends State<FocusView> {
                         ],
                       ),
                     ),
+                    // ✓ valider SANS chrono (demande user : « on peut juste
+                    // lancer le chrono ») — persistance selon le porteur.
+                    IconButton(
+                      tooltip: 'Valider l\'action',
+                      icon: Icon(Icons.check_circle_outline,
+                          size: 24, color: cs.onSurface.withOpacity(.45)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        it.action.done = true;
+                        it.action.doneAt = DateTime.now();
+                        if (it.projectId != null) {
+                          final p = widget.logic.currentProjects
+                              .where((p) => p.id == it.projectId)
+                              .firstOrNull;
+                          if (p != null) {
+                            unawaited(
+                                _sync.saveProjectTasks(p.id, p.tasks));
+                          }
+                        } else {
+                          final act = st.activities
+                              .where((a) => a.id == it.chronoActivityId)
+                              .firstOrNull;
+                          if (act != null) {
+                            unawaited(_sync.updateOwnActions(
+                                act.id, act.ownActions));
+                          }
+                        }
+                        logic.onChange();
+                        setState(() {});
+                      },
+                    ),
                     if (it.chronoActivityId != null)
                       IconButton(
                         tooltip: 'Lancer le chrono',
@@ -1776,6 +1824,19 @@ class _FocusViewState extends State<FocusView> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  ),
+                  // ✓ valider la routine sans chrono (+1 sur aujourd'hui).
+                  IconButton(
+                    tooltip: 'Valider',
+                    icon: Icon(Icons.check_circle_outline,
+                        size: 24, color: cs.onSurface.withOpacity(.45)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      final d = DateTime.now();
+                      logic.incHabit(
+                          r.id, 1, DateTime(d.year, d.month, d.day));
+                      setState(() {});
+                    },
                   ),
                   if (widget.onLaunchScheduledBlock != null)
                     IconButton(

@@ -84,13 +84,19 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     // Heure de lever PRÉVUE : demandée à chaque vraie génération (les jours
     // ne se ressemblent pas — flexibilité), dernière valeur = présélection.
     // Rouvrir un brouillon encore valide ne repose PAS la question.
+    // EXCEPTION (retour user) : planifier le JOUR MÊME l'après-midi — la
+    // question du lever n'a aucun sens, le plancher c'est « maintenant ».
+    final isSameDayPm =
+        widget.targetDate == _todayYmd && DateTime.now().hour >= 10;
     final storedWake = await _sync.fetchWakeTime();
     final srcFp = await _sourceFingerprint();
     // ── Cache : l'ouverture répétée de l'écran coûte 0 appel LLM ─────────────
     // Le brouillon persiste sur le doc de la date cible et reste valable < 6 h
     // si le programme source (la veille) n'a pas changé. ⟳ = régénérer.
     if (!force) {
-      final cachedFp = '$srcFp|lever:${storedWake ?? '07:00'}';
+      final cachedFp = isSameDayPm
+          ? '$srcFp|sameday'
+          : '$srcFp|lever:${storedWake ?? '07:00'}';
       try {
         final cached = await _sync.fetchProposalDraft(widget.targetDate);
         final genAt = cached?['generatedAt'] is String
@@ -111,8 +117,16 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         }
       } catch (_) {}
     }
-    final wake = await _ensureWakeTime(storedWake);
-    final fingerprint = '$srcFp|lever:$wake';
+    // Étape « TES BLOCS D'ABORD » (retour user) : ce que le user veut caler
+    // lui-même (rendez-vous oublié de l'agenda, contrainte perso) — posé en
+    // vrais blocs AVANT la génération, ORION remplit autour (occupiedBlocks).
+    await _askUserBlocks();
+    final now = DateTime.now();
+    final wake = isSameDayPm
+        ? '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}'
+        : await _ensureWakeTime(storedWake);
+    final fingerprint =
+        isSameDayPm ? '$srcFp|sameday' : '$srcFp|lever:$wake';
     try {
       final token = await _sync.ensureWidgetToken();
       final raw = token.rawToken;
@@ -239,6 +253,163 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         );
       },
     );
+  }
+
+  /// « Tes blocs d'abord » : avant de générer, le user pose ce qu'IL veut
+  /// caler (rendez-vous oublié de l'agenda, contrainte perso). Chaque ajout
+  /// est écrit en VRAI bloc sur la date cible → contrainte dure que la
+  /// proposition contourne (occupiedBlocks) et affiche « déjà en place ».
+  /// Chaînable ; « Passer » / « C'est tout » → la génération continue.
+  Future<void> _askUserBlocks() async {
+    if (!mounted) return;
+    final titleCtrl = TextEditingController();
+    final isToday = widget.targetDate == _todayYmd;
+    final now = DateTime.now();
+    var time = isToday
+        ? TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0)
+        : const TimeOfDay(hour: 9, minute: 0);
+    var duration = 60;
+    final added = <ScheduleBlock>[];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final cs = Theme.of(ctx).colorScheme;
+          String hhmm() =>
+              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+          void add() {
+            final t = titleCtrl.text.trim();
+            if (t.isEmpty) return;
+            final b = ScheduleBlock(
+              startTime: hhmm(),
+              durationMin: duration,
+              title: t,
+              category: 'personal',
+            );
+            // Écrit tout de suite (optimiste) : le bloc devient une
+            // contrainte réelle même si la génération est annulée.
+            unawaited(_sync.addScheduleBlock(widget.targetDate, b));
+            setLocal(() {
+              added.add(b);
+              titleCtrl.clear();
+            });
+          }
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+                20, 4, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Des blocs à poser toi-même ?',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(
+                  'Ce que tu veux caler à heure fixe (rendez-vous oublié, '
+                  'contrainte perso…) — ORION remplira AUTOUR, sans y toucher.',
+                  style: TextStyle(
+                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
+                ),
+                const SizedBox(height: 12),
+                for (final b in added)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2E9E6B).withOpacity(.10),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: const Color(0xFF2E9E6B).withOpacity(.4)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.lock_outline,
+                          size: 14, color: Color(0xFF2E9E6B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                            '${b.startTime} · ${b.title} — ${b.durationMin} min',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600)),
+                      ),
+                      IconButton(
+                        tooltip: 'Retirer',
+                        icon: const Icon(Icons.close, size: 16),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () {
+                          unawaited(_sync.updateBlockStatus(
+                              widget.targetDate, b.id, 'deleted'));
+                          setLocal(() => added.remove(b));
+                        },
+                      ),
+                    ]),
+                  ),
+                TextField(
+                  controller: titleCtrl,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    hintText: 'Ex : Rendez-vous garage',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onSubmitted: (_) => add(),
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Icon(Icons.schedule_rounded,
+                      size: 16, color: cs.onSurface.withOpacity(.55)),
+                  const SizedBox(width: 6),
+                  Text('À ${hhmm()}',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  TextButton(
+                    onPressed: () async {
+                      final t = await showTimePicker(
+                          context: ctx, initialTime: time);
+                      if (t != null) setLocal(() => time = t);
+                    },
+                    child: const Text('Modifier'),
+                  ),
+                  const Spacer(),
+                  for (final d in const [30, 60, 90])
+                    Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: ChoiceChip(
+                        selected: duration == d,
+                        onSelected: (_) => setLocal(() => duration = d),
+                        showCheckmark: false,
+                        label: Text('$d′'),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  OutlinedButton.icon(
+                    onPressed: add,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Ajouter ce bloc'),
+                  ),
+                  const Spacer(),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(added.isEmpty
+                        ? 'Passer — ORION planifie tout'
+                        : 'C\'est tout — planifie le reste'),
+                  ),
+                ]),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    titleCtrl.dispose();
   }
 
   /// Empreinte du programme source (la veille de la cible) : si les statuts,
