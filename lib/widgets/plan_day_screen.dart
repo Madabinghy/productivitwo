@@ -380,18 +380,33 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                     },
                     child: const Text('Modifier'),
                   ),
-                  const Spacer(),
+                ]),
+                Wrap(spacing: 6, runSpacing: 6, children: [
                   for (final d in const [30, 60, 90])
-                    Padding(
-                      padding: const EdgeInsets.only(left: 4),
-                      child: ChoiceChip(
-                        selected: duration == d,
-                        onSelected: (_) => setLocal(() => duration = d),
-                        showCheckmark: false,
-                        label: Text('$d′'),
-                        visualDensity: VisualDensity.compact,
-                      ),
+                    ChoiceChip(
+                      selected: duration == d,
+                      onSelected: (_) => setLocal(() => duration = d),
+                      showCheckmark: false,
+                      label: Text('$d min'),
+                      visualDensity: VisualDensity.compact,
                     ),
+                  // Durée LIBRE (demande user : pas seulement 3 presets) —
+                  // même roue que partout ailleurs (pickDurationMin).
+                  ChoiceChip(
+                    selected: !const [30, 60, 90].contains(duration),
+                    onSelected: (_) async {
+                      final v = await pickDurationMin(ctx,
+                          initial: duration, title: 'Durée du bloc');
+                      if (v != null && v > 0) {
+                        setLocal(() => duration = v);
+                      }
+                    },
+                    showCheckmark: false,
+                    label: Text(const [30, 60, 90].contains(duration)
+                        ? 'Autre…'
+                        : fmtMin(duration)),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ]),
                 const SizedBox(height: 10),
                 Row(children: [
