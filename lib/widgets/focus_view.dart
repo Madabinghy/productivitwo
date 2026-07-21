@@ -1730,8 +1730,36 @@ class _FocusViewState extends State<FocusView> {
               Text('Aucune action en attente dans ce contexte.',
                   style: TextStyle(
                       fontSize: 12.5, color: cs.onSurface.withOpacity(.5)))
-            else
-              for (final it in items.take(6))
+            else ...[
+              // Groupées PAR PROJET/porteur (demande user) — un en-tête par
+              // source, plus de rappel du porteur sur chaque tuile.
+              for (final group in (() {
+                final by = <String,
+                    List<
+                        ({
+                          TaskAction action,
+                          String source,
+                          String? chronoActivityId,
+                          String? taskId,
+                          String? projectId
+                        })>>{};
+                for (final it in items.take(10)) {
+                  by.putIfAbsent(it.source, () => []).add(it);
+                }
+                return by.entries;
+              })()) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
+                  child: Text(group.key.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: .8,
+                          color: cs.onSurface.withOpacity(.4))),
+                ),
+                for (final it in group.value)
                 Container(
                   margin: const EdgeInsets.only(bottom: 6),
                   padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
@@ -1741,23 +1769,11 @@ class _FocusViewState extends State<FocusView> {
                   ),
                   child: Row(children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(it.action.title,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w600)),
-                          Text(it.source,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: cs.onSurface.withOpacity(.5))),
-                        ],
-                      ),
+                      child: Text(it.action.title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13.5, fontWeight: FontWeight.w600)),
                     ),
                     // ✓ valider SANS chrono (demande user : « on peut juste
                     // lancer le chrono ») — persistance selon le porteur.
@@ -1804,6 +1820,8 @@ class _FocusViewState extends State<FocusView> {
                       ),
                   ]),
                 ),
+              ],
+            ],
             // Routines du contexte (pas encore validées aujourd'hui) — le ▶
             // passe par le launcher de blocs (menu chrono/décompte/coche).
             for (final r in ctxRoutines.take(4))
