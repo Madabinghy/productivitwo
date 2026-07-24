@@ -45,6 +45,9 @@ class _Entry {
 class _ActionsViewState extends State<ActionsView> {
   final _sync = FirestoreSync();
 
+  // Section « Terminées » repliée par défaut (consultation ponctuelle).
+  bool _showDone = false;
+
   AppState get _state => widget.logic.state;
 
   // À l'écoute d'AppLogic : un contexte ajouté depuis une fiche/dialog doit
@@ -108,6 +111,27 @@ class _ActionsViewState extends State<ActionsView> {
     return out;
   }
 
+  /// Actions VALIDÉES (projets — tous statuts — + actions simples), les plus
+  /// récentes d'abord : retrouver ce qui a été fait, et décocher au besoin.
+  List<_Entry> _doneEntries() {
+    final out = <_Entry>[];
+    for (final p in widget.logic.currentProjects) {
+      for (final t in p.tasks) {
+        for (final a in t.actions.where((a) => a.done)) {
+          out.add(_Entry(action: a, project: p, task: t));
+        }
+      }
+    }
+    for (final act in _state.activeActivities) {
+      for (final a in act.ownActions.where((a) => a.done)) {
+        out.add(_Entry(action: a, activity: act));
+      }
+    }
+    out.sort((x, y) => (y.action.doneAt ?? y.action.createdAt)
+        .compareTo(x.action.doneAt ?? x.action.createdAt));
+    return out;
+  }
+
   Set<String> _allContexts(
     List<({Project project, List<_Entry> entries})> pGroups,
     List<({Activity activity, List<_Entry> entries})> aGroups,
@@ -131,10 +155,17 @@ class _ActionsViewState extends State<ActionsView> {
   Future<void> _toggleDone(_Entry e, bool done) async {
     e.action.done = done;
     e.action.doneAt = done ? DateTime.now() : null;
+    // Décocher depuis « Terminées » : une tâche close (toutes actions faites)
+    // doit se rouvrir, sinon l'action restaurée resterait invisible en attente.
+    if (!done && e.task != null && e.task!.status != 'pending') {
+      e.task!.status = 'pending';
+    }
+    // Optimiste : pas d'await sur l'ack serveur (hors-ligne il n'arrive
+    // jamais — la coche restait sans effet jusqu'au prochain rebuild).
     if (e.project != null) {
-      await _sync.saveProjectTasks(e.project!.id, e.project!.tasks);
+      unawaited(_sync.saveProjectTasks(e.project!.id, e.project!.tasks));
     } else if (e.activity != null) {
-      await _sync.updateOwnActions(e.activity!.id, e.activity!.ownActions);
+      unawaited(_sync.updateOwnActions(e.activity!.id, e.activity!.ownActions));
     }
     widget.logic.onChange();
     if (mounted) setState(() {});
@@ -294,10 +325,11 @@ class _ActionsViewState extends State<ActionsView> {
   }
 
   Future<void> _persistEntry(_Entry e) async {
+    // Optimiste, comme _toggleDone : l'UI reflète tout de suite.
     if (e.project != null) {
-      await _sync.saveProjectTasks(e.project!.id, e.project!.tasks);
+      unawaited(_sync.saveProjectTasks(e.project!.id, e.project!.tasks));
     } else if (e.activity != null) {
-      await _sync.updateOwnActions(e.activity!.id, e.activity!.ownActions);
+      unawaited(_sync.updateOwnActions(e.activity!.id, e.activity!.ownActions));
     }
     widget.logic.onChange();
     if (mounted) setState(() {});
@@ -305,7 +337,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   Future<void> _togglePause(Project p) async {
     p.paused = !p.paused;
-    await _sync.saveProject(p);
+    unawaited(_sync.saveProject(p));
     widget.logic.onChange();
     if (mounted) setState(() {});
   }
@@ -1106,9 +1138,72 @@ class _ActionsViewState extends State<ActionsView> {
               for (final e in g.entries) _entryTile(cs, e),
             ],
           ],
+
+          // ── Terminées : retrouver une action validée (et la décocher) ──────
+          ...(() {
+            final doneEntries = _doneEntries();
+            if (doneEntries.isEmpty) return const <Widget>[];
+            return <Widget>[
+              const SizedBox(height: 10),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() => _showDone = !_showDone),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 15, color: cs.onSurface.withOpacity(.4)),
+                    const SizedBox(width: 8),
+                    Text('TERMINÉES (${doneEntries.length})',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: .8,
+                            color: cs.onSurface.withOpacity(.4))),
+                    const Spacer(),
+                    Icon(
+                        _showDone
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 18,
+                        color: cs.onSurface.withOpacity(.35)),
+                  ]),
+                ),
+              ),
+              if (_showDone) ...[
+                for (final e in doneEntries.take(_kDoneShown))
+                  _doneTile(cs, e),
+                if (doneEntries.length > _kDoneShown)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2, left: 4),
+                    child: Text(
+                        '… et ${doneEntries.length - _kDoneShown} plus anciennes.',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontStyle: FontStyle.italic,
+                            color: cs.onSurface.withOpacity(.4))),
+                  ),
+              ],
+            ];
+          })(),
         ],
       ),
     );
+  }
+
+  /// Plafond d'affichage de la liste « Terminées » (ListView non lazy).
+  static const _kDoneShown = 50;
+
+  /// « aujourd'hui » / « hier » / date courte — quand l'action a été validée.
+  String _doneLabel(DateTime? d) {
+    if (d == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff <= 0) return 'aujourd\'hui';
+    if (diff == 1) return 'hier';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
   }
 
   Widget _groupHeader(ColorScheme cs, String title, Color color,
@@ -1234,6 +1329,60 @@ class _ActionsViewState extends State<ActionsView> {
             onPressed: () => _launch(e),
           ),
         const SizedBox(width: 2),
+      ]),
+    );
+  }
+
+  /// Action validée : titre barré + porteur + date, décochable pour la
+  /// remettre en attente.
+  Widget _doneTile(ColorScheme cs, _Entry e) {
+    final parent = e.project?.title ?? e.activity?.name ?? '';
+    final when = _doneLabel(e.action.doneAt);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(children: [
+        Checkbox(
+          value: true,
+          shape: const CircleBorder(),
+          onChanged: (v) => _toggleDone(e, v ?? false),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(e.action.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w500,
+                        decoration: TextDecoration.lineThrough,
+                        color: cs.onSurface.withOpacity(.55))),
+                if (parent.isNotEmpty || when.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                        [
+                          if (parent.isNotEmpty) parent,
+                          if (when.isNotEmpty) when,
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.4))),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
       ]),
     );
   }
