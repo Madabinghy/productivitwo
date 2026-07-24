@@ -26,6 +26,15 @@ class FileStore {
     await prefs.clear();
   }
 
+/// Rejoue les migrations one-shot après une RESTAURATION de sauvegarde
+/// (spec export/import) : un fichier antérieur à une migration est re-migré,
+/// un fichier déjà migré ne bouge pas (flags …MigratedOnce).
+void replayMigrations(AppState st) {
+  _migrateLinkedActivities(st);
+  _migrateVoitureActivity(st);
+  _migrateGanttHidden(st);
+}
+
 /// One-shot : le Gantt passe en retrait pour tout le monde (pivot GTD
 /// opérationnel). Les users existants avaient hideProjectsTab=false sérialisé ;
 /// on force une fois, puis leur choix ultérieur (Paramètres) persiste.

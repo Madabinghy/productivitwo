@@ -37,6 +37,8 @@ dependencies:
   app_links: ^6.0.0
   pdf: ^3.11.0
   printing: ^5.13.2
+  share_plus: ^10.1.0 # export sauvegarde (Mes données)
+  file_selector: ^1.0.3 # restauration : choisir un fichier .json
   alarm: ^5.4.1
   google_fonts: ^6.2.1 # refonte Soft Pop : Fredoka (UI) + Space Mono (chiffres)
 

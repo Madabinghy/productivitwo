@@ -25,6 +25,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
@@ -5239,6 +5240,25 @@ class _AppRootState extends State<AppRoot>
                       ),
                     ),
                   );
+                },
+              ),
+              // Mes données — export/restauration/suppression (lot « Coffre »)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.inventory_2_outlined),
+                title: const Text('Mes données'),
+                subtitle:
+                    const Text('Sauvegarde, restauration, suppression'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => DataSettingsScreen(
+                      logic: logic,
+                      sync: _sync,
+                      store: store,
+                    ),
+                  ));
                 },
               ),
               // Confidentialité

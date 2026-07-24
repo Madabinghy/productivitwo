@@ -2476,6 +2476,66 @@ class FirestoreSync {
         .update({'ownActions': actions.map((a) => a.toJson()).toList()});
   }
 
+  // ── Sauvegarde « Coffre » (export/import — lib/utils/backup.dart) ──────────
+
+  /// Dump brut d'une collection (export) : data() tel quel, Timestamps inclus
+  /// (convertis en ISO côté backup.dart). Jamais utilisé pour api_tokens.
+  Future<List<Map<String, dynamic>>> dumpCollection(String col) async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col(col).get();
+      return snap.docs
+          .map((d) => Map<String, dynamic>.from(d.data() as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Doc meta brut (customContexts…) pour l'export.
+  Future<Map<String, dynamic>> fetchMetaDocRaw() async {
+    if (uid == null) return {};
+    try {
+      final s = await _meta().get();
+      return s.exists ? Map<String, dynamic>.from(s.data() as Map) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// IDs existants d'une collection — restauration en mode Fusionner
+  /// (un doc déjà présent n'est pas réécrit : le courant gagne).
+  Future<Set<String>> collectionIds(String col) async {
+    if (uid == null) return {};
+    try {
+      final snap = await _col(col).get();
+      return snap.docs.map((d) => d.id).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Écrit un doc brut d'une collection (restauration).
+  Future<void> writeCollectionDoc(
+      String col, String id, Map<String, dynamic> data) async {
+    if (uid == null) return;
+    await _col(col).doc(id).set(data);
+  }
+
+  /// Restaure les contextes GTD personnalisés depuis une sauvegarde.
+  /// Fusion = union avec l'existant ; remplacement = liste du fichier.
+  Future<void> restoreCustomContexts(List<String> contexts,
+      {required bool replace}) async {
+    if (uid == null) return;
+    if (replace) {
+      await _meta().set({'customContexts': contexts}, SetOptions(merge: true));
+    } else {
+      await _meta().set({
+        'customContexts': FieldValue.arrayUnion(contexts),
+      }, SetOptions(merge: true));
+    }
+  }
+
   Future<void> addCustomContext(String context) async {
     if (uid == null) return;
     final c = context.trim();
