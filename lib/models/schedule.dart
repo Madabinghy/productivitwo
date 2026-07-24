@@ -159,6 +159,39 @@ class ScheduleBlock {
       );
 }
 
+// ── État déclaré du user (Maintenant adaptatif, tour 24) ─────────────────────
+//
+// « À fond / Correct / À plat » : un FAIT posé en 1 tap qui change la FORME de
+// l'onglet Maintenant (filtres d'affichage), jamais le fond (aucun re-planning).
+// TTL 3 h OU jusqu'au prochain check-in — jamais redemandé avant expiration.
+class EnergyState {
+  String level; // "full" | "ok" | "low"
+  DateTime at;
+  String? note; // texte libre optionnel, stocké tel quel (ressorti au check-in)
+
+  EnergyState({required this.level, DateTime? at, this.note})
+      : at = at ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'level': level,
+        'at': at.toIso8601String(),
+        'note': note,
+      };
+
+  static EnergyState? from(dynamic j) {
+    if (j is! Map) return null;
+    final level = j['level']?.toString();
+    if (level != 'full' && level != 'ok' && level != 'low') return null;
+    return EnergyState(
+      level: level!,
+      at: _parseDate(j['at']),
+      note: (j['note'] as String?)?.trim().isEmpty == true
+          ? null
+          : j['note'] as String?,
+    );
+  }
+}
+
 class DailySchedule {
   String date;        // YYYY-MM-DD
   String generatedBy; // claude | orion
@@ -187,6 +220,8 @@ class DailySchedule {
   // « Point fait » : posé quand le check-in du soir atteint son verdict — la
   // carte du soir se tait ensuite (elle ne re-propose pas ce qui est fait).
   DateTime? reviewedAt;
+  // État déclaré (24a) : change la forme de Maintenant, jamais le fond.
+  EnergyState? energyState;
 
   DailySchedule({
     required this.date,
@@ -201,6 +236,7 @@ class DailySchedule {
     this.unavailableUntil,
     this.unavailableReason,
     this.reviewedAt,
+    this.energyState,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
 
@@ -223,6 +259,7 @@ class DailySchedule {
         'unavailableUntil': unavailableUntil?.toIso8601String(),
         'unavailableReason': unavailableReason,
         'reviewedAt': reviewedAt?.toIso8601String(),
+        'energyState': energyState?.toJson(),
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -241,5 +278,6 @@ class DailySchedule {
         unavailableUntil: _parseDateOrNull(j['unavailableUntil']),
         unavailableReason: j['unavailableReason'],
         reviewedAt: _parseDateOrNull(j['reviewedAt']),
+        energyState: EnergyState.from(j['energyState']),
       );
 }

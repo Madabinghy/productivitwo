@@ -145,6 +145,15 @@ export interface ArtifactPayload {
   offSlots?: string[]; // « on ne touche pas » — contrainte dure
 }
 
+// État déclaré du user (Maintenant adaptatif, tour 24) : « À fond / Correct /
+// À plat » — un fait posé en 1 tap, TTL 3 h ou jusqu'au prochain check-in.
+// Change la FORME de l'onglet Maintenant (filtres d'affichage), jamais le fond.
+export interface EnergyStatePayload {
+  level: "full" | "ok" | "low";
+  at: string; // ISO
+  note?: string | null; // texte libre, stocké tel quel (ressorti au check-in)
+}
+
 export interface DailySchedulePayload {
   date: string;
   generatedBy?: string;
@@ -155,4 +164,6 @@ export interface DailySchedulePayload {
   // Planification le jour même après 5h (rattrapage du matin).
   plannedAt?: string | null;
   plannedSameDay?: boolean;
+  // État déclaré du jour (24a) — écrit par l'app, jamais par le LLM.
+  energyState?: EnergyStatePayload | null;
 }

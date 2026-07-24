@@ -2124,6 +2124,7 @@ async function executeScheduleDay(
     unavailableUntil: prevData.unavailableUntil ?? null, // « je suis le flow »
     unavailableReason: prevData.unavailableReason ?? null,
     reviewedAt: prevData.reviewedAt ?? null, // « point fait » — jamais effacé
+    energyState: prevData.energyState ?? null, // état déclaré (24a) — un fait
   });
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);

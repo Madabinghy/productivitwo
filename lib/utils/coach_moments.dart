@@ -693,9 +693,11 @@ _MealInfo? _todayMeal(DateTime now, List<Artifact> artifacts) {
   return null;
 }
 
-/// Retourne un moment `drift` si un bloc source est posé depuis > 45 min avec
-/// 0 min logguée, sinon null.
-CoachMoment? _driftMoment(DateTime now, AppState st,
+/// Le bloc en dérive : posé depuis > 45 min avec 0 min logguée (routine liée
+/// et coche du jour comprises), sinon null. Public : c'est aussi le signal du
+/// déclencheur n° 2 de la question d'état (24a) — la question remplace alors
+/// la carte dérive.
+ScheduleBlock? driftingBlock(DateTime now, AppState st,
     List<ScheduleBlock> blocks, List<Session> sessionsToday) {
   ScheduleBlock? drifting;
   DateTime? driftStart;
@@ -734,7 +736,15 @@ CoachMoment? _driftMoment(DateTime now, AppState st,
       driftStart = start;
     }
   }
-  if (drifting == null || driftStart == null) return null;
+  return drifting;
+}
+
+/// Retourne un moment `drift` si un bloc source est posé depuis > 45 min avec
+/// 0 min logguée, sinon null.
+CoachMoment? _driftMoment(DateTime now, AppState st,
+    List<ScheduleBlock> blocks, List<Session> sessionsToday) {
+  final drifting = driftingBlock(now, st, blocks, sessionsToday);
+  if (drifting == null) return null;
 
   // « 25 min » n'a aucun sens pour un bloc d'1 min (vitamines) : le CTA
   // s'aligne sur la durée RÉELLE du bloc, plafonnée à 25.

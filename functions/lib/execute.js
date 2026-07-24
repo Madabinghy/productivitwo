@@ -1811,7 +1811,7 @@ async function executeUpdateSessionTemplate(uid, args) {
         : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
 }
 async function executeScheduleDay(uid, date, blocks) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -1869,6 +1869,7 @@ async function executeScheduleDay(uid, date, blocks) {
         unavailableUntil: (_g = prevData.unavailableUntil) !== null && _g !== void 0 ? _g : null, // « je suis le flow »
         unavailableReason: (_h = prevData.unavailableReason) !== null && _h !== void 0 ? _h : null,
         reviewedAt: (_j = prevData.reviewedAt) !== null && _j !== void 0 ? _j : null, // « point fait » — jamais effacé
+        energyState: (_l = prevData.energyState) !== null && _l !== void 0 ? _l : null, // état déclaré (24a) — un fait
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
