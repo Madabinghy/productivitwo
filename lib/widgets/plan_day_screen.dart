@@ -692,6 +692,9 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         // Replanifier sort du mode soirée ET de l'indisponibilité déclarée :
         // poser un programme, c'est se déclarer dispo.
         dayMode: 'normal',
+        // L'état déclaré (24a) est un FAIT avec son TTL — replanifier ne
+        // l'efface pas.
+        energyState: existing?.energyState,
       ));
       // Prep du soir (cible = demain) : ajoutée au programme d'AUJOURD'HUI
       // sans le remplacer (même sémantique qu'add_prep_block, idempotent).

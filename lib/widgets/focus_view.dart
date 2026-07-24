@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/energy_state.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
@@ -16,6 +17,7 @@ import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
+import 'package:productivitwo_v1/widgets/energy_cards.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
@@ -65,6 +67,14 @@ class FocusView extends StatefulWidget {
   // poser pour demain).
   final Future<void> Function(Activity activity, int minutes)?
       onChallengeSchedule;
+  // Maintenant adaptatif (24) : l'onglet est-il celui affiché ? — sert à
+  // compter les « ouvertures sans action » (déclencheur de la question 24a).
+  final bool visible;
+  // Chrono + décompte d'une durée CHOISIE (5/10/15 à plat, 2 h à fond) —
+  // routine incluse (cochée à la fin du décompte, comme le ▶ du programme).
+  final void Function(Activity activity, int minutes)? onStartTimed;
+  // « Voir » les blocs en attente du mode à plat → onglet Aujourd'hui.
+  final VoidCallback? onOpenToday;
 
   const FocusView({
     super.key,
@@ -87,6 +97,9 @@ class FocusView extends StatefulWidget {
     this.onChallenge,
     this.onChallengeAccept,
     this.onChallengeSchedule,
+    this.visible = true,
+    this.onStartTimed,
+    this.onOpenToday,
   });
 
   @override
@@ -132,6 +145,15 @@ class _FocusViewState extends State<FocusView> {
   bool _microTargetDismissed = false;
   // Renégociation faite → la carte dérive respire 45 min (pas de rafale).
   DateTime? _driftSnoozeUntil;
+  // ── Maintenant adaptatif (24) ──────────────────────────────────────────────
+  // Ouvertures de l'onglet (déclencheur n° 1 de la question d'état : ≥ 3 sans
+  // action en 90 min). Le « sans action » se déduit des données (sessions,
+  // blocs cochés, routines) au moment du calcul — rien à intercepter.
+  final List<DateTime> _tabOpens = [];
+  bool _energyAskRequested = false; // tap volontaire sur le tag d'état
+  int _lowIndex = 0; // « Autre chose ↻ » — position dans la file à plat
+  int _fullIndex = 0; // « Autre cible ↻ » — position dans les cibles à fond
+  String? _reservedBlockId; // créneau deep work réservé (affichage)
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -152,6 +174,7 @@ class _FocusViewState extends State<FocusView> {
   void initState() {
     super.initState();
     _subscribeSchedule();
+    if (widget.visible) _tabOpens.add(DateTime.now());
     _artifactsSub = _sync.streamArtifacts().listen((a) {
       if (mounted) setState(() => _artifacts = a);
     });
@@ -167,6 +190,14 @@ class _FocusViewState extends State<FocusView> {
       if (_ymd(DateTime.now()) != _schedDate) _subscribeSchedule();
       setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(FocusView old) {
+    super.didUpdateWidget(old);
+    // Une « ouverture » = l'onglet redevient visible (IndexedStack : le widget
+    // vit en continu, seul `visible` bouge au changement d'onglet).
+    if (!old.visible && widget.visible) _tabOpens.add(DateTime.now());
   }
 
   @override
@@ -280,6 +311,9 @@ class _FocusViewState extends State<FocusView> {
   String _ymd(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
   void _subscribeSchedule() {
     _schedSub?.cancel();
     final now = DateTime.now();
@@ -287,6 +321,11 @@ class _FocusViewState extends State<FocusView> {
     _coachAdvancedTo = null; // nouvelle journée → l'horloge reprend la main
     _unplannedDismissed = false;
     _nudgeDismissed = false;
+    _tabOpens.clear(); // nouvelle journée → compteur d'ouvertures remis à zéro
+    _energyAskRequested = false;
+    _lowIndex = 0;
+    _fullIndex = 0;
+    _reservedBlockId = null;
     _loadNudgeFacts(now);
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
@@ -819,6 +858,25 @@ class _FocusViewState extends State<FocusView> {
           ? 'Pause · ${until.minute == 0 ? '${until.hour} h' : '${until.hour} h ${until.minute.toString().padLeft(2, '0')}'}'
           : 'Pause · demain';
     }
+    // Tag d'état (24a, déclencheur n° 3) : toujours accessible — affiche
+    // l'état actif, le tap rouvre la question (changer d'état à la main).
+    final energy = _schedule?.energyState;
+    final energyOn =
+        energyStateActive(energy, now, reviewedAt: _schedule?.reviewedAt);
+    final stateLabel = energyOn
+        ? switch (energy!.level) {
+            'full' => 'À fond',
+            'low' => 'À plat',
+            _ => 'Correct',
+          }
+        : 'État';
+    final stateColor = energyOn
+        ? (energy!.level == 'low'
+            ? energyViolet(cs)
+            : energy.level == 'full'
+                ? cs.primary
+                : cs.onSurface.withOpacity(.6))
+        : cs.onSurface.withOpacity(.45);
     return Row(
       children: [
         Text('Maintenant',
@@ -827,6 +885,23 @@ class _FocusViewState extends State<FocusView> {
                 fontWeight: FontWeight.w800,
                 color: cs.onSurface)),
         const Spacer(),
+        TextButton.icon(
+          onPressed: () =>
+              setState(() => _energyAskRequested = !_energyAskRequested),
+          icon: Icon(
+              energyOn ? Icons.bolt_rounded : Icons.bolt_outlined,
+              size: 18),
+          label: Text(stateLabel,
+              style:
+                  const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+          style: TextButton.styleFrom(
+            foregroundColor: stateColor,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999)),
+          ),
+        ),
         TextButton.icon(
           onPressed: () => _declareUnavailable(reason: 'pas_le_moment'),
           icon: Icon(
@@ -910,6 +985,627 @@ class _FocusViewState extends State<FocusView> {
         ],
       ),
     );
+  }
+
+  // ── Maintenant adaptatif (tour 24) : état → la FORME change, jamais le fond ─
+
+  List<ScheduleBlock> get _liveBlocks =>
+      (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  /// La zone carte : question d'état (24a) > mode à fond (24c) > carte coach.
+  /// Le mode à plat (24b) remplace le corps entier — géré dans build().
+  Widget _coachZone(DateTime now) {
+    final s = _schedule;
+    final energy = s?.energyState;
+    final active =
+        energyStateActive(energy, now, reviewedAt: s?.reviewedAt);
+    // Tap volontaire sur le tag : la question passe devant le mode actif —
+    // changer d'état à la main est toujours possible.
+    if (_energyAskRequested) {
+      return _energyQuestion(now, EnergyAskTrigger.manual, _liveBlocks);
+    }
+    if (active && energy!.level == 'full') return _fullModeCard(now);
+    final live = _liveBlocks;
+    final sessionsToday =
+        st.sessions.where((x) => _sameDay(x.startAt, now)).toList();
+    final trigger = energyAskTrigger(
+      now,
+      state: energy,
+      reviewedAt: s?.reviewedAt,
+      idleOpens:
+          idleOpenCount(now, _tabOpens, lastActionAt(now, st, live)),
+      drifting: driftingBlock(now, st, live, sessionsToday),
+      requested: _energyAskRequested,
+    );
+    if (trigger != null) return _energyQuestion(now, trigger, live);
+    return _coachCard(now);
+  }
+
+  Widget _energyQuestion(
+      DateTime now, EnergyAskTrigger trigger, List<ScheduleBlock> live) {
+    final lastAction = lastActionAt(now, st, live);
+    final idle = _tabOpens
+        .where((o) =>
+            now.difference(o).inMinutes <= 90 &&
+            (lastAction == null || o.isAfter(lastAction)))
+        .toList();
+    final sessionsToday =
+        st.sessions.where((x) => _sameDay(x.startAt, now)).toList();
+    return EnergyQuestionCard(
+      message: energyAskMessage(trigger,
+          idleOpens: idle.length,
+          firstOpen: idle.isNotEmpty ? idle.first : null,
+          drifting: driftingBlock(now, st, live, sessionsToday)),
+      onPick: (level, note) async {
+        await _sync.setEnergyState(_schedDate, level, note: note);
+        if (!mounted) return;
+        setState(() => _energyAskRequested = false);
+        if (level == 'ok') {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Noté — on continue, rien ne change.'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      },
+    );
+  }
+
+  /// « ↩ Ça va mieux » / sortie du mode à fond : repasse en « correct » —
+  /// c'est une RÉPONSE (pas d'effacement) : la question se tait 3 h.
+  Future<void> _energyBackToOk() async {
+    await _sync.setEnergyState(_schedDate, 'ok',
+        note: _schedule?.energyState?.note);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('La forme normale reprend.'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  // ── Mode à plat (24b) : une chose à la fois, horizon 1 heure ────────────────
+
+  Widget _lowBanner(ColorScheme cs, EnergyState energy) {
+    final violet = energyViolet(cs);
+    final until = energy.at.add(kEnergyTtl);
+    final untilStr =
+        '${until.hour}:${until.minute.toString().padLeft(2, '0')}';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: violet.withOpacity(.5)),
+        color: violet.withOpacity(.08),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('À plat — jusqu\'à $untilStr ou avant',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: violet)),
+          ),
+          TextButton(
+            onPressed: _energyBackToOk,
+            style: TextButton.styleFrom(
+              foregroundColor: violet,
+              visualDensity: VisualDensity.compact,
+            ),
+            child:
+                const Text('↩ Ça va mieux', style: TextStyle(fontSize: 12.5)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Corps entier de l'onglet en mode à plat : UNE chose, petite, chronos
+  /// 5/10/15, « Autre chose ↻ » sans pénalité. Filtre d'affichage pur — aucun
+  /// bloc n'est modifié, le reste passe « en attente » (recasé au check-in).
+  Widget _buildLowMode(BuildContext context, ColorScheme cs, DateTime now) {
+    final violet = energyViolet(cs);
+    final live = _liveBlocks;
+    final queue = lowModeQueue(now, st, live);
+    final item = queue.isEmpty ? null : queue[_lowIndex % queue.length];
+    final next = lowModeNext(now, live, item);
+    final waiting = lowModeWaitingCount(live, item);
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _header(cs, now),
+            const SizedBox(height: 20),
+            _lowBanner(cs, _schedule!.energyState!),
+            // Carte message — chiffres et titres réels, jamais de morale.
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              decoration: BoxDecoration(
+                color: violet.withOpacity(.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: violet.withOpacity(.35)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('ORION · À PLAT',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: violet)),
+                    const Spacer(),
+                    Text('HORIZON : 1 HEURE',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: cs.onSurface.withOpacity(.4))),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(lowModeMessage(live),
+                      style: TextStyle(
+                          fontSize: 14,
+                          height: 1.4,
+                          color: cs.onSurface.withOpacity(.9))),
+                ],
+              ),
+            ),
+            if (item != null)
+              _lowProposalCard(cs, item, queue.length)
+            else
+              Text(
+                  'Rien à proposer — tout est tenu ou rien n\'est posé. Repos assumé : la récup fait tenir le reste.',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.55))),
+            if (next != null) ...[
+              const SizedBox(height: 12),
+              // « Ensuite, si ça va » : UN bloc, en pointillé, jamais lancé
+              // d'office.
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: cs.onSurface.withOpacity(.2),
+                      style: BorderStyle.solid),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                        'Ensuite, si ça va : ${next.title}${next.durationMin > 25 ? ' — version 25 min' : ''}',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurface.withOpacity(.6))),
+                  ),
+                  Text('pas avant',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurface.withOpacity(.4))),
+                ]),
+              ),
+            ],
+            if (waiting > 0) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.onSurface.withOpacity(.12)),
+                ),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(
+                        'Le reste — $waiting bloc${waiting > 1 ? 's' : ''}, en attente. Rien n\'est sauté, on recase au check-in.',
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            color: cs.onSurface.withOpacity(.55))),
+                  ),
+                  if (widget.onOpenToday != null)
+                    TextButton(
+                      onPressed: widget.onOpenToday,
+                      style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
+                      child:
+                          const Text('Voir', style: TextStyle(fontSize: 12.5)),
+                    ),
+                ]),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _lowProposalCard(ColorScheme cs, LowModeItem item, int queueLen) {
+    Widget chrono(int min, {bool filled = false}) {
+      void launch() {
+        final r = item.routine;
+        if (r != null) {
+          if (widget.onStartTimed != null) {
+            widget.onStartTimed!(r, min);
+          } else {
+            widget.onLaunchScheduledBlock?.call(ScheduleBlock(
+                startTime: _hm(DateTime.now()),
+                durationMin: min,
+                title: r.name,
+                category: 'routine',
+                activityId: r.id));
+          }
+          return;
+        }
+        final b = item.block;
+        if (b == null) return;
+        final act = b.activityId != null
+            ? st.activities.where((a) => a.id == b.activityId).firstOrNull
+            : null;
+        if (act != null && widget.onStartTimed != null) {
+          widget.onStartTimed!(act, min);
+        } else {
+          // Bloc projet : chrono ciblé normal — la petite durée reste
+          // l'intention, pas une contrainte du minuteur.
+          widget.onLaunchScheduledBlock?.call(b);
+        }
+      }
+
+      final style = filled
+          ? FilledButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999)))
+          : OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999)));
+      final child = Text('▶ $min min',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700));
+      return filled
+          ? FilledButton(onPressed: launch, style: style, child: child)
+          : OutlinedButton(onPressed: launch, style: style, child: child);
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: cs.primary.withOpacity(.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.primary.withOpacity(.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.title,
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(item.subtitle,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurface.withOpacity(.55))),
+                ],
+              ),
+            ),
+            if (queueLen > 1)
+              OutlinedButton(
+                onPressed: () => setState(() => _lowIndex++),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: cs.onSurface.withOpacity(.7),
+                  side: BorderSide(color: cs.onSurface.withOpacity(.3)),
+                  minimumSize: const Size(0, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999)),
+                ),
+                child: const Text('Autre chose ↻',
+                    style:
+                        TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+              ),
+          ]),
+          const SizedBox(height: 12),
+          // Vraiment à plat = 5 min suffisent à rentrer dedans.
+          Row(children: [
+            chrono(5),
+            const SizedBox(width: 8),
+            chrono(10),
+            const SizedBox(width: 8),
+            chrono(15, filled: true),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // ── Mode à fond (24c) : deep work protégé — réserver ≠ lancer ───────────────
+
+  Widget _fullModeCard(DateTime now) {
+    final cs = Theme.of(context).colorScheme;
+    final live = _liveBlocks;
+    final targets = fullModeTargets(now, st, live, logic.currentProjects);
+    if (targets.isEmpty) {
+      // Rien à étendre : à fond SANS cible, la carte le dit et propose de
+      // poser — jamais de cible inventée.
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: cs.primary.withOpacity(.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cs.primary.withOpacity(.30)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ORION · À FOND',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    color: cs.primary)),
+            const SizedBox(height: 8),
+            Text(
+                'À fond — on en profite. Rien n\'est posé à étendre : 2 minutes pour poser la cible, et je protège le créneau.',
+                style: TextStyle(
+                    fontSize: 14,
+                    height: 1.4,
+                    color: cs.onSurface.withOpacity(.9))),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _openPlanToday,
+              icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+              label: const Text('Planifier · 2 min'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 44),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final t = targets[_fullIndex % targets.length];
+    final b = t.block;
+    final reserved = _reservedBlockId == b.id;
+    final endAt = now.add(const Duration(minutes: 120));
+    final shifts = deepWorkShifts(now, live, b, 120);
+    final shiftText = shifts.isNotEmpty
+        ? 'Glissent si tu valides : ${shifts.take(3).map((s) => '${s.block.title} → ${s.newStart}').join(' · ')}. La soirée off ne bouge pas.'
+        : 'Rien d\'autre ne bouge — la soirée off reste off.';
+    final domainTag = t.domainName != null
+        ? ' (${t.domainName} n° ${t.rank})'
+        : '';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: cs.primary.withOpacity(.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: cs.primary.withOpacity(.30)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Text('ORION · À FOND',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: cs.primary)),
+                const Spacer(),
+                Text('DEEP WORK',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                        color: cs.onSurface.withOpacity(.4))),
+              ]),
+              const SizedBox(height: 8),
+              Text(
+                  'À fond — on en profite. LA cible : ${b.title}$domainTag. '
+                  '${reserved ? 'Le créneau ${b.startTime} → ${_endOf(b)} est réservé — les autres blocs ont glissé après.' : 'Deux heures, une porte fermée : ${_hm(now)} → ${_hm(endAt)}.'}',
+                  style: TextStyle(
+                      fontSize: 14,
+                      height: 1.4,
+                      color: cs.onSurface.withOpacity(.9))),
+              const SizedBox(height: 12),
+              // La cible, avec son fil vers l'intention (mots du user).
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cs.primary.withOpacity(.5)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(b.title,
+                                style: const TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text(
+                                reserved
+                                    ? '${b.startTime} → ${_endOf(b)} · ${b.durationMin >= 60 ? '${b.durationMin ~/ 60} h${b.durationMin % 60 != 0 ? ' ${b.durationMin % 60}' : ''}' : '${b.durationMin} min'} réservées'
+                                    : '${fmtMin(b.durationMin)} prévu · s\'étend en deep work 2 h',
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: cs.onSurface.withOpacity(.55))),
+                          ],
+                        ),
+                      ),
+                      if (targets.length > 1)
+                        OutlinedButton(
+                          // Pas disposé pour la n° 1 → la n° 2, puis la n° 3 —
+                          // sans jugement.
+                          onPressed: () => setState(() => _fullIndex++),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: cs.onSurface.withOpacity(.7),
+                            side: BorderSide(
+                                color: cs.onSurface.withOpacity(.3)),
+                            minimumSize: const Size(0, 44),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999)),
+                          ),
+                          child: const Text('Autre cible ↻',
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                    ]),
+                    if (t.intention != null) ...[
+                      const SizedBox(height: 8),
+                      Divider(
+                          height: 1, color: cs.onSurface.withOpacity(.15)),
+                      const SizedBox(height: 8),
+                      Text('→ intention « ${t.intention} »',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              color: cs.onSurface.withOpacity(.65))),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                // Réserver ≠ lancer : deux gestes distincts.
+                OutlinedButton(
+                  onPressed:
+                      reserved ? null : () => _reserveDeepWork(t, 60),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 46),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999)),
+                  ),
+                  child: const Text('Réserver 1 h',
+                      style: TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => _launchDeepWork(t),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999)),
+                    ),
+                    child: const Text('▶ Lancer maintenant · 2 h',
+                        style: TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 10),
+              Text(shiftText,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.35,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.5))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  String _endOf(ScheduleBlock b) {
+    final p = b.startTime.split(':');
+    final total = (int.tryParse(p.first) ?? 0) * 60 +
+        (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0) +
+        b.durationMin;
+    return '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
+  }
+
+  /// « Réserver » : pose le créneau SANS démarrer — la cible passe à
+  /// maintenant pour [minutes], les blocs pris dedans glissent après (jamais
+  /// vers ≥ 19 h : la soirée off ne bouge pas). Un déplacement n'est jamais
+  /// compté sauté.
+  Future<void> _reserveDeepWork(FullTarget t, int minutes) async {
+    final now = DateTime.now();
+    final live = _liveBlocks;
+    final shifts = deepWorkShifts(now, live, t.block, minutes);
+    await _sync.updateScheduleBlockTime(_schedDate, t.block.id,
+        startTime: _hm(now), durationMin: minutes);
+    for (final s in shifts) {
+      await _sync.updateScheduleBlockTime(_schedDate, s.block.id,
+          startTime: s.newStart);
+    }
+    if (!mounted) return;
+    setState(() => _reservedBlockId = t.block.id);
+    final end = now.add(Duration(minutes: minutes));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          'Créneau réservé ${_hm(now)} → ${_hm(end)} — réservé sans lancer${shifts.isNotEmpty ? ' · ${shifts.length} bloc${shifts.length > 1 ? 's' : ''} glissé${shifts.length > 1 ? 's' : ''} après' : ''}.'),
+      duration: const Duration(seconds: 3),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
+
+  /// « ▶ Lancer maintenant · 2 h » : valide le créneau (mêmes glissements que
+  /// la réservation) ET démarre le chrono ciblé tout de suite.
+  Future<void> _launchDeepWork(FullTarget t) async {
+    final now = DateTime.now();
+    if (_reservedBlockId != t.block.id) {
+      final shifts = deepWorkShifts(now, _liveBlocks, t.block, 120);
+      await _sync.updateScheduleBlockTime(_schedDate, t.block.id,
+          startTime: _hm(now), durationMin: 120);
+      for (final s in shifts) {
+        await _sync.updateScheduleBlockTime(_schedDate, s.block.id,
+            startTime: s.newStart);
+      }
+      if (mounted) setState(() => _reservedBlockId = t.block.id);
+    }
+    final act = t.block.activityId != null
+        ? st.activities.where((a) => a.id == t.block.activityId).firstOrNull
+        : null;
+    if (act != null && !act.isHabit && widget.onStartTimed != null) {
+      widget.onStartTimed!(act, 120);
+    } else {
+      widget.onLaunchScheduledBlock?.call(t.block);
+    }
   }
 
   // ── Carte coach « Maintenant » ───────────────────────────────────────────────
@@ -1573,6 +2269,15 @@ class _FocusViewState extends State<FocusView> {
     if (_schedule?.unavailableAt(now) == true) {
       return _buildEmpty(context, cs, now);
     }
+    // Mode à plat (24b) : la FORME entière change — un seul bloc, petit,
+    // horizon 1 h. Réversible par le bandeau ; le fond n'a pas bougé. Le tap
+    // sur le tag d'état rouvre la question par-dessus (corps normal).
+    final energy = _schedule?.energyState;
+    if (!_energyAskRequested &&
+        energy?.level == 'low' &&
+        energyStateActive(energy, now, reviewedAt: _schedule?.reviewedAt)) {
+      return _buildLowMode(context, cs, now);
+    }
     final focus = _focusBlock(now);
     return focus != null
         ? _buildFocusIdle(context, cs, focus, now)
@@ -1896,7 +2601,7 @@ class _FocusViewState extends State<FocusView> {
             _header(cs, now),
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
-            _coachCard(now),
+            _coachZone(now),
             _contextSection(cs),
             _focusCard(context, cs, b, now),
             if (next != null) ...[
@@ -2181,7 +2886,7 @@ class _FocusViewState extends State<FocusView> {
             _header(cs, now),
             const SizedBox(height: 20),
             if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
-            _coachCard(now),
+            _coachZone(now),
             _contextSection(cs),
             // Bloc au-delà de l'horizon (ex : Hygiène du soir à 21 h vu à
             // 13 h 46) : l'affaire de PLUS TARD — hint discret, pas la grande

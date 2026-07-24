@@ -3056,6 +3056,36 @@ class _AppRootState extends State<AppRoot>
             countdownTotalSec: _countdownTotalSec,
             onLaunchScheduledBlock: _launchScheduledBlock,
             onOpenScheduledBlockSource: _openBlockSource,
+            // Maintenant adaptatif (24) : les « ouvertures sans action » se
+            // comptent quand l'onglet devient visible.
+            visible: _tab == _Tab.maintenant,
+            // Chrono + décompte d'une durée CHOISIE (5/10/15 à plat, 2 h à
+            // fond) — routine cochée à la fin, comme le ▶ du programme.
+            onStartTimed: (a, minutes) {
+              if (a.isHabit) {
+                final linkedId = (a.linkedActivityId ?? '').trim();
+                final linked = linkedId.isEmpty
+                    ? null
+                    : logic.state.activities
+                        .firstWhereOrNull((x) => x.id == linkedId);
+                final target = linked ?? a;
+                logic.start(target.id);
+                _startCountdown(minutes, target.name, routineId: a.id);
+              } else {
+                logic.start(a.id);
+                _startCountdown(minutes, a.name);
+              }
+              setState(() {
+                _focusProject = null;
+                _focusTask = null;
+                _tab = _Tab.maintenant;
+              });
+            },
+            // « Voir » les blocs en attente du mode à plat → Aujourd'hui.
+            onOpenToday: () {
+              _tabFadeController.forward(from: 0);
+              setState(() => _tab = _Tab.aujourdhui);
+            },
             // État vide « Que souhaites-tu faire maintenant ? » → sheets existantes.
             onOpenRoutines: () => _showRoutinesSheet(context),
             onOpenActivities: () => _showLaunchActivitySheet(context),

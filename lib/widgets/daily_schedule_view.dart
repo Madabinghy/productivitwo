@@ -380,6 +380,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       unavailableUntil: schedule.unavailableUntil,
       unavailableReason: schedule.unavailableReason,
       reviewedAt: schedule.reviewedAt,
+      energyState: schedule.energyState,
     ));
   }
 

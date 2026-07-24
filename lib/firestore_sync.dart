@@ -2742,6 +2742,23 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// État déclaré (24a) : « À fond / Correct / À plat » — un fait posé en
+  /// 1 tap, TTL 3 h. N'écrit QUE l'état — la forme de l'onglet suit, les
+  /// blocs ne sont jamais touchés. « ↩ Ça va mieux » repasse par ici avec
+  /// level "ok" (fait répondu : pas de re-question avant 3 h).
+  Future<void> setEnergyState(String date, String level,
+      {String? note}) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/daily_schedules/$date').set({
+      'date': date,
+      'energyState': {
+        'level': level,
+        'at': DateTime.now().toIso8601String(),
+        'note': (note ?? '').trim().isEmpty ? null : note!.trim(),
+      },
+    }, SetOptions(merge: true));
+  }
+
   /// Cause globale d'une journée qui a déraillé (3+ engagements rompus).
   Future<void> setDayReason(String date, String reason) async {
     if (uid == null) return;
