@@ -886,6 +886,17 @@ class FirestoreSync {
         {'reviewedAt': DateTime.now().toIso8601String()}, SetOptions(merge: true));
   }
 
+  /// « Où on va » (24d) : ordre des priorités réordonné par le user (⇅),
+  /// écrit sur le doc du rapport dont la stratégie est issue — le rapport
+  /// suivant repart de l'ordre du user, pas du sien.
+  Future<void> setWeeklyReportStrategyOrder(
+      String weekStart, List<String> order) async {
+    if (uid == null) return;
+    await _col('weekly_reports')
+        .doc(weekStart)
+        .set({'strategyOrder': order}, SetOptions(merge: true));
+  }
+
   /// Fait « rapport lu » : posé à la première ouverture de l'écran du rapport
   /// — le teaser du dimanche soir se tait ensuite, la carte reprend son cours.
   Future<void> markWeeklyReportRead(String weekStart) async {
