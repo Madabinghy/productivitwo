@@ -381,6 +381,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       unavailableReason: schedule.unavailableReason,
       reviewedAt: schedule.reviewedAt,
       energyState: schedule.energyState,
+      recoverySequence: schedule.recoverySequence,
     ));
   }
 

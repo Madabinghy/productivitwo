@@ -166,4 +166,15 @@ export interface DailySchedulePayload {
   plannedSameDay?: boolean;
   // État déclaré du jour (24a) — écrit par l'app, jamais par le LLM.
   energyState?: EnergyStatePayload | null;
+  // Remotivation après 2 jours à plat (25) — machine à états, écrite par
+  // l'app ; le rapport du dimanche reprend recoveryContext (pas de double
+  // interrogatoire).
+  recoverySequence?: {
+    step: 1 | 2 | 3 | 4;
+    startedAt: string; // ISO
+    declines?: number;
+    declinedAt?: string | null;
+    recoveryContext?: { kind: "physical" | "program" | "unknown"; at: string } | null;
+    exitedAt?: string | null;
+  } | null;
 }

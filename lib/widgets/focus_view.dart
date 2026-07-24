@@ -12,7 +12,9 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/energy_state.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
 import 'package:productivitwo_v1/utils/onboarding_slots.dart';
+import 'package:productivitwo_v1/utils/recovery.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
+import 'package:productivitwo_v1/utils/where_we_go.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -155,6 +157,11 @@ class _FocusViewState extends State<FocusView> {
   int _lowIndex = 0; // « Autre chose ↻ » — position dans la file à plat
   int _fullIndex = 0; // « Autre cible ↻ » — position dans les cibles à fond
   String? _reservedBlockId; // créneau deep work réservé (affichage)
+  // ── Remotivation (25) : 2 jours à plat → flux séquencé au matin du jour 3 ──
+  DailySchedule? _dayBefore; // J-2 (avec _yesterday : détection du déclencheur)
+  Map<String, dynamic> _recoveryMeta = {}; // lastRecoveryAt + variantes servies
+  bool _recoveryStartAttempted = false; // une évaluation par jour suffit
+  final Set<int> _recoveryVariantLogged = {}; // variantes déjà persistées
   String _schedDate = '';
   // Blocs-routine déjà validés via ✓ — évite le double incrément avant le
   // retour du stream (même garde que dans DailyScheduleView).
@@ -327,17 +334,38 @@ class _FocusViewState extends State<FocusView> {
     _lowIndex = 0;
     _fullIndex = 0;
     _reservedBlockId = null;
+    _recoveryStartAttempted = false;
+    _recoveryVariantLogged.clear();
     _loadNudgeFacts(now);
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
       // Garde todayBlocks frais même si l'onglet Aujourd'hui affiche « Demain ».
       logic.todayBlocks = s?.blocks ?? [];
+      _maybeStartRecovery();
     });
     // Programme de la veille (one-shot) pour la carte coach du réveil.
     final yesterday = _ymd(now.subtract(const Duration(days: 1)));
     _sync.streamDailySchedule(yesterday).first.then((s) {
-      if (mounted) setState(() => _yesterday = s);
+      if (mounted) {
+        setState(() => _yesterday = s);
+        _maybeStartRecovery();
+      }
+    }).catchError((_) {});
+    // J-2 + faits persistants de la remotivation (déclencheur des 2 jours à
+    // plat + cooldown 72 h + variantes de copy servies).
+    final dayBefore = _ymd(now.subtract(const Duration(days: 2)));
+    _sync.streamDailySchedule(dayBefore).first.then((s) {
+      if (mounted) {
+        setState(() => _dayBefore = s);
+        _maybeStartRecovery();
+      }
+    }).catchError((_) {});
+    _sync.fetchRecoveryMeta().then((m) {
+      if (mounted) {
+        setState(() => _recoveryMeta = m);
+        _maybeStartRecovery();
+      }
     }).catchError((_) {});
     // Programme de DEMAIN (temps réel) : la carte du soir doit savoir que
     // demain vient d'être posé — sinon elle re-propose « faire le point »
@@ -1008,6 +1036,9 @@ class _FocusViewState extends State<FocusView> {
   /// Le mode à plat (24b) remplace le corps entier — géré dans build().
   Widget _coachZone(DateTime now) {
     final s = _schedule;
+    // Remotivation (25) : le flux séquencé est prioritaire sur toutes les
+    // autres cartes tant qu'il n'est pas sorti (ou en fenêtre de repos).
+    if (_recoveryShowing(now)) return _recoveryCard(now);
     final energy = s?.energyState;
     final active =
         energyStateActive(energy, now, reviewedAt: s?.reviewedAt);
@@ -1076,6 +1107,613 @@ class _FocusViewState extends State<FocusView> {
       ));
     }
   }
+
+  // ── Remotivation après 2 jours à plat (tour 25) ─────────────────────────────
+  //
+  // UN flux séquencé, prioritaire sur les autres cartes : constat + plus
+  // petite marche → question qui route → remontée en 3 jours → rappel du cap.
+  // Zéro LLM — templates avec les chiffres réels, pools de variantes seedés.
+
+  RecoverySequence? get _recovery => _schedule?.recoverySequence;
+
+  /// La séquence est-elle à l'écran maintenant ? (active, hors fenêtre de
+  /// repos après un « Pas maintenant »).
+  bool _recoveryShowing(DateTime now) {
+    final seq = _recovery;
+    if (seq == null || !seq.active) return false;
+    final resting = seq.step == 1 &&
+        seq.declines == 1 &&
+        seq.declinedAt != null &&
+        now.difference(seq.declinedAt!) < kRecoveryDeclineRest;
+    return !resting;
+  }
+
+  /// Démarre la séquence au matin du jour 3 si les conditions sont réunies —
+  /// une seule évaluation par jour, une seule séquence par 72 h.
+  void _maybeStartRecovery() {
+    if (_recoveryStartAttempted) return;
+    final now = DateTime.now();
+    if (now.hour < 8) return; // le cycle du matin, pas la nuit
+    if (_schedule?.recoverySequence != null) {
+      _recoveryStartAttempted = true;
+      return;
+    }
+    // Attendre que J-1, J-2 et le meta soient chargés (fetchs one-shot).
+    if (_yesterday == null && _dayBefore == null && _recoveryMeta.isEmpty) {
+      return;
+    }
+    final lastAt = _recoveryMeta['lastRecoveryAt'] is String
+        ? DateTime.tryParse(_recoveryMeta['lastRecoveryAt'] as String)
+        : null;
+    final triggered = recoveryTriggered(
+      now,
+      yesterday: _yesterday,
+      dayBefore: _dayBefore,
+      sessions: st.sessions,
+      lastRecoveryAt: lastAt,
+    );
+    _recoveryStartAttempted = true;
+    if (!triggered) return;
+    final seq = RecoverySequence();
+    _schedule?.recoverySequence = seq;
+    _sync.setRecoverySequence(_schedDate, seq);
+    _sync.setRecoveryMeta({'lastRecoveryAt': now.toIso8601String()});
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveRecovery(RecoverySequence seq) async {
+    _schedule?.recoverySequence = seq;
+    if (mounted) setState(() {});
+    await _sync.setRecoverySequence(_schedDate, seq);
+  }
+
+  /// Variante de copy d'une étape : la dernière servie (meta) est écartée du
+  /// tirage ; celle qui sort est persistée une fois par étape et par jour.
+  int? _lastVariant(int step) {
+    final v = _recoveryMeta['copyVariants'];
+    return v is Map ? (v['s$step'] as num?)?.toInt() : null;
+  }
+
+  void _logVariant(int step, int variant) {
+    if (_recoveryVariantLogged.contains(step)) return;
+    _recoveryVariantLogged.add(step);
+    _sync.setRecoveryMeta({'copyVariants': {'s$step': variant}});
+  }
+
+  /// La « marche » : la plus petite chose du jour (même file que le mode à
+  /// plat — routines d'abord), en version ≤ 20 min.
+  ({LowModeItem item, int minutes})? _recoveryStepProposal(DateTime now) {
+    final item = lowModeQueue(now, st, _liveBlocks).firstOrNull;
+    if (item == null) return null;
+    final base = item.routine?.timerMin ?? item.block?.durationMin ?? 20;
+    return (item: item, minutes: base.clamp(5, 20).toInt());
+  }
+
+  void _launchRecoveryStep(
+      DateTime now, ({LowModeItem item, int minutes}) p) {
+    final seq = _recovery;
+    if (seq == null) return;
+    // ▶ lancée = sortie du flux — le jour continue en mode à plat (24b).
+    seq.exitedAt = now;
+    _saveRecovery(seq);
+    _sync.setEnergyState(_schedDate, 'low',
+        note: _schedule?.energyState?.note);
+    final r = p.item.routine;
+    if (r != null && widget.onStartTimed != null) {
+      widget.onStartTimed!(r, p.minutes);
+      return;
+    }
+    final b = p.item.block;
+    if (b != null) widget.onLaunchScheduledBlock?.call(b);
+  }
+
+  Widget _recoveryCard(DateTime now) {
+    final seq = _recovery!;
+    return switch (seq.step) {
+      1 => _recoveryStep1(now, seq),
+      2 => _recoveryStep2(now, seq),
+      3 => _recoveryStep3(now, seq),
+      _ => _recoveryStep4(now, seq),
+    };
+  }
+
+  Widget _recoveryShell(ColorScheme cs, String rightTag, List<Widget> children) {
+    final violet = energyViolet(cs);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: violet.withOpacity(.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: violet.withOpacity(.40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text('ORION · REMONTÉE',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    color: violet)),
+            const Spacer(),
+            Text(rightTag,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                    color: cs.onSurface.withOpacity(.4))),
+          ]),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _recoveryStat(ColorScheme cs, String value, String label,
+      {Color? accent}) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(value,
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: accent ?? cs.primary,
+              fontFeatures: const [FontFeature.tabularFigures()])),
+      Text(label,
+          style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: .6,
+              color: cs.onSurface.withOpacity(.5))),
+    ]);
+  }
+
+  /// Étape 1 (25a) — le constat + la plus petite marche.
+  Widget _recoveryStep1(DateTime now, RecoverySequence seq) {
+    final cs = Theme.of(context).colorScheme;
+    final violet = energyViolet(cs);
+    final held = heldFacts(now, _yesterday, _dayBefore, st);
+    final copy = recoveryCopyStep1(now, held, lastVariant: _lastVariant(1));
+    _logVariant(1, copy.variant);
+    final proposal = _recoveryStepProposal(now);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _recoveryShell(cs, '2 JOURS À PLAT', [
+        Wrap(spacing: 24, runSpacing: 10, children: [
+          _recoveryStat(cs, '2 j', 'À PLAT', accent: violet),
+          _recoveryStat(
+              cs, '${checkinsHeld(_yesterday, _dayBefore)}/2', 'CHECK-INS TENUS'),
+          _recoveryStat(cs, '0', 'COMPTÉ SAUTÉ'),
+        ]),
+        const SizedBox(height: 12),
+        Text(copy.text,
+            style: TextStyle(
+                fontSize: 14, height: 1.45, color: cs.onSurface.withOpacity(.9))),
+      ]),
+      if (proposal != null) ...[
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.primary.withOpacity(.45)),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${proposal.item.title} — ${proposal.minutes} min',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text('${proposal.item.subtitle} · pas la version complète',
+                      style: TextStyle(
+                          fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+                ],
+              ),
+            ),
+            FilledButton(
+              onPressed: () => _launchRecoveryStep(now, proposal),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 46),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              child: Text('▶ ${proposal.minutes} min',
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+        ),
+      ],
+      Center(
+        child: TextButton(
+          onPressed: () {
+            seq.declines += 1;
+            seq.declinedAt = now;
+            if (seq.declines >= 2) seq.step = 2;
+            _saveRecovery(seq);
+          },
+          style: TextButton.styleFrom(
+              foregroundColor: cs.onSurface.withOpacity(.5)),
+          child: Text(
+              seq.declines == 0
+                  ? 'Pas maintenant — je reproposerai dans 2 h'
+                  : 'Pas maintenant',
+              style: const TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w600)),
+        ),
+      ),
+      const SizedBox(height: 8),
+    ]);
+  }
+
+  /// Étape 2 (25b) — la question qui route. La réponse est un FAIT
+  /// (recoveryContext) que le rapport du dimanche reprend.
+  Widget _recoveryStep2(DateTime now, RecoverySequence seq) {
+    final cs = Theme.of(context).colorScheme;
+    final copy = recoveryCopyStep2(now, lastVariant: _lastVariant(2));
+    _logVariant(2, copy.variant);
+    final j2 = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 2));
+    const weekdays = [
+      'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'
+    ];
+
+    Widget option(String title, String sub, VoidCallback onTap) => InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 10),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cs.onSurface.withOpacity(.25)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 3),
+                Text(sub,
+                    style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        color: cs.onSurface.withOpacity(.55))),
+              ],
+            ),
+          ),
+        );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _recoveryShell(cs, 'UNE QUESTION, PAS DIX', [
+        Text(copy.text,
+            style: TextStyle(
+                fontSize: 14, height: 1.45, color: cs.onSurface.withOpacity(.9))),
+        const SizedBox(height: 12),
+        option(
+          'C\'est physique — sommeil, santé, coup de mou',
+          'on lève le pied 48 h : la remontée se fait en trois marches, zéro relance de ma part',
+          () {
+            seq.recoveryContext = RecoveryContext(kind: 'physical', at: now);
+            seq.step = 3;
+            _saveRecovery(seq);
+          },
+        ),
+        option(
+          'C\'est le programme — trop lourd, ou je n\'y crois plus',
+          'on ne rame pas contre : session sur l\'intention — la modalité change, pas toi',
+          () async {
+            seq.recoveryContext = RecoveryContext(kind: 'program', at: now);
+            seq.exitedAt = now;
+            await _saveRecovery(seq);
+            final cap = capDomain(st);
+            if (cap != null && mounted) {
+              _startDomainSession(cap.domain.name);
+            }
+          },
+        ),
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              seq.recoveryContext = RecoveryContext(kind: 'unknown', at: now);
+              seq.step = 3; // « physique » par défaut
+              await _saveRecovery(seq);
+              // Point posé à J+2 — un bloc bilan, il survit aux replanifs.
+              await _sync.addScheduleBlock(
+                  _ymd(j2),
+                  ScheduleBlock(
+                    startTime: '09:30',
+                    durationMin: 10,
+                    title: 'Point de remontée — physique ou programme ?',
+                    category: 'personal',
+                    kind: 'bilan',
+                  ));
+            },
+            style: TextButton.styleFrom(
+                foregroundColor: cs.onSurface.withOpacity(.55)),
+            child: Text(
+                'Je ne sais pas — on teste « physique » d\'abord, on en reparle ${weekdays[j2.weekday - 1]}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 12.5, fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ]),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+            'Ta réponse est écrite (fait daté). Le rapport de dimanche la reprendra — pas de double interrogatoire.',
+            style: TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                fontStyle: FontStyle.italic,
+                color: cs.onSurface.withOpacity(.45))),
+      ),
+    ]);
+  }
+
+  /// Étape 3 (25c) — la remontée en 3 jours, pente douce.
+  Widget _recoveryStep3(DateTime now, RecoverySequence seq) {
+    final cs = Theme.of(context).colorScheme;
+    final copy = recoveryCopyStep3(now, lastVariant: _lastVariant(3));
+    _logVariant(3, copy.variant);
+    const abbr = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+    final today = DateTime(now.year, now.month, now.day);
+    final d1 = abbr[today.weekday - 1];
+    final d2 = abbr[today.add(const Duration(days: 1)).weekday - 1];
+    final d3 = abbr[today.add(const Duration(days: 2)).weekday - 1];
+    const weekdays = [
+      'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'
+    ];
+    final priority = fullModeTargets(
+            now, st, _liveBlocks, logic.currentProjects)
+        .firstOrNull;
+
+    Widget dayRow(String day, String title, String sub,
+        {bool highlight = false}) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: highlight
+                  ? cs.primary.withOpacity(.5)
+                  : cs.onSurface.withOpacity(.15)),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 40,
+            child: Text(day,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: highlight
+                        ? cs.primary
+                        : cs.onSurface.withOpacity(.4))),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(sub,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.3,
+                        color: cs.onSurface.withOpacity(.55))),
+              ],
+            ),
+          ),
+        ]),
+      );
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _recoveryShell(cs, 'PENTE DOUCE', [
+        Text(copy.text,
+            style: TextStyle(
+                fontSize: 14, height: 1.45, color: cs.onSurface.withOpacity(.9))),
+      ]),
+      dayRow(d1, 'Routines seules + une marche de 20 min',
+          'rien d\'autre n\'est posé — assumé',
+          highlight: true),
+      dayRow(
+          d2,
+          '+ le bloc prioritaire, version 45 min',
+          priority != null
+              ? '${priority.block.title} — la version courte, pas l\'idéale'
+              : 'choisi demain matin, selon la forme'),
+      dayRow(d3, 'Programme normal',
+          'si ${weekdays[today.weekday - 1]} et ${weekdays[today.add(const Duration(days: 1)).weekday - 1]} ont tenu — sinon on reste sur la marche 2'),
+      const SizedBox(height: 4),
+      Row(children: [
+        Expanded(
+          child: FilledButton(
+            onPressed: () => _poseRecoveryPlan(now, seq, priority),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 48),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999)),
+            ),
+            child: const Text('Poser la remontée',
+                style:
+                    TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+          ),
+        ),
+        const SizedBox(width: 10),
+        OutlinedButton(
+          // Sortie ASSUMÉE : le user reprend la main, le flux se tait.
+          onPressed: () {
+            seq.exitedAt = now;
+            _saveRecovery(seq);
+          },
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999)),
+          ),
+          child: const Text('Programme normal',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+      const SizedBox(height: 16),
+    ]);
+  }
+
+  /// « Poser la remontée » : J1 = la marche (20 min, tout de suite après),
+  /// J2 = le bloc prioritaire version 45 min — provenance conservée (chrono
+  /// ciblé). Les blocs des jours à plat sont morts, rien n'est reproposé.
+  Future<void> _poseRecoveryPlan(
+      DateTime now, RecoverySequence seq, FullTarget? priority) async {
+    final startMin = ((now.hour * 60 + now.minute + 20) ~/ 15) * 15;
+    final hm =
+        '${((startMin ~/ 60) % 24).toString().padLeft(2, '0')}:${(startMin % 60).toString().padLeft(2, '0')}';
+    await _sync.addScheduleBlock(
+        _schedDate,
+        ScheduleBlock(
+          startTime: hm,
+          durationMin: 20,
+          title: 'Marche — 20 min',
+          category: 'personal',
+        ));
+    if (priority != null) {
+      final t = now.add(const Duration(days: 1));
+      await _sync.addScheduleBlock(
+          _ymd(t),
+          ScheduleBlock(
+            startTime: '09:30',
+            durationMin: 45,
+            title: '${priority.block.title} — version 45 min',
+            category: priority.block.category,
+            projectId: priority.block.projectId,
+            taskId: priority.block.taskId,
+            activityId: priority.block.activityId,
+            actionId: priority.block.actionId,
+          ));
+    }
+    seq.step = 4;
+    await _saveRecovery(seq);
+  }
+
+  /// Étape 4 (25d) — la clôture : le rappel du cap, uniquement du stocké.
+  Widget _recoveryStep4(DateTime now, RecoverySequence seq) {
+    final cs = Theme.of(context).colorScheme;
+    final violet = energyViolet(cs);
+    final cap = capDomain(st);
+    final aggregates =
+        cap != null ? recoveryAggregates(now, st, cap.domain) : null;
+    final copy = recoveryCopyStep4(now,
+        aggregates: aggregates,
+        hasIntention: cap?.domain.intention != null,
+        lastVariant: _lastVariant(4));
+    _logVariant(4, copy.variant);
+    final note =
+        recentEnergyNote(now, [_schedule, _yesterday, _dayBefore]);
+    final defined = cap?.domain.definedAt;
+    const abbr = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+    final today = DateTime(now.year, now.month, now.day);
+    final days = [
+      for (var i = 0; i < 3; i++)
+        abbr[today.add(Duration(days: i)).weekday - 1].toLowerCase()
+    ].join(', ');
+    final proposal = _recoveryStepProposal(now);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _recoveryShell(
+          cs,
+          defined != null
+              ? 'TES MOTS DU ${defined.day} ${_monthShortFr(defined.month).toUpperCase()}'
+              : 'LE CAP',
+          [
+            if (cap?.domain.intention != null) ...[
+              Container(
+                padding: const EdgeInsets.only(left: 12),
+                decoration: BoxDecoration(
+                  border: Border(
+                      left: BorderSide(color: violet.withOpacity(.7), width: 3)),
+                ),
+                child: Text('« ${cap!.domain.intention} »',
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        fontStyle: FontStyle.italic,
+                        height: 1.35)),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (note != null) ...[
+              Text('Et ${note.day}, dans ta note : « ${note.note} »',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      color: cs.onSurface.withOpacity(.6))),
+              const SizedBox(height: 10),
+            ],
+            Text('La remontée est posée — $days. ${copy.text}',
+                style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: cs.onSurface.withOpacity(.9))),
+          ]),
+      Row(children: [
+        if (proposal != null)
+          Expanded(
+            child: FilledButton(
+              onPressed: () => _launchRecoveryStep(now, proposal),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 48),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              child: Text('▶ La marche du jour — ${proposal.minutes} min',
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w800)),
+            ),
+          ),
+        if (proposal != null) const SizedBox(width: 10),
+        OutlinedButton(
+          onPressed: () {
+            // Clôture douce : le flux se termine, la vue d'horizon prend le
+            // relais.
+            seq.exitedAt = DateTime.now();
+            _saveRecovery(seq);
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => WhereWeGoScreen(logic: logic),
+            ));
+          },
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999)),
+          ),
+          child: const Text('Où on va',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+        ),
+      ]),
+      const SizedBox(height: 16),
+    ]);
+  }
+
+  String _monthShortFr(int m) => const [
+        'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.',
+        'août', 'sept.', 'oct.', 'nov.', 'déc.'
+      ][m - 1];
 
   // ── Mode à plat (24b) : une chose à la fois, horizon 1 heure ────────────────
 
@@ -2282,9 +2920,11 @@ class _FocusViewState extends State<FocusView> {
     }
     // Mode à plat (24b) : la FORME entière change — un seul bloc, petit,
     // horizon 1 h. Réversible par le bandeau ; le fond n'a pas bougé. Le tap
-    // sur le tag d'état rouvre la question par-dessus (corps normal).
+    // sur le tag d'état rouvre la question par-dessus (corps normal), et la
+    // séquence de remontée (25), prioritaire, passe par le corps normal.
     final energy = _schedule?.energyState;
     if (!_energyAskRequested &&
+        !_recoveryShowing(now) &&
         energy?.level == 'low' &&
         energyStateActive(energy, now, reviewedAt: _schedule?.reviewedAt)) {
       return _buildLowMode(context, cs, now);

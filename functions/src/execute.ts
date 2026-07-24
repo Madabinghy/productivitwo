@@ -2125,6 +2125,7 @@ async function executeScheduleDay(
     unavailableReason: prevData.unavailableReason ?? null,
     reviewedAt: prevData.reviewedAt ?? null, // « point fait » — jamais effacé
     energyState: prevData.energyState ?? null, // état déclaré (24a) — un fait
+    recoverySequence: prevData.recoverySequence ?? null, // remontée (25) — idem
   });
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
