@@ -53,6 +53,8 @@ Croisement vide sur le marché francophone.
 1. Finaliser la **V1** (échéance 17/08/2026) — périmètre GELÉ, aucune nouvelle feature avant.
 2. **Espace Coach V1.1** (`docs/specs/espace-coach-v1.1.md`) : invitation/consentement →
    cockpit multi-coachés → rapport de pré-séance → message coach via ORION → alerte décrochage.
+   Design hifi (thème sombre) : `docs/specs/espace-coach-design/README.md` — cible = console
+   coach `8a` ; le design dépasse le périmètre V1.1, suivre le MoSCoW de la spec.
 3. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
 
 **Règles de décision** :

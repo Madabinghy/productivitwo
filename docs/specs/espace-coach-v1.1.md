@@ -5,6 +5,13 @@
 > 5 coachés actifs au 01/10/2026. Cette spec est le périmètre MINIMAL :
 > résister à toute extension avant d'avoir 2-3 coachés réels dessus.
 
+> **Design (2026-07-24)** : handoff hifi dans `espace-coach-design/README.md`
+> (maquette interactive + captures ; cible prioritaire = console coach `8a`).
+> Le design couvre PLUS que le périmètre V1.1 (relances, coup de main,
+> échelle de silence, suivi quotidien…) : implémenter en suivant le MoSCoW
+> ci-dessous — le design des chantiers hors-MUST sert de référence pour plus
+> tard, pas de feuille de route immédiate.
+
 ## Le concept en une phrase
 
 Le coach voit, entre les séances, si les engagements pris en séance sont
