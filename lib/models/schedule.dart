@@ -192,6 +192,75 @@ class EnergyState {
   }
 }
 
+// ── Remotivation après 2 jours à plat (tour 25) ──────────────────────────────
+//
+// UN flux séquencé (machine à états), pas quatre cartes indépendantes :
+// constat + plus petite marche → question qui route (physique/programme) →
+// remontée en 3 jours → rappel du cap. Zéro LLM — templates, chiffres réels.
+// Vit sur le doc du jour 3 ; jamais rejoué avant 72 h (fait lastRecoveryAt
+// sur data/meta).
+class RecoveryContext {
+  String kind; // "physical" | "program" | "unknown"
+  DateTime at;
+  RecoveryContext({required this.kind, DateTime? at}) : at = at ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'at': at.toIso8601String()};
+
+  static RecoveryContext? from(dynamic j) {
+    if (j is! Map) return null;
+    final kind = j['kind']?.toString();
+    if (kind != 'physical' && kind != 'program' && kind != 'unknown') {
+      return null;
+    }
+    return RecoveryContext(kind: kind!, at: _parseDate(j['at']));
+  }
+}
+
+class RecoverySequence {
+  int step; // 1 constat | 2 question | 3 remontée | 4 rappel du cap
+  DateTime startedAt;
+  // « Pas maintenant » sur la marche (étape 1) : 1 → reproposée plus tard,
+  // 2 dans la journée → étape 2. declinedAt = dernier refus (fenêtre de repos).
+  int declines;
+  DateTime? declinedAt;
+  RecoveryContext? recoveryContext; // écrit par l'étape 2 — le rapport le lit
+  DateTime? exitedAt; // sortie du flux (marche lancée, 12b, programme normal)
+
+  RecoverySequence({
+    this.step = 1,
+    DateTime? startedAt,
+    this.declines = 0,
+    this.declinedAt,
+    this.recoveryContext,
+    this.exitedAt,
+  }) : startedAt = startedAt ?? DateTime.now();
+
+  bool get active => exitedAt == null;
+
+  Map<String, dynamic> toJson() => {
+        'step': step,
+        'startedAt': startedAt.toIso8601String(),
+        'declines': declines,
+        'declinedAt': declinedAt?.toIso8601String(),
+        'recoveryContext': recoveryContext?.toJson(),
+        'exitedAt': exitedAt?.toIso8601String(),
+      };
+
+  static RecoverySequence? from(dynamic j) {
+    if (j is! Map) return null;
+    final step = (j['step'] as num?)?.toInt();
+    if (step == null || step < 1 || step > 4) return null;
+    return RecoverySequence(
+      step: step,
+      startedAt: _parseDate(j['startedAt']),
+      declines: (j['declines'] as num?)?.toInt() ?? 0,
+      declinedAt: _parseDateOrNull(j['declinedAt']),
+      recoveryContext: RecoveryContext.from(j['recoveryContext']),
+      exitedAt: _parseDateOrNull(j['exitedAt']),
+    );
+  }
+}
+
 class DailySchedule {
   String date;        // YYYY-MM-DD
   String generatedBy; // claude | orion
@@ -222,6 +291,8 @@ class DailySchedule {
   DateTime? reviewedAt;
   // État déclaré (24a) : change la forme de Maintenant, jamais le fond.
   EnergyState? energyState;
+  // Remotivation (25) : la séquence du jour 3, si elle a démarré ce jour-là.
+  RecoverySequence? recoverySequence;
 
   DailySchedule({
     required this.date,
@@ -237,6 +308,7 @@ class DailySchedule {
     this.unavailableReason,
     this.reviewedAt,
     this.energyState,
+    this.recoverySequence,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         blocks = blocks ?? [];
 
@@ -260,6 +332,7 @@ class DailySchedule {
         'unavailableReason': unavailableReason,
         'reviewedAt': reviewedAt?.toIso8601String(),
         'energyState': energyState?.toJson(),
+        'recoverySequence': recoverySequence?.toJson(),
       };
 
   static DailySchedule from(Map j) => DailySchedule(
@@ -279,5 +352,6 @@ class DailySchedule {
         unavailableReason: j['unavailableReason'],
         reviewedAt: _parseDateOrNull(j['reviewedAt']),
         energyState: EnergyState.from(j['energyState']),
+        recoverySequence: RecoverySequence.from(j['recoverySequence']),
       );
 }

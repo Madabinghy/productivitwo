@@ -2770,6 +2770,31 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Remotivation (25) : état de la séquence du jour — machine à états écrite
+  /// à chaque transition (constat → question → remontée → cap).
+  Future<void> setRecoverySequence(String date, RecoverySequence seq) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/daily_schedules/$date').set({
+      'date': date,
+      'recoverySequence': seq.toJson(),
+    }, SetOptions(merge: true));
+  }
+
+  /// Faits persistants de la remotivation (data/meta, clé `recovery`) :
+  /// lastRecoveryAt (jamais rejoué avant 72 h) + la dernière variante de copy
+  /// servie par étape (jamais resservie sur deux séquences consécutives).
+  Future<Map<String, dynamic>> fetchRecoveryMeta() async {
+    if (uid == null) return {};
+    final snap = await _meta().get();
+    final raw = (snap.data() as Map<String, dynamic>?)?['recovery'];
+    return raw is Map ? Map<String, dynamic>.from(raw) : {};
+  }
+
+  Future<void> setRecoveryMeta(Map<String, dynamic> patch) async {
+    if (uid == null) return;
+    await _meta().set({'recovery': patch}, SetOptions(merge: true));
+  }
+
   /// Cause globale d'une journée qui a déraillé (3+ engagements rompus).
   Future<void> setDayReason(String date, String reason) async {
     if (uid == null) return;
