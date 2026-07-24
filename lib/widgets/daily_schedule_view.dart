@@ -425,11 +425,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   fontWeight: FontWeight.w700,
                   color: cs.onSurface),
             ),
-            const Spacer(),
+            // + collé au titre (pas au bord droit) : le bord droit est occupé
+            // par les boutons flottants de l'onglet (toggle liste/agenda,
+            // corbeille) qui le recouvraient (constaté sur build).
             IconButton(
               tooltip: 'Ajouter un bloc',
               visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.only(left: 10),
               constraints: const BoxConstraints(),
               icon: Icon(Icons.add_circle_outline,
                   size: 20, color: cs.primary),
