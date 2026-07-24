@@ -398,4 +398,8 @@ actions: [
 
 ## Backlog mémorisé (demandes user, à faire plus tard)
 
-- **Export / import des données** (noté 2026-07-19) : demandé par l'utilisateur, reporté volontairement — à cadrer avant d'implémenter (portée : backup complet JSON ? migration ? partage ?).
+- **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
+  dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
+  restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
+  implémenter). Specs de tâches 4 lignes incluses (lot 1 = export seul, lot 2 = restauration).
+  Calendrier : **après le gel V1 (17/08/2026)**, avant l'Espace Coach V1.1.
