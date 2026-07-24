@@ -187,6 +187,9 @@ class WeeklyReport {
   // dimanche soir se tait ensuite (le rapport n'est pas la dernière chose de
   // la journée, la carte reprend son cours).
   DateTime? readAt;
+  // « Où on va » (24d) : ordre des priorités RÉORDONNÉ par le user (⇅) —
+  // clés des items de stratégie. Le rapport suivant repart de cet ordre.
+  List<String> strategyOrder;
 
   /// Blocs réellement posés (engagements + supprimés en cours de route).
   int get postedTotal => total + deletedBlocks;
@@ -220,11 +223,13 @@ class WeeklyReport {
     this.reported = 0,
     this.deletedBlocks = 0,
     this.readAt,
+    List<String>? strategyOrder,
   })  : generatedAt = generatedAt ?? DateTime.now(),
         domains = domains ?? [],
         motifs = motifs ?? [],
         declaredQuestions = declaredQuestions ?? [],
-        declaredAnswers = declaredAnswers ?? {};
+        declaredAnswers = declaredAnswers ?? {},
+        strategyOrder = strategyOrder ?? [];
 
   static WeeklyReport from(Map j) {
     final facts = (j['facts'] as Map?) ?? {};
@@ -271,6 +276,8 @@ class WeeklyReport {
           {},
       reported: (facts['reported'] as num?)?.toInt() ?? 0,
       deletedBlocks: (facts['deletedBlocks'] as num?)?.toInt() ?? 0,
+      strategyOrder:
+          (j['strategyOrder'] as List?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -303,5 +310,6 @@ class WeeklyReport {
         'question': question,
         'proposedDecision': proposedDecision?.toJson(),
         'decisionStatus': decisionStatus,
+        'strategyOrder': strategyOrder,
       };
 }

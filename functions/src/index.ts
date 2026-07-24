@@ -355,6 +355,85 @@ export const nowAssist = onRequest(
   }
 );
 
+// ── whereWeGo ─────────────────────────────────────────────────────────────────
+//
+// POST { uid, facts } + Authorization: Bearer <api_token>
+// Vue « Où on va » (24d) : la vue est 100 % assemblage de faits côté app —
+// SEUL le narratif de la carte Tactique (2 lignes max) passe par le modèle
+// classe quotidienne. 1 appel / jour max, caché dans users/{uid}/data/
+// where_we_go, régénéré seulement si un fait source a changé (hash).
+// facts = { cap?, strategy: string[], today: string, tomorrow?: string }.
+
+export const whereWeGo = onRequest(
+  { cors: true, invoker: "public", secrets: ["ANTHROPIC_API_KEY"] },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method Not Allowed" }); return; }
+
+    const authHeader = req.headers.authorization ?? "";
+    if (!authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing Authorization header" }); return;
+    }
+    const { uid, facts } = req.body as { uid?: string; facts?: Record<string, unknown> };
+    if (!uid || !facts) { res.status(400).json({ error: "uid et facts requis" }); return; }
+    const valid = await validateToken(uid, authHeader.slice(7).trim());
+    if (!valid) { res.status(401).json({ error: "Token invalide ou révoqué" }); return; }
+
+    try {
+      const factsHash = createHash("sha1").update(JSON.stringify(facts)).digest("hex");
+      const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+      const { ymd: today } = userDayParts(metaSnap.data()?.tzOffsetMin as number | undefined);
+      const ref = db.doc(`users/${uid}/data/where_we_go`);
+      const cached = (await ref.get()).data() as
+        | { narrative?: { today?: string; tomorrow?: string }; factsHash?: string; ymd?: string }
+        | undefined;
+      // Faits inchangés → cache, quel que soit le jour. Faits changés mais
+      // déjà 1 génération aujourd'hui → cache aussi (plafond 1/jour).
+      if (cached?.narrative &&
+          (cached.factsHash === factsHash || cached.ymd === today)) {
+        res.status(200).json({ narrative: cached.narrative, cached: true });
+        return;
+      }
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) { res.status(500).json({ error: "ANTHROPIC_API_KEY manquante" }); return; }
+      const client = new Anthropic({ apiKey });
+      const model = getModel("where_we_go");
+      const system =
+        "Tu rédiges le narratif de la carte « Tactique » de la vue « Où on va » d'une app de productivité (FR). " +
+        "On te donne des FAITS (cap, stratégie ordonnée, programme du jour, demain). " +
+        "Réponds UNIQUEMENT un JSON {\"today\": \"…\", \"tomorrow\": \"…\"} : une ligne par clé, " +
+        "courte (max ~15 mots), factuelle, qui reformule le programme en plan d'action lisible. " +
+        "Uniquement les faits fournis — jamais de chiffre ou d'engagement inventé, jamais de motivation creuse. " +
+        "S'il n'y a rien pour demain, tomorrow = \"\".";
+      const resp = await client.messages.create({
+        model,
+        max_tokens: 200,
+        system,
+        messages: [{ role: "user", content: JSON.stringify(facts) }],
+      });
+      logTokenUsage("where_we_go", model, resp.usage);
+      const text = resp.content.find((b) => b.type === "text")?.text ?? "";
+      const match = text.match(/\{[\s\S]*\}/);
+      let narrative: { today?: string; tomorrow?: string } = {};
+      try {
+        narrative = match ? JSON.parse(match[0]) : {};
+      } catch { narrative = {}; }
+      if (!narrative.today) {
+        // Génération inexploitable : on ne stocke rien (pas de trou rempli) —
+        // l'app garde ses lignes déterministes.
+        res.status(200).json({ narrative: null });
+        return;
+      }
+      await ref.set({ narrative, factsHash, ymd: today }, { merge: true });
+      res.status(200).json({ narrative });
+    } catch (e) {
+      console.error("whereWeGo error:", e);
+      res.status(500).json({ error: "Narratif indisponible" });
+    }
+  }
+);
+
 // ── proposeDayPlan ────────────────────────────────────────────────────────────
 //
 // POST { uid, date? } + Authorization: Bearer <api_token>

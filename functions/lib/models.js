@@ -26,6 +26,7 @@ const MODEL_ROUTING = {
     onboarding: exports.MODELS.SONNET,
     inbox_routing: exports.MODELS.SONNET, // routage/agrégation idées→projets (jugement sémantique)
     restructure_project: exports.MODELS.HAIKU, // Direction C.3 : diff de restructuration JSON, tâche automatique
+    where_we_go: exports.MODELS.HAIKU, // « Où on va » (24d) : narratif 2 lignes, 1 appel/jour max, caché
 };
 function getModel(taskType) {
     var _a;

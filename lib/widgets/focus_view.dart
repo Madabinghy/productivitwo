@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
+import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
 /// 3 états exclusifs :
@@ -885,6 +886,16 @@ class _FocusViewState extends State<FocusView> {
                 fontWeight: FontWeight.w800,
                 color: cs.onSurface)),
         const Spacer(),
+        // « Où on va » (24d) : la ligne d'horizon, accessible en permanence.
+        IconButton(
+          tooltip: 'Où on va',
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => WhereWeGoScreen(logic: logic),
+          )),
+          icon: const Icon(Icons.explore_outlined, size: 20),
+          visualDensity: VisualDensity.compact,
+          color: cs.onSurface.withOpacity(.45),
+        ),
         TextButton.icon(
           onPressed: () =>
               setState(() => _energyAskRequested = !_energyAskRequested),
