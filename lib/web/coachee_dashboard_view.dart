@@ -3,7 +3,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
-import 'package:productivitwo_v1/web/palier_colors.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart';
 
 // ─── HUB ACTIONS + TABLEAU DE BORD DU COACHÉ (web) ───────────────────────────
 //
@@ -232,8 +232,7 @@ class _ActionsHubViewState extends State<ActionsHubView> {
         ]),
       );
 
-  Widget _trendTiles(List<({String startYmd, int pct})> weeks) {
-    const labels = ['S-3', 'S-2', 'S-1', 'S'];
+  Widget _trendTiles(List<({String label, int pct})> weeks) {
     final cs = Theme.of(context).colorScheme;
     return Row(children: [
       for (var i = 0; i < weeks.length; i++) ...[
@@ -254,7 +253,7 @@ class _ActionsHubViewState extends State<ActionsHubView> {
                       fontFeatures: [FontFeature.tabularFigures()])),
             ),
             const SizedBox(height: 4),
-            Text(labels[i],
+            Text(weeks[i].label,
                 style: TextStyle(
                     fontSize: 10.5, color: cs.onSurface.withOpacity(.45))),
           ]),
@@ -274,9 +273,10 @@ class _ActionsHubViewState extends State<ActionsHubView> {
 
   Widget _weekDashboard() {
     final cs = Theme.of(context).colorScheme;
-    final monday = mondayOf(DateTime.now());
-    final engagements = weekEngagements(
-        activities: widget.activities, hits: _hits, weekStart: monday);
+    // Fenêtre GLISSANTE : un lundi matin, la semaine calendaire serait quasi
+    // vide — le suivi au fil de l'eau se mesure sur les 7 derniers jours.
+    final engagements =
+        rollingWeekEngagements(activities: widget.activities, hits: _hits);
     final weeks =
         fourWeekTrend(activities: widget.activities, hits: _hits);
     final kept = engagements.where((e) => e.kept).length;
@@ -303,8 +303,9 @@ class _ActionsHubViewState extends State<ActionsHubView> {
                     style:
                         TextStyle(fontSize: 19, fontWeight: FontWeight.w700)),
                 Text(
-                    'La même lecture que ton coach — lui ne voit que les '
-                    'domaines que tu partages.',
+                    'Sur les 7 derniers jours, au fil de l\'eau. La même '
+                    'lecture que ton coach — lui ne voit que les domaines '
+                    'que tu partages.',
                     style: TextStyle(
                         fontSize: 12.5,
                         color: cs.onSurface.withOpacity(.55))),
@@ -312,7 +313,8 @@ class _ActionsHubViewState extends State<ActionsHubView> {
             ),
           ),
           if (total > 0) ...[
-            _bigNumber(cs, 'ENGAGEMENTS', '$kept / $total', palierColor(pct)),
+            _bigNumber(
+                cs, 'ENGAGEMENTS · 7 J', '$kept / $total', palierColor(pct)),
             const SizedBox(width: 22),
             _bigNumber(cs, 'TENDANCE', '${delta >= 0 ? '+' : ''}$delta pts',
                 delta >= 0 ? kPalierGreen : kPalierCoral),
@@ -325,7 +327,7 @@ class _ActionsHubViewState extends State<ActionsHubView> {
               icon: const Icon(Icons.refresh, size: 18),
               onPressed: _loadStats),
         ]),
-        _sectionLabel(cs, '4 DERNIÈRES SEMAINES'),
+        _sectionLabel(cs, 'TENDANCE — SEMAINES RÉVOLUES + 7 J GLISSANTS'),
         _trendTiles(weeks),
         if (engagements.isEmpty)
           Padding(
@@ -349,13 +351,9 @@ class _ActionsHubViewState extends State<ActionsHubView> {
 
   Widget _domainDashboard(Domain domain) {
     final cs = Theme.of(context).colorScheme;
-    final monday = mondayOf(DateTime.now());
     final ids = {domain.id};
-    final engagements = weekEngagements(
-        activities: widget.activities,
-        hits: _hits,
-        weekStart: monday,
-        domainIds: ids);
+    final engagements = rollingWeekEngagements(
+        activities: widget.activities, hits: _hits, domainIds: ids);
     final weeks = fourWeekTrend(
         activities: widget.activities, hits: _hits, domainIds: ids);
     final minutes = weekMinutesByActivity(
@@ -410,16 +408,16 @@ class _ActionsHubViewState extends State<ActionsHubView> {
           if (engagements.isNotEmpty)
             _bigNumber(
                 cs,
-                'ENGAGEMENTS',
+                'ENGAGEMENTS · 7 J',
                 '$kept / ${engagements.length}',
                 palierColor(engagements.isEmpty
                     ? 0
                     : ((kept / engagements.length) * 100).round())),
         ]),
-        _sectionLabel(cs, '4 DERNIÈRES SEMAINES'),
+        _sectionLabel(cs, 'TENDANCE — SEMAINES RÉVOLUES + 7 J GLISSANTS'),
         _trendTiles(weeks),
         if (engagements.isNotEmpty) ...[
-          _sectionLabel(cs, 'ROUTINES DE LA SEMAINE'),
+          _sectionLabel(cs, 'ROUTINES · 7 DERNIERS JOURS'),
           for (final e in engagements) _engagementRow(cs, e),
         ],
         if (topTime.isNotEmpty) ...[
