@@ -4,8 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/models.dart';
 
-/// Paramètres → « Mon coach » (Espace Coach V1.1, côté coaché).
+/// « Mon coach » (Espace Coach V1.1, côté coaché) — mobile ET web.
 ///
 /// Le lien coach-coaché vit côté serveur (brique coaching : fiche
 /// `coaching/{id}` server-only, consentement par lien web `coachConsent`).
@@ -14,6 +16,8 @@ import 'package:productivitwo_v1/app_logic.dart';
 /// - choisir les domaines partagés (opt-in) + la granularité ;
 /// - tout révoquer, immédiatement.
 /// Le rôle coach, lui, vit dans la console web (bouton 🎓 → console 8a).
+/// Mobile : Paramètres → Mon coach (AppLogic fourni, domaines locaux).
+/// Web : icône AppBar (logic null → domaines chargés depuis Firestore).
 
 const _kCoacheeApiUrl = 'https://coacheeapi-dzos75b65q-uc.a.run.app';
 
@@ -41,9 +45,11 @@ Future<Map<String, dynamic>> _coacheeCall(Map<String, dynamic> body) async {
 }
 
 class CoachSpaceScreen extends StatefulWidget {
-  final AppLogic logic;
+  /// Mobile : l'AppLogic fournit les domaines locaux. Web : null →
+  /// les domaines sont chargés depuis Firestore (même source de vérité).
+  final AppLogic? logic;
 
-  const CoachSpaceScreen({super.key, required this.logic});
+  const CoachSpaceScreen({super.key, this.logic});
 
   @override
   State<CoachSpaceScreen> createState() => _CoachSpaceScreenState();
@@ -57,6 +63,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
   String _consent = 'pending';
   List<String> _domainIds = [];
   String _granularity = 'status';
+  List<Domain> _domains = [];
 
   @override
   void initState() {
@@ -70,6 +77,8 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
       _error = null;
     });
     try {
+      _domains = widget.logic?.state.activeDomains ??
+          await FirestoreSync().fetchDomains();
       final r = await _coacheeCall({'action': 'getLink'});
       _linked = r['linked'] == true;
       if (_linked) {
@@ -89,7 +98,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
 
   /// Éditeur de périmètre : domaines OPT-IN + granularité, validés serveur.
   Future<void> _editSharing() async {
-    final domains = widget.logic.state.activeDomains;
+    final domains = _domains;
     final selected = _domainIds.toSet();
     var granularity = _granularity;
 
@@ -269,9 +278,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final domainNames = {
-      for (final d in widget.logic.state.activeDomains) d.id: d.name,
-    };
+    final domainNames = {for (final d in _domains) d.id: d.name};
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mon coach')),
