@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
+import 'package:productivitwo_v1/web/coach_console_screen.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
@@ -236,9 +237,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
             if (_isCoach)
               IconButton(
                 icon: const Icon(Icons.school_outlined, size: 18),
-                tooltip: 'Coaching — mes coachés',
-                onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const CoachingScreen())),
+                tooltip: 'Espace coach — console',
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const CoachConsoleScreen())),
               ),
             IconButton(
               icon: Badge(
