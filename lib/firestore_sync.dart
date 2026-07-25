@@ -621,6 +621,18 @@ class FirestoreSync {
       }
       try { await _col('orion_subscription').doc('main').delete(); } catch (_) {}
       try { await _meta().delete(); } catch (_) {}
+      // Espace Coach : tout lien où je suis partie prenante est révoqué et
+      // le résumé partagé supprimé (le coach perd l'accès immédiatement).
+      try {
+        final asCoachee = await _coachLinks()
+            .where('coacheeUid', isEqualTo: uid)
+            .get();
+        final asCoach =
+            await _coachLinks().where('coachUid', isEqualTo: uid).get();
+        for (final d in [...asCoachee.docs, ...asCoach.docs]) {
+          await revokeCoachLink(d.id);
+        }
+      } catch (_) {}
     }
     // 2) Supprime le compte Firebase Auth — séparé pour ne pas bloquer si ça échoue
     try {
@@ -2474,6 +2486,197 @@ class FirestoreSync {
     await _col('activities')
         .doc(activityId)
         .update({'ownActions': actions.map((a) => a.toJson()).toList()});
+  }
+
+  // ── Espace Coach (US-1) : lien coach-coaché + consentement ─────────────────
+  // Collection racine `coach_links/{code}` — l'ID du doc EST le code
+  // d'invitation (capability : le coaché le saisit pour rejoindre).
+  // Le coach ne lit JAMAIS users/{coachéUid}/… : seulement le résumé
+  // `coach_links/{code}/data/summary`, écrit par l'app du coaché
+  // (lib/utils/coach_summary.dart) et limité au périmètre consenti.
+
+  CollectionReference _coachLinks() => _db.collection('coach_links');
+
+  /// Code lisible sans ambiguïté (pas de 0/O/1/I), 8 caractères.
+  String _newInviteCode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rng = Random.secure();
+    return List.generate(8, (_) => alphabet[rng.nextInt(alphabet.length)])
+        .join();
+  }
+
+  /// Crée une invitation (côté coach). Retourne le lien créé (id = code).
+  Future<CoachLink?> createCoachInvite({String? coachName}) async {
+    if (uid == null) return null;
+    final link = CoachLink(
+      id: _newInviteCode(),
+      coachUid: uid!,
+      coachName: coachName,
+      consentLog: [
+        {
+          'at': DateTime.now().toIso8601String(),
+          'by': uid,
+          'action': 'invite',
+        }
+      ],
+    );
+    await _coachLinks().doc(link.id).set(link.toJson());
+    return link;
+  }
+
+  /// Retrouve une invitation par son code (côté coaché).
+  Future<CoachLink?> getCoachLinkByCode(String code) async {
+    final c = code.trim().toUpperCase();
+    if (uid == null || c.isEmpty) return null;
+    try {
+      final snap = await _coachLinks().doc(c).get();
+      if (!snap.exists) return null;
+      return CoachLink.from(snap.data() as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mes liens en tant que coach (invitations en attente + coachés actifs).
+  Future<List<CoachLink>> myCoachLinksAsCoach() async {
+    if (uid == null) return [];
+    try {
+      final snap =
+          await _coachLinks().where('coachUid', isEqualTo: uid).get();
+      return snap.docs
+          .map((d) => CoachLink.from(d.data() as Map))
+          .where((l) => l.status != 'revoked')
+          .toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Mon lien ACTIF en tant que coaché (au plus un coach — V1.1).
+  Future<CoachLink?> myCoachLinkAsCoachee() async {
+    if (uid == null) return null;
+    try {
+      final snap = await _coachLinks()
+          .where('coacheeUid', isEqualTo: uid)
+          .where('status', isEqualTo: 'active')
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return CoachLink.from(snap.docs.first.data() as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Accepte une invitation (côté coaché) avec le périmètre choisi.
+  /// Le lien n'est actif qu'ICI — consentement explicite, horodaté, journalisé.
+  /// Retourne null si OK, sinon un message d'erreur affichable.
+  Future<String?> acceptCoachInvite(
+    CoachLink link, {
+    required List<String> sharedDomainIds,
+    required String granularity,
+    String? coacheeName,
+  }) async {
+    if (uid == null) return 'Connexion requise.';
+    if (link.status != 'invited') return 'Cette invitation n\'est plus valide.';
+    if (link.coachUid == uid) {
+      return 'Tu ne peux pas être ton propre coach.';
+    }
+    // Un seul coach par coaché (V1.1).
+    final existing = await myCoachLinkAsCoachee();
+    if (existing != null) {
+      return 'Tu as déjà un coach. Révoque d\'abord le lien actuel.';
+    }
+    await _coachLinks().doc(link.id).update({
+      'coacheeUid': uid,
+      'coacheeName': coacheeName,
+      'status': 'active',
+      'sharedDomainIds': sharedDomainIds,
+      'granularity': granularity,
+      'acceptedAt': DateTime.now().toIso8601String(),
+      'consentLog': FieldValue.arrayUnion([
+        {
+          'at': DateTime.now().toIso8601String(),
+          'by': uid,
+          'action': 'accept',
+          'domains': sharedDomainIds,
+          'granularity': granularity,
+        }
+      ]),
+    });
+    return null;
+  }
+
+  /// Modifie le périmètre partagé (côté coaché) — journalisé.
+  Future<void> updateCoachConsent(
+    String linkId, {
+    required List<String> sharedDomainIds,
+    required String granularity,
+  }) async {
+    if (uid == null) return;
+    await _coachLinks().doc(linkId).update({
+      'sharedDomainIds': sharedDomainIds,
+      'granularity': granularity,
+      'consentLog': FieldValue.arrayUnion([
+        {
+          'at': DateTime.now().toIso8601String(),
+          'by': uid,
+          'action': 'update',
+          'domains': sharedDomainIds,
+          'granularity': granularity,
+        }
+      ]),
+    });
+  }
+
+  /// Révoque le lien (coaché OU coach). Immédiat : le résumé partagé est
+  /// supprimé dans la foulée — le coach perd tout accès à l'historique.
+  Future<void> revokeCoachLink(String linkId) async {
+    if (uid == null) return;
+    await _coachLinks().doc(linkId).update({
+      'status': 'revoked',
+      'revokedAt': DateTime.now().toIso8601String(),
+      'sharedDomainIds': <String>[],
+      'consentLog': FieldValue.arrayUnion([
+        {
+          'at': DateTime.now().toIso8601String(),
+          'by': uid,
+          'action': 'revoke',
+        }
+      ]),
+    });
+    try {
+      await _coachLinks().doc(linkId).collection('data').doc('summary').delete();
+    } catch (_) {}
+  }
+
+  /// Écrit le résumé partagé (app du coaché uniquement).
+  Future<void> writeCoachSummary(
+      String linkId, Map<String, dynamic> summary) async {
+    if (uid == null) return;
+    await _coachLinks()
+        .doc(linkId)
+        .collection('data')
+        .doc('summary')
+        .set(summary);
+  }
+
+  /// Lit le résumé d'un coaché (côté coach).
+  Future<Map<String, dynamic>?> fetchCoachSummary(String linkId) async {
+    if (uid == null) return null;
+    try {
+      final snap = await _coachLinks()
+          .doc(linkId)
+          .collection('data')
+          .doc('summary')
+          .get();
+      return snap.exists
+          ? Map<String, dynamic>.from(snap.data() as Map)
+          : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Sauvegarde « Coffre » (export/import — lib/utils/backup.dart) ──────────

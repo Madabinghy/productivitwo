@@ -25,7 +25,9 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
+import 'package:productivitwo_v1/utils/coach_summary.dart';
 import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
@@ -2196,6 +2198,9 @@ class _AppRootState extends State<AppRoot>
       // Agenda Google : sync silencieuse bidirectionnelle (aujourd'hui +
       // demain) — les rendez-vous réels entrent dans le programme en miroirs.
       gcalBackgroundSync(_sync);
+      // Espace Coach : si un lien actif existe, le résumé partagé est
+      // recalculé (périmètre consenti uniquement) — fire-and-forget.
+      refreshCoachSummaryIfLinked(s, _sync);
 
       () async {
         final bumps = await logic.scanAllActivities();
@@ -5257,6 +5262,24 @@ class _AppRootState extends State<AppRoot>
                       logic: logic,
                       sync: _sync,
                       store: store,
+                    ),
+                  ));
+                },
+              ),
+              // Espace coach — lien coach-coaché (consentement côté coaché)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.supervisor_account_outlined),
+                title: const Text('Espace coach'),
+                subtitle: const Text(
+                    'Partager ta progression, ou suivre tes coachés'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => CoachSpaceScreen(
+                      logic: logic,
+                      sync: _sync,
                     ),
                   ));
                 },
