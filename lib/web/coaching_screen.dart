@@ -50,6 +50,65 @@ Future<Map<String, dynamic>> coachCall(Map<String, dynamic> body) async {
 
 class CoachAccessDenied implements Exception {}
 
+/// Affiche le lien de consentement : SÉLECTIONNABLE + bouton Copier.
+/// Sur Flutter web, Clipboard.setData échoue souvent après un aller-retour
+/// réseau (l'activation utilisateur du clic a expiré → copy_fail) — le clic
+/// direct sur « Copier » dans le dialog, lui, a une activation fraîche.
+Future<void> showConsentLinkDialog(BuildContext context, String url) async {
+  // Tentative de copie immédiate — best-effort, sans bloquer si le
+  // navigateur refuse.
+  var copied = false;
+  try {
+    await Clipboard.setData(ClipboardData(text: url));
+    copied = true;
+  } catch (_) {}
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Lien de consentement'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(url,
+              style: const TextStyle(fontSize: 12.5, fontFamily: 'monospace')),
+          const SizedBox(height: 10),
+          Text(
+            copied
+                ? 'Déjà copié — envoie-le par WhatsApp/mail. Valable 14 jours, '
+                    'révocable par le même lien.'
+                : 'Envoie-le par WhatsApp/mail. Valable 14 jours, révocable '
+                    'par le même lien.',
+            style: TextStyle(
+                fontSize: 12.5,
+                color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.6)),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: () async {
+            try {
+              await Clipboard.setData(ClipboardData(text: url));
+              if (ctx.mounted) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                    const SnackBar(content: Text('🔗 Lien copié')));
+              }
+            } catch (_) {
+              // Refus navigateur : le lien reste sélectionnable à la main.
+            }
+          },
+          icon: const Icon(Icons.copy, size: 16),
+          label: const Text('Copier'),
+        ),
+        FilledButton(
+            onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+      ],
+    ),
+  );
+}
+
 /// Sonde discrète : le compte connecté est-il coach ? (bouton 🎓 de l'AppBar)
 Future<bool> probeCoachAccess() async {
   try {
@@ -366,13 +425,8 @@ class _CoachClientScreenState extends State<CoachClientScreen> {
     try {
       final r = await coachCall({'action': 'consentLink', 'id': c['id']});
       final url = r['url'] as String?;
-      if (url != null) {
-        await Clipboard.setData(ClipboardData(text: url));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  '🔗 Lien de consentement copié — envoie-le par WhatsApp/mail. Valable 14 jours, révocable par le même lien.')));
-        }
+      if (url != null && mounted) {
+        await showConsentLinkDialog(context, url);
       }
     } catch (e) {
       if (mounted) {

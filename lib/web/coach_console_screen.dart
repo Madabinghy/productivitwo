@@ -328,13 +328,8 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     try {
       final r = await coachCall({'action': 'consentLink', 'id': c.id});
       final url = r['url'] as String?;
-      if (url != null) {
-        await Clipboard.setData(ClipboardData(text: url));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  '🔗 Lien de consentement copié — valable 14 jours.')));
-        }
+      if (url != null && mounted) {
+        await showConsentLinkDialog(context, url);
       }
     } catch (e) {
       if (mounted) {
