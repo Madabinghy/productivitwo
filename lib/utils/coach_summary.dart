@@ -29,9 +29,9 @@ String _ymd(DateTime d) =>
           !h.ts.isBefore(weekStart) &&
           h.ts.isBefore(weekEnd))
       .length;
-  final target = habit.habitFreq == HabitFreq.daily
-      ? habit.habitTarget * 7
-      : habit.habitTarget; // weekly ; monthly ramené à la cible brute
+  // habitTarget est nullable : cible par défaut 1 (routine simple).
+  final base = habit.habitTarget ?? 1;
+  final target = habit.habitFreq == HabitFreq.daily ? base * 7 : base;
   return (target: target <= 0 ? 1 : target, done: done);
 }
 
