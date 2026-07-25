@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/coach_console_screen.dart';
+import 'package:productivitwo_v1/web/coachee_dashboard_view.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
@@ -393,14 +394,21 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                         _load();
                       },
                     ),
-                    // Pendant web de l'onglet Actions mobile : GTD d'abord
-                    // (contextes, process, CRUD), Gantt intégré en 2nd plan.
-                    WebActionsView(
-                      projects: _projects,
+                    // Hub Actions : rail gauche Actions · Ma semaine ·
+                    // domaines. « Ma semaine » = la vue coach sur SES données
+                    // (transparence : il voit ce que le coach voit).
+                    ActionsHubView(
                       domains: _domains,
                       activities: _activities,
+                      projects: _projects,
                       sync: _sync,
-                      onRefresh: _load,
+                      actionsView: WebActionsView(
+                        projects: _projects,
+                        domains: _domains,
+                        activities: _activities,
+                        sync: _sync,
+                        onRefresh: _load,
+                      ),
                     ),
                     _ArchivesView(sync: _sync),
                     _OrionView(sync: _sync),
