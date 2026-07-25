@@ -328,7 +328,7 @@ Future<({AppState state, RestoreReport report})> applyRestore({
 }
 
 int _countAdded(AppState before, AppState after) {
-  int d(int a, int b) => (b - a).clamp(0, 1 << 31);
+  int d(int a, int b) => b > a ? b - a : 0;
   return d(before.domains.length, after.domains.length) +
       d(before.activities.length, after.activities.length) +
       d(before.sessions.length, after.sessions.length) +
