@@ -387,6 +387,13 @@ export const coachApi = onRequest(
         // accepte ou refuse sur une page web, révocable par le même lien.
         const doc = await ownDoc(id);
         if (!doc) { res.status(404).json({ error: "Fiche introuvable" }); return; }
+        // Générer le lien VAUT invitation : l'email du coaché passe en
+        // allowlist, sinon sendMagicLink lui répond « réservé à la
+        // formation » au moment de créer son compte. Même marquage que
+        // l'action invite → nettoyé si la fiche est supprimée.
+        await db.collection("allowlist").doc(doc.email as string).set(
+          { addedAt: FieldValue.serverTimestamp(), addedBy: `coach:${coachUid}` },
+          { merge: true });
         const token = randomUUID();
         await db.doc(`coaching_consents/${token}`).set({
           coachingId: doc.id,
