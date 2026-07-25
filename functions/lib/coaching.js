@@ -366,6 +366,11 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 res.status(404).json({ error: "Fiche introuvable" });
                 return;
             }
+            // Générer le lien VAUT invitation : l'email du coaché passe en
+            // allowlist, sinon sendMagicLink lui répond « réservé à la
+            // formation » au moment de créer son compte. Même marquage que
+            // l'action invite → nettoyé si la fiche est supprimée.
+            await db_1.db.collection("allowlist").doc(doc.email).set({ addedAt: firestore_1.FieldValue.serverTimestamp(), addedBy: `coach:${coachUid}` }, { merge: true });
             const token = (0, crypto_1.randomUUID)();
             await db_1.db.doc(`coaching_consents/${token}`).set({
                 coachingId: doc.id,
