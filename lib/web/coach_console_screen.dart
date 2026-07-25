@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
+import 'package:productivitwo_v1/web/palier_colors.dart';
 
 // ─── CONSOLE COACH 8a (web, desktop-first) ───────────────────────────────────
 //
@@ -14,15 +15,16 @@ import 'package:productivitwo_v1/web/coaching_screen.dart';
 // Principe à préserver : la donnée est partagée, l'interprétation reste
 // humaine — l'app n'écrit jamais le sens des chiffres à la place du coach.
 
-// Échelle de couleur des paliers (README du design, utilisée partout).
-const _kGreen = Color(0xFF27C48F);
-const _kAmber = Color(0xFFF2A93B);
-const _kCoral = Color(0xFFFF6B5E);
-const _kMuted = Color(0xFF86A093);
+// Échelle de couleur des paliers : source unique lib/web/palier_colors.dart
+// (partagée avec le tableau de bord du coaché). Alias privés pour la
+// lisibilité locale.
+const _kGreen = kPalierGreen;
+const _kAmber = kPalierAmber;
+const _kCoral = kPalierCoral;
+const _kMuted = kPalierMuted;
 const _kFaint = Color(0xFF6E8A7B);
 
-Color _tierColor(int pct) =>
-    pct >= 85 ? _kGreen : (pct >= 60 ? _kAmber : _kCoral);
+Color _tierColor(int pct) => palierColor(pct);
 
 /// Machine à états du bandeau central : une même carte, plusieurs rendus.
 /// Adaptée aux données réellement disponibles aujourd'hui (le boost « coup
