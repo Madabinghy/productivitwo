@@ -57,7 +57,16 @@ int _doneInWeek(String habitId, List<HabitHit> hits, DateTime weekStart) {
       .length;
 }
 
-/// Engagements de la semaine commençant à [weekStart] (lundi).
+int _doneInRange(
+    String habitId, List<HabitHit> hits, DateTime from, DateTime to) {
+  return hits
+      .where((h) =>
+          h.habitId == habitId && !h.ts.isBefore(from) && h.ts.isBefore(to))
+      .length;
+}
+
+/// Engagements de la semaine commençant à [weekStart] (lundi) — semaines
+/// calendaires révolues de la tendance.
 List<EngagementStat> weekEngagements({
   required List<Activity> activities,
   required List<HabitHit> hits,
@@ -76,28 +85,58 @@ List<EngagementStat> weekEngagements({
   ];
 }
 
-/// Tendance S-3 → S : % d'engagements tenus par semaine.
+/// Suivi AU FIL DE L'EAU : fenêtre GLISSANTE de 7 jours — un lundi matin,
+/// la semaine calendaire serait quasi vide (chiffres anxiogènes sans info).
+List<EngagementStat> rollingWeekEngagements({
+  required List<Activity> activities,
+  required List<HabitHit> hits,
+  Set<String>? domainIds,
+}) {
+  final now = DateTime.now();
+  final from = now.subtract(const Duration(days: 7));
+  return [
+    for (final h in _weeklyHabits(activities, domainIds: domainIds))
+      EngagementStat(
+        id: h.id,
+        domainId: h.domainId,
+        label: h.name,
+        target: _weekTarget(h),
+        done: _doneInRange(h.id, hits, from, now.add(const Duration(minutes: 1))),
+      ),
+  ];
+}
+
+/// Tendance : 3 semaines calendaires RÉVOLUES (S-3 → S-1), puis les 7 jours
+/// glissants comme dernier bloc — cohérent avec [rollingWeekEngagements].
 /// [hits] doit couvrir au moins 4 semaines.
-List<({String startYmd, int pct})> fourWeekTrend({
+List<({String label, int pct})> fourWeekTrend({
   required List<Activity> activities,
   required List<HabitHit> hits,
   Set<String>? domainIds,
 }) {
   final habits = _weeklyHabits(activities, domainIds: domainIds);
   final monday = mondayOf(DateTime.now());
-  return [
-    for (var back = 3; back >= 0; back--)
-      () {
-        final ws = monday.subtract(Duration(days: 7 * back));
-        final kept = habits
-            .where((h) => _doneInWeek(h.id, hits, ws) >= _weekTarget(h))
-            .length;
-        return (
-          startYmd: ymdOf(ws),
-          pct: habits.isEmpty ? 0 : ((kept / habits.length) * 100).round(),
-        );
-      }(),
+  int pctOf(int kept) =>
+      habits.isEmpty ? 0 : ((kept / habits.length) * 100).round();
+  final out = <({String label, int pct})>[
+    for (var back = 3; back >= 1; back--)
+      (
+        label: 'S-$back',
+        pct: pctOf(habits
+            .where((h) =>
+                _doneInWeek(h.id, hits,
+                    monday.subtract(Duration(days: 7 * back))) >=
+                _weekTarget(h))
+            .length),
+      ),
   ];
+  final rolling = rollingWeekEngagements(
+      activities: activities, hits: hits, domainIds: domainIds);
+  out.add((
+    label: '7 j',
+    pct: pctOf(rolling.where((e) => e.kept).length),
+  ));
+  return out;
 }
 
 /// Dernière activité (session démarrée ou routine cochée), bornée au

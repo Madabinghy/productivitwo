@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
-import 'package:productivitwo_v1/web/palier_colors.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart';
 
 // ─── CONSOLE COACH 8a (web, desktop-first) ───────────────────────────────────
 //
@@ -15,7 +15,7 @@ import 'package:productivitwo_v1/web/palier_colors.dart';
 // Principe à préserver : la donnée est partagée, l'interprétation reste
 // humaine — l'app n'écrit jamais le sens des chiffres à la place du coach.
 
-// Échelle de couleur des paliers : source unique lib/web/palier_colors.dart
+// Échelle de couleur des paliers : source unique lib/utils/palier_colors.dart
 // (partagée avec le tableau de bord du coaché). Alias privés pour la
 // lisibilité locale.
 const _kGreen = kPalierGreen;
@@ -119,7 +119,7 @@ class _Coachee {
         color: _kAmber,
         pill: 'EN RETARD',
         title:
-            'Semaine en difficulté : ${c.kept} engagement(s) tenu(s) sur ${c.total}.',
+            '7 derniers jours difficiles : ${c.kept} engagement(s) tenu(s) sur ${c.total}.',
       ),
     _CState.rien => (
         color: _kFaint,
@@ -145,7 +145,8 @@ class _Coachee {
     _CState.suivi => (
         color: _kMuted,
         pill: 'EN COURS',
-        title: 'Semaine en cours — ${c.kept} / ${c.total} engagements tenus.',
+        title:
+            'Au fil de l\'eau — ${c.kept} / ${c.total} engagements tenus sur 7 jours.',
       ),
   };
 }
@@ -705,7 +706,7 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
           ),
         ),
         if (c.total > 0) ...[
-          chiffre('ENGAGEMENTS', '${c.kept} / ${c.total}',
+          chiffre('ENGAGEMENTS · 7 J', '${c.kept} / ${c.total}',
               color: _tierColor(c.total == 0
                   ? 0
                   : ((c.kept / c.total) * 100).round())),
@@ -773,8 +774,9 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
         ),
       ),
 
-      // Sa semaine : cliquer met en avant — ça ordonne, ça ne filtre pas.
-      sectionLabel('SA SEMAINE — CLIQUE POUR METTRE EN AVANT'),
+      // Ses 7 derniers jours (fenêtre glissante) : cliquer met en avant —
+      // ça ordonne, ça ne filtre pas.
+      sectionLabel('SES 7 DERNIERS JOURS — CLIQUE POUR METTRE EN AVANT'),
       if (c.engagements.isEmpty)
         Container(
           width: double.infinity,
@@ -1034,7 +1036,9 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
                 TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.5))),
       ];
     }
-    const labels = ['S-3', 'S-2', 'S-1', 'S'];
+    // Libellés fournis par le serveur (S-3/S-2/S-1 calendaires + « 7 j »
+    // glissants) — repli sur l'ancien schéma si absents.
+    const fallback = ['S-3', 'S-2', 'S-1', 'S'];
     return [
       Row(children: [
         for (var i = 0; i < weeks.length; i++) ...[
@@ -1059,7 +1063,9 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
                         fontFeatures: [FontFeature.tabularFigures()])),
               ),
               const SizedBox(height: 4),
-              Text(i < labels.length ? labels[i] : '',
+              Text(
+                  (weeks[i]['label'] as String?) ??
+                      (i < fallback.length ? fallback[i] : ''),
                   style: TextStyle(
                       fontSize: 10.5, color: cs.onSurface.withOpacity(.45))),
             ]),
@@ -1069,8 +1075,9 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
       ]),
       const SizedBox(height: 14),
       Text(
-        '% d\'engagements tenus par semaine, sur le périmètre partagé '
-        'uniquement. ≥ 85 vert · 60-84 ambre · < 60 corail.',
+        '% d\'engagements tenus — semaines calendaires révolues, puis les '
+        '7 derniers jours glissants. Périmètre partagé uniquement. '
+        '≥ 85 vert · 60-84 ambre · < 60 corail.',
         style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(.4)),
       ),
     ];

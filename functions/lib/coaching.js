@@ -155,29 +155,38 @@ async function buildDashboard(coacheeUid, sharing) {
         const base = Number((_a = h.habitTarget) !== null && _a !== void 0 ? _a : 1) || 1;
         return Math.max(1, h.habitFreq === 0 ? base * 7 : base);
     };
-    const doneInWeek = (habitId, weekStart) => {
-        var _a;
-        const from = weekStart.getTime();
-        const to = from + 7 * 86400000;
-        return ((_a = hitsByHabit[habitId]) !== null && _a !== void 0 ? _a : []).filter((t) => t >= from && t < to).length;
-    };
+    const doneInRange = (habitId, from, to) => { var _a; return ((_a = hitsByHabit[habitId]) !== null && _a !== void 0 ? _a : []).filter((t) => t >= from && t < to).length; };
+    const doneInWeek = (habitId, weekStart) => doneInRange(habitId, weekStart.getTime(), weekStart.getTime() + 7 * 86400000);
+    // Suivi AU FIL DE L'EAU : fenêtre GLISSANTE de 7 jours — un lundi matin,
+    // la semaine calendaire serait quasi vide (chiffres anxiogènes sans info).
+    const rollingFrom = now.getTime() - 7 * 86400000;
     const engagements = habits.map((h) => {
         var _a;
         const target = weekTarget(h);
-        const done = doneInWeek(String(h.id), monday);
+        const done = doneInRange(String(h.id), rollingFrom, now.getTime() + 1);
         return {
             id: h.id, domainId: (_a = h.domainId) !== null && _a !== void 0 ? _a : null, label: h.name,
             target, done, kept: done >= target,
         };
     });
-    // Tendance : % d'engagements tenus, S-3 → semaine en cours.
-    const weeks = [3, 2, 1, 0].map((back) => {
+    // Tendance : 3 semaines calendaires RÉVOLUES (S-3 → S-1), puis les
+    // 7 jours glissants comme dernier bloc — cohérent avec les engagements.
+    const weeks = [3, 2, 1].map((back) => {
         const ws = new Date(monday.getTime() - back * 7 * 86400000);
         const kept = habits.filter((h) => doneInWeek(String(h.id), ws) >= weekTarget(h)).length;
         return {
             startYmd: ws.toISOString().slice(0, 10),
+            label: `S-${back}`,
             pct: habits.length === 0 ? 0 : Math.round((kept / habits.length) * 100),
         };
+    });
+    weeks.push({
+        startYmd: new Date(rollingFrom).toISOString().slice(0, 10),
+        label: "7 j",
+        pct: habits.length === 0
+            ? 0
+            : Math.round((habits.filter((h) => doneInRange(String(h.id), rollingFrom, now.getTime() + 1) >=
+                weekTarget(h)).length / habits.length) * 100),
     });
     // Dernière activité — périmètre partagé uniquement (minimisation).
     let lastActivityAt = null;

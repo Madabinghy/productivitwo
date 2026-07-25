@@ -27,6 +27,7 @@ import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
@@ -5993,6 +5994,9 @@ class _AppRootState extends State<AppRoot>
         // Objectifs stratégiques : progression hebdo des engagements.
         ObjectivesCard(
             logic: logic, sync: _sync, projects: _dashboardProjects),
+        // « Ma semaine » : la lecture coach sur ses propres données
+        // (7 jours glissants + tendance) — tap pour le détail.
+        WeekDashboardCard(logic: logic),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
