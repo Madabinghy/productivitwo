@@ -49,11 +49,16 @@ Croisement vide sur le marché francophone.
 2. **Phase 2 (6-18 mois)** : cohortes 8-12 semaines.
 3. **Phase 3 (12-36 mois)** : abonnement B2C (essai 14 j, PAS de freemium), puis licence B2B coachs.
 
-**Priorités de dev, dans cet ordre strict** :
-1. Finaliser la **V1** (échéance 17/08/2026) — périmètre GELÉ, aucune nouvelle feature avant.
-2. **Espace Coach V1.1** (`docs/specs/espace-coach-v1.1.md`) : invitation/consentement →
+**Priorités de dev** (⚠️ gel V1 **levé par l'utilisateur le 2026-07-24** — Export/Import et
+Espace Coach peuvent démarrer sans attendre le 17/08) :
+1. Finaliser la **V1** (échéance 17/08/2026).
+2. **Export / import des données** (lot « Coffre », `docs/specs/export-import-donnees/README.md`) :
+   lot 1 = export .json, lot 2 = restauration Fusionner/Remplacer.
+3. **Espace Coach V1.1** (`docs/specs/espace-coach-v1.1.md`) : invitation/consentement →
    cockpit multi-coachés → rapport de pré-séance → message coach via ORION → alerte décrochage.
-3. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
+   Design hifi (thème sombre) : `docs/specs/espace-coach-design/README.md` — cible = console
+   coach `8a` ; le design dépasse le périmètre V1.1, suivre le MoSCoW de la spec.
+4. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
 
 **Règles de décision** :
 - Privilégier ce qui renforce la boucle coaché → données d'exécution → coach.
@@ -398,4 +403,8 @@ actions: [
 
 ## Backlog mémorisé (demandes user, à faire plus tard)
 
-- **Export / import des données** (noté 2026-07-19) : demandé par l'utilisateur, reporté volontairement — à cadrer avant d'implémenter (portée : backup complet JSON ? migration ? partage ?).
+- **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
+  dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
+  restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
+  implémenter). Specs de tâches 4 lignes incluses (lot 1 = export seul, lot 2 = restauration).
+  Calendrier : gel V1 levé le 2026-07-24 → **en cours d'implémentation**, avant l'Espace Coach V1.1.

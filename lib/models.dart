@@ -13,6 +13,7 @@ part 'models/artifact.dart';
 part 'models/weekly_report.dart';
 part 'models/world.dart';
 part 'models/redemption.dart';
+part 'models/coach.dart';
 
 const _uuid = Uuid();
 const int kMinDailyGoalMin = 1;

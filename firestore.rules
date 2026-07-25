@@ -9,6 +9,47 @@ service cloud.firestore {
       allow read: if request.auth != null && request.auth.uid == userId;
     }
 
+    // ── Espace Coach : lien coach-coaché + résumé partagé ────────────────────
+    // L'ID du doc EST le code d'invitation (secret partagé hors app) :
+    // `get` par id est ouvert aux connectés (il faut connaître le code),
+    // `list` est réservé aux deux parties — personne ne peut énumérer les
+    // invitations des autres.
+    match /coach_links/{linkId} {
+      allow get: if request.auth != null;
+      allow list: if request.auth != null
+        && (resource.data.coachUid == request.auth.uid
+            || resource.data.coacheeUid == request.auth.uid);
+      // Création par le coach uniquement, pour lui-même, en statut invited.
+      allow create: if request.auth != null
+        && request.resource.data.coachUid == request.auth.uid
+        && request.resource.data.status == 'invited';
+      // Mise à jour : les deux parties (consentement, révocation), ou un
+      // invité qui s'inscrit lui-même comme coaché sur une invitation.
+      allow update: if request.auth != null
+        && (request.auth.uid == resource.data.coachUid
+            || request.auth.uid == resource.data.coacheeUid
+            || (resource.data.status == 'invited'
+                && request.resource.data.coacheeUid == request.auth.uid
+                && request.resource.data.coachUid == resource.data.coachUid));
+      allow delete: if false; // journal de consentement conservé (RGPD)
+
+      // Résumé : écrit par le coaché (périmètre appliqué à l'écriture par
+      // son app), lu par les deux parties. Supprimable par le coaché
+      // (révocation immédiate).
+      match /data/{docId} {
+        allow read: if request.auth != null
+          && (request.auth.uid == get(/databases/$(database)/documents/coach_links/$(linkId)).data.coachUid
+              || request.auth.uid == get(/databases/$(database)/documents/coach_links/$(linkId)).data.coacheeUid);
+        // Écrit par le coaché uniquement ; supprimable par les deux parties
+        // (révocation immédiate, quel que soit le côté qui la déclenche).
+        allow create, update: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/coach_links/$(linkId)).data.coacheeUid;
+        allow delete: if request.auth != null
+          && (request.auth.uid == get(/databases/$(database)/documents/coach_links/$(linkId)).data.coachUid
+              || request.auth.uid == get(/databases/$(database)/documents/coach_links/$(linkId)).data.coacheeUid);
+      }
+    }
+
     // ── Couche sociale/jeu supprimée (pivot productivité) ────────────────────
     // Les règles des collections publiques du jeu (profiles, pseudos,
     // leaderboard_entries, challenge_library, challenge_submissions,
