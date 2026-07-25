@@ -25,6 +25,9 @@ import 'package:productivitwo_v1/web/daily_schedule_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
+import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/storage.dart';
+import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 
 Color? _parseTaskColor(String? hex) {
   if (hex == null || hex.isEmpty) return null;
@@ -66,6 +69,8 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
   // (sonde coachApi — 403 pour tout le monde d'autre).
   bool _isCoach = false;
+  // Onboarding auto-ouvert UNE fois par session quand le compte est vide.
+  bool _onboardingPrompted = false;
   StreamSubscription<User?>? _authSub;
 
   @override
@@ -156,6 +161,43 @@ class _WebHomeScreenState extends State<WebHomeScreen>
         _documentsByProject = byProject;
         _loading = false;
       });
+
+      // Onboarding déterministe (catalogue domaines/activités/routines) :
+      // un compte VIDE — créé directement sur le web, ex. un coaché invité —
+      // démarre ici sans avoir besoin de l'app mobile. Même écran que le
+      // mobile ; la persistance passe par un AppLogic dédié (save local web
+      // + pushAll Firestore), et le mobile récupérera tout à la synchro.
+      if (!_onboardingPrompted &&
+          loadedDomains.isEmpty &&
+          (results[5] as List<Activity>).isEmpty) {
+        _onboardingPrompted = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final store = FileStore();
+          final st = AppState(
+            domains: [],
+            activities: [],
+            sessions: [],
+            habitProgress: [],
+          );
+          late final AppLogic onboardingLogic;
+          onboardingLogic = AppLogic(st, () {
+            store.save(onboardingLogic.state);
+            _sync.pushAll(onboardingLogic.state);
+          })..sync = _sync;
+          Navigator.of(context).push(MaterialPageRoute(
+            fullscreenDialog: true,
+            builder: (_) => OnboardingScreen(
+              logic: onboardingLogic,
+              sync: _sync,
+              onDone: () {
+                Navigator.of(context).pop();
+                _load();
+              },
+            ),
+          ));
+        });
+      }
 
       // Évaluation de l'assistant après chargement
       final messages = await AssistantEngine.evaluate(
