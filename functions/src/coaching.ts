@@ -101,16 +101,24 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
   const today = new Date(now.getTime());
   const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const weekAgo = new Date(now.getTime() - 7 * 86400000);
+  // Lundi de la semaine courante (les engagements sont hebdo) puis S-3 :
+  // fenêtre des 4 semaines de la tendance (console coach 8a / US-2).
+  const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const fourWeeksAgo = new Date(monday.getTime() - 3 * 7 * 86400000);
 
-  const [domSnap, actSnap, schedSnap, sessSnap, capSnap] = await Promise.all([
+  const [domSnap, actSnap, schedSnap, sessSnap, capSnap, hitsSnap] = await Promise.all([
     db.collection(`users/${coacheeUid}/domains`).get(),
     db.collection(`users/${coacheeUid}/activities`).get(),
     db.doc(`users/${coacheeUid}/daily_schedules/${ymd}`).get(),
     db.collection(`users/${coacheeUid}/sessions`)
-      .where("startAt", ">=", weekAgo.toISOString()).get()
+      .where("startAt", ">=", fourWeeksAgo.toISOString()).get()
       .catch(() => null),
     db.collection(`users/${coacheeUid}/captures`)
       .where("status", "==", "pending").get()
+      .catch(() => null),
+    db.collection(`users/${coacheeUid}/habitHits`)
+      .where("ts", ">=", fourWeeksAgo.toISOString()).get()
       .catch(() => null),
   ]);
 
@@ -149,10 +157,76 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
     const start = Date.parse(String(v.startAt ?? ""));
     const end = Date.parse(String(v.endAt ?? ""));
     if (!isFinite(start) || !isFinite(end) || end <= start) continue;
+    if (start < weekAgo.getTime()) continue;
     const id = String(v.activityId ?? "");
     if (!sharedActivityIds.has(id)) continue;
     minutesByActivity[id] =
       (minutesByActivity[id] ?? 0) + Math.round((end - start) / 60000);
+  }
+
+  // ── Les 3 chiffres de l'US-2 (console 8a) — disponibles dès "status" ────────
+  // Engagements hebdo = routines des domaines partagés (habitFreq 0=daily,
+  // 1=weekly ; monthly hors tendance). Cible daily ramenée à la semaine (×7).
+  const habits = actSnap.docs
+    .map((d) => d.data())
+    .filter((v) =>
+      v.deleted !== true &&
+      v.type === "habit" &&
+      (v.habitFreq === 0 || v.habitFreq === 1) &&
+      sharedDomains.has(String(v.domainId ?? "")));
+  const hitsByHabit: Record<string, number[]> = {}; // habitId → timestamps
+  for (const d of hitsSnap?.docs ?? []) {
+    const v = d.data();
+    const t = Date.parse(String(v.ts ?? ""));
+    if (!isFinite(t)) continue;
+    (hitsByHabit[String(v.habitId ?? "")] ??= []).push(t);
+  }
+  const weekTarget = (h: Json): number => {
+    const base = Number(h.habitTarget ?? 1) || 1;
+    return Math.max(1, h.habitFreq === 0 ? base * 7 : base);
+  };
+  const doneInWeek = (habitId: string, weekStart: Date): number => {
+    const from = weekStart.getTime();
+    const to = from + 7 * 86400000;
+    return (hitsByHabit[habitId] ?? []).filter((t) => t >= from && t < to).length;
+  };
+
+  const engagements = habits.map((h) => {
+    const target = weekTarget(h);
+    const done = doneInWeek(String(h.id), monday);
+    return {
+      id: h.id, domainId: h.domainId ?? null, label: h.name,
+      target, done, kept: done >= target,
+    };
+  });
+
+  // Tendance : % d'engagements tenus, S-3 → semaine en cours.
+  const weeks = [3, 2, 1, 0].map((back) => {
+    const ws = new Date(monday.getTime() - back * 7 * 86400000);
+    const kept = habits.filter(
+      (h) => doneInWeek(String(h.id), ws) >= weekTarget(h)).length;
+    return {
+      startYmd: ws.toISOString().slice(0, 10),
+      pct: habits.length === 0 ? 0 : Math.round((kept / habits.length) * 100),
+    };
+  });
+
+  // Dernière activité — périmètre partagé uniquement (minimisation).
+  let lastActivityAt: number | null = null;
+  for (const d of sessSnap?.docs ?? []) {
+    const v = d.data();
+    if (!sharedActivityIds.has(String(v.activityId ?? ""))) continue;
+    const t = Date.parse(String(v.startAt ?? ""));
+    if (isFinite(t) && (lastActivityAt == null || t > lastActivityAt)) {
+      lastActivityAt = t;
+    }
+  }
+  const sharedHabitIds = new Set(habits.map((h) => String(h.id)));
+  for (const [habitId, ts] of Object.entries(hitsByHabit)) {
+    if (!sharedHabitIds.has(habitId)) continue;
+    for (const t of ts) {
+      if (lastActivityAt == null || t > lastActivityAt) lastActivityAt = t;
+    }
   }
 
   // Blocs du jour (mode détail) — un bloc rattaché à une activité d'un domaine
@@ -173,6 +247,11 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
     granularity: sharing.granularity,
     domains,
     activities,
+    engagements,
+    weeks,
+    lastActivityAt: lastActivityAt == null
+      ? null
+      : new Date(lastActivityAt).toISOString(),
     todayBlocks: detail ? blocks : null,
     weekMinutesByActivity: detail ? minutesByActivity : null,
     pendingIdeas: detail ? (capSnap?.size ?? 0) : null,
