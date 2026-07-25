@@ -252,12 +252,12 @@ class _DataSettingsScreenState extends State<DataSettingsScreen> {
   // ── Restauration ────────────────────────────────────────────────────────────
 
   Future<void> _openRestoreFlow() async {
-    const typeGroup = XTypeGroup(
+    final typeGroup = XTypeGroup(
       label: 'Sauvegarde Productivitwo',
-      extensions: ['json'],
-      uniformTypeIdentifiers: ['public.json'],
+      extensions: const ['json'],
+      uniformTypeIdentifiers: const ['public.json'],
     );
-    final file = await openFile(acceptedTypeGroups: const [typeGroup]);
+    final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file == null || !mounted) return;
 
     BackupPreview preview;
