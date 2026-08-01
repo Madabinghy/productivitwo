@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/energy_cards.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
+import 'package:productivitwo_v1/widgets/now_context_card.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
@@ -3255,6 +3256,10 @@ class _FocusViewState extends State<FocusView> {
             _coachZone(now),
             _contextSection(cs),
             _focusCard(context, cs, b, now),
+            // État des lieux du bloc visé : chiffres de la routine/activité/
+            // action + encouragement déterministe — le contexte AVANT de
+            // commencer.
+            NowContextCard(logic: logic, block: b),
             if (next != null) ...[
               const SizedBox(height: 14),
               _nextHint(cs, next),
@@ -3824,6 +3829,16 @@ class _FocusViewState extends State<FocusView> {
               ),
               const SizedBox(height: 20),
             ],
+
+            // ── État des lieux : les chiffres de ce qui tourne (routine x/y
+            // sur 7 j, minutes de l'activité…) + une phrase d'encouragement
+            // déterministe — le contexte de ce qu'on fait, sans morale.
+            NowContextCard(
+              logic: logic,
+              runningActivity: running,
+              runningActionId: _runningSession?.actionId,
+            ),
+            const SizedBox(height: 6),
 
             // ── DÉROULÉ : toutes les étapes de la session en cours, unifiées —
             // sous-actions de la tâche + actions propres de l'activité +

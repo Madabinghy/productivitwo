@@ -139,6 +139,34 @@ List<({String label, int pct})> fourWeekTrend({
   return out;
 }
 
+/// Stat 7 jours glissants d'UNE routine (carte contexte de l'onglet
+/// Maintenant). Cible hebdo-isée comme partout (daily ×7 ; monthly = cible
+/// brute, à titre indicatif). Null si l'activité n'est pas une routine.
+EngagementStat? rollingStatFor(Activity a, List<HabitHit> hits) {
+  if (!a.isHabit) return null;
+  final base = a.habitTarget ?? 1;
+  final target = a.habitFreq == HabitFreq.daily ? base * 7 : base;
+  final now = DateTime.now();
+  final from = now.subtract(const Duration(days: 7));
+  return EngagementStat(
+    id: a.id,
+    domainId: a.domainId,
+    label: a.name,
+    target: target <= 0 ? 1 : target,
+    done: _doneInRange(a.id, hits, from, now.add(const Duration(minutes: 1))),
+  );
+}
+
+/// Dernière coche d'une routine (toutes périodes confondues).
+DateTime? lastHitOf(String habitId, List<HabitHit> hits) {
+  DateTime? last;
+  for (final h in hits) {
+    if (h.habitId != habitId) continue;
+    if (last == null || h.ts.isAfter(last)) last = h.ts;
+  }
+  return last;
+}
+
 /// Dernière activité (session démarrée ou routine cochée), bornée au
 /// périmètre [activityIds] si fourni.
 DateTime? lastActivityAt({

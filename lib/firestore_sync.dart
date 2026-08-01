@@ -2491,6 +2491,30 @@ class FirestoreSync {
         .update({'ownActions': actions.map((a) => a.toJson()).toList()});
   }
 
+  // ── Intention du jour (onglet Objectifs) ───────────────────────────────────
+  // Une phrase, stockée sur le doc daily_schedules du jour (merge : ne touche
+  // pas aux blocs). ⚠️ schedule_day (serveur) réécrit le doc entier — une
+  // régénération du programme efface l'intention (assumé v1).
+
+  Future<String?> fetchDayIntention(String date) async {
+    if (uid == null) return null;
+    try {
+      final s = await _db.doc('users/$uid/daily_schedules/$date').get();
+      final v = s.exists ? (s.data() as Map?)?['intention'] : null;
+      return v is String && v.trim().isNotEmpty ? v.trim() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> setDayIntention(String date, String text) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/daily_schedules/$date').set(
+      {'date': date, 'intention': text.trim()},
+      SetOptions(merge: true),
+    );
+  }
+
   // ── Sauvegarde « Coffre » (export/import — lib/utils/backup.dart) ──────────
 
   /// Dump brut d'une collection (export) : data() tel quel, Timestamps inclus

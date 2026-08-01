@@ -24,6 +24,7 @@ import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
+import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
@@ -3015,7 +3016,7 @@ class _AppRootState extends State<AppRoot>
       child: IndexedStack(
         index: _tabIndex(_tab),
         children: [
-          _buildDashboardBody(context),
+          _buildObjectivesBody(context),
           GoalsView(
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
@@ -4893,9 +4894,9 @@ class _AppRootState extends State<AppRoot>
           for (final t in _visibleTabs)
             switch (t) {
               _Tab.dashboard => const BottomNavigationBarItem(
-                  icon: Icon(Icons.dashboard_outlined),
-                  activeIcon: Icon(Icons.dashboard),
-                  label: 'Accueil'),
+                  icon: Icon(Icons.track_changes_outlined),
+                  activeIcon: Icon(Icons.track_changes),
+                  label: 'Objectifs'),
               _Tab.projets => const BottomNavigationBarItem(
                   icon: Icon(Icons.account_tree_outlined),
                   activeIcon: Icon(Icons.account_tree),
@@ -5962,6 +5963,29 @@ class _AppRootState extends State<AppRoot>
           },
         ),
       ),
+    );
+  }
+
+  /// Onglet OBJECTIFS (remplace l'Accueil) : pyramide Aujourd'hui / Cette
+  /// semaine / 30 jours. L'ancien Accueil reste INTACT derrière l'icône
+  /// Tableau de bord (écran poussé) — rien n'est perdu.
+  Widget _buildObjectivesBody(BuildContext context) {
+    return ObjectivesHomeView(
+      logic: logic,
+      sync: _sync,
+      projects: _dashboardProjects,
+      onOpenDashboard: () {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('Tableau de bord')),
+            body: Builder(builder: (ctx) => _buildDashboardBody(ctx)),
+          ),
+        ));
+      },
+      onOpenNow: () {
+        _tabFadeController.forward(from: 0);
+        setState(() => _tab = _Tab.maintenant);
+      },
     );
   }
 
