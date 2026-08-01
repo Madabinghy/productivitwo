@@ -2500,7 +2500,9 @@ class FirestoreSync {
     if (uid == null) return null;
     try {
       final s = await _db.doc('users/$uid/daily_schedules/$date').get();
-      final v = s.exists ? (s.data() as Map?)?['intention'] : null;
+      if (!s.exists) return null;
+      final data = s.data() as Map?;
+      final v = data == null ? null : data['intention'];
       return v is String && v.trim().isNotEmpty ? v.trim() : null;
     } catch (_) {
       return null;
