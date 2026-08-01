@@ -139,6 +139,33 @@ List<({String label, int pct})> fourWeekTrend({
   return out;
 }
 
+/// Engagements DU JOUR : les routines QUOTIDIENNES uniquement (les hebdo se
+/// jugent sur 7 jours, pas sur une journée) — coches d'aujourd'hui vs cible
+/// quotidienne. Alimente l'étage AUJOURD'HUI de l'onglet Objectifs.
+List<EngagementStat> todayEngagements({
+  required List<Activity> activities,
+  required List<HabitHit> hits,
+  Set<String>? domainIds,
+}) {
+  final now = DateTime.now();
+  final midnight = DateTime(now.year, now.month, now.day);
+  return [
+    for (final a in activities)
+      if (!a.deleted &&
+          a.isHabit &&
+          a.habitFreq == HabitFreq.daily &&
+          (domainIds == null || domainIds.contains(a.domainId)))
+        EngagementStat(
+          id: a.id,
+          domainId: a.domainId,
+          label: a.name,
+          target: (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1),
+          done: _doneInRange(
+              a.id, hits, midnight, now.add(const Duration(minutes: 1))),
+        ),
+  ];
+}
+
 /// Stat 7 jours glissants d'UNE routine (carte contexte de l'onglet
 /// Maintenant). Cible hebdo-isée comme partout (daily ×7 ; monthly = cible
 /// brute, à titre indicatif). Null si l'activité n'est pas une routine.
