@@ -67,19 +67,28 @@ class WeekDashboardCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Mini-tendance : 4 pastilles aux couleurs de paliers.
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              for (final w in weeks)
-                Container(
-                  width: 9,
-                  height: 22,
-                  margin: const EdgeInsets.only(left: 3),
-                  decoration: BoxDecoration(
-                    color: palierColor(w.pct).withOpacity(.75),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-            ]),
+            // Mini-histogramme de tendance : la HAUTEUR encode le %, la
+            // couleur encode le palier — deux lectures d'un coup d'œil.
+            SizedBox(
+              height: 26,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final w in weeks)
+                    Container(
+                      width: 9,
+                      // Plancher 4 px : une semaine à 0 % reste visible.
+                      height: 4 + (w.pct.clamp(0, 100) / 100) * 22,
+                      margin: const EdgeInsets.only(left: 3),
+                      decoration: BoxDecoration(
+                        color: palierColor(w.pct).withOpacity(.85),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(width: 6),
             Icon(Icons.chevron_right,
                 size: 18, color: cs.onSurface.withOpacity(.35)),
