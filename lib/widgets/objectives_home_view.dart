@@ -90,6 +90,60 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
     await widget.sync.setDayIntention(_today, saved);
   }
 
+  /// Détail des routines du jour — même geste que « Ma semaine » : le
+  /// chiffre se tape, la liste s'ouvre.
+  void _showTodayDetail(List<EngagementStat> stats) {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+          children: [
+            const Text('Routines du jour',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(
+                'Les routines quotidiennes — les hebdomadaires se jugent '
+                'sur 7 jours, pas sur une journée.',
+                style: TextStyle(
+                    fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+            const SizedBox(height: 12),
+            for (final e in stats)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(children: [
+                  Icon(
+                      e.kept
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 16,
+                      color: e.kept
+                          ? kPalierGreen
+                          : cs.onSurface.withOpacity(.35)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Text(e.label,
+                          style: const TextStyle(fontSize: 13.5))),
+                  Text('${e.done} / ${e.target}',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: e.kept
+                              ? kPalierGreen
+                              : cs.onSurface.withOpacity(.7))),
+                ]),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _horizon(ColorScheme cs, String label) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 22, 16, 8),
         child: Text(label,
@@ -150,6 +204,42 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
               ]),
             ),
             const SizedBox(height: 10),
+            // Engagements tenus AUJOURD'HUI (routines quotidiennes) — le
+            // pendant journalier du « x/y » de la semaine, tap → détail.
+            () {
+              final st = widget.logic.state;
+              final stats = todayEngagements(
+                  activities: st.activities, hits: st.habitHits);
+              if (stats.isEmpty) return const SizedBox.shrink();
+              final kept = stats.where((e) => e.kept).length;
+              final pct = ((kept / stats.length) * 100).round();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _showTodayDetail(stats),
+                  child: Row(children: [
+                    Text('$kept / ${stats.length}',
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                            color: palierColor(pct))),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text('engagements tenus aujourd\'hui',
+                          style: TextStyle(
+                              fontSize: 12.5,
+                              color: cs.onSurface.withOpacity(.6))),
+                    ),
+                    Icon(Icons.chevron_right,
+                        size: 16, color: cs.onSurface.withOpacity(.35)),
+                  ]),
+                ),
+              );
+            }(),
             // La mesure automatique : le programme du jour, en un coup d'œil.
             StreamBuilder<DailySchedule?>(
               stream: _scheduleStream,
