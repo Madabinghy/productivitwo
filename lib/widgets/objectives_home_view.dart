@@ -218,25 +218,71 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
                   onTap: () => _showTodayDetail(stats),
-                  child: Row(children: [
-                    Text('$kept / ${stats.length}',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ],
-                            color: palierColor(pct))),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text('engagements tenus aujourd\'hui',
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: cs.onSurface.withOpacity(.6))),
-                    ),
-                    Icon(Icons.chevron_right,
-                        size: 16, color: cs.onSurface.withOpacity(.35)),
-                  ]),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Text('$kept / ${stats.length}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                                color: palierColor(pct))),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text('engagements tenus aujourd\'hui',
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: cs.onSurface.withOpacity(.6))),
+                        ),
+                        Icon(Icons.chevron_right,
+                            size: 16, color: cs.onSurface.withOpacity(.35)),
+                      ]),
+                      const SizedBox(height: 8),
+                      // Heatmap du jour : UNE case par coche attendue,
+                      // groupées par routine — la journée est un tas de
+                      // petits gestes, chacun allume sa case.
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          for (final e in stats)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Plafond d'affichage par routine : au-delà,
+                                // la rangée dirait moins que le détail.
+                                for (var i = 0;
+                                    i < e.target.clamp(1, 14);
+                                    i++)
+                                  Container(
+                                    width: 9,
+                                    height: 9,
+                                    margin:
+                                        const EdgeInsets.only(right: 2),
+                                    decoration: BoxDecoration(
+                                      color: i < e.done
+                                          ? kPalierGreen
+                                          : cs.onSurface
+                                              .withOpacity(.08),
+                                      borderRadius:
+                                          BorderRadius.circular(2.5),
+                                      border: i < e.done
+                                          ? null
+                                          : Border.all(
+                                              color: cs.onSurface
+                                                  .withOpacity(.14),
+                                              width: .5),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               );
             }(),
