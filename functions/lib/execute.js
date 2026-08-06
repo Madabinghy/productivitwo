@@ -1704,7 +1704,12 @@ async function executeGetDaySchedule(uid, date) {
         const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
         return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}]${deletedNote}`;
     });
-    return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
+    // L'intention du jour (onglet Objectifs) fait partie du contexte : le
+    // programme généré/ajusté doit la servir.
+    const intention = typeof data.intention === "string" && data.intention.trim() !== ""
+        ? `🎯 Intention du jour : « ${data.intention} »\n`
+        : "";
+    return `${intention}Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 async function normalizeSessionSteps(uid, steps) {
     var _a, _b, _c;
@@ -1811,7 +1816,7 @@ async function executeUpdateSessionTemplate(uid, args) {
         : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
 }
 async function executeScheduleDay(uid, date, blocks) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -1871,6 +1876,7 @@ async function executeScheduleDay(uid, date, blocks) {
         reviewedAt: (_j = prevData.reviewedAt) !== null && _j !== void 0 ? _j : null, // « point fait » — jamais effacé
         energyState: (_l = prevData.energyState) !== null && _l !== void 0 ? _l : null, // état déclaré (24a) — un fait
         recoverySequence: (_m = prevData.recoverySequence) !== null && _m !== void 0 ? _m : null, // remontée (25) — idem
+        intention: (_o = prevData.intention) !== null && _o !== void 0 ? _o : null, // intention du jour (onglet Objectifs)
     });
     const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
     return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;

@@ -1931,7 +1931,12 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
     const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
     return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}]${deletedNote}`;
   });
-  return `Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
+  // L'intention du jour (onglet Objectifs) fait partie du contexte : le
+  // programme généré/ajusté doit la servir.
+  const intention = typeof data.intention === "string" && data.intention.trim() !== ""
+    ? `🎯 Intention du jour : « ${data.intention} »\n`
+    : "";
+  return `${intention}Programme du ${date} (généré par ${data.generatedBy}) :\n${lines.join("\n")}`;
 }
 
 // ── Déroulés réutilisables (session_templates) ────────────────────────────────
@@ -2126,6 +2131,7 @@ async function executeScheduleDay(
     reviewedAt: prevData.reviewedAt ?? null, // « point fait » — jamais effacé
     energyState: prevData.energyState ?? null, // état déclaré (24a) — un fait
     recoverySequence: prevData.recoverySequence ?? null, // remontée (25) — idem
+    intention: prevData.intention ?? null, // intention du jour (onglet Objectifs)
   });
 
   const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);

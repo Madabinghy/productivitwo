@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.coacheeApi = exports.coachConsent = exports.coachApi = void 0;
+exports.coacheeApi = exports.coachConsent = exports.coachAlertsCron = exports.coachApi = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const firestore_1 = require("firebase-admin/firestore");
 const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
@@ -56,8 +57,8 @@ async function resolveCoacheeUid(docId, data) {
  *  seuls les domaines du périmètre apparaissent — nulle part ailleurs, même
  *  pas agrégés ; le mode "status" omet temps, blocs et boîte à idées. */
 async function buildDashboard(coacheeUid, sharing) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
-    var _s;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+    var _t;
     const detail = sharing.granularity === "detail";
     const sharedDomains = new Set(sharing.domainIds);
     const now = new Date();
@@ -148,7 +149,7 @@ async function buildDashboard(coacheeUid, sharing) {
         const t = Date.parse(String((_h = v.ts) !== null && _h !== void 0 ? _h : ""));
         if (!isFinite(t))
             continue;
-        ((_k = hitsByHabit[_s = String((_j = v.habitId) !== null && _j !== void 0 ? _j : "")]) !== null && _k !== void 0 ? _k : (hitsByHabit[_s] = [])).push(t);
+        ((_k = hitsByHabit[_t = String((_j = v.habitId) !== null && _j !== void 0 ? _j : "")]) !== null && _k !== void 0 ? _k : (hitsByHabit[_t] = [])).push(t);
     }
     const weekTarget = (h) => {
         var _a;
@@ -221,6 +222,12 @@ async function buildDashboard(coacheeUid, sharing) {
         startTime: b.startTime, durationMin: b.durationMin,
         title: b.title, status: b.status, challenge: b.challenge === true,
     }));
+    // Intention du jour (onglet Objectifs du coaché) — détail uniquement,
+    // comme le programme dont elle fait partie.
+    const rawIntention = (_r = schedSnap.data()) === null || _r === void 0 ? void 0 : _r.intention;
+    const intention = typeof rawIntention === "string" && rawIntention.trim() !== ""
+        ? rawIntention.trim()
+        : null;
     return {
         date: ymd,
         granularity: sharing.granularity,
@@ -233,8 +240,58 @@ async function buildDashboard(coacheeUid, sharing) {
             : new Date(lastActivityAt).toISOString(),
         todayBlocks: detail ? blocks : null,
         weekMinutesByActivity: detail ? minutesByActivity : null,
-        pendingIdeas: detail ? ((_r = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _r !== void 0 ? _r : 0) : null,
+        pendingIdeas: detail ? ((_s = capSnap === null || capSnap === void 0 ? void 0 : capSnap.size) !== null && _s !== void 0 ? _s : 0) : null,
+        intention: detail ? intention : null,
     };
+}
+// ── Rapport de pré-séance (US-3) : composé serveur, périmètre consenti ───────
+// Texte déterministe prêt à relire/copier avant séance — les chiffres du
+// dashboard + la fiche (notes, prochaine séance). Aucune IA : les faits.
+function buildPresessionReport(fiche, dash) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const name = (_b = (_a = fiche.name) !== null && _a !== void 0 ? _a : fiche.email) !== null && _b !== void 0 ? _b : "Coaché";
+    const today = new Date().toISOString().slice(0, 10);
+    const engagements = (_c = dash.engagements) !== null && _c !== void 0 ? _c : [];
+    const kept = engagements.filter((e) => e.kept === true).length;
+    const weeks = (_d = dash.weeks) !== null && _d !== void 0 ? _d : [];
+    const lines = [];
+    lines.push(`RAPPORT DE PRÉ-SÉANCE — ${name} — ${today}`);
+    lines.push("");
+    lines.push(`Engagements (7 derniers jours) : ${kept} / ${engagements.length} tenus`);
+    for (const e of engagements) {
+        lines.push(`  ${e.kept === true ? "✅" : "▢"} ${e.label} — ${e.done} / ${e.target}`);
+    }
+    if (weeks.length > 0) {
+        lines.push("");
+        lines.push(`Tendance : ${weeks.map((w) => { var _a; return `${(_a = w.label) !== null && _a !== void 0 ? _a : w.startYmd} ${w.pct} %`; }).join(" · ")}`);
+    }
+    if (dash.lastActivityAt != null) {
+        lines.push(`Dernière activité : ${String(dash.lastActivityAt).slice(0, 10)}`);
+    }
+    if (typeof dash.intention === "string") {
+        lines.push(`Intention du jour : « ${dash.intention} »`);
+    }
+    const minutes = (_e = dash.weekMinutesByActivity) !== null && _e !== void 0 ? _e : null;
+    const actNames = new Map(((_f = dash.activities) !== null && _f !== void 0 ? _f : []).map((a) => [String(a.id), String(a.name)]));
+    if (minutes != null && Object.keys(minutes).length > 0) {
+        const top = Object.entries(minutes)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(([id, m]) => { var _a; return `${(_a = actNames.get(id)) !== null && _a !== void 0 ? _a : id} ${Math.round(m / 6) / 10} h`; });
+        lines.push(`Temps (7 j) : ${top.join(" · ")}`);
+    }
+    lines.push("");
+    if ((_g = fiche.nextSession) === null || _g === void 0 ? void 0 : _g.trim()) {
+        lines.push(`Prochaine séance : ${fiche.nextSession.trim()}`);
+    }
+    if ((_h = fiche.notes) === null || _h === void 0 ? void 0 : _h.trim()) {
+        lines.push(`Notes de coaching :`);
+        lines.push(fiche.notes.trim());
+    }
+    lines.push("");
+    lines.push("— Données limitées au périmètre partagé par le coaché. Les chiffres " +
+        "disent quoi ; le pourquoi se demande en séance.");
+    return lines.join("\n");
 }
 // ── coachApi : POST + Authorization: Bearer <ID token Firebase du coach> ──────
 exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, async (req, res) => {
@@ -414,6 +471,32 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
             res.status(200).json({ ok: true, dashboard: dash });
             return;
         }
+        if (action === "presession") {
+            // US-3 : rapport de pré-séance — dashboard + fiche, texte prêt à
+            // copier. Mêmes gardes que le dashboard (consentement + périmètre).
+            const doc = await ownDoc(id);
+            if (!doc) {
+                res.status(404).json({ error: "Fiche introuvable" });
+                return;
+            }
+            if (doc.consent !== "granted") {
+                res.status(200).json({ ok: false, reason: "consent_required" });
+                return;
+            }
+            const coacheeUid = await resolveCoacheeUid(doc.id, doc);
+            if (!coacheeUid) {
+                res.status(200).json({ ok: false, reason: "no_account" });
+                return;
+            }
+            const sharing = sharingOf(doc);
+            if (sharing.domainIds.length === 0) {
+                res.status(200).json({ ok: false, reason: "no_scope" });
+                return;
+            }
+            const dash = await buildDashboard(coacheeUid, sharing);
+            res.status(200).json({ ok: true, report: buildPresessionReport(doc, dash) });
+            return;
+        }
         if (action === "message") {
             // Message du coach dans l'app du coaché — même canal qu'ORION
             // (assistant_messages), signé du nom du coach.
@@ -455,6 +538,65 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
     catch (e) {
         console.error("coachApi error:", e);
         res.status(500).json({ error: "Erreur serveur coaching" });
+    }
+});
+// ── Alerte décrochage (US-5) : cron quotidien, max 1 alerte/coaché/semaine ───
+// Deux déclencheurs : silence (aucune activité visible depuis ≥ 5 jours) ou
+// retard installé (S-1 ET 7 j glissants < 60 %). L'alerte arrive dans l'app
+// DU COACH (canal assistant, signée « Espace coach ») et pointe vers la
+// console. Anti-spam : lastAlertAt sur la fiche, 7 jours mini entre deux.
+exports.coachAlertsCron = (0, scheduler_1.onSchedule)({ schedule: "0 7 * * *", timeZone: "Europe/Paris" }, async () => {
+    var _a, _b, _c, _d, _e, _f;
+    const snap = await db_1.db.collection("coaching")
+        .where("consent", "==", "granted").get();
+    for (const doc of snap.docs) {
+        const fiche = Object.assign(Object.assign({}, doc.data()), { id: doc.id });
+        try {
+            const sharing = sharingOf(fiche);
+            if (sharing.domainIds.length === 0)
+                continue;
+            const lastAlert = Date.parse(String((_a = fiche.lastAlertAt) !== null && _a !== void 0 ? _a : ""));
+            if (isFinite(lastAlert) && Date.now() - lastAlert < 7 * 86400000) {
+                continue; // quota : max 1 alerte par coaché et par semaine
+            }
+            const coacheeUid = await resolveCoacheeUid(doc.id, fiche);
+            if (!coacheeUid)
+                continue;
+            const dash = await buildDashboard(coacheeUid, sharing);
+            const name = (_c = (_b = fiche.name) !== null && _b !== void 0 ? _b : fiche.email) !== null && _c !== void 0 ? _c : "Un coaché";
+            const last = Date.parse(String((_d = dash.lastActivityAt) !== null && _d !== void 0 ? _d : ""));
+            const silentDays = isFinite(last)
+                ? Math.floor((Date.now() - last) / 86400000)
+                : null;
+            const weeks = (_e = dash.weeks) !== null && _e !== void 0 ? _e : [];
+            const totalEng = ((_f = dash.engagements) !== null && _f !== void 0 ? _f : []).length;
+            const lastTwoLow = totalEng > 0 && weeks.length >= 2 &&
+                weeks.slice(-2).every((w) => { var _a; return Number((_a = w.pct) !== null && _a !== void 0 ? _a : 0) < 60; });
+            let text = null;
+            if (silentDays == null || silentDays >= 5) {
+                text = `⚠️ ${name} : aucune activité visible depuis ` +
+                    `${silentDays == null ? "l'ouverture du partage" : `${silentDays} jours`}. ` +
+                    `Un mot HORS de l'app vaut peut-être mieux qu'une notification. ` +
+                    `Détails dans ta console coach (🎓).`;
+            }
+            else if (lastTwoLow) {
+                text = `⚠️ ${name} : engagements sous 60 % deux périodes de suite. ` +
+                    `C'est le moment d'un constat — les chiffres sont dans ta console coach (🎓).`;
+            }
+            if (text == null)
+                continue;
+            await (0, execute_1.executePushAssistantMessage)(fiche.coachUid, {
+                targetDate: new Date().toISOString().slice(0, 10),
+                text,
+                condition: { type: "always" },
+                characterName: "Espace coach",
+                expiresAfterDays: 3,
+            });
+            await coachingRef(doc.id).set({ lastAlertAt: new Date().toISOString() }, { merge: true });
+        }
+        catch (e) {
+            console.error(`coachAlertsCron: fiche ${doc.id}`, e);
+        }
     }
 });
 // ── coachConsent : page web du coaché (GET, sans compte requis) ───────────────

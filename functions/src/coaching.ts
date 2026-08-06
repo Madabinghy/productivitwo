@@ -1,4 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { FieldValue } from "firebase-admin/firestore";
 import * as admin from "firebase-admin";
 import { randomUUID } from "crypto";
@@ -256,6 +257,14 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
       title: b.title, status: b.status, challenge: b.challenge === true,
     }));
 
+  // Intention du jour (onglet Objectifs du coaché) — détail uniquement,
+  // comme le programme dont elle fait partie.
+  const rawIntention = schedSnap.data()?.intention;
+  const intention =
+    typeof rawIntention === "string" && rawIntention.trim() !== ""
+      ? rawIntention.trim()
+      : null;
+
   return {
     date: ymd,
     granularity: sharing.granularity,
@@ -269,7 +278,63 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
     todayBlocks: detail ? blocks : null,
     weekMinutesByActivity: detail ? minutesByActivity : null,
     pendingIdeas: detail ? (capSnap?.size ?? 0) : null,
+    intention: detail ? intention : null,
   };
+}
+
+// ── Rapport de pré-séance (US-3) : composé serveur, périmètre consenti ───────
+// Texte déterministe prêt à relire/copier avant séance — les chiffres du
+// dashboard + la fiche (notes, prochaine séance). Aucune IA : les faits.
+
+function buildPresessionReport(fiche: Json, dash: Json): string {
+  const name = (fiche.name as string) ?? (fiche.email as string) ?? "Coaché";
+  const today = new Date().toISOString().slice(0, 10);
+  const engagements = (dash.engagements as Json[]) ?? [];
+  const kept = engagements.filter((e) => e.kept === true).length;
+  const weeks = (dash.weeks as Json[]) ?? [];
+  const lines: string[] = [];
+
+  lines.push(`RAPPORT DE PRÉ-SÉANCE — ${name} — ${today}`);
+  lines.push("");
+  lines.push(
+    `Engagements (7 derniers jours) : ${kept} / ${engagements.length} tenus`);
+  for (const e of engagements) {
+    lines.push(`  ${e.kept === true ? "✅" : "▢"} ${e.label} — ${e.done} / ${e.target}`);
+  }
+  if (weeks.length > 0) {
+    lines.push("");
+    lines.push(
+      `Tendance : ${weeks.map((w) => `${w.label ?? w.startYmd} ${w.pct} %`).join(" · ")}`);
+  }
+  if (dash.lastActivityAt != null) {
+    lines.push(`Dernière activité : ${String(dash.lastActivityAt).slice(0, 10)}`);
+  }
+  if (typeof dash.intention === "string") {
+    lines.push(`Intention du jour : « ${dash.intention} »`);
+  }
+  const minutes = (dash.weekMinutesByActivity as Record<string, number>) ?? null;
+  const actNames = new Map(
+    ((dash.activities as Json[]) ?? []).map((a) => [String(a.id), String(a.name)]));
+  if (minutes != null && Object.keys(minutes).length > 0) {
+    const top = Object.entries(minutes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, m]) => `${actNames.get(id) ?? id} ${Math.round(m / 6) / 10} h`);
+    lines.push(`Temps (7 j) : ${top.join(" · ")}`);
+  }
+  lines.push("");
+  if ((fiche.nextSession as string)?.trim()) {
+    lines.push(`Prochaine séance : ${(fiche.nextSession as string).trim()}`);
+  }
+  if ((fiche.notes as string)?.trim()) {
+    lines.push(`Notes de coaching :`);
+    lines.push((fiche.notes as string).trim());
+  }
+  lines.push("");
+  lines.push(
+    "— Données limitées au périmètre partagé par le coaché. Les chiffres " +
+    "disent quoi ; le pourquoi se demande en séance.");
+  return lines.join("\n");
 }
 
 // ── coachApi : POST + Authorization: Bearer <ID token Firebase du coach> ──────
@@ -438,6 +503,27 @@ export const coachApi = onRequest(
         return;
       }
 
+      if (action === "presession") {
+        // US-3 : rapport de pré-séance — dashboard + fiche, texte prêt à
+        // copier. Mêmes gardes que le dashboard (consentement + périmètre).
+        const doc = await ownDoc(id);
+        if (!doc) { res.status(404).json({ error: "Fiche introuvable" }); return; }
+        if (doc.consent !== "granted") {
+          res.status(200).json({ ok: false, reason: "consent_required" }); return;
+        }
+        const coacheeUid = await resolveCoacheeUid(doc.id as string, doc);
+        if (!coacheeUid) {
+          res.status(200).json({ ok: false, reason: "no_account" }); return;
+        }
+        const sharing = sharingOf(doc);
+        if (sharing.domainIds.length === 0) {
+          res.status(200).json({ ok: false, reason: "no_scope" }); return;
+        }
+        const dash = await buildDashboard(coacheeUid, sharing);
+        res.status(200).json({ ok: true, report: buildPresessionReport(doc, dash) });
+        return;
+      }
+
       if (action === "message") {
         // Message du coach dans l'app du coaché — même canal qu'ORION
         // (assistant_messages), signé du nom du coach.
@@ -472,6 +558,68 @@ export const coachApi = onRequest(
     } catch (e) {
       console.error("coachApi error:", e);
       res.status(500).json({ error: "Erreur serveur coaching" });
+    }
+  }
+);
+
+// ── Alerte décrochage (US-5) : cron quotidien, max 1 alerte/coaché/semaine ───
+// Deux déclencheurs : silence (aucune activité visible depuis ≥ 5 jours) ou
+// retard installé (S-1 ET 7 j glissants < 60 %). L'alerte arrive dans l'app
+// DU COACH (canal assistant, signée « Espace coach ») et pointe vers la
+// console. Anti-spam : lastAlertAt sur la fiche, 7 jours mini entre deux.
+
+export const coachAlertsCron = onSchedule(
+  { schedule: "0 7 * * *", timeZone: "Europe/Paris" },
+  async () => {
+    const snap = await db.collection("coaching")
+      .where("consent", "==", "granted").get();
+    for (const doc of snap.docs) {
+      const fiche = { ...doc.data(), id: doc.id } as Json;
+      try {
+        const sharing = sharingOf(fiche);
+        if (sharing.domainIds.length === 0) continue;
+        const lastAlert = Date.parse(String(fiche.lastAlertAt ?? ""));
+        if (isFinite(lastAlert) && Date.now() - lastAlert < 7 * 86400000) {
+          continue; // quota : max 1 alerte par coaché et par semaine
+        }
+        const coacheeUid = await resolveCoacheeUid(doc.id, fiche);
+        if (!coacheeUid) continue;
+        const dash = await buildDashboard(coacheeUid, sharing);
+
+        const name = (fiche.name as string) ?? (fiche.email as string) ?? "Un coaché";
+        const last = Date.parse(String(dash.lastActivityAt ?? ""));
+        const silentDays = isFinite(last)
+          ? Math.floor((Date.now() - last) / 86400000)
+          : null;
+        const weeks = (dash.weeks as Json[]) ?? [];
+        const totalEng = ((dash.engagements as Json[]) ?? []).length;
+        const lastTwoLow = totalEng > 0 && weeks.length >= 2 &&
+          weeks.slice(-2).every((w) => Number(w.pct ?? 0) < 60);
+
+        let text: string | null = null;
+        if (silentDays == null || silentDays >= 5) {
+          text = `⚠️ ${name} : aucune activité visible depuis ` +
+            `${silentDays == null ? "l'ouverture du partage" : `${silentDays} jours`}. ` +
+            `Un mot HORS de l'app vaut peut-être mieux qu'une notification. ` +
+            `Détails dans ta console coach (🎓).`;
+        } else if (lastTwoLow) {
+          text = `⚠️ ${name} : engagements sous 60 % deux périodes de suite. ` +
+            `C'est le moment d'un constat — les chiffres sont dans ta console coach (🎓).`;
+        }
+        if (text == null) continue;
+
+        await executePushAssistantMessage(fiche.coachUid as string, {
+          targetDate: new Date().toISOString().slice(0, 10),
+          text,
+          condition: { type: "always" },
+          characterName: "Espace coach",
+          expiresAfterDays: 3,
+        });
+        await coachingRef(doc.id).set(
+          { lastAlertAt: new Date().toISOString() }, { merge: true });
+      } catch (e) {
+        console.error(`coachAlertsCron: fiche ${doc.id}`, e);
+      }
     }
   }
 );
