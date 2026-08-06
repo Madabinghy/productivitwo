@@ -345,10 +345,10 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
 
   // ── Meilleures routines : le momentum, incrémentable sur place ─────────────
 
-  /// Top 3 des routines (quotidiennes + hebdos) par max(score du jour,
-  /// score des 7 jours glissants) — mettre en avant ce qui MARCHE, et
-  /// permettre de l'entretenir d'un tap (+1 direct, même geste que les
-  /// compteurs de routine ailleurs).
+  /// Les 3 meilleures routines PAS ENCORE ATTEINTES (quotidiennes : cible du
+  /// jour non remplie ; hebdos : cible des 7 jours non remplie), classées par
+  /// max(score du jour, score 7 j) — le meilleur à FAIRE maintenant, pas le
+  /// déjà-fait. +1 direct (même geste que les compteurs de routine).
   Widget _topRoutines(ColorScheme cs) {
     final st = widget.logic.state;
     final now = DateTime.now();
@@ -388,9 +388,16 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
       ));
     }
     if (entries.isEmpty) return const SizedBox.shrink();
-    entries.sort((x, y) => x.score == y.score
-        ? y.weekDone.compareTo(x.weekDone)
-        : y.score.compareTo(x.score));
+    // Pas encore atteintes : quotidienne → cible du JOUR non remplie ;
+    // hebdo → cible des 7 jours non remplie. Le déjà-atteint sort du top.
+    final pending = entries.where((e) {
+      final dt = e.dayTarget;
+      if (dt != null) return e.dayDone < dt;
+      return e.weekDone < e.weekTarget;
+    }).toList()
+      ..sort((x, y) => x.score == y.score
+          ? y.weekDone.compareTo(x.weekDone)
+          : y.score.compareTo(x.score));
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
@@ -406,7 +413,7 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
             Icon(Icons.local_fire_department_rounded,
                 size: 15, color: cs.primary),
             const SizedBox(width: 6),
-            Text('MEILLEURES ROUTINES',
+            Text('LE MEILLEUR À FAIRE',
                 style: TextStyle(
                     fontSize: 10.5,
                     fontWeight: FontWeight.w800,
@@ -414,7 +421,16 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
                     color: cs.onSurface.withOpacity(.5))),
           ]),
           const SizedBox(height: 4),
-          for (final e in entries.take(3))
+          if (pending.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
+              child: Text('Tout est atteint — rien à rattraper. ✓',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.55))),
+            ),
+          for (final e in pending.take(3))
             Row(children: [
               Container(
                 width: 8,

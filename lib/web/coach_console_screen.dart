@@ -396,6 +396,62 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
   final _motFocus = FocusNode();
   void _focusMot() => _motFocus.requestFocus();
 
+  /// US-3 : rapport de pré-séance — le serveur compose, le coach relit,
+  /// copie, et prépare sa séance avec.
+  Future<void> _presession(_Coachee c) async {
+    try {
+      final r = await coachCall({'action': 'presession', 'id': c.id});
+      if (!mounted) return;
+      if (r['ok'] != true) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(switch (r['reason']) {
+          'no_scope' => 'Rien de partagé — pas de rapport possible.',
+          'no_account' => 'Pas encore de compte coaché.',
+          _ => 'Indisponible (${r['reason']}).',
+        })));
+        return;
+      }
+      final report = r['report'] as String? ?? '';
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Rapport de pré-séance'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: SelectableText(report,
+                  style: const TextStyle(
+                      fontSize: 12.5, fontFamily: 'monospace', height: 1.5)),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                try {
+                  await Clipboard.setData(ClipboardData(text: report));
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Rapport copié')));
+                  }
+                } catch (_) {}
+              },
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Copier'),
+            ),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Fermer')),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
   // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
@@ -861,6 +917,13 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
           onPressed: _sending ? null : () => _keepForSession(c),
           child: const Text('Garder pour la séance'),
         ),
+        const Spacer(),
+        // US-3 : le rapport de pré-séance — composé serveur, prêt à copier.
+        TextButton.icon(
+          onPressed: c.consent == 'granted' ? () => _presession(c) : null,
+          icon: const Icon(Icons.description_outlined, size: 15),
+          label: const Text('Rapport de pré-séance'),
+        ),
       ]),
       const SizedBox(height: 24),
     ];
@@ -971,6 +1034,27 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     final blocks = ((c.dash?['todayBlocks'] as List?) ?? [])
         .map((b) => Map<String, dynamic>.from(b as Map))
         .toList();
+    // L'intention du jour du coaché (onglet Objectifs) — granularité détail.
+    final intention = c.dash?['intention'] as String?;
+    final intentionWidget = intention == null
+        ? const <Widget>[]
+        : <Widget>[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.flag_rounded, size: 14, color: _kGreen),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text('« $intention »',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+            ),
+          ];
     if (!c.detail) {
       return [
         Text(
@@ -982,12 +1066,14 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
     }
     if (blocks.isEmpty) {
       return [
+        ...intentionWidget,
         Text('Rien de programmé aujourd\'hui (${c.dash?['date'] ?? ''}).',
             style:
                 TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.5))),
       ];
     }
     return [
+      ...intentionWidget,
       for (final b in blocks)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
