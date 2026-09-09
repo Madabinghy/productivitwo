@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
+import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
 /// Onglet OBJECTIFS (remplace l'Accueil) — la pyramide des 3 horizons :
@@ -284,6 +285,56 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
                     ],
                   ),
                 ),
+              );
+            }(),
+            // Le temps loggé — remis en avant (l'usage a chuté quand les
+            // stats de temps sont parties dans le sous-menu Tableau de bord).
+            () {
+              final now = DateTime.now();
+              final midnight = DateTime(now.year, now.month, now.day);
+              final today = widget.logic.totalForRange(
+                  midnight, midnight.add(const Duration(days: 1)));
+              final week = widget.logic.totalForRange(
+                  now.subtract(const Duration(days: 7)), now);
+              String fmt(Duration d) {
+                final m = d.inMinutes;
+                if (m >= 60) {
+                  final rest = m % 60;
+                  return '${m ~/ 60} h${rest > 0 ? ' ${rest.toString().padLeft(2, '0')}' : ''}';
+                }
+                return '$m min';
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  Icon(Icons.timer_outlined,
+                      size: 15, color: cs.onSurface.withOpacity(.5)),
+                  const SizedBox(width: 8),
+                  Text(fmt(today),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: cs.onSurface)),
+                  const SizedBox(width: 6),
+                  Text('aujourd\'hui',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: cs.onSurface.withOpacity(.6))),
+                  const SizedBox(width: 14),
+                  Text(fmt(week),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                          color: cs.onSurface.withOpacity(.85))),
+                  const SizedBox(width: 6),
+                  Text('sur 7 jours',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: cs.onSurface.withOpacity(.6))),
+                ]),
               );
             }(),
             // La mesure automatique : le programme du jour, en un coup d'œil.
@@ -612,6 +663,13 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
               logic: widget.logic,
               sync: widget.sync,
               projects: widget.projects),
+          // Les stats de temps de l'ancien Accueil, remises en pleine vue :
+          // heatmap par domaine + 12 semaines (le sous-menu les étouffait).
+          _horizon(cs, 'LE TEMPS'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: AccueilTimeStats(logic: widget.logic),
+          ),
           _horizon(cs, 'SUR 30 JOURS'),
           _monthSection(cs),
         ],
