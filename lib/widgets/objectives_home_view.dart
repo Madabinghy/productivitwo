@@ -394,138 +394,6 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
     );
   }
 
-  // ── Meilleures routines : le momentum, incrémentable sur place ─────────────
-
-  /// Les 3 meilleures routines PAS ENCORE ATTEINTES (quotidiennes : cible du
-  /// jour non remplie ; hebdos : cible des 7 jours non remplie), classées par
-  /// max(score du jour, score 7 j) — le meilleur à FAIRE maintenant, pas le
-  /// déjà-fait. +1 direct (même geste que les compteurs de routine).
-  Widget _topRoutines(ColorScheme cs) {
-    final st = widget.logic.state;
-    final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day);
-
-    final entries = <({
-      Activity act,
-      int dayDone,
-      int? dayTarget,
-      int weekDone,
-      int weekTarget,
-      double score,
-    })>[];
-    for (final a in st.activeActivities) {
-      if (!a.isHabit || a.habitFreq == HabitFreq.monthly) continue;
-      final week = rollingStatFor(a, st.habitHits);
-      if (week == null) continue;
-      final weekRatio = (week.done / week.target).clamp(0.0, 1.0).toDouble();
-      var dayDone = 0;
-      int? dayTarget;
-      var dayRatio = 0.0;
-      if (a.habitFreq == HabitFreq.daily) {
-        final t = a.habitTarget ?? 1;
-        dayTarget = t <= 0 ? 1 : t;
-        dayDone = st.habitHits
-            .where((h) => h.habitId == a.id && !h.ts.isBefore(midnight))
-            .length;
-        dayRatio = (dayDone / dayTarget).clamp(0.0, 1.0).toDouble();
-      }
-      entries.add((
-        act: a,
-        dayDone: dayDone,
-        dayTarget: dayTarget,
-        weekDone: week.done,
-        weekTarget: week.target,
-        score: dayRatio > weekRatio ? dayRatio : weekRatio,
-      ));
-    }
-    if (entries.isEmpty) return const SizedBox.shrink();
-    // Pas encore atteintes : quotidienne → cible du JOUR non remplie ;
-    // hebdo → cible des 7 jours non remplie. Le déjà-atteint sort du top.
-    final pending = entries.where((e) {
-      final dt = e.dayTarget;
-      if (dt != null) return e.dayDone < dt;
-      return e.weekDone < e.weekTarget;
-    }).toList()
-      ..sort((x, y) => x.score == y.score
-          ? y.weekDone.compareTo(x.weekDone)
-          : y.score.compareTo(x.score));
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.3),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            Icon(Icons.local_fire_department_rounded,
-                size: 15, color: cs.primary),
-            const SizedBox(width: 6),
-            Text('LE MEILLEUR À FAIRE',
-                style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .8,
-                    color: cs.onSurface.withOpacity(.5))),
-          ]),
-          const SizedBox(height: 4),
-          if (pending.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
-              child: Text('Tout est atteint — rien à rattraper. ✓',
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontStyle: FontStyle.italic,
-                      color: cs.onSurface.withOpacity(.55))),
-            ),
-          for (final e in pending.take(3))
-            Row(children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: palierColor((e.score * 100).round()),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(e.act.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w600)),
-              ),
-              Text(
-                  [
-                    if (e.dayTarget != null)
-                      'auj. ${e.dayDone}/${e.dayTarget}',
-                    '7 j ${e.weekDone}/${e.weekTarget}',
-                  ].join(' · '),
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      color: cs.onSurface.withOpacity(.55))),
-              // +1 direct : même mécanique que les compteurs de routine
-              // (habitProgress + coche du jour + persistance via onChange).
-              IconButton(
-                tooltip: '+1',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.add_circle, size: 22, color: cs.primary),
-                onPressed: () {
-                  widget.logic.incHabit(e.act.id, 1, DateTime.now());
-                  setState(() {});
-                },
-              ),
-            ]),
-        ],
-      ),
-    );
-  }
-
   // ── SUR 30 JOURS ────────────────────────────────────────────────────────────
 
   List<({DateTime date, String title, String project})> _upcomingMilestones() {
@@ -655,8 +523,8 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
           _horizon(cs, 'CETTE SEMAINE'),
           // Engagements 7 j glissants (tap → détail par domaine).
           WeekDashboardCard(logic: widget.logic),
-          // Le momentum : les 3 routines les mieux tenues, +1 direct.
-          _topRoutines(cs),
+          // (« Le meilleur à faire » a déménagé dans Maintenant — actionnable
+          // là où on agit : lib/widgets/best_to_do_card.dart.)
           // Objectifs stratégiques : progression hebdo mesurée — l'étage où
           // vivra le contrat coach-coaché.
           ObjectivesCard(

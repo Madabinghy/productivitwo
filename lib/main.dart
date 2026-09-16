@@ -14,7 +14,6 @@ import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
-import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_shell.dart';
@@ -23,19 +22,15 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
-import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
-import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
-import 'package:productivitwo_v1/widgets/artifact_screens.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/day_review_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
-import 'package:productivitwo_v1/widgets/productivity_stats_card.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -49,7 +44,6 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
-import 'package:productivitwo_v1/widgets/routine_freq_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/web/web_app_stub.dart'
@@ -5109,6 +5103,19 @@ class _AppRootState extends State<AppRoot>
                   },
                 ),
               ),
+              // Notifications — déplacé ici depuis le bas de l'onglet Stats.
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.notifications_outlined),
+                title: const Text('Notifications'),
+                subtitle: const Text(
+                    'Rappel quotidien, résumé du jour, streaks…'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _showNotificationsSheet(context);
+                },
+              ),
               // Siri & Raccourcis (iOS uniquement)
               if (!kIsWeb && Platform.isIOS)
                 ListTile(
@@ -5948,34 +5955,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  /// Ouvre la fiche stats complète (StatsView). Accessible depuis la carte
-  /// « Statistiques avancées » de l'accueil (l'ancien accès via le hub
-  /// gamification a été supprimé avec la couche jeu).
-  void _openFullStats(BuildContext ctx) {
-    showModalBottomSheet(
-      context: ctx,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.92,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (_, controller) => StatsView(
-          logic: logic,
-          state: _state!,
-          selectedDomainId: null,
-          scrollController: controller,
-          sync: _sync,
-          onDataChanged: () {
-            Navigator.pop(ctx);
-            _init();
-          },
-        ),
-      ),
-    );
-  }
-
   /// Onglet OBJECTIFS : pyramide Aujourd'hui / Cette semaine / 30 jours.
   /// Le tableau de bord est maintenant l'onglet « Stats » — l'icône en
   /// haut d'Objectifs y bascule (plus d'écran poussé).
@@ -6020,13 +5999,10 @@ class _AppRootState extends State<AppRoot>
           children: [
         // Compteur global de retards (version neutre du compteur de nuisibles
         // du jeu — mêmes données, présentation productivité).
+        // (Objectifs, « Ma semaine », Productivité, Temps par domaine,
+        // Routines et « Mes programmes » ont été retirés de cet onglet —
+        // désencombrement 2026-09 : ces lectures vivent dans Objectifs.)
         PestCounterCard(logic: logic),
-        // Objectifs stratégiques : progression hebdo des engagements.
-        ObjectivesCard(
-            logic: logic, sync: _sync, projects: _dashboardProjects),
-        // « Ma semaine » : la lecture coach sur ses propres données
-        // (7 jours glissants + tendance) — tap pour le détail.
-        WeekDashboardCard(logic: logic),
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
@@ -6249,48 +6225,6 @@ class _AppRootState extends State<AppRoot>
           );
         }),
 
-        SectionCard(
-          child: ProGate(
-            featureName: 'Statistiques avancées',
-            // Tap → fiche stats complète (StatsView).
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () => _openFullStats(context),
-              child: ProductivityStatsCard(logic: logic),
-            ),
-          ),
-        ),
-        SectionCard(
-          child: ProGate(
-            featureName: 'Statistiques avancées',
-            child: AccueilTimeStats(logic: logic),
-          ),
-        ),
-        SectionCard(
-          child: RoutineFreqCard(
-            logic: logic,
-            onCreateRoutine: () async {
-              await _createRoutineFromNow(context);
-              setState(() {});
-            },
-            onEditRoutine: (activity) async {
-              final res = await showHabitSettingsSheet(
-                context,
-                act: activity,
-                applyDirectly: true,
-                onSaved: () => setState(() {}),
-              );
-              if (res == null) return;
-              logic.onChange();
-              setState(() {});
-            },
-            onDeleteRoutine: (activity) {
-              activity.deleted = true;
-              logic.onChange();
-              setState(() {});
-            },
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(
@@ -6318,11 +6252,7 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         ..._buildDomainListLive(context, now),
-        // Raccourcis vers les artefacts (menu, plan sport) — sinon enterrés
-        // derrière Gérer → « Mes domaines ».
-        ArtifactShortcuts(domains: logic.state.activeDomains),
-        _buildDayReviewButton(context),
-        _buildNotificationsButton(context),
+        const SizedBox(height: 32),
       ],
         );
       },
@@ -6710,23 +6640,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  Widget _buildNotificationsButton(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.notifications_outlined, size: 18),
-        label: const Text('Notifications'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(44),
-          side: BorderSide(color: cs.onSurface.withOpacity(.2)),
-          foregroundColor: cs.onSurface.withOpacity(.6),
-        ),
-        onPressed: () => _showNotificationsSheet(context),
-      ),
-    );
-  }
-
   void _showNotificationsSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -6862,23 +6775,6 @@ class _AppRootState extends State<AppRoot>
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildDayReviewButton(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.bar_chart_rounded, size: 18),
-        label: const Text('Résumé du jour'),
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(44),
-          side: BorderSide(color: cs.primary.withOpacity(.4)),
-          foregroundColor: cs.primary,
-        ),
-        onPressed: () => showDayReviewSheet(context, logic: logic, projects: _dashboardProjects),
       ),
     );
   }
