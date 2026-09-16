@@ -93,9 +93,11 @@ class ProManager {
 
   static Future<CustomerInfo?> purchase(Package package) async {
     if (kIsWeb) return null; // achats indisponibles sur web
-    final info = await Purchases.purchasePackage(package);
-    _setActive(info);
-    return info;
+    // purchases_flutter ≥ 9 : purchasePackage renvoie un PurchaseResult
+    // (customerInfo + transaction) au lieu du CustomerInfo direct.
+    final result = await Purchases.purchasePackage(package);
+    _setActive(result.customerInfo);
+    return result.customerInfo;
   }
 
   static Future<CustomerInfo?> restore() async {
