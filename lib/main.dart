@@ -82,7 +82,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
-enum _Tab { dashboard, projets, aujourdhui, maintenant, actions }
+enum _Tab { dashboard, projets, aujourdhui, maintenant, actions, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -2955,9 +2955,11 @@ class _AppRootState extends State<AppRoot>
   /// ses 4 index — seule la barre change.
   // Gantt en retrait → l'onglet « Actions » (liste GTD par projet) prend la
   // place de « Projets » ; Gantt réactivé → « Projets » revient à sa place.
+  // « Stats » = l'ancien Accueil (tableau de bord), promu onglet principal :
+  // les stats de temps sont un moteur d'ouverture de l'app (constat user).
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
-      ? const [_Tab.dashboard, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant]
-      : const [_Tab.dashboard, _Tab.projets, _Tab.aujourdhui, _Tab.maintenant];
+      ? const [_Tab.dashboard, _Tab.stats, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant]
+      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.aujourdhui, _Tab.maintenant];
 
   int _tabIndex(_Tab t) {
     switch (t) {
@@ -2966,6 +2968,7 @@ class _AppRootState extends State<AppRoot>
       case _Tab.aujourdhui:  return 2;
       case _Tab.maintenant:  return 3;
       case _Tab.actions:     return 4;
+      case _Tab.stats:       return 5;
     }
   }
 
@@ -3150,6 +3153,9 @@ class _AppRootState extends State<AppRoot>
           // Onglet « Actions » (index 4) : liste GTD par projet + contexte du
           // moment — remplace « Projets » quand le Gantt est en retrait.
           ActionsView(logic: logic),
+          // Onglet « Stats » (index 5) : l'ancien Accueil (tableau de bord),
+          // promu onglet principal — jauges, temps, domaines, retards.
+          _buildDashboardBody(context),
         ],
       ),
     );
@@ -4897,6 +4903,10 @@ class _AppRootState extends State<AppRoot>
                   icon: Icon(Icons.track_changes_outlined),
                   activeIcon: Icon(Icons.track_changes),
                   label: 'Objectifs'),
+              _Tab.stats => const BottomNavigationBarItem(
+                  icon: Icon(Icons.query_stats),
+                  activeIcon: Icon(Icons.query_stats),
+                  label: 'Stats'),
               _Tab.projets => const BottomNavigationBarItem(
                   icon: Icon(Icons.account_tree_outlined),
                   activeIcon: Icon(Icons.account_tree),
@@ -5966,21 +5976,17 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  /// Onglet OBJECTIFS (remplace l'Accueil) : pyramide Aujourd'hui / Cette
-  /// semaine / 30 jours. L'ancien Accueil reste INTACT derrière l'icône
-  /// Tableau de bord (écran poussé) — rien n'est perdu.
+  /// Onglet OBJECTIFS : pyramide Aujourd'hui / Cette semaine / 30 jours.
+  /// Le tableau de bord est maintenant l'onglet « Stats » — l'icône en
+  /// haut d'Objectifs y bascule (plus d'écran poussé).
   Widget _buildObjectivesBody(BuildContext context) {
     return ObjectivesHomeView(
       logic: logic,
       sync: _sync,
       projects: _dashboardProjects,
       onOpenDashboard: () {
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => Scaffold(
-            appBar: AppBar(title: const Text('Tableau de bord')),
-            body: Builder(builder: (ctx) => _buildDashboardBody(ctx)),
-          ),
-        ));
+        _tabFadeController.forward(from: 0);
+        setState(() => _tab = _Tab.stats);
       },
       onOpenNow: () {
         _tabFadeController.forward(from: 0);
@@ -6995,17 +7001,19 @@ class _AppRootState extends State<AppRoot>
                 if (showTimeSection || routinesTotal > 0) ...[
                   const SizedBox(height: 10),
 
-                  // ── Row 2 : barre de progression semaine ─────────────────
+                  // ── Row 2 : jauge de la semaine — VISIBLE (barre épaisse
+                  // + % en gros et en couleur ; l'ancien 7 px à 40 %
+                  // d'opacité passait inaperçu, constat user).
                   if (hasTarget) ...[
                     Row(
                       children: [
                         Expanded(
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(8),
                             child: LinearProgressIndicator(
                               value: bigProgressTime.clamp(0.0, 1.0),
-                              minHeight: 7,
-                              backgroundColor: dColor.withOpacity(.12),
+                              minHeight: 16,
+                              backgroundColor: dColor.withOpacity(.14),
                               valueColor: AlwaysStoppedAnimation<Color>(
                                 bigProgressTime >= 1.0
                                     ? Colors.green
@@ -7014,9 +7022,23 @@ class _AppRootState extends State<AppRoot>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         Text(
-                          '$pct7 · 7j',
+                          pct7!,
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                            color: bigProgressTime >= 1.0
+                                ? Colors.green
+                                : dColor,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '7 j',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
