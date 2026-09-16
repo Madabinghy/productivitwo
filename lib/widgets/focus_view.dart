@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/utils/recovery.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/where_we_go.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
+import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -3265,6 +3266,10 @@ class _FocusViewState extends State<FocusView> {
               _nextHint(cs, next),
             ],
             _overdueHint(cs, now),
+            // « Le meilleur à faire » : les routines à rattraper, actionnables
+            // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
+            BestToDoCard(logic: logic),
+            _dayReviewLink(cs),
           ],
         ),
       ),
@@ -3654,8 +3659,31 @@ class _FocusViewState extends State<FocusView> {
               ),
             ],
             _overdueHint(cs, now),
+            // « Le meilleur à faire » : les routines à rattraper, actionnables
+            // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
+            BestToDoCard(logic: logic),
+            _dayReviewLink(cs),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Accès au check-in du soir (Résumé du jour) — déplacé ici depuis Stats.
+  Widget _dayReviewLink(ColorScheme cs) {
+    final open = widget.onOpenDayReview;
+    if (open == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.bar_chart_rounded, size: 18),
+        label: const Text('Résumé du jour'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(44),
+          side: BorderSide(color: cs.primary.withOpacity(.4)),
+          foregroundColor: cs.primary,
+        ),
+        onPressed: open,
       ),
     );
   }
