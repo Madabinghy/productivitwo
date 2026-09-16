@@ -10,8 +10,9 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 /// « Le meilleur à faire » — les 3 meilleures routines PAS ENCORE ATTEINTES
 /// (quotidiennes : cible du jour non remplie ; hebdos : cible des 7 jours non
 /// remplie), classées par max(score du jour, score 7 j). Vit dans Maintenant :
-/// +1 direct, −1 (correction), et « passer » (la routine sort du top pour
-/// aujourd'hui, réversible via Annuler).
+/// +1 direct, −1 (correction), et « passer » (la routine recule en FIN de
+/// liste pour aujourd'hui — elle reste visible et rattrapable, les autres
+/// remontent ; réversible sur place).
 class BestToDoCard extends StatefulWidget {
   final AppLogic logic;
   const BestToDoCard({super.key, required this.logic});
@@ -42,23 +43,26 @@ class _BestToDoCardState extends State<BestToDoCard> {
     setState(() {});
   }
 
-  void _skip(Activity a) {
+  // « Passer » = reculer en fin de liste pour aujourd'hui (pas de
+  // disparition) : les autres routines remontent, celle-ci reste visible
+  // et rattrapable. Re-tap sur une routine passée → elle revient en course.
+  void _togglePasse(Activity a) {
     final ymd = yyyymmdd(DateTime.now());
-    final ids = logic.nowSkippedSet(ymd)..add(a.id);
+    final ids = logic.nowSkippedSet(ymd);
+    final wasSkipped = ids.contains(a.id);
+    if (wasSkipped) {
+      ids.remove(a.id);
+    } else {
+      ids.add(a.id);
+    }
     logic.setNowSkipped(ymd, ids);
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Routine passée pour aujourd\'hui : ${a.name}'),
-      duration: const Duration(seconds: 4),
-      action: SnackBarAction(
-        label: 'Annuler',
-        onPressed: () {
-          final again = logic.nowSkippedSet(ymd)..remove(a.id);
-          logic.setNowSkipped(ymd, again);
-          if (mounted) setState(() {});
-        },
-      ),
-    ));
+    if (!wasSkipped) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Reculée en fin de liste : ${a.name}'),
+        duration: const Duration(seconds: 3),
+      ));
+    }
   }
 
   @override
@@ -76,10 +80,10 @@ class _BestToDoCardState extends State<BestToDoCard> {
       int weekDone,
       int weekTarget,
       double score,
+      bool passed,
     })>[];
     for (final a in st.activeActivities) {
       if (!a.isHabit || a.habitFreq == HabitFreq.monthly) continue;
-      if (skipped.contains(a.id)) continue;
       final week = rollingStatFor(a, st.habitHits);
       if (week == null) continue;
       final weekRatio = (week.done / week.target).clamp(0.0, 1.0).toDouble();
@@ -101,19 +105,25 @@ class _BestToDoCardState extends State<BestToDoCard> {
         weekDone: week.done,
         weekTarget: week.target,
         score: dayRatio > weekRatio ? dayRatio : weekRatio,
+        passed: skipped.contains(a.id),
       ));
     }
     if (entries.isEmpty) return const SizedBox.shrink();
     // Pas encore atteintes : quotidienne → cible du JOUR non remplie ;
     // hebdo → cible des 7 jours non remplie. Le déjà-atteint sort du top.
+    // Les « passées » du jour restent dans la liste mais reculent EN FIN —
+    // elles réapparaissent en tête de la queue si tout le reste est passé.
     final pending = entries.where((e) {
       final dt = e.dayTarget;
       if (dt != null) return e.dayDone < dt;
       return e.weekDone < e.weekTarget;
     }).toList()
-      ..sort((x, y) => x.score == y.score
-          ? y.weekDone.compareTo(x.weekDone)
-          : y.score.compareTo(x.score));
+      ..sort((x, y) {
+        if (x.passed != y.passed) return x.passed ? 1 : -1;
+        return x.score == y.score
+            ? y.weekDone.compareTo(x.weekDone)
+            : y.score.compareTo(x.score);
+      });
 
     return Container(
       margin: const EdgeInsets.only(top: 14),
@@ -152,7 +162,8 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: palierColor((e.score * 100).round()),
+                  color: palierColor((e.score * 100).round())
+                      .withOpacity(e.passed ? .35 : 1),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -161,8 +172,12 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 child: Text(e.act.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w600)),
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w600,
+                        color: e.passed
+                            ? cs.onSurface.withOpacity(.4)
+                            : null)),
               ),
               Text(
                   [
@@ -204,12 +219,18 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 },
               ),
               IconButton(
-                tooltip: 'Passer aujourd\'hui',
+                tooltip: e.passed
+                    ? 'Remettre en course'
+                    : 'Reculer en fin de liste',
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                icon: Icon(Icons.skip_next_rounded,
-                    size: 22, color: cs.onSurface.withOpacity(.45)),
-                onPressed: () => _skip(e.act),
+                icon: Icon(
+                    e.passed
+                        ? Icons.undo_rounded
+                        : Icons.skip_next_rounded,
+                    size: 22,
+                    color: cs.onSurface.withOpacity(.45)),
+                onPressed: () => _togglePasse(e.act),
               ),
             ]),
         ],
