@@ -4893,6 +4893,10 @@ class _AppRootState extends State<AppRoot>
           setState(() => _tab = tapped);
         },
         type: BottomNavigationBarType.fixed,
+        // 6 onglets : les libellés n'ont plus la place de cohabiter
+        // (« Aujourd'hui »/« Maintenant » tronqués). Seul l'onglet ACTIF
+        // affiche le sien, en entier ; les autres restent en icône.
+        showUnselectedLabels: false,
         selectedFontSize: 11,
         unselectedFontSize: 11,
         items: [
