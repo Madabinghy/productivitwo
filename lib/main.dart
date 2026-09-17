@@ -5997,12 +5997,11 @@ class _AppRootState extends State<AppRoot>
 
         return ListView(
           children: [
-        // Compteur global de retards (version neutre du compteur de nuisibles
-        // du jeu — mêmes données, présentation productivité).
+        // Ordre voulu (2026-09) : jauges globales puis domaines EN TÊTE —
+        // c'est la lecture principale de l'onglet ; le reste suit.
         // (Objectifs, « Ma semaine », Productivité, Temps par domaine,
-        // Routines et « Mes programmes » ont été retirés de cet onglet —
-        // désencombrement 2026-09 : ces lectures vivent dans Objectifs.)
-        PestCounterCard(logic: logic),
+        // Routines, « Mes programmes » et le camembert du jour ont été
+        // retirés : ces lectures vivent dans Objectifs ou Maintenant.)
         SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
@@ -6156,75 +6155,6 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ),
-        // Camembert activités loggées aujourd'hui
-        Builder(builder: (context) {
-          final nowPie = DateTime.now();
-          final todayStart = DateTime(nowPie.year, nowPie.month, nowPie.day);
-          final byActivity = <String, double>{};
-          for (final s in logic.state.sessions) {
-            final start = s.startAt.isAfter(todayStart) ? s.startAt : todayStart;
-            final end = s.endAt ?? nowPie;
-            if (end.isBefore(todayStart)) continue;
-            final minutes = end.difference(start).inSeconds / 60.0;
-            if (minutes <= 0) continue;
-            byActivity[s.activityId] = (byActivity[s.activityId] ?? 0) + minutes;
-          }
-          if (byActivity.isEmpty) return const SizedBox.shrink();
-          final totalMin = byActivity.values.fold(0.0, (a, b) => a + b);
-          final activities = logic.state.activeActivities;
-          final entries = byActivity.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-          final pieCols = Theme.of(context).colorScheme;
-          final sections = entries.map((e) {
-            final act = activities.where((a) => a.id == e.key).firstOrNull;
-            final col = domainColor(act?.domainId, logic.state.activeDomains) ?? pieCols.primary;
-            final pct = e.value / totalMin;
-            return PieChartSectionData(
-              value: e.value,
-              color: col,
-              radius: 70,
-              showTitle: pct > 0.08,
-              title: '${(pct * 100).round()}%',
-              titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
-            );
-          }).toList();
-          return SectionCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Activités loggées aujourd\'hui',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                        color: pieCols.onSurface)),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 180,
-                  child: PieChart(PieChartData(
-                      sections: sections, sectionsSpace: 2, centerSpaceRadius: 36)),
-                ),
-                const SizedBox(height: 16),
-                Wrap(
-                  spacing: 16, runSpacing: 8,
-                  alignment: WrapAlignment.center,
-                  children: entries.map((e) {
-                    final act = activities.where((a) => a.id == e.key).firstOrNull;
-                    final col = domainColor(act?.domainId, logic.state.activeDomains) ?? pieCols.primary;
-                    final mins = e.value.round();
-                    return Row(mainAxisSize: MainAxisSize.min, children: [
-                      Container(width: 10, height: 10,
-                          decoration: BoxDecoration(color: col, shape: BoxShape.circle)),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${act?.name ?? '?'}  ${mins >= 60 ? '${(mins / 60).toStringAsFixed(1)}h' : '${mins}m'}',
-                        style: TextStyle(fontSize: 12, color: pieCols.onSurface.withOpacity(.6)),
-                      ),
-                    ]);
-                  }).toList(),
-                ),
-              ],
-            ),
-          );
-        }),
-
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(
@@ -6252,6 +6182,9 @@ class _AppRootState extends State<AppRoot>
           ),
         ),
         ..._buildDomainListLive(context, now),
+        // Compteur global de retards (version neutre du compteur de nuisibles
+        // du jeu — mêmes données, présentation productivité).
+        PestCounterCard(logic: logic),
         const SizedBox(height: 32),
       ],
         );
