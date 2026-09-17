@@ -30,9 +30,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
   // pas de habitProgress) : dernier hit de la routine, retiré localement ET
   // côté Firestore (le merge par union le ressusciterait sinon).
   void _decrement(Activity a) {
-    final hits = logic.state.habitHits
-        .where((h) => h.habitId == a.id)
-        .toList()
+    final hits = logic.state.habitHits.where((h) => h.habitId == a.id).toList()
       ..sort((x, y) => x.ts.compareTo(y.ts));
     if (hits.isEmpty) return;
     final last = hits.last;
@@ -156,83 +154,100 @@ class _BestToDoCardState extends State<BestToDoCard> {
                       fontStyle: FontStyle.italic,
                       color: cs.onSurface.withOpacity(.55))),
             ),
+          // Deux lignes par routine : le nom respire en pleine largeur,
+          // les chiffres et les gestes vivent en dessous (une seule ligne
+          // tronquait le nom dès que la rangée se remplissait).
           for (final e in pending.take(3))
-            Row(children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: palierColor((e.score * 100).round())
-                      .withOpacity(e.passed ? .35 : 1),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(e.act.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: e.passed
-                            ? cs.onSurface.withOpacity(.4)
-                            : null)),
-              ),
-              Text(
-                  [
-                    if (e.dayTarget != null)
-                      'auj. ${e.dayDone}/${e.dayTarget}',
-                    '7 j ${e.weekDone}/${e.weekTarget}',
-                  ].join(' · '),
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                      color: cs.onSurface.withOpacity(.55))),
-              IconButton(
-                tooltip: '−1',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                icon: Icon(Icons.remove_circle_outline,
-                    size: 20,
-                    color: (e.dayTarget != null
-                            ? e.dayDone > 0
-                            : e.weekDone > 0)
-                        ? cs.onSurface.withOpacity(.45)
-                        : cs.onSurface.withOpacity(.15)),
-                onPressed: (e.dayTarget != null
-                        ? e.dayDone > 0
-                        : e.weekDone > 0)
-                    ? () => _decrement(e.act)
-                    : null,
-              ),
-              // +1 direct : même mécanique que les compteurs de routine
-              // (habitProgress + coche du jour + persistance via onChange).
-              IconButton(
-                tooltip: '+1',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                icon: Icon(Icons.add_circle, size: 22, color: cs.primary),
-                onPressed: () {
-                  logic.incHabit(e.act.id, 1, DateTime.now());
-                  setState(() {});
-                },
-              ),
-              IconButton(
-                tooltip: e.passed
-                    ? 'Remettre en course'
-                    : 'Reculer en fin de liste',
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                icon: Icon(
-                    e.passed
-                        ? Icons.undo_rounded
-                        : Icons.skip_next_rounded,
-                    size: 22,
-                    color: cs.onSurface.withOpacity(.45)),
-                onPressed: () => _togglePasse(e.act),
-              ),
-            ]),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: palierColor((e.score * 100).round())
+                              .withOpacity(e.passed ? .35 : 1),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(e.act.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: e.passed
+                                    ? cs.onSurface.withOpacity(.4)
+                                    : null)),
+                      ),
+                    ]),
+                    Row(children: [
+                      const SizedBox(width: 18),
+                      Text(
+                          [
+                            if (e.dayTarget != null)
+                              'auj. ${e.dayDone}/${e.dayTarget}',
+                            '7 j ${e.weekDone}/${e.weekTarget}',
+                          ].join(' · '),
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                              color: cs.onSurface.withOpacity(.55))),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: '−1',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        icon: Icon(Icons.remove_circle_outline,
+                            size: 20,
+                            color: (e.dayTarget != null
+                                    ? e.dayDone > 0
+                                    : e.weekDone > 0)
+                                ? cs.onSurface.withOpacity(.45)
+                                : cs.onSurface.withOpacity(.15)),
+                        onPressed: (e.dayTarget != null
+                                ? e.dayDone > 0
+                                : e.weekDone > 0)
+                            ? () => _decrement(e.act)
+                            : null,
+                      ),
+                      // +1 direct : même mécanique que les compteurs de routine
+                      // (habitProgress + coche du jour + persistance via onChange).
+                      IconButton(
+                        tooltip: '+1',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        icon:
+                            Icon(Icons.add_circle, size: 22, color: cs.primary),
+                        onPressed: () {
+                          logic.incHabit(e.act.id, 1, DateTime.now());
+                          setState(() {});
+                        },
+                      ),
+                      IconButton(
+                        tooltip: e.passed
+                            ? 'Remettre en course'
+                            : 'Reculer en fin de liste',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        icon: Icon(
+                            e.passed
+                                ? Icons.undo_rounded
+                                : Icons.skip_next_rounded,
+                            size: 22,
+                            color: cs.onSurface.withOpacity(.45)),
+                        onPressed: () => _togglePasse(e.act),
+                      ),
+                    ]),
+                  ]),
+            ),
         ],
       ),
     );
