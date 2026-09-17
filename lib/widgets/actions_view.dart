@@ -282,14 +282,11 @@ class _ActionsViewState extends State<ActionsView> {
                     hintText: 'La prochaine action concrète…'),
                 onSubmitted: (_) => add(),
               ),
-              const SizedBox(height: 12),
-              ContextPicker(
-                values: pickedContexts,
-                sync: _sync,
-                onValuesChanged: (list) => pickedContexts = list,
-              ),
+              // Rattachement AVANT les contextes : sous les 8+ chips, le
+              // sélecteur passait sous la ligne de flottaison du dialog
+              // scrollable (clavier ouvert) — invisible sans scroller.
               if (openTasks.isNotEmpty) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 DropdownButtonFormField<String?>(
                   value: pickedTaskId,
                   isExpanded: true,
@@ -313,6 +310,12 @@ class _ActionsViewState extends State<ActionsView> {
                   onChanged: (v) => setLocal(() => pickedTaskId = v),
                 ),
               ],
+              const SizedBox(height: 12),
+              ContextPicker(
+                values: pickedContexts,
+                sync: _sync,
+                onValuesChanged: (list) => pickedContexts = list,
+              ),
               if (added > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
