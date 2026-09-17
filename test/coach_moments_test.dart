@@ -127,14 +127,15 @@ void main() {
       expect(m.stats.any((s) => s.value == '2'), isTrue); // sessions sautées
     });
 
-    test('nudge écarté (« Garder ») → les moments horaires reprennent', () {
+    test('nudge écarté (« Garder ») → silence du soir (check-in supprimé)', () {
       final now = DateTime(2026, 7, 7, 19, 40);
       final st = _stDomains([
         Domain(name: 'Business', definitionStatus: 'named'),
       ]);
       final m =
           computeCoachMoment(now, st, null, null, [], nudgeDismissed: true);
-      expect(m.type, CoachMomentType.evening);
+      // Le check-in du soir est supprimé (2026-09) : le soir, aucune carte.
+      expect(m.hidden, isTrue);
     });
 
     test('tout est défini ou en session → pas de nudge', () {
@@ -179,12 +180,11 @@ void main() {
       expect(m.message, contains('Ce soir tient en 1 chose'));
     });
 
-    test('mode soirée : après 19 h la soirée normale reprend', () {
+    test('mode soirée : après 19 h, silence (check-in supprimé)', () {
       final now = DateTime(2026, 7, 7, 20, 0);
       final sched = DailySchedule(date: today, dayMode: 'evening');
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.evening);
-      expect(m.tagLabel, isNot(contains('PLIÉE')));
+      expect(m.hidden, isTrue);
     });
 
     test('après-midi : la bascule est explicite (endAfternoon, plus jamais « Passer en soirée »)',
@@ -248,12 +248,12 @@ void main() {
         unavailableUntil: DateTime(2026, 7, 11, 22, 0),
       );
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      // La pause prime sur tout — le check-in reprend à 22 h, pas avant.
+      // La pause prime sur tout.
       expect(m.hidden, isTrue);
-      // Fenêtre finie → check-in normal.
+      // Fenêtre finie → toujours rien : le check-in du soir est supprimé.
       final after = computeCoachMoment(
           DateTime(2026, 7, 11, 22, 5), _st([]), sched, null, []);
-      expect(after.type, CoachMomentType.evening);
+      expect(after.hidden, isTrue);
     });
 
     test('pause « pas aujourd\'hui » posée hier : silence aussi à minuit', () {
@@ -301,16 +301,14 @@ void main() {
       expect(m.type, CoachMomentType.hidden);
     });
 
-    test('23h25 → toujours la carte du soir (fenêtre étendue)', () {
+    test('23h25 → silence (check-in du soir supprimé)', () {
       final now = DateTime(2026, 7, 7, 23, 25);
       final m = computeCoachMoment(now, _st([]), null, null, []);
-      expect(m.type, CoachMomentType.evening);
+      expect(m.hidden, isTrue);
     });
 
-    test('0h30 → carte du soir, preps lues dans le programme d\'HIER', () {
+    test('0h30 (couche-tard) → silence aussi', () {
       final now = DateTime(2026, 7, 8, 0, 30);
-      // À 0h30 le doc « du jour » est celui du 08 (vide) ; la prep du soir
-      // vit dans le doc du 07.
       final yestSched = _sched(today, [
         _block(
             startTime: '21:45',
@@ -320,8 +318,7 @@ void main() {
             prepForBlockId: 'x'),
       ]);
       final m = computeCoachMoment(now, _st([]), null, yestSched, []);
-      expect(m.type, CoachMomentType.evening);
-      expect(m.stats.any((s) => s.label == 'À préparer'), isTrue);
+      expect(m.hidden, isTrue);
     });
 
     test('réveil : affiche « prêtes depuis hier » + compte à rebours', () {
@@ -453,7 +450,8 @@ void main() {
       expect(m.type, isNot(CoachMomentType.drift));
     });
 
-    test('soir : CTA day review + compte des preps à faire', () {
+    test('soir : plus de carte check-in (supprimée — Résumé du jour manuel)',
+        () {
       final now = DateTime(2026, 7, 7, 20, 0);
       final sched = _sched(today, [
         _block(
@@ -464,10 +462,7 @@ void main() {
             prepForBlockId: 'x'),
       ]);
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.evening);
-      expect(m.message, contains('Demain se gagne ce soir'));
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.openDayReview), isTrue);
+      expect(m.hidden, isTrue);
     });
 
     test('CTA transition : levé à 5h, « Attaquer la journée » → carte matin',
@@ -509,7 +504,8 @@ void main() {
       expect(drift.type, CoachMomentType.drift);
       final m = computeCoachMoment(now, _st([]), sched, null, [],
           advancedTo: CoachMomentType.evening);
-      expect(m.type, CoachMomentType.evening);
+      // La dérive se tait ; la soirée n'a plus de carte (check-in supprimé).
+      expect(m.hidden, isTrue);
     });
 
     test('après-midi sans bloc : carte visible avec la bascule mode soirée',
@@ -757,7 +753,7 @@ void main() {
           isTrue);
     });
 
-    test('point fait (reviewedAt) → carte du soir clôturée, pas de re-proposition',
+    test('point fait (reviewedAt) → silence (plus de carte « clôturée »)',
         () {
       final now = DateTime(2026, 7, 7, 21, 30);
       final sched = DailySchedule(
@@ -765,26 +761,19 @@ void main() {
         reviewedAt: DateTime(2026, 7, 7, 21, 10),
       );
       final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.evening);
-      expect(m.tagLabel, contains('JOURNÉE CLÔTURÉE'));
-      expect(m.message, isNot(contains('Prends deux minutes')));
-      expect(m.tone, CoachTone.positive);
-      // « Revoir le point » reste accessible, sans insister.
-      expect(m.actions.single.kind, CoachActionKind.openDayReview);
-      expect(m.actions.single.label, 'Revoir le point');
+      expect(m.hidden, isTrue);
       // Round-trip : le fait survit à la sérialisation.
       expect(DailySchedule.from(sched.toJson()).reviewedAt, isNotNull);
     });
 
-    test('point non fait → check-in normal (inchangé)', () {
+    test('point non fait → silence aussi (check-in supprimé)', () {
       final now = DateTime(2026, 7, 7, 21, 30);
       final m = computeCoachMoment(
           now, _st([]), DailySchedule(date: today), null, []);
-      expect(m.type, CoachMomentType.evening);
-      expect(m.message, contains('clôturer ta journée'));
+      expect(m.hidden, isTrue);
     });
 
-    test('rapport LU (fait readAt) → le teaser se tait, check-in normal', () {
+    test('rapport LU (fait readAt) → le teaser se tait, puis silence', () {
       final now = DateTime(2026, 7, 12, 20, 0); // dimanche
       final report = WeeklyReport(
         weekStart: '2026-07-06',
@@ -792,30 +781,25 @@ void main() {
       );
       final m = computeCoachMoment(now, _st([]), null, null, [],
           weeklyReport: report);
-      // Le rapport n'est pas la dernière chose de la journée : une fois lu,
-      // la carte reprend son cours (check-in, propositions).
-      expect(m.type, CoachMomentType.evening);
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
-          isFalse);
+      // Une fois lu, plus rien le soir (le check-in est supprimé).
+      expect(m.hidden, isTrue);
       // Round-trip : le fait survit à la sérialisation.
       final back = WeeklyReport.from(report.toJson());
       expect(back.readAt, isNotNull);
     });
 
-    test('dimanche soir sans rapport → check-in normal', () {
+    test('dimanche soir sans rapport → silence', () {
       final now = DateTime(2026, 7, 12, 20, 0);
       final m = computeCoachMoment(now, _st([]), null, null, []);
-      expect(m.type, CoachMomentType.evening);
+      expect(m.hidden, isTrue);
     });
 
-    test('lundi soir avec rapport → check-in normal (le teaser est dominical)',
-        () {
+    test('lundi soir avec rapport → silence (le teaser est dominical)', () {
       final now = DateTime(2026, 7, 13, 20, 0); // lundi
       final report = WeeklyReport(weekStart: '2026-07-13');
       final m = computeCoachMoment(now, _st([]), null, null, [],
           weeklyReport: report);
-      expect(m.type, CoachMomentType.evening);
+      expect(m.hidden, isTrue);
     });
 
     test('WeeklyReport : round-trip toJson → from', () {

@@ -5993,6 +5993,14 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
+  // Cache anti-jank de l'onglet Stats : la page est chère à construire
+  // (stats par domaine sur TOUTES les sessions) et chaque setState global
+  // (streams Firestore, heartbeat…) la reconstruisait entière — pendant un
+  // scroll, ça lague et fait sauter la liste. Les enfants ne sont refaits
+  // que quand la minute ou les données changent réellement.
+  String? _statsCacheKey;
+  List<Widget>? _statsCacheChildren;
+
   Widget _buildDashboardBody(BuildContext context) {
     // 1) Temps “de contexte” (scope/range). OK de recalculer au build.
     final now = DateTime.now();
@@ -6008,14 +6016,32 @@ class _AppRootState extends State<AppRoot>
 
     return ValueListenableBuilder<int>(
       valueListenable: _tick,
-      builder: (context, _, __) {
+      builder: (context, tickValue, __) {
+        final stx = _state!;
+        // Empreinte volontairement bon marché : tick minute + proxys de
+        // volume. Une édition purement cosmétique (renommage…) peut mettre
+        // jusqu'à une minute à se refléter ici — compromis assumé.
+        final cacheKey = [
+          tickValue,
+          scope,
+          stx.sessions.length,
+          stx.habitHits.length,
+          stx.habitProgress.fold<int>(0, (a, hp) => a + hp.value),
+          stx.activities.length,
+          stx.domains.length,
+          _dashboardProjects.length,
+          stx.hideProjectsTab,
+        ].join('|');
+        if (cacheKey == _statsCacheKey && _statsCacheChildren != null) {
+          return ListView(children: _statsCacheChildren!);
+        }
+        _statsCacheKey = cacheKey;
         final now = DateTime.now();
         final g = _computeGlobalTimeGauges(now);
         final h = _computeGlobalHabitsGauge(now);
         final cs = Theme.of(context).colorScheme;
 
-        return ListView(
-          children: [
+        _statsCacheChildren = [
         // Ordre voulu (2026-09) : jauges globales puis domaines EN TÊTE —
         // c'est la lecture principale de l'onglet ; le reste suit.
         // (Objectifs, « Ma semaine », Productivité, Temps par domaine,
@@ -6205,8 +6231,8 @@ class _AppRootState extends State<AppRoot>
         // du jeu — mêmes données, présentation productivité).
         PestCounterCard(logic: logic),
         const SizedBox(height: 32),
-      ],
-        );
+        ];
+        return ListView(children: _statsCacheChildren!);
       },
     );
   }
