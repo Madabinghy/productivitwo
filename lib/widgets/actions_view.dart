@@ -219,13 +219,26 @@ class _ActionsViewState extends State<ActionsView> {
     final ctrl = TextEditingController();
     var pickedContexts = <String>[];
     var added = 0;
+    // Rattachement à une tâche EXISTANTE du projet (sinon « Au fil de l'eau »).
+    // Les jalons et tâches closes sont exclus (leurs actions n'apparaissent
+    // pas dans l'onglet Actions — l'action serait invisible).
+    final openTasks = p.tasks
+        .where((t) =>
+            t.id != _flowTaskId &&
+            !t.isMilestone &&
+            t.status != 'done' &&
+            t.status != 'skipped')
+        .toList();
+    String? pickedTaskId; // null = « Au fil de l'eau »
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
         Future<void> add() async {
           final v = ctrl.text.trim();
           if (v.isEmpty) return;
-          final t = _flowTask(p);
+          final t = pickedTaskId == null
+              ? _flowTask(p)
+              : p.tasks.firstWhere((x) => x.id == pickedTaskId);
           t.actions.add(TaskAction(
             title: v,
             context: pickedContexts.isEmpty ? null : pickedContexts.first,
@@ -275,6 +288,31 @@ class _ActionsViewState extends State<ActionsView> {
                 sync: _sync,
                 onValuesChanged: (list) => pickedContexts = list,
               ),
+              if (openTasks.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: pickedTaskId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Rattacher à une tâche',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Au fil de l\'eau'),
+                    ),
+                    for (final t in openTasks)
+                      DropdownMenuItem<String?>(
+                        value: t.id,
+                        child: Text(t.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setLocal(() => pickedTaskId = v),
+                ),
+              ],
               if (added > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
