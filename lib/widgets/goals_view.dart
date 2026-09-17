@@ -59,9 +59,7 @@ class _GoalsViewState extends State<GoalsView> {
   @override
   void initState() {
     super.initState();
-    _projectsSub = _sync.streamProjects().listen((projects) {
-      if (mounted) setState(() => _projects = projects);
-    });
+    _subscribeProjects();
     _sync.fetchStrategicObjectives().then((objs) {
       if (!mounted) return;
       setState(() => _objectiveTitles = {
@@ -69,6 +67,24 @@ class _GoalsViewState extends State<GoalsView> {
               o.id: o.title,
           });
     });
+  }
+
+  /// Abonnement au stream projets AVEC réabonnement sur erreur : un stream
+  /// Firestore tué (ex. bascule d'auth) figeait la liste — un projet supprimé
+  /// ailleurs ne disparaissait plus jusqu'au redémarrage de l'app.
+  void _subscribeProjects() {
+    _projectsSub?.cancel();
+    _projectsSub = _sync.streamProjects().listen(
+      (projects) {
+        if (mounted) setState(() => _projects = projects);
+      },
+      onError: (_) {
+        if (!mounted) return;
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) _subscribeProjects();
+        });
+      },
+    );
   }
 
   /// Chip 🎯 quand le projet est rattaché à un objectif actif.
@@ -176,15 +192,17 @@ class _GoalsViewState extends State<GoalsView> {
                     projects: doneInScopeProjects,
                     checkmark: true,
                   ),
-                // Hors scope
+                // À venir : projets dont toutes les tâches restantes
+                // démarrent plus tard — planifiés, pas « hors scope ».
                 if (outOfScope.isNotEmpty)
                   ..._buildCollapsibleSection(
                     context, cs,
-                    label: 'HORS SCOPE (${outOfScope.length})',
+                    label: 'À VENIR (${outOfScope.length})',
                     expanded: _showOutOfScope,
                     onToggle: () => setState(() => _showOutOfScope = !_showOutOfScope),
                     projects: outOfScope,
                     showArchiveButton: true,
+                    showStartDate: true,
                   ),
                 // Terminé (clôturé par l'utilisateur)
                 if (completedProjects.isNotEmpty)
@@ -609,7 +627,19 @@ class _GoalsViewState extends State<GoalsView> {
     bool showArchiveButton = false,
     bool showRestoreButton = false,
     bool checkmark = false,
+    bool showStartDate = false,
   }) {
+    // Date de démarrage = première tâche restante (ni faite ni passée).
+    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+        'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    DateTime? nextStart(Project p) {
+      DateTime? min;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        if (min == null || t.startDate.isBefore(min)) min = t.startDate;
+      }
+      return min ?? p.startDate;
+    }
     return [
       SliverToBoxAdapter(
         child: InkWell(
@@ -689,7 +719,11 @@ class _GoalsViewState extends State<GoalsView> {
                                         ? Colors.green.withOpacity(.8)
                                         : cs.onSurface.withOpacity(.6))),
                             if (totalTasks > 0)
-                              Text('$doneTasks/$totalTasks tâches',
+                              Text(
+                                  showStartDate && nextStart(p) != null
+                                      ? '$doneTasks/$totalTasks tâches · démarre le '
+                                          '${nextStart(p)!.day} ${months[nextStart(p)!.month - 1]}'
+                                      : '$doneTasks/$totalTasks tâches',
                                   style: TextStyle(
                                       fontSize: 11,
                                       color: checkmark
