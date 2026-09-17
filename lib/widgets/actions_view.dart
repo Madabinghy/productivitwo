@@ -47,6 +47,9 @@ class _ActionsViewState extends State<ActionsView> {
 
   // Section « Terminées » repliée par défaut (consultation ponctuelle).
   bool _showDone = false;
+  // Section « En pause » repliée par défaut (même logique : consultation
+  // ponctuelle, réactivation en un tap).
+  bool _showPaused = false;
 
   AppState get _state => widget.logic.state;
 
@@ -216,13 +219,26 @@ class _ActionsViewState extends State<ActionsView> {
     final ctrl = TextEditingController();
     var pickedContexts = <String>[];
     var added = 0;
+    // Rattachement à une tâche EXISTANTE du projet (sinon « Au fil de l'eau »).
+    // Les jalons et tâches closes sont exclus (leurs actions n'apparaissent
+    // pas dans l'onglet Actions — l'action serait invisible).
+    final openTasks = p.tasks
+        .where((t) =>
+            t.id != _flowTaskId &&
+            !t.isMilestone &&
+            t.status != 'done' &&
+            t.status != 'skipped')
+        .toList();
+    String? pickedTaskId; // null = « Au fil de l'eau »
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
         Future<void> add() async {
           final v = ctrl.text.trim();
           if (v.isEmpty) return;
-          final t = _flowTask(p);
+          final t = pickedTaskId == null
+              ? _flowTask(p)
+              : p.tasks.firstWhere((x) => x.id == pickedTaskId);
           t.actions.add(TaskAction(
             title: v,
             context: pickedContexts.isEmpty ? null : pickedContexts.first,
@@ -272,6 +288,31 @@ class _ActionsViewState extends State<ActionsView> {
                 sync: _sync,
                 onValuesChanged: (list) => pickedContexts = list,
               ),
+              if (openTasks.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: pickedTaskId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Rattacher à une tâche',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Au fil de l\'eau'),
+                    ),
+                    for (final t in openTasks)
+                      DropdownMenuItem<String?>(
+                        value: t.id,
+                        child: Text(t.title,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setLocal(() => pickedTaskId = v),
+                ),
+              ],
               if (added > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -1072,56 +1113,6 @@ class _ActionsViewState extends State<ActionsView> {
             const SizedBox(height: 10),
           ],
 
-          // ── Projets en pause : repliés, réactivables en un tap ─────────────
-          ...(() {
-            final paused = widget.logic.currentProjects
-                .where((p) => p.status == 'active' && p.paused)
-                .toList();
-            if (paused.isEmpty) return const <Widget>[];
-            return <Widget>[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text('EN PAUSE (${paused.length})',
-                    style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: .8,
-                        color: cs.onSurface.withOpacity(.4))),
-              ),
-              for (final p in paused)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest.withOpacity(.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(children: [
-                    Icon(Icons.pause, size: 14,
-                        color: cs.onSurface.withOpacity(.35)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(p.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: cs.onSurface.withOpacity(.5))),
-                    ),
-                    IconButton(
-                      tooltip: 'Reprendre',
-                      icon: Icon(Icons.play_circle_outline,
-                          size: 20, color: cs.primary),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => _togglePause(p),
-                    ),
-                  ]),
-                ),
-              const SizedBox(height: 10),
-            ];
-          })(),
-
           // ── Actions simples (activités) ────────────────────────────────────
           if (visibleActivityGroups.isNotEmpty) ...[
             _groupHeader(cs, 'Actions simples', cs.tertiary),
@@ -1138,6 +1129,73 @@ class _ActionsViewState extends State<ActionsView> {
               for (final e in g.entries) _entryTile(cs, e),
             ],
           ],
+
+          // ── Projets en pause : accordéon replié (comme « Terminées »),
+          // juste au-dessus d'elles — réactivation en un tap.
+          ...(() {
+            final paused = widget.logic.currentProjects
+                .where((p) => p.status == 'active' && p.paused)
+                .toList();
+            if (paused.isEmpty) return const <Widget>[];
+            return <Widget>[
+              const SizedBox(height: 10),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => setState(() => _showPaused = !_showPaused),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(children: [
+                    Icon(Icons.pause_circle_outline,
+                        size: 15, color: cs.onSurface.withOpacity(.4)),
+                    const SizedBox(width: 8),
+                    Text('EN PAUSE (${paused.length})',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: .8,
+                            color: cs.onSurface.withOpacity(.4))),
+                    const Spacer(),
+                    Icon(
+                        _showPaused
+                            ? Icons.expand_less
+                            : Icons.expand_more,
+                        size: 18,
+                        color: cs.onSurface.withOpacity(.35)),
+                  ]),
+                ),
+              ),
+              if (_showPaused)
+                for (final p in paused)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      Icon(Icons.pause, size: 14,
+                          color: cs.onSurface.withOpacity(.35)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(p.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurface.withOpacity(.5))),
+                      ),
+                      IconButton(
+                        tooltip: 'Reprendre',
+                        icon: Icon(Icons.play_circle_outline,
+                            size: 20, color: cs.primary),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _togglePause(p),
+                      ),
+                    ]),
+                  ),
+            ];
+          })(),
 
           // ── Terminées : retrouver une action validée (et la décocher) ──────
           ...(() {

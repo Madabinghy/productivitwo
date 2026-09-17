@@ -494,6 +494,42 @@ class FirestoreSync {
       habitProgress: mergedHp.values.toList(),
       // Méta scalaire : valeurs locales (préférences de l'appareil actif)
       onboardingDone:        local.onboardingDone,
+      // ⚠️ Tout champ AppState absent de ce constructeur retombe à sa valeur
+      // PAR DÉFAUT à chaque pull de démarrage (bug historique : le toggle
+      // « Masquer les projets Gantt » se réarmait à chaque lancement, les
+      // migrations one-shot se rejouaient…). Lors d'un ajout de champ, le
+      // reporter ICI avec sa politique de merge.
+      hideProjectsTab:       local.hideProjectsTab,
+      showTodayPriorities:   local.showTodayPriorities,
+      sortTodayByDashboard:  local.sortTodayByDashboard,
+      alarmSound:            local.alarmSound,
+      activeAvatar:          local.activeAvatar,
+      activeTitle:           local.activeTitle,
+      streakNotifEnabled:    local.streakNotifEnabled,
+      streakNotifHour:       local.streakNotifHour,
+      streakNotifMinute:     local.streakNotifMinute,
+      challengeNotifEnabled: local.challengeNotifEnabled,
+      challengeNotifHour:    local.challengeNotifHour,
+      challengeNotifMinute:  local.challengeNotifMinute,
+      midDayNotifEnabled:    local.midDayNotifEnabled,
+      midDayNotifHour:       local.midDayNotifHour,
+      midDayNotifMinute:     local.midDayNotifMinute,
+      // Flags de migration one-shot : une migration déjà jouée ne doit JAMAIS
+      // se rejouer (sinon elle écrase le choix ultérieur de l'utilisateur).
+      ganttHiddenV2Once:            local.ganttHiddenV2Once || remote.ganttHiddenV2Once,
+      linkedActivitiesMigratedOnce: local.linkedActivitiesMigratedOnce || remote.linkedActivitiesMigratedOnce,
+      voitureMigratedOnce:          local.voitureMigratedOnce || remote.voitureMigratedOnce,
+      coursesArchivedOnce:          local.coursesArchivedOnce || remote.coursesArchivedOnce,
+      coursesRestoredOnce:          local.coursesRestoredOnce || remote.coursesRestoredOnce,
+      coursesRestoredV2:            local.coursesRestoredV2 || remote.coursesRestoredV2,
+      domainIdBackfilledOnce:       local.domainIdBackfilledOnce || remote.domainIdBackfilledOnce,
+      // Gardes journalières (rollover/carry/prep) : la plus récente fait foi.
+      lastCarryYmd:    (local.lastCarryYmd ?? '').compareTo(remote.lastCarryYmd ?? '') >= 0
+                           ? local.lastCarryYmd : remote.lastCarryYmd,
+      lastPrepYmd:     (local.lastPrepYmd ?? '').compareTo(remote.lastPrepYmd ?? '') >= 0
+                           ? local.lastPrepYmd : remote.lastPrepYmd,
+      lastRolloverYmd: (local.lastRolloverYmd ?? '').compareTo(remote.lastRolloverYmd ?? '') >= 0
+                           ? local.lastRolloverYmd : remote.lastRolloverYmd,
       // Défis : on garde la progression la plus avancée entre les appareils
       challengesDone:        local.challengesDone > remote.challengesDone
                                  ? local.challengesDone : remote.challengesDone,

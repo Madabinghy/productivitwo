@@ -31,6 +31,9 @@ class DailyScheduleView extends StatefulWidget {
   // linéaires en temps, seul la vue sait où vit chaque bloc.
   final void Function(void Function(int minute) scrollToMinute)?
       onRegisterScrollToMinute;
+  // Onglet réellement affiché ? (IndexedStack : le build hors écran ne doit
+  // pas consumer l'auto-scroll « maintenant », qui est un one-shot.)
+  final bool visible;
 
   const DailyScheduleView(
       {super.key,
@@ -41,7 +44,8 @@ class DailyScheduleView extends StatefulWidget {
       this.title = 'Programme du jour',
       this.emptyText,
       this.groupByContext = false,
-      this.onRegisterScrollToMinute});
+      this.onRegisterScrollToMinute,
+      this.visible = true});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -400,9 +404,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       _maybeSyncProjectBlocks();
     });
 
-    // Auto-scroll vers « maintenant » à la première ouverture du jour —
-    // même comportement que la timeline horaire (mode agenda).
-    if (_isToday && !_scrolledToNow && _schedule != null && visible.isNotEmpty) {
+    // Auto-scroll vers « maintenant » à la première ouverture VISIBLE du
+    // jour — même comportement que la timeline horaire (mode agenda).
+    if (widget.visible &&
+        _isToday &&
+        !_scrolledToNow &&
+        _schedule != null &&
+        visible.isNotEmpty) {
       _scrolledToNow = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final ctx = _nowKey.currentContext;

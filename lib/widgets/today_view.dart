@@ -19,9 +19,16 @@ class TodayView extends StatefulWidget {
   final void Function(ScheduleBlock block)? onLaunch;
   // Tap sur un bloc issu d'une source → ouvre sa fiche (tâche/routine/activité).
   final void Function(ScheduleBlock block)? onOpenSource;
+  // Onglet réellement affiché ? Transmis aux vues pour que l'auto-scroll
+  // « maintenant » (one-shot) attende la première ouverture visible.
+  final bool visible;
 
   const TodayView(
-      {super.key, required this.logic, this.onLaunch, this.onOpenSource});
+      {super.key,
+      required this.logic,
+      this.onLaunch,
+      this.onOpenSource,
+      this.visible = true});
 
   @override
   State<TodayView> createState() => _TodayViewState();
@@ -370,6 +377,7 @@ class _TodayViewState extends State<TodayView> {
                 key: ValueKey('tl-$date'),
                 date: date,
                 logic: widget.logic,
+                visible: widget.visible,
                 // ▶ n'a de sens que pour le jour même (chrono maintenant).
                 onLaunch: _showTomorrow ? null : widget.onLaunch,
                 onOpenSource: widget.onOpenSource,
@@ -379,6 +387,7 @@ class _TodayViewState extends State<TodayView> {
                 key: ValueKey(date),
                 date: date,
                 logic: widget.logic,
+                visible: widget.visible,
                 onLaunch: _showTomorrow ? null : widget.onLaunch,
                 onOpenSource: widget.onOpenSource,
                 // Demain = préparation → regroupé par contexte GTD (batching).
