@@ -1253,22 +1253,12 @@ CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals,
   final pendingPreps =
       blocks.where((b) => b.isPrep && b.status == 'pending').length;
   // Demain déjà POSÉ sans point formel (le user a planifié directement) :
-  // ne pas re-proposer « faire le point » comme si rien ne s'était passé
-  // (constaté sur build) — la carte le reconnaît, le point reste accessible
-  // sans pression pour qui veut clôturer aujourd'hui.
+  // AUCUNE carte — demain est prêt, rien à demander (la carte « DEMAIN EST
+  // POSÉ » alourdissait Maintenant pour ne rien apporter — retirée sur
+  // demande user 2026-09). Le bouton « Résumé du jour » en bas de l'onglet
+  // reste le chemin pour qui veut clôturer.
   if (reviewedAt == null && tomorrowPlanned) {
-    return CoachMoment(
-      type: CoachMomentType.evening,
-      tagLabel: 'ORION · DEMAIN EST POSÉ',
-      message: pendingPreps > 0
-          ? 'Demain est déjà planifié 👌 — reste $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher. Et si tu veux clôturer aujourd\'hui, le point est là.'
-          : 'Demain est déjà planifié 👌. Si tu veux clôturer aujourd\'hui (ce qui a tenu, ce qui a sauté), le point est là — sinon bonne soirée.',
-      stats: vitals,
-      actions: const [
-        CoachAction('Faire le point', CoachActionKind.openDayReview),
-      ],
-      tone: CoachTone.positive,
-    );
+    return CoachMoment.none;
   }
   // Point déjà fait (fait reviewedAt) : la carte ne re-propose pas ce qui est
   // fait — clôture calme, la soirée est à toi. « Revoir » reste accessible.

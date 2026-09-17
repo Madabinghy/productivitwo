@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
+import 'package:productivitwo_v1/widgets/today_logged_pie.dart';
 import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
 /// Onglet OBJECTIFS (remplace l'Accueil) — la pyramide des 3 horizons :
@@ -540,6 +541,12 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
           ),
           _horizon(cs, 'SUR 30 JOURS'),
           _monthSection(cs),
+          // Camembert du temps loggué aujourd'hui — déplacé depuis Maintenant
+          // (l'onglet d'action reste léger, la lecture vit ici).
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: TodayLoggedPie(logic: widget.logic),
+          ),
         ],
       ),
     );
