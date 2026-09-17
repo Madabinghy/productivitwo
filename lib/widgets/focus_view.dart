@@ -22,7 +22,7 @@ import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/energy_cards.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
-import 'package:productivitwo_v1/widgets/now_context_card.dart';
+import 'package:productivitwo_v1/widgets/today_logged_pie.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
@@ -3257,10 +3257,6 @@ class _FocusViewState extends State<FocusView> {
             _coachZone(now),
             _contextSection(cs),
             _focusCard(context, cs, b, now),
-            // État des lieux du bloc visé : chiffres de la routine/activité/
-            // action + encouragement déterministe — le contexte AVANT de
-            // commencer.
-            NowContextCard(logic: logic, block: b),
             if (next != null) ...[
               const SizedBox(height: 14),
               _nextHint(cs, next),
@@ -3269,6 +3265,9 @@ class _FocusViewState extends State<FocusView> {
             // « Le meilleur à faire » : les routines à rattraper, actionnables
             // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
             BestToDoCard(logic: logic),
+            // Camembert du temps loggué aujourd'hui (sans titre — déplacé
+            // depuis Stats).
+            TodayLoggedPie(logic: logic),
             _dayReviewLink(cs),
           ],
         ),
@@ -3662,6 +3661,9 @@ class _FocusViewState extends State<FocusView> {
             // « Le meilleur à faire » : les routines à rattraper, actionnables
             // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
             BestToDoCard(logic: logic),
+            // Camembert du temps loggué aujourd'hui (sans titre — déplacé
+            // depuis Stats).
+            TodayLoggedPie(logic: logic),
             _dayReviewLink(cs),
           ],
         ),
@@ -3858,16 +3860,6 @@ class _FocusViewState extends State<FocusView> {
               const SizedBox(height: 20),
             ],
 
-            // ── État des lieux : les chiffres de ce qui tourne (routine x/y
-            // sur 7 j, minutes de l'activité…) + une phrase d'encouragement
-            // déterministe — le contexte de ce qu'on fait, sans morale.
-            NowContextCard(
-              logic: logic,
-              runningActivity: running,
-              runningActionId: _runningSession?.actionId,
-            ),
-            const SizedBox(height: 6),
-
             // ── DÉROULÉ : toutes les étapes de la session en cours, unifiées —
             // sous-actions de la tâche + actions propres de l'activité +
             // routines LIÉES (Pompes, Tractions… avec leur compteur) + leurs
@@ -3890,6 +3882,10 @@ class _FocusViewState extends State<FocusView> {
             _coachCard(now),
             if (next != null) _focusCard(context, cs, next, now),
             _overdueHint(cs, now),
+            // « Le meilleur à faire » reste actif pendant le chrono : on peut
+            // cocher une routine (+1 / −1 / passer) sans arrêter la session.
+            BestToDoCard(logic: logic),
+            TodayLoggedPie(logic: logic),
           ],
         ),
       ),
