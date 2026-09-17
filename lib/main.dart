@@ -5020,8 +5020,15 @@ class _AppRootState extends State<AppRoot>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      // La liste a dépassé un écran (Notifications, Mes données, Mon coach…) :
+      // hauteur plafonnée + scroll, sinon les entrées du bas sont inatteignables.
       builder: (sheetCtx) => SafeArea(
-        child: Padding(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(sheetCtx).size.height * .85,
+          ),
+          child: SingleChildScrollView(
+            child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -5412,6 +5419,8 @@ class _AppRootState extends State<AppRoot>
                 },
               ),
             ],
+          ),
+            ),
           ),
         ),
       ),
