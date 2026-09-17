@@ -3049,6 +3049,9 @@ class _AppRootState extends State<AppRoot>
             logic: logic,
             onLaunch: _launchScheduledBlock,
             onOpenSource: _openBlockSource,
+            // L'auto-scroll « maintenant » attend la 1ʳᵉ ouverture VISIBLE
+            // (l'IndexedStack construit l'onglet dès le lancement).
+            visible: _tab == _Tab.aujourdhui,
           ),
           FocusView(
             logic: logic,

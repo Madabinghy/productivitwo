@@ -33,6 +33,10 @@ class DayTimelineView extends StatefulWidget {
   final AppLogic logic;
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onOpenSource;
+  // Onglet réellement affiché ? L'IndexedStack construit la vue dès le
+  // lancement : sans ce flag, l'auto-scroll « maintenant » (one-shot) se
+  // consumait hors écran et l'ouverture de l'onglet n'y arrivait plus jamais.
+  final bool visible;
 
   const DayTimelineView({
     super.key,
@@ -40,6 +44,7 @@ class DayTimelineView extends StatefulWidget {
     required this.logic,
     this.onLaunch,
     this.onOpenSource,
+    this.visible = true,
   });
 
   @override
@@ -842,8 +847,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
     final now = DateTime.now();
     final nowMin = now.hour * 60 + now.minute;
 
-    // Auto-scroll vers « maintenant » à la première ouverture du jour.
-    if (_isToday && !_scrolledToNow && _schedule != null) {
+    // Auto-scroll vers « maintenant » à la première ouverture VISIBLE du
+    // jour (le build hors écran de l'IndexedStack ne compte pas).
+    if (widget.visible && _isToday && !_scrolledToNow && _schedule != null) {
       _scrolledToNow = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final ctx = _nowKey.currentContext;
