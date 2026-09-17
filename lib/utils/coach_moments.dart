@@ -203,14 +203,10 @@ CoachMoment computeCoachMoment(
     }
   }
 
-  // 00h–1h : fin de soirée pour les couche-tard — même carte check-in, mais le
-  // doc du jour a basculé à minuit : les blocs prep « de ce soir » vivent dans
-  // le programme d'HIER (et leur bloc cible est désormais ce matin). Une pause
-  // posée hier soir (« pas aujourd'hui » → jusqu'à 5 h) vit sur le doc d'HIER.
+  // 00h–1h : fin de soirée pour les couche-tard — le check-in du soir a été
+  // supprimé (retour user 2026-09), donc silence ici aussi.
   if (minutes < 60) {
-    if (yesterday?.unavailableAt(now) == true) return CoachMoment.none;
-    return _eveningMoment(_liveBlocks(yesterday), const [],
-        reviewedAt: yesterday?.reviewedAt);
+    return CoachMoment.none;
   }
   if (minutes < 5 * 60) return CoachMoment.none; // nuit (1h–5h)
 
@@ -276,9 +272,12 @@ CoachMoment computeCoachMoment(
   if (minutes >= 19 * 60) {
     // Dimanche soir : le rapport hebdo prime sur le check-in (16a) — la
     // semaine se juge avant de se clore. Une fois LU, le check-in reprend.
+    // Check-in du soir SUPPRIMÉ (retour user 2026-09 : trop lourd) — le soir,
+    // seule la carte hebdo du dimanche subsiste. Le point du jour reste
+    // accessible via le bouton « Résumé du jour » de Maintenant.
     clock = (now.weekday == DateTime.sunday && unreadReport)
         ? _weeklyTeaser(weeklyReport)
-        : _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt, tomorrowPlanned: tomorrowPlanned);
+        : CoachMoment.none;
   } else if (minutes >= 14 * 60) {
     clock = (driftSnoozed ? null : _driftMoment(now, st, blocks, sessionsToday)) ??
         _idealHourMoment(now, st, blocks) ??
@@ -310,7 +309,7 @@ CoachMoment computeCoachMoment(
         return _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
       case CoachMomentType.evening:
-        return _eveningMoment(blocks, vitals, reviewedAt: today?.reviewedAt, tomorrowPlanned: tomorrowPlanned);
+        return CoachMoment.none; // check-in du soir supprimé
       default:
         break;
     }
@@ -1248,53 +1247,6 @@ CoachMoment _weeklyTeaser(WeeklyReport r) {
   );
 }
 
-CoachMoment _eveningMoment(List<ScheduleBlock> blocks, List<StatItem> vitals,
-    {DateTime? reviewedAt, bool tomorrowPlanned = false}) {
-  final pendingPreps =
-      blocks.where((b) => b.isPrep && b.status == 'pending').length;
-  // Demain déjà POSÉ sans point formel (le user a planifié directement) :
-  // AUCUNE carte — demain est prêt, rien à demander (la carte « DEMAIN EST
-  // POSÉ » alourdissait Maintenant pour ne rien apporter — retirée sur
-  // demande user 2026-09). Le bouton « Résumé du jour » en bas de l'onglet
-  // reste le chemin pour qui veut clôturer.
-  if (reviewedAt == null && tomorrowPlanned) {
-    return CoachMoment.none;
-  }
-  // Point déjà fait (fait reviewedAt) : la carte ne re-propose pas ce qui est
-  // fait — clôture calme, la soirée est à toi. « Revoir » reste accessible.
-  if (reviewedAt != null) {
-    return CoachMoment(
-      type: CoachMomentType.evening,
-      tagLabel: 'ORION · JOURNÉE CLÔTURÉE',
-      message: pendingPreps > 0
-          ? 'Le point est fait — il reste $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher pour armer demain, puis la soirée est à toi.'
-          : 'Le point est fait, demain est armé — la soirée est à toi.',
-      stats: vitals,
-      actions: const [
-        CoachAction('Revoir le point', CoachActionKind.openDayReview),
-      ],
-      tone: CoachTone.positive,
-    );
-  }
-  final stats = <StatItem>[
-    if (pendingPreps > 0)
-      StatItem('À préparer', '$pendingPreps bloc${pendingPreps > 1 ? 's' : ''}'),
-    ...vitals,
-  ];
-  final message = pendingPreps > 0
-      ? 'Demain se gagne ce soir. Clôture ta journée et arme demain — $pendingPreps préparation${pendingPreps > 1 ? 's' : ''} à cocher.'
-      : 'Demain se gagne ce soir. Prends deux minutes pour clôturer ta journée.';
-  return CoachMoment(
-    type: CoachMomentType.evening,
-    tagLabel: 'ORION · CHECK-IN DU SOIR',
-    message: message,
-    stats: stats,
-    actions: const [
-      CoachAction('Faire le point', CoachActionKind.openDayReview),
-    ],
-    tone: CoachTone.neutral,
-  );
-}
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────
 

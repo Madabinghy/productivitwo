@@ -68,6 +68,8 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
   _Draft? _arbitration;
   bool _launchOnValidate = false;
   int _sameDayPlanCount = 0; // plannedSameDay des 7 derniers jours
+  // La proposition ORION a-t-elle été demandée ? (opt-in — plus jamais auto.)
+  bool _suggested = false;
 
   AppLogic get logic => widget.logic;
 
@@ -79,12 +81,36 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     _load(force: widget.forceRegenerate);
   }
 
-  // ── Chargement de la proposition ─────────────────────────────────────────────
+  // ── Chargement ───────────────────────────────────────────────────────────────
+  //
+  // Manuel D'ABORD (retour user 2026-09) : l'écran s'ouvre sur ce qui est
+  // DÉJÀ posé + « Ajouter un bloc » — zéro attente, zéro bloc imposé. La
+  // proposition ORION ne part que sur demande (« ✨ Suggérer des blocs »).
 
   Future<void> _load({bool force = false}) async {
     // Récurrence « planifié au réveil » (fait rejoué, jamais culpabilisant).
     if (widget.rattrapage) {
       _countSameDayPlans();
+    }
+    // 🗑 « Reprogrammer la journée » : la régénération est demandée
+    // explicitement → on lance la proposition directement.
+    if (force) {
+      await _generate(force: true);
+      return;
+    }
+    await _filterAgainstExisting();
+    _postProcess();
+    if (mounted) setState(() => _loading = false);
+  }
+
+  /// Proposition ORION à la demande : heure de lever → appel Haiku (cache
+  /// 6 h) → brouillon refusable bloc par bloc. L'ancien chargement auto.
+  Future<void> _generate({bool force = false}) async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _suggested = true;
+      });
     }
     // Heure de lever PRÉVUE : demandée à chaque vraie génération (les jours
     // ne se ressemblent pas — flexibilité), dernière valeur = présélection.
@@ -122,10 +148,9 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
         }
       } catch (_) {}
     }
-    // Étape « TES BLOCS D'ABORD » (retour user) : ce que le user veut caler
-    // lui-même (rendez-vous oublié de l'agenda, contrainte perso) — posé en
-    // vrais blocs AVANT la génération, ORION remplit autour (occupiedBlocks).
-    await _askUserBlocks();
+    // (L'étape « Tes blocs d'abord » a été retirée : l'ajout manuel est
+    // maintenant le mode PAR DÉFAUT de l'écran — les blocs posés avant de
+    // demander la suggestion sont déjà des contraintes dures.)
     final now = DateTime.now();
     final wake = isSameDayPm
         ? '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}'
@@ -260,177 +285,6 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
     );
   }
 
-  /// « Tes blocs d'abord » : avant de générer, le user pose ce qu'IL veut
-  /// caler (rendez-vous oublié de l'agenda, contrainte perso). Chaque ajout
-  /// est écrit en VRAI bloc sur la date cible → contrainte dure que la
-  /// proposition contourne (occupiedBlocks) et affiche « déjà en place ».
-  /// Chaînable ; « Passer » / « C'est tout » → la génération continue.
-  Future<void> _askUserBlocks() async {
-    if (!mounted) return;
-    final titleCtrl = TextEditingController();
-    final isToday = widget.targetDate == _todayYmd;
-    final now = DateTime.now();
-    var time = isToday
-        ? TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0)
-        : const TimeOfDay(hour: 9, minute: 0);
-    var duration = 60;
-    final added = <ScheduleBlock>[];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) {
-          final cs = Theme.of(ctx).colorScheme;
-          String hhmm() =>
-              '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-          void add() {
-            final t = titleCtrl.text.trim();
-            if (t.isEmpty) return;
-            final b = ScheduleBlock(
-              startTime: hhmm(),
-              durationMin: duration,
-              title: t,
-              category: 'personal',
-            );
-            // Écrit tout de suite (optimiste) : le bloc devient une
-            // contrainte réelle même si la génération est annulée.
-            unawaited(_sync.addScheduleBlock(widget.targetDate, b));
-            setLocal(() {
-              added.add(b);
-              titleCtrl.clear();
-            });
-          }
-
-          return SingleChildScrollView(
-            padding: EdgeInsets.fromLTRB(
-                20, 4, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Des blocs à poser toi-même ?',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text(
-                  'Ce que tu veux caler à heure fixe (rendez-vous oublié, '
-                  'contrainte perso…) — ORION remplira AUTOUR, sans y toucher.',
-                  style: TextStyle(
-                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
-                ),
-                const SizedBox(height: 12),
-                for (final b in added)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2E9E6B).withOpacity(.10),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: const Color(0xFF2E9E6B).withOpacity(.4)),
-                    ),
-                    child: Row(children: [
-                      const Icon(Icons.lock_outline,
-                          size: 14, color: Color(0xFF2E9E6B)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                            '${b.startTime} · ${b.title} — ${b.durationMin} min',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w600)),
-                      ),
-                      IconButton(
-                        tooltip: 'Retirer',
-                        icon: const Icon(Icons.close, size: 16),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () {
-                          unawaited(_sync.updateBlockStatus(
-                              widget.targetDate, b.id, 'deleted'));
-                          setLocal(() => added.remove(b));
-                        },
-                      ),
-                    ]),
-                  ),
-                TextField(
-                  controller: titleCtrl,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText: 'Ex : Rendez-vous garage',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                  onSubmitted: (_) => add(),
-                ),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Icon(Icons.schedule_rounded,
-                      size: 16, color: cs.onSurface.withOpacity(.55)),
-                  const SizedBox(width: 6),
-                  Text('À ${hhmm()}',
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  TextButton(
-                    onPressed: () async {
-                      final t = await showTimePicker(
-                          context: ctx, initialTime: time);
-                      if (t != null) setLocal(() => time = t);
-                    },
-                    child: const Text('Modifier'),
-                  ),
-                ]),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  for (final d in const [30, 60, 90])
-                    ChoiceChip(
-                      selected: duration == d,
-                      onSelected: (_) => setLocal(() => duration = d),
-                      showCheckmark: false,
-                      label: Text('$d min'),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  // Durée LIBRE (demande user : pas seulement 3 presets) —
-                  // même roue que partout ailleurs (pickDurationMin).
-                  ChoiceChip(
-                    selected: !const [30, 60, 90].contains(duration),
-                    onSelected: (_) async {
-                      final v = await pickDurationMin(ctx,
-                          initial: duration, title: 'Durée du bloc');
-                      if (v != null && v > 0) {
-                        setLocal(() => duration = v);
-                      }
-                    },
-                    showCheckmark: false,
-                    label: Text(const [30, 60, 90].contains(duration)
-                        ? 'Autre…'
-                        : fmtMin(duration)),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ]),
-                const SizedBox(height: 10),
-                Row(children: [
-                  OutlinedButton.icon(
-                    onPressed: add,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('Ajouter ce bloc'),
-                  ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: Text(added.isEmpty
-                        ? 'Passer — ORION planifie tout'
-                        : 'C\'est tout — planifie le reste'),
-                  ),
-                ]),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-    titleCtrl.dispose();
-  }
 
   /// Empreinte du programme source (la veille de la cible) : si les statuts,
   /// causes ou blocs changent, le brouillon caché est invalide.
@@ -461,7 +315,7 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       _message = '';
       _launchOnValidate = false;
     });
-    await _load(force: true);
+    await _generate(force: true);
   }
 
   void _applyProposal(Map<String, dynamic> body) {
@@ -593,19 +447,9 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       if (imminentIdx >= 0) {
         _arbitration = _draft.removeAt(imminentIdx);
       }
-      // Ramener au flux nominal du soir : check-in + poser demain.
-      final tomorrowName = _dayName(
-          DateTime.parse(widget.targetDate).add(const Duration(days: 1)));
-      if (!_draft.any((d) => d.block.title.startsWith('Check-in'))) {
-        _draft.add(_Draft(
-          ScheduleBlock(
-              startTime: '21:30',
-              durationMin: 15,
-              title: 'Check-in + poser $tomorrowName',
-              category: 'personal'),
-          subtitle: 'ce soir on reprend l\'avance',
-        ));
-      }
+      // (Le bloc auto « Check-in + poser demain » a été retiré — le
+      // check-in du soir n'est plus imposé, il reste accessible via le
+      // bouton « Résumé du jour » de Maintenant.)
     }
 
     _draft.sort((a, b) => a.block.startTime.compareTo(b.block.startTime));
@@ -746,8 +590,10 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                     const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
             Text(
               widget.rattrapage
-                  ? 'ORION · RATTRAPAGE EXPRESS'
-                  : 'ORION · PROPOSITION',
+                  ? 'RATTRAPAGE EXPRESS'
+                  : _suggested
+                      ? 'ORION · PROPOSITION'
+                      : 'PLANIFIER',
               style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -757,11 +603,12 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Régénérer la proposition',
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loading || _saving ? null : _regenerate,
-          ),
+          if (_suggested)
+            IconButton(
+              tooltip: 'Régénérer la proposition',
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: _loading || _saving ? null : _regenerate,
+            ),
         ],
       ),
       body: _loading
@@ -785,9 +632,11 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
                   ),
                   child: Text(_saving
                       ? 'Enregistrement…'
-                      : widget.rattrapage
-                          ? 'Valider la journée — +${_totalBlocks()} blocs'
-                          : 'Valider — +${_totalBlocks()} blocs'),
+                      : _totalBlocks() == 0
+                          ? 'Terminer'
+                          : widget.rattrapage
+                              ? 'Valider la journée — +${_totalBlocks()} blocs'
+                              : 'Valider — +${_totalBlocks()} blocs'),
                 ),
               ),
             ),
@@ -880,6 +729,38 @@ class _PlanDayScreenState extends State<PlanDayScreen> {
       key: const ValueKey('proposal'),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
+        // ── Mode manuel d'abord : rappel de l'existant + suggestion OPT-IN ──
+        if (!_suggested) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              _existing.isEmpty
+                  ? 'Rien n\'est posé pour l\'instant. Ajoute tes blocs — '
+                      'ou demande une suggestion, chaque bloc restera refusable.'
+                  : '${_existing.length} bloc${_existing.length > 1 ? 's' : ''} '
+                      'déjà en place. Ajoute ce que tu veux — ou demande une '
+                      'suggestion pour remplir les trous, chaque bloc restera '
+                      'refusable.',
+              style: TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  color: cs.onSurface.withOpacity(.7)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Suggérer des blocs (ORION)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                side: BorderSide(color: cs.primary.withOpacity(.5)),
+                foregroundColor: cs.primary,
+              ),
+              onPressed: _loading || _saving ? null : () => _generate(),
+            ),
+          ),
+        ],
         // ── Carte message : pourquoi cette proposition ──────────────────────
         if (_message.isNotEmpty)
           Container(
