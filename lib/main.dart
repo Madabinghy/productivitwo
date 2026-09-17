@@ -2944,16 +2944,18 @@ class _AppRootState extends State<AppRoot>
   }
 
 // 1) Helpers d'index <-> enum
-  /// Onglets visibles dans la barre : « Projets » disparaît quand le Gantt
-  /// passe en coulisse (hideProjectsTab). La pile de vues (IndexedStack) garde
-  /// ses 4 index — seule la barre change.
-  // Gantt en retrait → l'onglet « Actions » (liste GTD par projet) prend la
-  // place de « Projets » ; Gantt réactivé → « Projets » revient à sa place.
+  /// Onglets visibles dans la barre. Deux rôles distincts (2026-09) :
+  /// « Actions » = l'EXÉCUTION (les actions des projets actifs, non en
+  /// pause) ; « Projets » = la STRUCTURE (tout ce qu'on veut faire, y
+  /// compris en veille) — les DEUX cohabitent quand le Gantt est visible.
+  /// hideProjectsTab ne masque plus que « Projets » (la structure passe en
+  /// coulisse, l'exécution reste). La pile de vues (IndexedStack) garde ses
+  /// index — seule la barre change.
   // « Stats » = l'ancien Accueil (tableau de bord), promu onglet principal :
   // les stats de temps sont un moteur d'ouverture de l'app (constat user).
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
       ? const [_Tab.dashboard, _Tab.stats, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant]
-      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.aujourdhui, _Tab.maintenant];
+      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant];
 
   int _tabIndex(_Tab t) {
     switch (t) {
@@ -5067,8 +5069,9 @@ class _AppRootState extends State<AppRoot>
                   value: logic.state.hideProjectsTab,
                   onChanged: (v) {
                     logic.state.hideProjectsTab = v;
+                    // « Actions » reste visible dans les deux modes ; seul
+                    // « Projets » disparaît quand le Gantt passe en coulisse.
                     if (v && _tab == _Tab.projets) _tab = _Tab.actions;
-                    if (!v && _tab == _Tab.actions) _tab = _Tab.projets;
                     logic.onChange();
                     // Pilote aussi la visibilité côté app web (flag Firestore).
                     unawaited(_sync.setGanttVisible(!v));
