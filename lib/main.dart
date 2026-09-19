@@ -4533,9 +4533,19 @@ class _AppRootState extends State<AppRoot>
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Text(
+                                          // Le vrai compte reste visible même
+                                          // au-delà de la cible : « 12 ✓ » —
+                                          // une cible à 1 ne cache plus les
+                                          // 12 tractions réellement faites.
                                           target == 1
-                                              ? (isDone ? '✓' : '○')
-                                              : '$value/$target',
+                                              ? (value > 1
+                                                  ? '$value ✓'
+                                                  : isDone
+                                                      ? '✓'
+                                                      : '○')
+                                              : value > target
+                                                  ? '$value/$target ✓'
+                                                  : '$value/$target',
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w700,

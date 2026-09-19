@@ -1442,6 +1442,9 @@ class AppLogic {
               HabitAssocEvent.changeSuggested(activityId, pinned, running.id);
         }
       }
+    } else if (delta < 0) {
+      // Décrément UNIFIÉ : le compteur ET les hits redescendent ensemble.
+      _removeLatestHits(activityId, day, -delta);
     }
 
     onChange();
@@ -1529,6 +1532,31 @@ class AppLogic {
     onChange();
   }
 
+  /// Retire les [count] hits les plus récents de [activityId] sur la journée
+  /// VÉCUE de [day] (un hit nocturne < 5 h appartient à la veille, comme
+  /// partout). Local + Firestore : le merge par union ressusciterait un hit
+  /// seulement retiré du local — c'est ce qui rendait le bouton − « sans
+  /// effet » sur tous les affichages (12/7, heatmaps…), qui comptent les
+  /// hits et non le compteur habitProgress.
+  void _removeLatestHits(String activityId, DateTime day, int count) {
+    final key = yyyymmdd(day);
+    for (var i = 0; i < count; i++) {
+      HabitHit? last;
+      for (final h in state.habitHits) {
+        if (h.habitId != activityId) continue;
+        final t = h.ts.hour * 60 + h.ts.minute < 5 * 60
+            ? h.ts.subtract(const Duration(days: 1))
+            : h.ts;
+        if (yyyymmdd(DateTime(t.year, t.month, t.day)) != key) continue;
+        if (last == null || h.ts.isAfter(last.ts)) last = h;
+      }
+      if (last == null) return;
+      state.habitHits.remove(last);
+      final s = sync;
+      if (s != null) unawaited(s.hardDelete('habitHits', last.id));
+    }
+  }
+
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 
@@ -1560,6 +1588,9 @@ class AppLogic {
         ts: DateTime.now(),
         contextActivityId: running?.id,
       ));
+    } else if (delta < 0) {
+      // Décrément UNIFIÉ : le compteur ET les hits redescendent ensemble.
+      _removeLatestHits(activityId, day, -delta);
     }
 
     onChange();

@@ -1,8 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
@@ -22,22 +19,20 @@ class BestToDoCard extends StatefulWidget {
 }
 
 class _BestToDoCardState extends State<BestToDoCard> {
-  final _sync = FirestoreSync();
-
   AppLogic get logic => widget.logic;
 
-  // Le −1 doit retirer un hit (les chiffres affichés viennent de habitHits,
-  // pas de habitProgress) : dernier hit de la routine, retiré localement ET
-  // côté Firestore (le merge par union le ressusciterait sinon).
+  // Le décrément est UNIFIÉ dans AppLogic.incHabit (delta < 0 retire aussi
+  // le dernier hit du jour vécu, local + Firestore). On vise la journée du
+  // dernier hit — pour une hebdo, il peut dater d'un autre jour.
   void _decrement(Activity a) {
     final hits = logic.state.habitHits.where((h) => h.habitId == a.id).toList()
       ..sort((x, y) => x.ts.compareTo(y.ts));
     if (hits.isEmpty) return;
-    final last = hits.last;
-    logic.state.habitHits.remove(last);
-    unawaited(_sync.hardDelete('habitHits', last.id));
-    // Compteur du jour (habitProgress) sur la date du hit retiré.
-    logic.incHabit(a.id, -1, last.ts); // appelle onChange()
+    final t = hits.last.ts;
+    final lived = t.hour * 60 + t.minute < 5 * 60
+        ? t.subtract(const Duration(days: 1))
+        : t;
+    logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
     setState(() {});
   }
 

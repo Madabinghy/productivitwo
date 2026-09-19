@@ -9,23 +9,28 @@ import 'package:productivitwo_v1/models.dart';
 // semaine écoulée décident. Une évaluation par semaine, tracée dans
 // `stepUpdatedWeek` (le lundi de la semaine évaluante).
 //
-// Règle : palier tenu ≥ 5 j/7  → palier suivant (× 1,5 arrondi, min +1,
-//         plafonné au cap) ;
-//         tenu ≤ 1 j/7 et palier > 1 → palier précédent (÷ 1,5 arrondi) ;
-//         sinon → on garde (une semaine moyenne ne change rien).
+// Règle (pas kaizen, 2026-09 — l'ancien ×1,5 faisait des marches brutales) :
+//   palier tenu ≥ 5 j/7 → +1, MAIS si le réel de la semaine est déjà bien
+//   au-dessus (médiane des jours ≥ palier), le palier RATTRAPE le réel à
+//   ~80 % de cette médiane (sinon une cible retombée à 1 mettrait des mois
+//   à rejoindre les 12 tractions réellement faites) ; plafonné au cap.
+//   Tenu ≤ 1 j/7 et palier > 1 → −1 (plancher 1).
+//   Sinon → on garde (une semaine moyenne ne change rien).
 
-/// Palier suivant : ×1,5 arrondi, au moins +1, jamais au-delà du cap.
-/// 3 → 5 → 8 → 12 → 18 → 27 → 41 → 50.
-int nextStepUp(int current, int cap) {
-  final up = (current * 1.5).round();
-  final next = up > current ? up : current + 1;
+/// Palier suivant : +1, ou ~80 % de la médiane vécue si elle est plus haute
+/// (le palier suit le réel, jamais l'inverse) ; jamais au-delà du cap.
+int nextStepUp(int current, int cap, {int? medianReal}) {
+  var next = current + 1;
+  if (medianReal != null) {
+    final catchUp = (medianReal * 0.8).round();
+    if (catchUp > next) next = catchUp;
+  }
   return next > cap ? cap : next;
 }
 
-/// Palier précédent : ÷1,5 arrondi, plancher 1.
+/// Palier précédent : −1, plancher 1.
 int nextStepDown(int current) {
-  final down = (current / 1.5).round();
-  final v = down >= current ? current - 1 : down;
+  final v = current - 1;
   return v < 1 ? 1 : v;
 }
 
@@ -75,7 +80,14 @@ DateTime mondayOf(DateTime now) {
   final daysMet = byDay.values.where((v) => v >= palier).length;
 
   if (daysMet >= 5 && palier < cap) {
-    return (newTarget: nextStepUp(palier, cap), daysMet: daysMet, verdict: 'up');
+    // Médiane des jours qui ont tenu le palier : le réel vécu de la semaine.
+    final met = byDay.values.where((v) => v >= palier).toList()..sort();
+    final medianReal = met[met.length ~/ 2];
+    return (
+      newTarget: nextStepUp(palier, cap, medianReal: medianReal),
+      daysMet: daysMet,
+      verdict: 'up'
+    );
   }
   if (daysMet <= 1 && palier > 1) {
     return (
