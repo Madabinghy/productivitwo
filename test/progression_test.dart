@@ -34,42 +34,52 @@ void main() {
   // lundi 6 → dimanche 12.
   final now = DateTime(2026, 7, 14, 9, 0);
 
-  group('paliers ×1,5', () {
-    test('montée : 3 → 5 → 8 → 12 → 18 → 27 → 41 → 50 (cap)', () {
-      final seq = <int>[3];
-      while (seq.last < 50) {
-        seq.add(nextStepUp(seq.last, 50));
-      }
-      expect(seq, [3, 5, 8, 12, 18, 27, 41, 50]);
-    });
-
-    test('montée : toujours au moins +1, jamais au-delà du cap', () {
+  group('pas kaizen (+1, rattrapage du réel)', () {
+    test('montée : +1 par défaut', () {
+      expect(nextStepUp(3, 50), 4);
       expect(nextStepUp(1, 50), 2);
       expect(nextStepUp(49, 50), 50);
       expect(nextStepUp(50, 50), 50);
     });
 
-    test('descente : ÷1,5 arrondi, plancher 1', () {
-      expect(nextStepDown(8), 5);
-      expect(nextStepDown(3), 2);
+    test('rattrapage : le palier saute à ~80 % de la médiane vécue', () {
+      // Cible retombée à 1 mais 12 tractions/j réelles → 10 (0,8 × 12).
+      expect(nextStepUp(1, 50, medianReal: 12), 10);
+      // Réel proche du palier : le +1 garde la main.
+      expect(nextStepUp(5, 50, medianReal: 5), 6);
+      // Le rattrapage reste plafonné au cap.
+      expect(nextStepUp(1, 8, medianReal: 20), 8);
+    });
+
+    test('descente : −1, plancher 1', () {
+      expect(nextStepDown(8), 7);
       expect(nextStepDown(2), 1);
       expect(nextStepDown(1), 1);
     });
   });
 
   group('weeklyStepDecision', () {
-    test('palier tenu ≥ 5 j/7 → palier suivant', () {
+    test('palier tenu ≥ 5 j/7 → +1 (réel au niveau du palier)', () {
       final d = weeklyStepDecision(_routine(), _weekHits(6, 3), now);
       expect(d, isNotNull);
       expect(d!.verdict, 'up');
-      expect(d.newTarget, 5);
+      expect(d.newTarget, 4);
       expect(d.daysMet, 6);
     });
 
-    test('tenu ≤ 1 j/7 → on redescend ; jamais sous 1', () {
+    test('réel bien au-dessus du palier → rattrapage à ~80 % de la médiane',
+        () {
+      // Palier retombé à 1, 12 tractions réelles chaque jour → cible 10.
+      final d =
+          weeklyStepDecision(_routine(palier: 1), _weekHits(6, 12), now);
+      expect(d!.verdict, 'up');
+      expect(d.newTarget, 10);
+    });
+
+    test('tenu ≤ 1 j/7 → on redescend d\'1 ; jamais sous 1', () {
       final d = weeklyStepDecision(_routine(palier: 8), _weekHits(1, 8), now);
       expect(d!.verdict, 'down');
-      expect(d.newTarget, 5);
+      expect(d.newTarget, 7);
       final d1 = weeklyStepDecision(_routine(palier: 1), _weekHits(0, 0), now);
       expect(d1!.verdict, 'hold'); // palier 1 : rien sous le plancher
       expect(d1.newTarget, 1);
