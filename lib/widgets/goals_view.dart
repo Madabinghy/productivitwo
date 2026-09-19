@@ -41,6 +41,8 @@ class _GoalsViewState extends State<GoalsView> {
   bool _showOutOfScope = false;
   bool _showArchived = false;
   bool _showCompleted = false;
+  // Phases futures dépliées dans les cartes-projet ('projectId|phaseId').
+  final _expandedFuturePhases = <String>{};
 
   List<Domain> get domains => widget.domains;
 
@@ -366,7 +368,11 @@ class _GoalsViewState extends State<GoalsView> {
         ),
       ));
 
-      // Grouper par projet dans ce domaine
+      // ── Refonte 2026-09 : UNE CARTE PAR PROJET ─────────────────────────────
+      // Le projet redevient l'unité visuelle (titre en gros + progression),
+      // la phase en cours est dépliée, les phases futures sont repliées, et
+      // « Au fil de l'eau » n'est plus une carte : ses actions non faites
+      // se fondent en « actions libres » dans la carte du projet.
       final byProject = <String, List<ProjectTask>>{};
       final projectMap = <String, Project>{};
       for (final pair in pairs) {
@@ -377,177 +383,350 @@ class _GoalsViewState extends State<GoalsView> {
       for (final projectId in byProject.keys) {
         final project = projectMap[projectId]!;
         final tasks = byProject[projectId]!;
-
-        // Header projet (si plusieurs projets dans le même domaine)
-        if (byProject.length > 1) {
-          final parentTitle = project.parentProjectId == null
-              ? null
-              : _projects
-                  .where((x) => x.id == project.parentProjectId)
-                  .firstOrNull
-                  ?.title;
-          widgets.add(SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (parentTitle != null)
-                    Row(children: [
-                      Icon(Icons.subdirectory_arrow_right,
-                          size: 11, color: cs.onSurface.withOpacity(.4)),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          'sous-projet de « $parentTitle »',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 10,
-                              fontStyle: FontStyle.italic,
-                              color: cs.onSurface.withOpacity(.45)),
-                        ),
-                      ),
-                    ]),
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          project.title,
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w700,
-                              color: cs.onSurface.withOpacity(.55)),
-                        ),
-                      ),
-                      if (project.status == 'draft') ...[
-                        const SizedBox(width: 6),
-                        const _DraftBadge(),
-                      ],
-                    ],
-                  ),
-                  if (_objectiveChip(context, project) != null)
-                    _objectiveChip(context, project)!,
-                ],
-              ),
-            ),
-          ));
-        }
-
-        // Grouper par phase dans ce projet
-        final phaseMap = {for (final ph in project.phases) ph.id: ph};
-        final byPhase = <String?, List<ProjectTask>>{};
-        for (final t in tasks) {
-          byPhase.putIfAbsent(t.phaseId, () => []).add(t);
-        }
-
-        // Afficher dans l'ordre des phases, puis phaseId orphelin (phase supprimée), puis sans phase
-        final orderedPhaseIds = [
-          ...project.phases.map((ph) => ph.id).where(byPhase.containsKey),
-          // Tâches avec un phaseId qui n'existe plus dans les phases → affichées sans en-tête
-          ...byPhase.keys.where((k) => k != null && !phaseMap.containsKey(k)),
-          if (byPhase.containsKey(null)) null,
-        ];
-
-        for (final phaseId in orderedPhaseIds) {
-          final phaseTasks = byPhase[phaseId]!;
-          final phase = phaseId != null ? phaseMap[phaseId] : null;
-
-          // Header phase
-          if (phase != null) {
-            Color phaseColor = color;
-            if (phase.color != null) {
-              try {
-                final hex = phase.color!.replaceAll('#', '');
-                phaseColor = Color(int.parse('FF$hex', radix: 16));
-              } catch (_) {}
-            }
-            widgets.add(SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6, height: 6,
-                      decoration: BoxDecoration(
-                          color: phaseColor, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      phase.label.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 10, fontWeight: FontWeight.w700,
-                          letterSpacing: 0.8,
-                          color: cs.onSurface.withOpacity(.45)),
-                    ),
-                  ],
-                ),
-              ),
-            ));
-          }
-
-          widgets.add(SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) {
-                final task = phaseTasks[i];
-                return _GanttTaskCard(
-                  project: project,
-                  task: task,
-                  domains: domains,
-                  today: todayD,
-                  color: color,
-                  projectTitle: byProject.length == 1 ? project.title : '',
-                  onTaskActionToggled: (taskId, actionIdx, value) async {
-                    final action = project.tasks
-                        .firstWhere((t) => t.id == taskId)
-                        .actions[actionIdx];
-                    action.done = value;
-                    action.doneAt = value ? DateTime.now() : null;
-                    await _sync.saveProjectTasks(project.id, project.tasks);
-                    setState(() {});
-                    if (value) widget.onBadgeCheck?.call(_totalDoneCount());
-                  },
-                  onTap: () => showProjectSheet(
-                    context,
-                    project: project,
-                    domains: domains,
-                    targetTaskId: task.id,
-                    activities: widget.activities,
-                  ),
-                  onReorderActions: (oldIdx, newIdx) async {
-                    final action = task.actions.removeAt(oldIdx);
-                    task.actions.insert(newIdx, action);
-                    await _sync.saveProjectTasks(project.id, project.tasks);
-                    setState(() {});
-                  },
-                  onPlay: widget.onStartTimer == null
-                      ? null
-                      : () => _onPlay(context, project, task, color),
-                  onComplete: () async {
-                    task.status = task.status == 'done' ? 'pending' : 'done';
-                    await _sync.saveProjectTasks(project.id, project.tasks);
-                    setState(() {});
-                    if (task.status == 'done') widget.onBadgeCheck?.call(_totalDoneCount());
-                  },
-                  onAddAction: (title) async {
-                    task.actions.add(TaskAction(title: title));
-                    await _sync.saveProjectTasks(project.id, project.tasks);
-                    setState(() {});
-                  },
-                  onToggleTodayFlag: () async {
-                    await toggleTaskTodayAndSchedule(
-                        ctx, _sync, project, task);
-                    setState(() {});
-                  },
-                );
-              },
-              childCount: phaseTasks.length,
-            ),
-          ));
-        }
+        widgets.add(SliverToBoxAdapter(
+          child: _projectCard(context, project, tasks, todayD, color),
+        ));
       }
     }
 
     return widgets;
+  }
+
+  /// La carte-projet : en-tête (titre + progression, tap → fiche projet),
+  /// phase(s) en cours avec leurs tâches, actions libres du fil de l'eau,
+  /// phases futures repliées (« dès le … »).
+  Widget _projectCard(BuildContext context, Project project,
+      List<ProjectTask> startedTasks, DateTime todayD, Color color) {
+    final cs = Theme.of(context).colorScheme;
+    const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+        'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+    // Progression du projet entier — même règle que les jauges Stats :
+    // tâche sans sous-actions = 1 unité, avec sous-actions = 1 par action.
+    int done = 0, total = 0;
+    for (final t in project.tasks) {
+      if (t.status == 'skipped') continue;
+      if (t.actions.isEmpty) {
+        total += 1;
+        if (t.status == 'done') done += 1;
+      } else {
+        total += t.actions.length;
+        done += t.actions.where((a) => a.done).length;
+      }
+    }
+    final progress = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
+
+    final parentTitle = project.parentProjectId == null
+        ? null
+        : _projects
+            .where((x) => x.id == project.parentProjectId)
+            .firstOrNull
+            ?.title;
+
+    // Fil de l'eau : jamais une carte — actions non faites en rows légères.
+    final flowTask =
+        startedTasks.where((t) => t.id == 'gtd-flow').firstOrNull;
+    final flowUndone = <({int idx, TaskAction action})>[
+      if (flowTask != null)
+        for (var i = 0; i < flowTask.actions.length; i++)
+          if (!flowTask.actions[i].done)
+            (idx: i, action: flowTask.actions[i]),
+    ];
+
+    // Phases : en cours (tâches démarrées) vs futures (que du pending futur).
+    final phaseMap = {for (final ph in project.phases) ph.id: ph};
+    final byPhase = <String?, List<ProjectTask>>{};
+    for (final t in startedTasks) {
+      if (t.id == 'gtd-flow') continue;
+      final key = phaseMap.containsKey(t.phaseId) ? t.phaseId : null;
+      byPhase.putIfAbsent(key, () => []).add(t);
+    }
+    final futureByPhase = <String?, List<ProjectTask>>{};
+    for (final t in project.tasks) {
+      if (t.id == 'gtd-flow') continue;
+      if (t.status != 'pending') continue;
+      if (!t.startDate.isAfter(todayD)) continue;
+      final key = phaseMap.containsKey(t.phaseId) ? t.phaseId : null;
+      futureByPhase.putIfAbsent(key, () => []).add(t);
+    }
+    final orderedPhaseIds = <String?>[
+      ...project.phases.map((ph) => ph.id).where((id) =>
+          byPhase.containsKey(id) || futureByPhase.containsKey(id)),
+      if (byPhase.containsKey(null) || futureByPhase.containsKey(null)) null,
+    ];
+    // La phase par défaut d'un projet mono-phase (« Réalisation ») n'apporte
+    // rien : le chip de phase n'apparaît qu'à partir de deux phases.
+    final showPhaseChips = project.phases.length > 1;
+
+    Widget taskCard(ProjectTask task) => _GanttTaskCard(
+          project: project,
+          task: task,
+          domains: domains,
+          today: todayD,
+          color: color,
+          projectTitle: '',
+          onTaskActionToggled: (taskId, actionIdx, value) async {
+            final action = project.tasks
+                .firstWhere((t) => t.id == taskId)
+                .actions[actionIdx];
+            action.done = value;
+            action.doneAt = value ? DateTime.now() : null;
+            await _sync.saveProjectTasks(project.id, project.tasks);
+            setState(() {});
+            if (value) widget.onBadgeCheck?.call(_totalDoneCount());
+          },
+          onTap: () => showProjectSheet(
+            context,
+            project: project,
+            domains: domains,
+            targetTaskId: task.id,
+            activities: widget.activities,
+          ),
+          onReorderActions: (oldIdx, newIdx) async {
+            final action = task.actions.removeAt(oldIdx);
+            task.actions.insert(newIdx, action);
+            await _sync.saveProjectTasks(project.id, project.tasks);
+            setState(() {});
+          },
+          onPlay: widget.onStartTimer == null
+              ? null
+              : () => _onPlay(context, project, task, color),
+          onComplete: () async {
+            task.status = task.status == 'done' ? 'pending' : 'done';
+            await _sync.saveProjectTasks(project.id, project.tasks);
+            setState(() {});
+            if (task.status == 'done') {
+              widget.onBadgeCheck?.call(_totalDoneCount());
+            }
+          },
+          onAddAction: (title) async {
+            task.actions.add(TaskAction(title: title));
+            await _sync.saveProjectTasks(project.id, project.tasks);
+            setState(() {});
+          },
+          onToggleTodayFlag: () async {
+            await toggleTaskTodayAndSchedule(context, _sync, project, task);
+            setState(() {});
+          },
+        );
+
+    bool phaseOngoing(ProjectPhase ph) =>
+        !ph.startDate.isAfter(todayD) && !ph.endDate.isBefore(todayD);
+
+    final children = <Widget>[
+      // ── En-tête projet : titre en gros + progression, tap → fiche ────────
+      InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => showProjectSheet(context,
+            project: project, domains: domains, activities: widget.activities),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (parentTitle != null)
+                Row(children: [
+                  Icon(Icons.subdirectory_arrow_right,
+                      size: 11, color: cs.onSurface.withOpacity(.4)),
+                  const SizedBox(width: 3),
+                  Flexible(
+                    child: Text('sous-projet de « $parentTitle »',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                            color: cs.onSurface.withOpacity(.45))),
+                  ),
+                ]),
+              Row(children: [
+                Expanded(
+                  child: Text(project.title,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w800)),
+                ),
+                if (project.status == 'draft') ...[
+                  const _DraftBadge(),
+                  const SizedBox(width: 6),
+                ],
+                if (total > 0)
+                  Text('${(progress * 100).round()} %',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: progress >= 1 ? Colors.green : color)),
+              ]),
+              if (_objectiveChip(context, project) != null)
+                _objectiveChip(context, project)!,
+              if (total > 0) ...[
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: color.withOpacity(.15),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                        progress >= 1 ? Colors.green : color),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+            ],
+          ),
+        ),
+      ),
+    ];
+
+    for (final phaseId in orderedPhaseIds) {
+      final phase = phaseId != null ? phaseMap[phaseId] : null;
+      final current = byPhase[phaseId] ?? const <ProjectTask>[];
+      final future = futureByPhase[phaseId] ?? const <ProjectTask>[];
+      final expandKey = '${project.id}|${phaseId ?? 'none'}';
+      final expanded = _expandedFuturePhases.contains(expandKey);
+
+      // Phase SANS tâche démarrée → une ligne repliée « dès le … ».
+      if (current.isEmpty) {
+        if (future.isEmpty) continue;
+        final firstStart = future
+            .map((t) => t.startDate)
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+        children.add(InkWell(
+          onTap: () => setState(() => expanded
+              ? _expandedFuturePhases.remove(expandKey)
+              : _expandedFuturePhases.add(expandKey)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+            child: Row(children: [
+              Icon(expanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 16, color: cs.onSurface.withOpacity(.4)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  '${phase?.label ?? 'À venir'} · dès le '
+                  '${firstStart.day} ${months[firstStart.month - 1]}'
+                  ' (${future.length})',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface.withOpacity(.5)),
+                ),
+              ),
+            ]),
+          ),
+        ));
+        if (expanded) children.addAll(future.map(taskCard));
+        continue;
+      }
+
+      // Phase EN COURS : chip (si ≥ 2 phases) + tâches dépliées.
+      if (showPhaseChips && phase != null) {
+        Color phaseColor = color;
+        if (phase.color != null) {
+          try {
+            final hex = phase.color!.replaceAll('#', '');
+            phaseColor = Color(int.parse('FF$hex', radix: 16));
+          } catch (_) {}
+        }
+        children.add(Padding(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 2),
+          child: Row(children: [
+            Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                    color: phaseColor, shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Text(
+              phase.label.toUpperCase() +
+                  (phaseOngoing(phase) ? ' · EN COURS' : ''),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: cs.onSurface.withOpacity(.45)),
+            ),
+          ]),
+        ));
+      }
+      children.addAll(current.map(taskCard));
+      // Tâches futures de la même phase : une ligne discrète, dépliable.
+      if (future.isNotEmpty) {
+        final firstStart = future
+            .map((t) => t.startDate)
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+        children.add(InkWell(
+          onTap: () => setState(() => expanded
+              ? _expandedFuturePhases.remove(expandKey)
+              : _expandedFuturePhases.add(expandKey)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 2, 14, 4),
+            child: Row(children: [
+              Icon(expanded ? Icons.expand_more : Icons.chevron_right,
+                  size: 14, color: cs.onSurface.withOpacity(.35)),
+              const SizedBox(width: 4),
+              Text(
+                '+ ${future.length} à venir · dès le '
+                '${firstStart.day} ${months[firstStart.month - 1]}',
+                style: TextStyle(
+                    fontSize: 11.5, color: cs.onSurface.withOpacity(.45)),
+              ),
+            ]),
+          ),
+        ));
+        if (expanded) children.addAll(future.map(taskCard));
+      }
+    }
+
+    // ── Actions libres (fil de l'eau) — des rows, jamais une carte ─────────
+    if (flowTask != null && flowUndone.isNotEmpty) {
+      children.add(Padding(
+        padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final e in flowUndone)
+              InkWell(
+                onTap: () async {
+                  e.action.done = true;
+                  e.action.doneAt = DateTime.now();
+                  await _sync.saveProjectTasks(project.id, project.tasks);
+                  setState(() {});
+                  widget.onBadgeCheck?.call(_totalDoneCount());
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: Row(children: [
+                    Icon(Icons.radio_button_unchecked,
+                        size: 16, color: cs.onSurface.withOpacity(.35)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(e.action.title,
+                          style: const TextStyle(fontSize: 13.5)),
+                    ),
+                  ]),
+                ),
+              ),
+          ],
+        ),
+      ));
+    }
+
+    children.add(const SizedBox(height: 10));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.22),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: children),
+      ),
+    );
   }
 
   Widget _buildProjectSummaryTile(BuildContext context, Project project) {

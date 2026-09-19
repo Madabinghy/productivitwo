@@ -6825,19 +6825,22 @@ class _AppRootState extends State<AppRoot>
 
           return SectionCard(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Column(
+            // TOUTE la carte ouvre la fiche activités (la zone tappable se
+            // limitait à la ligne du nom — constat user) ; le compteur de
+            // routines, en zone interne, garde la priorité vers sa fiche.
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () async {
+                final goNow = await _showDomainDetail(
+                    d, startCal, endCal, days, focus: 'time');
+                if (!mounted) return;
+                if (goNow == true) setState(() => _tab = _Tab.maintenant);
+              },
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── Row 1 : nom + temps aujourd'hui ─────────────────────────
-                InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () async {
-                    final goNow = await _showDomainDetail(
-                        d, startCal, endCal, days, focus: 'time');
-                    if (!mounted) return;
-                    if (goNow == true) setState(() => _tab = _Tab.maintenant);
-                  },
-                  child: Row(
+                Row(
                     children: [
                       Container(
                         width: 9,
@@ -6870,7 +6873,6 @@ class _AppRootState extends State<AppRoot>
                         ),
                     ],
                   ),
-                ),
 
                 if (showTimeSection || routinesTotal > 0) ...[
                   const SizedBox(height: 10),
@@ -6973,6 +6975,7 @@ class _AppRootState extends State<AppRoot>
                   ),
                 ],
               ],
+              ),
             ),
           );
         }),
