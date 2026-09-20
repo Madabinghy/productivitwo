@@ -22,10 +22,12 @@ Future<void> showCreateActionOrProjectSheet(
 }) async {
   final titleCtrl = TextEditingController();
   var pickedContexts = <String>[];
+  // AUCUNE activité présélectionnée (retour user 2026-09) : la première de
+  // la liste partait « à l'insu » — le choix doit être explicite, le bouton
+  // Créer reste bloqué tant qu'il n'est pas fait.
   String? activityId;
   final timeActivities =
       logic.state.activeActivities.where((a) => a.type == 'time').toList();
-  if (timeActivities.isNotEmpty) activityId = timeActivities.first.id;
   // « Sur l'activité » groupé PAR DOMAINE — plus lisible qu'une nappe de chips.
   final domains = logic.state.activeDomains;
   final actGroups = <({String label, List<Activity> acts})>[];
@@ -122,6 +124,18 @@ Future<void> showCreateActionOrProjectSheet(
                         letterSpacing: .8,
                         color: Theme.of(ctx).colorScheme.onSurface
                             .withOpacity(.45))),
+                if (activityId == null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Choisis l\'activité qui portera l\'action (son chrono).',
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontStyle: FontStyle.italic,
+                          color: Theme.of(ctx).colorScheme.onSurface
+                              .withOpacity(.5)),
+                    ),
+                  ),
                 for (final g in actGroups) ...[
                   const SizedBox(height: 8),
                   Text(g.label.toUpperCase(),
@@ -164,7 +178,11 @@ Future<void> showCreateActionOrProjectSheet(
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () async {
+                // Bloqué tant qu'aucune activité n'est choisie — plus jamais
+                // d'action posée sur la mauvaise activité par inattention.
+                onPressed: activityId == null
+                    ? null
+                    : () async {
                   final title = titleCtrl.text.trim();
                   final actId = activityId;
                   if (title.isEmpty || actId == null) return;
