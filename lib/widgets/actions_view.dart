@@ -936,13 +936,17 @@ class _ActionsViewState extends State<ActionsView> {
     // sans action ne filtre pas — il resterait invisible et bloquerait tout).
     final active = _state.nowContexts.where(contexts.contains).toSet();
 
-    // Multi : réalisable si l'action porte AU MOINS UN des contextes actifs.
+    // Le contexte est le FILTRE PAR DÉFAUT (retour user 2026-09 : la liste
+    // complète était trop longue) : aucun contexte sélectionné → aucune
+    // action. Une action SANS contexte est faisable partout → visible dès
+    // qu'un contexte est actif (sinon elle serait inatteignable).
     bool visible(_Entry e) =>
-        active.isEmpty ||
-        e.action.allContexts.any(active.contains);
+        active.isNotEmpty &&
+        (e.action.allContexts.isEmpty ||
+            e.action.allContexts.any(active.contains));
 
-    // Un groupe sans AUCUNE entrée (projet à définir) reste visible hors
-    // filtre de contexte ; un groupe vidé PAR le filtre est masqué.
+    // Un projet sans AUCUNE action (« Définir la prochaine ») reste toujours
+    // visible : c'est une alerte système, pas une action à filtrer.
     final visibleProjectGroups = [
       for (final g in pGroups)
         (
@@ -950,10 +954,7 @@ class _ActionsViewState extends State<ActionsView> {
           entries: g.entries.where(visible).toList(),
           needsNext: g.entries.isEmpty,
         ),
-    ]
-        .where((g) =>
-            g.entries.isNotEmpty || (g.needsNext && active.isEmpty))
-        .toList();
+    ].where((g) => g.entries.isNotEmpty || g.needsNext).toList();
     final visibleActivityGroups = [
       for (final g in aGroups)
         (activity: g.activity, entries: g.entries.where(visible).toList()),
@@ -961,6 +962,9 @@ class _ActionsViewState extends State<ActionsView> {
 
     final empty =
         visibleProjectGroups.isEmpty && visibleActivityGroups.isEmpty;
+    // Des actions existent mais rien n'est affiché faute de contexte choisi.
+    final hasHiddenEntries = pGroups.any((g) => g.entries.isNotEmpty) ||
+        aGroups.any((g) => g.entries.isNotEmpty);
 
     return SafeArea(
       child: ListView(
@@ -1055,6 +1059,17 @@ class _ActionsViewState extends State<ActionsView> {
                       fontStyle: FontStyle.italic,
                       color: cs.onSurface.withOpacity(.5)),
                 ),
+              )
+            else if (hasHiddenEntries && !empty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Aucun contexte choisi — les actions sont masquées.',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.5)),
+                ),
               ),
             const SizedBox(height: 14),
           ],
@@ -1066,7 +1081,9 @@ class _ActionsViewState extends State<ActionsView> {
                 child: Text(
                   active.isNotEmpty
                       ? 'Rien à faire ${(active.toList()..sort()).join(' ou ')} pour l\'instant.'
-                      : 'Aucune action en attente.\nCapture une idée ou crée une action avec +.',
+                      : hasHiddenEntries
+                          ? 'Choisis où tu es (JE SUIS…) :\nseules les actions réalisables dans tes contextes s\'affichent.'
+                          : 'Aucune action en attente.\nCapture une idée ou crée une action avec +.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 14, color: cs.onSurface.withOpacity(.45)),
