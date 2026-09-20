@@ -854,6 +854,96 @@ async function executeGetDocuments(uid: string, projectId?: string, taskId?: str
   return JSON.stringify(docs, null, 2);
 }
 
+// ── Liste de courses (artefact « menu de la semaine ») ───────────────────────
+// La liste vit sur l'artefact weekly_menu (users/{uid}/artifacts) — la même
+// que l'app affiche en chips cochables quand le contexte @courses est actif.
+
+type ShoppingItemDoc = { label?: string; qty?: string; checked?: boolean };
+
+function normLabel(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+}
+
+async function latestMenu(
+  uid: string
+): Promise<{ ref: FirebaseFirestore.DocumentReference; data: Record<string, unknown> } | null> {
+  const snap = await db.collection(`users/${uid}/artifacts`).get();
+  let best: { ref: FirebaseFirestore.DocumentReference; data: Record<string, unknown>; at: string } | null = null;
+  for (const d of snap.docs) {
+    const data = d.data() as Record<string, unknown>;
+    if (data.kind !== "weekly_menu" || data.deleted === true) continue;
+    const at = String(data.generatedAt ?? "");
+    if (!best || at > best.at) best = { ref: d.ref, data, at };
+  }
+  return best ? { ref: best.ref, data: best.data } : null;
+}
+
+async function executeGetShoppingList(uid: string): Promise<string> {
+  const menu = await latestMenu(uid);
+  if (!menu) {
+    return "Aucun menu de la semaine — la liste de courses vit sur l'artefact menu (générable depuis l'app).";
+  }
+  const items = (menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? [];
+  const at = String(menu.data.generatedAt ?? "").slice(0, 10);
+  if (!items.length) return `Menu du ${at} : liste de courses vide.`;
+  const remaining = items.filter((s) => s.checked !== true).length;
+  const lines = items.map((s) => {
+    const qty = (s.qty ?? "").trim();
+    return `${s.checked === true ? "☑" : "☐"} ${s.label ?? "?"}${qty ? ` ${qty}` : ""}`;
+  });
+  return (
+    `Liste de courses — menu du ${at} (${remaining} restant${remaining > 1 ? "s" : ""} sur ${items.length}) :\n` +
+    lines.join("\n")
+  );
+}
+
+async function executeAddShoppingItem(
+  uid: string,
+  label: string,
+  qty?: string
+): Promise<string> {
+  const clean = (label ?? "").trim();
+  if (!clean) return "❌ label vide.";
+  const menu = await latestMenu(uid);
+  if (!menu) {
+    return "❌ Aucun menu de la semaine : impossible d'ajouter (la liste vit sur l'artefact menu, générable depuis l'app).";
+  }
+  const items = ((menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? []).slice();
+  if (items.some((s) => normLabel(String(s.label ?? "")) === normLabel(clean))) {
+    return `Déjà sur la liste : « ${clean} ».`;
+  }
+  items.push({ label: clean, qty: (qty ?? "").trim(), checked: false });
+  await menu.ref.update({ shoppingList: items });
+  return `✅ Ajouté à la liste de courses : ${clean}${qty ? ` ${qty}` : ""} (${items.filter((s) => s.checked !== true).length} restants).`;
+}
+
+async function executeCheckShoppingItem(
+  uid: string,
+  label: string,
+  checked: boolean
+): Promise<string> {
+  const needle = normLabel(label ?? "");
+  if (!needle) return "❌ label vide.";
+  const menu = await latestMenu(uid);
+  if (!menu) return "❌ Aucun menu de la semaine (donc pas de liste de courses).";
+  const items = ((menu.data.shoppingList as ShoppingItemDoc[] | undefined) ?? []).slice();
+  const exact = items.filter((s) => normLabel(String(s.label ?? "")) === needle);
+  const partial = exact.length
+    ? exact
+    : items.filter((s) => normLabel(String(s.label ?? "")).includes(needle));
+  if (!partial.length) return `❌ Introuvable sur la liste : « ${label} ».`;
+  if (partial.length > 1) {
+    return (
+      `❓ Plusieurs articles correspondent à « ${label} » — précise :\n` +
+      partial.map((s) => `• ${s.label}`).join("\n")
+    );
+  }
+  partial[0].checked = checked;
+  await menu.ref.update({ shoppingList: items });
+  const remaining = items.filter((s) => s.checked !== true).length;
+  return `✅ ${partial[0].label} ${checked ? "coché" : "décoché"} — ${remaining} restant${remaining > 1 ? "s" : ""}.`;
+}
+
 async function executeGetArchives(uid: string): Promise<string> {
   const [domainsSnap, activitiesSnap] = await Promise.all([
     db.collection(`users/${uid}/domains`).where("deleted", "==", true).get(),
@@ -2696,6 +2786,9 @@ export {
   executeSaveDocument,
   executeGetDocuments,
   executeGetArchives,
+  executeGetShoppingList,
+  executeAddShoppingItem,
+  executeCheckShoppingItem,
   executeRestoreItem,
   executeCreateDomain,
   executeDeleteDomain,

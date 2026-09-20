@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = void 0;
+exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = void 0;
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -806,6 +806,48 @@ const GENERATE_WEEKLY_REPORT_TOOL = {
     },
 };
 exports.GENERATE_WEEKLY_REPORT_TOOL = GENERATE_WEEKLY_REPORT_TOOL;
+// ── Liste de courses (artefact « menu de la semaine ») ───────────────────────
+const GET_SHOPPING_LIST_TOOL = {
+    name: "get_shopping_list",
+    description: "Lit la liste de courses du menu de la semaine le plus récent (artefact " +
+        "weekly_menu) : articles, quantités, coché/restant. La même liste que " +
+        "l'utilisateur coche dans l'app quand le contexte @courses est actif.",
+    inputSchema: { type: "object", properties: {} },
+};
+exports.GET_SHOPPING_LIST_TOOL = GET_SHOPPING_LIST_TOOL;
+const ADD_SHOPPING_ITEM_TOOL = {
+    name: "add_shopping_item",
+    description: "Ajoute un article à la liste de courses du menu de la semaine le plus " +
+        "récent. Échoue proprement s'il n'existe aucun menu (la liste vit sur " +
+        "l'artefact weekly_menu).",
+    inputSchema: {
+        type: "object",
+        required: ["label"],
+        properties: {
+            label: { type: "string", description: "L'article (ex: 'lait')" },
+            qty: { type: "string", description: "Quantité optionnelle (ex: '×2', '500 g')" },
+        },
+    },
+};
+exports.ADD_SHOPPING_ITEM_TOOL = ADD_SHOPPING_ITEM_TOOL;
+const CHECK_SHOPPING_ITEM_TOOL = {
+    name: "check_shopping_item",
+    description: "Coche (ou décoche avec checked:false) un article de la liste de courses, " +
+        "par son libellé (insensible à la casse et aux accents). En cas " +
+        "d'ambiguïté, l'outil liste les candidats au lieu de deviner.",
+    inputSchema: {
+        type: "object",
+        required: ["label"],
+        properties: {
+            label: { type: "string", description: "Libellé (ou fragment) de l'article" },
+            checked: {
+                type: "boolean",
+                description: "true = coché (défaut), false = décoché",
+            },
+        },
+    },
+};
+exports.CHECK_SHOPPING_ITEM_TOOL = CHECK_SHOPPING_ITEM_TOOL;
 exports.PLAN_DAY_TOOL = {
     name: "plan_day",
     description: "Agrège tout le contexte nécessaire pour planifier une journée : contexte utilisateur, " +
