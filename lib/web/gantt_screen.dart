@@ -60,11 +60,15 @@ class GanttScreen extends StatefulWidget {
   final Project project;
   final String? targetTaskId;
   final List<Domain> domains;
+  // Mode embarqué dans le shell web (lot 3b) : le retour appelle onClose au
+  // lieu de Navigator.pop (l'écran n'est pas une route poussée).
+  final VoidCallback? onClose;
   const GanttScreen({
     super.key,
     required this.project,
     this.targetTaskId,
     this.domains = const [],
+    this.onClose,
   });
 
   @override
@@ -464,7 +468,13 @@ class _GanttScreenState extends State<GanttScreen> {
         backgroundColor: cs.surface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        leading: const BackButton(),
+        leading: widget.onClose != null
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Retour',
+                onPressed: widget.onClose,
+              )
+            : const BackButton(),
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

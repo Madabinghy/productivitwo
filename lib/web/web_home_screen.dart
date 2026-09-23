@@ -65,6 +65,12 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   // Shell desktop (lot 1) : sidebar persistante — 0 Projets · 1 Focus ·
   // 2 Actions · 3 Organisation · 4 ORION. Focus est la vue d'arrivée.
   int _navIndex = 1;
+  // Gantt hébergé DANS le shell (lot 3b) : la sidebar reste visible — null =
+  // aucun projet ouvert.
+  ({Project project, String? taskId})? _shellGantt;
+
+  void _openProjectInShell(Project project, {String? taskId}) =>
+      setState(() => _shellGantt = (project: project, taskId: taskId));
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
@@ -304,53 +310,77 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                             width: 1,
                             color: cs.outlineVariant.withOpacity(0.4)),
                         Expanded(
-                          child: IndexedStack(
-                            index: _navIndex,
+                          child: Stack(
                             children: [
-                              _SimpleProjectsView(
-                                projects: _projects,
-                                domains: _domains,
-                                sync: _sync,
-                                onRefresh: _load,
-                                documentsByProject: _documentsByProject,
-                                objectives: _objectives,
-                                activities: _activities,
-                                recentSessions: _recentSessions,
-                                recentHits: _recentHits,
+                              IndexedStack(
+                                index: _navIndex,
+                                children: [
+                                  _SimpleProjectsView(
+                                    projects: _projects,
+                                    domains: _domains,
+                                    sync: _sync,
+                                    onRefresh: _load,
+                                    documentsByProject: _documentsByProject,
+                                    objectives: _objectives,
+                                    activities: _activities,
+                                    recentSessions: _recentSessions,
+                                    recentHits: _recentHits,
+                                    onOpenProject: _openProjectInShell,
+                                  ),
+                                  _FocusView(
+                                    projects: _projects
+                                        .where((p) => p.status != 'archived')
+                                        .toList(),
+                                    domains: _domains,
+                                    sync: _sync,
+                                    onRefresh: _load,
+                                    isDemo: widget.isDemo,
+                                    ganttVisible: _ganttVisible,
+                                    onOpenProject: _openProjectInShell,
+                                    onTaskColorChange:
+                                        (project, task, color) async {
+                                      task.color = color;
+                                      await _sync.saveProjectTasks(
+                                          project.id, project.tasks);
+                                      _load();
+                                    },
+                                  ),
+                                  // Hub Actions : rail Actions · Ma semaine ·
+                                  // domaines (transparence coach).
+                                  ActionsHubView(
+                                    domains: _domains,
+                                    activities: _activities,
+                                    projects: _projects,
+                                    sync: _sync,
+                                    actionsView: WebActionsView(
+                                      projects: _projects,
+                                      domains: _domains,
+                                      activities: _activities,
+                                      sync: _sync,
+                                      onRefresh: _load,
+                                      onOpenProject: _openProjectInShell,
+                                    ),
+                                  ),
+                                  _ArchivesView(sync: _sync),
+                                  _OrionView(sync: _sync),
+                                ],
                               ),
-                              _FocusView(
-                                projects: _projects
-                                    .where((p) => p.status != 'archived')
-                                    .toList(),
-                                domains: _domains,
-                                sync: _sync,
-                                onRefresh: _load,
-                                isDemo: widget.isDemo,
-                                ganttVisible: _ganttVisible,
-                                onTaskColorChange: (project, task, color) async {
-                                  task.color = color;
-                                  await _sync.saveProjectTasks(
-                                      project.id, project.tasks);
-                                  _load();
-                                },
-                              ),
-                              // Hub Actions : rail Actions · Ma semaine ·
-                              // domaines (transparence coach).
-                              ActionsHubView(
-                                domains: _domains,
-                                activities: _activities,
-                                projects: _projects,
-                                sync: _sync,
-                                actionsView: WebActionsView(
-                                  projects: _projects,
-                                  domains: _domains,
-                                  activities: _activities,
-                                  sync: _sync,
-                                  onRefresh: _load,
+                              // Gantt DANS le shell (lot 3b) : recouvre la vue
+                              // active, la sidebar reste utilisable.
+                              if (_shellGantt != null)
+                                Positioned.fill(
+                                  child: GanttScreen(
+                                    key: ValueKey(
+                                        '${_shellGantt!.project.id}/${_shellGantt!.taskId}'),
+                                    project: _shellGantt!.project,
+                                    targetTaskId: _shellGantt!.taskId,
+                                    domains: _domains,
+                                    onClose: () {
+                                      setState(() => _shellGantt = null);
+                                      _load();
+                                    },
+                                  ),
                                 ),
-                              ),
-                              _ArchivesView(sync: _sync),
-                              _OrionView(sync: _sync),
                             ],
                           ),
                         ),
@@ -495,18 +525,14 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         if (projectId == null) return;
         final p = _projects.where((p) => p.id == projectId).firstOrNull;
         if (p == null) return;
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => GanttScreen(project: p, domains: _domains)));
+        _openProjectInShell(p);
       case 'open_gantt_task':
         final projectId = action.payload?['projectId'] as String?;
         final taskId   = action.payload?['taskId']   as String?;
         if (projectId == null) return;
         final p = _projects.where((p) => p.id == projectId).firstOrNull;
         if (p == null) return;
-        Navigator.push(context,
-            MaterialPageRoute(
-              builder: (_) => GanttScreen(project: p, targetTaskId: taskId, domains: _domains),
-            ));
+        _openProjectInShell(p, taskId: taskId);
       case 'open_activity':
         setState(() => _navIndex = 1); // Focus
     }
@@ -524,6 +550,8 @@ class _FocusView extends StatelessWidget {
   final bool isDemo;
   // Gantt en retrait : masque les cartes d'avancement projet et la vue 14 jours.
   final bool ganttVisible;
+  // Ouverture d'un projet via le shell (lot 3b) — null = route plein écran.
+  final void Function(Project project, {String? taskId})? onOpenProject;
   const _FocusView({
     required this.projects,
     required this.domains,
@@ -532,7 +560,19 @@ class _FocusView extends StatelessWidget {
     this.onRefresh,
     this.isDemo = false,
     this.ganttVisible = false,
+    this.onOpenProject,
   });
+
+  void _openProject(BuildContext context, Project p) {
+    if (onOpenProject != null) {
+      onOpenProject!(p);
+      return;
+    }
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (_) => GanttScreen(project: p, domains: domains)));
+  }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -785,11 +825,7 @@ class _FocusView extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (_) =>
-                      GanttScreen(project: p, domains: domains))),
+          onTap: () => _openProject(context, p),
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
@@ -1982,10 +2018,7 @@ class _FocusView extends StatelessWidget {
                           project: p,
                           domains: domains,
                           cs: cs,
-                          onTap: () => Navigator.push(context,
-                              MaterialPageRoute(
-                                  builder: (_) => GanttScreen(
-                                      project: p, domains: domains))),
+                          onTap: () => _openProject(context, p),
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -5888,6 +5921,8 @@ class _SimpleProjectsView extends StatefulWidget {
   final List<Activity> activities;
   final List<Session> recentSessions;
   final List<HabitHit> recentHits;
+  // Ouverture d'un projet via le shell (lot 3b) — null = route plein écran.
+  final void Function(Project project, {String? taskId})? onOpenProject;
   const _SimpleProjectsView({
     required this.projects,
     required this.domains,
@@ -5898,6 +5933,7 @@ class _SimpleProjectsView extends StatefulWidget {
     required this.activities,
     required this.recentSessions,
     required this.recentHits,
+    this.onOpenProject,
   });
   @override
   State<_SimpleProjectsView> createState() => _SimpleProjectsViewState();
@@ -5940,11 +5976,13 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
       projects: widget.projects,
       sync: widget.sync,
       onRefresh: widget.onRefresh,
-      onOpenProject: (p) => Navigator.push(
-          context,
-          MaterialPageRoute(
-              builder: (_) =>
-                  GanttScreen(project: p, domains: widget.domains))),
+      onOpenProject: (p) => widget.onOpenProject != null
+          ? widget.onOpenProject!(p)
+          : Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      GanttScreen(project: p, domains: widget.domains))),
     );
 
     if (widget.projects.isEmpty) {
@@ -5979,9 +6017,13 @@ class _SimpleProjectsViewState extends State<_SimpleProjectsView> {
     final inScope = filtered.where(_hasActiveTasks).toList();
     final outOfScope = filtered.where((p) => !_hasActiveTasks(p)).toList();
 
-    void openGantt(Project p) => Navigator.push(context,
-        MaterialPageRoute(
-            builder: (_) => GanttScreen(project: p, domains: widget.domains)));
+    void openGantt(Project p) => widget.onOpenProject != null
+        ? widget.onOpenProject!(p)
+        : Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) =>
+                    GanttScreen(project: p, domains: widget.domains)));
 
     return RefreshIndicator(
       onRefresh: () async => widget.onRefresh(),
