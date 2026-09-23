@@ -92,6 +92,8 @@ class _GanttScreenState extends State<GanttScreen> {
   final _sync = FirestoreSync();
   bool _forceLight = false;
   bool _docView = false; // false = Gantt, true = Document de pilotage
+  // Fiche tâche en panneau latéral (lot 3) — null = fermé.
+  ProjectTask? _panelTask;
   StrategicObjective? _objective;
   double? _objectiveWeekPct; // progression hebdo des engagements (0..1)
 
@@ -223,6 +225,12 @@ class _GanttScreenState extends State<GanttScreen> {
   }
 
   void _onTaskTap(ProjectTask task) {
+    // Lot 3 : sur écran large la fiche s'ouvre en PANNEAU latéral — le Gantt
+    // reste visible et manipulable. En étroit, la Dialog d'origine.
+    if (MediaQuery.of(context).size.width >= 1100) {
+      setState(() => _panelTask = task);
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => _TaskDetailDialog(
@@ -569,18 +577,48 @@ class _GanttScreenState extends State<GanttScreen> {
               accentColor: _accentColor(),
               onProjectChanged: () => setState(() {}),
             ))
-          else ...[
-            _GanttDashboard(project: _project),
-            Expanded(child: _GanttBody(
-              project: _project,
-              domainColor: _domainColor(),
-              onTaskTap: _onTaskTap,
-              forceLight: _forceLight,
-              onToggleLight: () => setState(() => _forceLight = !_forceLight),
-              onAddTask: _addTask,
-              onPhaseTap: _editPhase,
-            )),
-          ],
+          else
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Column(children: [
+                      _GanttDashboard(project: _project),
+                      Expanded(child: _GanttBody(
+                        project: _project,
+                        domainColor: _domainColor(),
+                        onTaskTap: _onTaskTap,
+                        forceLight: _forceLight,
+                        onToggleLight: () =>
+                            setState(() => _forceLight = !_forceLight),
+                        onAddTask: _addTask,
+                        onPhaseTap: _editPhase,
+                      )),
+                    ]),
+                  ),
+                  // Fiche tâche en panneau latéral (lot 3).
+                  if (_panelTask != null) ...[
+                    VerticalDivider(
+                        width: 1,
+                        color: cs.outlineVariant.withOpacity(0.4)),
+                    SizedBox(
+                      width: 420,
+                      child: _TaskDetailDialog(
+                        key: ValueKey(_panelTask!.id),
+                        project: _project,
+                        task: _panelTask!,
+                        sync: _sync,
+                        panel: true,
+                        onClose: () => setState(() => _panelTask = null),
+                        onProjectUpdated: (p) =>
+                            setState(() => _project = p),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -1279,26 +1317,95 @@ class _GanttBodyState extends State<_GanttBody> {
         Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
         // Grille
         Expanded(
-          child: InteractiveViewer(
-            transformationController: _ctrl,
-            constrained: false,
-            minScale: 0.25,
-            maxScale: 4.0,
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: RepaintBoundary(
-                key: _gridKey,
-                child: _GanttGrid(
-                  project: widget.project,
-                  domainColor: widget.domainColor,
-                  projectStart: start,
-                  totalWeeks: weeks,
-                  dayView: _dayView,
-                  onTaskTap: widget.onTaskTap,
-                  onPhaseTap: widget.onPhaseTap,
+          child: Stack(
+            children: [
+              InteractiveViewer(
+                transformationController: _ctrl,
+                constrained: false,
+                minScale: 0.25,
+                maxScale: 4.0,
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: RepaintBoundary(
+                    key: _gridKey,
+                    child: _GanttGrid(
+                      project: widget.project,
+                      domainColor: widget.domainColor,
+                      projectStart: start,
+                      totalWeeks: weeks,
+                      dayView: _dayView,
+                      onTaskTap: widget.onTaskTap,
+                      onPhaseTap: widget.onPhaseTap,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              // ── Colonne des libellés FIGÉE (lot 3) ────────────────────────
+              // Quand la grille est panoramiquée vers la gauche (tx < 0), une
+              // copie de la grille, clippée à la zone des libellés et calée
+              // sur la même transformation verticale/zoom, reste épinglée au
+              // bord gauche — les noms de tâches ne sortent plus de l'écran.
+              AnimatedBuilder(
+                animation: _ctrl,
+                builder: (ctx, _) {
+                  final m = _ctrl.value;
+                  final tx = m.storage[12];
+                  final ty = m.storage[13];
+                  final scale = m.storage[0];
+                  if (tx >= -32 * scale) return const SizedBox.shrink();
+                  final w = (32 + _kLabelW) * scale;
+                  return Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: w,
+                    child: ClipRect(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).scaffoldBackgroundColor,
+                          border: Border(
+                            right: BorderSide(
+                                color: cs.outlineVariant.withOpacity(.5)),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(.18),
+                              blurRadius: 8,
+                              offset: const Offset(2, 0),
+                            ),
+                          ],
+                        ),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minWidth: 0,
+                          minHeight: 0,
+                          maxWidth: double.infinity,
+                          maxHeight: double.infinity,
+                          child: Transform(
+                            alignment: Alignment.topLeft,
+                            transform: Matrix4.identity()
+                              ..translate(0.0, ty)
+                              ..scale(scale),
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: _GanttGrid(
+                                project: widget.project,
+                                domainColor: widget.domainColor,
+                                projectStart: start,
+                                totalWeeks: weeks,
+                                dayView: _dayView,
+                                onTaskTap: widget.onTaskTap,
+                                onPhaseTap: widget.onPhaseTap,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ],
@@ -1935,12 +2042,19 @@ class _TaskDetailDialog extends StatefulWidget {
   final ProjectTask task;
   final FirestoreSync sync;
   final void Function(Project) onProjectUpdated;
+  // Mode panneau latéral (lot 3) : la fiche vit à droite du Gantt au lieu
+  // d'une Dialog 720×360 — onClose remplace alors le Navigator.pop.
+  final bool panel;
+  final VoidCallback? onClose;
 
   const _TaskDetailDialog({
+    super.key,
     required this.project,
     required this.task,
     required this.sync,
     required this.onProjectUpdated,
+    this.panel = false,
+    this.onClose,
   });
 
   @override
@@ -1971,6 +2085,15 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
   void dispose() {
     _tabCtrl.dispose();
     super.dispose();
+  }
+
+  // Fermer la fiche : panneau → callback ; Dialog → pop.
+  void _close() {
+    if (widget.onClose != null) {
+      widget.onClose!();
+    } else {
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _loadDocs() async {
@@ -2241,7 +2364,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     widget.project.tasks.removeWhere((t) => t.id == _task.id);
     widget.onProjectUpdated(widget.project);
     if (!mounted) return;
-    Navigator.pop(context); // la tâche a quitté ce projet → on ferme la fiche
+    _close(); // la tâche a quitté ce projet → on ferme la fiche
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Tâche déplacée vers « ${target.title} ».')));
   }
@@ -2326,12 +2449,8 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     final isFilesTab   = _tabCtrl.index == 2;
     final isDoneTab    = _tabCtrl.index == 1;
 
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: SizedBox(
-        width: 720,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    final Widget body = Column(
+          mainAxisSize: widget.panel ? MainAxisSize.max : MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // En-tête
@@ -2450,7 +2569,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _close,
                   ),
                 ],
               ),
@@ -2643,15 +2762,24 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
             ),
             Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
 
-            // Contenu
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 360),
-              child: isFilesTab
-                  ? _buildFilesTab(cs)
-                  : isDoneTab
-                      ? _buildDoneActionsTab(cs, done)
-                      : _buildPendingActionsTab(cs, pending),
-            ),
+            // Contenu — Dialog : plafonné à 360 ; panneau : toute la hauteur.
+            if (widget.panel)
+              Expanded(
+                child: isFilesTab
+                    ? _buildFilesTab(cs)
+                    : isDoneTab
+                        ? _buildDoneActionsTab(cs, done)
+                        : _buildPendingActionsTab(cs, pending),
+              )
+            else
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: isFilesTab
+                    ? _buildFilesTab(cs)
+                    : isDoneTab
+                        ? _buildDoneActionsTab(cs, done)
+                        : _buildPendingActionsTab(cs, pending),
+              ),
 
             // Footer
             Padding(
@@ -2698,8 +2826,14 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                         ]),
             ),
           ],
-        ),
-      ),
+        );
+
+    if (widget.panel) {
+      return Material(color: cs.surface, child: body);
+    }
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SizedBox(width: 720, child: body),
     );
   }
 
@@ -2730,7 +2864,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     final updatedProject = widget.project
       ..tasks.replaceRange(0, widget.project.tasks.length, updatedTasks);
     widget.onProjectUpdated(updatedProject);
-    if (mounted) Navigator.pop(context);
+    if (mounted) _close();
   }
 
   // ── Description ─────────────────────────────────────────────────────────────
