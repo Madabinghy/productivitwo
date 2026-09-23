@@ -531,7 +531,10 @@ async function executeGetUserContext(uid: string): Promise<string> {
             durationMin: b.durationMin,
             category: b.category,
             status: b.status,
-          })),
+          }))
+          // Ordre chronologique garanti (le tableau Firestore est en ordre
+          // d'insertion — constaté : 07:00 après 08:30).
+          .sort((a, b) => a.startTime.localeCompare(b.startTime)),
       }
     : null;
 
@@ -1214,13 +1217,14 @@ async function executeListProjects(uid: string): Promise<string> {
   const snap = await db.collection(`users/${uid}/projects`).get();
   if (snap.empty) return "Aucun projet trouvé dans Productivitwo.";
 
-  // Statut visible sur chaque ligne (actifs d'abord) — sans ça il fallait un
-  // get_project par projet pour distinguer actif / archivé / en pause.
-  const docs = [...snap.docs].sort((a, b) => {
-    const rank = (d: Record<string, unknown>) =>
-      String(d.status ?? "active") !== "active" ? 2 : d.paused === true ? 1 : 0;
-    return rank(a.data()) - rank(b.data());
-  });
+  // Statut visible sur chaque ligne, actifs d'abord (puis pause, brouillons,
+  // archivés/terminés) — sans ça il fallait un get_project par projet.
+  const rank = (d: Record<string, unknown>) => {
+    const status = String(d.status ?? "active");
+    if (status === "active") return d.paused === true ? 1 : 0;
+    return status === "draft" ? 2 : 3;
+  };
+  const docs = [...snap.docs].sort((a, b) => rank(a.data()) - rank(b.data()));
   const lines = docs.map((doc) => {
     const d = doc.data();
     const taskCount = (d.tasks || []).length;
@@ -1229,7 +1233,8 @@ async function executeListProjects(uid: string): Promise<string> {
     const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
     const status = String(d.status ?? "active");
     const badge = status !== "active"
-      ? ` · ${status === "archived" ? "ARCHIVÉ" : status.toUpperCase()}`
+      ? ` · ${{ archived: "ARCHIVÉ", draft: "BROUILLON",
+                completed: "TERMINÉ" }[status] ?? status.toUpperCase()}`
       : d.paused === true ? " · EN PAUSE" : "";
     return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
   });
@@ -1249,7 +1254,12 @@ async function executeGetProject(uid: string, projectId: string): Promise<string
 async function executePushGantt(
   uid: string,
   input: PushGanttBody,
-  opts?: { source?: string; originIdeas?: { text: string; date: string }[] }
+  // draftOnCreate : le cycle ORION autonome crée en brouillon (l'IA propose,
+  // l'utilisateur dispose) ; le chemin MCP conversationnel crée ACTIF — le
+  // user vient de le demander, un draft invisible dans activeProjects avait
+  // été pris pour un bug (test connecteur 2026-09).
+  opts?: { source?: string; originIdeas?: { text: string; date: string }[];
+           draftOnCreate?: boolean }
 ): Promise<string> {
   const { project, strategicObjective } = input;
 
@@ -1285,8 +1295,8 @@ async function executePushGantt(
       ...(opts?.originIdeas && opts.originIdeas.length
         ? { originIdeas: FieldValue.arrayUnion(...opts.originIdeas) }
         : {}),
-      // Création → brouillon (hors économie/score) ; update → ne touche pas au statut.
-      ...(project.id ? {} : { status: "draft" }),
+      // Création → actif (draft seulement si demandé) ; update → statut intact.
+      ...(project.id ? {} : { status: opts?.draftOnCreate ? "draft" : "active" }),
       ...(strategicObjectiveId ? { strategicObjectiveId } : {}),
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
@@ -1300,9 +1310,14 @@ async function executePushGantt(
   }
 
   const isUpdate = !!project.id;
+  const statusLine = isUpdate
+    ? ""
+    : `• statut : ${opts?.draftOnCreate
+        ? "brouillon (à valider dans l'app)" : "actif"}\n`;
   return (
     `✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
     `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
+    statusLine +
     `• Voir sur : https://app.productivitwo.com\n` +
     `• projectId : ${projectId}`
   );
