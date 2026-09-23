@@ -449,30 +449,6 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     if (moved && mounted) Navigator.pop(context);
   }
 
-  /// « Terminer l'après-midi » (23c) : bascule TOUT le système en mode soirée
-  /// — les blocs ne sont pas touchés, réversible à tout moment.
-  Future<void> _actEndAfternoon() async {
-    if (_saving) return;
-    setState(() => _saving = true);
-    try {
-      await _sync.setDayMode(widget.date, 'evening');
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Mode soirée activé'),
-          duration: const Duration(seconds: 5),
-          behavior: SnackBarBehavior.floating,
-          action: SnackBarAction(
-            label: 'Annuler',
-            onPressed: () => _sync.setDayMode(widget.date, 'normal'),
-          ),
-        ));
-      }
-    } catch (_) {
-      _fail();
-    }
-  }
-
   /// « Abandonner pour aujourd'hui » — compte comme sauté (le check-in du soir
   /// demandera le pourquoi), aucune pénalité cachée.
   Future<void> _abandon() async {
@@ -666,16 +642,6 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
 
   Widget _tacticalView() {
     final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now();
-    // La bascule système n'a de sens qu'avant la soirée, avec du restant.
-    final waiting = widget.logic.todayBlocks
-        .where((x) =>
-            x.status == 'pending' &&
-            !x.isPrep &&
-            x.category != 'break' &&
-            x.id != b.id)
-        .length;
-    final showDayWide = now.hour < 19;
     final moveEvening =
         _moveSlot != null && _moveSlot!.compareTo('18:00') >= 0;
 
@@ -721,28 +687,6 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
           'choisir un créneau libre réel',
           _actMoveInDay,
         ),
-        if (showDayWide) ...[
-          const SizedBox(height: 6),
-          // ── Bascule système : isolée, nommée, conséquence écrite (23b) ──────
-          Center(
-            child: Text('TOUTE LA JOURNÉE',
-                style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.4,
-                    color: cs.tertiary)),
-          ),
-          const SizedBox(height: 8),
-          _actionRow(
-            cs,
-            'Terminer l\'après-midi — passer l\'app en mode soirée',
-            waiting > 0
-                ? '${waiting > 1 ? 'les $waiting blocs restants seront' : 'le bloc restant sera'} à replanifier · réversible à tout moment'
-                : 'réversible à tout moment',
-            _actEndAfternoon,
-            amber: true,
-          ),
-        ],
         const SizedBox(height: 4),
         Center(
           child: TextButton(

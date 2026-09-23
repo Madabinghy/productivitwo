@@ -356,15 +356,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
 
-  /// Mode soirée (23c) : bloc non fait d'avant 19 h → « en attente, à recaser
-  /// ce soir » (rendu seulement — le bloc n'est jamais modifié par la bascule).
-  bool _waitingInEveningMode(ScheduleBlock b) =>
-      _schedule?.eveningMode == true &&
-      b.status == 'pending' &&
-      !b.isPrep &&
-      b.category != 'break' &&
-      b.startTime.compareTo('19:00') < 0;
-
   Future<void> _saveBlock(ScheduleBlock updated) async {
     final schedule = _schedule;
     if (schedule == null) return;
@@ -699,23 +690,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           Flexible(
                             child: Text(
                               '↩ reporté d\'hier',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontStyle: FontStyle.italic,
-                                  color: cs.tertiary.withOpacity(.9)),
-                            ),
-                          ),
-                        ],
-                        // Mode soirée (23c) : les blocs non faits d'avant 19 h
-                        // sont EN ATTENTE — jamais supprimés, recasés au
-                        // check-in ; « Revenir » les restaure tels quels.
-                        if (_waitingInEveningMode(block)) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              'en attente — à recaser ce soir',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

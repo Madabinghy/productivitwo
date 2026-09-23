@@ -99,10 +99,10 @@ CoachMoment computeCoachMoment(
   if (minutes < 5 * 60) return CoachMoment.none; // nuit
   // Soir (≥ 19 h) : silence total — plus aucune carte ORION.
   if (minutes >= 19 * 60) return CoachMoment.none;
-  // Pause déclarée (« pas dispo avant X ») et mode soirée (journée pliée
-  // tôt) : le coach suit le flow — aucune relance avant l'heure dite.
+  // Pause déclarée (« pas dispo avant X ») : le coach suit le flow — aucune
+  // relance avant l'heure dite. (Le mode soirée a été supprimé avec le reste
+  // de la couche coach — 2026-09.)
   if (today?.unavailableAt(now) == true) return CoachMoment.none;
-  if (today?.eveningMode == true) return CoachMoment.none;
 
   final blocks = _liveBlocks(today);
   final sessionsToday =
