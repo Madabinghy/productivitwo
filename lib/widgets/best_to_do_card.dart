@@ -1,18 +1,27 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
 
 /// « Le meilleur à faire » — les 3 meilleures routines PAS ENCORE ATTEINTES
 /// (quotidiennes : cible du jour non remplie ; hebdos : cible des 7 jours non
-/// remplie), classées par max(score du jour, score 7 j). Vit dans Maintenant :
-/// +1 direct, −1 (correction), et « passer » (la routine recule en FIN de
-/// liste pour aujourd'hui — elle reste visible et rattrapable, les autres
-/// remontent ; réversible sur place).
+/// remplie), classées par max(score du jour, score 7 j). Vit dans Maintenant.
+///
+/// Les rangées reprennent le STYLE des tuiles du lanceur de routines (FAB
+/// « Lancer une routine ») : pastille domaine, nom + série, ▶ chrono /
+/// ⏱ minuteur, compteur réel, − / + — avec EN PLUS le bouton ⏭ « reculer en
+/// fin de liste » (la routine passée reste visible et rattrapable, réversible
+/// d'un re-tap ↩).
 class BestToDoCard extends StatefulWidget {
   final AppLogic logic;
-  const BestToDoCard({super.key, required this.logic});
+  // Minuteur (⏱) : même flux que le lanceur — chrono ciblé + décompte,
+  // routine cochée à la fin. Branché sur FocusView.onStartTimed.
+  final void Function(Activity routine, int minutes)? onStartTimed;
+  const BestToDoCard({super.key, required this.logic, this.onStartTimed});
 
   @override
   State<BestToDoCard> createState() => _BestToDoCardState();
@@ -104,8 +113,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
     if (entries.isEmpty) return const SizedBox.shrink();
     // Pas encore atteintes : quotidienne → cible du JOUR non remplie ;
     // hebdo → cible des 7 jours non remplie. Le déjà-atteint sort du top.
-    // Les « passées » du jour restent dans la liste mais reculent EN FIN —
-    // elles réapparaissent en tête de la queue si tout le reste est passé.
+    // Les « passées » du jour restent dans la liste mais reculent EN FIN.
     final pending = entries.where((e) {
       final dt = e.dayTarget;
       if (dt != null) return e.dayDone < dt;
@@ -120,11 +128,6 @@ class _BestToDoCardState extends State<BestToDoCard> {
 
     return Container(
       margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.fromLTRB(16, 12, 4, 8),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.3),
-        borderRadius: BorderRadius.circular(16),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -139,111 +142,183 @@ class _BestToDoCardState extends State<BestToDoCard> {
                     letterSpacing: .8,
                     color: cs.onSurface.withOpacity(.5))),
           ]),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           if (pending.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(0, 4, 8, 8),
+              padding: const EdgeInsets.fromLTRB(0, 0, 8, 4),
               child: Text('Tout est atteint — rien à rattraper. ✓',
                   style: TextStyle(
                       fontSize: 13,
                       fontStyle: FontStyle.italic,
                       color: cs.onSurface.withOpacity(.55))),
             ),
-          // Deux lignes par routine : le nom respire en pleine largeur,
-          // les chiffres et les gestes vivent en dessous (une seule ligne
-          // tronquait le nom dès que la rangée se remplissait).
-          for (final e in pending.take(3))
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: palierColor((e.score * 100).round())
-                              .withOpacity(e.passed ? .35 : 1),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(e.act.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                color: e.passed
-                                    ? cs.onSurface.withOpacity(.4)
-                                    : null)),
-                      ),
-                    ]),
-                    Row(children: [
-                      const SizedBox(width: 18),
-                      Text(
-                          [
-                            if (e.dayTarget != null)
-                              'auj. ${e.dayDone}/${e.dayTarget}',
-                            '7 j ${e.weekDone}/${e.weekTarget}',
-                          ].join(' · '),
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              fontFeatures: const [
-                                FontFeature.tabularFigures()
-                              ],
-                              color: cs.onSurface.withOpacity(.55))),
-                      const Spacer(),
-                      IconButton(
-                        tooltip: '−1',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        icon: Icon(Icons.remove_circle_outline,
-                            size: 20,
-                            color: (e.dayTarget != null
-                                    ? e.dayDone > 0
-                                    : e.weekDone > 0)
-                                ? cs.onSurface.withOpacity(.45)
-                                : cs.onSurface.withOpacity(.15)),
-                        onPressed: (e.dayTarget != null
-                                ? e.dayDone > 0
-                                : e.weekDone > 0)
-                            ? () => _decrement(e.act)
-                            : null,
-                      ),
-                      // +1 direct : même mécanique que les compteurs de routine
-                      // (habitProgress + coche du jour + persistance via onChange).
-                      IconButton(
-                        tooltip: '+1',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        icon:
-                            Icon(Icons.add_circle, size: 22, color: cs.primary),
-                        onPressed: () {
-                          logic.incHabit(e.act.id, 1, DateTime.now());
-                          setState(() {});
-                        },
-                      ),
-                      IconButton(
-                        tooltip: e.passed
-                            ? 'Remettre en course'
-                            : 'Reculer en fin de liste',
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        icon: Icon(
-                            e.passed
-                                ? Icons.undo_rounded
-                                : Icons.skip_next_rounded,
-                            size: 22,
-                            color: cs.onSurface.withOpacity(.45)),
-                        onPressed: () => _togglePasse(e.act),
-                      ),
-                    ]),
-                  ]),
-            ),
+          for (final e in pending.take(3)) _tile(cs, e, now),
         ],
+      ),
+    );
+  }
+
+  /// Rangée au style du lanceur de routines (FAB) : carte arrondie, pastille
+  /// domaine, nom + série, contrôles ▶/⏱, compteur, − / + — et ⏭ en plus.
+  Widget _tile(
+      ColorScheme cs,
+      ({
+        Activity act,
+        int dayDone,
+        int? dayTarget,
+        int weekDone,
+        int weekTarget,
+        double score,
+        bool passed,
+      }) e,
+      DateTime now) {
+    final r = e.act;
+    final dColor = domainColor(r.domainId, logic.state.activeDomains);
+    final accent = dColor ?? cs.primary;
+    final streak = logic.habitCurrentStreak(r.id);
+
+    // Compteur de la période courante — mêmes règles d'affichage que le
+    // lanceur : la cible atteinte ne cache jamais le vrai volume.
+    final value = e.dayTarget != null ? e.dayDone : e.weekDone;
+    final target = e.dayTarget ?? e.weekTarget;
+    final countText = target == 1
+        ? (value > 1 ? '$value ✓' : value >= 1 ? '✓' : '○')
+        : value > target
+            ? '$value/$target ✓'
+            : '$value/$target';
+
+    // ▶ chrono (activité liée) / ⏱ minuteur (si réglé) — comme le lanceur.
+    final linkedId = (r.linkedActivityId ?? '').trim();
+    final linked = linkedId.isEmpty
+        ? null
+        : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
+    final timerMin = r.timerMin ?? 0;
+
+    return Opacity(
+      opacity: e.passed ? .55 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
+        ),
+        child: Row(
+          children: [
+            if (dColor != null) ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration:
+                    BoxDecoration(color: dColor, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 10),
+            ] else ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                    color: palierColor((e.score * 100).round()),
+                    shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(r.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (streak > 0) ...[
+                      routineStreakBadge(streak),
+                      const SizedBox(width: 6),
+                    ],
+                    Text(
+                        [
+                          if (e.dayTarget != null)
+                            'auj. ${e.dayDone}/${e.dayTarget}',
+                          '7 j ${e.weekDone}/${e.weekTarget}',
+                        ].join(' · '),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                            color: cs.onSurface.withOpacity(.5))),
+                  ]),
+                ],
+              ),
+            ),
+            // Compteur (style lanceur)
+            Text(countText,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: value >= target
+                        ? accent
+                        : cs.onSurface.withOpacity(.4))),
+            // ▶ chrono libre sur l'activité liée (on est déjà dans Maintenant)
+            if (linked != null)
+              routineTileButton(
+                icon: Icons.play_arrow_rounded,
+                tooltip: 'Démarrer le chrono sur « ${linked.name} »',
+                color: accent,
+                background: accent.withOpacity(.12),
+                onTap: () {
+                  logic.start(linked.id);
+                  logic.rev.value++;
+                  setState(() {});
+                },
+              ),
+            // ⏱ minuteur — même flux que le lanceur (routine cochée à la fin)
+            if (timerMin > 0 && widget.onStartTimed != null)
+              routineTileButton(
+                icon: Icons.timer_outlined,
+                tooltip: 'Démarrer le minuteur ($timerMin min)',
+                color: accent,
+                background: accent.withOpacity(.12),
+                onTap: () => widget.onStartTimed!(r, timerMin),
+              ),
+            // − (correction) — grisé quand il n'y a rien à décrémenter
+            routineTileButton(
+              icon: Icons.remove,
+              tooltip: '−1',
+              color: cs.onSurface
+                  .withOpacity(value > 0 || e.weekDone > 0 ? .4 : .15),
+              background: cs.onSurface.withOpacity(.08),
+              onTap: (e.dayTarget != null ? e.dayDone > 0 : e.weekDone > 0)
+                  ? () => _decrement(r)
+                  : null,
+            ),
+            // +1 — même mécanique que les compteurs de routine
+            routineTileButton(
+              icon: Icons.add,
+              tooltip: '+1',
+              color: accent,
+              background: accent.withOpacity(.12),
+              onTap: () {
+                logic.incHabit(r.id, 1, DateTime.now());
+                setState(() {});
+              },
+            ),
+            // ⏭ / ↩ — reculer en fin de liste pour aujourd'hui (réversible)
+            routineTileButton(
+              icon: e.passed ? Icons.undo_rounded : Icons.skip_next_rounded,
+              tooltip: e.passed
+                  ? 'Remettre en course'
+                  : 'Reculer en fin de liste',
+              color: cs.onSurface.withOpacity(.45),
+              background: cs.onSurface.withOpacity(.08),
+              onTap: () => _togglePasse(r),
+            ),
+          ],
+        ),
       ),
     );
   }
