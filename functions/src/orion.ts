@@ -423,7 +423,10 @@ Tu dois TOUJOURS appeler push_assistant_message avant end_turn : exactement 1 me
               actionLog.push(`🗑 Projet supprimé`);
               break;
             case "push_gantt":
-              result = await executePushGantt(uid, { uid, ...args } as PushGanttBody);
+              // Cycle autonome : création en BROUILLON — l'IA propose,
+              // l'utilisateur valide dans l'app (le chemin MCP crée actif).
+              result = await executePushGantt(uid, { uid, ...args } as PushGanttBody,
+                { draftOnCreate: true });
               actionLog.push(`🗂 Projet Gantt créé : ${(args as unknown as PushGanttBody).project?.title ?? ""}`);
               break;
             // ── Documents ────────────────────────────────────────────────

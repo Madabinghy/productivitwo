@@ -486,7 +486,10 @@ async function executeGetUserContext(uid) {
                 durationMin: b.durationMin,
                 category: b.category,
                 status: b.status,
-            })),
+            }))
+                // Ordre chronologique garanti (le tableau Firestore est en ordre
+                // d'insertion — constaté : 07:00 après 08:30).
+                .sort((a, b) => a.startTime.localeCompare(b.startTime)),
         }
         : null;
     // ── Inbox (idées en attente) ───────────────────────────────────────────────
@@ -1071,14 +1074,18 @@ async function executeListProjects(uid) {
     const snap = await db_1.db.collection(`users/${uid}/projects`).get();
     if (snap.empty)
         return "Aucun projet trouvé dans Productivitwo.";
-    // Statut visible sur chaque ligne (actifs d'abord) — sans ça il fallait un
-    // get_project par projet pour distinguer actif / archivé / en pause.
-    const docs = [...snap.docs].sort((a, b) => {
-        const rank = (d) => { var _a; return String((_a = d.status) !== null && _a !== void 0 ? _a : "active") !== "active" ? 2 : d.paused === true ? 1 : 0; };
-        return rank(a.data()) - rank(b.data());
-    });
-    const lines = docs.map((doc) => {
+    // Statut visible sur chaque ligne, actifs d'abord (puis pause, brouillons,
+    // archivés/terminés) — sans ça il fallait un get_project par projet.
+    const rank = (d) => {
         var _a;
+        const status = String((_a = d.status) !== null && _a !== void 0 ? _a : "active");
+        if (status === "active")
+            return d.paused === true ? 1 : 0;
+        return status === "draft" ? 2 : 3;
+    };
+    const docs = [...snap.docs].sort((a, b) => rank(a.data()) - rank(b.data()));
+    const lines = docs.map((doc) => {
+        var _a, _b;
         const d = doc.data();
         const taskCount = (d.tasks || []).length;
         const start = d.startDate || "?";
@@ -1086,7 +1093,8 @@ async function executeListProjects(uid) {
         const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
         const status = String((_a = d.status) !== null && _a !== void 0 ? _a : "active");
         const badge = status !== "active"
-            ? ` · ${status === "archived" ? "ARCHIVÉ" : status.toUpperCase()}`
+            ? ` · ${(_b = { archived: "ARCHIVÉ", draft: "BROUILLON",
+                completed: "TERMINÉ" }[status]) !== null && _b !== void 0 ? _b : status.toUpperCase()}`
             : d.paused === true ? " · EN PAUSE" : "";
         return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
     });
@@ -1100,7 +1108,12 @@ async function executeGetProject(uid, projectId) {
     // Retourner le JSON complet pour que Claude puisse le modifier
     return JSON.stringify(d, null, 2);
 }
-async function executePushGantt(uid, input, opts) {
+async function executePushGantt(uid, input, 
+// draftOnCreate : le cycle ORION autonome crée en brouillon (l'IA propose,
+// l'utilisateur dispose) ; le chemin MCP conversationnel crée ACTIF — le
+// user vient de le demander, un draft invisible dans activeProjects avait
+// été pris pour un bug (test connecteur 2026-09).
+opts) {
     const { project, strategicObjective } = input;
     let pickedProject;
     let pickedSO;
@@ -1121,14 +1134,19 @@ async function executePushGantt(uid, input, opts) {
     const projectId = project.id || (0, uuid_1.v4)();
     await db_1.db.collection(`users/${uid}/projects`).doc(projectId).set(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, pickedProject), { id: projectId, createdBy: uid, sourceType: "claude_mcp" }), ((opts === null || opts === void 0 ? void 0 : opts.source) ? { source: opts.source } : {})), ((opts === null || opts === void 0 ? void 0 : opts.originIdeas) && opts.originIdeas.length
         ? { originIdeas: db_1.FieldValue.arrayUnion(...opts.originIdeas) }
-        : {})), (project.id ? {} : { status: "draft" })), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
+        : {})), (project.id ? {} : { status: (opts === null || opts === void 0 ? void 0 : opts.draftOnCreate) ? "draft" : "active" })), (strategicObjectiveId ? { strategicObjectiveId } : {})), { updatedAt: db_1.FieldValue.serverTimestamp(), createdAt: db_1.FieldValue.serverTimestamp() }), { merge: true });
     if (strategicObjectiveId) {
         await db_1.db.collection(`users/${uid}/strategic_objectives`).doc(strategicObjectiveId)
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
     }
     const isUpdate = !!project.id;
+    const statusLine = isUpdate
+        ? ""
+        : `• statut : ${(opts === null || opts === void 0 ? void 0 : opts.draftOnCreate)
+            ? "brouillon (à valider dans l'app)" : "actif"}\n`;
     return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
+        statusLine +
         `• Voir sur : https://app.productivitwo.com\n` +
         `• projectId : ${projectId}`);
 }
