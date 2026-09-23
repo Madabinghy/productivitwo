@@ -416,11 +416,24 @@ class _WebActionsViewState extends State<WebActionsView> {
         .where((p) => p.status == 'active' && p.paused)
         .toList();
 
-    return SingleChildScrollView(
+    final today = DateTime.now();
+    final todayD = DateTime(today.year, today.month, today.day);
+
+    return LayoutBuilder(builder: (context, constraints) {
+      // ≥ 1200 px : les groupes s'étalent sur 2 colonnes (lot 4) au lieu
+      // d'une colonne mobile de 860 px qui laissait la moitié de l'écran vide.
+      final wide = constraints.maxWidth >= 1200;
+      final groupWidgets = <Widget>[
+        for (final g in groups)
+          _projectGroup(cs, g.project,
+              g.entries.where((e) => _visible(e.$2)).toList(),
+              hadAny: g.entries.isNotEmpty, today: todayD),
+      ];
+      return SingleChildScrollView(
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860),
+          constraints: BoxConstraints(maxWidth: wide ? 1360 : 860),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
@@ -474,10 +487,27 @@ class _WebActionsViewState extends State<WebActionsView> {
                   ),
 
                 // ── Par projet — GTD d'abord, Gantt à un clic ─────────────
-                for (final g in groups)
-                  _projectGroup(cs, g.project,
-                      g.entries.where((e) => _visible(e.$2)).toList(),
-                      hadAny: g.entries.isNotEmpty),
+                if (wide)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(children: [
+                          for (var i = 0; i < groupWidgets.length; i += 2)
+                            groupWidgets[i],
+                        ]),
+                      ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: Column(children: [
+                          for (var i = 1; i < groupWidgets.length; i += 2)
+                            groupWidgets[i],
+                        ]),
+                      ),
+                    ],
+                  )
+                else
+                  ...groupWidgets,
 
                 // ── Projets en pause ──────────────────────────────────────
                 if (paused.isNotEmpty) ...[
@@ -579,15 +609,19 @@ class _WebActionsViewState extends State<WebActionsView> {
         ),
       ),
     );
+    });
   }
 
   Widget _projectGroup(ColorScheme cs, Project p,
       List<(ProjectTask, TaskAction)> entries,
-      {required bool hadAny}) {
+      {required bool hadAny, DateTime? today}) {
     // Vidé par le filtre de contexte → masqué ; vraiment vide → invitation.
     if (entries.isEmpty && hadAny) return const SizedBox.shrink();
     final color =
         domainColor(p.domainId, widget.domains) ?? cs.primary;
+    // Progression x/y du projet (lot 4) — même mesure que le tableau de bord.
+    final real = p.tasks.where((t) => !t.isMilestone).toList();
+    final tasksDone = real.where((t) => t.status == 'done').length;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -610,6 +644,26 @@ class _WebActionsViewState extends State<WebActionsView> {
                       fontWeight: FontWeight.w800,
                       color: cs.onSurface.withOpacity(.8))),
             ),
+            if (real.isNotEmpty) ...[
+              SizedBox(
+                width: 48,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: tasksDone / real.length,
+                    minHeight: 4,
+                    color: color,
+                    backgroundColor: color.withOpacity(.15),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text('$tasksDone/${real.length}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface.withOpacity(.5))),
+            ],
             IconButton(
               tooltip: 'Ajouter une action',
               icon: Icon(Icons.add,
@@ -660,7 +714,9 @@ class _WebActionsViewState extends State<WebActionsView> {
               _actionTile(cs, e.$2,
                   onToggle: (v) => _toggleProjectAction(p, e.$2, v),
                   onTap: () => _editAction(e.$2, project: p, task: e.$1),
-                  onOpenTask: () => _openGantt(p, targetTaskId: e.$1.id)),
+                  onOpenTask: () => _openGantt(p, targetTaskId: e.$1.id),
+                  task: e.$1,
+                  today: today),
         ],
       ),
     );
@@ -669,7 +725,12 @@ class _WebActionsViewState extends State<WebActionsView> {
   Widget _actionTile(ColorScheme cs, TaskAction a,
       {required ValueChanged<bool> onToggle,
       required VoidCallback onTap,
-      VoidCallback? onOpenTask}) {
+      VoidCallback? onOpenTask,
+      ProjectTask? task,
+      DateTime? today}) {
+    // Échéance de la tâche parente (lot 4) — rouge si dépassée.
+    final due = task?.endDate;
+    final isLate = due != null && today != null && due.isBefore(today);
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
@@ -689,11 +750,47 @@ class _WebActionsViewState extends State<WebActionsView> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(children: [
                 Expanded(
-                  child: Text(a.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(a.title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      // D'où vient l'action : tâche parente + échéance (lot 4).
+                      if (task != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Row(children: [
+                            Icon(Icons.subdirectory_arrow_right_rounded,
+                                size: 11,
+                                color: cs.onSurface.withOpacity(.35)),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(task.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: cs.onSurface.withOpacity(.45))),
+                            ),
+                            if (due != null)
+                              Text(
+                                  ' · éch. ${due.day}/${due.month}'
+                                  '${isLate ? ' ⚠' : ''}',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isLate
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                      color: isLate
+                                          ? cs.error
+                                          : cs.onSurface.withOpacity(.45))),
+                          ]),
+                        ),
+                    ],
+                  ),
                 ),
                 if (a.allContexts.isNotEmpty)
                   Padding(
