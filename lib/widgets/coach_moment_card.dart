@@ -2,75 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 
-/// Carte coach contextuelle en tête de l'onglet « Maintenant ». Rend un
-/// [CoachMoment] calculé en local. Apparition / changement en fade + slide léger
-/// (200 ms, ease-out). Masquée hors des fenêtres (nuit) ou moment `hidden`.
+/// Carte coach ÉVÉNEMENTIELLE en tête de l'onglet « Maintenant ». Rend un
+/// [CoachMoment] calculé en local — uniquement « Et ensuite ? » (fin de
+/// chrono) et « Dérive détectée » ; l'état normal est l'absence de carte.
+/// Apparition / changement en fade + slide léger (200 ms, ease-out).
 class CoachMomentCard extends StatelessWidget {
   final CoachMoment moment;
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
-  final VoidCallback? onOpenDayReview;
-  // CTA de transition (« Attaquer la journée »…) : avance manuellement au
-  // moment suivant sans attendre l'horloge.
-  final void Function(CoachMomentType target)? onAdvance;
-  // « Planifier · 2 min » (journée non planifiée) → écran de planification.
-  final VoidCallback? onPlanDay;
-  // « À la volée » → masque la carte pour la matinée.
+  // « Ignorer » (dérive) : silence jusqu'à demain.
   final VoidCallback? onDismiss;
-  // Carte midi menu (15c) : ✓ Mangé / « Autre chose » (glisse le menu d'un jour).
-  final void Function(String artifactId)? onMealEaten;
-  final void Function(String artifactId)? onMealShift;
-  // « Lire le rapport — 3 min » (16a) → écran du rapport hebdo.
-  final VoidCallback? onOpenWeeklyReport;
-  // Nudge domaines (Partie D) : nommage in-place / session sur place.
-  final VoidCallback? onNameDomains;
-  final VoidCallback? onNameTonight;
-  final void Function(String domain, {bool short})? onStartSession;
-  final VoidCallback? onPoseSessions;
-  // « Terminer l'après-midi — mode soirée » (23c) : bascule réversible.
-  final VoidCallback? onEndAfternoon;
-  // « Je suis dispo » — efface la fenêtre d'indisponibilité déclarée.
-  final VoidCallback? onAvailableNow;
-  // « Planifions — [routine] » → date/heure de la prochaine exécution.
-  final void Function(ScheduleBlock block)? onPlanNext;
-  // Défi ORION : « Je relève 🔥 » (chrono + alarme + streak) / « Programmer 📅 ».
+  // Défi ORION : « Je relève 🔥 » (chrono + alarme + streak).
   final void Function(ScheduleBlock block)? onChallengeAccept;
-  final void Function(ScheduleBlock block)? onChallengeSchedule;
   // ✓ — coche directe d'une routine sans minuteur (pas de chrono).
   final void Function(ScheduleBlock block)? onCheckRoutine;
-  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
-  final void Function(ScheduleBlock block)? onDefineSteps;
-  final void Function(ScheduleBlock block)? onScheduleStep;
-  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
-  final void Function(ScheduleBlock block)? onKeepMicroTarget;
-  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const CoachMomentCard({
     super.key,
     required this.moment,
     this.onLaunch,
     this.onRenegotiate,
-    this.onOpenDayReview,
-    this.onAdvance,
-    this.onPlanDay,
     this.onDismiss,
-    this.onMealEaten,
-    this.onMealShift,
-    this.onOpenWeeklyReport,
-    this.onNameDomains,
-    this.onNameTonight,
-    this.onStartSession,
-    this.onPoseSessions,
-    this.onEndAfternoon,
-    this.onAvailableNow,
-    this.onPlanNext,
     this.onChallengeAccept,
-    this.onChallengeSchedule,
     this.onCheckRoutine,
-    this.onDefineSteps,
-    this.onScheduleStep,
-    this.onKeepMicroTarget,
-    this.onCalibrateTarget,
   });
 
   @override
@@ -95,27 +49,9 @@ class CoachMomentCard extends StatelessWidget {
               moment: moment,
               onLaunch: onLaunch,
               onRenegotiate: onRenegotiate,
-              onOpenDayReview: onOpenDayReview,
-              onAdvance: onAdvance,
-              onPlanDay: onPlanDay,
               onDismiss: onDismiss,
-              onMealEaten: onMealEaten,
-              onMealShift: onMealShift,
-              onOpenWeeklyReport: onOpenWeeklyReport,
-              onNameDomains: onNameDomains,
-              onNameTonight: onNameTonight,
-              onStartSession: onStartSession,
-              onPoseSessions: onPoseSessions,
-              onEndAfternoon: onEndAfternoon,
-              onAvailableNow: onAvailableNow,
-              onPlanNext: onPlanNext,
               onChallengeAccept: onChallengeAccept,
-              onChallengeSchedule: onChallengeSchedule,
               onCheckRoutine: onCheckRoutine,
-              onDefineSteps: onDefineSteps,
-              onScheduleStep: onScheduleStep,
-              onKeepMicroTarget: onKeepMicroTarget,
-              onCalibrateTarget: onCalibrateTarget,
             ),
     );
   }
@@ -125,56 +61,18 @@ class _Card extends StatelessWidget {
   final CoachMoment moment;
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
-  final VoidCallback? onOpenDayReview;
-  final void Function(CoachMomentType target)? onAdvance;
-  final VoidCallback? onPlanDay;
   final VoidCallback? onDismiss;
-  final void Function(String artifactId)? onMealEaten;
-  final void Function(String artifactId)? onMealShift;
-  final VoidCallback? onOpenWeeklyReport;
-  final VoidCallback? onNameDomains;
-  final VoidCallback? onNameTonight;
-  final void Function(String domain, {bool short})? onStartSession;
-  final VoidCallback? onPoseSessions;
-  final VoidCallback? onEndAfternoon;
-  final VoidCallback? onAvailableNow;
-  final void Function(ScheduleBlock block)? onPlanNext;
   final void Function(ScheduleBlock block)? onChallengeAccept;
-  final void Function(ScheduleBlock block)? onChallengeSchedule;
   final void Function(ScheduleBlock block)? onCheckRoutine;
-  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
-  final void Function(ScheduleBlock block)? onDefineSteps;
-  final void Function(ScheduleBlock block)? onScheduleStep;
-  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
-  final void Function(ScheduleBlock block)? onKeepMicroTarget;
-  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const _Card({
     super.key,
     required this.moment,
     this.onLaunch,
     this.onRenegotiate,
-    this.onOpenDayReview,
-    this.onAdvance,
-    this.onPlanDay,
     this.onDismiss,
-    this.onMealEaten,
-    this.onMealShift,
-    this.onOpenWeeklyReport,
-    this.onNameDomains,
-    this.onNameTonight,
-    this.onStartSession,
-    this.onPoseSessions,
-    this.onEndAfternoon,
-    this.onAvailableNow,
-    this.onPlanNext,
     this.onChallengeAccept,
-    this.onChallengeSchedule,
     this.onCheckRoutine,
-    this.onDefineSteps,
-    this.onScheduleStep,
-    this.onKeepMicroTarget,
-    this.onCalibrateTarget,
   });
 
   @override
@@ -225,50 +123,12 @@ class _Card extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 17, fontWeight: FontWeight.w800)),
           ],
-          // Chips domaines du nudge (21b) : « Santé ✓ · Business · Perso ».
-          if (moment.chips.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final c in moment.chips)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                          color: c.done
-                              ? cs.primary.withOpacity(.5)
-                              : cs.onSurface.withOpacity(.25)),
-                      color: c.done
-                          ? cs.primary.withOpacity(.08)
-                          : Colors.transparent,
-                    ),
-                    child: Text(
-                      c.done ? '${c.label} ✓' : c.label,
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: c.done
-                              ? cs.primary
-                              : cs.onSurface.withOpacity(.6)),
-                    ),
-                  ),
-              ],
-            ),
-          ],
           const SizedBox(height: 8),
           Text(
             moment.message,
             style: TextStyle(
                 fontSize: 14, height: 1.4, color: cs.onSurface.withOpacity(.9)),
           ),
-          if (moment.stats.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _StatsRow(stats: moment.stats, accent: accent),
-          ],
           if (moment.actions.isNotEmpty) ...[
             const SizedBox(height: 14),
             _Actions(
@@ -276,27 +136,9 @@ class _Card extends StatelessWidget {
               accent: accent,
               onLaunch: onLaunch,
               onRenegotiate: onRenegotiate,
-              onOpenDayReview: onOpenDayReview,
-              onAdvance: onAdvance,
-              onPlanDay: onPlanDay,
               onDismiss: onDismiss,
-              onMealEaten: onMealEaten,
-              onMealShift: onMealShift,
-              onOpenWeeklyReport: onOpenWeeklyReport,
-              onNameDomains: onNameDomains,
-              onNameTonight: onNameTonight,
-              onStartSession: onStartSession,
-              onPoseSessions: onPoseSessions,
-              onEndAfternoon: onEndAfternoon,
-              onAvailableNow: onAvailableNow,
-              onPlanNext: onPlanNext,
               onChallengeAccept: onChallengeAccept,
-              onChallengeSchedule: onChallengeSchedule,
               onCheckRoutine: onCheckRoutine,
-              onDefineSteps: onDefineSteps,
-              onScheduleStep: onScheduleStep,
-              onKeepMicroTarget: onKeepMicroTarget,
-              onCalibrateTarget: onCalibrateTarget,
             ),
           ],
         ],
@@ -309,210 +151,23 @@ class _Card extends StatelessWidget {
       cs.brightness == Brightness.dark ? const Color(0xFFFFB74D) : const Color(0xFFEF8B1F);
 }
 
-class _StatsRow extends StatelessWidget {
-  final List<StatItem> stats;
-  final Color accent;
-  const _StatsRow({required this.stats, required this.accent});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Wrap(
-      spacing: 22,
-      runSpacing: 10,
-      children: [
-        for (final s in stats)
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                s.value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: accent,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                s.label,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: .4,
-                    color: cs.onSurface.withOpacity(.5)),
-              ),
-              if (s.sub != null)
-                SizedBox(
-                  width: 120,
-                  child: Text(
-                    s.sub!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 11, color: cs.onSurface.withOpacity(.65)),
-                  ),
-                ),
-              if (s.bars != null) ...[
-                const SizedBox(height: 6),
-                SizedBox(
-                  width: 132,
-                  height: 32,
-                  child: CustomPaint(
-                    painter: _MiniBarsPainter(
-                      bars: s.bars!,
-                      target: s.barTarget,
-                      elapsed: s.barsElapsed,
-                      accent: accent,
-                      slot: cs.onSurface.withOpacity(.06),
-                      targetInk: cs.onSurface.withOpacity(.45),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// Mini-histogramme 7 jours (lun → dim) : barres fines arrondies en tête,
-/// ancrées à la ligne de base, cible en POINTILLÉS (encre atténuée — la
-/// couleur reste à la donnée). Les jours à venir gardent leur emplacement
-/// (fond de slot discret) sans barre.
-class _MiniBarsPainter extends CustomPainter {
-  final List<double> bars;
-  final double? target;
-  final int elapsed;
-  final Color accent;
-  final Color slot;
-  final Color targetInk;
-
-  const _MiniBarsPainter({
-    required this.bars,
-    required this.target,
-    required this.elapsed,
-    required this.accent,
-    required this.slot,
-    required this.targetInk,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const gap = 2.0;
-    final n = bars.length;
-    if (n == 0) return;
-    final bw = (size.width - gap * (n - 1)) / n;
-    // Échelle : le max des barres OU la cible (avec marge) — la cible reste
-    // toujours DANS le cadre, sinon les pointillés sortiraient du graphe.
-    var maxV = bars.fold<double>(0, (a, b) => a > b ? a : b);
-    if (target != null && target! > maxV) maxV = target!;
-    if (maxV <= 0) maxV = 1;
-    maxV *= 1.12;
-
-    final slotPaint = Paint()..color = slot;
-    final barPaint = Paint()..color = accent;
-    for (var i = 0; i < n; i++) {
-      final x = i * (bw + gap);
-      // Fond de slot : les 7 jours existent, même vides / à venir.
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-            Rect.fromLTWH(x, 0, bw, size.height), const Radius.circular(2)),
-        slotPaint,
-      );
-      final h = (bars[i] / maxV) * size.height;
-      if (h <= 0 || i >= elapsed) continue;
-      canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          Rect.fromLTWH(x, size.height - h, bw, h),
-          topLeft: const Radius.circular(2),
-          topRight: const Radius.circular(2),
-        ),
-        barPaint,
-      );
-    }
-
-    // Cible en pointillés.
-    final t = target;
-    if (t != null && t > 0) {
-      final y = size.height - (t / maxV) * size.height;
-      final dash = Paint()
-        ..color = targetInk
-        ..strokeWidth = 1;
-      var x = 0.0;
-      while (x < size.width) {
-        canvas.drawLine(Offset(x, y), Offset((x + 3).clamp(0, size.width), y), dash);
-        x += 6;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_MiniBarsPainter old) =>
-      old.bars != bars ||
-      old.target != target ||
-      old.elapsed != elapsed ||
-      old.accent != accent;
-}
-
 class _Actions extends StatelessWidget {
   final List<CoachAction> actions;
   final Color accent;
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onRenegotiate;
-  final VoidCallback? onOpenDayReview;
-  final void Function(CoachMomentType target)? onAdvance;
-  final VoidCallback? onPlanDay;
   final VoidCallback? onDismiss;
-  final void Function(String artifactId)? onMealEaten;
-  final void Function(String artifactId)? onMealShift;
-  final VoidCallback? onOpenWeeklyReport;
-  final VoidCallback? onNameDomains;
-  final VoidCallback? onNameTonight;
-  final void Function(String domain, {bool short})? onStartSession;
-  final VoidCallback? onPoseSessions;
-  final VoidCallback? onEndAfternoon;
-  final VoidCallback? onAvailableNow;
-  final void Function(ScheduleBlock block)? onPlanNext;
   final void Function(ScheduleBlock block)? onChallengeAccept;
-  final void Function(ScheduleBlock block)? onChallengeSchedule;
   final void Function(ScheduleBlock block)? onCheckRoutine;
-  // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
-  final void Function(ScheduleBlock block)? onDefineSteps;
-  final void Function(ScheduleBlock block)? onScheduleStep;
-  // Réglage micro-cible : épingler le déclencheur / caler sur le réel.
-  final void Function(ScheduleBlock block)? onKeepMicroTarget;
-  final void Function(ScheduleBlock block)? onCalibrateTarget;
 
   const _Actions({
     required this.actions,
     required this.accent,
     this.onLaunch,
     this.onRenegotiate,
-    this.onOpenDayReview,
-    this.onAdvance,
-    this.onPlanDay,
     this.onDismiss,
-    this.onMealEaten,
-    this.onMealShift,
-    this.onOpenWeeklyReport,
-    this.onNameDomains,
-    this.onNameTonight,
-    this.onStartSession,
-    this.onPoseSessions,
-    this.onEndAfternoon,
-    this.onAvailableNow,
-    this.onPlanNext,
     this.onChallengeAccept,
-    this.onChallengeSchedule,
     this.onCheckRoutine,
-    this.onDefineSteps,
-    this.onScheduleStep,
-    this.onKeepMicroTarget,
-    this.onCalibrateTarget,
   });
 
   @override
@@ -527,52 +182,18 @@ class _Actions extends StatelessWidget {
   Widget _button(BuildContext context, CoachAction a) {
     final cs = Theme.of(context).colorScheme;
     final isPrimary = a.kind == CoachActionKind.launchBlock ||
-        a.kind == CoachActionKind.planDay ||
-        a.kind == CoachActionKind.openWeeklyReport ||
-        a.kind == CoachActionKind.nameDomains ||
-        a.kind == CoachActionKind.startSession ||
-        a.kind == CoachActionKind.startSessionShort ||
-        a.kind == CoachActionKind.planNext ||
-        a.kind == CoachActionKind.challengeAccept ||
-        a.kind == CoachActionKind.defineSteps;
-    // Secondaires du nudge / bascule système : liens discrets sous le CTA.
-    final isQuiet = a.kind == CoachActionKind.nameTonight ||
-        a.kind == CoachActionKind.poseSessions ||
-        a.kind == CoachActionKind.endAfternoon ||
-        a.kind == CoachActionKind.cookFirst ||
-        (a.kind == CoachActionKind.dismiss &&
-            a.label.startsWith('Garder'));
+        a.kind == CoachActionKind.challengeAccept;
     final onTap = _handlerFor(a);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(999));
     final icon = switch (a.kind) {
       CoachActionKind.launchBlock => Icons.play_arrow_rounded,
-      CoachActionKind.openDayReview => Icons.nightlight_round,
       CoachActionKind.renegotiate => Icons.tune_rounded,
-      CoachActionKind.advanceMoment => Icons.arrow_forward_rounded,
-      CoachActionKind.planDay => Icons.edit_calendar_outlined,
       CoachActionKind.dismiss => Icons.skip_next_outlined,
-      CoachActionKind.mealEaten => Icons.check_rounded,
-      CoachActionKind.mealShift => Icons.swap_horiz_rounded,
-      CoachActionKind.cookFirst => Icons.soup_kitchen_outlined,
-      CoachActionKind.openWeeklyReport => Icons.insights_rounded,
-      CoachActionKind.nameDomains => Icons.flag_rounded,
-      CoachActionKind.nameTonight => Icons.nightlight_outlined,
-      CoachActionKind.startSession => Icons.auto_awesome,
-      CoachActionKind.startSessionShort => Icons.bolt_rounded,
-      CoachActionKind.poseSessions => Icons.event_available_outlined,
-      CoachActionKind.endAfternoon => Icons.nights_stay_outlined,
-      CoachActionKind.availableNow => Icons.notifications_active_outlined,
-      CoachActionKind.planNext => Icons.event_available_outlined,
       CoachActionKind.challengeAccept => Icons.local_fire_department_rounded,
-      CoachActionKind.challengeSchedule => Icons.event_outlined,
       CoachActionKind.checkRoutine => Icons.check_rounded,
-      CoachActionKind.defineSteps => Icons.checklist_rounded,
-      CoachActionKind.scheduleStep => Icons.event_outlined,
-      CoachActionKind.keepMicroTarget => Icons.push_pin_outlined,
-      CoachActionKind.calibrateTarget => Icons.straighten_rounded,
     };
-    // Transition de moment / secondaires du nudge : bouton discret (texte).
-    if (a.kind == CoachActionKind.advanceMoment || isQuiet) {
+    // « Ignorer » : lien discret sous les vrais CTA.
+    if (a.kind == CoachActionKind.dismiss) {
       return TextButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 16),
@@ -623,81 +244,15 @@ class _Actions extends StatelessWidget {
         return a.block != null && onRenegotiate != null
             ? () => onRenegotiate!(a.block!)
             : null;
-      case CoachActionKind.openDayReview:
-        return onOpenDayReview;
-      case CoachActionKind.advanceMoment:
-        return a.target != null && onAdvance != null
-            ? () => onAdvance!(a.target!)
-            : null;
-      case CoachActionKind.planDay:
-        return onPlanDay;
       case CoachActionKind.dismiss:
         return onDismiss;
-      case CoachActionKind.mealEaten:
-        return a.artifactId != null && onMealEaten != null
-            ? () => onMealEaten!(a.artifactId!)
-            : null;
-      case CoachActionKind.mealShift:
-        return a.artifactId != null && onMealShift != null
-            ? () => onMealShift!(a.artifactId!)
-            : null;
-      case CoachActionKind.cookFirst:
-        // Bloc synthétique → même launcher que les blocs du programme (il ne
-        // fait que démarrer le chrono sur l'activité Cuisine).
-        return a.block != null && onLaunch != null
-            ? () => onLaunch!(a.block!)
-            : null;
-      case CoachActionKind.openWeeklyReport:
-        return onOpenWeeklyReport;
-      case CoachActionKind.nameDomains:
-        return onNameDomains;
-      case CoachActionKind.nameTonight:
-        return onNameTonight;
-      case CoachActionKind.startSession:
-        return a.domain != null && onStartSession != null
-            ? () => onStartSession!(a.domain!)
-            : null;
-      case CoachActionKind.startSessionShort:
-        return a.domain != null && onStartSession != null
-            ? () => onStartSession!(a.domain!, short: true)
-            : null;
-      case CoachActionKind.poseSessions:
-        return onPoseSessions;
-      case CoachActionKind.endAfternoon:
-        return onEndAfternoon;
-      case CoachActionKind.availableNow:
-        return onAvailableNow;
-      case CoachActionKind.planNext:
-        return a.block != null && onPlanNext != null
-            ? () => onPlanNext!(a.block!)
-            : null;
       case CoachActionKind.challengeAccept:
         return a.block != null && onChallengeAccept != null
             ? () => onChallengeAccept!(a.block!)
             : null;
-      case CoachActionKind.challengeSchedule:
-        return a.block != null && onChallengeSchedule != null
-            ? () => onChallengeSchedule!(a.block!)
-            : null;
       case CoachActionKind.checkRoutine:
         return a.block != null && onCheckRoutine != null
             ? () => onCheckRoutine!(a.block!)
-            : null;
-      case CoachActionKind.defineSteps:
-        return a.block != null && onDefineSteps != null
-            ? () => onDefineSteps!(a.block!)
-            : null;
-      case CoachActionKind.scheduleStep:
-        return a.block != null && onScheduleStep != null
-            ? () => onScheduleStep!(a.block!)
-            : null;
-      case CoachActionKind.keepMicroTarget:
-        return a.block != null && onKeepMicroTarget != null
-            ? () => onKeepMicroTarget!(a.block!)
-            : null;
-      case CoachActionKind.calibrateTarget:
-        return a.block != null && onCalibrateTarget != null
-            ? () => onCalibrateTarget!(a.block!)
             : null;
     }
   }
