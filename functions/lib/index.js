@@ -22,7 +22,6 @@ const orion_restructure_1 = require("./orion_restructure");
 const orion_brief_1 = require("./orion_brief");
 const models_1 = require("./models");
 const sdk_1 = require("@anthropic-ai/sdk");
-const sgMail = require("@sendgrid/mail");
 const orion_tasks_1 = require("./orion_tasks");
 const weekly_report_1 = require("./weekly_report");
 const domain_facts_1 = require("./domain_facts");
@@ -1400,11 +1399,12 @@ exports.getCustomToken = (0, https_1.onRequest)({ cors: true, invoker: "public" 
 // POST https://sendmagiclink-dzos75b65q-uc.a.run.app
 // Body: { email, continueUrl? }
 //
-// Génère un lien de connexion passwordless (Admin SDK) et l'envoie via SendGrid
+// Génère un lien de connexion passwordless (Admin SDK) et l'envoie via Brevo
+// (API transactionnelle — SendGrid abandonné : « Maximum credits exceeded »)
 // avec un mail HTML brandé Productivitwo — remplace le mail générique Firebase.
 // La complétion côté client reste signInWithEmailLink (inchangée).
-// ⚠️ MAGIC_FROM_EMAIL doit être un expéditeur VÉRIFIÉ dans SendGrid
-// (Single Sender ou domaine authentifié). Sinon SendGrid rejette l'envoi.
+// ⚠️ MAGIC_FROM_EMAIL doit être un expéditeur VÉRIFIÉ dans Brevo
+// (sender vérifié ou domaine authentifié). Sinon Brevo rejette l'envoi.
 const MAGIC_FROM_EMAIL = "noreply@productivitwo.com";
 const MAGIC_FROM_NAME = "Productivitwo";
 const MAGIC_DEFAULT_CONTINUE_URL = "https://app.productivitwo.com/";
@@ -1454,7 +1454,7 @@ async function checkMagicLinkThrottle(email) {
     await ref.set({ count: count + 1, windowStart: expired ? now : ((_d = data.windowStart) !== null && _d !== void 0 ? _d : now) }, { merge: true });
     return false;
 }
-exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["SENDGRID_API_KEY"] }, async (req, res) => {
+exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", secrets: ["BREVO_API_KEY"] }, async (req, res) => {
     var _a, _b, _c;
     if (req.method === "OPTIONS") {
         res.status(204).send("");
@@ -1490,9 +1490,9 @@ exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", 
         });
         return;
     }
-    const apiKey = process.env.SENDGRID_API_KEY;
+    const apiKey = process.env.BREVO_API_KEY;
     if (!apiKey) {
-        res.status(500).json({ error: "SENDGRID_API_KEY non configurée" });
+        res.status(500).json({ error: "BREVO_API_KEY non configurée" });
         return;
     }
     if (await checkMagicLinkThrottle(cleanEmail)) {
@@ -1507,15 +1507,25 @@ exports.sendMagicLink = (0, https_1.onRequest)({ cors: true, invoker: "public", 
             url,
             handleCodeInApp: true,
         });
-        sgMail.setApiKey(apiKey);
-        await sgMail.send({
-            to: cleanEmail,
-            from: { email: MAGIC_FROM_EMAIL, name: MAGIC_FROM_NAME },
-            subject: "Ton lien de connexion Productivitwo",
-            text: `Connecte-toi à Productivitwo en ouvrant ce lien :\n\n${link}\n\n` +
-                `Tu n'as pas demandé cette connexion ? Ignore cet email.`,
-            html: magicLinkEmailHtml(link),
+        const send = await fetch("https://api.brevo.com/v3/smtp/email", {
+            method: "POST",
+            headers: {
+                "api-key": apiKey,
+                "content-type": "application/json",
+                "accept": "application/json",
+            },
+            body: JSON.stringify({
+                sender: { email: MAGIC_FROM_EMAIL, name: MAGIC_FROM_NAME },
+                to: [{ email: cleanEmail }],
+                subject: "Ton lien de connexion Productivitwo",
+                textContent: `Connecte-toi à Productivitwo en ouvrant ce lien :\n\n${link}\n\n` +
+                    `Tu n'as pas demandé cette connexion ? Ignore cet email.`,
+                htmlContent: magicLinkEmailHtml(link),
+            }),
         });
+        if (!send.ok) {
+            throw new Error(`Brevo ${send.status}: ${await send.text()}`);
+        }
         res.status(200).json({ ok: true });
     }
     catch (e) {

@@ -121,15 +121,6 @@ void main() {
       expect(m.type, CoachMomentType.drift);
     });
 
-    test('mode soirée (journée pliée tôt) → silence, même une dérive', () {
-      final now = DateTime(2026, 7, 7, 16, 0);
-      final sched = DailySchedule(date: today, dayMode: 'evening', blocks: [
-        _block(startTime: '14:00', title: 'Relances', activityId: 'a'),
-      ]);
-      final m = computeCoachMoment(now, _st([]), sched, []);
-      expect(m.hidden, isTrue);
-    });
-
     test('rétrocompat : programme sans champ kind → calcul sans crash', () {
       final now = DateTime(2026, 7, 7, 10, 0);
       final legacy = ScheduleBlock.from({

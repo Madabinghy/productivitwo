@@ -2866,18 +2866,6 @@ class FirestoreSync {
     await ref.update({'blocks': blocks});
   }
 
-  /// Mode soirée réversible (23c) : « Terminer l'après-midi » ↔ « Revenir ».
-  /// N'écrit QUE le mode — les blocs ne sont jamais touchés par la bascule.
-  Future<void> setDayMode(String date, String mode) async {
-    if (uid == null) return;
-    await _db.doc('users/$uid/daily_schedules/$date').set({
-      'date': date,
-      'dayMode': mode,
-      'dayModeActivatedAt':
-          mode == 'evening' ? DateTime.now().toIso8601String() : null,
-    }, SetOptions(merge: true));
-  }
-
   /// Disponibilité déclarée : « pas dispo avant [until] » — le coach suit le
   /// flow jusqu'à cette heure. null = « je suis dispo » (efface la fenêtre).
   Future<void> setUnavailability(String date, DateTime? until,

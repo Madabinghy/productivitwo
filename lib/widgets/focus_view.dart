@@ -792,50 +792,6 @@ class _FocusViewState extends State<FocusView> {
     );
   }
 
-  // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
-
-  /// Bandeau d'état permanent en tête de Maintenant tant que le mode est actif.
-  Widget _eveningModeBanner(ColorScheme cs) {
-    final at = _schedule?.dayModeActivatedAt;
-    final atStr = at != null
-        ? ' — activé à ${at.hour}:${at.minute.toString().padLeft(2, '0')}'
-        : '';
-    final amber = cs.brightness == Brightness.dark
-        ? const Color(0xFFFFB74D)
-        : const Color(0xFFEF8B1F);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: amber.withOpacity(.5)),
-        color: amber.withOpacity(.08),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text('Mode soirée$atStr',
-                style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: amber)),
-          ),
-          // « Revenir » restaure le programme tel quel (rien n'a été modifié).
-          TextButton(
-            onPressed: () => _sync.setDayMode(_schedDate, 'normal'),
-            style: TextButton.styleFrom(
-              foregroundColor: amber,
-              visualDensity: VisualDensity.compact,
-            ),
-            child: const Text('↩ Revenir à l\'après-midi',
-                style: TextStyle(fontSize: 12.5)),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── Maintenant adaptatif (tour 24) : état → la FORME change, jamais le fond ─
 
   List<ScheduleBlock> get _liveBlocks =>
@@ -2696,7 +2652,6 @@ class _FocusViewState extends State<FocusView> {
           children: [
             _header(cs, now),
             const SizedBox(height: 20),
-            if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachZone(now),
             _contextSection(cs),
             _focusCard(context, cs, b, now),
@@ -2985,7 +2940,6 @@ class _FocusViewState extends State<FocusView> {
           children: [
             _header(cs, now),
             const SizedBox(height: 20),
-            if (_schedule?.eveningMode == true) _eveningModeBanner(cs),
             _coachZone(now),
             _contextSection(cs),
             // Bloc au-delà de l'horizon (ex : Hygiène du soir à 21 h vu à
