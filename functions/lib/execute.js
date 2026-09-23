@@ -162,9 +162,24 @@ function pickTask(t) {
     if (!TASK_STATUSES.has(rawStatus))
         throw new Error(`task.status invalide : "${rawStatus}"`);
     const rawActions = Array.isArray(t.actions) ? t.actions : [];
-    const actions = rawActions.map((a) => typeof a === "string"
-        ? { id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() }
-        : a);
+    // TaskAction map normalisée dans les DEUX cas : string (nouvelle action) et
+    // objet (round-trip get_project → push_gantt, OU action neuve avec
+    // linkedActivityId/contexts posés directement — même effet que
+    // link_action_to_activity). id/done/doneAt/createdAt sont préservés quand
+    // fournis pour ne jamais perdre la progression au re-push.
+    const actions = rawActions.map((a) => {
+        var _a;
+        if (typeof a === "string") {
+            return { id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null,
+                createdAt: new Date().toISOString() };
+        }
+        const o = typeof a === "object" && a !== null
+            ? a : {};
+        return Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+                ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
+            ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}));
+    });
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions });
 }
 function pickProject(p) {
@@ -353,8 +368,10 @@ async function executeGetUserContext(uid) {
         db_1.db.collection(`users/${uid}/sessions`)
             .where("startAt", ">=", sevenDaysAgo.toISOString())
             .get(),
-        // Projets actifs
-        db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+        // Projets — TOUS, filtrés en code : un `where status == active` exclurait
+        // les docs legacy SANS champ status (constaté : activeProjects vide alors
+        // que des projets actifs existent — l'app les traite comme actifs).
+        db_1.db.collection(`users/${uid}/projects`).get(),
         // Programme du jour
         db_1.db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
         // Inbox (idées en attente)
@@ -391,9 +408,12 @@ async function executeGetUserContext(uid) {
         const v = doc.data();
         hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1);
     }
+    // Une session/hit peut référencer une activité DUREMENT supprimée (doc
+    // disparu) : un nom lisible plutôt qu'un id brut dans le contexte.
+    const nameOf = (id) => activityMap.get(id) || `(activité supprimée · ${id.slice(0, 8)}…)`;
     const habitCompletion = Array.from(hitsByHabit.entries()).map(([id, count]) => ({
         activityId: id,
-        name: activityMap.get(id) || id,
+        name: nameOf(id),
         hitsLast7Days: count,
     }));
     // Temps loggué par activité (sessions)
@@ -411,7 +431,7 @@ async function executeGetUserContext(uid) {
     }
     const timeLogged = Array.from(minByActivity.entries()).map(([id, mins]) => ({
         activityId: id,
-        name: activityMap.get(id) || id,
+        name: nameOf(id),
         minutesLast7Days: mins,
         hoursLast7Days: Math.round(mins / 6) / 10, // arrondi 1 décimale
     }));
@@ -422,8 +442,9 @@ async function executeGetUserContext(uid) {
     };
     // ── Projets actifs (résumé) ────────────────────────────────────────────────
     const today = new Date(todayStr);
+    const isActive = (p) => { var _a; return String((_a = p.status) !== null && _a !== void 0 ? _a : "active") === "active"; }; // legacy sans status = actif
     const activeProjects = projectsSnap.docs
-        .filter((d) => d.data().paused !== true) // en pause = hors radar IA
+        .filter((d) => isActive(d.data()) && d.data().paused !== true)
         .map((d) => {
         var _a, _b;
         const p = d.data();
@@ -446,6 +467,11 @@ async function executeGetUserContext(uid) {
             nextDeadline,
         };
     });
+    // Projets actifs mais EN PAUSE : hors radar de planification, mais cités
+    // pour que l'IA sache qu'ils existent (sinon « projet invisible »).
+    const pausedProjects = projectsSnap.docs
+        .filter((d) => isActive(d.data()) && d.data().paused === true)
+        .map((d) => ({ id: d.data().id, title: d.data().title, paused: true }));
     // ── Programme du jour ──────────────────────────────────────────────────────
     const scheduleData = scheduleSnap.exists ? scheduleSnap.data() : null;
     const todaySchedule = scheduleData
@@ -508,11 +534,10 @@ async function executeGetUserContext(uid) {
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
-    return JSON.stringify(Object.assign(Object.assign({}, coachingRules), { today: todayStr, domains,
+    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, domains,
         activities,
         objectives,
-        activeProjects,
-        todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
+        activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
 }
 async function executeUpdateActivityGoal(uid, activityId, updates) {
     var _a, _b;
@@ -1046,13 +1071,24 @@ async function executeListProjects(uid) {
     const snap = await db_1.db.collection(`users/${uid}/projects`).get();
     if (snap.empty)
         return "Aucun projet trouvé dans Productivitwo.";
-    const lines = snap.docs.map((doc) => {
+    // Statut visible sur chaque ligne (actifs d'abord) — sans ça il fallait un
+    // get_project par projet pour distinguer actif / archivé / en pause.
+    const docs = [...snap.docs].sort((a, b) => {
+        const rank = (d) => { var _a; return String((_a = d.status) !== null && _a !== void 0 ? _a : "active") !== "active" ? 2 : d.paused === true ? 1 : 0; };
+        return rank(a.data()) - rank(b.data());
+    });
+    const lines = docs.map((doc) => {
+        var _a;
         const d = doc.data();
         const taskCount = (d.tasks || []).length;
         const start = d.startDate || "?";
         const end = d.endDate || "?";
         const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
-        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain})`;
+        const status = String((_a = d.status) !== null && _a !== void 0 ? _a : "active");
+        const badge = status !== "active"
+            ? ` · ${status === "archived" ? "ARCHIVÉ" : status.toUpperCase()}`
+            : d.paused === true ? " · EN PAUSE" : "";
+        return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
     });
     return `Projets Productivitwo (${snap.size}) :\n${lines.join("\n")}`;
 }
@@ -1178,7 +1214,7 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g;
+                var _a, _b, _c, _d, _e, _f, _g, _h;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1191,12 +1227,12 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     doneAt: (_c = previous === null || previous === void 0 ? void 0 : previous.doneAt) !== null && _c !== void 0 ? _c : null,
                     createdAt: new Date().toISOString(),
                     // Préserve le lien chrono et le contexte GTD d'une action conservée
-                    // (le payload peut aussi poser un context explicite).
-                    linkedActivityId: (_d = previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _d !== void 0 ? _d : null,
-                    context: (_f = (_e = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _e !== void 0 ? _e : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _f !== void 0 ? _f : null,
+                    // (le payload peut aussi poser linkedActivityId/context explicites).
+                    linkedActivityId: (_e = (_d = obj === null || obj === void 0 ? void 0 : obj.linkedActivityId) !== null && _d !== void 0 ? _d : previous === null || previous === void 0 ? void 0 : previous.linkedActivityId) !== null && _e !== void 0 ? _e : null,
+                    context: (_g = (_f = obj === null || obj === void 0 ? void 0 : obj.context) !== null && _f !== void 0 ? _f : previous === null || previous === void 0 ? void 0 : previous.context) !== null && _g !== void 0 ? _g : null,
                     contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
-                        : (_g = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _g !== void 0 ? _g : [],
+                        : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
                 };
             });
         }

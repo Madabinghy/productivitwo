@@ -121,11 +121,32 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
   const rawStatus = typeof t.status === "string" ? t.status : "pending";
   if (!TASK_STATUSES.has(rawStatus)) throw new Error(`task.status invalide : "${rawStatus}"`);
   const rawActions = Array.isArray(t.actions) ? t.actions : [];
-  const actions = rawActions.map((a: unknown) =>
-    typeof a === "string"
-      ? { id: uuidv4(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() }
-      : a
-  );
+  // TaskAction map normalisée dans les DEUX cas : string (nouvelle action) et
+  // objet (round-trip get_project → push_gantt, OU action neuve avec
+  // linkedActivityId/contexts posés directement — même effet que
+  // link_action_to_activity). id/done/doneAt/createdAt sont préservés quand
+  // fournis pour ne jamais perdre la progression au re-push.
+  const actions = rawActions.map((a: unknown) => {
+    if (typeof a === "string") {
+      return { id: uuidv4(), title: a, done: false, doneAt: null,
+               createdAt: new Date().toISOString() };
+    }
+    const o = typeof a === "object" && a !== null
+      ? a as Record<string, unknown> : {};
+    return {
+      id: typeof o.id === "string" ? o.id : uuidv4(),
+      title: typeof o.title === "string" ? o.title : String(o.title ?? ""),
+      done: o.done === true,
+      doneAt: typeof o.doneAt === "string" ? o.doneAt : null,
+      createdAt: typeof o.createdAt === "string"
+        ? o.createdAt : new Date().toISOString(),
+      ...(typeof o.linkedActivityId === "string" && o.linkedActivityId
+        ? { linkedActivityId: o.linkedActivityId } : {}),
+      ...(typeof o.context === "string" ? { context: o.context } : {}),
+      ...(Array.isArray(o.contexts)
+        ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
+    };
+  });
   return {
     id: typeof t.id === "string" ? t.id : uuidv4(),
     title,
@@ -366,8 +387,10 @@ async function executeGetUserContext(uid: string): Promise<string> {
     db.collection(`users/${uid}/sessions`)
       .where("startAt", ">=", sevenDaysAgo.toISOString())
       .get(),
-    // Projets actifs
-    db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
+    // Projets — TOUS, filtrés en code : un `where status == active` exclurait
+    // les docs legacy SANS champ status (constaté : activeProjects vide alors
+    // que des projets actifs existent — l'app les traite comme actifs).
+    db.collection(`users/${uid}/projects`).get(),
     // Programme du jour
     db.doc(`users/${uid}/daily_schedules/${todayStr}`).get(),
     // Inbox (idées en attente)
@@ -418,9 +441,13 @@ async function executeGetUserContext(uid: string): Promise<string> {
     const v = doc.data();
     hitsByHabit.set(v.habitId, (hitsByHabit.get(v.habitId) || 0) + 1);
   }
+  // Une session/hit peut référencer une activité DUREMENT supprimée (doc
+  // disparu) : un nom lisible plutôt qu'un id brut dans le contexte.
+  const nameOf = (id: string) =>
+    activityMap.get(id) || `(activité supprimée · ${id.slice(0, 8)}…)`;
   const habitCompletion = Array.from(hitsByHabit.entries()).map(([id, count]) => ({
     activityId: id,
-    name: activityMap.get(id) || id,
+    name: nameOf(id),
     hitsLast7Days: count,
   }));
 
@@ -439,7 +466,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
   }
   const timeLogged = Array.from(minByActivity.entries()).map(([id, mins]) => ({
     activityId: id,
-    name: activityMap.get(id) || id,
+    name: nameOf(id),
     minutesLast7Days: mins,
     hoursLast7Days: Math.round(mins / 6) / 10, // arrondi 1 décimale
   }));
@@ -452,8 +479,10 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   // ── Projets actifs (résumé) ────────────────────────────────────────────────
   const today = new Date(todayStr);
+  const isActive = (p: Record<string, unknown>) =>
+    String(p.status ?? "active") === "active"; // legacy sans status = actif
   const activeProjects = projectsSnap.docs
-    .filter((d) => d.data().paused !== true) // en pause = hors radar IA
+    .filter((d) => isActive(d.data()) && d.data().paused !== true)
     .map((d) => {
     const p = d.data();
     const tasks = (p.tasks || []) as Array<{
@@ -479,6 +508,11 @@ async function executeGetUserContext(uid: string): Promise<string> {
       nextDeadline,
     };
   });
+  // Projets actifs mais EN PAUSE : hors radar de planification, mais cités
+  // pour que l'IA sache qu'ils existent (sinon « projet invisible »).
+  const pausedProjects = projectsSnap.docs
+    .filter((d) => isActive(d.data()) && d.data().paused === true)
+    .map((d) => ({ id: d.data().id, title: d.data().title, paused: true }));
 
   // ── Programme du jour ──────────────────────────────────────────────────────
   const scheduleData = scheduleSnap.exists ? scheduleSnap.data() : null;
@@ -562,6 +596,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       activities,
       objectives,
       activeProjects,
+      ...(pausedProjects.length > 0 ? { pausedProjects } : {}),
       todaySchedule,
       inboxItems: inboxItems.length > 0 ? inboxItems : null,
       recentActivity,
@@ -1179,13 +1214,24 @@ async function executeListProjects(uid: string): Promise<string> {
   const snap = await db.collection(`users/${uid}/projects`).get();
   if (snap.empty) return "Aucun projet trouvé dans Productivitwo.";
 
-  const lines = snap.docs.map((doc) => {
+  // Statut visible sur chaque ligne (actifs d'abord) — sans ça il fallait un
+  // get_project par projet pour distinguer actif / archivé / en pause.
+  const docs = [...snap.docs].sort((a, b) => {
+    const rank = (d: Record<string, unknown>) =>
+      String(d.status ?? "active") !== "active" ? 2 : d.paused === true ? 1 : 0;
+    return rank(a.data()) - rank(b.data());
+  });
+  const lines = docs.map((doc) => {
     const d = doc.data();
     const taskCount = (d.tasks || []).length;
     const start = d.startDate || "?";
     const end   = d.endDate   || "?";
     const domain = d.domainId ? ` · domaine:${d.domainId}` : '';
-    return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain})`;
+    const status = String(d.status ?? "active");
+    const badge = status !== "active"
+      ? ` · ${status === "archived" ? "ARCHIVÉ" : status.toUpperCase()}`
+      : d.paused === true ? " · EN PAUSE" : "";
+    return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
   });
 
   return `Projets Productivitwo (${snap.size}) :\n${lines.join("\n")}`;
@@ -1359,8 +1405,10 @@ async function executeUpdateTask(
           doneAt: previous?.doneAt ?? null,
           createdAt: new Date().toISOString(),
           // Préserve le lien chrono et le contexte GTD d'une action conservée
-          // (le payload peut aussi poser un context explicite).
-          linkedActivityId: previous?.linkedActivityId ?? null,
+          // (le payload peut aussi poser linkedActivityId/context explicites).
+          linkedActivityId:
+            (obj?.linkedActivityId as string | undefined) ??
+            previous?.linkedActivityId ?? null,
           context: (obj?.context as string | undefined) ?? previous?.context ?? null,
           contexts: Array.isArray(obj?.contexts)
             ? (obj?.contexts as string[])
