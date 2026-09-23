@@ -1,3 +1,30 @@
+// Une sous-action de tâche Gantt : soit un simple titre (string), soit un
+// objet permettant de poser directement le lien chrono (linkedActivityId) et
+// les contextes GTD — même effet que link_action_to_activity, en un seul appel.
+const TASK_ACTION_ITEM_SCHEMA = {
+  anyOf: [
+    { type: "string" },
+    {
+      type: "object",
+      required: ["title"],
+      properties: {
+        title: { type: "string" },
+        linkedActivityId: {
+          type: "string",
+          description:
+            "id d'une activité-temps existante : le chrono lancé depuis cette " +
+            "action sera ciblé dessus (équivalent de link_action_to_activity).",
+        },
+        contexts: {
+          type: "array",
+          items: { type: "string" },
+          description: "Contextes GTD de l'action (ex: @maison, @bureau).",
+        },
+      },
+    },
+  ],
+};
+
 const GET_USER_CONTEXT_TOOL = {
   name: "get_user_context",
   description:
@@ -628,9 +655,11 @@ const PUSH_GANTT_MCP_TOOL = {
                 status:      { type: "string", enum: ["pending", "done", "skipped"] },
                 actions:     {
                   type: "array",
-                  items: { type: "string" },
+                  items: TASK_ACTION_ITEM_SCHEMA,
                   description:
-                    "Sous-actions opérationnelles. " +
+                    "Sous-actions opérationnelles — string simple, OU objet " +
+                    "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+                    "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
                     "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
@@ -701,9 +730,11 @@ const ADD_TASK_TOOL = {
       status:      { type: "string", enum: ["pending", "done", "skipped"] },
       actions:     {
         type: "array",
-        items: { type: "string" },
+        items: TASK_ACTION_ITEM_SCHEMA,
         description:
-          "Sous-actions opérationnelles. " +
+          "Sous-actions opérationnelles — string simple, OU objet " +
+          "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+          "activité-temps (chrono ciblé) dès la création. " +
           "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
           "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
           "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
@@ -736,7 +767,13 @@ const UPDATE_TASK_TOOL = {
       color:       { type: "string" },
       barLabel:    { type: "string" },
       status:      { type: "string", enum: ["pending", "done", "skipped"] },
-      actions:     { type: "array", items: { type: "string" }, description: "Remplace toutes les sous-actions" },
+      actions:     {
+        type: "array",
+        items: TASK_ACTION_ITEM_SCHEMA,
+        description:
+          "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
+          "Un item peut être un objet { title, linkedActivityId?, contexts? } pour poser le lien chrono.",
+      },
     },
   },
 };

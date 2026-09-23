@@ -2,6 +2,31 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = void 0;
+// Une sous-action de tâche Gantt : soit un simple titre (string), soit un
+// objet permettant de poser directement le lien chrono (linkedActivityId) et
+// les contextes GTD — même effet que link_action_to_activity, en un seul appel.
+const TASK_ACTION_ITEM_SCHEMA = {
+    anyOf: [
+        { type: "string" },
+        {
+            type: "object",
+            required: ["title"],
+            properties: {
+                title: { type: "string" },
+                linkedActivityId: {
+                    type: "string",
+                    description: "id d'une activité-temps existante : le chrono lancé depuis cette " +
+                        "action sera ciblé dessus (équivalent de link_action_to_activity).",
+                },
+                contexts: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Contextes GTD de l'action (ex: @maison, @bureau).",
+                },
+            },
+        },
+    ],
+};
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
     description: "APPELLE CET OUTIL EN PREMIER dans toute conversation liée à la productivité. " +
@@ -599,8 +624,10 @@ const PUSH_GANTT_MCP_TOOL = {
                                 status: { type: "string", enum: ["pending", "done", "skipped"] },
                                 actions: {
                                     type: "array",
-                                    items: { type: "string" },
-                                    description: "Sous-actions opérationnelles. " +
+                                    items: TASK_ACTION_ITEM_SCHEMA,
+                                    description: "Sous-actions opérationnelles — string simple, OU objet " +
+                                        "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+                                        "activité-temps (chrono ciblé) dès la création. " +
                                         "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                                         "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
                                         "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
@@ -666,8 +693,10 @@ const ADD_TASK_TOOL = {
             status: { type: "string", enum: ["pending", "done", "skipped"] },
             actions: {
                 type: "array",
-                items: { type: "string" },
-                description: "Sous-actions opérationnelles. " +
+                items: TASK_ACTION_ITEM_SCHEMA,
+                description: "Sous-actions opérationnelles — string simple, OU objet " +
+                    "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+                    "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
                     "  2. \"Fichiers : <fichiers ou zones concernés, ex: lib/web/gantt_screen.dart, functions/src/execute.ts>\"\n" +
@@ -699,7 +728,12 @@ const UPDATE_TASK_TOOL = {
             color: { type: "string" },
             barLabel: { type: "string" },
             status: { type: "string", enum: ["pending", "done", "skipped"] },
-            actions: { type: "array", items: { type: "string" }, description: "Remplace toutes les sous-actions" },
+            actions: {
+                type: "array",
+                items: TASK_ACTION_ITEM_SCHEMA,
+                description: "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
+                    "Un item peut être un objet { title, linkedActivityId?, contexts? } pour poser le lien chrono.",
+            },
         },
     },
 };
