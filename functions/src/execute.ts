@@ -2076,7 +2076,11 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
   const snap = await db.doc(`users/${uid}/daily_schedules/${date}`).get();
   if (!snap.exists) return `Aucun programme pour le ${date}.`;
   const data = snap.data() as Record<string, unknown>;
-  const blocks = (data.blocks as Array<Record<string, unknown>>) ?? [];
+  // Ordre chronologique garanti — le tableau Firestore est en ordre
+  // d'insertion (même correctif que todaySchedule dans get_user_context).
+  const blocks = ((data.blocks as Array<Record<string, unknown>>) ?? [])
+    .slice()
+    .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
   const statusIcon = (s: string) =>
     s === "done" ? "✅" : s === "skipped" ? "⏭" : s === "deleted" ? "❌" : "⬜";
   const lines = blocks.map((b) => {
