@@ -48,8 +48,7 @@ class WebHomeScreen extends StatefulWidget {
   State<WebHomeScreen> createState() => _WebHomeScreenState();
 }
 
-class _WebHomeScreenState extends State<WebHomeScreen>
-    with SingleTickerProviderStateMixin {
+class _WebHomeScreenState extends State<WebHomeScreen> {
   final _sync = FirestoreSync();
   List<Project> _projects = [];
   List<Domain> _domains = [];
@@ -62,9 +61,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   // Refonte web (lot 0) : sur desktop les projets sont TOUJOURS visibles —
   // le flag mobile data/meta.ganttVisible ne gouverne plus le web.
   final bool _ganttVisible = true;
-  late TabController _mainTabs;
-
-  int get _focusTabIndex => _ganttVisible ? 1 : 0;
+  // Shell desktop (lot 1) : sidebar persistante — 0 Projets · 1 Focus ·
+  // 2 Actions · 3 Organisation · 4 ORION. Focus est la vue d'arrivée.
+  int _navIndex = 1;
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
@@ -77,8 +76,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   @override
   void initState() {
     super.initState();
-    // 5 onglets (Projets/Focus/Actions/Organisation/ORION), Focus en premier.
-    _mainTabs = TabController(length: 5, vsync: this, initialIndex: 1);
     _load();
     // Sonde coach accrochée à l'ÉTAT D'AUTH (pas one-shot) : au chargement,
     // Firebase restaure la session APRÈS initState — une sonde immédiate
@@ -103,7 +100,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void dispose() {
     _projectsSub?.cancel();
     _authSub?.cancel();
-    _mainTabs.dispose();
     super.dispose();
   }
 
@@ -237,7 +233,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                   color: cs.primary, size: 16),
             ),
             const SizedBox(width: 10),
-            const Text('Productivitwo — Projects',
+            const Text('Productivitwo',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(width: 8),
             Text(kBuildLabel,
@@ -262,38 +258,6 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                 ),
               ),
             ),
-            const HelpButton(),
-            // Mon coach (côté coaché) : gérer son partage depuis le web
-            // aussi — même écran que mobile, domaines chargés via Firestore.
-            IconButton(
-              icon: const Icon(Icons.supervisor_account_outlined, size: 18),
-              tooltip: 'Mon coach — ce qu\'il voit, ce qu\'il ne voit pas',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const CoachSpaceScreen())),
-            ),
-            if (_isCoach)
-              IconButton(
-                icon: const Icon(Icons.school_outlined, size: 18),
-                tooltip: 'Espace coach — console',
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const CoachConsoleScreen())),
-              ),
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _assistantMessages.isNotEmpty,
-                smallSize: 7,
-                backgroundColor: const Color(0xFFe8c94a),
-                child: const Icon(Icons.smart_toy_outlined, size: 18),
-              ),
-              tooltip: 'Messages ORION',
-              onPressed: () => AssistantHistorySheet.show(context),
-            ),
-            if (!widget.isDemo)
-              TextButton.icon(
-                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
-                label: const Text('Connecter Claude'),
-                onPressed: () => _showTokensPanel(context),
-              ),
             IconButton(
               icon: const Icon(Icons.logout_outlined, size: 18),
               tooltip: 'Déconnexion',
@@ -303,23 +267,9 @@ class _WebHomeScreenState extends State<WebHomeScreen>
           ],
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(49),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TabBar(
-                controller: _mainTabs,
-                tabs: [
-                  if (_ganttVisible) const Tab(text: 'Projets'),
-                  const Tab(text: 'Focus'),
-                  const Tab(text: 'Actions'),
-                  const Tab(text: 'Organisation'),
-                  const Tab(text: 'ORION'),
-                ],
-              ),
-              Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-            ],
-          ),
+          preferredSize: const Size.fromHeight(1),
+          child: Divider(
+              height: 1, color: cs.outlineVariant.withOpacity(0.4)),
         ),
       ),
       body: _loading
@@ -347,65 +297,186 @@ class _WebHomeScreenState extends State<WebHomeScreen>
                     ),
                   ),
                 Expanded(
-                  child: Stack(
-                    children: [
-                      TabBarView(
-                        controller: _mainTabs,
-                        children: [
-                    if (_ganttVisible)
-                      _SimpleProjectsView(
-                        projects: _projects,
-                        domains: _domains,
-                        sync: _sync,
-                        onRefresh: _load,
-                        documentsByProject: _documentsByProject,
-                        objectives: _objectives,
-                        activities: _activities,
-                        recentSessions: _recentSessions,
-                        recentHits: _recentHits,
-                      ),
-                    _FocusView(
-                      projects: _projects
-                          .where((p) => p.status != 'archived')
-                          .toList(),
-                      domains: _domains,
-                      sync: _sync,
-                      onRefresh: _load,
-                      isDemo: widget.isDemo,
-                      ganttVisible: _ganttVisible,
-                      onTaskColorChange: (project, task, color) async {
-                        task.color = color;
-                        await _sync.saveProjectTasks(project.id, project.tasks);
-                        _load();
-                      },
-                    ),
-                    // Hub Actions : rail gauche Actions · Ma semaine ·
-                    // domaines. « Ma semaine » = la vue coach sur SES données
-                    // (transparence : il voit ce que le coach voit).
-                    ActionsHubView(
-                      domains: _domains,
-                      activities: _activities,
-                      projects: _projects,
-                      sync: _sync,
-                      actionsView: WebActionsView(
-                        projects: _projects,
-                        domains: _domains,
-                        activities: _activities,
-                        sync: _sync,
-                        onRefresh: _load,
-                      ),
-                    ),
-                    _ArchivesView(sync: _sync),
-                    _OrionView(sync: _sync),
-                  ],
+                  // Shell desktop : sidebar persistante + contenu. IndexedStack
+                  // garde l'état (scroll, filtres) de chaque vue au changement.
+                  child: LayoutBuilder(builder: (ctx, box) {
+                    final extended = box.maxWidth >= 900;
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _sidebar(cs, extended: extended),
+                        VerticalDivider(
+                            width: 1,
+                            color: cs.outlineVariant.withOpacity(0.4)),
+                        Expanded(
+                          child: IndexedStack(
+                            index: _navIndex,
+                            children: [
+                              _SimpleProjectsView(
+                                projects: _projects,
+                                domains: _domains,
+                                sync: _sync,
+                                onRefresh: _load,
+                                documentsByProject: _documentsByProject,
+                                objectives: _objectives,
+                                activities: _activities,
+                                recentSessions: _recentSessions,
+                                recentHits: _recentHits,
+                              ),
+                              _FocusView(
+                                projects: _projects
+                                    .where((p) => p.status != 'archived')
+                                    .toList(),
+                                domains: _domains,
+                                sync: _sync,
+                                onRefresh: _load,
+                                isDemo: widget.isDemo,
+                                ganttVisible: _ganttVisible,
+                                onTaskColorChange: (project, task, color) async {
+                                  task.color = color;
+                                  await _sync.saveProjectTasks(
+                                      project.id, project.tasks);
+                                  _load();
+                                },
+                              ),
+                              // Hub Actions : rail Actions · Ma semaine ·
+                              // domaines (transparence coach).
+                              ActionsHubView(
+                                domains: _domains,
+                                activities: _activities,
+                                projects: _projects,
+                                sync: _sync,
+                                actionsView: WebActionsView(
+                                  projects: _projects,
+                                  domains: _domains,
+                                  activities: _activities,
+                                  sync: _sync,
+                                  onRefresh: _load,
+                                ),
+                              ),
+                              _ArchivesView(sync: _sync),
+                              _OrionView(sync: _sync),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
                 ),
-                // Overlay assistant rendu globalement (MaterialApp.builder) →
-                // au-dessus des sheets. Plus d'overlay local ici (était caché).
               ],
             ),
-          ),
+    );
+  }
+
+  // ── Sidebar du shell desktop (lot 1) ────────────────────────────────────────
+
+  Widget _sidebar(ColorScheme cs, {required bool extended}) {
+    final items = [
+      (icon: Icons.account_tree_outlined, label: 'Projets', index: 0),
+      (icon: Icons.center_focus_strong_outlined, label: 'Focus', index: 1),
+      (icon: Icons.check_circle_outline, label: 'Actions', index: 2),
+      (icon: Icons.inventory_2_outlined, label: 'Organisation', index: 3),
+      (icon: Icons.smart_toy_outlined, label: 'ORION', index: 4),
+    ];
+    return SizedBox(
+      width: extended ? 216 : 64,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 10),
+          for (final it in items)
+            _navTile(cs,
+                icon: it.icon,
+                label: it.label,
+                extended: extended,
+                selected: _navIndex == it.index,
+                onTap: () => setState(() => _navIndex = it.index)),
+          const Spacer(),
+          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
+          const SizedBox(height: 6),
+          // Utilitaires — sortis de l'AppBar (lot 1) : tout ce qui n'est pas
+          // une vue vit ici, en bas de sidebar.
+          _navTile(cs,
+              icon: Icons.supervisor_account_outlined,
+              label: 'Mon coach',
+              extended: extended,
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const CoachSpaceScreen()))),
+          if (_isCoach)
+            _navTile(cs,
+                icon: Icons.school_outlined,
+                label: 'Espace coach',
+                extended: extended,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const CoachConsoleScreen()))),
+          _navTile(cs,
+              icon: Icons.mark_chat_unread_outlined,
+              label: 'Messages ORION',
+              extended: extended,
+              badge: _assistantMessages.isNotEmpty,
+              onTap: () => AssistantHistorySheet.show(context)),
+          if (!widget.isDemo)
+            _navTile(cs,
+                icon: Icons.auto_awesome_outlined,
+                label: 'Connecter Claude',
+                extended: extended,
+                onTap: () => _showTokensPanel(context)),
+          _navTile(cs,
+              icon: Icons.help_outline,
+              label: 'Aide',
+              extended: extended,
+              onTap: () => showHelpSheet(context)),
+          const SizedBox(height: 10),
         ],
       ),
+    );
+  }
+
+  Widget _navTile(ColorScheme cs,
+      {required IconData icon,
+      required String label,
+      required bool extended,
+      bool selected = false,
+      bool badge = false,
+      required VoidCallback onTap}) {
+    final color = selected ? cs.primary : cs.onSurface.withOpacity(.65);
+    final iconW = Badge(
+      isLabelVisible: badge,
+      smallSize: 7,
+      backgroundColor: const Color(0xFFe8c94a),
+      child: Icon(icon, size: 18, color: color),
+    );
+    final tile = Material(
+      color: selected ? cs.primary.withOpacity(.10) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+              horizontal: extended ? 12 : 0, vertical: 10),
+          child: extended
+              ? Row(children: [
+                  iconW,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                            color: color)),
+                  ),
+                ])
+              : Center(child: iconW),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      child: extended ? tile : Tooltip(message: label, child: tile),
     );
   }
 
@@ -423,7 +494,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
   void _handleAssistantAction(AssistantActionData action) {
     switch (action.type) {
       case 'open_day_plan':
-        _mainTabs.animateTo(_focusTabIndex);
+        setState(() => _navIndex = 1); // Focus
       case 'open_project':
         final projectId = action.payload?['projectId'] as String?;
         if (projectId == null) return;
@@ -442,7 +513,7 @@ class _WebHomeScreenState extends State<WebHomeScreen>
               builder: (_) => GanttScreen(project: p, targetTaskId: taskId, domains: _domains),
             ));
       case 'open_activity':
-        _mainTabs.animateTo(_focusTabIndex);
+        setState(() => _navIndex = 1); // Focus
     }
   }
 }

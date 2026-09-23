@@ -10,18 +10,21 @@ class HelpButton extends StatelessWidget {
     return IconButton(
       icon: const Icon(Icons.help_outline, size: 18),
       tooltip: 'Astuces et exemples',
-      onPressed: () => showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (_) => const _HelpSheet(),
-      ),
+      onPressed: () => showHelpSheet(context),
     );
   }
 }
+
+/// Point d'entrée réutilisable (sidebar du shell desktop, bouton…).
+void showHelpSheet(BuildContext context) => showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const _HelpSheet(),
+    );
 
 // ── Sheet principal ───────────────────────────────────────────────────────────
 
