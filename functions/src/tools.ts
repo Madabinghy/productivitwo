@@ -850,6 +850,52 @@ const GENERATE_WEEKLY_REPORT_TOOL = {
   },
 };
 
+// ── Liste de courses (artefact « menu de la semaine ») ───────────────────────
+
+const GET_SHOPPING_LIST_TOOL = {
+  name: "get_shopping_list",
+  description:
+    "Lit la liste de courses du menu de la semaine le plus récent (artefact " +
+    "weekly_menu) : articles, quantités, coché/restant. La même liste que " +
+    "l'utilisateur coche dans l'app quand le contexte @courses est actif.",
+  inputSchema: { type: "object", properties: {} },
+};
+
+const ADD_SHOPPING_ITEM_TOOL = {
+  name: "add_shopping_item",
+  description:
+    "Ajoute un article à la liste de courses du menu de la semaine le plus " +
+    "récent. Échoue proprement s'il n'existe aucun menu (la liste vit sur " +
+    "l'artefact weekly_menu).",
+  inputSchema: {
+    type: "object",
+    required: ["label"],
+    properties: {
+      label: { type: "string", description: "L'article (ex: 'lait')" },
+      qty: { type: "string", description: "Quantité optionnelle (ex: '×2', '500 g')" },
+    },
+  },
+};
+
+const CHECK_SHOPPING_ITEM_TOOL = {
+  name: "check_shopping_item",
+  description:
+    "Coche (ou décoche avec checked:false) un article de la liste de courses, " +
+    "par son libellé (insensible à la casse et aux accents). En cas " +
+    "d'ambiguïté, l'outil liste les candidats au lieu de deviner.",
+  inputSchema: {
+    type: "object",
+    required: ["label"],
+    properties: {
+      label: { type: "string", description: "Libellé (ou fragment) de l'article" },
+      checked: {
+        type: "boolean",
+        description: "true = coché (défaut), false = décoché",
+      },
+    },
+  },
+};
+
 export {
 GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
@@ -887,6 +933,9 @@ ADD_ACTIVITY_ACTION_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,
+GET_SHOPPING_LIST_TOOL,
+ADD_SHOPPING_ITEM_TOOL,
+CHECK_SHOPPING_ITEM_TOOL,
 };
 
 export const PLAN_DAY_TOOL = {

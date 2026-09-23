@@ -28,6 +28,7 @@ import {
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
+  GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
   CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
@@ -49,6 +50,7 @@ import {
   executeCreateRoutine,
   executeGetDayBlocks, executeCreateActivity,
   executeSaveDocument, executeGetDocuments, executeGetArchives,
+  executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem,
   executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
   executeDeleteRoutine,
@@ -1641,6 +1643,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
+            GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
             CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
@@ -1731,6 +1734,14 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           }
         } else if (toolName === "get_archives") {
           text = await executeGetArchives(uid);
+        } else if (toolName === "get_shopping_list") {
+          text = await executeGetShoppingList(uid);
+        } else if (toolName === "add_shopping_item") {
+          text = await executeAddShoppingItem(
+              uid, args.label as string, args.qty as string | undefined);
+        } else if (toolName === "check_shopping_item") {
+          text = await executeCheckShoppingItem(
+              uid, args.label as string, args.checked !== false);
         } else if (toolName === "restore_item") {
           text = await executeRestoreItem(uid, args.collection as string, args.itemId as string);
         } else if (toolName === "push_assistant_message") {

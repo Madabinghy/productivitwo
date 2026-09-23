@@ -2210,11 +2210,10 @@ class _TaskTile extends StatelessWidget {
         ),
       ),
       child: InkWell(
-        // Jalon : pas de fiche détail → un tap bascule son statut (atteint /
-        // pas atteint), pour pouvoir le VALIDER depuis l'app.
-        onTap: task.isMilestone
-            ? onToggle
-            : () => onOpenDetail?.call(task) ?? onToggle(),
+        // Jalon : la carte ouvre la FICHE (titre, dates, étapes — un jalon
+        // se modifie comme une tâche, retour user 2026-09) ; le toggle
+        // rapide atteint/pas atteint vit sur le losange.
+        onTap: () => onOpenDetail?.call(task) ?? onToggle(),
         borderRadius: BorderRadius.circular(10),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
@@ -2225,15 +2224,19 @@ class _TaskTile extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 1, right: 10),
                 child: task.isMilestone
-                    ? Transform.rotate(
-                        angle: 0.785,
-                        child: Container(
-                          width: 13, height: 13,
-                          decoration: BoxDecoration(
-                            color: isDone
-                                ? Colors.green.shade500
-                                : Colors.orange.shade600,
-                            borderRadius: BorderRadius.circular(2),
+                    ? GestureDetector(
+                        // Toggle rapide conservé : tap sur le losange.
+                        onTap: onToggle,
+                        child: Transform.rotate(
+                          angle: 0.785,
+                          child: Container(
+                            width: 13, height: 13,
+                            decoration: BoxDecoration(
+                              color: isDone
+                                  ? Colors.green.shade500
+                                  : Colors.orange.shade600,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
                           ),
                         ),
                       )
