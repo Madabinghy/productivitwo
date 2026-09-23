@@ -2086,7 +2086,17 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
   const lines = blocks.map((b) => {
     const icon = statusIcon(b.status as string);
     const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
-    return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}]${deletedNote}`;
+    // id indispensable (mark_block_done le demande) + rattachements pour
+    // savoir quel projet/tâche/activité le bloc sert (constaté au test du
+    // connecteur : impossible de valider un bloc sans son id).
+    const links = [
+      `id:${b.id}`,
+      ...(b.projectId ? [`projet:${b.projectId}`] : []),
+      ...(b.taskId ? [`tâche:${b.taskId}`] : []),
+      ...(b.activityId ? [`activité:${b.activityId}`] : []),
+      ...(b.actionId ? [`action:${b.actionId}`] : []),
+    ].join(" · ");
+    return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${deletedNote}`;
   });
   // L'intention du jour (onglet Objectifs) fait partie du contexte : le
   // programme généré/ajusté doit la servir.
