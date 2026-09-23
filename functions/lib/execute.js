@@ -1831,7 +1831,11 @@ async function executeGetDaySchedule(uid, date) {
     if (!snap.exists)
         return `Aucun programme pour le ${date}.`;
     const data = snap.data();
-    const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
+    // Ordre chronologique garanti — le tableau Firestore est en ordre
+    // d'insertion (même correctif que todaySchedule dans get_user_context).
+    const blocks = ((_a = data.blocks) !== null && _a !== void 0 ? _a : [])
+        .slice()
+        .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)));
     const statusIcon = (s) => s === "done" ? "✅" : s === "skipped" ? "⏭" : s === "deleted" ? "❌" : "⬜";
     const lines = blocks.map((b) => {
         const icon = statusIcon(b.status);
