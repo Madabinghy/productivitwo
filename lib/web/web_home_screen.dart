@@ -620,50 +620,266 @@ class _FocusView extends StatelessWidget {
               overduePairs, allPairs, projects,
               showSchedule: true);
         }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Gantt ──────────────────────────────────────────────────────
-            Expanded(
-              flex: isWide ? 5 : 7,
-              child: _buildGantt(
-                context,
-                cs,
-                today,
-                weekStart,
-                weekDone,
-                weekActive,
-                domainGroups,
-              ),
-            ),
-            SizedBox(
-              width: 1,
-              child: VerticalDivider(
-                  color: cs.outlineVariant.withOpacity(0.4), width: 1),
-            ),
-            // ── Panneau tâches actives (visible ≥ 1100px) ─────────────────
-            if (isWide) ...[
+        if (isWide) {
+          // Tableau de bord « où j'en suis » (lot 2) : cartes projets en
+          // tête, puis semaine + journée en 2 colonnes pleine largeur.
+          // Les ex-cartes latérales (En retard / Cette semaine / Avancement)
+          // sont absorbées par les cartes projets et la colonne de droite.
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildProjectPulse(context, cs, today),
+              Divider(
+                  height: 1, color: cs.outlineVariant.withOpacity(0.4)),
               Expanded(
-                flex: 4,
-                child: _buildProjectsPanel(context, cs, today, allPairs),
-              ),
-              SizedBox(
-                width: 1,
-                child: VerticalDivider(
-                    color: cs.outlineVariant.withOpacity(0.4), width: 1),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: _buildGantt(
+                        context,
+                        cs,
+                        today,
+                        weekStart,
+                        weekDone,
+                        weekActive,
+                        domainGroups,
+                      ),
+                    ),
+                    SizedBox(
+                      width: 1,
+                      child: VerticalDivider(
+                          color: cs.outlineVariant.withOpacity(0.4),
+                          width: 1),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: _buildProjectsPanel(
+                          context, cs, today, allPairs, overduePairs),
+                    ),
+                  ],
+                ),
               ),
             ],
-            // ── Sidebar ────────────────────────────────────────────────────
+          );
+        }
+        // Largeur moyenne (700-850) : cartes projets + semaine + sidebar.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildProjectPulse(context, cs, today),
+            Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
             Expanded(
-              flex: 3,
-              child: _buildSidebar(context, cs, today, weekStart, weekEnd,
-                  overduePairs, allPairs, projects,
-                  // ≥850 : la colonne du milieu porte le programme → pas de doublon.
-                  showSchedule: !isWide),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 7,
+                    child: _buildGantt(
+                      context,
+                      cs,
+                      today,
+                      weekStart,
+                      weekDone,
+                      weekActive,
+                      domainGroups,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 1,
+                    child: VerticalDivider(
+                        color: cs.outlineVariant.withOpacity(0.4), width: 1),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: _buildSidebar(context, cs, today, weekStart,
+                        weekEnd, overduePairs, allPairs, projects,
+                        showSchedule: true),
+                  ),
+                ],
+              ),
             ),
           ],
         );
       },
+    );
+  }
+
+  // ── Cartes projets « où j'en suis » (lot 2) ────────────────────────────────
+
+  Widget _buildProjectPulse(
+      BuildContext context, ColorScheme cs, DateTime today) {
+    final pulse = projects
+        .where((p) => p.status != 'done' && p.status != 'archived')
+        .toList();
+    if (pulse.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.flag_outlined,
+                size: 13, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 6),
+            Text(
+              'MES PROJETS',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+                color: cs.onSurface.withOpacity(.45),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final p in pulse) _projectPulseCard(context, cs, p, today),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _projectPulseCard(
+      BuildContext context, ColorScheme cs, Project p, DateTime today) {
+    final real = p.tasks.where((t) => !t.isMilestone).toList();
+    final done = real.where((t) => t.status == 'done').length;
+    final overdue = real
+        .where((t) =>
+            t.status != 'done' &&
+            t.status != 'skipped' &&
+            t.endDate != null &&
+            t.endDate!.isBefore(today))
+        .length;
+    DateTime? next;
+    for (final t in real) {
+      if (t.status == 'done' || t.status == 'skipped') continue;
+      final end = t.endDate;
+      if (end == null || end.isBefore(today)) continue;
+      if (next == null || end.isBefore(next)) next = end;
+    }
+    final pct = real.isEmpty ? 0.0 : done / real.length;
+    final domain =
+        domains.where((d) => d.id == p.domainId).firstOrNull;
+    Color color = cs.primary;
+    if (domain != null) {
+      if (domain.colorValue != null) {
+        color = Color(domain.colorValue!);
+      } else {
+        final idx = domains.indexWhere((d) => d.id == domain.id);
+        if (idx >= 0) color = kDomainPalette[idx % kDomainPalette.length];
+      }
+    }
+    final paused = p.paused;
+
+    return SizedBox(
+      width: 250,
+      child: Material(
+        color: cs.surfaceContainerHighest.withOpacity(.25),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) =>
+                      GanttScreen(project: p, domains: domains))),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                  color: overdue > 0
+                      ? cs.error.withOpacity(.45)
+                      : cs.outlineVariant.withOpacity(.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      p.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: paused
+                              ? cs.onSurface.withOpacity(.5)
+                              : cs.onSurface),
+                    ),
+                  ),
+                  if (paused)
+                    Text('⏸',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.5))),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        minHeight: 5,
+                        color: color,
+                        backgroundColor: color.withOpacity(.15),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('$done/${real.length}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withOpacity(.6))),
+                ]),
+                const SizedBox(height: 6),
+                Row(children: [
+                  if (overdue > 0) ...[
+                    Icon(Icons.warning_amber_rounded,
+                        size: 12, color: cs.error),
+                    const SizedBox(width: 3),
+                    Text(
+                        '$overdue en retard',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: cs.error)),
+                    const SizedBox(width: 10),
+                  ],
+                  if (next != null)
+                    Text('éch. ${next.day}/${next.month}',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: cs.onSurface.withOpacity(.5))),
+                  if (overdue == 0 && next == null)
+                    Text(paused ? 'en pause' : 'au fil de l\'eau',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                            color: cs.onSurface.withOpacity(.4))),
+                ]),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -674,6 +890,7 @@ class _FocusView extends StatelessWidget {
     ColorScheme cs,
     DateTime today,
     List<({ProjectTask task, Project project})> weekPairs,
+    List<({ProjectTask task, Project project})> overduePairs,
   ) {
     bool isActiveToday(ProjectTask t) {
       final end = t.endDate ?? t.startDate;
@@ -726,6 +943,29 @@ class _FocusView extends StatelessWidget {
           WebDailyScheduleCard(sync: sync),
           const SizedBox(height: 22),
 
+          // ── En retard (ex-carte latérale, absorbée ici — lot 2) ─────────
+          if (overduePairs.isNotEmpty) ...[
+            Row(children: [
+              Icon(Icons.warning_amber_rounded, size: 13, color: cs.error),
+              const SizedBox(width: 6),
+              Text(
+                'EN RETARD',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: cs.error,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            for (final e in overduePairs) ...[
+              _OverdueItem(task: e.task, today: today, cs: cs),
+              const SizedBox(height: 4),
+            ],
+            const SizedBox(height: 18),
+          ],
+
           // ── Tâches en cours / cette semaine ─────────────────────────────
           Row(children: [
             Icon(Icons.account_tree_outlined,
@@ -761,6 +1001,11 @@ class _FocusView extends StatelessWidget {
               ),
               const SizedBox(height: 14),
             ],
+          // ── ORION Stratège + Vision (ex-sidebar, conservées — lot 2) ────
+          const SizedBox(height: 8),
+          const _OrionBriefSection(),
+          const SizedBox(height: 12),
+          if (!isDemo) const _VisionSidebarSection(),
         ],
       ),
     );
@@ -1531,14 +1776,29 @@ class _FocusView extends StatelessWidget {
                     ),
                   ),
                 ] else if (barWidth > 0) ...[
-                  // Barre horizontale — clic pour changer la couleur
+                  // Barre horizontale — le CLIC ouvre la tâche (lot 2) ;
+                  // la couleur passe en clic droit / appui long.
                   Positioned(
                     left: startOffset,
                     top: rowH / 2 - 6,
                     width: barWidth,
                     height: 12,
                     child: GestureDetector(
-                      onTapUp: (details) => _showColorPicker(
+                      onTap: () => showGanttTaskDetailDialog(
+                        context,
+                        project: project,
+                        task: task,
+                        sync: sync,
+                        onProjectUpdated: (_) => onRefresh?.call(),
+                      ),
+                      onSecondaryTapUp: (details) => _showColorPicker(
+                        context,
+                        task,
+                        project,
+                        details.globalPosition,
+                        resolvedColor,
+                      ),
+                      onLongPressStart: (details) => _showColorPicker(
                         context,
                         task,
                         project,
