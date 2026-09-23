@@ -20,6 +20,9 @@ class WebActionsView extends StatefulWidget {
   final FirestoreSync sync;
   final VoidCallback onRefresh;
 
+  // Ouverture d'un projet via le shell (lot 3b) — null = route plein écran.
+  final void Function(Project project, {String? taskId})? onOpenProject;
+
   const WebActionsView({
     super.key,
     required this.projects,
@@ -27,6 +30,7 @@ class WebActionsView extends StatefulWidget {
     required this.activities,
     required this.sync,
     required this.onRefresh,
+    this.onOpenProject,
   });
 
   @override
@@ -377,6 +381,12 @@ class _WebActionsViewState extends State<WebActionsView> {
   }
 
   void _openGantt(Project p, {String? targetTaskId}) {
+    // Lot 3b : le shell héberge le Gantt (sidebar visible) quand le parent
+    // fournit le callback ; sinon, route plein écran d'origine.
+    if (widget.onOpenProject != null) {
+      widget.onOpenProject!(p, taskId: targetTaskId);
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(
