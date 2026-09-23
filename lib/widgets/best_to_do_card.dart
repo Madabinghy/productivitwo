@@ -207,16 +207,6 @@ class _BestToDoCardState extends State<BestToDoCard> {
     final accent = dColor ?? cs.primary;
     final streak = logic.habitCurrentStreak(r.id);
 
-    // Compteur de la période courante — mêmes règles d'affichage que le
-    // lanceur : la cible atteinte ne cache jamais le vrai volume.
-    final value = e.dayTarget != null ? e.dayDone : e.weekDone;
-    final target = e.dayTarget ?? e.weekTarget;
-    final countText = target == 1
-        ? (value > 1 ? '$value ✓' : value >= 1 ? '✓' : '○')
-        : value > target
-            ? '$value/$target ✓'
-            : '$value/$target';
-
     // ▶ chrono (activité liée) / ⏱ minuteur (si réglé) — comme le lanceur.
     final linkedId = (r.linkedActivityId ?? '').trim();
     final linked = linkedId.isEmpty
@@ -269,12 +259,13 @@ class _BestToDoCardState extends State<BestToDoCard> {
                       routineStreakBadge(streak),
                       const SizedBox(width: 6),
                     ],
+                    // UNE seule stat (désencombrement) : quotidienne → le
+                    // jour tant qu'il n'est pas atteint, puis les 7 j ;
+                    // hebdo → toujours les 7 j.
                     Text(
-                        [
-                          if (e.dayTarget != null)
-                            'auj. ${e.dayDone}/${e.dayTarget}',
-                          '7 j ${e.weekDone}/${e.weekTarget}',
-                        ].join(' · '),
+                        e.dayTarget != null && e.dayDone < e.dayTarget!
+                            ? 'auj. ${e.dayDone}/${e.dayTarget}'
+                            : '7 j ${e.weekDone}/${e.weekTarget}',
                         style: TextStyle(
                             fontSize: 11,
                             fontFeatures: const [
@@ -285,14 +276,6 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 ],
               ),
             ),
-            // Compteur (style lanceur)
-            Text(countText,
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: value >= target
-                        ? accent
-                        : cs.onSurface.withOpacity(.4))),
             // ▶ chrono libre sur l'activité liée (on est déjà dans Maintenant)
             if (linked != null)
               routineTileButton(
@@ -319,8 +302,10 @@ class _BestToDoCardState extends State<BestToDoCard> {
             routineTileButton(
               icon: Icons.remove,
               tooltip: '−1',
-              color: cs.onSurface
-                  .withOpacity(value > 0 || e.weekDone > 0 ? .4 : .15),
+              color: cs.onSurface.withOpacity(
+                  (e.dayTarget != null ? e.dayDone > 0 : e.weekDone > 0)
+                      ? .4
+                      : .15),
               background: cs.onSurface.withOpacity(.08),
               onTap: (e.dayTarget != null ? e.dayDone > 0 : e.weekDone > 0)
                   ? () => _decrement(r)
@@ -337,26 +322,26 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 setState(() {});
               },
             ),
-            // Atteinte → ✅ valider (la sortir de la liste pour la journée) ;
-            // sinon ⏭ / ↩ reculer en fin de liste (réversible).
-            if (e.reached)
-              routineTileButton(
-                icon: Icons.check_rounded,
-                tooltip: 'Valider — sortir de la liste pour aujourd\'hui',
-                color: Colors.green.shade500,
-                background: Colors.green.withOpacity(.14),
-                onTap: () => _validate(r),
-              )
-            else
-              routineTileButton(
-                icon: e.passed ? Icons.undo_rounded : Icons.skip_next_rounded,
-                tooltip: e.passed
-                    ? 'Remettre en course'
-                    : 'Reculer en fin de liste',
-                color: cs.onSurface.withOpacity(.45),
-                background: cs.onSurface.withOpacity(.08),
-                onTap: () => _togglePasse(r),
-              ),
+            // ⏭ — UN seul geste de sortie : cible atteinte → sort de la
+            // liste pour la journée (vert, annulable en snackbar) ; pas
+            // atteinte → recule en fin de liste (↩ pour revenir).
+            routineTileButton(
+              icon: e.passed && !e.reached
+                  ? Icons.undo_rounded
+                  : Icons.skip_next_rounded,
+              tooltip: e.reached
+                  ? 'Fait — sortir de la liste pour aujourd\'hui'
+                  : e.passed
+                      ? 'Remettre en course'
+                      : 'Reculer en fin de liste',
+              color: e.reached
+                  ? Colors.green.shade500
+                  : cs.onSurface.withOpacity(.45),
+              background: e.reached
+                  ? Colors.green.withOpacity(.14)
+                  : cs.onSurface.withOpacity(.08),
+              onTap: () => e.reached ? _validate(r) : _togglePasse(r),
+            ),
           ],
         ),
       ),
