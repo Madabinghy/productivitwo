@@ -11,21 +11,18 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/energy_state.dart';
 import 'package:productivitwo_v1/utils/free_moment.dart';
-import 'package:productivitwo_v1/utils/onboarding_slots.dart';
 import 'package:productivitwo_v1/utils/recovery.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/where_we_go.dart';
 import 'package:productivitwo_v1/widgets/availability_sheet.dart';
 import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
-import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/energy_cards.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_next_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
-import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 
 /// Onglet « Maintenant » : focus pur sur CE qu'on fait sur le moment.
@@ -115,39 +112,16 @@ class _FocusViewState extends State<FocusView> {
   final _sync = FirestoreSync();
   StreamSubscription<DailySchedule?>? _schedSub;
   DailySchedule? _schedule;
-  // Programme de la veille — nécessaire à la carte coach (« affaires prêtes
-  // depuis hier »). Rarement modifié → simple fetch one-shot à l'init/minuit.
+  // Programme de la veille — nécessaire au flux remotivation (détection
+  // « 2 jours à plat »). Rarement modifié → simple fetch one-shot à l'init.
   DailySchedule? _yesterday;
-  // Programme de DEMAIN (temps réel) — la carte du soir reconnaît « demain
-  // est posé » dès que le user valide sa planification.
-  StreamSubscription<DailySchedule?>? _tomorrowSub;
-  DailySchedule? _tomorrow;
-  // Avance manuelle de la carte coach (CTA « Attaquer la journée »…) — vaut
-  // pour la journée en cours seulement, remise à zéro à minuit.
-  CoachMomentType? _coachAdvancedTo;
-  // « À la volée » sur la carte « journée non planifiée » — masquée jusqu'à
-  // demain (le lancement ad hoc de l'onglet reste dessous).
-  bool _unplannedDismissed = false;
-  // Artefacts (menu…) : la carte midi affiche le repas du jour (15c).
-  List<Artifact> _artifacts = const [];
-  StreamSubscription<List<Artifact>>? _artifactsSub;
-  // Rapport hebdo de la semaine courante — teaser du dimanche soir (16a).
-  WeeklyReport? _weeklyReport;
-  // Nudge domaines (Partie D) : faits calculés sur ±7 jours de programme.
-  int _sessionSkipCount = 0; // sessions de définition sautées (déclenche 21c)
-  String? _nextSessionLabel; // « demain 18 h 30 » — prochaine session posée
-  bool _nudgeDismissed = false; // « Garder [créneau] » — silence pour le jour
   // Guide du moment libre : intention choisie (chips « Que souhaites-tu faire ? »).
   FreeIntent? _freeIntent;
   // Défi ORION : activités ayant déjà un défi 🔥 programmé (aujourd'hui/futur)
   // — exclues pour que le défi propose autre chose (même règle que le bouton).
   Set<String> _scheduledChallengeIds = const {};
-  // GTD Gantt : tâches dont une étape est déjà programmée (aujourd'hui/futur)
-  // — le moment est choisi, la carte n'insiste pas.
-  Set<String> _scheduledStepTaskIds = const {};
-  // « Plus tard » sur la question micro-cible — silence pour la session.
-  bool _microTargetDismissed = false;
-  // Renégociation faite → la carte dérive respire 45 min (pas de rafale).
+  // Renégociation faite → la carte dérive respire 45 min ; « Ignorer » → elle
+  // se tait jusqu'à demain.
   DateTime? _driftSnoozeUntil;
   // ── Maintenant adaptatif (24) ──────────────────────────────────────────────
   // Ouvertures de l'onglet (déclencheur n° 1 de la question d'état : ≥ 3 sans
@@ -184,14 +158,8 @@ class _FocusViewState extends State<FocusView> {
     super.initState();
     _subscribeSchedule();
     if (widget.visible) _tabOpens.add(DateTime.now());
-    _artifactsSub = _sync.streamArtifacts().listen((a) {
-      if (mounted) setState(() => _artifacts = a);
-    });
     _sync.fetchScheduledChallengeActivityIds().then((ids) {
       if (mounted) setState(() => _scheduledChallengeIds = ids);
-    });
-    _sync.fetchScheduledTaskIds().then((ids) {
-      if (mounted) setState(() => _scheduledStepTaskIds = ids);
     });
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -213,8 +181,6 @@ class _FocusViewState extends State<FocusView> {
   void dispose() {
     _ticker?.cancel();
     _schedSub?.cancel();
-    _tomorrowSub?.cancel();
-    _artifactsSub?.cancel();
     _assistCtrl.dispose();
     super.dispose();
   }
@@ -327,9 +293,6 @@ class _FocusViewState extends State<FocusView> {
     _schedSub?.cancel();
     final now = DateTime.now();
     _schedDate = _ymd(now);
-    _coachAdvancedTo = null; // nouvelle journée → l'horloge reprend la main
-    _unplannedDismissed = false;
-    _nudgeDismissed = false;
     _tabOpens.clear(); // nouvelle journée → compteur d'ouvertures remis à zéro
     _energyAskRequested = false;
     _lowIndex = 0;
@@ -337,7 +300,6 @@ class _FocusViewState extends State<FocusView> {
     _reservedBlockId = null;
     _recoveryStartAttempted = false;
     _recoveryVariantLogged.clear();
-    _loadNudgeFacts(now);
     _schedSub = _sync.streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
       setState(() => _schedule = s);
@@ -368,108 +330,8 @@ class _FocusViewState extends State<FocusView> {
         _maybeStartRecovery();
       }
     }).catchError((_) {});
-    // Programme de DEMAIN (temps réel) : la carte du soir doit savoir que
-    // demain vient d'être posé — sinon elle re-propose « faire le point »
-    // comme si rien ne s'était passé (constaté sur build).
-    _tomorrowSub?.cancel();
-    final tomorrow = _ymd(now.add(const Duration(days: 1)));
-    _tomorrowSub = _sync.streamDailySchedule(tomorrow).listen((s) {
-      if (mounted) setState(() => _tomorrow = s);
-    });
-    // Rapport hebdo de la semaine courante (16a) — one-shot, léger.
-    final monday = _ymd(DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1)));
-    _sync.fetchWeeklyReport(monday).then((r) {
-      if (mounted) setState(() => _weeklyReport = r);
-    }).catchError((_) {});
   }
 
-  // ── Nudge domaines (Partie D) : faits sur ±7 jours de programme ─────────────
-
-  /// Ne coûte rien tant qu'aucun domaine n'est seulement « nommé » (les
-  /// variantes 21b/21c n'existent que pour eux ; 21a n'a besoin de rien).
-  Future<void> _loadNudgeFacts(DateTime now) async {
-    _sessionSkipCount = 0;
-    _nextSessionLabel = null;
-    if (!st.domains
-        .any((d) => !d.deleted && d.definitionStatus == 'named')) {
-      return;
-    }
-    try {
-      final days = await Future.wait(List.generate(15, (i) {
-        final d = now.add(Duration(days: i - 7)); // J-7 … J+7
-        return _sync.fetchDailySchedule(_ymd(d)).catchError((_) => null);
-      }));
-      var skips = 0;
-      String? nextLabel;
-      const weekdays = [
-        'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'
-      ];
-      for (var i = 0; i < days.length; i++) {
-        final offset = i - 7;
-        for (final b in days[i]?.blocks ?? const <ScheduleBlock>[]) {
-          if (b.kind != 'session' || b.status == 'deleted') continue;
-          // Passé : une session non faite a sauté. Futur : la prochaine posée.
-          if (offset < 0 && b.status != 'done') skips++;
-          if (offset >= 0 && b.status == 'pending' && nextLabel == null) {
-            final day = offset == 0
-                ? 'aujourd\'hui'
-                : offset == 1
-                    ? 'demain'
-                    : weekdays[now.add(Duration(days: offset)).weekday - 1];
-            final p = b.startTime.split(':');
-            final h = int.tryParse(p.first) ?? 0;
-            final m = p.length > 1 && p[1] != '00' ? ' ${p[1]}' : '';
-            nextLabel = '$day $h h$m';
-          }
-        }
-      }
-      if (mounted) {
-        setState(() {
-          _sessionSkipCount = skips;
-          _nextSessionLabel = nextLabel;
-        });
-      }
-    } catch (_) {}
-  }
-
-  /// « Nommer mes domaines — 2 min » (21a) → sheet in-place (22a/22b).
-  Future<void> _openNamingSheet() async {
-    final named = await showDomainNamingSheet(context, logic: logic);
-    if (named != null && named.isNotEmpty && mounted) {
-      setState(() {}); // le nudge recalcule : « Définir « X » — 15 min » (22c)
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '${named.length} domaine${named.length > 1 ? 's' : ''} nommé${named.length > 1 ? 's' : ''} — 2 min chrono'),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
-  }
-
-  /// « Ce soir plutôt » (21a) — pose le nommage comme un vrai bloc ce soir.
-  Future<void> _poseNamingTonight() async {
-    final now = DateTime.now();
-    final startMin = (now.hour * 60 + now.minute + 30).clamp(19 * 60, 21 * 60);
-    final hm =
-        '${(startMin ~/ 60).toString().padLeft(2, '0')}:${(startMin % 60).toString().padLeft(2, '0')}';
-    await _sync.addScheduleBlock(
-        _schedDate,
-        ScheduleBlock(
-          startTime: hm,
-          durationMin: 5,
-          title: 'Nommer mes domaines — 2 min',
-          category: 'personal',
-          kind: 'session',
-        ));
-    if (mounted) {
-      setState(() => _nudgeDismissed = true);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Posé ce soir à ${hm.replaceFirst(':', ' h ')}.'),
-        duration: const Duration(seconds: 2),
-      ));
-    }
-  }
 
   /// « Faire la session maintenant » (21b) / « Version courte — 8 min » (21c).
   void _startDomainSession(String domain, {bool short = false}) {
@@ -477,42 +339,6 @@ class _FocusViewState extends State<FocusView> {
       builder: (_) => DomainSessionScreen(
           logic: logic, domainName: domain, shortVersion: short),
     ));
-  }
-
-  /// « Plus tard — pose les N sessions dans ma semaine » (22c) /
-  /// « Reposer un créneau » (21c) — mécanique 18b.
-  Future<void> _poseRemainingSessions() async {
-    final named = st.domains
-        .where((d) => !d.deleted && d.definitionStatus == 'named')
-        .toList();
-    if (named.isEmpty) return;
-    final now = DateTime.now();
-    final slots = definitionSessionSlots(now, named.length);
-    for (var i = 0; i < named.length; i++) {
-      final slot = slots[i];
-      await _sync.addScheduleBlock(
-        _ymd(slot),
-        ScheduleBlock(
-          startTime:
-              '${slot.hour.toString().padLeft(2, '0')}:${slot.minute.toString().padLeft(2, '0')}',
-          durationMin: 20,
-          title: 'Définir « ${named[i].name} » avec Orion',
-          category: 'personal',
-          kind: 'session',
-          domainId: named[i].id,
-        ),
-      );
-    }
-    if (mounted) {
-      setState(() => _nudgeDismissed = true);
-      _loadNudgeFacts(now);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '${named.length} session${named.length > 1 ? 's' : ''} posée${named.length > 1 ? 's' : ''} dans ta semaine — engagements comme les autres.'),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-      ));
-    }
   }
 
   // ── Guide du moment libre (« Que souhaites-tu faire ? ») ────────────────────
@@ -967,23 +793,6 @@ class _FocusViewState extends State<FocusView> {
   }
 
   // ── Mode soirée réversible (23c) ─────────────────────────────────────────────
-
-  /// « Terminer l'après-midi » : bascule système EXPLICITE — les blocs ne sont
-  /// jamais touchés, snackbar « Annuler » à l'activation, bandeau permanent.
-  Future<void> _endAfternoon() async {
-    await _sync.setDayMode(_schedDate, 'evening');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Mode soirée activé'),
-        duration: const Duration(seconds: 5),
-        behavior: SnackBarBehavior.floating,
-        action: SnackBarAction(
-          label: 'Annuler',
-          onPressed: () => _sync.setDayMode(_schedDate, 'normal'),
-        ),
-      ));
-    }
-  }
 
   /// Bandeau d'état permanent en tête de Maintenant tant que le mode est actif.
   Widget _eveningModeBanner(ColorScheme cs) {
@@ -2276,64 +2085,18 @@ class _FocusViewState extends State<FocusView> {
   }
 
   Widget _coachCard(DateTime now) {
-    final moment = computeCoachMoment(
-        now, st, _schedule, _yesterday, st.sessions,
-        advancedTo: _coachAdvancedTo,
-        unplannedDismissed: _unplannedDismissed,
-        artifacts: _artifacts,
-        weeklyReport: _weeklyReport,
-        sessionSkipCount: _sessionSkipCount,
-        nextSessionLabel: _nextSessionLabel,
-        nudgeDismissed: _nudgeDismissed,
-        microTargetDismissed: _microTargetDismissed,
+    // Coach ÉVÉNEMENTIEL (refonte 2026-09) : rien par défaut — la carte
+    // n'existe que sur fin de chrono (« Et ensuite ? ») ou dérive détectée.
+    final moment = computeCoachMoment(now, st, _schedule, st.sessions,
         driftSnoozed:
             _driftSnoozeUntil != null && now.isBefore(_driftSnoozeUntil!),
-        challenge: _challengeProposal(now),
-        // Gantt invisible : micro-action du projet le plus urgent — la carte
-        // ne la sort que quand rien d'autre n'a la priorité.
-        ganttAction: ganttMicroAction(logic.currentProjects,
-            blocks: _schedule?.blocks ?? const [],
-            excludeTaskIds: _scheduledStepTaskIds),
-        // Demain déjà posé → la carte du soir le reconnaît (pas de
-        // « faire le point » comme si de rien).
-        tomorrowPlanned:
-            _tomorrow?.blocks.any((b) => b.status != 'deleted') ?? false);
-    final isNudge = moment.type == CoachMomentType.defineNudge;
+        challenge: _challengeProposal(now));
     return CoachMomentCard(
       moment: moment,
-      onNameDomains: _openNamingSheet,
-      onNameTonight: _poseNamingTonight,
-      onStartSession: _startDomainSession,
-      onPoseSessions: _poseRemainingSessions,
-      onEndAfternoon: _endAfternoon,
-      // « Je suis dispo » — efface la fenêtre, le coach reprend normalement.
-      onAvailableNow: () => _sync.setUnavailability(_schedDate, null),
-      // « Planifions — [routine] » : pose la prochaine exécution à date/heure
-      // choisies (après la fenêtre d'indispo par défaut).
-      onPlanNext: (block) {
-        Activity? routine;
-        for (final a in st.activities) {
-          if (a.id == block.activityId) routine = a;
-        }
-        if (routine != null) {
-          showPlanNextSheet(context,
-              logic: logic,
-              routine: routine,
-              notBefore: _schedule?.unavailableUntil);
-        }
-      },
-      // « Garder [créneau] » du nudge / « Plus tard » (micro-cible) /
-      // « À la volée » : silence pour la journée seulement.
-      onDismiss: isNudge
-          ? () => setState(() => _nudgeDismissed = true)
-          : moment.type == CoachMomentType.microTarget
-              ? () => setState(() => _microTargetDismissed = true)
-              : () => setState(() => _unplannedDismissed = true),
       onLaunch: widget.onLaunchScheduledBlock,
       // Renégocier (12a) : trois issues générées depuis le réel — réduire /
-      // déplacer / reporter. Remplace l'ouverture de fiche v1. Au retour, la
-      // carte dérive respire 45 min : on vient de trier, pas de rafale
-      // « dérive suivante » (le check-in rattrape ce qui doit l'être).
+      // déplacer / reporter. Au retour, la carte dérive respire 45 min : on
+      // vient de trier, pas de rafale « dérive suivante ».
       onRenegotiate: (block) async {
         await showRenegotiateSheet(
           context,
@@ -2347,17 +2110,10 @@ class _FocusViewState extends State<FocusView> {
               DateTime.now().add(const Duration(minutes: 45)));
         }
       },
-      onOpenDayReview: widget.onOpenDayReview,
-      onAdvance: (target) => setState(() => _coachAdvancedTo = target),
-      onPlanDay: _openPlanToday,
-      onMealEaten: (id) => _logMeal(id, eaten: true),
-      onMealShift: (id) => _logMeal(id, eaten: false),
-      onOpenWeeklyReport: _weeklyReport == null
-          ? null
-          : () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => WeeklyReportScreen(
-                    logic: logic, report: _weeklyReport!),
-              )),
+      // « Ignorer » (dérive) : silence jusqu'à demain.
+      onDismiss: () => setState(() => _driftSnoozeUntil =
+          DateTime(now.year, now.month, now.day)
+              .add(const Duration(days: 1))),
       // Défi ORION : le tap de carte ouvre TOUJOURS le dialog de confirmation
       // (constaté sur build : lancer le minuteur directement surprend) — le
       // chrono ne démarre qu'après « Je relève 🔥 », comme avec le bouton doré.
@@ -2365,49 +2121,6 @@ class _FocusViewState extends State<FocusView> {
         final a =
             st.activities.where((x) => x.id == block.activityId).firstOrNull;
         if (a != null) _confirmChallenge(a, block.durationMin);
-      },
-      onChallengeSchedule: (block) async {
-        final a =
-            st.activities.where((x) => x.id == block.activityId).firstOrNull;
-        if (a == null) return;
-        await widget.onChallengeSchedule?.call(a, block.durationMin);
-        final ids = await _sync.fetchScheduledChallengeActivityIds();
-        if (mounted) setState(() => _scheduledChallengeIds = ids);
-      },
-      // GTD minimaliste (Gantt) : définir la prochaine étape / la programmer.
-      onDefineSteps: _defineGanttSteps,
-      onScheduleStep: _scheduleGanttStep,
-      // Réglage micro-cible : la réponse devient un FAIT (targetSource).
-      onKeepMicroTarget: (block) {
-        final a =
-            st.activities.where((x) => x.id == block.activityId).firstOrNull;
-        if (a == null) return;
-        a.targetSource = 'user'; // déclencheur assumé — épinglé, plus touché
-        logic.onChange();
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '📌 Micro-cible gardée : ${a.name} — ${a.goalMin} min/j (épinglée, ORION n\'y touchera plus)'),
-          duration: const Duration(seconds: 3),
-        ));
-      },
-      onCalibrateTarget: (block) {
-        final a =
-            st.activities.where((x) => x.id == block.activityId).firstOrNull;
-        if (a == null) return;
-        final avg30 =
-            (logic.timeSliding(a.id, 30).doneMin / 30.0).round();
-        final old = a.goalMin;
-        a.goalMin = ((avg30 / 5).round() * 5).clamp(5, 720);
-        a.targetSource = 'orion'; // la calibration continue de la suivre
-        a.lastTuneAt = DateTime.now();
-        logic.onChange();
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '📏 ${a.name} : cible $old → ${a.goalMin} min/j (mesuré ~$avg30 min/j sur 30 j)'),
-          duration: const Duration(seconds: 3),
-        ));
       },
       // ✓ d'une routine sans minuteur : coche directe (même garde anti-double
       // incrément que le ✓ des blocs) — pas de chrono pour boire un verre d'eau.
@@ -2437,244 +2150,6 @@ class _FocusViewState extends State<FocusView> {
         ));
       },
     );
-  }
-
-  // ── GTD minimaliste sur la micro-action Gantt ────────────────────────────
-  //
-  // La tâche proposée n'a pas d'étape définie : le user pose la (les)
-  // prochaine(s) petite(s) action(s) — FAIT structurel écrit sur le projet
-  // (TaskAction), pas un souvenir de carte. Puis il choisit : faire la
-  // première tout de suite, la PROGRAMMER au moment où il sait qu'il sera
-  // dispo pour elle, ou plus tard (la carte la reproposera).
-
-  Future<void> _defineGanttSteps(ScheduleBlock block) async {
-    final project = logic.currentProjects
-        .where((p) => p.id == block.projectId)
-        .firstOrNull;
-    final task =
-        project?.tasks.where((t) => t.id == block.taskId).firstOrNull;
-    if (project == null || task == null) return;
-
-    final ctrl = TextEditingController();
-    final raw = await showDialog<String>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Prochaine étape'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('« ${task.title} » — quelle est la prochaine petite action '
-                'concrète ? (une par ligne si tu en vois plusieurs)'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: ctrl,
-              autofocus: true,
-              maxLines: 4,
-              minLines: 1,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                  hintText: 'ex : Appeler le fournisseur pour le devis'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, ctrl.text),
-              child: const Text('Poser')),
-        ],
-      ),
-    );
-    final steps = (raw ?? '')
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-    if (steps.isEmpty) return;
-    for (final t in steps) {
-      task.actions.add(TaskAction(title: t));
-    }
-    await _sync.saveProjectTasks(project.id, project.tasks);
-    if (!mounted) return;
-    setState(() {}); // la carte reprend avec l'étape définie
-
-    // L'étape existe — maintenant, QUAND ? (GTD : l'action + son moment.)
-    final first = task.actions.firstWhere((a) => !a.done);
-    final next = ScheduleBlock(
-        startTime: block.startTime,
-        durationMin: 15,
-        title: first.title,
-        category: 'project',
-        projectId: project.id,
-        taskId: task.id,
-        actionId: first.id);
-    final cs = Theme.of(context).colorScheme;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: const Text('Étape posée'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('« ${first.title} »',
-                textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text('Tu la fais maintenant, ou tu choisis le moment où tu seras '
-                'dispo pour elle ?',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
-          ],
-        ),
-        actionsOverflowDirection: VerticalDirection.down,
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d),
-              child: const Text('Plus tard')),
-          TextButton(
-              onPressed: () => Navigator.pop(d, 'schedule'),
-              child: const Text('Programmer 📅')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, 'now'),
-              child: const Text('Maintenant — 15 min')),
-        ],
-      ),
-    );
-    if (choice == 'now') widget.onLaunchScheduledBlock?.call(next);
-    if (choice == 'schedule') await _scheduleGanttStep(next);
-  }
-
-  /// « Programmer l'étape » : le user SAIT quand il sera dispo pour cette
-  /// action en particulier (chez lui, à la salle, en déplacement…) — il pose
-  /// le jour et l'heure, le bloc daté porte projet/tâche/étape (chrono ciblé).
-  Future<void> _scheduleGanttStep(ScheduleBlock block) async {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    var day = today;
-    var time = TimeOfDay(hour: (now.hour + 1).clamp(0, 23), minute: 0);
-
-    final confirmed = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-        final cs = Theme.of(ctx).colorScheme;
-        final tomorrow = today.add(const Duration(days: 1));
-        final afterTomorrow = today.add(const Duration(days: 2));
-        String dayLabel() {
-          if (day == today) return 'aujourd\'hui';
-          if (day == tomorrow) return 'demain';
-          if (day == afterTomorrow) return 'après-demain';
-          return 'le ${day.day}/${day.month}';
-        }
-
-        final at =
-            DateTime(day.year, day.month, day.day, time.hour, time.minute);
-        final past = !at.isAfter(now);
-        return Padding(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-              left: 20,
-              right: 20,
-              top: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Programmer l\'étape',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              Text('📋 ${block.title} — 15 min',
-                  style: TextStyle(color: cs.onSurface.withOpacity(.7))),
-              const SizedBox(height: 16),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                ChoiceChip(
-                    label: const Text('Aujourd\'hui'),
-                    selected: day == today,
-                    onSelected: (_) => setSheet(() => day = today)),
-                ChoiceChip(
-                    label: const Text('Demain'),
-                    selected: day == tomorrow,
-                    onSelected: (_) => setSheet(() => day = tomorrow)),
-                ChoiceChip(
-                    label: const Text('Après-demain'),
-                    selected: day == afterTomorrow,
-                    onSelected: (_) => setSheet(() => day = afterTomorrow)),
-                ActionChip(
-                  avatar: const Icon(Icons.calendar_month_rounded, size: 18),
-                  label: const Text('Autre…'),
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: day,
-                        firstDate: today,
-                        lastDate: today.add(const Duration(days: 365)));
-                    if (picked != null) {
-                      setSheet(() => day =
-                          DateTime(picked.year, picked.month, picked.day));
-                    }
-                  },
-                ),
-              ]),
-              const SizedBox(height: 12),
-              Row(children: [
-                Icon(Icons.schedule_rounded,
-                    size: 18, color: cs.onSurface.withOpacity(.6)),
-                const SizedBox(width: 8),
-                Text('${dayLabel()} à ${time.format(ctx)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                const Spacer(),
-                TextButton(
-                  onPressed: () async {
-                    final t =
-                        await showTimePicker(context: ctx, initialTime: time);
-                    if (t != null) setSheet(() => time = t);
-                  },
-                  child: const Text('Modifier l\'heure'),
-                ),
-              ]),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: past ? null : () => Navigator.pop(ctx, true),
-                  icon: const Icon(Icons.event_available_rounded),
-                  label:
-                      Text(past ? 'Choisis un horaire futur' : 'Programmer'),
-                ),
-              ),
-            ],
-          ),
-        );
-      }),
-    );
-    if (confirmed != true || !mounted) return;
-
-    final ymd =
-        '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-    final hhmm =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-    await _sync.addScheduleBlock(
-        ymd,
-        ScheduleBlock(
-            startTime: hhmm,
-            durationMin: block.durationMin,
-            title: block.title,
-            category: 'project',
-            projectId: block.projectId,
-            taskId: block.taskId,
-            actionId: block.actionId));
-    final ids = await _sync.fetchScheduledTaskIds();
-    if (!mounted) return;
-    setState(() => _scheduledStepTaskIds = ids);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          '📋 Étape programmée ${day == today ? 'aujourd\'hui' : day == today.add(const Duration(days: 1)) ? 'demain' : 'le ${day.day}/${day.month}'} à $hhmm'),
-      duration: const Duration(seconds: 3),
-    ));
   }
 
   /// Confirmation du défi (même dialog que le bouton doré) : le nom et la
@@ -2723,37 +2198,6 @@ class _FocusViewState extends State<FocusView> {
       // recharge pour que la carte ne le repropose pas dans la foulée.
       final ids = await _sync.fetchScheduledChallengeActivityIds();
       if (mounted) setState(() => _scheduledChallengeIds = ids);
-    }
-  }
-
-  /// Carte midi menu (15c) : ✓ Mangé incrémente le fait tracké ; « Autre
-  /// chose » logge 'other' ET fait glisser le menu d'un jour — sans pénalité.
-  Future<void> _logMeal(String artifactId, {required bool eaten}) async {
-    final a = _artifacts.where((x) => x.id == artifactId).firstOrNull;
-    if (a == null) return;
-    a.mealLog[_schedDate] = eaten ? 'eaten' : 'other';
-    if (!eaten) shiftMenuOneDay(a, _schedDate);
-    // Plat mangé → bibliothèque de plats (archive réexploitable du menu
-    // déterministe : ce qui est vraiment cuisiné compte).
-    if (eaten) {
-      const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-      final wd = codes[DateTime.now().weekday - 1];
-      for (final e in a.entries) {
-        if (e.date == _schedDate || (e.date == null && e.weekday == wd)) {
-          unawaited(_sync.recordMealCooked(e.title));
-          break;
-        }
-      }
-    }
-    await _sync.saveArtifact(a);
-    if (mounted) {
-      setState(() {});
-      if (!eaten) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Le menu glisse d\'un jour — sans pénalité.'),
-          duration: Duration(seconds: 2),
-        ));
-      }
     }
   }
 
