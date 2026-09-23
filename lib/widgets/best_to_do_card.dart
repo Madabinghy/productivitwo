@@ -45,6 +45,27 @@ class _BestToDoCardState extends State<BestToDoCard> {
     setState(() {});
   }
 
+  // ✅ « Valider » : atteindre la cible ne sort PLUS la routine de la liste
+  // (retour user : cible 1 traction en reprise, 3 saisies voulues — la
+  // routine disparaissait dès la première). Elle descend en fin de liste,
+  // reste incrémentable, et c'est CE bouton qui la sort pour la journée.
+  void _validate(Activity a) {
+    final ymd = yyyymmdd(DateTime.now());
+    logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Validée pour aujourd\'hui : ${a.name}'),
+      duration: const Duration(seconds: 4),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          logic.setNowDone(ymd, logic.nowDoneSet(ymd)..remove(a.id));
+          if (mounted) setState(() {});
+        },
+      ),
+    ));
+  }
+
   // « Passer » = reculer en fin de liste pour aujourd'hui (pas de
   // disparition) : les autres routines remontent, celle-ci reste visible
   // et rattrapable. Re-tap sur une routine passée → elle revient en course.
@@ -74,6 +95,9 @@ class _BestToDoCardState extends State<BestToDoCard> {
     final now = DateTime.now();
     final midnight = DateTime(now.year, now.month, now.day);
     final skipped = logic.nowSkippedSet(yyyymmdd(now));
+    // Validées ✅ du jour : sorties de la liste par un geste EXPLICITE —
+    // atteindre la cible ne suffit plus (on peut continuer à saisir).
+    final validated = logic.nowDoneSet(yyyymmdd(now));
 
     final entries = <({
       Activity act,
@@ -83,9 +107,11 @@ class _BestToDoCardState extends State<BestToDoCard> {
       int weekTarget,
       double score,
       bool passed,
+      bool reached,
     })>[];
     for (final a in st.activeActivities) {
       if (!a.isHabit || a.habitFreq == HabitFreq.monthly) continue;
+      if (validated.contains(a.id)) continue;
       final week = rollingStatFor(a, st.habitHits);
       if (week == null) continue;
       final weekRatio = (week.done / week.target).clamp(0.0, 1.0).toDouble();
@@ -100,6 +126,9 @@ class _BestToDoCardState extends State<BestToDoCard> {
             .length;
         dayRatio = (dayDone / dayTarget).clamp(0.0, 1.0).toDouble();
       }
+      final dt = dayTarget;
+      final reached =
+          dt != null ? dayDone >= dt : week.done >= week.target;
       entries.add((
         act: a,
         dayDone: dayDone,
@@ -108,23 +137,23 @@ class _BestToDoCardState extends State<BestToDoCard> {
         weekTarget: week.target,
         score: dayRatio > weekRatio ? dayRatio : weekRatio,
         passed: skipped.contains(a.id),
+        reached: reached,
       ));
     }
     if (entries.isEmpty) return const SizedBox.shrink();
-    // Pas encore atteintes : quotidienne → cible du JOUR non remplie ;
-    // hebdo → cible des 7 jours non remplie. Le déjà-atteint sort du top.
-    // Les « passées » du jour restent dans la liste mais reculent EN FIN.
-    final pending = entries.where((e) {
-      final dt = e.dayTarget;
-      if (dt != null) return e.dayDone < dt;
-      return e.weekDone < e.weekTarget;
-    }).toList()
+    // Ordre : à faire (score desc) → passées non atteintes → ATTEINTES.
+    // Atteindre la cible ne sort plus la routine (elle descend tout en bas,
+    // toujours incrémentable) ; seul ✅ la sort, pour la journée.
+    final unreached = entries.where((e) => !e.reached).toList()
       ..sort((x, y) {
         if (x.passed != y.passed) return x.passed ? 1 : -1;
         return x.score == y.score
             ? y.weekDone.compareTo(x.weekDone)
             : y.score.compareTo(x.score);
       });
+    final reachedList = entries.where((e) => e.reached).toList()
+      ..sort((x, y) => y.score.compareTo(x.score));
+    final pending = [...unreached.take(3), ...reachedList];
 
     return Container(
       margin: const EdgeInsets.only(top: 14),
@@ -152,7 +181,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
                       fontStyle: FontStyle.italic,
                       color: cs.onSurface.withOpacity(.55))),
             ),
-          for (final e in pending.take(3)) _tile(cs, e, now),
+          for (final e in pending) _tile(cs, e, now),
         ],
       ),
     );
@@ -170,6 +199,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
         int weekTarget,
         double score,
         bool passed,
+        bool reached,
       }) e,
       DateTime now) {
     final r = e.act;
@@ -307,16 +337,26 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 setState(() {});
               },
             ),
-            // ⏭ / ↩ — reculer en fin de liste pour aujourd'hui (réversible)
-            routineTileButton(
-              icon: e.passed ? Icons.undo_rounded : Icons.skip_next_rounded,
-              tooltip: e.passed
-                  ? 'Remettre en course'
-                  : 'Reculer en fin de liste',
-              color: cs.onSurface.withOpacity(.45),
-              background: cs.onSurface.withOpacity(.08),
-              onTap: () => _togglePasse(r),
-            ),
+            // Atteinte → ✅ valider (la sortir de la liste pour la journée) ;
+            // sinon ⏭ / ↩ reculer en fin de liste (réversible).
+            if (e.reached)
+              routineTileButton(
+                icon: Icons.check_rounded,
+                tooltip: 'Valider — sortir de la liste pour aujourd\'hui',
+                color: Colors.green.shade500,
+                background: Colors.green.withOpacity(.14),
+                onTap: () => _validate(r),
+              )
+            else
+              routineTileButton(
+                icon: e.passed ? Icons.undo_rounded : Icons.skip_next_rounded,
+                tooltip: e.passed
+                    ? 'Remettre en course'
+                    : 'Reculer en fin de liste',
+                color: cs.onSurface.withOpacity(.45),
+                background: cs.onSurface.withOpacity(.08),
+                onTap: () => _togglePasse(r),
+              ),
           ],
         ),
       ),
