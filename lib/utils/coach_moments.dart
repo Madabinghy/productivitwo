@@ -1,5 +1,4 @@
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/evening_verdict.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 
 // ─── CARTE COACH « MAINTENANT » ──────────────────────────────────────────────
@@ -220,15 +219,9 @@ CoachMoment computeCoachMoment(
   }
 
   // ── Nudge domaines (Partie D) : prioritaire sur les moments horaires tant
-  // qu'un domaine est absent ou seulement nommé. Le teaser du rapport (16a)
-  // garde le dimanche soir — la semaine se juge avant de se nudger.
-  // Le teaser du rapport ne vaut que tant que le rapport n'est pas LU — une
-  // fois lu (fait readAt), la soirée reprend son cours normal : le rapport
-  // n'est pas forcément la dernière chose de la journée.
-  final unreadReport = weeklyReport != null && weeklyReport.readAt == null;
-  final sundayReport =
-      now.weekday == DateTime.sunday && minutes >= 19 * 60 && unreadReport;
-  if (!nudgeDismissed && !sundayReport) {
+  // qu'un domaine est absent ou seulement nommé. (Le teaser du rapport hebdo
+  // du dimanche soir a été retiré de Maintenant — retour user 2026-09.)
+  if (!nudgeDismissed) {
     final nudge = _defineNudge(now, st, sessionSkipCount, nextSessionLabel);
     if (nudge != null) return nudge;
   }
@@ -270,14 +263,11 @@ CoachMoment computeCoachMoment(
   // Moment « horloge ». drift prime sur afternoon dans sa fenêtre (14–19h).
   final CoachMoment clock;
   if (minutes >= 19 * 60) {
-    // Dimanche soir : le rapport hebdo prime sur le check-in (16a) — la
-    // semaine se juge avant de se clore. Une fois LU, le check-in reprend.
-    // Check-in du soir SUPPRIMÉ (retour user 2026-09 : trop lourd) — le soir,
-    // seule la carte hebdo du dimanche subsiste. Le point du jour reste
-    // accessible via le bouton « Résumé du jour » de Maintenant.
-    clock = (now.weekday == DateTime.sunday && unreadReport)
-        ? _weeklyTeaser(weeklyReport)
-        : CoachMoment.none;
+    // Le soir : SILENCE — check-in supprimé (2026-09), et le teaser du
+    // rapport hebdo du dimanche aussi (retour user : plus aucun rapport
+    // ORION dans Maintenant). Le rapport reste généré ; « Résumé du jour »
+    // reste le chemin manuel.
+    clock = CoachMoment.none;
   } else if (minutes >= 14 * 60) {
     clock = (driftSnoozed ? null : _driftMoment(now, st, blocks, sessionsToday)) ??
         _idealHourMoment(now, st, blocks) ??
@@ -1225,27 +1215,6 @@ List<CoachAction> _ganttCtas(DateTime now, GanttMicroAction g) {
   return null;
 }
 
-/// Teaser du rapport hebdo (16a) — chiffres réels du rapport généré.
-CoachMoment _weeklyTeaser(WeeklyReport r) {
-  final motif = r.motifs.isNotEmpty ? r.motifs.first : null;
-  return CoachMoment(
-    type: CoachMomentType.weekly,
-    tagLabel: 'ORION · RAPPORT HEBDO',
-    title: 'Semaine ${r.isoWeek}',
-    message:
-        'Le rapport fait 3 minutes, la question de fond en fait une.',
-    stats: [
-      StatItem('Engagements tenus', '${r.held}/${r.total}'),
-      if (motif != null)
-        StatItem('« ${skipReasonLabel(motif.cause)} »', '×${motif.count}'),
-    ],
-    actions: const [
-      CoachAction('Lire le rapport — 3 min', CoachActionKind.openWeeklyReport),
-      CoachAction('Faire le point', CoachActionKind.openDayReview),
-    ],
-    tone: CoachTone.positive,
-  );
-}
 
 
 // ── Helpers purs ──────────────────────────────────────────────────────────────

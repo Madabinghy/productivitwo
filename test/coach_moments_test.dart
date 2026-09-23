@@ -149,7 +149,8 @@ void main() {
       expect(m.type, isNot(CoachMomentType.defineNudge));
     });
 
-    test('dimanche soir : le rapport hebdo garde la main sur le nudge', () {
+    test('dimanche soir : le teaser hebdo est supprimé — le nudge garde la main',
+        () {
       final now = DateTime(2026, 7, 12, 20, 0); // dimanche
       final st = _stDomains([
         Domain(name: 'Business', definitionStatus: 'named'),
@@ -157,7 +158,9 @@ void main() {
       final report = WeeklyReport(weekStart: '2026-07-06');
       final m = computeCoachMoment(now, st, null, null, [],
           weeklyReport: report);
-      expect(m.type, CoachMomentType.weekly);
+      // Plus aucun rapport ORION dans Maintenant (retour user 2026-09) :
+      // le nudge domaines, lui, reste prioritaire.
+      expect(m.type, CoachMomentType.defineNudge);
     });
 
     test('mode soirée (23c) : carte « journée pliée tôt » avant 19 h', () {
@@ -734,7 +737,7 @@ void main() {
       expect(menu.entries[3].weekday, 'sun'); // motif hebdo intouché
     });
 
-    test('dimanche soir + rapport → teaser 16a (chiffres réels)', () {
+    test('dimanche soir + rapport → silence (teaser supprimé)', () {
       final now = DateTime(2026, 7, 12, 20, 0); // dimanche
       final report = WeeklyReport(
         weekStart: '2026-07-06',
@@ -745,12 +748,8 @@ void main() {
       );
       final m = computeCoachMoment(now, _st([]), null, null, [],
           weeklyReport: report);
-      expect(m.type, CoachMomentType.weekly);
-      expect(m.stats.any((s) => s.value == '11/14'), isTrue);
-      expect(m.stats.any((s) => s.value == '×3'), isTrue);
-      expect(
-          m.actions.any((a) => a.kind == CoachActionKind.openWeeklyReport),
-          isTrue);
+      // Plus aucun rapport ORION dans Maintenant (retour user 2026-09).
+      expect(m.hidden, isTrue);
     });
 
     test('point fait (reviewedAt) → silence (plus de carte « clôturée »)',

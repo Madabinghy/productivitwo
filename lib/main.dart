@@ -3969,6 +3969,37 @@ class _AppRootState extends State<AppRoot>
     ctrl.dispose();
   }
 
+  /// Minutes de sommeil des 7 dernières nuits (ancien → récent) + cible.
+  /// Nuit attribuée au jour du RÉVEIL (fin de session) ; activités retenues :
+  /// domaine « Sommeil » ou nom contenant « sommeil ».
+  (List<int>, int, Domain?) _sleepLast7(DateTime now) {
+    Domain? sleepDomain;
+    for (final d in logic.state.activeDomains) {
+      if (d.name.toLowerCase().contains('sommeil')) sleepDomain = d;
+    }
+    var goal = 7 * 60;
+    final ids = <String>{};
+    for (final a in logic.state.activeActivities) {
+      final inDomain = sleepDomain != null && a.domainId == sleepDomain.id;
+      if (inDomain || a.name.toLowerCase().contains('sommeil')) {
+        ids.add(a.id);
+        if (!a.isHabit && a.goalMin > 60) goal = a.goalMin;
+      }
+    }
+    final today0 = DateTime(now.year, now.month, now.day);
+    final mins = List<int>.filled(7, 0);
+    if (ids.isEmpty) return (mins, goal, sleepDomain);
+    for (final s in logic.state.sessions) {
+      if (!ids.contains(s.activityId)) continue;
+      final end = s.endAt ?? now;
+      final endDay = DateTime(end.year, end.month, end.day);
+      final idx = 6 - today0.difference(endDay).inDays;
+      if (idx < 0 || idx > 6) continue;
+      mins[idx] += end.difference(s.startAt).inMinutes;
+    }
+    return (mins, goal, sleepDomain);
+  }
+
   bool _shouldShowFab() {
     return _tab == _Tab.dashboard ||
         _tab == _Tab.aujourdhui ||
@@ -4669,6 +4700,67 @@ class _AppRootState extends State<AppRoot>
                         ),
                         child: MiniHourBars24h(
                             bins: bins24, domainColors: domColors),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // 🌙 Mini-graphe sommeil (7 nuits) — test 2026-09. Tap → fiche
+            // du domaine Sommeil. Masqué si aucune nuit logguée sur 7 j.
+            ValueListenableBuilder<int>(
+              valueListenable: _tick,
+              builder: (context, _, __) {
+                final now = DateTime.now();
+                final (nights, goal, sleepDomain) = _sleepLast7(now);
+                if (nights.every((m) => m <= 0)) {
+                  return const SizedBox.shrink();
+                }
+                final last = nights[6] > 0 ? nights[6] : nights[5];
+                final label = last <= 0
+                    ? '—'
+                    : '${last ~/ 60}h${(last % 60).toString().padLeft(2, '0')}';
+                final cs = Theme.of(context).colorScheme;
+                return Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: sleepDomain == null
+                          ? null
+                          : () {
+                              final (sc, ec, dj) =
+                                  _rangeForScope(DateTime.now());
+                              _showDomainDetail(sleepDomain, sc, ec, dj,
+                                  focus: 'time');
+                            },
+                      borderRadius: BorderRadius.circular(999),
+                      child: Ink(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest
+                              .withValues(alpha: .55),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                              color:
+                                  cs.outlineVariant.withValues(alpha: .55)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            MiniSleepBars(nightsMin: nights, goalMin: goal),
+                            const SizedBox(width: 5),
+                            Text(label,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ],
+                                    color: cs.onSurface.withOpacity(.7))),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -9438,6 +9530,60 @@ class AppBarProductivityBars extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Mini-graphe SOMMEIL de l'appbar (test 2026-09) : 7 nuits en barres
+/// (nuit attribuée au jour du RÉVEIL — fin de session), échelle 9 h,
+/// vert dès la cible atteinte (goalMin de l'activité sommeil, sinon 7 h).
+class MiniSleepBars extends StatelessWidget {
+  final List<int> nightsMin; // 7 valeurs, minutes, ancien → récent
+  final int goalMin;
+  final double height;
+  final double width;
+
+  const MiniSleepBars({
+    super.key,
+    required this.nightsMin,
+    required this.goalMin,
+    this.height = 18,
+    this.width = 26,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const maxMin = 9 * 60;
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < 7; i++)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                child: FractionallySizedBox(
+                  heightFactor: nightsMin[i] <= 0
+                      ? 0.08
+                      : (nightsMin[i] / maxMin).clamp(0.15, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: nightsMin[i] <= 0
+                          ? cs.onSurface.withOpacity(.15)
+                          : nightsMin[i] >= goalMin
+                              ? Colors.teal.shade400
+                              : Colors.indigo.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
