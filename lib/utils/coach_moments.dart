@@ -188,19 +188,10 @@ CoachMoment computeCoachMoment(
   final blocks = _liveBlocks(today);
   final sessionsToday =
       recentSessions.where((s) => _sameDay(s.startAt, now)).toList();
-  // Minimum vital hebdo des domaines définis — affiché midi et soir.
+  // Minimum vital hebdo des domaines définis — porté par la carte « journée
+  // pliée tôt » (le rapport de matinée a été supprimé — retour user 2026-09 ;
+  // le vital sommeil vit désormais dans l'appbar).
   final vitals = _vitalStats(now, st, recentSessions);
-  // Repas du jour du menu (15c) — zéro décision à midi.
-  final meal = _todayMeal(now, artifacts);
-  // L'activité-temps « Cuisine/Cuisiner » du user, si elle existe — support
-  // de la proposition discrète « Cuisiner d'abord ? » sur la carte repas.
-  Activity? cookActivity;
-  for (final a in st.activeActivities) {
-    if (a.type == 'time' && a.name.toLowerCase().contains('cuisin')) {
-      cookActivity = a;
-      break;
-    }
-  }
 
   // 00h–1h : fin de soirée pour les couche-tard — le check-in du soir a été
   // supprimé (retour user 2026-09), donc silence ici aussi.
@@ -274,7 +265,10 @@ CoachMoment computeCoachMoment(
         _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
   } else if (minutes >= 11 * 60 + 45) {
-    clock = _middayMoment(now, blocks, recentSessions, vitals, meal, cookActivity);
+    // Midi : le « rapport de matinée » a été supprimé (retour user 2026-09 —
+    // plus aucun rapport ORION dans Maintenant ; le graphe sommeil vit dans
+    // l'appbar). Silence jusqu'à l'après-midi.
+    clock = CoachMoment.none;
   } else if (minutes >= 9 * 60) {
     clock = _idealHourMoment(now, st, blocks) ??
         (microTargetDismissed
@@ -289,12 +283,16 @@ CoachMoment computeCoachMoment(
   // Avance manuelle : ne s'applique que si elle est PLUS LOIN dans la journée
   // que l'horloge (sinon elle est périmée). Avancer en soirée fait aussi taire
   // une éventuelle dérive (le user a explicitement clos son après-midi).
-  if (advancedTo != null && _dayOrder(advancedTo) > _dayOrder(clock.type)) {
+  // Une fenêtre volontairement silencieuse (midi, soir) reste silencieuse :
+  // l'avance ne ressuscite jamais une carte passée.
+  if (!clock.hidden &&
+      advancedTo != null &&
+      _dayOrder(advancedTo) > _dayOrder(clock.type)) {
     switch (advancedTo) {
       case CoachMomentType.morning:
         return _morningMoment(now, st, blocks);
       case CoachMomentType.midday:
-        return _middayMoment(now, blocks, recentSessions, vitals, meal, cookActivity);
+        return CoachMoment.none; // « Pause de midi » = silence (rapport supprimé)
       case CoachMomentType.afternoon:
         return _afternoonMoment(now, st, blocks, recentSessions,
             challenge: chal, gantt: ganttAction);
@@ -547,139 +545,6 @@ CoachMoment _morningMoment(
     actions: actions,
     tone: CoachTone.neutral,
   );
-}
-
-CoachMoment _middayMoment(
-    DateTime now,
-    List<ScheduleBlock> blocks,
-    List<Session> recentSessions,
-    List<StatItem> vitals,
-    _MealInfo? meal,
-    Activity? cookActivity) {
-  final dayStart = DateTime(now.year, now.month, now.day);
-  final noon = dayStart.add(const Duration(hours: 12));
-  final loggedBeforeNoon =
-      _loggedMinutesInWindow(recentSessions, dayStart, noon);
-
-  // Blocs tenus avant midi (done / total des blocs matinaux).
-  final morningBlocks = blocks
-      .where((b) => _blockStart(b, now).isBefore(noon))
-      .toList();
-  final held = morningBlocks.where((b) => b.status == 'done').length;
-
-  // Rang de la matinée sur 7 jours (somme des minutes matinales par jour).
-  final rank = _morningRank(now, recentSessions, loggedBeforeNoon);
-
-  final stats = <StatItem>[
-    StatItem('Loggué avant 12h', _fmtDur(loggedBeforeNoon)),
-    StatItem('Blocs tenus', '$held/${morningBlocks.length}'),
-    if (rank != null) StatItem('Matinée', '#$rank / 7 j'),
-    ...vitals,
-  ];
-
-  final key = _afternoonKeyBlock(now, blocks);
-  // Le soir n'est pas l'affaire de l'après-midi : mention factuelle à part.
-  final evening = _eveningPreview(now, blocks);
-  final eveningNote = evening != null
-      ? ' Ce soir : ${evening.title} à ${_hhmmToFr(evening.startTime)}.'
-      : '';
-  var message = key != null
-      ? 'L\'après-midi n\'a qu\'une chose à tenir : ${key.title}. Tout le reste est du bonus.$eveningNote'
-      : 'Belle matinée. L\'après-midi est à toi.$eveningNote';
-
-  final actions = <CoachAction>[];
-  // Repas du menu (15c) : « zéro décision » — le fait mangé/autre est tracké.
-  if (meal != null) {
-    message =
-        '${meal.title} au frigo — réchauffe 10 min, zéro décision. $message';
-    if (meal.weeklyTarget > 0) {
-      stats.add(StatItem('Repas cuisinés',
-          '${meal.eatenThisWeek}/${meal.weeklyTarget}'));
-    }
-    actions.add(CoachAction('✓ Mangé', CoachActionKind.mealEaten,
-        artifactId: meal.artifactId));
-    // Règle implicite d'accompagnement : parler d'un repas équilibré, c'est
-    // proposer de le cuisiner — discrètement (lien texte), chrono prêt sur
-    // l'activité Cuisine. Bloc SYNTHÉTIQUE : le launcher ne fait que
-    // démarrer le chrono, rien n'est écrit dans le programme.
-    if (cookActivity != null) {
-      final hhmm =
-          '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-      actions.add(CoachAction('Cuisiner d\'abord ?', CoachActionKind.cookFirst,
-          block: ScheduleBlock(
-            startTime: hhmm,
-            durationMin: 30,
-            title: 'Cuisiner — ${meal.title}',
-            category: 'personal',
-            activityId: cookActivity.id,
-          )));
-    }
-    actions.add(CoachAction('Autre chose aujourd\'hui',
-        CoachActionKind.mealShift,
-        artifactId: meal.artifactId));
-  }
-  if (key != null &&
-      _launchable(key) &&
-      _minutesUntil(now, key.startTime) <= 90) {
-    actions
-        .add(CoachAction('Lancer', CoachActionKind.launchBlock, block: key));
-  }
-  actions.add(const CoachAction('Attaquer l\'aprèm',
-      CoachActionKind.advanceMoment,
-      target: CoachMomentType.afternoon));
-
-  return CoachMoment(
-    type: CoachMomentType.midday,
-    tagLabel: 'ORION · RAPPORT DE MATINÉE',
-    message: message,
-    stats: stats,
-    actions: actions,
-    tone: CoachTone.positive,
-  );
-}
-
-// ── Repas du jour (menu, maquette 15c) ────────────────────────────────────────
-
-class _MealInfo {
-  final String artifactId;
-  final String title;
-  final int eatenThisWeek;
-  final int weeklyTarget;
-  _MealInfo(this.artifactId, this.title, this.eatenThisWeek, this.weeklyTarget);
-}
-
-/// Le repas prévu aujourd'hui par le menu actif : entrée datée du jour ou motif
-/// hebdo du jour de semaine, non encore loggée (mangé/autre). Null si pas de
-/// menu, pas de repas prévu, ou déjà tranché — la carte n'invente rien.
-_MealInfo? _todayMeal(DateTime now, List<Artifact> artifacts) {
-  final todayStr = _ymd(now);
-  const codes = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-  final wd = codes[now.weekday - 1];
-  for (final a in artifacts) {
-    if (a.deleted || a.kind != 'weekly_menu') continue;
-    if (a.mealLog[todayStr] != null) return null; // déjà tranché aujourd'hui
-    ArtifactEntry? entry;
-    for (final e in a.entries) {
-      if (e.date == todayStr || (e.date == null && e.weekday == wd)) {
-        entry = e;
-        break;
-      }
-    }
-    if (entry == null) continue;
-    // Semaine courante (lundi → dim.) : repas mangés / cible = nb de repas du
-    // motif hebdo (à défaut, les entrées datées de la semaine).
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
-    var eaten = 0;
-    a.mealLog.forEach((date, v) {
-      final d = DateTime.tryParse(date);
-      if (v == 'eaten' && d != null && !d.isBefore(monday)) eaten++;
-    });
-    final weeklyCount = a.entries.where((e) => e.weekday != null).length;
-    return _MealInfo(a.id, entry.title, eaten,
-        weeklyCount > 0 ? weeklyCount : 0);
-  }
-  return null;
 }
 
 /// Le bloc en dérive : posé depuis > 45 min avec 0 min logguée (routine liée
@@ -1638,58 +1503,11 @@ ScheduleBlock? _firstDoneEngagement(List<ScheduleBlock> blocks) {
   return null;
 }
 
-/// Le bloc-clé de l'après-midi : premier bloc pending entre 12 h et 19 h,
-/// projet en priorité. Les blocs du SOIR (≥ 19 h) ne sont pas l'affaire de
-/// l'après-midi (constaté sur build : « l'après-midi n'a qu'une chose à
-/// tenir : Hygiène du soir, 21 h ») — ils sont cités à part (_eveningPreview).
-ScheduleBlock? _afternoonKeyBlock(DateTime now, List<ScheduleBlock> blocks) {
-  final noon = DateTime(now.year, now.month, now.day, 12);
-  final evening = DateTime(now.year, now.month, now.day, 19);
-  final afternoon = blocks
-      .where((b) =>
-          !b.isPrep &&
-          b.category != 'break' &&
-          b.status == 'pending' &&
-          !_blockStart(b, now).isBefore(noon) &&
-          _blockStart(b, now).isBefore(evening))
-      .toList();
-  if (afternoon.isEmpty) return null;
-  final projects = afternoon.where((b) => b.category == 'project').toList();
-  return (projects.isNotEmpty ? projects : afternoon).first;
-}
-
-/// Premier bloc pending du SOIR (≥ 19 h) — mentionné, jamais proposé au
-/// lancement en pleine journée.
-ScheduleBlock? _eveningPreview(DateTime now, List<ScheduleBlock> blocks) {
-  final evening = DateTime(now.year, now.month, now.day, 19);
-  for (final b in blocks) {
-    if (b.isPrep || b.category == 'break' || b.status != 'pending') continue;
-    if (!_blockStart(b, now).isBefore(evening)) return b;
-  }
-  return null;
-}
-
 bool _prepReadyFrom(DailySchedule? yesterday, String todayStr) {
   for (final b in yesterday?.blocks ?? const <ScheduleBlock>[]) {
     if (b.isPrep && b.status == 'done' && b.prepForDate == todayStr) return true;
   }
   return false;
-}
-
-int? _morningRank(
-    DateTime now, List<Session> sessions, int todayMorningMin) {
-  final byDay = <String, int>{};
-  for (var i = 0; i < 7; i++) {
-    final d = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
-    final dayStart = d;
-    final noon = d.add(const Duration(hours: 12));
-    byDay[_ymd(d)] = _loggedMinutesInWindow(sessions, dayStart, noon);
-  }
-  byDay[_ymd(now)] = todayMorningMin;
-  final todayVal = todayMorningMin;
-  if (todayVal <= 0) return null;
-  final sorted = byDay.values.toList()..sort((a, b) => b.compareTo(a));
-  return sorted.indexOf(todayVal) + 1;
 }
 
 int _blockLoggedMin(ScheduleBlock b, List<Session> sessions, DateTime start,
@@ -1702,15 +1520,6 @@ int _blockLoggedMin(ScheduleBlock b, List<Session> sessions, DateTime start,
         (b.taskId != null && s.taskId == b.taskId);
     if (!matches) continue;
     total += _overlapMin(s.startAt, s.endAt ?? now, start, now);
-  }
-  return total;
-}
-
-int _loggedMinutesInWindow(
-    List<Session> sessions, DateTime start, DateTime end) {
-  var total = 0;
-  for (final s in sessions) {
-    total += _overlapMin(s.startAt, s.endAt ?? end, start, end);
   }
   return total;
 }
@@ -1759,11 +1568,4 @@ String _hhmmToFr(String hm) {
   final h = int.tryParse(parts.first) ?? 0;
   final m = parts.length > 1 ? parts[1] : '00';
   return m == '00' ? '${h}h' : '${h}h$m';
-}
-
-String _fmtDur(int minutes) {
-  if (minutes < 60) return '$minutes min';
-  final h = minutes ~/ 60;
-  final m = minutes % 60;
-  return m == 0 ? '${h}h' : '${h}h${m.toString().padLeft(2, '0')}';
 }

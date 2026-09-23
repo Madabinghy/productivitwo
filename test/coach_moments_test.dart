@@ -387,7 +387,8 @@ void main() {
       expect(m.message, contains('Réunion'));
     });
 
-    test('midi : rapport de matinée avec minutes logguées réelles', () {
+    test('midi : plus de rapport de matinée — silence (retour user 2026-09)',
+        () {
       final now = DateTime(2026, 7, 7, 12, 30);
       final sched = _sched(today, [
         _block(
@@ -406,12 +407,10 @@ void main() {
         Session(
             activityId: 'a',
             startAt: DateTime(2026, 7, 7, 8, 0),
-            endAt: DateTime(2026, 7, 7, 9, 30)), // 90 min avant midi
+            endAt: DateTime(2026, 7, 7, 9, 30)),
       ];
       final m = computeCoachMoment(now, _st(sessions), sched, null, sessions);
-      expect(m.type, CoachMomentType.midday);
-      expect(m.stats.any((s) => s.value.contains('1h30')), isTrue);
-      expect(m.message, contains('Formation IA'));
+      expect(m.hidden, isTrue);
     });
 
     test('dérive : bloc posé > 45 min, 0 min logguée → carte ambre', () {
@@ -485,11 +484,13 @@ void main() {
       expect(m.type, CoachMomentType.morning);
     });
 
-    test('avance périmée : advancedTo=morning à 12h30 → l\'horloge gagne', () {
+    test(
+        'avance périmée : advancedTo=morning à 12h30 → la fenêtre silencieuse '
+        'gagne (pas de résurrection de la carte matin)', () {
       final now = DateTime(2026, 7, 7, 12, 30);
       final m = computeCoachMoment(now, _st([]), null, null, [],
           advancedTo: CoachMomentType.morning);
-      expect(m.type, CoachMomentType.midday);
+      expect(m.hidden, isTrue);
     });
 
     test('avancer en soirée fait taire une dérive en cours', () {
@@ -574,8 +575,10 @@ void main() {
           isTrue);
     });
 
-    test('vital hebdo : « 1/2 séances · sem. » sur la carte midi (réel)', () {
-      final now = DateTime(2026, 7, 8, 12, 30); // mercredi
+    test(
+        'vital hebdo : « 1/2 séances · sem. » sur la carte journée pliée tôt '
+        '(le rapport de matinée n\'existe plus)', () {
+      final now = DateTime(2026, 7, 8, 16, 0); // mercredi — mode soirée
       final st = AppState(
         domains: [
           Domain(
@@ -603,19 +606,19 @@ void main() {
         ],
         habitProgress: [],
       );
-      final sched = _sched('2026-07-08', [
+      final sched = DailySchedule(date: '2026-07-08', blocks: [
         _block(startTime: '09:00', title: 'Bloc', status: 'done'),
-      ]);
+      ], dayMode: 'evening');
       final m =
           computeCoachMoment(now, st, sched, null, st.sessions);
-      expect(m.type, CoachMomentType.midday);
+      expect(m.type, CoachMomentType.evening);
       expect(
           m.stats.any((s) => s.label == 'Santé' && s.value == '1/2 · sem.'),
           isTrue);
     });
 
     test('vital TEMPS (heures) : mesuré depuis les sessions logguées', () {
-      final now = DateTime(2026, 7, 8, 12, 30); // mercredi
+      final now = DateTime(2026, 7, 8, 16, 0); // mercredi — mode soirée
       final st = AppState(
         domains: [
           Domain(
@@ -643,11 +646,11 @@ void main() {
         ],
         habitProgress: [],
       );
-      final sched = _sched('2026-07-08', [
+      final sched = DailySchedule(date: '2026-07-08', blocks: [
         _block(startTime: '09:00', title: 'Bloc', status: 'done'),
-      ]);
+      ], dayMode: 'evening');
       final m = computeCoachMoment(now, st, sched, null, st.sessions);
-      expect(m.type, CoachMomentType.midday);
+      expect(m.type, CoachMomentType.evening);
       // Cible journalière → MOYENNE de la semaine en cours (7,5 h dormies /
       // 3 jours écoulés lun-mer = 2,5 h/j), cible citée — plus la somme hebdo.
       final stat =
@@ -663,16 +666,16 @@ void main() {
     });
 
     test('vital omis sans domaine défini (jamais de chiffre inventé)', () {
-      final now = DateTime(2026, 7, 8, 12, 30);
-      final sched = _sched('2026-07-08', [
+      final now = DateTime(2026, 7, 8, 16, 0);
+      final sched = DailySchedule(date: '2026-07-08', blocks: [
         _block(startTime: '09:00', title: 'Bloc', status: 'done'),
-      ]);
+      ], dayMode: 'evening');
       final m = computeCoachMoment(now, _st([]), sched, null, []);
       expect(m.stats.any((s) => s.value.contains('sem.')), isFalse);
     });
 
-    test('carte midi menu (15c) : repas du jour + chips ✓ Mangé / Autre chose',
-        () {
+    test('menu présent à midi → toujours silence (carte repas 15c retirée '
+        'avec le rapport de matinée)', () {
       final now = DateTime(2026, 7, 8, 12, 30); // mercredi
       final menu = Artifact(
         id: 'menu1',
@@ -680,42 +683,14 @@ void main() {
         domainId: 'd1',
         entries: [
           ArtifactEntry(weekday: 'wed', time: '12:30', title: 'Chili sin carne'),
-          ArtifactEntry(weekday: 'mon', time: '12:30', title: 'Poulet rôti'),
         ],
-        mealLog: {'2026-07-06': 'eaten'}, // lundi de la même semaine
       );
       final sched = _sched('2026-07-08', [
         _block(startTime: '09:00', title: 'Bloc', status: 'done'),
       ]);
       final m = computeCoachMoment(now, _st([]), sched, null, [],
           artifacts: [menu]);
-      expect(m.type, CoachMomentType.midday);
-      expect(m.message, contains('Chili sin carne au frigo'));
-      expect(m.stats.any((s) => s.label == 'Repas cuisinés' && s.value == '1/2'),
-          isTrue);
-      expect(
-          m.actions.any((a) =>
-              a.kind == CoachActionKind.mealEaten && a.artifactId == 'menu1'),
-          isTrue);
-      expect(m.actions.any((a) => a.kind == CoachActionKind.mealShift), isTrue);
-    });
-
-    test('repas déjà tranché aujourd\'hui → pas de section repas', () {
-      final now = DateTime(2026, 7, 8, 12, 30);
-      final menu = Artifact(
-        id: 'menu1',
-        kind: 'weekly_menu',
-        domainId: 'd1',
-        entries: [ArtifactEntry(weekday: 'wed', time: '12:30', title: 'Chili')],
-        mealLog: {'2026-07-08': 'eaten'},
-      );
-      final sched = _sched('2026-07-08', [
-        _block(startTime: '09:00', title: 'Bloc', status: 'done'),
-      ]);
-      final m = computeCoachMoment(now, _st([]), sched, null, [],
-          artifacts: [menu]);
-      expect(m.message, isNot(contains('au frigo')));
-      expect(m.actions.any((a) => a.kind == CoachActionKind.mealEaten), isFalse);
+      expect(m.hidden, isTrue);
     });
 
     test('shiftMenuOneDay : le futur glisse d\'un jour, le passé ne bouge pas',
@@ -1751,53 +1726,7 @@ void main() {
     });
   });
 
-  group('horizon actionnable (90 min) : le soir n\'est pas l\'affaire du midi',
-      () {
-    test('midi : bloc de 21 h → mention « ce soir », jamais le bloc-clé ni Lancer',
-        () {
-      final now = DateTime(2026, 7, 7, 13, 0);
-      final sched = _sched(today, [
-        _block(
-            startTime: '21:00',
-            durationMin: 5,
-            title: 'Hygiène du soir',
-            activityId: 'r1'),
-      ]);
-      final m = computeCoachMoment(now, _st([]), sched, null, []);
-      expect(m.type, CoachMomentType.midday);
-      expect(m.message, contains('L\'après-midi est à toi.'));
-      expect(m.message, contains('Ce soir : Hygiène du soir à 21h.'));
-      expect(m.actions.where((a) => a.kind == CoachActionKind.launchBlock),
-          isEmpty);
-    });
-
-    test('midi : bloc d\'après-midi PROCHE → bloc-clé + Lancer ; loin → pas de Lancer',
-        () {
-      final now = DateTime(2026, 7, 7, 13, 0);
-      final near = computeCoachMoment(
-          now,
-          _st([]),
-          _sched(today, [
-            _block(startTime: '14:00', title: 'Dossier', activityId: 'a1'),
-          ]),
-          null,
-          []);
-      expect(near.message, contains('qu\'une chose à tenir : Dossier'));
-      expect(
-          near.actions.any((a) => a.kind == CoachActionKind.launchBlock), isTrue);
-      final far = computeCoachMoment(
-          now,
-          _st([]),
-          _sched(today, [
-            _block(startTime: '17:30', title: 'Dossier', activityId: 'a1'),
-          ]),
-          null,
-          []);
-      expect(far.message, contains('qu\'une chose à tenir : Dossier'));
-      expect(far.actions.where((a) => a.kind == CoachActionKind.launchBlock),
-          isEmpty);
-    });
-
+  group('dérive : engagement tenu et renégociation', () {
     test(
         'routine en dérive : le temps sur l\'activité LIÉE compte, la coche '
         'du jour aussi', () {
