@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -38,10 +39,10 @@ class AssistantHistorySheet extends StatefulWidget {
   const AssistantHistorySheet({super.key});
 
   static void show(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+    // Dialog desktop centrée (lot 1b) — plus de bottom sheet sur le web.
+    showDesktopDialog<void>(
+      context,
+      maxWidth: 640,
       builder: (_) => const AssistantHistorySheet(),
     );
   }
@@ -114,15 +115,10 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      maxChildSize: 0.9,
-      minChildSize: 0.3,
-      expand: false,
-      builder: (_, scroll) => Container(
+    return Container(
         decoration: const BoxDecoration(
           color: _bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          borderRadius: BorderRadius.all(Radius.circular(16)),
           border: Border(
             top: BorderSide(color: _gold, width: 1.5),
             left: BorderSide(color: _border),
@@ -187,7 +183,6 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
                           ),
                         )
                       : ListView(
-                          controller: scroll,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           children: [
                             // Messages affichés
@@ -245,7 +240,6 @@ class _AssistantHistorySheetState extends State<AssistantHistorySheet> {
             ),
           ],
         ),
-      ),
     );
   }
 }

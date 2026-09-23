@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/web/coachee_dashboard_view.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
+import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
@@ -198,14 +199,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   }
 
   void _showTokensPanel(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _TokensPanel(sync: _sync),
-    );
+    // Dialog desktop centrée (lot 1b) — plus de bottom sheet sur le web.
+    showDesktopDialog(context, builder: (_) => _TokensPanel(sync: _sync));
   }
 
   @override
@@ -3849,15 +3844,11 @@ class _TokensPanelState extends State<_TokensPanel>
     final cs = Theme.of(context).colorScheme;
     final activeTokens = _tokens.where((t) => t.active).toList();
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (_, scroll) => Column(
+    return Column(
         children: [
           // Titre
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 0),
             child: Row(
               children: [
                 const Icon(Icons.auto_awesome_outlined, size: 18),
@@ -3865,6 +3856,11 @@ class _TokensPanelState extends State<_TokensPanel>
                 const Expanded(
                   child: Text('Connecter Claude',
                       style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Fermer',
+                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
@@ -3885,7 +3881,6 @@ class _TokensPanelState extends State<_TokensPanel>
                 _loading
                     ? const Center(child: CircularProgressIndicator())
                     : ListView(
-                        controller: scroll,
                         padding: const EdgeInsets.all(20),
                         children: [
                           // Étapes
@@ -4101,7 +4096,6 @@ class _TokensPanelState extends State<_TokensPanel>
             ),
           ),
         ],
-      ),
     );
   }
 }
@@ -5864,7 +5858,7 @@ class _ObjectivesSection extends StatelessWidget {
   });
 
   Future<void> _edit(BuildContext context, StrategicObjective? o) async {
-    final saved = await showObjectiveEditSheet(
+    final saved = await showObjectiveEditDialog(
       context,
       existing: o,
       domains: domains,

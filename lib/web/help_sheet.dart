@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,16 +16,10 @@ class HelpButton extends StatelessWidget {
   }
 }
 
-/// Point d'entrée réutilisable (sidebar du shell desktop, bouton…).
-void showHelpSheet(BuildContext context) => showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => const _HelpSheet(),
-    );
+/// Point d'entrée réutilisable (sidebar du shell desktop, bouton…) —
+/// Dialog desktop centrée (lot 1b), plus de bottom sheet sur le web.
+void showHelpSheet(BuildContext context) =>
+    showDesktopDialog(context, builder: (_) => const _HelpSheet());
 
 // ── Sheet principal ───────────────────────────────────────────────────────────
 
@@ -55,14 +50,10 @@ class _HelpSheetState extends State<_HelpSheet>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (_, scroll) => Column(
+    return Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            padding: const EdgeInsets.fromLTRB(20, 14, 12, 0),
             child: Row(
               children: [
                 Icon(Icons.auto_awesome_outlined, size: 20, color: cs.primary),
@@ -70,6 +61,12 @@ class _HelpSheetState extends State<_HelpSheet>
                 const Text('Astuces & exemples',
                     style:
                         TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Fermer',
+                  onPressed: () => Navigator.pop(context),
+                ),
               ],
             ),
           ),
@@ -87,14 +84,13 @@ class _HelpSheetState extends State<_HelpSheet>
             child: TabBarView(
               controller: _tabs,
               children: [
-                _StartTab(scroll: scroll),
-                _ExamplesTab(scroll: scroll),
-                _FeaturesTab(scroll: scroll),
+                const _StartTab(),
+                const _ExamplesTab(),
+                const _FeaturesTab(),
               ],
             ),
           ),
         ],
-      ),
     );
   }
 }
@@ -102,13 +98,11 @@ class _HelpSheetState extends State<_HelpSheet>
 // ── Onglet Débuter ────────────────────────────────────────────────────────────
 
 class _StartTab extends StatelessWidget {
-  final ScrollController scroll;
-  const _StartTab({required this.scroll});
+  const _StartTab();
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      controller: scroll,
       padding: const EdgeInsets.all(20),
       children: const [
         _Step(
@@ -156,13 +150,11 @@ class _StartTab extends StatelessWidget {
 // ── Onglet Exemples ───────────────────────────────────────────────────────────
 
 class _ExamplesTab extends StatelessWidget {
-  final ScrollController scroll;
-  const _ExamplesTab({required this.scroll});
+  const _ExamplesTab();
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      controller: scroll,
       padding: const EdgeInsets.all(20),
       children: const [
         _SectionTitle('Planning du jour'),
@@ -245,13 +237,11 @@ class _ExamplesTab extends StatelessWidget {
 // ── Onglet Fonctionnalités ────────────────────────────────────────────────────
 
 class _FeaturesTab extends StatelessWidget {
-  final ScrollController scroll;
-  const _FeaturesTab({required this.scroll});
+  const _FeaturesTab();
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      controller: scroll,
       padding: const EdgeInsets.all(20),
       children: [
         const _SectionTitle('Ce que tu peux demander à Claude'),
