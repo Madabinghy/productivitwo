@@ -30,12 +30,48 @@ Future<StrategicObjective?> showObjectiveEditSheet(
   );
 }
 
+/// Variante desktop (web, lot 1b) : MÊME formulaire, présenté dans une Dialog
+/// centrée au lieu d'un bottom sheet. Le mobile garde showObjectiveEditSheet.
+Future<StrategicObjective?> showObjectiveEditDialog(
+  BuildContext context, {
+  StrategicObjective? existing,
+  required List<Domain> domains,
+  required List<Activity> activities,
+  required List<Project> projects,
+  required FirestoreSync sync,
+}) {
+  return showDialog<StrategicObjective>(
+    context: context,
+    builder: (ctx) => Dialog(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 680,
+          maxHeight:
+              (MediaQuery.of(ctx).size.height * .85).clamp(320.0, 760.0),
+        ),
+        child: _ObjectiveEditSheet(
+          existing: existing,
+          domains: domains,
+          activities: activities,
+          projects: projects,
+          sync: sync,
+          dialog: true,
+        ),
+      ),
+    ),
+  );
+}
+
 class _ObjectiveEditSheet extends StatefulWidget {
   final StrategicObjective? existing;
   final List<Domain> domains;
   final List<Activity> activities;
   final List<Project> projects;
   final FirestoreSync sync;
+  // true = présentation Dialog desktop (pas de poignée, coins complets).
+  final bool dialog;
 
   const _ObjectiveEditSheet({
     required this.existing,
@@ -43,6 +79,7 @@ class _ObjectiveEditSheet extends StatefulWidget {
     required this.activities,
     required this.projects,
     required this.sync,
+    this.dialog = false,
   });
 
   @override
@@ -493,31 +530,28 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
     final cs = Theme.of(context).colorScheme;
     final isLast = _step == 3;
 
-    return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: DraggableScrollableSheet(
-        initialChildSize: 0.88,
-        maxChildSize: 0.95,
-        minChildSize: 0.5,
-        expand: false,
-        builder: (_, scroll) => Container(
+    // Deux présentations, même formulaire : bottom sheet (mobile) ou Dialog
+    // centrée (web desktop, lot 1b).
+    Widget content(ScrollController? scroll) => Container(
           decoration: BoxDecoration(
             color: cs.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(28)),
+            borderRadius: widget.dialog
+                ? BorderRadius.circular(16)
+                : const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: cs.onSurface.withOpacity(.2),
-                  borderRadius: BorderRadius.circular(2),
+              if (!widget.dialog) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withOpacity(.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
+              ],
               Expanded(
                 child: ListView(
                   controller: scroll,
@@ -637,7 +671,17 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
               ),
             ],
           ),
-        ),
+        );
+    if (widget.dialog) return content(null);
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.88,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        expand: false,
+        builder: (_, scroll) => content(scroll),
       ),
     );
   }
