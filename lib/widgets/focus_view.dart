@@ -3263,7 +3263,7 @@ class _FocusViewState extends State<FocusView> {
             _overdueHint(cs, now),
             // « Le meilleur à faire » : les routines à rattraper, actionnables
             // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
-            BestToDoCard(logic: logic),
+            BestToDoCard(logic: logic, onStartTimed: widget.onStartTimed),
             _dayReviewLink(cs),
           ],
         ),
@@ -3656,7 +3656,7 @@ class _FocusViewState extends State<FocusView> {
             _overdueHint(cs, now),
             // « Le meilleur à faire » : les routines à rattraper, actionnables
             // sur place (+1 / −1 / passer) — remonté depuis Objectifs.
-            BestToDoCard(logic: logic),
+            BestToDoCard(logic: logic, onStartTimed: widget.onStartTimed),
             _dayReviewLink(cs),
           ],
         ),
@@ -3874,7 +3874,7 @@ class _FocusViewState extends State<FocusView> {
             _overdueHint(cs, now),
             // « Le meilleur à faire » reste actif pendant le chrono : on peut
             // cocher une routine (+1 / −1 / passer) sans arrêter la session.
-            BestToDoCard(logic: logic),
+            BestToDoCard(logic: logic, onStartTimed: widget.onStartTimed),
           ],
         ),
       ),

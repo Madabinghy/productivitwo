@@ -43,6 +43,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
@@ -4243,25 +4244,9 @@ class _AppRootState extends State<AppRoot>
   }
 
   /// Pastille de fréquence affichée sur chaque carte de routine.
-  Widget _freqPill(HabitFreq f, ColorScheme cs) {
-    final label = switch (f) {
-      HabitFreq.daily => 'Quotidien',
-      HabitFreq.weekly => 'Hebdo',
-      HabitFreq.monthly => 'Mensuel',
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.7),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface.withOpacity(.55))),
-    );
-  }
+  // Délégué aux briques partagées (routine_tile_bits) — même rendu dans
+  // « Le meilleur à faire ».
+  Widget _freqPill(HabitFreq f, ColorScheme cs) => freqPill(f, cs);
 
   /// Contrôles de lancement d'une routine dans le lanceur (FAB) :
   /// ▶ chrono (si activité liée) et ⏱ minuteur (si minuteur réglé).
@@ -4983,54 +4968,7 @@ class _AppRootState extends State<AppRoot>
 
   /// Indicateur de série affiché sous le nom de la routine.
   /// 🔥×N → ⭐ par tranche de 5j → badge violet au-delà de 25j.
-  Widget _buildStreakBadge(int streak) {
-    if (streak == 0) return const SizedBox.shrink();
-
-    final Widget icons;
-    if (streak > 25) {
-      icons = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int i = 0; i < 5; i++)
-            Icon(Icons.star_rounded, size: 12, color: Colors.amber.shade500),
-          const SizedBox(width: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-            decoration: BoxDecoration(
-              color: Colors.deepPurple.shade400,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '${streak}j',
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      );
-    } else {
-      final stars  = streak ~/ 5;
-      final flames = streak % 5;
-      icons = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int i = 0; i < stars; i++)
-            Icon(Icons.star_rounded, size: 12, color: Colors.amber.shade500),
-          for (int i = 0; i < flames; i++)
-            Icon(Icons.local_fire_department,
-                size: 12, color: Colors.deepOrange.shade400),
-        ],
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 3),
-      child: icons,
-    );
-  }
+  Widget _buildStreakBadge(int streak) => routineStreakBadge(streak);
 
   void _showSettingsSheet(BuildContext context) {
     showModalBottomSheet(
