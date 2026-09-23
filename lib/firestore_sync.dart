@@ -2664,9 +2664,13 @@ class FirestoreSync {
   Future<List<HabitHit>> fetchRecentHabitHits(int days) async {
     if (uid == null) return [];
     try {
-      final since = DateTime.now().subtract(Duration(days: days));
+      // ⚠️ ts est stocké en CHAÎNE ISO (HabitHit.toJson) : la comparaison
+      // Timestamp ne matchait RIEN → « Ma semaine » web à 0 % partout.
+      final since = DateTime.now()
+          .subtract(Duration(days: days))
+          .toIso8601String();
       final snap = await _col('habitHits')
-          .where('ts', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+          .where('ts', isGreaterThanOrEqualTo: since)
           .get();
       return snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList();
     } catch (_) {

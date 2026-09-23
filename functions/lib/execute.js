@@ -361,8 +361,10 @@ async function executeGetUserContext(uid) {
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
         // Incréments de routines/habitudes sur 7 jours
+        // ⚠️ ts est stocké en CHAÎNE ISO (mobile + log_routine_hit) : comparer
+        // à un Timestamp ne matche RIEN (constaté : habitCompletion vide).
         db_1.db.collection(`users/${uid}/habitHits`)
-            .where("ts", ">=", sevenDaysAgo)
+            .where("ts", ">=", sevenDaysAgo.toISOString())
             .get(),
         // Sessions de temps loggué sur 7 jours
         db_1.db.collection(`users/${uid}/sessions`)
@@ -1475,7 +1477,8 @@ async function executeGetOrionContext(uid) {
     const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, objectivesSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo).get(),
+        // ts = chaîne ISO (voir get_user_context) — jamais un Timestamp.
+        db_1.db.collection(`users/${uid}/habitHits`).where("ts", ">=", sevenDaysAgo.toISOString()).get(),
         db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
         db_1.db.collection(`users/${uid}/projects`).where("status", "==", "active").get(),
         db_1.db.collection(`users/${uid}/strategic_objectives`).get(),
@@ -2265,8 +2268,9 @@ async function executeListObjectives(uid) {
         db_1.db.collection(`users/${uid}/activities`).get(),
         db_1.db.collection(`users/${uid}/sessions`)
             .where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
+        // ts = chaîne ISO (voir get_user_context) — jamais un Timestamp.
         db_1.db.collection(`users/${uid}/habitHits`)
-            .where("ts", ">=", sevenDaysAgo).get(),
+            .where("ts", ">=", sevenDaysAgo.toISOString()).get(),
     ]);
     const active = objectivesSnap.docs
         .map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); })
