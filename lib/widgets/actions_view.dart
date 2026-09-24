@@ -384,6 +384,25 @@ class _ActionsViewState extends State<ActionsView> {
     unawaited(_sync.saveProject(p));
     widget.logic.onChange();
     if (mounted) setState(() {});
+    // Petite icône, aucun feedback : des projets se retrouvaient en pause
+    // sans qu'on sache pourquoi (taps accidentels) → snackbar + Annuler.
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(p.paused
+          ? '⏸ « ${p.title} » mis en pause'
+          : '▶ « ${p.title} » repris'),
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          p.paused = !p.paused;
+          unawaited(_sync.saveProject(p));
+          widget.logic.onChange();
+          if (mounted) setState(() {});
+        },
+      ),
+    ));
   }
 
   // ── « Process » GTD : tap sur une action → multi-contextes ─────────────────

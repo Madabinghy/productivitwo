@@ -112,6 +112,24 @@ class _WebActionsViewState extends State<WebActionsView> {
     p.paused = !p.paused;
     unawaited(widget.sync.saveProject(p));
     setState(() {});
+    // Le ⏸ est une petite icône facile à toucher par accident et le projet
+    // disparaissait EN SILENCE dans l'accordéon EN PAUSE (constaté : pauses
+    // inexpliquées) → feedback explicite + Annuler.
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(p.paused
+          ? '⏸ « ${p.title} » mis en pause — il quitte Actions et le radar IA.'
+          : '▶ « ${p.title} » repris.'),
+      duration: const Duration(seconds: 4),
+      behavior: SnackBarBehavior.floating,
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          p.paused = !p.paused;
+          unawaited(widget.sync.saveProject(p));
+          if (mounted) setState(() {});
+        },
+      ),
+    ));
   }
 
   /// Édition COMPLÈTE d'une action (CRUD web) : titre + multi-contextes +
