@@ -363,6 +363,13 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                                   ),
                                   _ArchivesView(sync: _sync),
                                   _OrionView(sync: _sync),
+                                  _DocumentsView(
+                                    projects: _projects,
+                                    domains: _domains,
+                                    documentsByProject: _documentsByProject,
+                                    sync: _sync,
+                                    onChanged: _load,
+                                  ),
                                 ],
                               ),
                               // Gantt DANS le shell (lot 3b) : recouvre la vue
@@ -400,6 +407,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       (icon: Icons.account_tree_outlined, label: 'Projets', index: 0),
       (icon: Icons.center_focus_strong_outlined, label: 'Focus', index: 1),
       (icon: Icons.check_circle_outline, label: 'Actions', index: 2),
+      (icon: Icons.description_outlined, label: 'Documents', index: 5),
       (icon: Icons.inventory_2_outlined, label: 'Organisation', index: 3),
       (icon: Icons.smart_toy_outlined, label: 'ORION', index: 4),
     ];
@@ -1037,10 +1045,9 @@ class _FocusView extends StatelessWidget {
               ),
               const SizedBox(height: 14),
             ],
-          // ── ORION Stratège + Vision (ex-sidebar, conservées — lot 2) ────
+          // ── Vision (ex-sidebar, conservée — lot 2). Le brief ORION vit
+          // désormais dans la vue ORION (lot 5 : un seul point d'entrée).
           const SizedBox(height: 8),
-          const _OrionBriefSection(),
-          const SizedBox(height: 12),
           if (!isDemo) const _VisionSidebarSection(),
         ],
       ),
@@ -2027,10 +2034,8 @@ class _FocusView extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ],
-          // ── ORION Brief — Stratège quotidien ────────────────────────────
-          const _OrionBriefSection(),
-          const SizedBox(height: 12),
           // ── VISION ──────────────────────────────────────────────────────
+          // (Le brief ORION vit dans la vue ORION — lot 5.)
           if (!isDemo) const _VisionSidebarSection(),
         ],
       ),
@@ -3803,7 +3808,8 @@ class _DocumentViewerDialogState extends State<_DocumentViewerDialog> {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900, maxHeight: 700),
+        // Lot 5 : largeur utile pour lire un document (ex 900×700).
+        constraints: const BoxConstraints(maxWidth: 1160, maxHeight: 820),
         child: Column(
           children: [
             // AppBar-like header
@@ -4804,26 +4810,8 @@ class _ArchivesViewState extends State<_ArchivesView> {
       );
     }
 
-    // ── Rendu ────────────────────────────────────────────────────────────────
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 860),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
-          children: [
-            // En-tête
-            Row(children: [
-              sectionLabel('ORGANISATION'),
-              const Spacer(),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.refresh_outlined, size: 14),
-                label: const Text('Rafraîchir'),
-                onPressed: _load,
-                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-              ),
-            ]),
-            // Barre de recherche
-            TextField(
+    // ── Rendu (lot 5b) : recherche + filtres en tête, puis 2 colonnes ────────
+    final searchField = TextField(
               controller: _searchCtrl,
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
@@ -4843,27 +4831,24 @@ class _ArchivesViewState extends State<_ArchivesView> {
                 contentPadding:
                     const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               ),
-            ),
-            const SizedBox(height: 8),
-            // Filtres actif / archivé / tout
-            Row(children: [
-              for (final (val, label) in [
-                ('all',      'Tout'),
-                ('active',   'Actifs'),
-                ('archived', 'Archivés'),
-              ]) ...[
-                ChoiceChip(
-                  label: Text(label, style: const TextStyle(fontSize: 12)),
-                  selected: _filter == val,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() => _filter = val),
-                ),
-                const SizedBox(width: 6),
-              ],
-            ]),
-            const SizedBox(height: 16),
+            );
+    final filterChips = Row(mainAxisSize: MainAxisSize.min, children: [
+      for (final (val, label) in [
+        ('all',      'Tout'),
+        ('active',   'Actifs'),
+        ('archived', 'Archivés'),
+      ]) ...[
+        ChoiceChip(
+          label: Text(label, style: const TextStyle(fontSize: 12)),
+          selected: _filter == val,
+          visualDensity: VisualDensity.compact,
+          onSelected: (_) => setState(() => _filter = val),
+        ),
+        const SizedBox(width: 6),
+      ],
+    ]);
 
-            // ── PROJETS ─────────────────────────────────────────────────────
+    final projectsSection = <Widget>[
             sectionLabel('PROJETS (${activeProjects.length + archivedProjects.length})'),
             if (activeProjects.isEmpty && archivedProjects.isEmpty)
               Padding(
@@ -4921,33 +4906,253 @@ class _ArchivesViewState extends State<_ArchivesView> {
               ],
             ],
 
-            const SizedBox(height: 24),
-            const Divider(),
-            const SizedBox(height: 16),
+    ];
 
-            // ── ACTIVITÉS & ROUTINES par domaine ─────────────────────────────
+    // Chaque domaine devient une CARTE (lot 5b) — lisible en colonne dense.
+    Widget domainCard(Widget header, Widget body) => Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceVariant.withOpacity(.18),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [header, body],
+          ),
+        );
+
+    final domainsSection = <Widget>[
             sectionLabel('ACTIVITÉS & ROUTINES PAR DOMAINE'),
 
-            for (final d in allDomains) ...[
-              domainHeader(d),
-              buildDomainSection(d.id),
-            ],
+            for (final d in allDomains)
+              domainCard(domainHeader(d), buildDomainSection(d.id)),
 
             // Sans domaine
-            if (activitiesWithoutDomain.isNotEmpty) ...[
+            if (activitiesWithoutDomain.isNotEmpty)
+              domainCard(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 14, 0, 8),
+                  child: Row(children: [
+                    Container(width: 8, height: 8,
+                        decoration: BoxDecoration(color: cs.onSurface.withOpacity(0.3), shape: BoxShape.circle)),
+                    const SizedBox(width: 8),
+                    Text('SANS DOMAINE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+                        letterSpacing: 0.8, color: cs.onSurface.withOpacity(0.4))),
+                    const SizedBox(width: 8),
+                    Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
+                  ]),
+                ),
+                buildDomainSection(null),
+              ),
+    ];
+
+    // ── Composition : ≥ 1100 px = PROJETS | DOMAINES côte à côte ─────────────
+    return LayoutBuilder(builder: (context, box) {
+      final wide = box.maxWidth >= 1100;
+      return Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: wide ? 1360 : 860),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
+            children: [
+              if (wide)
+                Row(children: [
+                  sectionLabel('ORGANISATION'),
+                  const SizedBox(width: 20),
+                  Expanded(child: searchField),
+                  const SizedBox(width: 14),
+                  filterChips,
+                ])
+              else ...[
+                sectionLabel('ORGANISATION'),
+                searchField,
+                const SizedBox(height: 8),
+                filterChips,
+              ],
+              const SizedBox(height: 18),
+              if (wide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: projectsSection),
+                    ),
+                    const SizedBox(width: 28),
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: domainsSection),
+                    ),
+                  ],
+                )
+              else ...[
+                ...projectsSection,
+                const SizedBox(height: 20),
+                ...domainsSection,
+              ],
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
+
+// ── Vue Documents (lot 5) : accès direct aux documents par projet ────────────
+
+class _DocumentsView extends StatelessWidget {
+  final List<Project> projects;
+  final List<Domain> domains;
+  final Map<String, List<Map<String, dynamic>>> documentsByProject;
+  final FirestoreSync sync;
+  final VoidCallback onChanged;
+  const _DocumentsView({
+    required this.projects,
+    required this.domains,
+    required this.documentsByProject,
+    required this.sync,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // Projets ayant au moins un document, dans l'ordre de la liste projets ;
+    // documents orphelins (projet supprimé) regroupés à la fin.
+    final known = <(Project, List<Map<String, dynamic>>)>[];
+    final seen = <String>{};
+    for (final p in projects) {
+      final docs = documentsByProject[p.id];
+      if (docs != null && docs.isNotEmpty) {
+        known.add((p, docs));
+        seen.add(p.id);
+      }
+    }
+    final orphans = <Map<String, dynamic>>[
+      for (final e in documentsByProject.entries)
+        if (!seen.contains(e.key)) ...e.value,
+    ];
+
+    Widget docRow(String projectTitle, List<Map<String, dynamic>> group,
+        Map<String, dynamic> doc) {
+      final title = (doc['title'] as String?) ?? 'Document';
+      final category = (doc['category'] as String?) ?? 'notes';
+      return InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _DocumentViewerDialog(
+            projectTitle: projectTitle,
+            documents: group,
+            sync: sync,
+            onDeleted: onChanged,
+          ),
+        ),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: cs.surfaceVariant.withOpacity(.3),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(children: [
+            Icon(Icons.description_outlined,
+                size: 15, color: cs.onSurface.withOpacity(.45)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13.5, fontWeight: FontWeight.w600)),
+            ),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(category,
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary.withOpacity(.8))),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1000),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
+          children: [
+            Text('DOCUMENTS',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                    color: cs.onSurface.withOpacity(0.45))),
+            const SizedBox(height: 16),
+            if (known.isEmpty && orphans.isEmpty)
+              Text(
+                  'Aucun document. Claude en crée via save_document '
+                  '(programmes, briefs, livrables…) — ils apparaîtront ici, '
+                  'groupés par projet.',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.45))),
+            for (final (p, docs) in known) ...[
               Padding(
-                padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
                 child: Row(children: [
-                  Container(width: 8, height: 8,
-                      decoration: BoxDecoration(color: cs.onSurface.withOpacity(0.3), shape: BoxShape.circle)),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                        color: domainColor(p.domainId, domains) ?? cs.primary,
+                        shape: BoxShape.circle),
+                  ),
                   const SizedBox(width: 8),
-                  Text('SANS DOMAINE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8, color: cs.onSurface.withOpacity(0.4))),
-                  const SizedBox(width: 8),
-                  Expanded(child: Divider(color: cs.outlineVariant.withOpacity(0.3))),
+                  Expanded(
+                    child: Text(p.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onSurface.withOpacity(.8))),
+                  ),
+                  Text('${docs.length}',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: cs.onSurface.withOpacity(.4))),
                 ]),
               ),
-              buildDomainSection(null),
+              for (final doc in docs) docRow(p.title, docs, doc),
+            ],
+            if (orphans.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 16, bottom: 8),
+                child: Text('SANS PROJET',
+                    style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: cs.onSurface.withOpacity(.4))),
+              ),
+              for (final doc in orphans) docRow('Sans projet', orphans, doc),
             ],
           ],
         ),
@@ -5164,6 +5369,9 @@ class _OrionViewState extends State<_OrionView> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 60),
           children: [
+            // ── Brief du stratège (ex-carte Focus — lot 5 : tout ORION ici) ─
+            const _OrionBriefSection(),
+            const SizedBox(height: 20),
             // ── En-tête ──────────────────────────────────────────────────
             Row(children: [
               Container(
