@@ -476,7 +476,7 @@ const UPDATE_PROJECT_TOOL = {
       projectId:   { type: "string", description: "id du projet (list_projects)" },
       domainId:    { type: "string", description: "id du domaine (get_user_context)" },
       title:       { type: "string" },
-      description: { type: "string" },
+      description: { type: "string", description: "CONCIS : 2-3 phrases (~300 caractères max) — le cap et le contexte essentiel. JAMAIS d'audit, de spec ou d'historique ici : ce détail va dans un DOCUMENT du projet (save_document, category 'notes' ou 'brief'). La fiche mobile tronque au-delà de 4 lignes." },
       status:      { type: "string", enum: ["active", "archived", "done"] },
     },
   },
@@ -622,7 +622,7 @@ const PUSH_GANTT_MCP_TOOL = {
         properties: {
           id:          { type: "string", description: "id du projet existant à mettre à jour (obtenu via list_projects). Omets pour créer un nouveau projet." },
           title:       { type: "string" },
-          description: { type: "string" },
+          description: { type: "string", description: "CONCIS : 2-3 phrases (~300 caractères max) — le cap et le contexte essentiel. JAMAIS d'audit, de spec ou d'historique ici : ce détail va dans un DOCUMENT du projet (save_document, category 'notes' ou 'brief'). La fiche mobile tronque au-delà de 4 lignes." },
           domainId:    { type: "string", description: "id du domaine (get_user_context)" },
           startDate:   { type: "string", description: "YYYY-MM-DD" },
           endDate:     { type: "string", description: "YYYY-MM-DD" },
