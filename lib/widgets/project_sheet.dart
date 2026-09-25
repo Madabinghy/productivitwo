@@ -525,8 +525,10 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                             if (_project.description != null &&
                                 _project.description!.isNotEmpty) ...[
                               const SizedBox(height: 4),
-                              Text(
-                                _project.description!,
+                              // Repliée au-delà de 4 lignes (« voir plus ») :
+                              // une longue description ne mange plus la fiche.
+                              _ExpandableDescription(
+                                text: _project.description!,
                                 style: TextStyle(
                                   fontSize: 13,
                                   color: cs.onSurface.withOpacity(.55),
@@ -2420,5 +2422,68 @@ class _DraftPlanBanner extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ── Description repliable de la fiche projet ─────────────────────────────────
+//
+// Au-delà de [maxLines] lignes, le texte est tronqué avec un lien
+// « … voir plus » / « voir moins ». La mesure utilise un TextPainter pour ne
+// proposer le repli QUE si le texte déborde réellement.
+class _ExpandableDescription extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  static const int maxLines = 4;
+  const _ExpandableDescription({
+    required this.text,
+    required this.style,
+  });
+
+  @override
+  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return LayoutBuilder(builder: (context, box) {
+      final painter = TextPainter(
+        text: TextSpan(text: widget.text, style: widget.style),
+        maxLines: _ExpandableDescription.maxLines,
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: box.maxWidth);
+      final overflows = painter.didExceedMaxLines;
+      if (!overflows) return Text(widget.text, style: widget.style);
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.text,
+            style: widget.style,
+            maxLines: _expanded ? null : _ExpandableDescription.maxLines,
+            overflow: _expanded ? null : TextOverflow.ellipsis,
+          ),
+          GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 2),
+              child: Text(
+                _expanded ? 'voir moins' : '… voir plus',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: cs.primary.withOpacity(.85),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    });
   }
 }
