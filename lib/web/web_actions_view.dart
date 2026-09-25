@@ -199,6 +199,25 @@ class _WebActionsViewState extends State<WebActionsView> {
                 style:
                     TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
+          // Réorganisation directe (actions de projet seulement) : monter /
+          // descendre dans la tâche, ou changer de tâche.
+          if (task != null) ...[
+            IconButton(
+              tooltip: 'Monter',
+              icon: const Icon(Icons.arrow_upward, size: 16),
+              onPressed: () => Navigator.pop(ctx, 'up'),
+            ),
+            IconButton(
+              tooltip: 'Descendre',
+              icon: const Icon(Icons.arrow_downward, size: 16),
+              onPressed: () => Navigator.pop(ctx, 'down'),
+            ),
+            IconButton(
+              tooltip: 'Déplacer vers une autre tâche',
+              icon: const Icon(Icons.drive_file_move_outlined, size: 16),
+              onPressed: () => Navigator.pop(ctx, 'move'),
+            ),
+          ],
           TextButton(
               onPressed: () => Navigator.pop(ctx),
               child: const Text('Annuler')),
@@ -211,6 +230,18 @@ class _WebActionsViewState extends State<WebActionsView> {
     final newTitle = titleCtrl.text.trim();
     titleCtrl.dispose();
     if (result == null) return;
+    if (result == 'up' || result == 'down') {
+      if (project != null && task != null) {
+        _nudgeAction(project, task, a, up: result == 'up');
+      }
+      return;
+    }
+    if (result == 'move') {
+      if (project != null && task != null) {
+        await _moveActionToTask(project, task, a);
+      }
+      return;
+    }
     if (result == 'delete') {
       if (task != null) {
         task.actions.remove(a);
@@ -227,6 +258,101 @@ class _WebActionsViewState extends State<WebActionsView> {
       unawaited(widget.sync.updateOwnActions(activity.id, activity.ownActions));
     }
     setState(() {});
+  }
+
+  /// Monte/descend une action parmi les actions NON FAITES de sa tâche —
+  /// l'ordre du tableau task.actions est l'ordre d'affichage partout.
+  void _nudgeAction(Project p, ProjectTask task, TaskAction a,
+      {required bool up}) {
+    final idx = task.actions.indexOf(a);
+    if (idx == -1) return;
+    // Voisin non fait le plus proche dans la direction demandée.
+    int? swapWith;
+    if (up) {
+      for (var i = idx - 1; i >= 0; i--) {
+        if (!task.actions[i].done) { swapWith = i; break; }
+      }
+    } else {
+      for (var i = idx + 1; i < task.actions.length; i++) {
+        if (!task.actions[i].done) { swapWith = i; break; }
+      }
+    }
+    if (swapWith == null) return; // déjà en bord de liste
+    final tmp = task.actions[swapWith];
+    task.actions[swapWith] = a;
+    task.actions[idx] = tmp;
+    unawaited(widget.sync.saveProjectTasks(p.id, p.tasks));
+    setState(() {});
+  }
+
+  /// « Déplacer vers une autre tâche » : sélecteur des tâches ouvertes de tous
+  /// les projets actifs, puis FirestoreSync.moveActionToTask (même helper que
+  /// la fiche tâche du Gantt et le mobile).
+  Future<void> _moveActionToTask(
+      Project from, ProjectTask fromTask, TaskAction a) async {
+    final cs = Theme.of(context).colorScheme;
+    final candidates = <(Project, ProjectTask)>[
+      for (final p in widget.projects)
+        if (p.status == 'active' && !p.paused)
+          for (final t in p.tasks)
+            if (!t.isMilestone &&
+                t.status != 'done' &&
+                t.status != 'skipped' &&
+                t.id != fromTask.id)
+              (p, t),
+    ];
+    if (candidates.isEmpty) return;
+    final picked = await showDialog<(Project, ProjectTask)>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Déplacer vers…'),
+        children: [
+          for (final (p, t) in candidates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, (p, t)),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13.5, fontWeight: FontWeight.w600)),
+                      Text(p.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withOpacity(.45))),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    await widget.sync.moveActionToTask(
+      fromProjectId: from.id,
+      fromTaskId: fromTask.id,
+      toProjectId: picked.$1.id,
+      toTaskId: picked.$2.id,
+      actionId: a.id,
+    );
+    // Reflet local immédiat + rechargement pour l'état canonique.
+    fromTask.actions.removeWhere((x) => x.id == a.id);
+    if (mounted) {
+      setState(() {});
+      widget.onRefresh();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Action déplacée vers « ${picked.$2.title} ».'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   /// Crée une action SIMPLE (ownAction) sur une activité — CRUD web complet.

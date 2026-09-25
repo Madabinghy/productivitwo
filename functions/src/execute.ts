@@ -570,6 +570,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "POUR créer un programme : appelle toujours get_document_template d'abord, génère le HTML, montre-le à l'utilisateur et attends sa validation avant de créer quoi que ce soit dans Productivitwo.",
       "CONVENTION CALENDRIER : quand tu crées un événement Google Calendar dans le cadre d'une session Productivitwo, ajoute ' - Productivitwo' à la fin du titre (ex: 'Séance musculation - Productivitwo'). Cela te permet d'identifier les events que tu peux modifier librement lors d'une réorganisation. Les events sans ' - Productivitwo' ont été créés par l'utilisateur ou hors contexte Productivitwo : ne les modifie pas sans demander confirmation explicite.",
       "FICHIERS DE TÂCHE : quand tu crées ou sauvegardes un document avec save_document, associe-le toujours à la tâche Gantt concernée via taskId (obtenu depuis get_project → tasks[].id). Choisis la category appropriée : 'programme' pour un plan structuré, 'brief' pour un cahier des charges, 'recherche' pour une analyse/veille, 'livrable' pour un output final, 'notes' pour des notes de travail. Avant de créer un nouveau document, vérifie via get_documents(taskId) si un document de même category existe déjà pour éviter les doublons — si oui, mets-le à jour via documentId.",
+      "DESCRIPTIONS DE PROJET CONCISES : la description d'un projet (push_gantt, update_project) fait 2-3 phrases MAX (~300 caractères) — le cap, pas le dossier. Tout détail (audit, spec, historique, décisions) va dans un DOCUMENT lié au projet via save_document (category 'notes' ou 'brief'). La fiche mobile tronque la description à 4 lignes.",
       "PRIORITÉ ABSOLUE : réponds d'abord à la demande de l'utilisateur. Ne fais jamais d'actions non demandées (schedule_day, push_assistant_message, modification Gantt…) avant d'avoir répondu. Les actions proactives viennent APRÈS la réponse, jamais à la place.",
       "OBJECTIFS STRATÉGIQUES : le bloc objectives[] de ce contexte donne la progression hebdo des engagements (temps d'activités, routines) de chaque objectif actif. Quand tu planifies (schedule_day, plan_day) ou arbitres des priorités, favorise les activités/routines dont l'engagement est en retard (onTrack:false). Si un engagement semble irréaliste plusieurs semaines de suite, propose à l'utilisateur de le réviser via save_objective — ne le modifie jamais sans accord.",
       "ACTIONS D'ACTIVITÉ : une activité-temps peut avoir ses propres actions (champ ownActions de chaque activité dans ce contexte) — des sous-actions sans tâche/projet. Tu peux en créer via add_activity_action(activityId, title) puis les PROGRAMMER dans schedule_day en passant activityId + actionId (le chrono du bloc sera ciblé sur l'action). Quand tu programmes une action concrète qui correspond à une activité-temps existante, préfère la rattacher (action propre) plutôt qu'un bloc vague.",
@@ -1312,12 +1313,18 @@ async function executePushGantt(
   }
 
   const isUpdate = !!project.id;
+  const descLen = (project.description ?? "").length;
+  const verboseWarning = descLen > 600
+    ? `⚠️ Description longue (${descLen} caractères) — la fiche la tronque à 4 lignes. ` +
+      `Déplace le détail dans un document du projet (save_document, category 'notes').\n`
+    : "";
   const statusLine = isUpdate
     ? ""
     : `• statut : ${opts?.draftOnCreate
         ? "brouillon (à valider dans l'app)" : "actif"}\n`;
   return (
     `✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
+    verboseWarning +
     `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
     statusLine +
     `• Voir sur : https://app.productivitwo.com\n` +
