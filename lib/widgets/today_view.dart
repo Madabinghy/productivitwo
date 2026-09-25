@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet « Aujourd'hui » : le programme horaire du jour, avec bascule vers
 /// « Demain » pour préparer la journée suivante (planif du lendemain).
@@ -37,9 +38,11 @@ class TodayView extends StatefulWidget {
 class _TodayViewState extends State<TodayView> {
   bool _showTomorrow = false;
   // Timeline 24 h (façon Calendar) ⇄ liste compacte. La timeline est l'outil
-  // de planification (drag, resize, ajout au créneau) ; la liste reste là
-  // pour cocher vite.
-  bool _timeline = true;
+  // de planification (drag, resize, ajout au créneau) ; la liste — vue par
+  // DÉFAUT (demande user) — donne la journée d'un coup d'œil et se coche vite.
+  // Le choix est persisté par appareil : l'app rouvre dans la dernière vue.
+  static const _timelinePrefKey = 'today_view_timeline';
+  bool _timeline = false;
   bool _syncing = false;
   // Scroll de la page — la jauge-minimap saute la timeline à l'heure tapée.
   final _scroll = ScrollController();
@@ -48,6 +51,12 @@ class _TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
+    SharedPreferences.getInstance().then((p) {
+      final saved = p.getBool(_timelinePrefKey);
+      if (saved != null && mounted && saved != _timeline) {
+        setState(() => _timeline = saved);
+      }
+    });
     // La jauge suit le chrono en cours + le trait « maintenant ».
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted && !_showTomorrow) setState(() {});
@@ -446,7 +455,11 @@ class _TodayViewState extends State<TodayView> {
                         ? Icons.view_list_outlined
                         : Icons.calendar_view_day_outlined,
                     size: 20),
-                onPressed: () => setState(() => _timeline = !_timeline),
+                onPressed: () {
+                  setState(() => _timeline = !_timeline);
+                  SharedPreferences.getInstance()
+                      .then((p) => p.setBool(_timelinePrefKey, _timeline));
+                },
               ),
             ),
           ),
