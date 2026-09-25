@@ -423,7 +423,12 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                 label: it.label,
                 extended: extended,
                 selected: _navIndex == it.index,
-                onTap: () => setState(() => _navIndex = it.index)),
+                // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay
+                // masquait la vue choisie (constaté sur build).
+                onTap: () => setState(() {
+                      _navIndex = it.index;
+                      _shellGantt = null;
+                    })),
           const Spacer(),
           Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
           const SizedBox(height: 6),
