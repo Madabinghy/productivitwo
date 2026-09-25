@@ -356,6 +356,31 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
 
+  /// Temps loggué AUJOURD'HUI sur la source du bloc (activité-temps directe,
+  /// ou tâche Gantt via `Session.taskId`), borné à la journée. Le réel mesuré
+  /// à côté du prévu — la timeline a sa couche « réalisé », la liste a ce badge.
+  int _loggedMinFor(ScheduleBlock b, DateTime dayStart, DateTime dayEnd) {
+    if (b.activityId != null) {
+      final act = _activityById(b.activityId!);
+      if (act == null || act.isHabit) return 0;
+      return widget.logic
+          .totalForRangeByActivity(b.activityId!, dayStart, dayEnd)
+          .inMinutes;
+    }
+    if (b.taskId == null) return 0;
+    var sum = Duration.zero;
+    for (final s in widget.logic.state.sessions) {
+      if (s.taskId != b.taskId) continue;
+      final e = s.endAt ?? DateTime.now();
+      if (s.startAt.isBefore(dayEnd) && e.isAfter(dayStart)) {
+        final st = s.startAt.isBefore(dayStart) ? dayStart : s.startAt;
+        final en = e.isAfter(dayEnd) ? dayEnd : e;
+        if (en.isAfter(st)) sum += en.difference(st);
+      }
+    }
+    return sum.inMinutes;
+  }
+
   Future<void> _saveBlock(ScheduleBlock updated) async {
     final schedule = _schedule;
     if (schedule == null) return;
@@ -438,6 +463,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             ),
           ],
         ),
+        // Résumé prévu / fait : la visibilité globale de la journée en une
+        // ligne, même en vue liste (le loggué inclut le chrono en cours).
+        if (visible.isNotEmpty) _daySummary(cs, visible),
         const SizedBox(height: 12),
         if (visible.isEmpty)
           _buildEmptyState(cs)
@@ -472,6 +500,42 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             ]);
           }),
       ],
+    );
+  }
+
+  /// « Xh prévu · Yh fait · n/m ✓ » sous le titre — ce qu'on doit faire et ce
+  /// qu'on a fait, d'un coup d'œil. Le « fait » (temps loggué du jour, toutes
+  /// sessions) n'apparaît que pour aujourd'hui — demain n'a pas de réel.
+  Widget _daySummary(ColorScheme cs, List<ScheduleBlock> visible) {
+    final real = visible.where((b) => !b.isPrep).toList();
+    if (real.isEmpty) return const SizedBox.shrink();
+    final plannedMin = real.fold<int>(0, (s, b) => s + b.durationMin);
+    final doneCount = real.where((b) => b.status == 'done').length;
+    final parts = <InlineSpan>[
+      TextSpan(text: '${fmtMin(plannedMin)} prévu'),
+    ];
+    if (_isToday) {
+      final now = DateTime.now();
+      final dayStart = DateTime(now.year, now.month, now.day);
+      final loggedMin = widget.logic.totalForRange(dayStart, now).inMinutes;
+      parts.add(TextSpan(text: '  ·  '));
+      parts.add(TextSpan(
+        text: '${fmtMin(loggedMin)} fait',
+        style: TextStyle(
+            color: cs.primary.withOpacity(.9), fontWeight: FontWeight.w700),
+      ));
+    }
+    parts.add(TextSpan(text: '  ·  $doneCount/${real.length} ✓'));
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text.rich(
+        TextSpan(children: parts),
+        style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
+            color: cs.onSurface.withOpacity(.5)),
+      ),
     );
   }
 
@@ -567,6 +631,16 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Défi programmé = teinte dorée distincte (cohérent avec « Challenge me »).
     final color =
         block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs);
+    // Réel loggué du jour sur la source du bloc — visible même en vue liste.
+    final int loggedMin;
+    if (_isToday) {
+      final now = DateTime.now();
+      final dayStart = DateTime(now.year, now.month, now.day);
+      loggedMin = _loggedMinFor(
+          block, dayStart, dayStart.add(const Duration(days: 1)));
+    } else {
+      loggedMin = 0;
+    }
 
     return Dismissible(
       key: key,
@@ -684,6 +758,24 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                               color: cs.onSurface
                                   .withOpacity(isDone ? .2 : .4)),
                         ),
+                        // Temps loggué du jour sur la source (activité/tâche) :
+                        // le réel à côté du prévu, sans passer par la timeline.
+                        if (loggedMin > 0) ...[
+                          const SizedBox(width: 6),
+                          Icon(Icons.timer_outlined,
+                              size: 10.5,
+                              color: cs.primary
+                                  .withOpacity(isDone ? .4 : .85)),
+                          const SizedBox(width: 2),
+                          Text(
+                            fmtMin(loggedMin),
+                            style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: cs.primary
+                                    .withOpacity(isDone ? .4 : .9)),
+                          ),
+                        ],
                         // Bloc copié par « Reporter au lendemain » : provenance.
                         if (block.carriedFromDate != null && !isDone) ...[
                           const SizedBox(width: 6),
