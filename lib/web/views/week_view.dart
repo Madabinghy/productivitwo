@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
+import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/wide_gantt_dialog.dart';
 
@@ -16,10 +17,28 @@ import 'package:productivitwo_v1/web/wide_gantt_dialog.dart';
 // organisation de la semaine (à caser → jours, capacité, ORION) en bas.
 
 const _kDayShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-const _kDayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const _kDayLong = [
+  'lundi',
+  'mardi',
+  'mercredi',
+  'jeudi',
+  'vendredi',
+  'samedi',
+  'dimanche'
+];
 const _kMonthShort = [
-  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juil.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.'
 ];
 const _tabular = [FontFeature.tabularFigures()];
 const _kLeftCol = 250.0;
@@ -30,7 +49,8 @@ String _fmtHm(int min) {
   return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
 }
 
-String _clock(int min) => '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
+String _clock(int min) =>
+    '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
 
 /// Charge utile d'un glisser-déposer : une tâche à caser OU un bloc déplacé.
 class _DragTask {
@@ -94,8 +114,9 @@ class _WeekViewState extends State<WeekView> {
       _subs.add(widget.sync.streamDailySchedule(key).listen((s) {
         if (!mounted) return;
         setState(() {
-          _byDay[key] = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
-            ..sort((a, b) => a.startTime.compareTo(b.startTime));
+          _byDay[key] =
+              (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+                ..sort((a, b) => a.startTime.compareTo(b.startTime));
         });
       }));
     }
@@ -125,13 +146,30 @@ class _WeekViewState extends State<WeekView> {
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  void _snack(String msg) {
+  void _snack(String msg, {String? actionLabel, VoidCallback? onAction}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      behavior: SnackBarBehavior.floating,
-      duration: const Duration(milliseconds: 1800),
-    ));
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: actionLabel == null ? 1800 : 5000),
+        action: actionLabel == null
+            ? null
+            : SnackBarAction(
+                label: actionLabel, textColor: kBPrimary, onPressed: onAction!),
+      ));
+  }
+
+  /// Éditer un bloc de n'importe quel jour de la semaine (heure, durée,
+  /// titre, suppression) — même éditeur que la frise d'Aujourd'hui.
+  Future<void> _editBlock(String date, ScheduleBlock b) async {
+    final updated = await showScheduleBlockDialog(context, block: b);
+    if (updated == null || !mounted) return;
+    setState(() {
+      if (updated.status == 'deleted') _byDay[date]?.remove(updated);
+    });
+    await widget.sync.upsertScheduleBlock(date, updated);
   }
 
   Future<void> _placeTask(WeekTask wt, DateTime day) async {
@@ -139,13 +177,16 @@ class _WeekViewState extends State<WeekView> {
     final blocks = _byDay[key] ?? [];
     final start = firstFreeSlot(blocks, wt.task.plannedMin);
     if (start == null) {
-      _snack('Pas de créneau libre ${_kDayLong[day.weekday - 1]} pour ${_fmtHm(wt.task.plannedMin)}.');
+      _snack(
+          'Pas de créneau libre ${_kDayLong[day.weekday - 1]} pour ${_fmtHm(wt.task.plannedMin)}.');
       return;
     }
     final block = taskBlock(wt, start);
     setState(() => (_byDay[key] ??= []).add(block));
     await widget.sync.addScheduleBlock(key, block);
-    _snack('Bloc ajouté ${_kDayLong[day.weekday - 1]} ${_clock(start)}');
+    _snack('Bloc ajouté ${_kDayLong[day.weekday - 1]} ${_clock(start)}',
+        actionLabel: 'Modifier l\'heure',
+        onAction: () => _editBlock(key, block));
   }
 
   Future<void> _moveBlock(_DragBlock drag, DateTime day) async {
@@ -206,7 +247,8 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Future<void> _toggleTask(WeekTask wt) async {
-    setState(() => wt.task.status = wt.task.status == 'done' ? 'pending' : 'done');
+    setState(
+        () => wt.task.status = wt.task.status == 'done' ? 'pending' : 'done');
     await widget.sync.saveProjectTasks(wt.project.id, wt.project.tasks);
   }
 
@@ -239,15 +281,20 @@ class _WeekViewState extends State<WeekView> {
     final active = tasks.where((t) => !t.done).length;
     final done = tasks.where((t) => t.done).length;
     final planned = plannedMin(_allBlocks);
-    final capacity = _days.fold<int>(0, (s, d) => s + capacityMinFor(_capacity, d));
+    final capacity =
+        _days.fold<int>(0, (s, d) => s + capacityMinFor(_capacity, d));
 
     return Container(
       color: kBBg,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(32, 22, 32, 26),
         children: [
-          _header(active: active, done: done, toPlace: toPlace.length,
-              planned: planned, capacity: capacity),
+          _header(
+              active: active,
+              done: done,
+              toPlace: toPlace.length,
+              planned: planned,
+              capacity: capacity),
           const SizedBox(height: 18),
           _ganttCard(tasks),
           const SizedBox(height: 18),
@@ -275,10 +322,15 @@ class _WeekViewState extends State<WeekView> {
         Row(children: [
           Text(title,
               style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: kBText,
+                  letterSpacing: -.2)),
           const SizedBox(width: 10),
-          _iconBtn(Icons.chevron_left, 'Semaine précédente', () => _shiftWeek(-1)),
-          _iconBtn(Icons.chevron_right, 'Semaine suivante', () => _shiftWeek(1)),
+          _iconBtn(
+              Icons.chevron_left, 'Semaine précédente', () => _shiftWeek(-1)),
+          _iconBtn(
+              Icons.chevron_right, 'Semaine suivante', () => _shiftWeek(1)),
           if (!isCurrent) ...[
             const SizedBox(width: 4),
             _textLink('Cette semaine', () {
@@ -292,7 +344,8 @@ class _WeekViewState extends State<WeekView> {
           '$active tâche${active > 1 ? 's' : ''} active${active > 1 ? 's' : ''} · '
           '$done faite${done > 1 ? 's' : ''} · $toPlace à caser · '
           '${_fmtHm(planned)} planifiées sur ${_fmtHm(capacity)}',
-          style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular),
+          style: const TextStyle(
+              fontSize: 13, color: kBText3, fontFeatures: _tabular),
         ),
       ]),
       const Spacer(),
@@ -303,7 +356,9 @@ class _WeekViewState extends State<WeekView> {
               projects: widget.projects, domains: widget.domains)),
       const SizedBox(width: 8),
       _pillButton('Planifier la semaine avec ORION',
-          primary: true, icon: Icons.auto_awesome, onTap: _busy ? null : _planWithOrion),
+          primary: true,
+          icon: Icons.auto_awesome,
+          onTap: _busy ? null : _planWithOrion),
     ]);
   }
 
@@ -367,7 +422,8 @@ class _WeekViewState extends State<WeekView> {
               Text('${d.day}',
                   style: TextStyle(
                       fontSize: 13,
-                      fontWeight: d == _today ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight:
+                          d == _today ? FontWeight.w700 : FontWeight.w500,
                       color: d == _today ? kBPrimary : kBText2,
                       fontFeatures: _tabular)),
             ]),
@@ -399,7 +455,8 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _taskRow(WeekTask wt) {
     final t = wt.task;
-    final color = domainColor(wt.project.domainId, widget.domains) ?? kBPrimaryDark;
+    final color =
+        domainColor(wt.project.domainId, widget.domains) ?? kBPrimaryDark;
     final start = dateOnly(t.startDate);
     final end = dateOnly(t.endDate ?? t.startDate);
     final sunday = _days.last;
@@ -439,7 +496,9 @@ class _WeekViewState extends State<WeekView> {
               child: InkWell(
                 onTap: () => widget.onOpenProject(wt.project, taskId: t.id),
                 child: Text(t.title,
-                    maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle),
               ),
             ),
             if (wt.overdue && !wt.done) ...[
@@ -460,7 +519,8 @@ class _WeekViewState extends State<WeekView> {
                   padding: const EdgeInsets.only(left: 6),
                   child: Text(
                     'échéance ${t.endDate != null ? '${t.endDate!.day} ${_kMonthShort[t.endDate!.month - 1]}' : '—'} · à caser',
-                    style: const TextStyle(fontSize: 11.5, color: kBAlert, fontFeatures: _tabular),
+                    style: const TextStyle(
+                        fontSize: 11.5, color: kBAlert, fontFeatures: _tabular),
                   ),
                 ),
               );
@@ -485,7 +545,8 @@ class _WeekViewState extends State<WeekView> {
                 Positioned(
                   left: colW * e + colW / 2 + 12,
                   top: 9,
-                  child: _badge('${_kDayShort[end.weekday - 1]} ${end.day}', kBAttention),
+                  child: _badge(
+                      '${_kDayShort[end.weekday - 1]} ${end.day}', kBAttention),
                 ),
               ]);
             }
@@ -547,11 +608,13 @@ class _WeekViewState extends State<WeekView> {
       final left = _toPlaceCard(toPlace);
       final right = _daysBoard();
       if (narrow) {
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          left,
-          const SizedBox(height: 18),
-          right,
-        ]);
+        return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              left,
+              const SizedBox(height: 18),
+              right,
+            ]);
       }
       return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: _kLeftCol + 20, child: left),
@@ -569,26 +632,35 @@ class _WeekViewState extends State<WeekView> {
             color: toPlace.any((t) => t.overdue) ? kBAlert : kBText3),
         const SizedBox(height: 12),
         if (toPlace.isEmpty)
-          const Text('Tout est planifié.', style: TextStyle(fontSize: 13, color: kBText3))
+          const Text('Tout est planifié.',
+              style: TextStyle(fontSize: 13, color: kBText3))
         else ...[
           for (final wt in toPlace)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Draggable<Object>(
+              child: LongPressDraggable<Object>(
+                // Un Draggable simple perd le geste face aux listes qui défilent
+                // (web / souris) : appui court puis glisser.
+                delay: const Duration(milliseconds: 150),
                 data: _DragTask(wt),
                 feedback: Material(
                   color: Colors.transparent,
-                  child: SizedBox(width: _kLeftCol, child: _toPlaceTile(wt, dragging: true)),
+                  child: SizedBox(
+                      width: _kLeftCol,
+                      child: _toPlaceTile(wt, dragging: true)),
                 ),
-                childWhenDragging: Opacity(opacity: .35, child: _toPlaceTile(wt)),
+                childWhenDragging:
+                    Opacity(opacity: .35, child: _toPlaceTile(wt)),
                 child: _toPlaceTile(wt),
               ),
             ),
           const SizedBox(height: 6),
           _pillButton('Tout caser automatiquement',
-              icon: Icons.auto_fix_high_outlined, onTap: _busy ? null : _autoPlace),
+              icon: Icons.auto_fix_high_outlined,
+              onTap: _busy ? null : _autoPlace),
           const SizedBox(height: 8),
-          const Text('Glisse une tâche sur un jour, ou laisse-moi caser au premier créneau libre.',
+          const Text(
+              'Appuie un instant sur une tâche puis glisse-la sur un jour, ou laisse-moi caser au premier créneau libre.',
               style: TextStyle(fontSize: 11.5, color: kBText4, height: 1.4)),
         ],
       ]),
@@ -605,17 +677,20 @@ class _WeekViewState extends State<WeekView> {
       decoration: BoxDecoration(
         color: dragging ? kBActive : kBRaised,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: dragging ? kBPrimary.withOpacity(.5) : kBLine),
+        border:
+            Border.all(color: dragging ? kBPrimary.withOpacity(.5) : kBLine),
       ),
       child: Row(children: [
         const Icon(Icons.drag_indicator, size: 16, color: kBText4),
         const SizedBox(width: 8),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(t.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: kBText)),
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500, color: kBText)),
             const SizedBox(height: 2),
             Text(sub,
                 maxLines: 1,
@@ -656,8 +731,16 @@ class _WeekViewState extends State<WeekView> {
     final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;
 
     return DragTarget<Object>(
-      onWillAcceptWithDetails: (d) => !past && (d.data is _DragTask || d.data is _DragBlock),
+      onWillAcceptWithDetails: (d) =>
+          d.data is _DragTask || d.data is _DragBlock,
       onAcceptWithDetails: (d) {
+        // Un jour passé accepte le dépôt pour pouvoir l'expliquer (un refus
+        // silencieux ressemble à une panne).
+        if (past) {
+          _snack(
+              '${_kDayLong[day.weekday - 1].substring(0, 1).toUpperCase()}${_kDayLong[day.weekday - 1].substring(1)} est passé — dépose sur un jour à venir.');
+          return;
+        }
         final data = d.data;
         if (data is _DragTask) _placeTask(data.task, day);
         if (data is _DragBlock) _moveBlock(data, day);
@@ -666,29 +749,34 @@ class _WeekViewState extends State<WeekView> {
         final hover = candidates.isNotEmpty;
         return Container(
           decoration: BoxDecoration(
-            color: hover ? kBActive : (isToday ? kBSurface : Colors.transparent),
+            color: hover && !past
+                ? kBActive
+                : (isToday ? kBSurface : Colors.transparent),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-                color: hover
+                color: hover && !past
                     ? kBPrimary.withOpacity(.6)
                     : isToday
                         ? kBPrimary.withOpacity(.25)
                         : kBLine),
           ),
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Row(children: [
               Text(_kDayShort[day.weekday - 1],
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: .8,
-                      color: isToday ? kBPrimary : (day.weekday >= 6 ? kBText4 : kBText3))),
+                      color: isToday
+                          ? kBPrimary
+                          : (past || day.weekday >= 6 ? kBText4 : kBText3))),
               const SizedBox(width: 4),
               Text('${day.day}',
                   style: TextStyle(
                       fontSize: 12,
-                      color: isToday ? kBPrimary : kBText2,
+                      color: isToday ? kBPrimary : (past ? kBText4 : kBText2),
                       fontFeatures: _tabular)),
             ]),
             const SizedBox(height: 6),
@@ -715,13 +803,18 @@ class _WeekViewState extends State<WeekView> {
                     padding: const EdgeInsets.only(bottom: 4),
                     child: past
                         ? _chip(b, key, current: false)
-                        : Draggable<Object>(
+                        : LongPressDraggable<Object>(
+                            delay: const Duration(milliseconds: 150),
                             data: _DragBlock(key, b),
                             feedback: Material(
                               color: Colors.transparent,
-                              child: SizedBox(width: 140, child: _chip(b, key, current: false)),
+                              child: SizedBox(
+                                  width: 140,
+                                  child: _chip(b, key, current: false)),
                             ),
-                            childWhenDragging: Opacity(opacity: .3, child: _chip(b, key, current: false)),
+                            childWhenDragging: Opacity(
+                                opacity: .3,
+                                child: _chip(b, key, current: false)),
                             child: _chip(b, key,
                                 current: isToday &&
                                     b.status == 'pending' &&
@@ -731,20 +824,29 @@ class _WeekViewState extends State<WeekView> {
                   ),
               ]),
             ),
-            if (!past)
-              Container(
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: hover ? kBPrimary.withOpacity(.6) : kBLine,
-                      width: 1),
-                ),
-                child: Text(hover ? 'déposer' : 'déposer ici',
-                    style: TextStyle(
-                        fontSize: 11, color: hover ? kBPrimary : kBText4)),
+            Container(
+              height: 30,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: hover && !past ? kBPrimary.withOpacity(.6) : kBLine,
+                    width: 1),
               ),
+              child: Text(
+                  past
+                      ? 'passé'
+                      : hover
+                          ? 'déposer'
+                          : 'déposer ici',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: hover && !past
+                          ? kBPrimary
+                          : past
+                              ? kBText4.withOpacity(.6)
+                              : kBText4)),
+            ),
           ]),
         );
       },
@@ -754,32 +856,36 @@ class _WeekViewState extends State<WeekView> {
   Widget _chip(ScheduleBlock b, String date, {required bool current}) {
     final color = kBCategoryColor[b.category] ?? const Color(0xFF8E9AAF);
     final done = b.status == 'done';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withOpacity(done ? .08 : .16),
-        borderRadius: BorderRadius.circular(6),
-        border: current ? Border.all(color: kBPrimary.withOpacity(.7)) : null,
-      ),
-      child: Row(children: [
-        Text(b.startTime,
-            style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: done ? kBText4 : color,
-                fontFeatures: _tabular)),
-        const SizedBox(width: 5),
-        Expanded(
-          child: Text(b.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 11.5,
-                  color: done ? kBText3 : kBText,
-                  decoration: done ? TextDecoration.lineThrough : null,
-                  decorationColor: kBText3)),
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => _editBlock(date, b),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withOpacity(done ? .08 : .16),
+          borderRadius: BorderRadius.circular(6),
+          border: current ? Border.all(color: kBPrimary.withOpacity(.7)) : null,
         ),
-      ]),
+        child: Row(children: [
+          Text(b.startTime,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  color: done ? kBText4 : color,
+                  fontFeatures: _tabular)),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(b.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11.5,
+                    color: done ? kBText3 : kBText,
+                    decoration: done ? TextDecoration.lineThrough : null,
+                    decorationColor: kBText3)),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -813,18 +919,26 @@ class _WeekViewState extends State<WeekView> {
 
   Widget _label(String text, {Color color = kBText3}) => Text(text,
       style: TextStyle(
-          fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: color));
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.3,
+          color: color));
 
   Widget _badge(String text, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
-            color: color.withOpacity(.14), borderRadius: BorderRadius.circular(999)),
+            color: color.withOpacity(.14),
+            borderRadius: BorderRadius.circular(999)),
         child: Text(text,
             style: TextStyle(
-                fontSize: 10, fontWeight: FontWeight.w700, color: color, fontFeatures: _tabular)),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color,
+                fontFeatures: _tabular)),
       );
 
-  Widget _iconBtn(IconData icon, String tooltip, VoidCallback onTap) => IconButton(
+  Widget _iconBtn(IconData icon, String tooltip, VoidCallback onTap) =>
+      IconButton(
         tooltip: tooltip,
         icon: Icon(icon, size: 20, color: kBText2),
         onPressed: onTap,
@@ -838,7 +952,9 @@ class _WeekViewState extends State<WeekView> {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Text(label,
               style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: kBPrimary)),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: kBPrimary)),
         ),
       );
 
@@ -849,11 +965,14 @@ class _WeekViewState extends State<WeekView> {
       height: 40,
       child: TextButton.icon(
         onPressed: onTap,
-        icon: icon == null ? const SizedBox.shrink() : Icon(icon, size: 16, color: fg),
+        icon: icon == null
+            ? const SizedBox.shrink()
+            : Icon(icon, size: 16, color: fg),
         label: Text(label),
         style: TextButton.styleFrom(
           backgroundColor: primary ? kBPrimary : const Color(0x12FFFFFF),
-          disabledBackgroundColor: primary ? kBPrimary.withOpacity(.4) : const Color(0x0AFFFFFF),
+          disabledBackgroundColor:
+              primary ? kBPrimary.withOpacity(.4) : const Color(0x0AFFFFFF),
           foregroundColor: fg,
           disabledForegroundColor: fg.withOpacity(.5),
           shape: const StadiumBorder(),
@@ -917,60 +1036,78 @@ class _CapacityDialogState extends State<_CapacityDialog> {
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const Text('Capacité par jour',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: kBText)),
-            const SizedBox(height: 4),
-            const Text('Heures que tu peux consacrer au programme chaque jour. 0 = repos.',
-                style: TextStyle(fontSize: 12.5, color: kBText3, height: 1.4)),
-            const SizedBox(height: 16),
-            for (var i = 0; i < 7; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(children: [
-                  SizedBox(
-                    width: 110,
-                    child: Text(_kDayLong[i][0].toUpperCase() + _kDayLong[i].substring(1),
-                        style: const TextStyle(fontSize: 13.5, color: kBText)),
-                  ),
-                  SizedBox(
-                    width: 90,
-                    child: TextField(
-                      controller: _ctrl[kWeekDayKeys[i]],
-                      onChanged: (_) => setState(() {}),
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(color: kBText, fontFeatures: _tabular),
-                      decoration: InputDecoration(
-                        isDense: true,
-                        suffixText: 'h',
-                        errorText: _parse(_ctrl[kWeekDayKeys[i]]!.text) == null ? '0–16' : null,
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Capacité par jour',
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                        color: kBText)),
+                const SizedBox(height: 4),
+                const Text(
+                    'Heures que tu peux consacrer au programme chaque jour. 0 = repos.',
+                    style:
+                        TextStyle(fontSize: 12.5, color: kBText3, height: 1.4)),
+                const SizedBox(height: 16),
+                for (var i = 0; i < 7; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(children: [
+                      SizedBox(
+                        width: 110,
+                        child: Text(
+                            _kDayLong[i][0].toUpperCase() +
+                                _kDayLong[i].substring(1),
+                            style:
+                                const TextStyle(fontSize: 13.5, color: kBText)),
                       ),
-                    ),
+                      SizedBox(
+                        width: 90,
+                        child: TextField(
+                          controller: _ctrl[kWeekDayKeys[i]],
+                          onChanged: (_) => setState(() {}),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                              color: kBText, fontFeatures: _tabular),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            suffixText: 'h',
+                            errorText:
+                                _parse(_ctrl[kWeekDayKeys[i]]!.text) == null
+                                    ? '0–16'
+                                    : null,
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(context).pop(defaultWeekCapacity()),
+                    child: const Text('Par défaut'),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Annuler')),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    onPressed: _valid
+                        ? () => Navigator.of(context).pop({
+                              for (final k in kWeekDayKeys)
+                                k: _parse(_ctrl[k]!.text)!,
+                            })
+                        : null,
+                    style: FilledButton.styleFrom(
+                        backgroundColor: kBPrimary, foregroundColor: kBBg),
+                    child: const Text('Enregistrer'),
                   ),
                 ]),
-              ),
-            const SizedBox(height: 12),
-            Row(children: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(defaultWeekCapacity()),
-                child: const Text('Par défaut'),
-              ),
-              const Spacer(),
-              TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Annuler')),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _valid
-                    ? () => Navigator.of(context).pop({
-                          for (final k in kWeekDayKeys) k: _parse(_ctrl[k]!.text)!,
-                        })
-                    : null,
-                style: FilledButton.styleFrom(backgroundColor: kBPrimary, foregroundColor: kBBg),
-                child: const Text('Enregistrer'),
-              ),
-            ]),
-          ]),
+              ]),
         ),
       ),
     );

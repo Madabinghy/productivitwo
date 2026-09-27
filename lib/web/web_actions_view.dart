@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
+import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 
 /// Onglet « Actions » de l'app web — le pendant de l'onglet mobile (pivot
@@ -42,7 +43,6 @@ class _WebActionsViewState extends State<WebActionsView> {
   // préférence par appareil, rien en base).
   final Set<String> _nowContexts = {};
 
-  static const _flowTaskId = 'gtd-flow'; // même réceptacle que le mobile
 
   List<Activity> get _activeActivities =>
       widget.activities.where((a) => !a.deleted).toList();
@@ -450,78 +450,8 @@ class _WebActionsViewState extends State<WebActionsView> {
   /// Ajout rapide d'une action au projet — même réceptacle « Au fil de
   /// l'eau » (gtd-flow) que le mobile.
   Future<void> _quickAddAction(Project p) async {
-    final ctrl = TextEditingController();
-    var picked = <String>[];
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        title: const Text('Prochaine action'),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(p.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      color: Theme.of(ctx)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(.55))),
-              const SizedBox(height: 10),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                    hintText: 'La prochaine action concrète…'),
-                onSubmitted: (v) {
-                  if (v.trim().isNotEmpty) Navigator.pop(ctx, true);
-                },
-              ),
-              const SizedBox(height: 12),
-              ContextPicker(
-                values: picked,
-                sync: widget.sync,
-                onValuesChanged: (list) => picked = list,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () {
-                if (ctrl.text.trim().isNotEmpty) Navigator.pop(ctx, true);
-              },
-              child: const Text('Ajouter')),
-        ],
-      ),
-    );
-    final title = ctrl.text.trim();
-    ctrl.dispose();
-    if (saved != true || title.isEmpty) return;
-    var flow = p.tasks.firstWhereOrNull((t) => t.id == _flowTaskId);
-    if (flow == null) {
-      flow = ProjectTask(
-          id: _flowTaskId, title: 'Au fil de l\'eau', startDate: DateTime.now());
-      p.tasks.add(flow);
-    } else if (flow.status != 'pending') {
-      flow.status = 'pending';
-    }
-    flow.actions.add(TaskAction(
-      title: title,
-      context: picked.isEmpty ? null : picked.first,
-      contexts: List.of(picked),
-    ));
-    unawaited(widget.sync.saveProjectTasks(p.id, p.tasks));
-    setState(() {});
+    final added = await showQuickAddActionDialog(context, project: p, sync: widget.sync);
+    if (added && mounted) setState(() {});
   }
 
   void _openGantt(Project p, {String? targetTaskId}) {
