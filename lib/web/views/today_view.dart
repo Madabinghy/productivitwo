@@ -8,9 +8,11 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
@@ -50,12 +52,6 @@ String _fmtClock(Duration d) {
 String _ddmm(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 
-int _startMin(ScheduleBlock b) {
-  final parts = b.startTime.split(':');
-  if (parts.length < 2) return 0;
-  return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
-}
-
 class TodayView extends StatefulWidget {
   final List<Project> projects;
   final List<Domain> domains;
@@ -63,6 +59,7 @@ class TodayView extends StatefulWidget {
   final FirestoreSync sync;
   final void Function(Project project, {String? taskId}) onOpenProject;
   final VoidCallback onOpenProjects;
+  final VoidCallback onOpenWeek;
 
   const TodayView({
     super.key,
@@ -72,6 +69,7 @@ class TodayView extends StatefulWidget {
     required this.sync,
     required this.onOpenProject,
     required this.onOpenProjects,
+    required this.onOpenWeek,
   });
 
   @override
@@ -90,6 +88,8 @@ class _TodayViewState extends State<TodayView> {
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
   final Set<String> _hit = {};
   bool _busy = false;
+  // Mode « Modifier » de la frise : chaque bloc s'ouvre dans l'éditeur.
+  bool _editing = false;
   late String _today;
 
   @override
@@ -161,32 +161,10 @@ class _TodayViewState extends State<TodayView> {
     return n.hour * 60 + n.minute;
   }
 
-  /// Bloc du créneau actuel (non fait), sinon le prochain à venir.
-  ({ScheduleBlock block, bool current})? get _focusBlock {
-    final now = _nowMin;
-    for (final b in _blocks) {
-      final s = _startMin(b);
-      if (b.status == 'pending' && s <= now && now < s + b.durationMin) {
-        return (block: b, current: true);
-      }
-    }
-    for (final b in _blocks) {
-      if (b.status == 'pending' && _startMin(b) > now) {
-        return (block: b, current: false);
-      }
-    }
-    return null;
-  }
+  ({ScheduleBlock block, bool current})? get _focusBlock =>
+      focusBlock(_blocks, _nowMin);
 
-  ScheduleBlock? _nextAfter(ScheduleBlock block) {
-    final end = _startMin(block) + block.durationMin;
-    for (final b in _blocks) {
-      if (b.id != block.id && b.status == 'pending' && _startMin(b) >= end) {
-        return b;
-      }
-    }
-    return null;
-  }
+  ScheduleBlock? _nextAfter(ScheduleBlock block) => nextBlockAfter(_blocks, block);
 
   String? _activityName(String? id) {
     if (id == null) return null;
@@ -243,6 +221,38 @@ class _TodayViewState extends State<TodayView> {
     } finally {
       _busy = false;
     }
+  }
+
+  Future<void> _editBlock(ScheduleBlock b) async {
+    final updated = await showScheduleBlockDialog(context, block: b);
+    if (updated == null || !mounted) return;
+    // Soft-delete : retiré de la frise tout de suite, le flux confirmera.
+    setState(() {
+      if (updated.status == 'deleted') _blocks.remove(updated);
+    });
+    await widget.sync.upsertScheduleBlock(_today, updated);
+  }
+
+  Future<void> _addBlock() async {
+    // Nouveau bloc au prochain quart d'heure, après la fin du dernier bloc.
+    final n = DateTime.now();
+    var start = n.hour * 60 + n.minute;
+    for (final b in _blocks) {
+      start = math.max(start, blockEndMin(b));
+    }
+    start = math.min(((start + 14) ~/ 15) * 15, 23 * 60 + 45);
+    final created = await showScheduleBlockDialog(
+      context,
+      isNew: true,
+      block: ScheduleBlock(
+        startTime:
+            '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}',
+        durationMin: 30,
+        title: '',
+      ),
+    );
+    if (created == null || !mounted) return;
+    await widget.sync.upsertScheduleBlock(_today, created);
   }
 
   Future<void> _finishBlock(ScheduleBlock b) async {
@@ -337,12 +347,7 @@ class _TodayViewState extends State<TodayView> {
     final now = DateTime.now();
     final title = '${_kDays[now.weekday - 1]} ${now.day} ${_kMonths[now.month - 1]}';
     final done = _blocks.where((b) => b.status == 'done').length;
-    final remaining = _blocks
-        .where((b) => b.status == 'pending' && _startMin(b) + b.durationMin > _nowMin)
-        .fold<int>(0, (s, b) {
-      final start = math.max(_startMin(b), _nowMin);
-      return s + (_startMin(b) + b.durationMin - start);
-    });
+    final remaining = remainingPlannedMin(_blocks, _nowMin);
     final summary = _blocks.isEmpty
         ? 'Aucun programme pour aujourd\'hui'
         : '$done bloc${done > 1 ? 's' : ''} fait${done > 1 ? 's' : ''} sur ${_blocks.length}'
@@ -443,7 +448,7 @@ class _TodayViewState extends State<TodayView> {
         totalMin = b != null && isCurrent ? b.durationMin : math.max(elapsed.inMinutes, 1);
       } else if (b != null && isCurrent) {
         final n = DateTime.now();
-        final start = DateTime(n.year, n.month, n.day).add(Duration(minutes: _startMin(b)));
+        final start = DateTime(n.year, n.month, n.day).add(Duration(minutes: blockStartMin(b)));
         elapsed = n.difference(start);
         totalMin = b.durationMin;
       } else {
@@ -518,9 +523,9 @@ class _TodayViewState extends State<TodayView> {
           const SizedBox(height: 6),
           Text(
             isCurrent
-                ? 'jusqu\'à ${_clockOf(_startMin(b) + b.durationMin)}'
+                ? 'jusqu\'à ${_clockOf(blockStartMin(b) + b.durationMin)}'
                     '${next != null ? ' · ensuite ${next.title}' : ''}'
-                : 'à ${_clockOf(_startMin(b))} · ${_fmtHm(b.durationMin)}',
+                : 'à ${_clockOf(blockStartMin(b))} · ${_fmtHm(b.durationMin)}',
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -588,14 +593,7 @@ class _TodayViewState extends State<TodayView> {
       '${(min ~/ 60) % 24} h ${(min % 60).toString().padLeft(2, '0')}';
 
   Widget _dayGlance() {
-    final byCat = <String, int>{};
-    for (final b in _blocks) {
-      byCat[b.category] = (byCat[b.category] ?? 0) + b.durationMin;
-    }
-    final entries = [
-      for (final c in ['project', 'routine', 'personal', 'break'])
-        if ((byCat[c] ?? 0) > 0) (cat: c, min: byCat[c]!),
-    ];
+    final entries = minutesByCategory(_blocks);
     return Container(
       padding: const EdgeInsets.only(top: 16),
       decoration: const BoxDecoration(border: Border(top: BorderSide(color: kBLine))),
@@ -614,7 +612,7 @@ class _TodayViewState extends State<TodayView> {
                   if (i > 0) const SizedBox(width: 2),
                   Expanded(
                     flex: entries[i].min,
-                    child: Container(color: _kCategoryColor[entries[i].cat]),
+                    child: Container(color: _kCategoryColor[entries[i].category]),
                   ),
                 ],
               ]),
@@ -628,10 +626,10 @@ class _TodayViewState extends State<TodayView> {
                     width: 8,
                     height: 8,
                     decoration: BoxDecoration(
-                        color: _kCategoryColor[e.cat],
+                        color: _kCategoryColor[e.category],
                         borderRadius: BorderRadius.circular(2))),
                 const SizedBox(width: 6),
-                Text('${_kCategoryLabel[e.cat]} · ${_fmtHm(e.min)}',
+                Text('${_kCategoryLabel[e.category]} · ${_fmtHm(e.min)}',
                     style: const TextStyle(
                         fontSize: 12.5, color: kBText2, fontFeatures: _tabular)),
               ]),
@@ -647,15 +645,27 @@ class _TodayViewState extends State<TodayView> {
     return _card(
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('PROGRAMME DU JOUR'),
+        Row(children: [
+          Expanded(child: _label('PROGRAMME DU JOUR')),
+          if (_editing) ...[
+            _textLink('+ Ajouter un bloc', _addBlock),
+            const SizedBox(width: 14),
+          ],
+          _textLink(_editing ? 'Terminé' : 'Modifier',
+              () => setState(() => _editing = !_editing)),
+        ]),
         const SizedBox(height: 14),
         Expanded(
           child: _blocks.isEmpty
-              ? const Center(
-                  child: Text(
-                    'Aucun programme — demande à Claude de planifier ta journée.',
-                    style: TextStyle(fontSize: 13, color: kBText3),
-                  ),
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text(
+                      'Aucun programme — demande à Claude de planifier ta journée.',
+                      style: TextStyle(fontSize: 13, color: kBText3),
+                    ),
+                    const SizedBox(height: 12),
+                    _pillButton('Ajouter un bloc', onTap: _addBlock),
+                  ]),
                 )
               : LayoutBuilder(builder: (ctx, box) => _timeline(box.maxHeight)),
         ),
@@ -664,16 +674,11 @@ class _TodayViewState extends State<TodayView> {
   }
 
   Widget _timeline(double height) {
-    var first = _blocks.map(_startMin).reduce(math.min);
-    var last = _blocks.map((b) => _startMin(b) + b.durationMin).reduce(math.max);
-    first = math.min(first, _nowMin);
-    last = math.max(last, _nowMin + 1);
-    final startH = first ~/ 60;
-    final endH = math.min((last + 59) ~/ 60, 24);
+    final (:startH, :endH) = timelineHours(_blocks, _nowMin);
     final range = (endH - startH) * 60;
     // Échelle : remplit la hauteur dispo, mais jamais sous 0,75 px/min (un
     // bloc de 30 min doit rester lisible) — au-delà, la frise défile.
-    final ppm = math.max((height - 8) / range, 0.75);
+    final ppm = timelinePxPerMin(height - 8, range);
     final total = range * ppm + 8;
 
     double y(int min) => (min - startH * 60) * ppm + 4;
@@ -703,7 +708,7 @@ class _TodayViewState extends State<TodayView> {
           Positioned(
             left: 56,
             right: 0,
-            top: y(_startMin(b)) + 1,
+            top: y(blockStartMin(b)) + 1,
             height: math.max(b.durationMin * ppm - 3, 20),
             child: _timelineBlock(b, b.durationMin * ppm - 3),
           ),
@@ -735,8 +740,8 @@ class _TodayViewState extends State<TodayView> {
     final now = _nowMin;
     final current = !done &&
         !skipped &&
-        _startMin(b) <= now &&
-        now < _startMin(b) + b.durationMin;
+        blockStartMin(b) <= now &&
+        now < blockStartMin(b) + b.durationMin;
     final compact = h < 40;
     final project = _project(b.projectId);
 
@@ -783,9 +788,11 @@ class _TodayViewState extends State<TodayView> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: project != null
+        // Bloc de projet → Gantt sur la tâche ; autre bloc (ou mode
+        // « Modifier ») → éditeur.
+        onTap: project != null && !_editing
             ? () => widget.onOpenProject(project, taskId: b.taskId)
-            : null,
+            : () => _editBlock(b),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 0 : 8),
           child: compact
@@ -812,7 +819,7 @@ class _TodayViewState extends State<TodayView> {
                           Padding(
                             padding: const EdgeInsets.only(top: 3),
                             child: Text(
-                              '${b.startTime} → ${_clockOf(_startMin(b) + b.durationMin)}'
+                              '${b.startTime} → ${_clockOf(blockStartMin(b) + b.durationMin)}'
                               '${project != null ? ' · ${project.title}' : ''}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -864,8 +871,13 @@ class _TodayViewState extends State<TodayView> {
     return _card(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label(pairs.isEmpty ? 'À TRAITER' : 'À TRAITER · ${pairs.length}',
-            color: pairs.isEmpty ? kBText3 : kBAlert),
+        Row(children: [
+          Expanded(
+            child: _label(pairs.isEmpty ? 'À TRAITER' : 'À TRAITER · ${pairs.length}',
+                color: pairs.isEmpty ? kBText3 : kBAlert),
+          ),
+          if (pairs.isNotEmpty) _textLink('Replanifier', widget.onOpenWeek),
+        ]),
         const SizedBox(height: 12),
         if (pairs.isEmpty)
           const Text('Rien en retard.', style: TextStyle(fontSize: 13, color: kBText3))
