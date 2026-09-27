@@ -63,7 +63,9 @@ Espace Coach peuvent démarrer sans attendre le 17/08) :
 **Refonte de l'app web (2026-09, en cours)** : handoff dans `docs/specs/refonte-web-2026-09/README.md`
 (shell à 5 onglets Aujourd'hui / Cette semaine / Projets / Actions / Bibliothèque, thème vert sombre
 de l'Espace coach, 8 lots = 8 PR). La nouvelle interface **remplace** le shell web actuel, sans flag ni
-route `?proto=` — le prototype `?proto=pisteb` (PR #425) est transitoire et disparaît au lot 1.
+route `?proto=` (le prototype `?proto=pisteb` de la PR #425 a été absorbé au lot 1). Shell :
+`lib/web/web_shell.dart` (`WebTab`, `WebTopBar`) · tokens `lib/web/theme_tokens.dart` · vues dans
+`lib/web/views/`. ORION n'est plus un onglet (route plein écran via le menu ⋯), plus d'overlay flottant.
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
 filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`).
 

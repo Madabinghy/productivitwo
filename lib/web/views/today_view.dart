@@ -11,32 +11,13 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
 
-// Prototype « Piste B · Trois temps » (?proto=pisteb) — vue Aujourd'hui :
-// MAINTENANT (bloc en cours + chrono) · PROGRAMME DU JOUR (frise horaire à
-// l'échelle) · CETTE SEMAINE (à traiter, engagements, échéances).
-// Tokens repris du handoff Espace coach (docs/specs/espace-coach-design).
+// Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
+// chrono) · PROGRAMME DU JOUR (frise horaire à l'échelle) · CETTE SEMAINE
+// (à traiter, engagements, échéances).
 
-const kBBg = Color(0xFF07100D);
-const kBSurface = Color(0xFF0C1C14);
-const kBRaised = Color(0xFF152B1E);
-const kBActive = Color(0xFF12241B);
-const kBPrimary = Color(0xFF27C48F);
-const kBPrimaryDark = Color(0xFF1D9E75);
-const kBText = Color(0xFFE8F3ED);
-const kBText2 = Color(0xFFB9CFC4);
-const kBText3 = Color(0xFF86A093);
-const kBText4 = Color(0xFF6E8A7B);
-const kBAlert = Color(0xFFFF6B5E);
-const kBAttention = Color(0xFFF2A93B);
-const kBLine = Color(0x12FFFFFF);
-
-const _kCategoryColor = {
-  'project': Color(0xFF1D9E75),
-  'routine': Color(0xFFE07B39),
-  'personal': Color(0xFF5B8DEF),
-  'break': Color(0xFF8E9AAF),
-};
+const _kCategoryColor = kBCategoryColor;
 const _kCategoryLabel = {
   'project': 'Projets',
   'routine': 'Routines',
@@ -75,7 +56,7 @@ int _startMin(ScheduleBlock b) {
   return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
 }
 
-class TodayBView extends StatefulWidget {
+class TodayView extends StatefulWidget {
   final List<Project> projects;
   final List<Domain> domains;
   final List<Activity> activities;
@@ -83,7 +64,7 @@ class TodayBView extends StatefulWidget {
   final void Function(Project project, {String? taskId}) onOpenProject;
   final VoidCallback onOpenProjects;
 
-  const TodayBView({
+  const TodayView({
     super.key,
     required this.projects,
     required this.domains,
@@ -94,10 +75,10 @@ class TodayBView extends StatefulWidget {
   });
 
   @override
-  State<TodayBView> createState() => _TodayBViewState();
+  State<TodayView> createState() => _TodayViewState();
 }
 
-class _TodayBViewState extends State<TodayBView> {
+class _TodayViewState extends State<TodayView> {
   StreamSubscription<DailySchedule?>? _scheduleSub;
   StreamSubscription<List<Session>>? _sessionsSub;
   StreamSubscription<List<HabitHit>>? _hitsSub;
