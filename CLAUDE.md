@@ -68,6 +68,8 @@ route `?proto=` (le prototype `?proto=pisteb` de la PR #425 a été absorbé au 
 `lib/web/views/`. ORION n'est plus un onglet (route plein écran via le menu ⋯), plus d'overlay flottant.
 Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette semaine (`week_view.dart` +
 `lib/utils/week_planner.dart`) et Projets ; la carte Vision vit dans le menu ⋯ (`vision_dialog.dart`).
+Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
+prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
