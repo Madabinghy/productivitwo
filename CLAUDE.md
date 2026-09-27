@@ -70,6 +70,9 @@ Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette sema
 `lib/utils/week_planner.dart`) et Projets ; la carte Vision vit dans le menu ⋯ (`vision_dialog.dart`).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
+Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
+shell à la place du Gantt nu ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
+documents dans `web/document_viewer_dialog.dart`.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les

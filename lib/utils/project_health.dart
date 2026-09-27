@@ -64,20 +64,41 @@ bool _sessionOfProject(Session s, Project p, Set<String> taskIds) =>
     (s.taskId != null && taskIds.contains(s.taskId)) ||
     (p.linkedActivityId != null && s.activityId == p.linkedActivityId);
 
-/// Minutes des sessions terminées ou en cours des 7 derniers jours liées au
-/// projet (par tâche, ou par activité-temps liée).
-int minutesLast7Days(Project p, List<Session> sessions, DateTime now) {
+/// Sessions liées au projet (par tâche, ou par activité-temps liée) qui
+/// touchent les 7 derniers jours.
+List<Session> sessionsLast7Days(Project p, List<Session> sessions, DateTime now) {
   final since = now.subtract(const Duration(days: 7));
   final ids = {for (final t in p.tasks) t.id};
+  return [
+    for (final s in sessions)
+      if (_sessionOfProject(s, p, ids) && !(s.endAt ?? now).isBefore(since)) s,
+  ];
+}
+
+/// Minutes des sessions terminées ou en cours des 7 derniers jours liées au
+/// projet, tronquées à la fenêtre.
+int minutesLast7Days(Project p, List<Session> sessions, DateTime now) {
+  final since = now.subtract(const Duration(days: 7));
   var total = 0;
-  for (final s in sessions) {
-    if (!_sessionOfProject(s, p, ids)) continue;
+  for (final s in sessionsLast7Days(p, sessions, now)) {
     final end = s.endAt ?? now;
-    if (end.isBefore(since)) continue;
     final start = s.startAt.isBefore(since) ? since : s.startAt;
     total += end.difference(start).inMinutes;
   }
   return total;
+}
+
+/// Prochain jalon non fait (date ≥ aujourd'hui), le plus proche d'abord.
+ProjectTask? nextMilestone(Project p, DateTime today) {
+  final d = _day(today);
+  ProjectTask? best;
+  for (final t in p.tasks) {
+    if (!t.isMilestone || t.status == 'done' || t.status == 'skipped') continue;
+    final when = _day(t.endDate ?? t.startDate);
+    if (when.isBefore(d)) continue;
+    if (best == null || when.isBefore(_day(best.endDate ?? best.startDate))) best = t;
+  }
+  return best;
 }
 
 /// Dernier signe de vie : fin de session liée ou action cochée. Null si aucun.
