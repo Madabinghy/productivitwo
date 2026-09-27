@@ -1488,6 +1488,24 @@ class FirestoreSync {
     }
   }
 
+  /// Déclenche un cycle ORION complet (même appel que « Déclencher » de la vue
+  /// ORION). Utilisé par « Planifier la semaine avec ORION ».
+  Future<bool> triggerOrionCycle() async {
+    if (uid == null) return false;
+    final token = (await ensureOnboardingToken()).rawToken;
+    if (token == null || token.isEmpty) return false;
+    try {
+      final resp = await http.post(
+        Uri.parse('https://orionwebhook-dzos75b65q-uc.a.run.app'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uid': uid, 'token': token}),
+      );
+      return resp.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Déclenche une tâche déterministe ORION côté backend (ex: 'weekly_review',
   /// qui propose d'archiver les projets en sommeil dans la file « À valider »).
   Future<bool> triggerOrionTask(String taskId) async {
