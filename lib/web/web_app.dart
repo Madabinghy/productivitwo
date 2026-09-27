@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
 import 'package:productivitwo_v1/web/mobile_preview_screen.dart';
@@ -27,9 +26,9 @@ import 'package:productivitwo_v1/main.dart'
 import 'package:productivitwo_v1/web/dev_auth_screen.dart';
 
 // ── Tampon de build ───────────────────────────────────────────────────────────
-// Affiché en bas de CHAQUE écran web + imprimé au démarrage (terminal flutter run
-// + console navigateur). Sert à vérifier d'un coup d'œil qu'on n'exécute pas un
-// vieux build en local. À bumper à chaque changement de routing/auth notable.
+// Imprimé au démarrage (terminal flutter run + console navigateur) — plus
+// affiché à l'écran depuis la refonte web 2026-09. Sert à vérifier qu'on
+// n'exécute pas un vieux build en local.
 const String kWebBuildTag = 'build 2026-06-23g · sans scorpion compagnon';
 
 // ── Couleurs Productivitwo ────────────────────────────────────────────────────
@@ -82,26 +81,6 @@ class WebApp extends StatelessWidget {
 
       themeMode: ThemeMode.dark,
 
-      // Overlay assistant au-dessus du Navigator → visible même par-dessus les
-      // sheets/modales (sinon caché). + tampon de build (coin bas-gauche).
-      builder: (context, child) => GlobalAssistantOverlay(
-        child: Stack(children: [
-          child!,
-          Positioned(
-            left: 4,
-            bottom: 2,
-            child: IgnorePointer(
-              child: Text(
-                kWebBuildTag,
-                style: TextStyle(
-                    fontSize: 9,
-                    color: Colors.white.withOpacity(.35),
-                    decoration: TextDecoration.none),
-              ),
-            ),
-          ),
-        ]),
-      ),
       home: _AuthGate(),
     );
   }
@@ -305,12 +284,7 @@ class _AuthGateState extends State<_AuthGate> {
         // (Les pages de DÉV du jeu — ?worldtest, ?proto=orbit/fluo/galaxy/rpg/
         // pet/defense/village, ?world=iso, ?map=organic — ont été SUPPRIMÉES
         // avec la couche jeu. Récupérables sur archive/couche-jeu-complete-2026-07.)
-        // Prototype « Piste B · Trois temps » (refonte web) : ?proto=pisteb.
-        // Ouvert aussi en prod (routes cachées) pour tester sur ses données.
-        return WebHomeScreen(
-          isDemo: isDemo,
-          protoB: kIsWeb && Uri.base.queryParameters['proto'] == 'pisteb',
-        );
+        return WebHomeScreen(isDemo: isDemo);
       },
     );
   }

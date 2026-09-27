@@ -8,7 +8,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
@@ -17,13 +16,15 @@ import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
-import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/coach_console_screen.dart';
 import 'package:productivitwo_v1/web/coachee_dashboard_view.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/web/daily_schedule_card.dart';
-import 'package:productivitwo_v1/web/proto/today_b_view.dart';
+import 'package:productivitwo_v1/web/views/today_view.dart';
+import 'package:productivitwo_v1/web/views/library_view.dart';
+import 'package:productivitwo_v1/web/web_shell.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
@@ -44,11 +45,7 @@ Color? _parseTaskColor(String? hex) {
 
 class WebHomeScreen extends StatefulWidget {
   final bool isDemo;
-  /// Prototype « Piste B · Trois temps » (?proto=pisteb) : barre d'onglets en
-  /// haut, vue Aujourd'hui en trois colonnes, Bibliothèque = Documents +
-  /// Organisation. Le shell actuel reste la valeur par défaut.
-  final bool protoB;
-  const WebHomeScreen({super.key, this.isDemo = false, this.protoB = false});
+  const WebHomeScreen({super.key, this.isDemo = false});
 
   @override
   State<WebHomeScreen> createState() => _WebHomeScreenState();
@@ -67,11 +64,12 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   // Refonte web (lot 0) : sur desktop les projets sont TOUJOURS visibles —
   // le flag mobile data/meta.ganttVisible ne gouverne plus le web.
   final bool _ganttVisible = true;
-  // Shell desktop (lot 1) : sidebar persistante — 0 Projets · 1 Focus ·
-  // 2 Actions · 3 Organisation · 4 ORION. Focus est la vue d'arrivée.
-  int _navIndex = 1;
-  // Gantt hébergé DANS le shell (lot 3b) : la sidebar reste visible — null =
-  // aucun projet ouvert.
+  // Refonte web 2026-09 : barre d'onglets en haut (`WebTab`), Aujourd'hui
+  // est la vue d'arrivée. « Cette semaine » pointe provisoirement sur Focus
+  // (jusqu'au lot 3).
+  WebTab _tab = WebTab.today;
+  // Gantt hébergé DANS le shell : recouvre la vue courante, la barre reste
+  // utilisable — null = aucun projet ouvert.
   ({Project project, String? taskId})? _shellGantt;
 
   void _openProjectInShell(Project project, {String? taskId}) =>
@@ -88,7 +86,6 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.protoB) _navIndex = 6;
     _load();
     // Sonde coach accrochée à l'ÉTAT D'AUTH (pas one-shot) : au chargement,
     // Firebase restaure la session APRÈS initState — une sonde immédiate
@@ -215,126 +212,110 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     showDesktopDialog(context, builder: (_) => _TokensPanel(sync: _sync));
   }
 
+  void _go(WebTab tab) => setState(() {
+        _tab = tab;
+        // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay masquait
+        // la vue choisie.
+        _shellGantt = null;
+      });
+
+  // Agent ORION : plus un onglet, une route plein écran derrière le menu ⋯.
+  void _openOrion() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: kBBg,
+          appBar: AppBar(
+            backgroundColor: kBBar,
+            surfaceTintColor: Colors.transparent,
+            title: const Text('Agent ORION'),
+          ),
+          body: _OrionView(sync: _sync),
+        ),
+      ));
+
+  void _onMenu(WebMenuItem item) {
+    switch (item) {
+      case WebMenuItem.orion:
+        _openOrion();
+      case WebMenuItem.messages:
+        AssistantHistorySheet.show(context);
+      case WebMenuItem.coachConsole:
+        Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => const CoachConsoleScreen()));
+      case WebMenuItem.claude:
+        _showTokensPanel(context);
+      case WebMenuItem.help:
+        showHelpSheet(context);
+      case WebMenuItem.logout:
+        FirebaseAuth.instance.signOut();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     User? user;
     try { user = FirebaseAuth.instance.currentUser; } catch (_) {}
-    final cs = Theme.of(context).colorScheme;
-    if (widget.protoB) return _buildProtoB(context, user);
 
     return Scaffold(
-      backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: cs.primaryContainer,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Icon(Icons.account_tree_outlined,
-                  color: cs.primary, size: 16),
-            ),
-            const SizedBox(width: 10),
-            const Text('Productivitwo',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 8),
-            Text(kBuildLabel,
-                style: TextStyle(
-                    fontSize: 11, color: cs.onSurface.withOpacity(0.4))),
-          ],
-        ),
-        actions: [
-          if (user != null) ...[
-            // Lanceur de chrono/minuteur GLOBAL : démarrer une activité depuis
-            // n'importe quel onglet, sans passer par l'Arène.
-            ChronoLauncher(sync: _sync),
-            const SizedBox(width: 4),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Center(
-                child: Text(
-                  user.displayName ?? user.email ?? '',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurface.withOpacity(0.6)),
-                ),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout_outlined, size: 18),
-              tooltip: 'Déconnexion',
-              onPressed: () => FirebaseAuth.instance.signOut(),
-            ),
-            const SizedBox(width: 8),
-          ],
+      backgroundColor: kBBg,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          WebTopBar(
+            selected: _tab,
+            onSelect: _go,
+            sync: _sync,
+            signedIn: user != null,
+            userName: user?.displayName ?? user?.email ?? '',
+            isCoach: _isCoach,
+            isDemo: widget.isDemo,
+            hasAssistantMessages: _assistantMessages.isNotEmpty,
+            onMyCoach: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const CoachSpaceScreen())),
+            onMenu: _onMenu,
+          ),
+          if (widget.isDemo) const DemoBanner(),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _viewsStack(),
+          ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(
-              height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (widget.isDemo)
-                  Container(
-                    width: double.infinity,
-                    color: const Color(0xFFE8A94A),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, size: 15, color: Color(0xFF1A1000)),
-                        SizedBox(width: 8),
-                        Text(
-                          'Mode démo — données fictives, remises à zéro chaque nuit',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1A1000),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                Expanded(
-                  // Shell desktop : sidebar persistante + contenu. IndexedStack
-                  // garde l'état (scroll, filtres) de chaque vue au changement.
-                  child: LayoutBuilder(builder: (ctx, box) {
-                    final extended = box.maxWidth >= 900;
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _sidebar(cs, extended: extended),
-                        VerticalDivider(
-                            width: 1,
-                            color: cs.outlineVariant.withOpacity(0.4)),
-                        Expanded(child: _viewsStack()),
-                      ],
-                    );
-                  }),
-                ),
-              ],
-            ),
     );
   }
 
-
-  // Vues du shell (IndexedStack) + Gantt hébergé — partagées par le shell
-  // actuel et le prototype Piste B (?proto=pisteb).
+  // Vues du shell — un enfant par `WebTab`, dans l'ordre de l'enum.
+  // IndexedStack garde l'état (scroll, filtres) de chaque vue.
   Widget _viewsStack() {
+    final activeProjects =
+        _projects.where((p) => p.status != 'archived').toList();
     return Stack(
       children: [
         IndexedStack(
-          index: _navIndex,
+          index: _tab.index,
           children: [
+            TodayView(
+              projects: activeProjects,
+              domains: _domains,
+              activities: _activities,
+              sync: _sync,
+              onOpenProject: _openProjectInShell,
+              onOpenProjects: () => _go(WebTab.projects),
+            ),
+            _FocusView(
+              projects: activeProjects,
+              domains: _domains,
+              sync: _sync,
+              onRefresh: _load,
+              isDemo: widget.isDemo,
+              ganttVisible: _ganttVisible,
+              onOpenProject: _openProjectInShell,
+              onTaskColorChange: (project, task, color) async {
+                task.color = color;
+                await _sync.saveProjectTasks(project.id, project.tasks);
+                _load();
+              },
+            ),
             _SimpleProjectsView(
               projects: _projects,
               domains: _domains,
@@ -347,26 +328,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               recentHits: _recentHits,
               onOpenProject: _openProjectInShell,
             ),
-            _FocusView(
-              projects: _projects
-                  .where((p) => p.status != 'archived')
-                  .toList(),
-              domains: _domains,
-              sync: _sync,
-              onRefresh: _load,
-              isDemo: widget.isDemo,
-              ganttVisible: _ganttVisible,
-              onOpenProject: _openProjectInShell,
-              onTaskColorChange:
-                  (project, task, color) async {
-                task.color = color;
-                await _sync.saveProjectTasks(
-                    project.id, project.tasks);
-                _load();
-              },
-            ),
-            // Hub Actions : rail Actions · Ma semaine ·
-            // domaines (transparence coach).
+            // Hub Actions : rail Actions · Ma semaine · domaines (jusqu'au lot 6).
             ActionsHubView(
               domains: _domains,
               activities: _activities,
@@ -381,46 +343,19 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
                 onOpenProject: _openProjectInShell,
               ),
             ),
-            _ArchivesView(sync: _sync),
-            _OrionView(sync: _sync),
-            _DocumentsView(
-              projects: _projects,
-              domains: _domains,
-              documentsByProject: _documentsByProject,
-              sync: _sync,
-              onChanged: _load,
-            ),
-            // Prototype Piste B : 6 = Aujourd'hui (trois temps) · 7 = Bibliothèque
-            // (Documents + Organisation).
-            if (widget.protoB) ...[
-              TodayBView(
-                projects: _projects
-                    .where((p) => p.status != 'archived')
-                    .toList(),
+            LibraryView(
+              documents: _DocumentsView(
+                projects: _projects,
                 domains: _domains,
-                activities: _activities,
+                documentsByProject: _documentsByProject,
                 sync: _sync,
-                onOpenProject: _openProjectInShell,
-                onOpenProjects: () => setState(() {
-                  _navIndex = 0;
-                  _shellGantt = null;
-                }),
+                onChanged: _load,
               ),
-              _LibraryView(
-                documents: _DocumentsView(
-                  projects: _projects,
-                  domains: _domains,
-                  documentsByProject: _documentsByProject,
-                  sync: _sync,
-                  onChanged: _load,
-                ),
-                organisation: _ArchivesView(sync: _sync),
-              ),
-            ],
+              organisation: _ArchivesView(sync: _sync),
+            ),
           ],
         ),
-        // Gantt DANS le shell (lot 3b) : recouvre la vue
-        // active, la sidebar reste utilisable.
+        // Gantt DANS le shell : recouvre la vue active, la barre reste utilisable.
         if (_shellGantt != null)
           Positioned.fill(
             child: GanttScreen(
@@ -439,297 +374,6 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     );
   }
 
-  // ── Prototype Piste B : shell à onglets (?proto=pisteb) ─────────────────────
-
-  Widget _buildProtoB(BuildContext context, User? user) {
-    final tabs = [
-      (label: "Aujourd'hui", index: 6),
-      (label: 'Projets', index: 0),
-      (label: 'Actions', index: 2),
-      (label: 'Bibliothèque', index: 7),
-    ];
-    final name = (user?.displayName ?? user?.email ?? '').trim();
-    final initial = name.isEmpty ? '?' : name.characters.first.toUpperCase();
-
-    void go(int index) => setState(() {
-          _navIndex = index;
-          _shellGantt = null;
-        });
-
-    return Scaffold(
-      backgroundColor: kBBg,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 64,
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            decoration: const BoxDecoration(
-              color: Color(0xFF0A1611),
-              border: Border(bottom: BorderSide(color: kBLine)),
-            ),
-            child: Row(children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: kBPrimary,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: const Icon(Icons.grid_view_rounded,
-                    size: 16, color: kBBg),
-              ),
-              const SizedBox(width: 10),
-              const Text('Productivitwo',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: kBText,
-                      letterSpacing: -.2)),
-              const SizedBox(width: 36),
-              for (final t in tabs)
-                _protoTab(t.label,
-                    selected: _navIndex == t.index && _shellGantt == null,
-                    onTap: () => go(t.index)),
-              const Spacer(),
-              if (user != null) ChronoLauncher(sync: _sync),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Mon coach',
-                icon: const Icon(Icons.supervisor_account_outlined,
-                    size: 19, color: kBText2),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const CoachSpaceScreen())),
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Réglages, Claude et aide',
-                icon: Badge(
-                  isLabelVisible: _assistantMessages.isNotEmpty,
-                  smallSize: 7,
-                  backgroundColor: kBPrimary,
-                  child: const Icon(Icons.tune_rounded,
-                      size: 19, color: kBText2),
-                ),
-                onSelected: (v) {
-                  switch (v) {
-                    case 'orion':
-                      go(4);
-                    case 'messages':
-                      AssistantHistorySheet.show(context);
-                    case 'coach':
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const CoachConsoleScreen()));
-                    case 'claude':
-                      _showTokensPanel(context);
-                    case 'help':
-                      showHelpSheet(context);
-                    case 'classic':
-                      html.window.location.href = '/';
-                    case 'logout':
-                      FirebaseAuth.instance.signOut();
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(
-                      value: 'orion', child: Text('Agent ORION')),
-                  const PopupMenuItem(
-                      value: 'messages', child: Text('Messages ORION')),
-                  if (_isCoach)
-                    const PopupMenuItem(
-                        value: 'coach', child: Text('Espace coach')),
-                  if (!widget.isDemo)
-                    const PopupMenuItem(
-                        value: 'claude', child: Text('Connecter Claude')),
-                  const PopupMenuItem(value: 'help', child: Text('Aide')),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                      value: 'classic',
-                      child: Text('Revenir à l\'interface actuelle')),
-                  const PopupMenuItem(
-                      value: 'logout', child: Text('Déconnexion')),
-                ],
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: name,
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                      color: kBRaised, shape: BoxShape.circle),
-                  child: Text(initial,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: kBPrimary)),
-                ),
-              ),
-            ]),
-          ),
-          if (widget.isDemo)
-            Container(
-              color: const Color(0xFFE8A94A),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-              child: const Text(
-                'Mode démo — données fictives, remises à zéro chaque nuit',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1A1000)),
-              ),
-            ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _viewsStack(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _protoTab(String label,
-      {required bool selected, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-                color: selected ? kBPrimary : Colors.transparent, width: 2),
-          ),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? kBText : kBText2)),
-      ),
-    );
-  }
-
-  // ── Sidebar du shell desktop (lot 1) ────────────────────────────────────────
-
-  Widget _sidebar(ColorScheme cs, {required bool extended}) {
-    final items = [
-      (icon: Icons.account_tree_outlined, label: 'Projets', index: 0),
-      (icon: Icons.center_focus_strong_outlined, label: 'Focus', index: 1),
-      (icon: Icons.check_circle_outline, label: 'Actions', index: 2),
-      (icon: Icons.description_outlined, label: 'Documents', index: 5),
-      (icon: Icons.inventory_2_outlined, label: 'Organisation', index: 3),
-      (icon: Icons.smart_toy_outlined, label: 'ORION', index: 4),
-    ];
-    return SizedBox(
-      width: extended ? 216 : 64,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 10),
-          for (final it in items)
-            _navTile(cs,
-                icon: it.icon,
-                label: it.label,
-                extended: extended,
-                selected: _navIndex == it.index,
-                // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay
-                // masquait la vue choisie (constaté sur build).
-                onTap: () => setState(() {
-                      _navIndex = it.index;
-                      _shellGantt = null;
-                    })),
-          const Spacer(),
-          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-          const SizedBox(height: 6),
-          // Utilitaires — sortis de l'AppBar (lot 1) : tout ce qui n'est pas
-          // une vue vit ici, en bas de sidebar.
-          _navTile(cs,
-              icon: Icons.supervisor_account_outlined,
-              label: 'Mon coach',
-              extended: extended,
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => const CoachSpaceScreen()))),
-          if (_isCoach)
-            _navTile(cs,
-                icon: Icons.school_outlined,
-                label: 'Espace coach',
-                extended: extended,
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const CoachConsoleScreen()))),
-          _navTile(cs,
-              icon: Icons.mark_chat_unread_outlined,
-              label: 'Messages ORION',
-              extended: extended,
-              badge: _assistantMessages.isNotEmpty,
-              onTap: () => AssistantHistorySheet.show(context)),
-          if (!widget.isDemo)
-            _navTile(cs,
-                icon: Icons.auto_awesome_outlined,
-                label: 'Connecter Claude',
-                extended: extended,
-                onTap: () => _showTokensPanel(context)),
-          _navTile(cs,
-              icon: Icons.help_outline,
-              label: 'Aide',
-              extended: extended,
-              onTap: () => showHelpSheet(context)),
-          const SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
-
-  Widget _navTile(ColorScheme cs,
-      {required IconData icon,
-      required String label,
-      required bool extended,
-      bool selected = false,
-      bool badge = false,
-      required VoidCallback onTap}) {
-    final color = selected ? cs.primary : cs.onSurface.withOpacity(.65);
-    final iconW = Badge(
-      isLabelVisible: badge,
-      smallSize: 7,
-      backgroundColor: const Color(0xFFe8c94a),
-      child: Icon(icon, size: 18, color: color),
-    );
-    final tile = Material(
-      color: selected ? cs.primary.withOpacity(.10) : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: extended ? 12 : 0, vertical: 10),
-          child: extended
-              ? Row(children: [
-                  iconW,
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight:
-                                selected ? FontWeight.w700 : FontWeight.w500,
-                            color: color)),
-                  ),
-                ])
-              : Center(child: iconW),
-        ),
-      ),
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      child: extended ? tile : Tooltip(message: label, child: tile),
-    );
-  }
-
   static Color _domainColor(Domain? domain, ColorScheme cs, [List<Domain>? allDomains]) {
     if (domain == null) return cs.primary;
     if (domain.colorValue != null) return Color(domain.colorValue!);
@@ -744,7 +388,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   void _handleAssistantAction(AssistantActionData action) {
     switch (action.type) {
       case 'open_day_plan':
-        setState(() => _navIndex = widget.protoB ? 6 : 1); // Aujourd'hui / Focus
+        _go(WebTab.today);
       case 'open_project':
         final projectId = action.payload?['projectId'] as String?;
         if (projectId == null) return;
@@ -759,7 +403,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         if (p == null) return;
         _openProjectInShell(p, taskId: taskId);
       case 'open_activity':
-        setState(() => _navIndex = widget.protoB ? 6 : 1); // Aujourd'hui / Focus
+        _go(WebTab.today);
     }
   }
 }
@@ -6836,68 +6480,6 @@ class _ObjectiveCard extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-// ── Prototype Piste B : Bibliothèque = Documents + Organisation ─────────────
-
-class _LibraryView extends StatefulWidget {
-  final Widget documents;
-  final Widget organisation;
-  const _LibraryView({required this.documents, required this.organisation});
-
-  @override
-  State<_LibraryView> createState() => _LibraryViewState();
-}
-
-class _LibraryViewState extends State<_LibraryView> {
-  int _tab = 0;
-
-  Widget _pill(String label, int index) {
-    final selected = _tab == index;
-    return SizedBox(
-      height: 36,
-      child: TextButton(
-        onPressed: () => setState(() => _tab = index),
-        style: TextButton.styleFrom(
-          backgroundColor: selected ? kBActive : Colors.transparent,
-          foregroundColor: selected ? kBText : kBText2,
-          shape: StadiumBorder(
-            side: BorderSide(
-                color: selected
-                    ? kBPrimary.withOpacity(.35)
-                    : const Color(0x1AFFFFFF)),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle:
-              const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-        ),
-        child: Text(label),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 6),
-          child: Row(children: [
-            _pill('Documents', 0),
-            const SizedBox(width: 8),
-            _pill('Organisation', 1),
-          ]),
-        ),
-        Expanded(
-          child: IndexedStack(
-            index: _tab,
-            children: [widget.documents, widget.organisation],
-          ),
-        ),
-      ],
     );
   }
 }
