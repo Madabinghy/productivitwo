@@ -7,13 +7,12 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/web/web_actions_view.dart';
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/coach_console_screen.dart';
-import 'package:productivitwo_v1/web/coachee_dashboard_view.dart';
+import 'package:productivitwo_v1/web/views/actions_view.dart';
 import 'package:productivitwo_v1/web/coaching_screen.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/web/views/today_view.dart';
@@ -314,20 +313,13 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               onRefresh: _load,
               onOpenProject: _openProjectInShell,
             ),
-            // Hub Actions : rail Actions · Ma semaine · domaines (jusqu'au lot 6).
-            ActionsHubView(
+            ActionsView(
+              projects: _projects,
               domains: _domains,
               activities: _activities,
-              projects: _projects,
               sync: _sync,
-              actionsView: WebActionsView(
-                projects: _projects,
-                domains: _domains,
-                activities: _activities,
-                sync: _sync,
-                onRefresh: _load,
-                onOpenProject: _openProjectInShell,
-              ),
+              onRefresh: _load,
+              onOpenProject: _openProjectInShell,
             ),
             LibraryView(
               key: ValueKey('library/${_libraryProjectId ?? ''}'),

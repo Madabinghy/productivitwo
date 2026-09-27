@@ -73,6 +73,9 @@ prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `w
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
 shell à la place du Gantt nu ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
 documents dans `web/document_viewer_dialog.dart`.
+Actions (lot 6) = `views/actions_view.dart` + `lib/utils/actions_logic.dart` (filtres Je suis / J'ai /
+Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant) ; CRUD des actions dans
+`web/action_dialogs.dart`. `ActionsHubView` et `WebActionsView` ont été supprimés.
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
