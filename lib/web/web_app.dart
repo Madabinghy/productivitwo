@@ -305,7 +305,12 @@ class _AuthGateState extends State<_AuthGate> {
         // (Les pages de DÉV du jeu — ?worldtest, ?proto=orbit/fluo/galaxy/rpg/
         // pet/defense/village, ?world=iso, ?map=organic — ont été SUPPRIMÉES
         // avec la couche jeu. Récupérables sur archive/couche-jeu-complete-2026-07.)
-        return WebHomeScreen(isDemo: isDemo);
+        // Prototype « Piste B · Trois temps » (refonte web) : ?proto=pisteb.
+        // Ouvert aussi en prod (routes cachées) pour tester sur ses données.
+        return WebHomeScreen(
+          isDemo: isDemo,
+          protoB: kIsWeb && Uri.base.queryParameters['proto'] == 'pisteb',
+        );
       },
     );
   }
