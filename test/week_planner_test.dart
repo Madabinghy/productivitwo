@@ -3,10 +3,11 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 
-ScheduleBlock _blk(String start, int dur, {String? taskId}) =>
-    ScheduleBlock(startTime: start, durationMin: dur, title: 't', taskId: taskId);
+ScheduleBlock _blk(String start, int dur, {String? taskId}) => ScheduleBlock(
+    startTime: start, durationMin: dur, title: 't', taskId: taskId);
 
-ProjectTask _task(String id, String start, String? end, {String status = 'pending', int? est}) =>
+ProjectTask _task(String id, String start, String? end,
+        {String status = 'pending', int? est}) =>
     ProjectTask(
         id: id,
         title: id,
@@ -15,7 +16,8 @@ ProjectTask _task(String id, String start, String? end, {String status = 'pendin
         status: status,
         estimatedMin: est);
 
-Project _proj(String id, List<ProjectTask> tasks, {String status = 'active', bool paused = false}) =>
+Project _proj(String id, List<ProjectTask> tasks,
+        {String status = 'active', bool paused = false}) =>
     Project(
         id: id,
         title: id,
@@ -26,6 +28,7 @@ Project _proj(String id, List<ProjectTask> tasks, {String status = 'active', boo
         paused: paused);
 
 void main() {
+  _insertAtTests();
   final monday = DateTime(2026, 9, 28); // lundi
   final today = DateTime(2026, 9, 30); // mercredi
 
@@ -42,7 +45,8 @@ void main() {
       _proj('p1', [
         _task('in', '2026-09-29', '2026-10-01'), // chevauche
         _task('late', '2026-09-20', '2026-09-25'), // retard
-        _task('lateDone', '2026-09-20', '2026-09-25', status: 'done'), // hors semaine, fait
+        _task('lateDone', '2026-09-20', '2026-09-25',
+            status: 'done'), // hors semaine, fait
         _task('next', '2026-10-06', '2026-10-08'), // semaine suivante
         _task('skip', '2026-09-29', null, status: 'skipped'),
       ]),
@@ -79,7 +83,8 @@ void main() {
           monday: monday,
           scheduled: [],
           today: today);
-      expect(tasksToPlace(all).map((t) => t.task.id).toList(), ['late', 'a', 'b']);
+      expect(
+          tasksToPlace(all).map((t) => t.task.id).toList(), ['late', 'a', 'b']);
     });
   });
 
@@ -109,7 +114,8 @@ void main() {
 
   group('autoPlace', () {
     final days = weekDates(monday);
-    final cap = parseWeekCapacity({'wed': 120, 'thu': 60, 'fri': 0, 'sat': 0, 'sun': 0});
+    final cap = parseWeekCapacity(
+        {'wed': 120, 'thu': 60, 'fri': 0, 'sat': 0, 'sun': 0});
 
     test('place par échéance sur le premier jour ≥ aujourd\'hui qui tient', () {
       final wts = tasksToPlace(weekTasks(
@@ -132,21 +138,26 @@ void main() {
           today: today);
       // mercredi (120) : a (60) + c (60) ; b (90) ne tient plus → jeudi (60) non → nulle part.
       expect(r.blocks['2026-09-30']!.map((b) => b.taskId).toList(), ['a', 'c']);
-      expect(r.blocks['2026-09-30']!.map((b) => b.startTime).toList(), ['08:00', '09:00']);
+      expect(r.blocks['2026-09-30']!.map((b) => b.startTime).toList(),
+          ['08:00', '09:00']);
       expect(r.blocks['2026-10-01']!.map((b) => b.taskId).toList(), ['d']);
       expect(r.left.map((t) => t.task.id).toList(), ['b']);
     });
 
     test('jour bloqué et jours passés ignorés', () {
       final wts = tasksToPlace(weekTasks(
-          projects: [_proj('p', [_task('a', '2026-09-28', '2026-10-01')])],
+          projects: [
+            _proj('p', [_task('a', '2026-09-28', '2026-10-01')])
+          ],
           monday: monday,
           scheduled: [],
           today: today));
       final r = autoPlace(
           toPlace: wts,
           days: days,
-          scheduledByDay: {'2026-09-30': [_blk('08:00', 6 * 60)]},
+          scheduledByDay: {
+            '2026-09-30': [_blk('08:00', 6 * 60)]
+          },
           capacity: parseWeekCapacity({}),
           today: today);
       expect(r.blocks.keys.toList(), ['2026-10-01']);
@@ -154,6 +165,46 @@ void main() {
       expect(b.category, 'project');
       expect(b.projectId, 'p');
       expect(b.durationMin, kDefaultTaskEstimatedMin);
+    });
+  });
+}
+
+void _insertAtTests() {
+  ScheduleBlock b(String id, String start, int dur) =>
+      ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id);
+
+  group('insertAt (insertion entre deux blocs, décalage en cascade)', () {
+    test('journée vide → 8 h, rien à décaler', () {
+      final r = insertAt([], 0, 45)!;
+      expect(r.start, 8 * 60);
+      expect(r.shifted, isEmpty);
+    });
+    test('après un bloc : démarre à sa fin, décale ce qui chevauche', () {
+      final blocks = [
+        b('a', '09:00', 60),
+        b('b', '10:00', 30),
+        b('c', '10:30', 30),
+        b('d', '12:00', 30)
+      ];
+      final r = insertAt(blocks, 1, 45)!;
+      expect(r.start, 10 * 60);
+      // b → 10:45, c → 11:15 (fin 11:45) ; d à 12:00 n'est pas touché.
+      expect(r.shifted, {'b': 10 * 60 + 45, 'c': 11 * 60 + 15});
+    });
+    test('en tête : 8 h, ou avant le premier bloc s\'il commence plus tôt', () {
+      expect(insertAt([b('a', '09:00', 60)], 0, 30)!.start, 8 * 60);
+      final r = insertAt([b('a', '07:00', 60)], 0, 30)!;
+      expect(r.start, 7 * 60);
+      expect(r.shifted, {'a': 7 * 60 + 30});
+    });
+    test('en fin : après le dernier, index hors bornes toléré', () {
+      final r = insertAt([b('a', '09:00', 60)], 5, 30)!;
+      expect(r.start, 10 * 60);
+      expect(r.shifted, isEmpty);
+    });
+    test('la cascade qui dépasse minuit est refusée', () {
+      expect(
+          insertAt([b('a', '22:00', 90)], 0, 60, dayStartMin: 22 * 60), isNull);
     });
   });
 }

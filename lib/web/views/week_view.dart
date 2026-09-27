@@ -212,6 +212,141 @@ class _WeekViewState extends State<WeekView> {
     _snack('Bloc déplacé ${_kDayLong[day.weekday - 1]} ${b.startTime}');
   }
 
+  /// Dépôt sur un interstice : insertion à l'index [index] de la colonne
+  /// [day], les blocs suivants décalés en cascade (annulable).
+  Future<void> _dropBetween(Object data, DateTime day, int index) async {
+    final key = ymdOf(day);
+    final current = List<ScheduleBlock>.of(_byDay[key] ?? const [])
+      ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+
+    // Bloc déplacé depuis ce même jour : on l'enlève avant de calculer.
+    ScheduleBlock? moved;
+    String? movedFrom;
+    if (data is _DragBlock) {
+      moved = data.block;
+      movedFrom = data.fromDate;
+      if (movedFrom == key) {
+        final pos = current.indexWhere((b) => b.id == moved!.id);
+        if (pos != -1) {
+          current.removeAt(pos);
+          if (pos < index) index -= 1;
+        }
+      }
+    }
+    final duration =
+        data is _DragTask ? data.task.task.plannedMin : moved!.durationMin;
+    final r = insertAt(current, index, duration);
+    if (r == null) {
+      _snack(
+          'Pas assez de place ${_kDayLong[day.weekday - 1]} : la journée déborderait.');
+      return;
+    }
+
+    // Nouveau bloc (tâche) ou copie du bloc déplacé à la nouvelle heure.
+    final ScheduleBlock block;
+    if (data is _DragTask) {
+      block = taskBlock(data.task, r.start);
+    } else {
+      final b = moved!;
+      block = ScheduleBlock(
+        id: movedFrom == key ? b.id : null,
+        startTime: minToClock(r.start),
+        durationMin: b.durationMin,
+        title: b.title,
+        category: b.category,
+        projectId: b.projectId,
+        taskId: b.taskId,
+        activityId: b.activityId,
+        actionId: b.actionId,
+        status: b.status == 'done' ? 'done' : 'pending',
+      );
+    }
+    final previous = <String, String>{}; // id → ancienne heure (pour Annuler)
+    setState(() {
+      final list = _byDay[key] ??= [];
+      if (moved != null) {
+        _byDay[movedFrom!]?.removeWhere((b) => b.id == moved!.id);
+        list.removeWhere((b) => b.id == block.id);
+      }
+      for (final b in list) {
+        final ns = r.shifted[b.id];
+        if (ns != null) {
+          previous[b.id] = b.startTime;
+          b.startTime = minToClock(ns);
+        }
+      }
+      list.add(block);
+      list.sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+    });
+
+    for (final e in r.shifted.entries) {
+      await widget.sync
+          .updateScheduleBlockTime(key, e.key, startTime: minToClock(e.value));
+    }
+    if (moved != null && movedFrom == key) {
+      await widget.sync
+          .updateScheduleBlockTime(key, block.id, startTime: block.startTime);
+    } else {
+      if (moved != null)
+        await widget.sync.updateBlockStatus(movedFrom!, moved.id, 'deleted');
+      await widget.sync.addScheduleBlock(key, block);
+    }
+
+    final n = r.shifted.length;
+    _snack(
+      '${data is _DragTask ? 'Bloc ajouté' : 'Bloc déplacé'} '
+      '${_kDayLong[day.weekday - 1]} ${_clock(r.start)}'
+      '${n > 0 ? ' · $n bloc${n > 1 ? 's' : ''} décalé${n > 1 ? 's' : ''}' : ''}',
+      actionLabel: 'Annuler',
+      onAction: () => _undoDrop(
+        key: key,
+        block: block,
+        previous: previous,
+        moved: moved,
+        movedFrom: movedFrom,
+      ),
+    );
+  }
+
+  Future<void> _undoDrop({
+    required String key,
+    required ScheduleBlock block,
+    required Map<String, String> previous,
+    ScheduleBlock? moved,
+    String? movedFrom,
+  }) async {
+    setState(() {
+      final list = _byDay[key];
+      if (list != null) {
+        for (final b in list) {
+          final old = previous[b.id];
+          if (old != null) b.startTime = old;
+        }
+        if (moved == null || movedFrom != key)
+          list.removeWhere((b) => b.id == block.id);
+      }
+      if (moved != null && movedFrom != key) {
+        (_byDay[movedFrom!] ??= []).add(moved);
+      } else if (moved != null) {
+        block.startTime = moved.startTime;
+      }
+      for (final l in _byDay.values) {
+        l.sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+      }
+    });
+    for (final e in previous.entries) {
+      await widget.sync.updateScheduleBlockTime(key, e.key, startTime: e.value);
+    }
+    if (moved != null && movedFrom == key) {
+      await widget.sync
+          .updateScheduleBlockTime(key, block.id, startTime: moved.startTime);
+    } else {
+      await widget.sync.updateBlockStatus(key, block.id, 'deleted');
+      if (moved != null)
+        await widget.sync.updateBlockStatus(movedFrom!, moved.id, 'pending');
+    }
+  }
+
   Future<void> _autoPlace() async {
     if (_busy) return;
     final toPlace = tasksToPlace(_tasks);
@@ -798,30 +933,14 @@ class _WeekViewState extends State<WeekView> {
             const SizedBox(height: 8),
             Expanded(
               child: ListView(children: [
-                for (final b in blocks)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: past
-                        ? _chip(b, key, current: false)
-                        : LongPressDraggable<Object>(
-                            delay: const Duration(milliseconds: 150),
-                            data: _DragBlock(key, b),
-                            feedback: Material(
-                              color: Colors.transparent,
-                              child: SizedBox(
-                                  width: 140,
-                                  child: _chip(b, key, current: false)),
-                            ),
-                            childWhenDragging: Opacity(
-                                opacity: .3,
-                                child: _chip(b, key, current: false)),
-                            child: _chip(b, key,
-                                current: isToday &&
-                                    b.status == 'pending' &&
-                                    blockStartMin(b) <= nowMin &&
-                                    nowMin < blockEndMin(b)),
-                          ),
-                  ),
+                for (var i = 0; i < blocks.length; i++) ...[
+                  if (!past) _gap(day, i),
+                  past
+                      ? _chip(blocks[i], key, current: false)
+                      : _draggableChip(blocks[i], key,
+                          isToday: isToday, nowMin: nowMin),
+                ],
+                if (!past) _gap(day, blocks.length, last: true),
               ]),
             ),
             Container(
@@ -848,6 +967,49 @@ class _WeekViewState extends State<WeekView> {
                               : kBText4)),
             ),
           ]),
+        );
+      },
+    );
+  }
+
+  Widget _draggableChip(ScheduleBlock b, String key,
+      {required bool isToday, required int nowMin}) {
+    return LongPressDraggable<Object>(
+      delay: const Duration(milliseconds: 150),
+      data: _DragBlock(key, b),
+      feedback: Material(
+        color: Colors.transparent,
+        child: SizedBox(width: 140, child: _chip(b, key, current: false)),
+      ),
+      childWhenDragging:
+          Opacity(opacity: .3, child: _chip(b, key, current: false)),
+      child: _chip(b, key,
+          current: isToday &&
+              b.status == 'pending' &&
+              blockStartMin(b) <= nowMin &&
+              nowMin < blockEndMin(b)),
+    );
+  }
+
+  /// Interstice entre deux chips : cible de dépôt fine qui devient une ligne
+  /// d'insertion au survol. Lâcher = insertion à cet index (§ insertAt).
+  Widget _gap(DateTime day, int index, {bool last = false}) {
+    return DragTarget<Object>(
+      onWillAcceptWithDetails: (d) =>
+          d.data is _DragTask || d.data is _DragBlock,
+      onAcceptWithDetails: (d) => _dropBetween(d.data, day, index),
+      builder: (ctx, candidates, _) {
+        final hover = candidates.isNotEmpty;
+        return SizedBox(
+          height: hover ? 14 : (last ? 10 : 6),
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 90),
+              height: hover ? 2 : 0,
+              decoration: BoxDecoration(
+                  color: kBPrimary, borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
         );
       },
     );
