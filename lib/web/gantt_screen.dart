@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/web/add_task_dialog.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:uuid/uuid.dart';
@@ -291,164 +292,10 @@ class _GanttScreenState extends State<GanttScreen> {
   }
 
   Future<void> _addTask() async {
-    final titleCtrl = TextEditingController();
-    String? selectedPhaseId;
-    var startDate = DateTime.now();
-    DateTime? endDate;
-    var isMilestone = false;
-
-    String fmt(DateTime d) {
-      const m = ['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
-      return '${d.day} ${m[d.month - 1]} ${d.year}';
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Nouvelle tâche'),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextField(
-                  controller: titleCtrl,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Titre',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (_project.phases.isNotEmpty)
-                  DropdownButtonFormField<String?>(
-                    value: selectedPhaseId,
-                    decoration: const InputDecoration(
-                      labelText: 'Phase (optionnel)',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('Aucune phase')),
-                      ..._project.phases.map((p) => DropdownMenuItem(
-                        value: p.id,
-                        child: Row(children: [
-                          Container(
-                            width: 10, height: 10,
-                            margin: const EdgeInsets.only(right: 8),
-                            decoration: BoxDecoration(
-                              color: _hex(p.color, const Color(0xFF6B57F0)),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                          Text(p.label),
-                        ]),
-                      )),
-                    ],
-                    onChanged: (v) => setSt(() => selectedPhaseId = v),
-                  ),
-                if (_project.phases.isNotEmpty) const SizedBox(height: 12),
-                // Date début
-                InkWell(
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: startDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2032),
-                    );
-                    if (d != null) setSt(() => startDate = d);
-                  },
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Date de début',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                      suffixIcon: Icon(Icons.calendar_today_outlined, size: 16),
-                    ),
-                    child: Text(fmt(startDate), style: const TextStyle(fontSize: 14)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Date fin (optionnel)
-                InkWell(
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: endDate ?? startDate.add(const Duration(days: 7)),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2032),
-                    );
-                    if (d != null) setSt(() => endDate = d);
-                  },
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Date de fin (optionnel)',
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                      suffixIcon: endDate != null
-                          ? GestureDetector(
-                              onTap: () => setSt(() => endDate = null),
-                              child: const Icon(Icons.clear, size: 16),
-                            )
-                          : const Icon(Icons.calendar_today_outlined, size: 16),
-                    ),
-                    child: Text(
-                      endDate != null ? fmt(endDate!) : '—',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: endDate != null ? null : const Color(0xFFAAAAAA),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                CheckboxListTile(
-                  title: const Text('Jalon (milestone)', style: TextStyle(fontSize: 13)),
-                  value: isMilestone,
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  onChanged: (v) => setSt(() => isMilestone = v ?? false),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-            FilledButton(
-              onPressed: () {
-                if (titleCtrl.text.trim().isEmpty) return;
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('Ajouter'),
-            ),
-          ],
-        ),
-      ),
-    );
-    titleCtrl.dispose();
-    if (confirmed != true || !mounted) return;
-
-    final phase = _project.phases.where((p) => p.id == selectedPhaseId).firstOrNull;
-    final task = ProjectTask(
-      title: titleCtrl.text.trim().isNotEmpty ? titleCtrl.text.trim() : 'Nouvelle tâche',
-      phaseId: selectedPhaseId,
-      groupLabel: phase?.label, // synchronise le groupe visuel dans le Gantt
-      startDate: startDate,
-      endDate: endDate,
-      isMilestone: isMilestone,
-      color: phase?.color,
-    );
-    final updatedTasks = [..._project.tasks, task];
-    await _sync.saveProjectTasks(_project.id, updatedTasks);
-    setState(() {
-      _project.tasks
-        ..clear()
-        ..addAll(updatedTasks);
-    });
+    final task = await showAddTaskDialog(context, project: _project, sync: _sync);
+    if (task != null && mounted) setState(() {});
   }
+
 
   @override
   Widget build(BuildContext context) {
