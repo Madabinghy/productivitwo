@@ -95,13 +95,13 @@ class _TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
-    _today = yyyymmdd(DateTime.now());
+    _today = ymdOf(DateTime.now());
     _subscribe();
     _loadLogic();
     // Horloge : chrono, ligne « maintenant » et changement de jour.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      final t = yyyymmdd(DateTime.now());
+      final t = ymdOf(DateTime.now());
       if (t != _today) {
         _today = t;
         _scheduleSub?.cancel();
