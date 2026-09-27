@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
+import 'package:productivitwo_v1/utils/week_capacity.dart';
 
 /// Synchronisation Firestore.
 /// Structure : users/{uid}/<collection>/{id}
@@ -2597,6 +2598,27 @@ class FirestoreSync {
       String col, String id, Map<String, dynamic> data) async {
     if (uid == null) return;
     await _col(col).doc(id).set(data);
+  }
+
+  /// Capacité de planification par jour (`data/meta.weekCapacityMin`),
+  /// complétée par les défauts si absente ou partielle.
+  Future<Map<String, int>> fetchWeekCapacity() async {
+    if (uid == null) return defaultWeekCapacity();
+    try {
+      final snap = await _meta().get();
+      final data = snap.data() as Map<String, dynamic>?;
+      return parseWeekCapacity(data?['weekCapacityMin']);
+    } catch (_) {
+      return defaultWeekCapacity();
+    }
+  }
+
+  Future<void> saveWeekCapacity(Map<String, int> capacity) async {
+    if (uid == null) return;
+    await _meta().set(
+      {'weekCapacityMin': parseWeekCapacity(capacity)},
+      SetOptions(merge: true),
+    );
   }
 
   /// Restaure les contextes GTD personnalisés depuis une sauvegarde.

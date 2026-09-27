@@ -175,12 +175,20 @@ function pickTask(t) {
         }
         const o = typeof a === "object" && a !== null
             ? a : {};
-        return Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        return Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (estimatedMinOrUndefined(o.estimatedMin) !== undefined
+            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}));
     });
-    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions });
+    const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions }), (estimatedMin !== undefined ? { estimatedMin } : {}));
+}
+// Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
+// type inattendu = « pas d'estimation », l'app applique son défaut).
+function estimatedMinOrUndefined(raw) {
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 function pickProject(p) {
     var _a, _b;
@@ -1180,7 +1188,7 @@ async function executeAddTask(uid, projectId, task) {
     return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).`;
 }
 async function executeUpdateTask(uid, projectId, taskId, updates) {
-    var _a, _b, _c, _d, _e, _f;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1221,28 +1229,33 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
             patch.color = updates.color;
         if (updates.barLabel !== undefined)
             patch.barLabel = updates.barLabel;
+        // null = effacer l'estimation (retour au défaut de l'app).
+        if (updates.estimatedMin !== undefined) {
+            patch.estimatedMin = (_a = estimatedMinOrUndefined(updates.estimatedMin)) !== null && _a !== void 0 ? _a : null;
+        }
         if (updates.actions !== undefined) {
             // Remplace les sous-actions, mais préserve l'état done par match de titre
             // pour ne pas perdre la progression de l'utilisateur en cas de simple
             // renommage ou réordonnancement.
             const rawActions = Array.isArray(updates.actions) ? updates.actions : [];
-            const oldActions = (_a = tasks[idx].actions) !== null && _a !== void 0 ? _a : [];
+            const oldActions = (_b = tasks[idx].actions) !== null && _b !== void 0 ? _b : [];
             const oldByTitle = {};
             for (const a of oldActions) {
-                const t = (_b = a.title) !== null && _b !== void 0 ? _b : "";
+                const t = (_c = a.title) !== null && _c !== void 0 ? _c : "";
                 if (t) {
                     oldByTitle[t] = {
-                        done: (_c = a.done) !== null && _c !== void 0 ? _c : false,
-                        doneAt: (_d = a.doneAt) !== null && _d !== void 0 ? _d : null,
+                        done: (_d = a.done) !== null && _d !== void 0 ? _d : false,
+                        doneAt: (_e = a.doneAt) !== null && _e !== void 0 ? _e : null,
                         id: a.id,
-                        linkedActivityId: (_e = a.linkedActivityId) !== null && _e !== void 0 ? _e : null,
-                        context: (_f = a.context) !== null && _f !== void 0 ? _f : null,
+                        linkedActivityId: (_f = a.linkedActivityId) !== null && _f !== void 0 ? _f : null,
+                        context: (_g = a.context) !== null && _g !== void 0 ? _g : null,
                         contexts: Array.isArray(a.contexts) ? a.contexts : [],
+                        estimatedMin: (_h = estimatedMinOrUndefined(a.estimatedMin)) !== null && _h !== void 0 ? _h : null,
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1261,6 +1274,7 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
                         : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
+                    estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : null,
                 };
             });
         }

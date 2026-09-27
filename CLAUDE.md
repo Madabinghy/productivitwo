@@ -60,6 +60,13 @@ Espace Coach peuvent démarrer sans attendre le 17/08) :
    coach `8a` ; le design dépasse le périmètre V1.1, suivre le MoSCoW de la spec.
 4. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
 
+**Refonte de l'app web (2026-09, en cours)** : handoff dans `docs/specs/refonte-web-2026-09/README.md`
+(shell à 5 onglets Aujourd'hui / Cette semaine / Projets / Actions / Bibliothèque, thème vert sombre
+de l'Espace coach, 8 lots = 8 PR). La nouvelle interface **remplace** le shell web actuel, sans flag ni
+route `?proto=` — le prototype `?proto=pisteb` (PR #425) est transitoire et disparaît au lot 1.
+Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
+filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`).
+
 **Règles de décision** :
 - Privilégier ce qui renforce la boucle coaché → données d'exécution → coach.
 - Zéro double saisie : toute donnée montrée au coach vient de l'usage normal de l'app.

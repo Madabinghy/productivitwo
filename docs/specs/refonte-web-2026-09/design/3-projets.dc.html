@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Projets — vue d'ensemble</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#07100D;color:#E8F3ED;font-variant-numeric:tabular-nums}
+a{color:#27C48F;text-decoration:none}a:hover{color:#5FE0B2}
+button,input{font-family:inherit}
+button{cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #07100D; color: #E8F3ED; overflow: hidden">
+
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 28px; display: flex; align-items: center; gap: 36px; border-bottom: 1px solid rgba(255,255,255,.07); background: #0A1611">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 28px; height: 28px; border-radius: 7px; background: #27C48F; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 6px; box-sizing: border-box">
+<div style="background: #07100D; border-radius: 2px"></div><div style="background: #07100D; border-radius: 2px; opacity: .55"></div><div style="background: #07100D; border-radius: 2px; opacity: .55"></div><div style="background: #07100D; border-radius: 2px"></div>
+</div>
+<div style="font-size: 16px; font-weight: 700; letter-spacing: -.2px">Productivitwo</div>
+</div>
+<nav aria-label="Navigation principale" style="display: flex; gap: 4px; height: 100%">
+<a href="PisteB.dc.html" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Aujourd'hui</a>
+<a href="#" aria-current="page" style="display: flex; align-items: center; padding: 2px 14px 0; font-size: 14px; font-weight: 600; color: #E8F3ED; border-bottom: 2px solid #27C48F; box-sizing: border-box">Projets</a>
+<a href="#" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Actions</a>
+<a href="#" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Bibliothèque</a>
+</nav>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; gap: 10px">
+<button style="height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: #E8F3ED; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2M9 2h6"></path></svg>
+Chrono</button>
+<div style="width: 34px; height: 34px; border-radius: 999px; background: #152B1E; color: #27C48F; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">E</div>
+</div>
+</header>
+
+<div style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 22px 32px 26px; display: flex; flex-direction: column; gap: 18px">
+
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.2px">Projets</h1>
+<div style="font-size: 13px; color: #86A093">6 actifs · 2 à risque · 1 sans prochaine action</div>
+</div>
+<label style="display: flex; align-items: center; gap: 8px; height: 40px; width: 260px; padding: 0 14px; box-sizing: border-box; border-radius: 999px; background: #0C1C14; border: 1px solid rgba(255,255,255,.1); color: #86A093">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+<input placeholder="Chercher un projet, une tâche…" aria-label="Chercher" style="flex-grow: 1; min-width: 0; border: none; background: transparent; color: #E8F3ED; font-size: 13px; outline: none">
+</label>
+<button style="height: 40px; padding: 0 18px; border-radius: 999px; border: none; background: #27C48F; color: #07100D; font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 8px">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+Nouveau projet</button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-radius: 16px; background: #0C1C14; border: 1px solid rgba(255,255,255,.07)">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">OBJECTIF</span>
+<span style="font-size: 14px; font-weight: 600; flex-grow: 1">5 coachés actifs au 1er octobre</span>
+<span style="font-size: 12.5px; color: #86A093">porté par Espace coach V1.1 · Formation IA</span>
+<div style="width: 140px; height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 60%; height: 100%; border-radius: 999px; background: #27C48F"></div></div>
+<span style="font-size: 13px; font-weight: 600; color: #F2A93B">3 / 5 · J-3</span>
+</div>
+
+<div style="display: flex; align-items: center; gap: 8px">
+<button style="height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(39,196,143,.35); background: #12241B; color: #E8F3ED; font-size: 13px; font-weight: 600">Tous</button>
+<button style="height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: transparent; color: #B9CFC4; font-size: 13px; display: flex; align-items: center; gap: 7px"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2196F3"></span>Business</button>
+<button style="height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: transparent; color: #B9CFC4; font-size: 13px; display: flex; align-items: center; gap: 7px"><span style="width: 8px; height: 8px; border-radius: 999px; background: #FF9800"></span>Sport</button>
+<button style="height: 34px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: transparent; color: #B9CFC4; font-size: 13px; display: flex; align-items: center; gap: 7px"><span style="width: 8px; height: 8px; border-radius: 999px; background: #E91E63"></span>Famille</button>
+<div style="flex-grow: 1"></div>
+<button style="height: 34px; padding: 0 12px; border-radius: 999px; border: none; background: transparent; color: #86A093; font-size: 13px">En veille · 2</button>
+<button style="height: 34px; padding: 0 12px; border-radius: 999px; border: none; background: transparent; color: #86A093; font-size: 13px">Archivés · 11</button>
+</div>
+
+<!-- Tableau -->
+<div style="flex-grow: 1; min-height: 0; background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 20px; display: flex; flex-direction: column; overflow: hidden">
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">
+<span>PROJET</span><span>AVANCEMENT</span><span>PROCHAINE ACTION</span><span>ÉCHÉANCE</span><span>ÉTAT</span><span style="text-align: right">7 JOURS</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px; border-bottom: 1px solid rgba(255,255,255,.05)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Séminaire Raffinerie</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2196F3"></span>Business · phase Logistique</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 64%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">14 / 22 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Marquer l'action faite" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 13.5px">Appeler l'hôtel pour la salle plénière</span><span style="font-size: 11.5px; color: #FF6B5E">tâche en retard depuis le 25/09</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px">03/10</span><span style="font-size: 11.5px; color: #F2A93B; font-weight: 600">J-6</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(242,169,59,.14); color: #F2A93B; font-size: 12px; font-weight: 600; display: flex; align-items: center">À risque · 2 retards</span>
+<span style="text-align: right; font-size: 13px; color: #B9CFC4">6 h 40</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px; border-bottom: 1px solid rgba(255,255,255,.05)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Espace coach V1.1</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2196F3"></span>Business · phase Cockpit</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 33%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">6 / 18 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Marquer l'action faite" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 13.5px">Brancher le rapport de pré-séance</span><span style="font-size: 11.5px; color: #86A093">Rapport de pré-séance · planifiée demain 9 h</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px">15/10</span><span style="font-size: 11.5px; color: #86A093">J-18</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(39,196,143,.12); color: #27C48F; font-size: 12px; font-weight: 600; display: flex; align-items: center">Dans les temps</span>
+<span style="text-align: right; font-size: 13px; color: #B9CFC4">9 h 15</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px; border-bottom: 1px solid rgba(255,255,255,.05)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Formation IA · cohorte 3</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2196F3"></span>Business · phase Séances</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 75%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">9 / 12 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Marquer l'action faite" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 13.5px">Écrire les 10 questions du quiz</span><span style="font-size: 11.5px; color: #FF6B5E">tâche en retard depuis le 26/09</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px">30/10</span><span style="font-size: 11.5px; color: #86A093">J-33</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(242,169,59,.14); color: #F2A93B; font-size: 12px; font-weight: 600; display: flex; align-items: center">À risque · 1 retard</span>
+<span style="text-align: right; font-size: 13px; color: #B9CFC4">3 h 20</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px; border-bottom: 1px solid rgba(255,255,255,.05)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Export / Import des données</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2196F3"></span>Business · phase Lot 1</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 44%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">4 / 9 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Marquer l'action faite" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 13.5px">Relire la spec Export / Import</span><span style="font-size: 11.5px; color: #FF6B5E">tâche en retard depuis le 22/09</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px">12/10</span><span style="font-size: 11.5px; color: #86A093">J-15</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(255,107,94,.13); color: #FF6B5E; font-size: 12px; font-weight: 600; display: flex; align-items: center">Au point mort · 9 j</span>
+<span style="text-align: right; font-size: 13px; color: #86A093">0 h</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px; border-bottom: 1px solid rgba(255,255,255,.05)">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Programme PPL · 4 séances / sem.</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #FF9800"></span>Sport · phase Bloc 2</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 56%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">18 / 32 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button aria-label="Marquer l'action faite" style="width: 20px; height: 20px; flex-shrink: 0; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><div style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span style="font-size: 13.5px">Séance Pull</span><span style="font-size: 11.5px; color: #86A093">planifiée mercredi 7 h</span></div></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px">20/12</span><span style="font-size: 11.5px; color: #86A093">J-84</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(39,196,143,.12); color: #27C48F; font-size: 12px; font-weight: 600; display: flex; align-items: center">Dans les temps</span>
+<span style="text-align: right; font-size: 13px; color: #B9CFC4">4 h 30</span>
+</div>
+
+<div style="display: grid; grid-template-columns: 290px 170px minmax(0, 1fr) 110px 130px 80px; gap: 20px; align-items: center; padding: 0 24px; height: 76px">
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0"><div style="font-size: 14.5px; font-weight: 600">Site productivitwo.com</div><div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #86A093"><span style="width: 7px; height: 7px; border-radius: 999px; background: #2196F3"></span>Business · sans phase</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><div style="height: 6px; border-radius: 999px; background: #152B1E"><div style="width: 20%; height: 100%; border-radius: 999px; background: #27C48F"></div></div><span style="font-size: 12px; color: #B9CFC4">1 / 5 tâches</span></div>
+<div style="display: flex; align-items: center; gap: 10px; min-width: 0"><button style="height: 32px; padding: 0 14px; border-radius: 999px; border: 1px dashed rgba(242,169,59,.6); background: transparent; color: #F2A93B; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Définir la prochaine action</button></div>
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13px; color: #86A093">—</span></div>
+<span style="justify-self: start; height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(255,255,255,.06); color: #B9CFC4; font-size: 12px; font-weight: 600; display: flex; align-items: center">Sans échéance</span>
+<span style="text-align: right; font-size: 13px; color: #86A093">0 h</span>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
