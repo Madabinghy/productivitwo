@@ -3054,6 +3054,35 @@ class FirestoreSync {
     }
   }
 
+  /// Remplace un bloc par son id (ou l'ajoute s'il est absent) en ne
+  /// réécrivant que `blocks` — les autres champs du doc (dayReason, plannedAt,
+  /// dayMode…) restent intacts. Crée le doc si le jour n'a pas de programme.
+  Future<void> upsertScheduleBlock(String date, ScheduleBlock block) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) {
+      await ref.set(DailySchedule(
+        date: date,
+        generatedBy: 'user',
+        blocks: [block],
+      ).toJson());
+      return;
+    }
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    final idx = blocks.indexWhere((b) => b['id'] == block.id);
+    if (idx == -1) {
+      blocks.add(block.toJson());
+    } else {
+      blocks[idx] = block.toJson();
+    }
+    await ref.update({'blocks': blocks});
+  }
+
   Future<void> addScheduleBlock(String date, ScheduleBlock block) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');

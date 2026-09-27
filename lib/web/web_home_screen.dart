@@ -301,6 +301,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               sync: _sync,
               onOpenProject: _openProjectInShell,
               onOpenProjects: () => _go(WebTab.projects),
+              onOpenWeek: () => _go(WebTab.week),
             ),
             _FocusView(
               projects: activeProjects,
