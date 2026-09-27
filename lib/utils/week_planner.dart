@@ -33,6 +33,7 @@ class WeekTask {
 
   bool get done => task.status == 'done';
   bool get planned => plannedBlocks > 0;
+
   /// À caser = ouverte et sans bloc cette semaine.
   bool get toPlace => !done && !planned;
 }
@@ -103,7 +104,9 @@ int? firstFreeSlot(
   int fromMin = 8 * 60,
   int untilMin = 22 * 60,
 }) {
-  final busy = blocks.map((b) => (start: blockStartMin(b), end: blockEndMin(b))).toList()
+  final busy = blocks
+      .map((b) => (start: blockStartMin(b), end: blockEndMin(b)))
+      .toList()
     ..sort((a, b) => a.start.compareTo(b.start));
   var cursor = fromMin;
   for (final s in busy) {
@@ -112,6 +115,41 @@ int? firstFreeSlot(
     cursor = s.end > cursor ? s.end : cursor;
   }
   return cursor + durationMin <= untilMin ? cursor : null;
+}
+
+/// Insertion entre deux blocs (glisser-déposer sur un interstice) : le nouveau
+/// bloc démarre à la fin du bloc au-dessus ([index]-1), ou à 8 h (ou avant le
+/// premier bloc s'il commence plus tôt) en tête de journée. Les blocs suivants
+/// qui chevaucheraient sont décalés d'autant, en cascade. [blocks] doit être
+/// trié par heure de début et ne pas contenir le bloc déplacé lui-même.
+/// Retourne null si la cascade dépasse minuit.
+({int start, Map<String, int> shifted})? insertAt(
+  List<ScheduleBlock> blocks,
+  int index,
+  int durationMin, {
+  int dayStartMin = 8 * 60,
+}) {
+  final i = index.clamp(0, blocks.length);
+  final int start;
+  if (i == 0) {
+    start = blocks.isEmpty
+        ? dayStartMin
+        : (blockStartMin(blocks.first) < dayStartMin
+            ? blockStartMin(blocks.first)
+            : dayStartMin);
+  } else {
+    start = blockEndMin(blocks[i - 1]);
+  }
+  final shifted = <String, int>{};
+  var cursor = start + durationMin;
+  for (var k = i; k < blocks.length; k++) {
+    final b = blocks[k];
+    if (blockStartMin(b) >= cursor) break; // le trou absorbe le reste
+    shifted[b.id] = cursor;
+    cursor += b.durationMin;
+  }
+  if (cursor > 24 * 60) return null;
+  return (start: start, shifted: shifted);
 }
 
 String minToClock(int min) =>
