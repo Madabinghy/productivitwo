@@ -15,6 +15,16 @@ const List<String> kDefaultGtdContexts = [
   '@téléphone',
 ];
 
+/// Durée estimée d'une tâche sans `estimatedMin` (planificateur de la semaine).
+const int kDefaultTaskEstimatedMin = 45;
+
+/// Lit une durée estimée en minutes : entier > 0, sinon null (absent, 0,
+/// négatif ou type inattendu → « pas d'estimation »).
+int? _parseEstimatedMin(dynamic raw) {
+  final v = raw is num ? raw.toInt() : int.tryParse('$raw');
+  return v != null && v > 0 ? v : null;
+}
+
 class TaskAction {
   String id;
   String title;
@@ -26,6 +36,7 @@ class TaskAction {
   // Multi-contextes GTD : une action peut être réalisable dans PLUSIEURS
   // contextes (@ordinateur ET @bureau). `context` reste le principal (1er).
   List<String> contexts;
+  int? estimatedMin; // durée estimée ; null = passe tous les filtres « J'ai… »
 
   TaskAction({
     String? id,
@@ -36,6 +47,7 @@ class TaskAction {
     this.linkedActivityId,
     this.context,
     List<String>? contexts,
+    this.estimatedMin,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
         contexts = contexts ?? [];
@@ -60,6 +72,7 @@ class TaskAction {
         'linkedActivityId': linkedActivityId,
         'context': context,
         'contexts': contexts,
+        'estimatedMin': estimatedMin,
       };
 
   static TaskAction from(Map j) => TaskAction(
@@ -73,6 +86,7 @@ class TaskAction {
         linkedActivityId: j['linkedActivityId'] as String?,
         context: j['context'] as String?,
         contexts: (j['contexts'] as List?)?.cast<String>() ?? [],
+        estimatedMin: _parseEstimatedMin(j['estimatedMin']),
       );
 }
 
@@ -129,6 +143,7 @@ class ProjectTask {
   String status; // pending | done | skipped
   List<TaskAction> actions; // détail opérationnel
   bool todayFlag; // priorité du jour
+  int? estimatedMin; // durée estimée ; null = kDefaultTaskEstimatedMin
 
   ProjectTask({
     String? id,
@@ -144,11 +159,15 @@ class ProjectTask {
     this.status = 'pending',
     List<TaskAction>? actions,
     this.todayFlag = false,
+    this.estimatedMin,
   })  : id = id ?? _uuid.v4(),
         actions = actions ?? [];
 
   int get stepsDone => actions.where((a) => a.done).length;
   int get stepsTotal => actions.length;
+
+  /// Durée à planifier : l'estimation saisie, sinon 45 min.
+  int get plannedMin => estimatedMin ?? kDefaultTaskEstimatedMin;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -164,6 +183,7 @@ class ProjectTask {
         'status': status,
         'actions': actions.map((a) => a.toJson()).toList(),
         'todayFlag': todayFlag,
+        'estimatedMin': estimatedMin,
       };
 
   static ProjectTask from(Map j) => ProjectTask(
@@ -185,6 +205,7 @@ class ProjectTask {
                 .toList() ??
             [],
         todayFlag: j['todayFlag'] as bool? ?? false,
+        estimatedMin: _parseEstimatedMin(j['estimatedMin']),
       );
 }
 

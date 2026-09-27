@@ -145,8 +145,11 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
       ...(typeof o.context === "string" ? { context: o.context } : {}),
       ...(Array.isArray(o.contexts)
         ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
+      ...(estimatedMinOrUndefined(o.estimatedMin) !== undefined
+        ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}),
     };
   });
+  const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
   return {
     id: typeof t.id === "string" ? t.id : uuidv4(),
     title,
@@ -159,7 +162,15 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
     isMilestone: t.isMilestone === true,
     status: rawStatus,
     actions,
+    ...(estimatedMin !== undefined ? { estimatedMin } : {}),
   };
+}
+
+// Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
+// type inattendu = « pas d'estimation », l'app applique son défaut).
+function estimatedMinOrUndefined(raw: unknown): number | undefined {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 function pickProject(p: ProjectPayload): Record<string, unknown> {
@@ -1392,6 +1403,10 @@ async function executeUpdateTask(
     if (updates.isMilestone !== undefined) patch.isMilestone = updates.isMilestone;
     if (updates.color       !== undefined) patch.color      = updates.color;
     if (updates.barLabel    !== undefined) patch.barLabel   = updates.barLabel;
+    // null = effacer l'estimation (retour au défaut de l'app).
+    if (updates.estimatedMin !== undefined) {
+      patch.estimatedMin = estimatedMinOrUndefined(updates.estimatedMin) ?? null;
+    }
     if (updates.actions     !== undefined) {
       // Remplace les sous-actions, mais préserve l'état done par match de titre
       // pour ne pas perdre la progression de l'utilisateur en cas de simple
@@ -1401,7 +1416,7 @@ async function executeUpdateTask(
       const oldByTitle: Record<string, {
         done: boolean; doneAt: string | null; id?: string;
         linkedActivityId: string | null; context: string | null;
-        contexts: string[];
+        contexts: string[]; estimatedMin: number | null;
       }> = {};
       for (const a of oldActions) {
         const t = (a.title as string) ?? "";
@@ -1413,6 +1428,7 @@ async function executeUpdateTask(
             linkedActivityId: (a.linkedActivityId as string) ?? null,
             context: (a.context as string) ?? null,
             contexts: Array.isArray(a.contexts) ? (a.contexts as string[]) : [],
+            estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
           };
         }
       }
@@ -1437,6 +1453,8 @@ async function executeUpdateTask(
           contexts: Array.isArray(obj?.contexts)
             ? (obj?.contexts as string[])
             : previous?.contexts ?? [],
+          estimatedMin: estimatedMinOrUndefined(obj?.estimatedMin)
+            ?? previous?.estimatedMin ?? null,
         };
       });
     }

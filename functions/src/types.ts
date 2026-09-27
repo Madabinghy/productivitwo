@@ -15,6 +15,7 @@ export interface TaskActionPayload {
   linkedActivityId?: string | null;
   context?: string | null; // contexte GTD principal (@maison…)
   contexts?: string[]; // multi-contextes GTD (context = le premier)
+  estimatedMin?: number | null; // durée estimée (min) ; absent = sans estimation
 }
 
 export interface ProjectTask {
@@ -29,6 +30,7 @@ export interface ProjectTask {
   barLabel?: string;
   status?: "pending" | "done" | "skipped";
   actions?: Array<string | TaskActionPayload>;
+  estimatedMin?: number | null; // durée estimée (min) ; absent = 45 côté app
 }
 
 export interface ProjectPayload {

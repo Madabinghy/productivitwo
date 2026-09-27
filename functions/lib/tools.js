@@ -23,9 +23,17 @@ const TASK_ACTION_ITEM_SCHEMA = {
                     items: { type: "string" },
                     description: "Contextes GTD de l'action (ex: @maison, @bureau).",
                 },
+                estimatedMin: {
+                    type: "integer",
+                    description: "Durée estimée en minutes (optionnel).",
+                },
             },
         },
     ],
+};
+const TASK_ESTIMATED_MIN_SCHEMA = {
+    type: "integer",
+    description: "Durée estimée en minutes (optionnel ; l'app compte 45 min si absent).",
 };
 const GET_USER_CONTEXT_TOOL = {
     name: "get_user_context",
@@ -621,6 +629,7 @@ const PUSH_GANTT_MCP_TOOL = {
                                 isMilestone: { type: "boolean" },
                                 color: { type: "string" },
                                 barLabel: { type: "string" },
+                                estimatedMin: TASK_ESTIMATED_MIN_SCHEMA,
                                 status: { type: "string", enum: ["pending", "done", "skipped"] },
                                 actions: {
                                     type: "array",
@@ -690,6 +699,7 @@ const ADD_TASK_TOOL = {
             isMilestone: { type: "boolean" },
             color: { type: "string" },
             barLabel: { type: "string" },
+            estimatedMin: TASK_ESTIMATED_MIN_SCHEMA,
             status: { type: "string", enum: ["pending", "done", "skipped"] },
             actions: {
                 type: "array",
@@ -727,6 +737,7 @@ const UPDATE_TASK_TOOL = {
             isMilestone: { type: "boolean" },
             color: { type: "string" },
             barLabel: { type: "string" },
+            estimatedMin: TASK_ESTIMATED_MIN_SCHEMA,
             status: { type: "string", enum: ["pending", "done", "skipped"] },
             actions: {
                 type: "array",

@@ -68,6 +68,7 @@ const PUSH_GANTT_TOOL = {
                 isMilestone:  { type: "boolean", description: "Jalon = startDate==endDate" },
                 color:        { type: "string" },
                 barLabel:     { type: "string", description: "Étiquette courte (≤3 mots)" },
+                estimatedMin: { type: "integer", description: "Durée estimée en minutes (défaut 45 côté app)" },
                 status:       { type: "string", enum: ["pending", "done", "skipped"] },
               },
             },

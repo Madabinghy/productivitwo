@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
+import 'package:productivitwo_v1/utils/week_capacity.dart';
 
 /// Sauvegarde « Coffre » (spec : docs/specs/export-import-donnees/README.md).
 /// Construction du fichier d'export, lecture/validation d'un fichier de
@@ -323,6 +324,9 @@ Future<({AppState state, RestoreReport report})> applyRestore({
   if (ctxs != null && ctxs.isNotEmpty) {
     await sync.restoreCustomContexts(ctxs, replace: mode == RestoreMode.replace);
   }
+  // Capacité hebdo (doc meta) : réglage simple, le fichier fait foi s'il en a une.
+  final cap = backup.meta['weekCapacityMin'];
+  if (cap is Map) await sync.saveWeekCapacity(parseWeekCapacity(cap));
 
   return (state: next, report: report);
 }

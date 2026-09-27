@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Projet — plan d'action</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#07100D;color:#E8F3ED;font-variant-numeric:tabular-nums}
+a{color:#27C48F;text-decoration:none}a:hover{color:#5FE0B2}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #07100D; color: #E8F3ED; overflow: hidden">
+
+<header style="height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 28px; display: flex; align-items: center; gap: 36px; border-bottom: 1px solid rgba(255,255,255,.07); background: #0A1611">
+<div style="display: flex; align-items: center; gap: 10px">
+<div style="width: 28px; height: 28px; border-radius: 7px; background: #27C48F; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 6px; box-sizing: border-box">
+<div style="background: #07100D; border-radius: 2px"></div><div style="background: #07100D; border-radius: 2px; opacity: .55"></div><div style="background: #07100D; border-radius: 2px; opacity: .55"></div><div style="background: #07100D; border-radius: 2px"></div>
+</div>
+<div style="font-size: 16px; font-weight: 700; letter-spacing: -.2px">Productivitwo</div>
+</div>
+<nav aria-label="Navigation principale" style="display: flex; gap: 4px; height: 100%">
+<a href="PisteB.dc.html" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Aujourd'hui</a>
+<a href="ProjetsListe.dc.html" aria-current="page" style="display: flex; align-items: center; padding: 2px 14px 0; font-size: 14px; font-weight: 600; color: #E8F3ED; border-bottom: 2px solid #27C48F; box-sizing: border-box">Projets</a>
+<a href="#" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Actions</a>
+<a href="#" style="display: flex; align-items: center; padding: 0 14px; font-size: 14px; font-weight: 500; color: #B9CFC4">Bibliothèque</a>
+</nav>
+<div style="flex-grow: 1"></div>
+<div style="display: flex; align-items: center; gap: 10px">
+<button style="height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: #E8F3ED; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2M9 2h6"></path></svg>
+Chrono</button>
+<div style="width: 34px; height: 34px; border-radius: 999px; background: #152B1E; color: #27C48F; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">E</div>
+</div>
+</header>
+
+<div style="flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 18px 32px 26px; display: flex; flex-direction: column; gap: 16px">
+
+<!-- En-tête projet -->
+<div style="display: flex; align-items: flex-end; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1">
+<a href="ProjetsListe.dc.html" style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #86A093"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"></path></svg>Projets</a>
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.2px">Séminaire Raffinerie</h1>
+<div style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #86A093"><span style="width: 8px; height: 8px; border-radius: 999px; background: #2196F3"></span>Business · 14 sept. → 3 oct.</div>
+</div>
+<div role="tablist" aria-label="Vue du projet" style="display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: #0C1C14; border: 1px solid rgba(255,255,255,.07)">
+<button role="tab" aria-selected="true" style="height: 34px; padding: 0 16px; border-radius: 999px; border: none; background: #152B1E; color: #E8F3ED; font-size: 13px; font-weight: 600">Plan d'action</button>
+<button role="tab" aria-selected="false" style="height: 34px; padding: 0 16px; border-radius: 999px; border: none; background: transparent; color: #B9CFC4; font-size: 13px">Gantt</button>
+<button role="tab" aria-selected="false" style="height: 34px; padding: 0 16px; border-radius: 999px; border: none; background: transparent; color: #B9CFC4; font-size: 13px">Document</button>
+</div>
+<button style="height: 42px; padding: 0 18px; border-radius: 999px; border: none; background: #27C48F; color: #07100D; font-size: 13.5px; font-weight: 700">Ajouter une tâche</button>
+</div>
+
+<!-- Chiffres clés -->
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px">
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">AVANCEMENT</span>
+<div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 22px; font-weight: 700">14 / 22</span><span style="font-size: 12.5px; color: #86A093">tâches · 64 %</span></div>
+</div>
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">EN RETARD</span>
+<div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 22px; font-weight: 700; color: #FF6B5E">2</span><span style="font-size: 12.5px; color: #86A093">tâches · la plus vieille le 25/09</span></div>
+</div>
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">TEMPS · 7 JOURS</span>
+<div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 22px; font-weight: 700">6 h 40</span><span style="font-size: 12.5px; color: #86A093">sur 4 sessions</span></div>
+</div>
+<div style="background: #0C1C14; border: 1px solid rgba(242,169,59,.35); border-radius: 16px; padding: 14px 18px; display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #F2A93B">PROCHAIN JALON · J-3</span>
+<div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 16px; font-weight: 600">Déroulé validé</span><span style="font-size: 12.5px; color: #86A093">mercredi 30/09</span></div>
+</div>
+</div>
+
+<div style="flex-grow: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px">
+
+<!-- Plan d'action par phase -->
+<section style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 10px">
+<h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093; flex-grow: 1">PLAN D'ACTION</h2>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: none; background: rgba(255,255,255,.07); color: #B9CFC4; font-size: 12.5px">Masquer le fait</button>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; background: rgba(255,255,255,.03)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86A093" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"></path></svg>
+<span style="font-size: 13.5px; font-weight: 600; flex-grow: 1">Cadrage</span>
+<span style="font-size: 12px; color: #27C48F; font-weight: 600">5 / 5 · terminée</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,.03); border: 1px solid rgba(39,196,143,.25)">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#27C48F" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg>
+<span style="font-size: 13.5px; font-weight: 600; flex-grow: 1">Logistique</span>
+<span style="font-size: 12px; color: #B9CFC4">5 / 9 · jusqu'au 30/09</span>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #0A1611">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="font-size: 14px; font-weight: 600; flex-grow: 1">Réserver la salle plénière</span>
+<span style="font-size: 12px; color: #FF6B5E; font-weight: 600">en retard · 25/09</span>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: none; background: rgba(39,196,143,.14); color: #27C48F; font-size: 12.5px; font-weight: 600">Planifier</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding-left: 2px">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><button aria-label="Marquer fait" style="width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><span style="flex-grow: 1">Appeler l'hôtel pour la salle plénière</span><span style="font-size: 11.5px; color: #86A093">@téléphone</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><button aria-label="Marquer fait" style="width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><span style="flex-grow: 1">Envoyer le bon de commande signé</span><span style="font-size: 11.5px; color: #86A093">@ordinateur</span></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 12px; background: #0A1611">
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="font-size: 14px; font-weight: 600; flex-grow: 1">Finaliser le déroulé du jour 2</span>
+<span style="font-size: 12px; color: #27C48F; font-weight: 600">aujourd'hui · 10 h 30</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; padding-left: 2px">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #86A093"><span style="width: 18px; height: 18px; border-radius: 999px; background: #1D9E75; display: flex; align-items: center; justify-content: center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#07100D" stroke-width="3.2" stroke-linecap="round"><path d="M5 12l4 4 10-10"></path></svg></span><span style="flex-grow: 1; text-decoration: line-through">Ordre des ateliers</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><button aria-label="Marquer fait" style="width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><span style="flex-grow: 1">Caler le timing des pauses</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><button aria-label="Marquer fait" style="width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0"></button><span style="flex-grow: 1">Envoyer la version au co-animateur</span></div>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; background: #0A1611">
+<span style="font-size: 14px; font-weight: 600; flex-grow: 1">Traiteur : menu définitif</span>
+<span style="font-size: 12px; color: #B9CFC4">29/09 · 0 / 2 actions</span>
+<button style="height: 30px; padding: 0 12px; border-radius: 999px; border: none; background: rgba(39,196,143,.14); color: #27C48F; font-size: 12.5px; font-weight: 600">Planifier</button>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; background: rgba(255,255,255,.03)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86A093" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"></path></svg>
+<span style="font-size: 13.5px; font-weight: 600; flex-grow: 1">Contenu des ateliers</span>
+<span style="font-size: 12px; color: #FF6B5E; font-weight: 600">1 en retard</span>
+<span style="font-size: 12px; color: #B9CFC4">4 / 6</span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 12px; background: rgba(255,255,255,.03)">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#86A093" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"></path></svg>
+<span style="font-size: 13.5px; font-weight: 600; flex-grow: 1">Jour J</span>
+<span style="font-size: 12px; color: #B9CFC4">0 / 2 · 2 → 3 oct.</span>
+</div>
+</section>
+
+<!-- Colonne droite -->
+<aside style="display: flex; flex-direction: column; gap: 16px; min-width: 0">
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">CETTE SEMAINE DANS MON PROGRAMME</h2>
+<div style="display: flex; gap: 10px; font-size: 13px"><span style="width: 64px; color: #27C48F; font-weight: 600">Auj. 10:30</span><span style="flex-grow: 1">Déroulé du jour 2</span><span style="color: #86A093">1 h 30</span></div>
+<div style="display: flex; gap: 10px; font-size: 13px"><span style="width: 64px; color: #B9CFC4">Mar. 09:00</span><span style="flex-grow: 1">Traiteur : menu</span><span style="color: #86A093">45 min</span></div>
+<div style="display: flex; gap: 10px; font-size: 13px"><span style="width: 64px; color: #B9CFC4">Mer. 08:30</span><span style="flex-grow: 1">Salle plénière</span><span style="color: #86A093">30 min</span></div>
+<div style="font-size: 12px; color: #F2A93B">2 tâches du projet ne sont pas encore planifiées.</div>
+</div>
+
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093">JALONS</h2>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span style="width: 10px; height: 10px; transform: rotate(45deg); background: #1D9E75"></span><span style="flex-grow: 1; color: #86A093; text-decoration: line-through">Cahier des charges signé</span><span style="color: #86A093">18/09</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span style="width: 10px; height: 10px; transform: rotate(45deg); border: 1.5px solid #F2A93B; box-sizing: border-box"></span><span style="flex-grow: 1">Déroulé validé</span><span style="color: #F2A93B; font-weight: 600">30/09</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 13px"><span style="width: 10px; height: 10px; transform: rotate(45deg); border: 1.5px solid #86A093; box-sizing: border-box"></span><span style="flex-grow: 1">Séminaire · jour 1</span><span style="color: #B9CFC4">02/10</span></div>
+</div>
+
+<div style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center"><h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093; flex-grow: 1">DOCUMENTS</h2><a href="#" style="font-size: 12.5px; font-weight: 600">Tout voir</a></div>
+<a href="#" style="font-size: 13px; color: #E8F3ED">Déroulé détaillé · v3</a>
+<a href="#" style="font-size: 13px; color: #E8F3ED">Fiche logistique</a>
+</div>
+</aside>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
