@@ -798,8 +798,22 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
+  /// Colonne du jour d'un bloc de la fenêtre (null si introuvable).
+  int? _blockDayIdx(ScheduleBlock b) {
+    final date = _dateOfBlock(b);
+    return date == null ? null : _dayIndex(DateTime.parse(date));
+  }
+
   List<Widget> _bar(WeekTask wt, double colW, Color color, List<ScheduleBlock> blocks, int remaining) {
-    final span = _span(wt.task);
+    // La barre couvre les dates de la tâche ET les jours de ses blocs : une
+    // tâche en retard (dates avant la fenêtre) planifiée mardi reste visible,
+    // avec son point, sur mardi.
+    var span = _span(wt.task);
+    final idx = blocks.map(_blockDayIdx).whereType<int>().toList();
+    if (idx.isNotEmpty) {
+      final mn = idx.reduce(math.min), mx = idx.reduce(math.max);
+      span = span == null ? (s: mn, e: mx) : (s: math.min(span.s, mn), e: math.max(span.e, mx));
+    }
     if (span == null) return const [];
     final dragging = _dragTaskId == wt.task.id;
     final deltaDays = dragging ? (_dragDx / colW).round() : 0;
