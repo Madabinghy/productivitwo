@@ -18,6 +18,8 @@ import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
 import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/web/ui_scale.dart';
+import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 
 // Fiche projet (refonte web § 4.5) : s'ouvre dans le shell à la place du
 // Gantt. Segmented « Plan d'action · Gantt · Document » — Gantt = GanttScreen
@@ -249,7 +251,12 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       helpText: 'Nouvelle échéance',
     );
     if (picked == null || !mounted) return;
-    final day = dateOnly(picked);
+    await _rescheduleDeadlineTo(t, dateOnly(picked));
+  }
+
+  /// Report de l'échéance à [day] (depuis le popover « Planifier » ou le
+  /// sélecteur), annulable depuis la snackbar.
+  Future<void> _rescheduleDeadlineTo(ProjectTask t, DateTime day) async {
     final oldStart = t.startDate, oldEnd = t.endDate;
     setState(() {
       t.endDate = day;
@@ -284,27 +291,59 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     widget.onChanged();
   }
 
-  /// « Planifier » : un bloc sur le prochain jour de la semaine non plein
-  /// (même règle que « Tout caser » de Cette semaine).
-  Future<void> _planTask(ProjectTask t) async {
-    final wt = WeekTask(task: t, project: _p, overdue: _overdue(t), plannedBlocks: 0);
-    final r = autoPlace(
-      toPlace: [wt],
-      days: _weekDays,
-      scheduledByDay: _byDay,
-      capacity: _capacity,
-      today: _today,
-    );
-    if (r.blocks.isEmpty) {
-      _snack('Plus de place cette semaine — passe par Cette semaine pour la suivante.');
-      return;
+  /// « Planifier » : le popover « Caser » avec le choix du jour parmi les 14
+  /// prochains (charge affichée) ; présélection = premier jour où la tâche
+  /// tient (même règle qu'`autoPlace`, mais on montre au lieu de poser).
+  static const _kPlanHorizonDays = 14;
+
+  Future<void> _planTask(ProjectTask t, Offset global) async {
+    final days = [for (var i = 0; i < _kPlanHorizonDays; i++) _today.add(Duration(days: i))];
+    // Jours hors de la semaine suivie par les streams : lecture ponctuelle.
+    final missing = days.where((d) => !_byDay.containsKey(ymdOf(d))).toList();
+    if (missing.isNotEmpty) {
+      final fetched = await Future.wait(missing.map((d) => widget.sync.fetchDailySchedule(ymdOf(d))));
+      if (!mounted) return;
+      for (var i = 0; i < missing.length; i++) {
+        _byDay[ymdOf(missing[i])] =
+            (fetched[i]?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+              ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      }
     }
-    final e = r.blocks.entries.first;
-    final block = e.value.first;
-    setState(() => (_byDay[e.key] ??= []).add(block));
-    await widget.sync.addScheduleBlock(e.key, block);
-    final day = DateTime.parse(e.key);
-    _snack('Bloc ajouté ${_kDayShort[day.weekday - 1]} ${day.day} · ${_clock(blockStartMin(block))}');
+    final wt = WeekTask(task: t, project: _p, overdue: _overdue(t), plannedBlocks: 0);
+    final all = [for (final l in _byDay.values) ...l];
+    final rest = remainingToPlaceMin(t, all);
+    final duration = rest == 0 ? t.plannedMin : rest;
+    final first = firstFittingDay(days, _byDay, _capacity, duration, today: _today) ?? _today;
+    final now = DateTime.now();
+    ({int loadMin, int capMin, bool fits}) load(DateTime d, int dur) =>
+        dayLoad(d, _byDay[ymdOf(d)] ?? const [], _capacity, dur, today: _today);
+    if (!mounted) return;
+    await showWeekTaskPopover(
+      context,
+      anchor: overlayLocal(context, global),
+      title: t.title,
+      initialDay: first,
+      dayChoices: [
+        for (final d in days)
+          (day: d, loadMin: load(d, duration).loadMin, capMin: load(d, duration).capMin),
+      ],
+      fits: (d, dur) => load(d, dur).fits,
+      propose: (d, dur) => proposedSlot(_byDay[ymdOf(d)] ?? const [], dur,
+          isToday: d == _today, nowMin: now.hour * 60 + now.minute),
+      durationMin: duration,
+      onPlace: (d, startMin, dur) async {
+        final key = ymdOf(d);
+        final block = taskBlock(wt, startMin, durationMin: dur);
+        setState(() => (_byDay[key] ??= []).add(block));
+        await widget.sync.addScheduleBlock(key, block);
+        _snack('Bloc ajouté ${_kDayShort[d.weekday - 1]} ${d.day} · ${_clock(startMin)}');
+      },
+      onOpen: () {},
+      onDone: () => _toggleTask(t),
+      taskDone: !_taskOpen(t),
+      deadline: t.endDate,
+      onRescheduleDeadline: t.endDate == null ? null : (d) => _rescheduleDeadlineTo(t, d),
+    );
   }
 
   void _openDocument(Map<String, dynamic> doc) {
@@ -750,7 +789,16 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
           ),
           if (open && !t.isMilestone && !_plannedThisWeek(t.id)) ...[
             const SizedBox(width: 10),
-            _pillButton('Planifier', icon: Icons.event_available_outlined, onTap: () => _planTask(t)),
+            Builder(
+              builder: (bctx) => _pillButton('Planifier', icon: Icons.event_available_outlined,
+                  onTap: () {
+                final box = bctx.findRenderObject() as RenderBox?;
+                final global = box == null
+                    ? const Offset(200, 200)
+                    : box.localToGlobal(box.size.center(Offset.zero));
+                _planTask(t, global);
+              }),
+            ),
           ],
         ]),
         if (actions.isNotEmpty) ...[

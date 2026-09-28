@@ -29,37 +29,54 @@ Future<void> showWeekTaskPopover(
   BuildContext context, {
   required Offset anchor,
   required String title,
-  required DateTime day,
-  // Créneau proposé pour une durée donnée (recalculé quand la durée change).
-  required ({int start, bool full}) Function(int durationMin) propose,
+  required DateTime initialDay,
+  // Choix du jour (« Planifier » depuis la fiche projet) : les jours à venir
+  // avec leur charge ; [initialDay] est le jour présélectionné. Null = jour fixe
+  // (clic sur une cellule de Cette semaine).
+  List<({DateTime day, int loadMin, int capMin})>? dayChoices,
+  // Charge d'un jour pour une durée (grise les jours pleins quand la durée change).
+  bool Function(DateTime day, int durationMin)? fits,
+  // Créneau proposé pour un jour et une durée (recalculé à chaque changement).
+  required ({int start, bool full}) Function(DateTime day, int durationMin) propose,
   required int durationMin, // durée par défaut (reste à caser, sinon 45 min)
-  required void Function(int startMin, int durationMin) onPlace,
+  required void Function(DateTime day, int startMin, int durationMin) onPlace,
   required VoidCallback onOpen,
   required VoidCallback onDone,
   bool taskDone = false,
-  // Tâche en retard : report VOLONTAIRE de l'échéance au jour cliqué (jamais
-  // automatique — le retard est une information, pas une gêne à effacer).
-  VoidCallback? onRescheduleDeadline,
+  // Report VOLONTAIRE de l'échéance au jour choisi (jamais automatique — le
+  // retard est une information, pas une gêne à effacer). Avec [deadline], le
+  // lien n'apparaît que si le jour choisi dépasse l'échéance.
+  void Function(DateTime day)? onRescheduleDeadline,
+  DateTime? deadline,
 }) {
   final size = MediaQuery.of(context).size;
-  const w = 260.0;
-  final h = onRescheduleDeadline == null ? 226.0 : 258.0;
+  final w = dayChoices == null ? 260.0 : 300.0;
+  final h = (onRescheduleDeadline == null ? 226.0 : 258.0) +
+      (dayChoices == null ? 0 : 56);
   final left = (anchor.dx - w / 2).clamp(12.0, size.width - w - 12);
   final top =
       (anchor.dy + 12 + h > size.height ? anchor.dy - h - 12 : anchor.dy + 12)
           .clamp(12.0, size.height - h - 12);
-  final dayLabel = _kDayLong[day.weekday - 1];
-  final dayCap =
-      '${dayLabel[0].toUpperCase()}${dayLabel.substring(1)} ${day.day}';
+
+  // État du popover, hors du builder : il survit aux setLocal (un `var` dans
+  // le builder repartirait du défaut à chaque clic sur une chip).
+  var duration = durationMin;
+  var day = initialDay;
 
   return showDialog<void>(
     context: context,
     barrierColor: Colors.transparent,
     builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-      var duration = durationMin;
-      final slot = propose(duration);
+      final slot = propose(day, duration);
       final proposedStartMin = slot.start;
       final dayFull = slot.full;
+      final dayLabel = _kDayLong[day.weekday - 1];
+      final dayCap =
+          '${dayLabel[0].toUpperCase()}${dayLabel.substring(1)} ${day.day}';
+      final d0 = DateTime(day.year, day.month, day.day);
+      final showReschedule = onRescheduleDeadline != null &&
+          (deadline == null ||
+              d0.isAfter(DateTime(deadline.year, deadline.month, deadline.day)));
       return Stack(children: [
         Positioned(
           left: left,
@@ -86,6 +103,31 @@ Future<void> showWeekTaskPopover(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w600,
                             color: kBText)),
+                    if (dayChoices != null) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 46,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          children: [
+                            for (final c in dayChoices)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 5),
+                                child: _DayChip(
+                                  day: c.day,
+                                  loadMin: c.loadMin,
+                                  capMin: c.capMin,
+                                  fits: fits?.call(c.day, duration) ?? true,
+                                  selected: c.day.year == day.year &&
+                                      c.day.month == day.month &&
+                                      c.day.day == day.day,
+                                  onTap: () => setLocal(() => day = c.day),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       dayFull
@@ -115,7 +157,7 @@ Future<void> showWeekTaskPopover(
                           child: FilledButton(
                             onPressed: () {
                               Navigator.of(ctx).pop();
-                              onPlace(proposedStartMin, duration);
+                              onPlace(day, proposedStartMin, duration);
                             },
                             style: FilledButton.styleFrom(
                                 backgroundColor: kBPrimary,
@@ -143,7 +185,7 @@ Future<void> showWeekTaskPopover(
                             );
                             if (t == null || !ctx.mounted) return;
                             Navigator.of(ctx).pop();
-                            onPlace(t.hour * 60 + t.minute, duration);
+                            onPlace(day, t.hour * 60 + t.minute, duration);
                           },
                           style: TextButton.styleFrom(
                               backgroundColor: const Color(0x14FFFFFF),
@@ -163,7 +205,7 @@ Future<void> showWeekTaskPopover(
                       const Spacer(),
                       if (!taskDone) _link(ctx, 'Marquer faite', onDone),
                     ]),
-                    if (onRescheduleDeadline != null)
+                    if (showReschedule)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Row(children: [
@@ -172,8 +214,8 @@ Future<void> showWeekTaskPopover(
                           const SizedBox(width: 4),
                           _link(
                               ctx,
-                              'Reporter l\'échéance au ${dayLabel} ${day.day}',
-                              onRescheduleDeadline,
+                              'Reporter l\'échéance au $dayLabel ${day.day}',
+                              () => onRescheduleDeadline(day),
                               color: kBAttention),
                         ]),
                       ),
@@ -192,6 +234,61 @@ List<int> _durationChoices(int defaultMin) {
   if (!base.contains(defaultMin)) base.add(defaultMin);
   base.sort();
   return base;
+}
+
+const _kDayShort = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+/// Jour proposable : « Mar 30 » + charge « 2h/7h » (« plein » si ça ne tient
+/// pas, « repos » sans capacité). Sélectionné = bordure primaire.
+class _DayChip extends StatelessWidget {
+  final DateTime day;
+  final int loadMin, capMin;
+  final bool fits, selected;
+  final VoidCallback onTap;
+  const _DayChip(
+      {required this.day,
+      required this.loadMin,
+      required this.capMin,
+      required this.fits,
+      required this.selected,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final sub = capMin == 0
+        ? 'repos'
+        : !fits
+            ? 'plein'
+            : '${_fmtHm(loadMin).replaceAll(' ', '')}/${_fmtHm(capMin).replaceAll(' ', '')}';
+    final dim = !fits;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(9),
+      child: Container(
+        width: 52,
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? kBActive : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: selected ? kBPrimary.withOpacity(.6) : kBLine),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${_kDayShort[day.weekday - 1]} ${day.day}',
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: dim ? kBText4 : kBText,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+          const SizedBox(height: 2),
+          Text(sub,
+              style: TextStyle(
+                  fontSize: 10,
+                  color: !fits && capMin > 0 ? kBAttention : kBText3,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ]),
+      ),
+    );
+  }
 }
 
 class _DurationChip extends StatelessWidget {

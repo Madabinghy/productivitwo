@@ -203,6 +203,43 @@ String minToClock(int min) =>
   return (blocks: created, left: left);
 }
 
+/// Charge d'un jour pour le popover « Planifier » : minutes déjà prévues,
+/// capacité, et si un bloc de [durationMin] y tient (capacité + créneau libre,
+/// jour non bloqué). Un jour passé ne tient jamais.
+({int loadMin, int capMin, bool fits}) dayLoad(
+  DateTime day,
+  List<ScheduleBlock> existing,
+  Map<String, int> capacity,
+  int durationMin, {
+  required DateTime today,
+}) {
+  final load = plannedMin(existing);
+  final cap = capacityMinFor(capacity, day);
+  final fits = !day.isBefore(dateOnly(today)) &&
+      cap > 0 &&
+      !isBlockedDay(existing) &&
+      load + durationMin <= cap &&
+      firstFreeSlot(existing, durationMin) != null;
+  return (loadMin: load, capMin: cap, fits: fits);
+}
+
+/// Premier jour de [days] (≥ aujourd'hui) où un bloc de [durationMin] tient —
+/// la même règle qu'`autoPlace`, sans rien poser. Null si aucun.
+DateTime? firstFittingDay(
+  List<DateTime> days,
+  Map<String, List<ScheduleBlock>> scheduledByDay,
+  Map<String, int> capacity,
+  int durationMin, {
+  required DateTime today,
+}) {
+  for (final d in days) {
+    final l = dayLoad(d, scheduledByDay[ymdOf(d)] ?? const [], capacity, durationMin,
+        today: today);
+    if (l.fits) return d;
+  }
+  return null;
+}
+
 /// Bloc de programme pour une tâche de projet à [startMin].
 ScheduleBlock taskBlock(WeekTask wt, int startMin, {int? durationMin}) => ScheduleBlock(
       startTime: minToClock(startMin),

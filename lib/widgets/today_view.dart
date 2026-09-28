@@ -509,6 +509,24 @@ class TodayViewState extends State<TodayView> {
                         ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
                         : _domainsPlaceholder(),
                   ),
+                // Bascule liste ⇄ frise en fin de section (§ 3.3), persistée.
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: Icon(
+                        _timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined,
+                        size: 16),
+                    label: Text(_timeline ? 'Voir en liste' : 'Voir en frise'),
+                    style: TextButton.styleFrom(
+                        foregroundColor: link,
+                        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    onPressed: () {
+                      setState(() => _timeline = !_timeline);
+                      SharedPreferences.getInstance()
+                          .then((p) => p.setBool(_timelinePrefKey, _timeline));
+                    },
+                  ),
+                ),
                 if (_showTomorrow) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -673,18 +691,6 @@ class TodayViewState extends State<TodayView> {
                 width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
             : Icon(Icons.sync_rounded, size: 18, color: text3),
         onPressed: _syncing ? null : _forceSync,
-      ),
-      IconButton(
-        tooltip: _timeline ? 'Voir en liste' : 'Voir en frise',
-        visualDensity: VisualDensity.compact,
-        icon: Icon(
-            _timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined,
-            size: 18,
-            color: text3),
-        onPressed: () {
-          setState(() => _timeline = !_timeline);
-          SharedPreferences.getInstance().then((p) => p.setBool(_timelinePrefKey, _timeline));
-        },
       ),
       if (!_showTomorrow)
         IconButton(
