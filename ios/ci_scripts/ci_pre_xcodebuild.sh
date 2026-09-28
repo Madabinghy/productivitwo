@@ -45,6 +45,21 @@ git config --global url."https://github.com/".insteadOf "http://github.com/"
 # et réinterprète https:// en http://, causant "Device not configured"
 git config --global credential.helper ""
 
+echo "=== Aligning extension versions on pubspec.yaml ==="
+# ITMS-90473 (build 510) : l'extension widget porte un MARKETING_VERSION en
+# dur dans le pbxproj (pas de Generated.xcconfig sur cette cible), qui
+# dérivait de la version Flutter. La source de vérité est pubspec.yaml :
+# on réécrit toutes les MARKETING_VERSION littérales du projet avant le build.
+cd "$CI_PRIMARY_REPOSITORY_PATH"
+PUBSPEC_VERSION=$(sed -n 's/^version: *\([0-9][0-9.]*\)+.*/\1/p' pubspec.yaml)
+if [ -n "$PUBSPEC_VERSION" ]; then
+  sed -i '' -E "s/MARKETING_VERSION = [0-9]+\.[0-9]+\.[0-9]+;/MARKETING_VERSION = $PUBSPEC_VERSION;/g" \
+    ios/Runner.xcodeproj/project.pbxproj
+  echo "MARKETING_VERSION → $PUBSPEC_VERSION (toutes cibles)"
+else
+  echo "⚠️ Version pubspec introuvable — MARKETING_VERSION inchangé"
+fi
+
 echo "=== Installing CocoaPods dependencies ==="
 cd "$CI_PRIMARY_REPOSITORY_PATH/ios"
 # NB : ne PAS faire `pod repo add trunk …` — `trunk` est un nom réservé au dépôt
