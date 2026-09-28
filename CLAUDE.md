@@ -326,6 +326,15 @@ Exception : `structure_project` → Opus (feature vitrine payante, volume faible
 
 ---
 
+## Version iOS (pubspec = source de vérité)
+
+`pubspec.yaml` `version: X.Y.Z+N` alimente `Runner` (`FLUTTER_BUILD_NAME/NUMBER`). L'extension
+widget (`ProductivitwoWidgetExtension`) n'a pas de `Generated.xcconfig` : son `MARKETING_VERSION`
+est **littéral** dans `ios/Runner.xcodeproj/project.pbxproj` et doit suivre — sinon
+ITMS-90473 (« CFBundleShortVersionString Mismatch », vu sur la 1.0.6 build 510). Le script
+`ios/ci_scripts/ci_pre_xcodebuild.sh` réaligne toutes les `MARKETING_VERSION` sur le pubspec avant
+chaque build Xcode Cloud ; en montant la version, mettre quand même le pbxproj à jour (build locale).
+
 ## Siri (App Intents, iOS 16+)
 
 Raccourcis vocaux dans `ios/Runner/SiriIntents.swift` (target Runner — un

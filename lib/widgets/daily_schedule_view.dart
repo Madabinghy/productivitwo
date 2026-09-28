@@ -518,7 +518,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               constraints: const BoxConstraints(minWidth: 40),
               child: Icon(Icons.add, size: 18, color: cs.primary),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 22),
             Text('Ajouter un bloc',
                 style: TextStyle(
                     fontSize: 14, fontWeight: FontWeight.w600, color: cs.primary)),
@@ -765,6 +765,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 10),
                 // Coche 24 px (point vert pour le bloc en cours)
                 GestureDetector(
                   onTap: () => _toggleDone(block),
