@@ -1041,32 +1041,11 @@ class OrionViewState extends State<OrionView> {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: cs.outlineVariant.withOpacity(0.4)),
                 ),
-                child: Text.rich(
-                  TextSpan(children: [
-                    TextSpan(
-                        text: 'Gratuit ',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurface.withOpacity(0.7))),
-                    TextSpan(
-                        text: '∞',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: cs.primary)),
-                    TextSpan(
-                        text: '  ·  Pro ',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurface.withOpacity(0.5))),
-                    TextSpan(
-                        text: '5/j',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(0.7))),
-                  ]),
-                ),
+                child: Text('5 activations / jour',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(0.7))),
               ),
               const Spacer(),
               OutlinedButton.icon(

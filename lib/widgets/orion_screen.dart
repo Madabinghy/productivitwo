@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/pro_manager.dart';
 import 'package:productivitwo_v1/widgets/orion_brief_card.dart';
-import 'package:productivitwo_v1/widgets/paywall_sheet.dart';
 
 // Palette ORION
 const _bg = Color(0xFF0f0f0f);
@@ -235,9 +234,7 @@ class _OrionScreenState extends State<OrionScreen>
     final isPro = ProManager.isPro;
     final limit = isPro ? _kLimitPro : _kLimitFree;
     if (_runCount >= limit) {
-      setState(() => _error = isPro
-          ? 'Limite journalière atteinte ($limit/jour).'
-          : 'Limite journalière atteinte ($limit/jour). Passe à Pro pour continuer.');
+      setState(() => _error = 'Limite journalière atteinte ($limit/jour).');
       return;
     }
 
@@ -682,7 +679,6 @@ class _StatusCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              _PlanBadge(isPro: isPro),
               const Spacer(),
               Text(
                 '$runCount / $limit activations aujourd\'hui',
@@ -708,7 +704,7 @@ class _StatusCard extends StatelessWidget {
           Text(
             isPro
                 ? '$_kLimitPro activations/jour · ORION tourne toutes les 6h.'
-                : '$_kLimitFree activation/jour en version gratuite.\nPasse à Pro pour $_kLimitPro activations/jour.',
+                : '$_kLimitFree activation/jour.',
             style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 11,
@@ -716,71 +712,12 @@ class _StatusCard extends StatelessWidget {
               height: 1.65,
             ),
           ),
-          if (!isPro) ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => showPaywallSheet(context),
-              child: const Text(
-                'Passer à Pro →',
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: _gold,
-                  decoration: TextDecoration.underline,
-                  decorationColor: _gold,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _PlanBadge extends StatelessWidget {
-  final bool isPro;
-  const _PlanBadge({required this.isPro});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: isPro ? _gold.withOpacity(0.1) : Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(
-          color: isPro ? _gold.withOpacity(0.35) : _border,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (isPro) ...[
-            const Text('★ ',
-                style: TextStyle(color: _gold, fontSize: 9)),
-          ],
-          Text(
-            isPro ? 'PRO' : 'GRATUIT',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.5,
-              color: isPro ? _gold : _muted,
-            ),
-          ),
-          if (!isPro) ...[
-            const Text(' · ∞',
-                style: TextStyle(
-                    fontFamily: 'monospace', fontSize: 9, color: _muted)),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 // ── Onboarding card ────────────────────────────────────────────────────────────
 
