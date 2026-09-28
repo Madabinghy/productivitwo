@@ -152,6 +152,7 @@ lib/
 |--------|----------------------|-------|
 | `Domain` | `domains` | Domaine de vie (Santé, Travail…) |
 | `Activity` | `activities` | Tracking temps (`type: time`) ou fréquence (`type: habit`) ; `ownActions: TaskAction[]` = actions propres (sans tâche/projet), chrono ciblé via `Session.actionId` |
+| `TaskAction.checklist` | (embarqué) | Micro-actions `ChecklistItem[] {id,title,done,doneAt}` (3ᵉ niveau projet → tâche → action → item), cochées pendant un bloc du programme. **Règle : dernier item coché = action faite ; décocher rouvre** (UI web + `mark_checklist_item`). Vide = pas de checklist. |
 | `DayBlock` | `blocks` | Blocs de journée (Matin, Midi, Soir…) |
 | `Session` | `sessions` | Session de temps loggué |
 | `HabitHit` | `habitHits` | Incrément de routine |
@@ -207,6 +208,7 @@ Claude ne les recrée pas lors d'une régénération.
 - `get_day_schedule(date)` — lit le programme du jour
 - `schedule_day(date, blocks[])` — crée ou remplace le programme entier (un bloc peut porter `actionId` → chrono ciblé)
 - `add_activity_action(activityId, title)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
+- `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
 - `plan_day(date?, startHour?, endHour?, syncToCalendar?)` — agrège user context + schedule existant + projets actifs en un appel ; retourne le contexte consolidé + workflow pour générer le programme et le syncer dans Google Calendar
 - `plan_week(startDate?, syncToCalendar?)` — idem sur 5 jours ouvrés (défaut : lundi prochain)

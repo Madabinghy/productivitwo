@@ -147,6 +147,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
         ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
       ...(estimatedMinOrUndefined(o.estimatedMin) !== undefined
         ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}),
+      ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
     };
   });
   const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
@@ -164,6 +165,27 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
     actions,
     ...(estimatedMin !== undefined ? { estimatedMin } : {}),
   };
+}
+
+// Checklist d'une action : string (item neuf) ou objet — id/done/doneAt
+// préservés quand fournis (round-trip get_project → push_gantt).
+function normalizeChecklist(raw: unknown[]): Array<Record<string, unknown>> {
+  return raw.flatMap((c) => {
+    if (typeof c === "string") {
+      const title = c.trim();
+      return title ? [{ id: uuidv4(), title, done: false, doneAt: null }] : [];
+    }
+    if (typeof c !== "object" || c === null) return [];
+    const o = c as Record<string, unknown>;
+    const title = typeof o.title === "string" ? o.title.trim() : String(o.title ?? "").trim();
+    if (!title) return [];
+    return [{
+      id: typeof o.id === "string" ? o.id : uuidv4(),
+      title,
+      done: o.done === true,
+      doneAt: typeof o.doneAt === "string" ? o.doneAt : null,
+    }];
+  });
 }
 
 // Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
@@ -1417,6 +1439,7 @@ async function executeUpdateTask(
         done: boolean; doneAt: string | null; id?: string;
         linkedActivityId: string | null; context: string | null;
         contexts: string[]; estimatedMin: number | null;
+        checklist: Array<Record<string, unknown>>;
       }> = {};
       for (const a of oldActions) {
         const t = (a.title as string) ?? "";
@@ -1429,6 +1452,8 @@ async function executeUpdateTask(
             context: (a.context as string) ?? null,
             contexts: Array.isArray(a.contexts) ? (a.contexts as string[]) : [],
             estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
+            checklist: Array.isArray(a.checklist)
+              ? (a.checklist as Array<Record<string, unknown>>) : [],
           };
         }
       }
@@ -1455,6 +1480,10 @@ async function executeUpdateTask(
             : previous?.contexts ?? [],
           estimatedMin: estimatedMinOrUndefined(obj?.estimatedMin)
             ?? previous?.estimatedMin ?? null,
+          // Checklist fournie → normalisée ; sinon celle de l'action conservée.
+          checklist: Array.isArray(obj?.checklist)
+            ? normalizeChecklist(obj!.checklist as unknown[])
+            : previous?.checklist ?? [],
         };
       });
     }
@@ -1504,6 +1533,56 @@ async function executeMarkActionDone(
 
   await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
   return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
+}
+
+// Coche/décoche un item de checklist. Règle d'achèvement : tous les items
+// cochés → l'action passe faite ; décocher un item d'une action faite la rouvre.
+async function executeMarkChecklistItem(
+  uid: string,
+  projectId: string,
+  taskId: string,
+  actionId: string,
+  itemId: string,
+  done: boolean
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  const data = snap.data() as Record<string, unknown>;
+  const rawTasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) =>
+    v && typeof v === "object" && typeof v.toDate === "function"
+      ? v.toDate().toISOString()
+      : v
+  )));
+  const taskIdx = tasks.findIndex((t) => t.id === taskId);
+  if (taskIdx === -1) return `Tâche introuvable : ${taskId}`;
+  const actions = ((tasks[taskIdx].actions as Array<Record<string, unknown>>) ?? []).slice();
+  const actionIdx = actions.findIndex((a) => a.id === actionId);
+  if (actionIdx === -1) return `Sous-action introuvable : ${actionId}`;
+  const items = (Array.isArray(actions[actionIdx].checklist)
+    ? (actions[actionIdx].checklist as Array<Record<string, unknown>>) : []).slice();
+  const itemIdx = items.findIndex((c) => c.id === itemId);
+  if (itemIdx === -1) return `Item de checklist introuvable : ${itemId}`;
+  const now = new Date().toISOString();
+  items[itemIdx] = { ...items[itemIdx], done, doneAt: done ? now : null };
+  const allDone = items.length > 0 && items.every((c) => c.done === true);
+  const wasDone = actions[actionIdx].done === true;
+  const action: Record<string, unknown> = { ...actions[actionIdx], checklist: items };
+  let note = "";
+  if (allDone && !wasDone) {
+    action.done = true; action.doneAt = now;
+    note = " · tous les items cochés → action marquée faite";
+  } else if (!done && wasDone) {
+    action.done = false; action.doneAt = null;
+    note = " · action rouverte";
+  }
+  actions[actionIdx] = action;
+  tasks[taskIdx] = { ...tasks[taskIdx], actions };
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+  const title = (items[itemIdx].title as string) ?? itemId;
+  const n = items.filter((c) => c.done === true).length;
+  return `✅ Item "${title}" ${done ? "coché" : "décoché"} (${n}/${items.length})${note}.`;
 }
 
 // Associe une sous-action de tâche (TaskAction) à une activité-temps : pose
@@ -2911,6 +2990,7 @@ export {
   executeAddTask,
   executeUpdateTask,
   executeMarkActionDone,
+  executeMarkChecklistItem,
   executeLinkActionToActivity,
   executeAddActivityAction,
   executeLogRoutineHit,

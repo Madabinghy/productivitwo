@@ -239,14 +239,7 @@ class _WeekViewState extends State<WeekView> {
 
   Future<void> _placeAt(WeekTask wt, DateTime day, int startMin, int durationMin) async {
     final key = ymdOf(day);
-    final block = ScheduleBlock(
-      startTime: minToClock(startMin),
-      durationMin: durationMin,
-      title: wt.task.title,
-      category: 'project',
-      projectId: wt.project.id,
-      taskId: wt.task.id,
-    );
+    final block = taskBlock(wt, startMin, durationMin: durationMin);
     setState(() => (_byDay[key] ??= []).add(block));
     await widget.sync.addScheduleBlock(key, block);
     _snack('Bloc ajouté ${_kDayLong[day.weekday - 1]} ${_clock(startMin)}',

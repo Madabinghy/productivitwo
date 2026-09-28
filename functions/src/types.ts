@@ -6,6 +6,13 @@ export interface ProjectPhase {
   endDate: string;
 }
 
+export interface ChecklistItemPayload {
+  id?: string;
+  title: string;
+  done?: boolean;
+  doneAt?: string | null;
+}
+
 export interface TaskActionPayload {
   id?: string;
   title: string;
@@ -16,6 +23,7 @@ export interface TaskActionPayload {
   context?: string | null; // contexte GTD principal (@maison…)
   contexts?: string[]; // multi-contextes GTD (context = le premier)
   estimatedMin?: number | null; // durée estimée (min) ; absent = sans estimation
+  checklist?: Array<string | ChecklistItemPayload>; // micro-actions (3ᵉ niveau)
 }
 
 export interface ProjectTask {

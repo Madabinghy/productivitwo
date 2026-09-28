@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 
 // Dialogs CRUD des actions (ex-WebActionsView), partagés par l'onglet Actions.
@@ -23,6 +25,17 @@ Future<bool> showEditActionDialog(
   final all = [...available, ...selected.where((c) => !available.contains(c))];
   final titleCtrl = TextEditingController(text: action.title);
   final estCtrl = TextEditingController(text: action.estimatedMin?.toString() ?? '');
+  // Brouillon de checklist : la règle d'achèvement s'applique à l'enregistrement.
+  final draft = TaskAction(
+    id: action.id,
+    title: action.title,
+    done: action.done,
+    doneAt: action.doneAt,
+    checklist: [
+      for (final c in action.checklist)
+        ChecklistItem(id: c.id, title: c.title, done: c.done, doneAt: c.doneAt),
+    ],
+  );
   final result = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
@@ -70,6 +83,18 @@ Future<bool> showEditActionDialog(
                       visualDensity: VisualDensity.compact,
                     ),
                 ],
+              ),
+              const SizedBox(height: 14),
+              Text('Checklist (micro-actions)',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.55))),
+              const SizedBox(height: 4),
+              ChecklistEditor(
+                items: draft.checklist,
+                onToggle: (c, v) => setLocal(() => setChecklistItem(draft, c.id, v)),
+                onAdd: (t) => setLocal(() => addChecklistItem(draft, t)),
+                onDelete: (c) => setLocal(() => removeChecklistItem(draft, c.id)),
               ),
             ],
           ),
@@ -127,6 +152,11 @@ Future<bool> showEditActionDialog(
     action.setContexts(selected.toList());
     final est = int.tryParse(estRaw);
     action.estimatedMin = est != null && est > 0 ? est : null;
+    action.checklist
+      ..clear()
+      ..addAll(draft.checklist);
+    action.done = draft.done;
+    action.doneAt = draft.doneAt;
   }
   if (project != null) {
     await sync.saveProjectTasks(project.id, project.tasks);

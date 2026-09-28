@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
+import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -659,6 +660,13 @@ class _ActionsViewState extends State<ActionsView> {
             if (a.estimatedMin != null) ...[
               const SizedBox(width: 6),
               _badge('${a.estimatedMin} min', kBText4),
+            ],
+            if (a.checklist.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Checklist : ${a.checklistDone}/${a.checklistTotal}',
+                child: checklistBadge(a)!,
+              ),
             ],
           ]),
         ),

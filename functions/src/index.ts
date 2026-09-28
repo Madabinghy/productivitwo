@@ -34,7 +34,7 @@ import {
   SAVE_DOMAIN_DEFINITION_TOOL,
   LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
-  ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+  ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
@@ -54,7 +54,7 @@ import {
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
-  executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone,
+  executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
   executeLinkActionToActivity, executeAddActivityAction,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
@@ -1660,7 +1660,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             SAVE_DOMAIN_DEFINITION_TOOL,
             LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
-            ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL,
+            ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
@@ -1802,6 +1802,15 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.projectId as string,
             args.taskId as string,
             args.actionId as string,
+            args.done as boolean,
+          );
+        } else if (toolName === "mark_checklist_item") {
+          text = await executeMarkChecklistItem(
+            uid,
+            args.projectId as string,
+            args.taskId as string,
+            args.actionId as string,
+            args.itemId as string,
             args.done as boolean,
           );
         } else if (toolName === "link_action_to_activity") {
