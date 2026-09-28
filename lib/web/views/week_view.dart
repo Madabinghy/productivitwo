@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -369,7 +370,7 @@ class _WeekViewState extends State<WeekView> {
         isToday: day == _today, nowMin: now.hour * 60 + now.minute);
     showWeekTaskPopover(
       context,
-      anchor: global,
+      anchor: overlayLocal(context, global),
       title: wt.task.title,
       day: day,
       proposedStartMin: slot.start,
@@ -388,9 +389,10 @@ class _WeekViewState extends State<WeekView> {
     final date = _dateOfBlock(b);
     if (date == null) return;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final local = overlayLocal(context, global);
     final choice = await showMenu<String>(
       context: context,
-      position: RelativeRect.fromRect(global & const Size(1, 1), Offset.zero & overlay.size),
+      position: RelativeRect.fromRect(local & const Size(1, 1), Offset.zero & overlay.size),
       items: [
         PopupMenuItem(
             enabled: false,

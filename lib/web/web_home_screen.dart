@@ -22,6 +22,7 @@ import 'package:productivitwo_v1/web/views/orion_view.dart';
 import 'package:productivitwo_v1/web/tokens_panel.dart';
 import 'package:productivitwo_v1/web/web_shell.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -234,6 +235,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         showVisionDialog(context);
       case WebMenuItem.claude:
         _showTokensPanel(context);
+      case WebMenuItem.uiScale:
+        showUiScaleDialog(context);
       case WebMenuItem.help:
         showHelpSheet(context);
       case WebMenuItem.logout:

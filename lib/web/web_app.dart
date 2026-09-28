@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:productivitwo_v1/web/web_auth_screen.dart';
 import 'package:productivitwo_v1/web/web_home_screen.dart';
+import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/mobile_preview_screen.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/web_email_signin_screen.dart';
@@ -81,6 +82,12 @@ class WebApp extends StatelessWidget {
 
       themeMode: ThemeMode.dark,
 
+      // Taille de l'interface (menu ⋯) : zoom interne, au-dessus du Navigator
+      // pour que dialogs et menus suivent.
+      builder: (context, child) => ValueListenableBuilder<double>(
+        valueListenable: webUiScale,
+        builder: (_, s, __) => ScaledUi(scale: s, child: child!),
+      ),
       home: _AuthGate(),
     );
   }
@@ -101,6 +108,7 @@ class _AuthGateState extends State<_AuthGate> {
   @override
   void initState() {
     super.initState();
+    loadWebUiScale();
     _stream = _buildStream();
     // Flag refonte (par navigateur) : permet à la PWA installée (start_url "/")
     // d'ouvrir directement le shell Soft Pop une fois activé.

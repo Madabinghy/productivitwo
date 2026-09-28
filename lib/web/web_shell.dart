@@ -17,7 +17,7 @@ enum WebTab {
 }
 
 /// Entrées du menu ⋯ (« Réglages, Claude et aide »).
-enum WebMenuItem { orion, messages, vision, coachConsole, claude, help, logout }
+enum WebMenuItem { orion, messages, vision, coachConsole, claude, uiScale, help, logout }
 
 /// Barre du haut (64 px) : logo · onglets · chrono global · « Mon coach » ·
 /// menu ⋯ · avatar. Sans état : `WebHomeScreen` garde l'onglet courant.
@@ -110,6 +110,8 @@ class WebTopBar extends StatelessWidget {
             if (!isDemo)
               const PopupMenuItem(
                   value: WebMenuItem.claude, child: Text('Connecter Claude')),
+            const PopupMenuItem(
+                value: WebMenuItem.uiScale, child: Text("Taille de l'interface")),
             const PopupMenuItem(value: WebMenuItem.help, child: Text('Aide')),
             const PopupMenuDivider(),
             const PopupMenuItem(
