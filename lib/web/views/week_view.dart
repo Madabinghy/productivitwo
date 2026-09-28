@@ -284,6 +284,26 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
+  /// Report volontaire de l'échéance d'une tâche en retard au jour [day]
+  /// (le début est avancé si besoin). Annulable.
+  Future<void> _rescheduleDeadline(WeekTask wt, DateTime day) async {
+    final t = wt.task;
+    final oldStart = t.startDate, oldEnd = t.endDate;
+    setState(() {
+      t.endDate = day;
+      if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
+    });
+    await _saveTasks(wt.project);
+    _snack('Échéance reportée au ${_kDayLong[day.weekday - 1]} ${day.day}',
+        actionLabel: 'Annuler', onAction: () async {
+      setState(() {
+        t.startDate = oldStart;
+        t.endDate = oldEnd;
+      });
+      await _saveTasks(wt.project);
+    });
+  }
+
   Future<void> _resizeTask(WeekTask wt, int deltaDays) async {
     if (deltaDays == 0) return;
     final t = wt.task;
@@ -359,6 +379,8 @@ class _WeekViewState extends State<WeekView> {
       onPlace: (startMin) => _placeAt(wt, day, startMin),
       onOpen: () => _openTask(wt),
       onDone: () => _toggleDone(wt),
+      onRescheduleDeadline:
+          wt.overdue && !wt.done ? () => _rescheduleDeadline(wt, day) : null,
     );
   }
 
@@ -798,8 +820,22 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
+  /// Colonne du jour d'un bloc de la fenêtre (null si introuvable).
+  int? _blockDayIdx(ScheduleBlock b) {
+    final date = _dateOfBlock(b);
+    return date == null ? null : _dayIndex(DateTime.parse(date));
+  }
+
   List<Widget> _bar(WeekTask wt, double colW, Color color, List<ScheduleBlock> blocks, int remaining) {
-    final span = _span(wt.task);
+    // La barre couvre les dates de la tâche ET les jours de ses blocs : une
+    // tâche en retard (dates avant la fenêtre) planifiée mardi reste visible,
+    // avec son point, sur mardi.
+    var span = _span(wt.task);
+    final idx = blocks.map(_blockDayIdx).whereType<int>().toList();
+    if (idx.isNotEmpty) {
+      final mn = idx.reduce(math.min), mx = idx.reduce(math.max);
+      span = span == null ? (s: mn, e: mx) : (s: math.min(span.s, mn), e: math.max(span.e, mx));
+    }
     if (span == null) return const [];
     final dragging = _dragTaskId == wt.task.id;
     final deltaDays = dragging ? (_dragDx / colW).round() : 0;

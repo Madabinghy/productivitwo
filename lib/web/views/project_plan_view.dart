@@ -217,6 +217,44 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     widget.onChanged();
   }
 
+  /// Report volontaire de l'échéance d'une tâche en retard (sélecteur de date).
+  Future<void> _rescheduleDeadline(ProjectTask t) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _today,
+      firstDate: _today,
+      lastDate: DateTime(2032),
+      helpText: 'Nouvelle échéance',
+    );
+    if (picked == null || !mounted) return;
+    final day = dateOnly(picked);
+    final oldStart = t.startDate, oldEnd = t.endDate;
+    setState(() {
+      t.endDate = day;
+      if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
+    });
+    await _save();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Échéance reportée au ${_ddmm(day)}'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Annuler',
+          textColor: kBPrimary,
+          onPressed: () async {
+            setState(() {
+              t.startDate = oldStart;
+              t.endDate = oldEnd;
+            });
+            await _save();
+          },
+        ),
+      ));
+  }
+
   Future<void> _addTask() async {
     final task = await showAddTaskDialog(context, project: _p, sync: widget.sync);
     if (task == null || !mounted) return;
@@ -670,7 +708,21 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
               Row(children: [
                 Text(due,
                     style: TextStyle(fontSize: 12, color: dueColor, fontFeatures: _tabular)),
-                if (overdue) ...[const SizedBox(width: 8), _badge('retard', kBAlert)],
+                if (overdue) ...[
+                  const SizedBox(width: 8),
+                  _badge('retard', kBAlert),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () => _rescheduleDeadline(t),
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                      child: Text('Reporter',
+                          style: TextStyle(
+                              fontSize: 11.5, fontWeight: FontWeight.w600, color: kBAttention)),
+                    ),
+                  ),
+                ],
               ]),
             ]),
           ),
