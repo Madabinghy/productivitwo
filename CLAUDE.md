@@ -19,11 +19,12 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 - **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
   (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
-- Onglets mobiles actuels : **Objectifs / Stats / Projets / Actions / Aujourd'hui / Maintenant**
-  (`_Tab` dans `lib/main.dart`). Ne pas réintroduire d'UI de jeu.
-  **En cours (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`, 3 PR)** : fusion
-  Aujourd'hui + Maintenant → carte MAINTENANT (`lib/widgets/now_card.dart`) en tête d'Aujourd'hui
-  (PR 1 livrée), puis retrait de l'onglet Maintenant / barre à 5 (PR 2), programme en liste 48 px (PR 3).
+- Onglets mobiles actuels : **Objectifs / Stats / Projets / Aujourd'hui / Actions** (5 ; 4 avec
+  `hideProjectsTab` ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
+  **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
+  MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
+  `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé (PR 1-2 livrées, PR 3 = programme en
+  liste 48 px à venir). Toute navigation « vers Maintenant » passe par `_goNowTab()` (Aujourd'hui + scroll haut).
 
 **Points de restauration permanents (ne jamais modifier/supprimer) :**
 

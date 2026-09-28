@@ -17,6 +17,10 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 /// Aucune logique métier propre : `today_logic.dart` + `checklist_logic.dart`.
 class NowCard extends StatefulWidget {
   final AppLogic logic;
+  // Blocs du jour (hors supprimés) et clé du programme, fournis par TodayView
+  // qui porte l'unique abonnement au programme.
+  final List<ScheduleBlock> blocks;
+  final String date;
   final Project? focusProject;
   final ProjectTask? focusTask;
   final DateTime? countdownEndsAt;
@@ -32,6 +36,8 @@ class NowCard extends StatefulWidget {
   const NowCard({
     super.key,
     required this.logic,
+    required this.blocks,
+    required this.date,
     required this.onLaunch,
     required this.onStopTimer,
     required this.onStopCountdown,
@@ -51,9 +57,6 @@ class NowCard extends StatefulWidget {
 
 class _NowCardState extends State<NowCard> {
   final _sync = FirestoreSync();
-  StreamSubscription<DailySchedule?>? _sub;
-  String _date = '';
-  List<ScheduleBlock> _blocks = const [];
   Timer? _tick;
   bool _expanded = false;
   // Routine liée déjà validée pour ce bloc (1 incrément max par bloc).
@@ -62,38 +65,25 @@ class _NowCardState extends State<NowCard> {
   @override
   void initState() {
     super.initState();
-    _subscribe();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      if (_ymd(DateTime.now()) != _date) _subscribe();
-      setState(() {});
+      if (mounted) setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(NowCard old) {
+    super.didUpdateWidget(old);
+    if (old.date != widget.date) _routineHit.clear();
   }
 
   @override
   void dispose() {
     _tick?.cancel();
-    _sub?.cancel();
     super.dispose();
   }
 
-  String _ymd(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  void _subscribe() {
-    _sub?.cancel();
-    _date = _ymd(DateTime.now());
-    _routineHit.clear();
-    _sub = _sync.streamDailySchedule(_date).listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _blocks = (s?.blocks ?? const <ScheduleBlock>[])
-            .where((b) => b.status != 'deleted')
-            .toList()
-          ..sort((a, b) => a.startTime.compareTo(b.startTime));
-      });
-    });
-  }
+  List<ScheduleBlock> get _blocks => widget.blocks;
+  String get _date => widget.date;
 
   // ── Données ─────────────────────────────────────────────────────────────────
 
