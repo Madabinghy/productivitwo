@@ -2763,7 +2763,10 @@ class _AppRootState extends State<AppRoot>
 
   /// Lance un bloc du programme (▶) : démarre le chrono de l'activité liée et
   /// met la tâche en focus (ses actions s'affichent dans l'onglet Maintenant).
-  Future<void> _launchScheduledBlock(ScheduleBlock block) async {
+  /// [goToNow] = false : lancement depuis la carte MAINTENANT d'Aujourd'hui,
+  /// on reste sur l'onglet.
+  Future<void> _launchScheduledBlock(ScheduleBlock block,
+      {bool goToNow = true}) async {
     // Séance programmée : chrono sur l'activité + player sur SON déroulé.
     if (block.sessionTemplateId != null && block.activityId != null) {
       final tpl =
@@ -2773,7 +2776,7 @@ class _AppRootState extends State<AppRoot>
         setState(() {
           _focusProject = null;
           _focusTask = null;
-          _tab = _Tab.maintenant;
+          if (goToNow) _tab = _Tab.maintenant;
         });
         return;
       }
@@ -2813,7 +2816,7 @@ class _AppRootState extends State<AppRoot>
             setState(() {
               _focusProject = null;
               _focusTask = null;
-              _tab = _Tab.maintenant;
+              if (goToNow) _tab = _Tab.maintenant;
             });
             return;
           }
@@ -2829,7 +2832,7 @@ class _AppRootState extends State<AppRoot>
         setState(() {
           _focusProject = null;
           _focusTask = null;
-          _tab = _Tab.maintenant;
+          if (goToNow) _tab = _Tab.maintenant;
         });
       }
       return;
@@ -2898,7 +2901,7 @@ class _AppRootState extends State<AppRoot>
       _focusProject = project;
       _focusTask = task;
       _focusActivityId = focusActId;
-      _tab = _Tab.maintenant;
+      if (goToNow) _tab = _Tab.maintenant;
     });
   }
 
@@ -3053,6 +3056,28 @@ class _AppRootState extends State<AppRoot>
             // L'auto-scroll « maintenant » attend la 1ʳᵉ ouverture VISIBLE
             // (l'IndexedStack construit l'onglet dès le lancement).
             visible: _tab == _Tab.aujourdhui,
+            // Carte MAINTENANT en tête (handoff iOS 2026-09, PR 1).
+            focusProject: _focusProject,
+            focusTask: _focusTask,
+            countdownEndsAt: _countdownEndsAt,
+            countdownTotalSec: _countdownTotalSec,
+            onNowLaunch: (b) => _launchScheduledBlock(b, goToNow: false),
+            onStopCountdown: () {
+              _cancelCountdown();
+              setState(() {});
+            },
+            onStopTimer: () {
+              _cancelCountdown();
+              logic.stopActive();
+              setState(() {
+                _focusProject = null;
+                _focusTask = null;
+                _focusActivityId = null;
+              });
+            },
+            onOpenRoutines: () => _showRoutinesSheet(context),
+            onOpenActivities: () => _showLaunchActivitySheet(context),
+            onChallenge: _showChallenge,
           ),
           FocusView(
             logic: logic,
