@@ -260,10 +260,10 @@ class _BestToDoCardState extends State<BestToDoCard> {
                       const SizedBox(width: 6),
                     ],
                     // UNE seule stat (désencombrement) : quotidienne → le
-                    // jour tant qu'il n'est pas atteint, puis les 7 j ;
-                    // hebdo → toujours les 7 j.
+                    // jour, atteint ou non (demande user : ne pas basculer en
+                    // 7 j une fois la cible remplie) ; hebdo → les 7 j.
                     Text(
-                        e.dayTarget != null && e.dayDone < e.dayTarget!
+                        e.dayTarget != null
                             ? 'auj. ${e.dayDone}/${e.dayTarget}'
                             : '7 j ${e.weekDone}/${e.weekTarget}',
                         style: TextStyle(
