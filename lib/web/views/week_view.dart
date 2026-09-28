@@ -237,12 +237,11 @@ class _WeekViewState extends State<WeekView> {
 
   Future<void> _saveTasks(Project p) => widget.sync.saveProjectTasks(p.id, p.tasks);
 
-  Future<void> _placeAt(WeekTask wt, DateTime day, int startMin) async {
+  Future<void> _placeAt(WeekTask wt, DateTime day, int startMin, int durationMin) async {
     final key = ymdOf(day);
-    final dur = remainingToPlaceMin(wt.task, _allBlocks);
     final block = ScheduleBlock(
       startTime: minToClock(startMin),
-      durationMin: dur == 0 ? wt.task.plannedMin : dur,
+      durationMin: durationMin,
       title: wt.task.title,
       category: 'project',
       projectId: wt.project.id,
@@ -366,18 +365,16 @@ class _WeekViewState extends State<WeekView> {
     final dur = remainingToPlaceMin(wt.task, _allBlocks);
     final duration = dur == 0 ? wt.task.plannedMin : dur;
     final now = DateTime.now();
-    final slot = proposedSlot(_byDay[ymdOf(day)] ?? const [], duration,
-        isToday: day == _today, nowMin: now.hour * 60 + now.minute);
     showWeekTaskPopover(
       context,
       anchor: overlayLocal(context, global),
       title: wt.task.title,
       day: day,
-      proposedStartMin: slot.start,
-      dayFull: slot.full,
+      propose: (d) => proposedSlot(_byDay[ymdOf(day)] ?? const [], d,
+          isToday: day == _today, nowMin: now.hour * 60 + now.minute),
       durationMin: duration,
       taskDone: wt.done,
-      onPlace: (startMin) => _placeAt(wt, day, startMin),
+      onPlace: (startMin, d) => _placeAt(wt, day, startMin, d),
       onOpen: () => _openTask(wt),
       onDone: () => _toggleDone(wt),
       onRescheduleDeadline:
