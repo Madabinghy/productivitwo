@@ -362,16 +362,16 @@ class _WeekViewState extends State<WeekView> {
       context,
       anchor: overlayLocal(context, global),
       title: wt.task.title,
-      day: day,
-      propose: (d) => proposedSlot(_byDay[ymdOf(day)] ?? const [], d,
-          isToday: day == _today, nowMin: now.hour * 60 + now.minute),
+      initialDay: day,
+      propose: (dd, d) => proposedSlot(_byDay[ymdOf(dd)] ?? const [], d,
+          isToday: dd == _today, nowMin: now.hour * 60 + now.minute),
       durationMin: duration,
       taskDone: wt.done,
-      onPlace: (startMin, d) => _placeAt(wt, day, startMin, d),
+      onPlace: (dd, startMin, d) => _placeAt(wt, dd, startMin, d),
       onOpen: () => _openTask(wt),
       onDone: () => _toggleDone(wt),
       onRescheduleDeadline:
-          wt.overdue && !wt.done ? () => _rescheduleDeadline(wt, day) : null,
+          wt.overdue && !wt.done ? (dd) => _rescheduleDeadline(wt, dd) : null,
     );
   }
 
