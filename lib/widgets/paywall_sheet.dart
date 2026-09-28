@@ -1,5 +1,9 @@
 // ignore_for_file: deprecated_member_use
 
+// INACTIF tant que `kFreeForAll` (lib/entitlements_flags.dart) est à true :
+// plus aucun appelant depuis l'ouverture de sept. 2026. Conservé tel quel pour
+// la phase 3 (rebrancher showPaywallSheet dans le menu ⋯ et l'écran ORION).
+
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';

@@ -22,7 +22,6 @@ class _VisionPanelState extends State<VisionPanel> {
   static const _visionApi = 'https://getvisionaccess-dzos75b65q-uc.a.run.app';
 
   bool _loading = true;
-  bool _isPro = false;
   bool _available = false;
   bool _onboardingDone = false;
   DateTime? _nextAvailableAt;
@@ -57,7 +56,6 @@ class _VisionPanelState extends State<VisionPanel> {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       setState(() {
         _loading = false;
-        _isPro = body['isPro'] == true;
         _available = body['available'] == true;
         _onboardingDone = body['onboardingDone'] == true;
         _accessUrl = body['accessUrl'] as String?;
@@ -129,26 +127,7 @@ class _VisionPanelState extends State<VisionPanel> {
                       ),
                   ],
                 )
-              : !_isPro
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Fais évoluer ta vision chaque mois (~20 min) avec Productivitwo Pro.',
-                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.6), height: 1.5),
-                        ),
-                        const SizedBox(height: 10),
-                        InkWell(
-                          onTap: () => html.window.open('https://app.productivitwo.com', '_blank'),
-                          child: Row(children: [
-                            Icon(Icons.workspace_premium_outlined, size: 14, color: gold),
-                            const SizedBox(width: 6),
-                            Text('Passer en Pro', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: gold)),
-                          ]),
-                        ),
-                      ],
-                    )
-                  : _available
+              : _available
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [

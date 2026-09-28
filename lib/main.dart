@@ -4804,14 +4804,9 @@ class _AppRootState extends State<AppRoot>
               tooltip: 'Plus',
               onSelected: (v) async {
                 if (v == 'sync_status') {
-                  final isPro = ProManager.isPro;
-                  if (!isPro) {
-                    final unlocked = await showPaywallSheet(context);
-                    if (unlocked) setState(() {});
-                  } else {
-                    Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
-                  }
+                  // Ouverture (kFreeForAll) : plus de paywall, console directe.
+                  Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
                 } else if (v == 'orion') {
                   OrionScreen.show(context, _sync);
                 } else if (v == 'weekly_review') {

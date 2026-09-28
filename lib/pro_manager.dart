@@ -2,6 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:productivitwo_v1/entitlements_flags.dart';
+
+export 'package:productivitwo_v1/entitlements_flags.dart' show kFreeForAll;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // À REMPLIR avant de soumettre sur l'App Store :
@@ -19,7 +22,8 @@ const kProductMonthly = 'productivitwo_pro_monthly';
 const kProductAnnual = 'productivitwo_pro_annual';
 
 class ProManager {
-  static final ValueNotifier<bool> notifier = ValueNotifier(false);
+  // Démarre déjà à true quand kFreeForAll : aucun réseau requis pour être Pro.
+  static final ValueNotifier<bool> notifier = ValueNotifier(kFreeForAll);
   static bool get isPro => notifier.value;
 
   // Pro effectif = abonnement RevenueCat OU grant Firestore (formation_access.
@@ -34,9 +38,16 @@ class ProManager {
     _recompute();
   }
 
-  static void _recompute() => notifier.value = _forcePro || _rcPro || _grantPro;
+  static void _recompute() =>
+      notifier.value = kFreeForAll || _forcePro || _rcPro || _grantPro;
 
   static Future<void> init() async {
+    // Ouverture : pas de RevenueCat (ni configure, ni logIn), aucun appel
+    // réseau au démarrage. Le grant Firestore n'est pas lu non plus — inutile.
+    if (kFreeForAll) {
+      _recompute();
+      return;
+    }
     if (kIsWeb) {
       await refreshGrant(); // web : pas de RevenueCat, mais le grant Firestore reste lu
       return;
@@ -115,6 +126,7 @@ class ProManager {
 
   // Appeler après Sign in with Apple pour lier les achats au compte
   static Future<void> loginUser(String uid) async {
+    if (kFreeForAll) return;
     if (kIsWeb) {
       await refreshGrant(uid); // web : pas de RevenueCat, on lit juste le grant
       return;
@@ -129,6 +141,7 @@ class ProManager {
 
   // Appeler après déconnexion
   static Future<void> logoutUser() async {
+    if (kFreeForAll) return;
     if (kIsWeb) {
       _rcPro = false;
       _recompute();

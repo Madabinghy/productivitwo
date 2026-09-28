@@ -269,6 +269,13 @@ pour convertir les actions `string[]` en `TaskAction` maps — ne pas faire de s
 
 ## Pro / Entitlements & Accès web
 
+> **⚠️ Ouverture (sept. 2026, handoff `docs/specs/ouvrir-app-2026-09/README.md`)** : l'app n'est plus
+> payante pour l'instant (outil des coachés, inclus dans le coaching). **Tout est ouvert par deux flags,
+> rien n'est démonté** : `FREE_FOR_ALL = true` (`functions/src/entitlements.ts`, `effectivePro` renvoie
+> true) et `kFreeForAll = true` (`lib/entitlements_flags.dart`, `ProManager.isPro` vaut true sans
+> RevenueCat). Le paywall (`paywall_sheet.dart`) n'a plus d'appelant. Pour rallumer (phase 3) : serveur
+> d'abord, puis app. Le reste de cette section décrit la mécanique **en sommeil**.
+
 **Statut Pro** — source de vérité serveur : collection `formation_access/{uid}` (nom historique). 3 sources combinées par `effectivePro(data)` (`db.ts`) — l'une suffit, aucune n'écrase l'autre :
 - `subscriptionUntil` (Timestamp) — abonné **RevenueCat**, posé par `revenueCatWebhook` (iOS+Android, un seul webhook ; `app_user_id` = Firebase uid via `Purchases.logIn`).
 - `proUntil` (Timestamp) — **grant daté** (comp admin via `setPro`, ou formation). ⚠️ un grant ne pose QUE `proUntil` (jamais `isPro:true`, sinon il n'expirerait jamais).
