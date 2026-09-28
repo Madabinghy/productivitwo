@@ -8,12 +8,13 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Onglet « Aujourd'hui » : le programme horaire du jour, avec bascule vers
-/// « Demain » pour préparer la journée suivante (planif du lendemain).
-/// L'exécution (chrono, focus) reste dans l'onglet Maintenant.
+/// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
+/// puis le programme horaire du jour, avec bascule vers « Demain » pour
+/// préparer la journée suivante (planif du lendemain).
 class TodayView extends StatefulWidget {
   final AppLogic logic;
   // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
@@ -23,13 +24,35 @@ class TodayView extends StatefulWidget {
   // Onglet réellement affiché ? Transmis aux vues pour que l'auto-scroll
   // « maintenant » (one-shot) attende la première ouverture visible.
   final bool visible;
+  // Carte MAINTENANT (handoff iOS 2026-09) : session/minuteur en cours et
+  // callbacks de l'écran principal. `onNowLaunch` lance sans changer d'onglet.
+  final Project? focusProject;
+  final ProjectTask? focusTask;
+  final DateTime? countdownEndsAt;
+  final int? countdownTotalSec;
+  final void Function(ScheduleBlock block)? onNowLaunch;
+  final VoidCallback? onStopTimer;
+  final VoidCallback? onStopCountdown;
+  final VoidCallback? onOpenRoutines;
+  final VoidCallback? onOpenActivities;
+  final VoidCallback? onChallenge;
 
   const TodayView(
       {super.key,
       required this.logic,
       this.onLaunch,
       this.onOpenSource,
-      this.visible = true});
+      this.visible = true,
+      this.focusProject,
+      this.focusTask,
+      this.countdownEndsAt,
+      this.countdownTotalSec,
+      this.onNowLaunch,
+      this.onStopTimer,
+      this.onStopCountdown,
+      this.onOpenRoutines,
+      this.onOpenActivities,
+      this.onChallenge});
 
   @override
   State<TodayView> createState() => _TodayViewState();
@@ -379,6 +402,23 @@ class _TodayViewState extends State<TodayView> {
               ],
             ),
             const SizedBox(height: 16),
+            if (!_showTomorrow && widget.onStopTimer != null) ...[
+              NowCard(
+                logic: widget.logic,
+                focusProject: widget.focusProject,
+                focusTask: widget.focusTask,
+                countdownEndsAt: widget.countdownEndsAt,
+                countdownTotalSec: widget.countdownTotalSec,
+                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                onOpenSource: widget.onOpenSource,
+                onStopTimer: widget.onStopTimer!,
+                onStopCountdown: widget.onStopCountdown ?? () {},
+                onOpenRoutines: widget.onOpenRoutines,
+                onOpenActivities: widget.onOpenActivities,
+                onChallenge: widget.onChallenge,
+              ),
+              const SizedBox(height: 20),
+            ],
             // key par date : force un nouveau state (nouveau stream Firestore)
             // quand on bascule aujourd'hui ↔ demain.
             if (_timeline)

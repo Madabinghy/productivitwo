@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>iOS — Aujourd'hui (fusion Aujourd'hui + Maintenant)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;background:#07100D;color:#E8F3ED;font-variant-numeric:tabular-nums}
+a{color:#27C48F;text-decoration:none}
+button{font-family:inherit;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; background: #07100D; color: #E8F3ED; overflow: hidden; position: relative">
+
+<!-- espace barre système (réelle sur l'iPhone) -->
+<div style="height: 54px; flex-shrink: 0"></div>
+
+<!-- Contenu défilant -->
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 14px; padding: 0 16px">
+
+<!-- En-tête -->
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+<h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.3px">Lundi 28</h1>
+<div style="font-size: 13px; color: #86A093">3 / 9 blocs · 6 h 15 restantes</div>
+</div>
+<button aria-label="Chrono libre" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: #E8F3ED; display: flex; align-items: center; justify-content: center; padding: 0">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2.5 2M9 2h6"></path></svg>
+</button>
+<button aria-label="ORION, 2 messages" style="width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(39,196,143,.35); background: #12241B; display: flex; align-items: center; justify-content: center; padding: 0; position: relative">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="#27C48F"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"></path></svg>
+<span style="position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; border-radius: 999px; background: #27C48F; color: #07100D; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">2</span>
+</button>
+</div>
+
+<!-- MAINTENANT -->
+<section style="background: #0C1C14; border: 1px solid rgba(39,196,143,.3); border-radius: 20px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="width: 7px; height: 7px; border-radius: 999px; background: #27C48F"></span>
+<span style="font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093; flex-grow: 1">MAINTENANT</span>
+<span style="font-size: 12px; color: #86A093">jusqu'à 12 h 00</span>
+</div>
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="position: relative; width: 96px; height: 96px; flex-shrink: 0">
+<svg width="96" height="96" viewBox="0 0 96 96" style="position: absolute; left: 0; top: 0">
+<circle cx="48" cy="48" r="41" fill="none" stroke="#152B1E" stroke-width="9"></circle>
+<circle cx="48" cy="48" r="41" fill="none" stroke="#27C48F" stroke-width="9" stroke-linecap="round" stroke-dasharray="28.3 257.6" transform="rotate(-90 48 48)"></circle>
+</svg>
+<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; letter-spacing: -.5px">10:14</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex-grow: 1">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #B9CFC4"><span style="width: 8px; height: 8px; border-radius: 2px; background: #1D9E75"></span>Séminaire Raffinerie</div>
+<div style="font-size: 17px; font-weight: 600; line-height: 1.25">Finaliser le déroulé du jour 2</div>
+<div style="font-size: 12.5px; color: #86A093">Ensuite · Pause déjeuner</div>
+</div>
+</div>
+<div style="display: flex; gap: 8px">
+<button style="flex-grow: 1; height: 48px; border-radius: 999px; border: none; background: #27C48F; color: #07100D; font-size: 15px; font-weight: 700">Terminer</button>
+<button style="height: 48px; padding: 0 18px; border-radius: 999px; border: none; background: rgba(255,255,255,.07); color: #E8F3ED; font-size: 15px; font-weight: 600">Pause</button>
+<button aria-label="Voir la tâche" style="width: 48px; height: 48px; border-radius: 999px; border: none; background: rgba(255,255,255,.07); color: #B9CFC4; display: flex; align-items: center; justify-content: center; padding: 0"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6l6 6-6 6"></path></svg></button>
+</div>
+</section>
+
+<!-- Programme du jour -->
+<section style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 0 2px">
+<h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #86A093; flex-grow: 1">PROGRAMME DU JOUR</h2>
+<a href="#" style="font-size: 13px; font-weight: 600">Demain</a>
+<a href="#" style="font-size: 13px; font-weight: 600">Modifier</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 2px">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #6E8A7B">07:00</span>
+<span style="width: 24px; height: 24px; border-radius: 999px; background: #1D9E75; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#07100D" stroke-width="3" stroke-linecap="round"><path d="M5 12l4 4 10-10"></path></svg></span>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #E07B39; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px; color: #86A093; text-decoration: line-through">Sport · Push</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #6E8A7B">08:30</span>
+<span style="width: 24px; height: 24px; border-radius: 999px; background: #1D9E75; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#07100D" stroke-width="3" stroke-linecap="round"><path d="M5 12l4 4 10-10"></path></svg></span>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #1D9E75; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px; color: #86A093; text-decoration: line-through">Rail des coachés</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 10px; border-radius: 12px; background: #12241B; border: 1px solid rgba(39,196,143,.35)">
+<span style="width: 40px; font-size: 13px; color: #27C48F; font-weight: 700">10:30</span>
+<span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span style="width: 9px; height: 9px; border-radius: 999px; background: #27C48F"></span></span>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #1D9E75; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px; font-weight: 600; line-height: 1.2">Déroulé du jour 2</span>
+<span style="font-size: 12px; color: #86A093">1 h 30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #B9CFC4">12:00</span>
+<button aria-label="Marquer fait" style="width: 24px; height: 24px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0; flex-shrink: 0"></button>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #8E9AAF; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px; color: #B9CFC4">Pause déjeuner</span>
+<span style="font-size: 12px; color: #86A093">1 h</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #B9CFC4">13:00</span>
+<button aria-label="Marquer fait" style="width: 24px; height: 24px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0; flex-shrink: 0"></button>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #1D9E75; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px; line-height: 1.2">Support de la séance 3</span>
+<span style="font-size: 12px; color: #86A093">1 h 30</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #B9CFC4">14:30</span>
+<button aria-label="Marquer fait" style="width: 24px; height: 24px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0; flex-shrink: 0"></button>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #E07B39; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px">Anglais</span>
+<span style="font-size: 12px; color: #86A093">30 min</span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 10px; border-radius: 12px">
+<span style="width: 40px; font-size: 13px; color: #B9CFC4">15:00</span>
+<button aria-label="Marquer fait" style="width: 24px; height: 24px; border-radius: 999px; border: 1.5px solid #4A6557; background: transparent; padding: 0; flex-shrink: 0"></button>
+<span style="width: 8px; height: 8px; border-radius: 2px; background: #1D9E75; flex-shrink: 0"></span>
+<span style="flex-grow: 1; font-size: 15px">Facturation du mois</span>
+<span style="font-size: 12px; color: #86A093">1 h</span>
+</div>
+</div>
+</section>
+
+<!-- Retards -->
+<section style="background: #0C1C14; border: 1px solid rgba(255,255,255,.07); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+<div style="display: flex; align-items: center; gap: 8px">
+<h2 style="margin: 0; font-size: 10px; font-weight: 700; letter-spacing: 1.3px; color: #FF6B5E; flex-grow: 1">À TRAITER · 3</h2>
+<a href="#" style="font-size: 13px; font-weight: 600">Replanifier</a>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="flex-grow: 1">Réserver la salle plénière</span><span style="font-size: 12px; color: #FF6B5E; font-weight: 600">25/09</span></div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 14px"><span style="flex-grow: 1">Préparer le quiz de la séance 2</span><span style="font-size: 12px; color: #FF6B5E; font-weight: 600">26/09</span></div>
+</section>
+
+</div>
+
+<!-- Barre d'onglets -->
+<nav aria-label="Onglets" style="height: 84px; flex-shrink: 0; box-sizing: border-box; padding: 8px 8px 24px; border-top: 1px solid rgba(255,255,255,.07); background: #0A1611; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr))">
+<a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #86A093; font-size: 10px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="5"></circle><circle cx="12" cy="12" r="1.2" fill="currentColor"></circle></svg>Objectifs</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #86A093; font-size: 10px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 19h16M6 15V9M11 15V5M16 15v-7"></path></svg>Stats</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #86A093; font-size: 10px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Projets</a>
+<a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #27C48F; font-size: 10px; font-weight: 700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>Aujourd'hui</a>
+<a href="#" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #86A093; font-size: 10px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h10M10 12h10M10 18h10M3.5 6l1.5 1.5L7.5 5M3.5 12l1.5 1.5 2.5-2.5M3.5 18l1.5 1.5 2.5-2.5"></path></svg>Actions</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

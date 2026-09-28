@@ -19,8 +19,11 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 - **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
   (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
-- Onglets mobiles actuels : **Accueil / Projets / Aujourd'hui (programme + demain) /
-  Maintenant (focus/chrono)**. Ne pas réintroduire d'UI de jeu.
+- Onglets mobiles actuels : **Objectifs / Stats / Projets / Actions / Aujourd'hui / Maintenant**
+  (`_Tab` dans `lib/main.dart`). Ne pas réintroduire d'UI de jeu.
+  **En cours (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`, 3 PR)** : fusion
+  Aujourd'hui + Maintenant → carte MAINTENANT (`lib/widgets/now_card.dart`) en tête d'Aujourd'hui
+  (PR 1 livrée), puis retrait de l'onglet Maintenant / barre à 5 (PR 2), programme en liste 48 px (PR 3).
 
 **Points de restauration permanents (ne jamais modifier/supprimer) :**
 
