@@ -284,6 +284,26 @@ class _WeekViewState extends State<WeekView> {
     );
   }
 
+  /// Report volontaire de l'échéance d'une tâche en retard au jour [day]
+  /// (le début est avancé si besoin). Annulable.
+  Future<void> _rescheduleDeadline(WeekTask wt, DateTime day) async {
+    final t = wt.task;
+    final oldStart = t.startDate, oldEnd = t.endDate;
+    setState(() {
+      t.endDate = day;
+      if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
+    });
+    await _saveTasks(wt.project);
+    _snack('Échéance reportée au ${_kDayLong[day.weekday - 1]} ${day.day}',
+        actionLabel: 'Annuler', onAction: () async {
+      setState(() {
+        t.startDate = oldStart;
+        t.endDate = oldEnd;
+      });
+      await _saveTasks(wt.project);
+    });
+  }
+
   Future<void> _resizeTask(WeekTask wt, int deltaDays) async {
     if (deltaDays == 0) return;
     final t = wt.task;
@@ -359,6 +379,8 @@ class _WeekViewState extends State<WeekView> {
       onPlace: (startMin) => _placeAt(wt, day, startMin),
       onOpen: () => _openTask(wt),
       onDone: () => _toggleDone(wt),
+      onRescheduleDeadline:
+          wt.overdue && !wt.done ? () => _rescheduleDeadline(wt, day) : null,
     );
   }
 
