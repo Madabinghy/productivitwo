@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
@@ -437,36 +438,37 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       });
     }
 
+    // Liste 48 px (handoff iOS 2026-09 § 3.3) : sans titre de section, la
+    // rangée « Ajouter un bloc » remplace le « + » de l'en-tête.
+    final bare = widget.title.isEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              widget.title,
-              style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface),
-            ),
-            // + collé au titre (pas au bord droit) : le bord droit est occupé
-            // par les boutons flottants de l'onglet (toggle liste/agenda,
-            // corbeille) qui le recouvraient (constaté sur build).
-            IconButton(
-              tooltip: 'Ajouter un bloc',
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.only(left: 10),
-              constraints: const BoxConstraints(),
-              icon: Icon(Icons.add_circle_outline,
-                  size: 20, color: cs.primary),
-              onPressed: () => _addManualBlock(context),
-            ),
-          ],
-        ),
+        if (!bare)
+          Row(
+            children: [
+              Text(
+                widget.title,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface),
+              ),
+              IconButton(
+                tooltip: 'Ajouter un bloc',
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.only(left: 10),
+                constraints: const BoxConstraints(),
+                icon: Icon(Icons.add_circle_outline,
+                    size: 20, color: cs.primary),
+                onPressed: () => _addManualBlock(context),
+              ),
+            ],
+          ),
         // Résumé prévu / fait : la visibilité globale de la journée en une
         // ligne, même en vue liste (le loggué inclut le chrono en cours).
         if (visible.isNotEmpty) _daySummary(cs, visible),
-        const SizedBox(height: 12),
+        SizedBox(height: bare ? 8 : 12),
         if (visible.isEmpty)
           _buildEmptyState(cs)
         else if (widget.groupByContext)
@@ -499,9 +501,30 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
+        if (bare) _addRow(cs),
       ],
     );
   }
+
+  /// Rangée « + Ajouter un bloc » (44 px) en fin de liste.
+  Widget _addRow(ColorScheme cs) => InkWell(
+        onTap: () => _addManualBlock(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 44),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: Row(children: [
+            SizedBox(
+              width: 40,
+              child: Icon(Icons.add, size: 18, color: cs.primary),
+            ),
+            const SizedBox(width: 12),
+            Text('Ajouter un bloc',
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600, color: cs.primary)),
+          ]),
+        ),
+      );
 
   /// « Xh prévu · Yh fait · n/m ✓ » sous le titre — ce qu'on doit faire et ce
   /// qu'on a fait, d'un coup d'œil. Le « fait » (temps loggué du jour, toutes
@@ -628,19 +651,37 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       {required Key key}) {
     if (block.isPrep) return _buildPrepBlock(context, cs, block, key: key);
     final isDone = block.status == 'done';
+    final dark = cs.brightness == Brightness.dark;
     // Défi programmé = teinte dorée distincte (cohérent avec « Challenge me »).
     final color =
         block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs);
+    final primary = dark ? kBPrimary : cs.primary;
+    final muted = dark ? kBText3 : cs.onSurface.withOpacity(.6);
+    final hourColor = dark ? kBText4 : cs.onSurface.withOpacity(.45);
+    // Bloc en cours (aujourd'hui, pending, créneau contenant l'heure) :
+    // fond + bordure primaire, heure en primaire, point vert à la place de la coche.
+    final now = DateTime.now();
+    final nowMin = now.hour * 60 + now.minute;
+    int toMin(String hm) =>
+        (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
+    final startMin = toMin(block.startTime);
+    final current = _isToday &&
+        block.status == 'pending' &&
+        startMin <= nowMin &&
+        nowMin < startMin + block.durationMin;
     // Réel loggué du jour sur la source du bloc — visible même en vue liste.
     final int loggedMin;
     if (_isToday) {
-      final now = DateTime.now();
       final dayStart = DateTime(now.year, now.month, now.day);
       loggedMin = _loggedMinFor(
           block, dayStart, dayStart.add(const Duration(days: 1)));
     } else {
       loggedMin = 0;
     }
+    final launchable = widget.onLaunch != null &&
+        !isDone &&
+        !current &&
+        (block.projectId != null || block.activityId != null);
 
     return Dismissible(
       key: key,
@@ -648,7 +689,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        margin: const EdgeInsets.only(bottom: 8),
+        margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(
           color: cs.errorContainer,
           borderRadius: BorderRadius.circular(12),
@@ -657,7 +698,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       ),
       onDismissed: (_) => _deleteBlock(block),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.only(bottom: 2),
         child: GestureDetector(
           // Appui long : ajuster le bloc — heure et durée se changent SANS
           // pénalité (la flexibilité intra-journée est libre) ; seul le
@@ -696,147 +737,134 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               _showEditSheet(context, cs, block);
             }
           },
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Heure
-              SizedBox(
-                width: 46,
-                child: Text(
-                  block.startTime,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: isDone
-                        ? cs.onSurface.withOpacity(.25)
-                        : cs.onSurface.withOpacity(.55),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: current ? (dark ? kBActive : cs.primaryContainer.withOpacity(.35)) : null,
+              borderRadius: BorderRadius.circular(12),
+              border: current ? Border.all(color: primary.withOpacity(.35)) : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Heure
+                SizedBox(
+                  width: 40,
+                  child: Text(
+                    block.startTime,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: current ? FontWeight.w700 : FontWeight.w400,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: current ? primary : hourColor,
+                    ),
                   ),
                 ),
-              ),
-              // Barre couleur catégorie
-              Container(
-                width: 3,
-                height: 44,
-                margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(
-                  color: isDone ? color.withOpacity(.2) : color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              // Contenu
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      block.title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isDone
-                            ? cs.onSurface.withOpacity(.3)
-                            : cs.onSurface,
-                        decoration:
-                            isDone ? TextDecoration.lineThrough : null,
-                        decorationColor: cs.onSurface.withOpacity(.3),
+                // Coche 24 px (point vert pour le bloc en cours)
+                GestureDetector(
+                  onTap: () => _toggleDone(block),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Center(
+                        child: current
+                            ? Container(
+                                width: 10,
+                                height: 10,
+                                decoration:
+                                    BoxDecoration(color: primary, shape: BoxShape.circle))
+                            : AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isDone ? color : Colors.transparent,
+                                  border: isDone
+                                      ? null
+                                      : Border.all(
+                                          color: cs.onSurface.withOpacity(.25), width: 1.5),
+                                ),
+                                child: isDone
+                                    ? Icon(Icons.check, size: 14, color: cs.surface)
+                                    : null,
+                              ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(_categoryIcon(block.category),
-                            size: 11,
-                            color: isDone
-                                ? color.withOpacity(.25)
-                                : color.withOpacity(.8)),
-                        const SizedBox(width: 4),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Pastille catégorie 8 px
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: isDone ? color.withOpacity(.35) : color,
+                      borderRadius: BorderRadius.circular(2)),
+                ),
+                const SizedBox(width: 10),
+                // Titre
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        block.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+                          color: isDone ? muted : cs.onSurface,
+                          decoration: isDone ? TextDecoration.lineThrough : null,
+                          decorationColor: muted,
+                        ),
+                      ),
+                      // Bloc copié par « Reporter au lendemain » : provenance.
+                      if (block.carriedFromDate != null && !isDone)
                         Text(
-                          fmtMin(block.durationMin),
+                          'reporté d\'hier',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                               fontSize: 11,
-                              color: cs.onSurface
-                                  .withOpacity(isDone ? .2 : .4)),
+                              fontStyle: FontStyle.italic,
+                              color: cs.tertiary.withOpacity(.9)),
                         ),
-                        // Temps loggué du jour sur la source (activité/tâche) :
-                        // le réel à côté du prévu, sans passer par la timeline.
-                        if (loggedMin > 0) ...[
-                          const SizedBox(width: 6),
-                          Icon(Icons.timer_outlined,
-                              size: 10.5,
-                              color: cs.primary
-                                  .withOpacity(isDone ? .4 : .85)),
-                          const SizedBox(width: 2),
-                          Text(
-                            fmtMin(loggedMin),
-                            style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: cs.primary
-                                    .withOpacity(isDone ? .4 : .9)),
-                          ),
-                        ],
-                        // Bloc copié par « Reporter au lendemain » : provenance.
-                        if (block.carriedFromDate != null && !isDone) ...[
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              '↩ reporté d\'hier',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 10.5,
-                                  fontStyle: FontStyle.italic,
-                                  color: cs.tertiary.withOpacity(.9)),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              // Bouton ▶ lancer (chrono + focus tâche), si lançable.
-              if (widget.onLaunch != null &&
-                  !isDone &&
-                  (block.projectId != null || block.activityId != null))
-                GestureDetector(
-                  onTap: () => widget.onLaunch!(block),
-                  behavior: HitTestBehavior.opaque,
-                  child: Container(
-                    margin: const EdgeInsets.only(left: 4),
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                        color: color.withOpacity(.14), shape: BoxShape.circle),
-                    child: Icon(Icons.play_arrow_rounded, size: 18, color: color),
+                    ],
                   ),
                 ),
-              // Bouton checkbox
-              GestureDetector(
-                onTap: () => _toggleDone(block),
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 0, 8),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: isDone ? color : Colors.transparent,
-                      border: isDone
-                          ? null
-                          : Border.all(
-                              color: cs.onSurface.withOpacity(.2),
-                              width: 1.5),
-                    ),
-                    child: isDone
-                        ? Icon(Icons.check, size: 15, color: cs.surface)
-                        : null,
+                const SizedBox(width: 8),
+                // Durée (+ réel loggué du jour sur la source)
+                Text(
+                  loggedMin > 0
+                      ? '${fmtMin(block.durationMin)} · ${fmtMin(loggedMin)} fait'
+                      : fmtMin(block.durationMin),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: loggedMin > 0 ? FontWeight.w600 : FontWeight.w400,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: loggedMin > 0 ? primary.withOpacity(isDone ? .5 : .9) : muted,
                   ),
                 ),
-              ),
-            ],
+                // ▶ lancer (chrono + focus tâche) — le bloc en cours se lance
+                // depuis la carte MAINTENANT.
+                if (launchable)
+                  GestureDetector(
+                    onTap: () => widget.onLaunch!(block),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: Icon(Icons.play_circle_outline, size: 22, color: color),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1197,13 +1225,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         _ => cs.tertiary,
       };
 
-  IconData _categoryIcon(String category) => switch (category) {
-        'project' => Icons.rocket_launch_outlined,
-        'routine' => Icons.loop,
-        'personal' => Icons.home_outlined,
-        'break' => Icons.coffee_outlined,
-        _ => Icons.circle_outlined,
-      };
 }
 
 // ── Suggestion d'association d'un bloc ────────────────────────────────────────

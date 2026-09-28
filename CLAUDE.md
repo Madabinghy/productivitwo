@@ -23,8 +23,8 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   `hideProjectsTab` ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
   **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
   MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
-  `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé (PR 1-2 livrées, PR 3 = programme en
-  liste 48 px à venir). Toute navigation « vers Maintenant » passe par `_goNowTab()` (Aujourd'hui + scroll haut).
+  `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé ; programme du jour en liste 48 px
+  (`daily_schedule_view.dart`, titre vide = nouveau style) — handoff livré (3 PR). Toute navigation « vers Maintenant » passe par `_goNowTab()` (Aujourd'hui + scroll haut).
 
 **Points de restauration permanents (ne jamais modifier/supprimer) :**
 
