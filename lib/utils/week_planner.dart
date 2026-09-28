@@ -38,16 +38,22 @@ class WeekTask {
   bool get toPlace => !done && !planned;
 }
 
-/// Tâches qui chevauchent la semaine [monday]..[monday+6], ou en retard
+/// Jours d'une fenêtre de [days] jours à partir de [start].
+List<DateTime> windowDates(DateTime start, int days) =>
+    [for (var i = 0; i < days; i++) dateOnly(start).add(Duration(days: i))];
+
+/// Tâches qui chevauchent la fenêtre [start]..[start+days-1], ou en retard
 /// (échéance < aujourd'hui, non faite), des projets actifs non en pause.
-/// [scheduled] = blocs (non supprimés) de tous les jours de la semaine.
-List<WeekTask> weekTasks({
+/// [scheduled] = blocs (non supprimés) de tous les jours de la fenêtre.
+List<WeekTask> windowTasks({
   required List<Project> projects,
-  required DateTime monday,
+  required DateTime start,
+  required int days,
   required List<ScheduleBlock> scheduled,
   required DateTime today,
 }) {
-  final sunday = monday.add(const Duration(days: 6));
+  final first = dateOnly(start);
+  final last = first.add(Duration(days: days - 1));
   final blocksByTask = <String, int>{};
   for (final b in scheduled) {
     if (b.taskId != null) {
@@ -60,9 +66,9 @@ List<WeekTask> weekTasks({
     for (final t in p.tasks) {
       if (t.status == 'skipped') continue;
       final end = dateOnly(t.endDate ?? t.startDate);
-      final start = dateOnly(t.startDate);
+      final s = dateOnly(t.startDate);
       final overdue = t.status != 'done' && end.isBefore(dateOnly(today));
-      final overlaps = !start.isAfter(sunday) && !end.isBefore(monday);
+      final overlaps = !s.isAfter(last) && !end.isBefore(first);
       if (!overlaps && !overdue) continue;
       out.add(WeekTask(
         task: t,
@@ -74,6 +80,15 @@ List<WeekTask> weekTasks({
   }
   return out;
 }
+
+/// Semaine Lun→Dim (cas particulier de [windowTasks]).
+List<WeekTask> weekTasks({
+  required List<Project> projects,
+  required DateTime monday,
+  required List<ScheduleBlock> scheduled,
+  required DateTime today,
+}) =>
+    windowTasks(projects: projects, start: monday, days: 7, scheduled: scheduled, today: today);
 
 /// « À caser » : ouvertes sans bloc, retards d'abord, puis par échéance.
 List<WeekTask> tasksToPlace(List<WeekTask> tasks) {
@@ -117,39 +132,33 @@ int? firstFreeSlot(
   return cursor + durationMin <= untilMin ? cursor : null;
 }
 
-/// Insertion entre deux blocs (glisser-déposer sur un interstice) : le nouveau
-/// bloc démarre à la fin du bloc au-dessus ([index]-1), ou à 8 h (ou avant le
-/// premier bloc s'il commence plus tôt) en tête de journée. Les blocs suivants
-/// qui chevaucheraient sont décalés d'autant, en cascade. [blocks] doit être
-/// trié par heure de début et ne pas contenir le bloc déplacé lui-même.
-/// Retourne null si la cascade dépasse minuit.
-({int start, Map<String, int> shifted})? insertAt(
+/// Minutes de la tâche déjà couvertes par ses blocs de la fenêtre.
+int plannedMinForTask(ProjectTask t, List<ScheduleBlock> scheduled) =>
+    scheduled.where((b) => b.taskId == t.id).fold(0, (s, b) => s + b.durationMin);
+
+/// « Reste à caser » = estimation − blocs liés, jamais négatif.
+int remainingToPlaceMin(ProjectTask t, List<ScheduleBlock> scheduled) {
+  final r = t.plannedMin - plannedMinForTask(t, scheduled);
+  return r < 0 ? 0 : r;
+}
+
+/// Créneau proposé par le popover « Caser » : premier intervalle libre de
+/// [durationMin] à partir de 8 h (ou de maintenant, arrondi au quart d'heure
+/// suivant, si c'est aujourd'hui) et finissant avant 20 h. À défaut, 8 h 00
+/// avec `full: true` (« la journée est pleine »).
+({int start, bool full}) proposedSlot(
   List<ScheduleBlock> blocks,
-  int index,
   int durationMin, {
-  int dayStartMin = 8 * 60,
+  required bool isToday,
+  int nowMin = 0,
 }) {
-  final i = index.clamp(0, blocks.length);
-  final int start;
-  if (i == 0) {
-    start = blocks.isEmpty
-        ? dayStartMin
-        : (blockStartMin(blocks.first) < dayStartMin
-            ? blockStartMin(blocks.first)
-            : dayStartMin);
-  } else {
-    start = blockEndMin(blocks[i - 1]);
+  var from = 8 * 60;
+  if (isToday) {
+    final rounded = ((nowMin + 14) ~/ 15) * 15;
+    if (rounded > from) from = rounded;
   }
-  final shifted = <String, int>{};
-  var cursor = start + durationMin;
-  for (var k = i; k < blocks.length; k++) {
-    final b = blocks[k];
-    if (blockStartMin(b) >= cursor) break; // le trou absorbe le reste
-    shifted[b.id] = cursor;
-    cursor += b.durationMin;
-  }
-  if (cursor > 24 * 60) return null;
-  return (start: start, shifted: shifted);
+  final s = firstFreeSlot(blocks, durationMin, fromMin: from, untilMin: 20 * 60);
+  return s == null ? (start: 8 * 60, full: true) : (start: s, full: false);
 }
 
 String minToClock(int min) =>
