@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
@@ -11,6 +12,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/add_task_dialog.dart';
+import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
@@ -198,6 +200,26 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       a.done = !a.done;
       a.doneAt = a.done ? DateTime.now() : null;
     });
+    await _save();
+  }
+
+  Future<void> _toggleChecklist(TaskAction a, ChecklistItem c, bool done) async {
+    final changed = setChecklistItem(a, c.id, done);
+    setState(() {});
+    await _save();
+    if (changed && mounted) {
+      _snack(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}');
+    }
+  }
+
+  Future<void> _addChecklist(TaskAction a, String title) async {
+    if (addChecklistItem(a, title) == null) return;
+    setState(() {});
+    await _save();
+  }
+
+  Future<void> _removeChecklist(TaskAction a, ChecklistItem c) async {
+    setState(() => removeChecklistItem(a, c.id));
     await _save();
   }
 
@@ -736,32 +758,49 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
           for (final a in actions)
             Padding(
               padding: const EdgeInsets.only(left: 30, bottom: 6),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _toggleAction(a),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Icon(
-                      a.done ? Icons.check_circle : Icons.radio_button_unchecked,
-                      size: 16,
-                      color: a.done ? kBPrimaryDark : kBText3,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _toggleAction(a),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(
+                        a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                        size: 16,
+                        color: a.done ? kBPrimaryDark : kBText3,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(a.title,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: a.done ? kBText4 : kBText2,
+                            decoration: a.done ? TextDecoration.lineThrough : null,
+                            decorationColor: kBText4)),
+                  ),
+                  if (checklistBadge(a) != null) ...[
+                    const SizedBox(width: 8),
+                    checklistBadge(a)!,
+                  ],
+                  for (final c in a.allContexts.take(3)) ...[
+                    const SizedBox(width: 6),
+                    _badge(c, kBText3),
+                  ],
+                ]),
+                // Micro-actions : cochables ici comme pendant un bloc du programme.
+                Padding(
+                  padding: const EdgeInsets.only(left: 28, top: 2),
+                  child: ChecklistEditor(
+                    items: _hideDone ? a.checklist.where((c) => !c.done).toList() : a.checklist,
+                    dense: true,
+                    onToggle: (c, v) => _toggleChecklist(a, c, v),
+                    onAdd: (t) => _addChecklist(a, t),
+                    onDelete: (c) => _removeChecklist(a, c),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(a.title,
-                      style: TextStyle(
-                          fontSize: 13,
-                          color: a.done ? kBText4 : kBText2,
-                          decoration: a.done ? TextDecoration.lineThrough : null,
-                          decorationColor: kBText4)),
-                ),
-                for (final c in a.allContexts.take(3)) ...[
-                  const SizedBox(width: 6),
-                  _badge(c, kBText3),
-                ],
               ]),
             ),
         ],

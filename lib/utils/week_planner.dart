@@ -204,11 +204,14 @@ String minToClock(int min) =>
 }
 
 /// Bloc de programme pour une tâche de projet à [startMin].
-ScheduleBlock taskBlock(WeekTask wt, int startMin) => ScheduleBlock(
+ScheduleBlock taskBlock(WeekTask wt, int startMin, {int? durationMin}) => ScheduleBlock(
       startTime: minToClock(startMin),
-      durationMin: wt.task.plannedMin,
+      durationMin: durationMin ?? wt.task.plannedMin,
       title: wt.task.title,
       category: 'project',
       projectId: wt.project.id,
       taskId: wt.task.id,
+      // Vise la prochaine action ouverte : sa checklist s'affiche dans
+      // Aujourd'hui → Maintenant pendant le bloc.
+      actionId: wt.task.actions.where((a) => !a.done).firstOrNull?.id,
     );

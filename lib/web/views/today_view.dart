@@ -8,10 +8,12 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
+import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
@@ -221,6 +223,20 @@ class _TodayViewState extends State<TodayView> {
     } finally {
       _busy = false;
     }
+  }
+
+  /// Coche un item de la checklist de l'action visée par le bloc en cours.
+  /// Dernier item coché = action faite (règle CLAUDE.md) ; on le signale.
+  Future<void> _toggleBlockChecklist(
+      Project p, TaskAction a, ChecklistItem c, bool done) async {
+    final changed = setChecklistItem(a, c.id, done);
+    setState(() {});
+    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    if (!changed || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
+      duration: const Duration(seconds: 2),
+    ));
   }
 
   Future<void> _editBlock(ScheduleBlock b) async {
@@ -531,6 +547,7 @@ class _TodayViewState extends State<TodayView> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 12.5, color: kBText3),
           ),
+          ..._nowChecklist(b),
         ] else
           Text(_activityName(open?.activityId) ?? 'Chrono libre',
               textAlign: TextAlign.center,
@@ -733,6 +750,58 @@ class _TodayViewState extends State<TodayView> {
     return SingleChildScrollView(child: stack);
   }
 
+  /// Action visée par le bloc en cours + sa checklist cochable (micro-actions
+  /// pour avancer pendant le créneau). Vide si le bloc ne vise aucune action.
+  List<Widget> _nowChecklist(ScheduleBlock b) {
+    final p = _project(b.projectId);
+    final r = resolveBlockAction(p, b);
+    if (p == null || r == null) return const [];
+    final a = r.action;
+    final badge = checklistBadge(a);
+    return [
+      const SizedBox(height: 14),
+      Container(
+        constraints: const BoxConstraints(maxHeight: 190),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        decoration: BoxDecoration(
+          color: kBSurface,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 14, color: a.done ? kBPrimaryDark : kBText3),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(a.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: a.done ? kBText3 : kBText2,
+                      decoration: a.done ? TextDecoration.lineThrough : null,
+                      decorationColor: kBText3)),
+            ),
+            if (badge != null) ...[const SizedBox(width: 8), badge],
+          ]),
+          if (a.checklist.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Flexible(
+              child: SingleChildScrollView(
+                child: ChecklistEditor(
+                  items: a.checklist,
+                  dense: true,
+                  onToggle: (c, v) => _toggleBlockChecklist(p, a, c, v),
+                ),
+              ),
+            ),
+          ],
+        ]),
+      ),
+    ];
+  }
+
   Widget _timelineBlock(ScheduleBlock b, double h) {
     final color = _kCategoryColor[b.category] ?? const Color(0xFF8E9AAF);
     final done = b.status == 'done';
@@ -768,8 +837,12 @@ class _TodayViewState extends State<TodayView> {
       decoration: done || skipped ? TextDecoration.lineThrough : null,
       decorationColor: kBText3,
     );
+    final target = project == null ? null : resolveBlockAction(project, b)?.action;
+    final progress = target != null && target.checklist.isNotEmpty && !done
+        ? ' · ${target.checklistDone}/${target.checklistTotal}'
+        : '';
     final trailing = Text(
-      current ? 'en cours' : fmtMin(b.durationMin),
+      (current ? 'en cours' : fmtMin(b.durationMin)) + progress,
       style: TextStyle(
         fontSize: 12,
         fontWeight: current ? FontWeight.w600 : FontWeight.w400,
