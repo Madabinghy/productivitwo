@@ -67,7 +67,6 @@ import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/proposals_sheet.dart';
 import 'package:productivitwo_v1/widgets/session_template_editor.dart';
-import 'package:productivitwo_v1/widgets/focus_view.dart';
 import 'package:productivitwo_v1/widgets/today_view.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
@@ -77,7 +76,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
-enum _Tab { dashboard, projets, aujourdhui, maintenant, actions, stats }
+enum _Tab { dashboard, projets, aujourdhui, actions, stats }
 
 class MiniRingThick extends StatelessWidget {
   const MiniRingThick({
@@ -1840,7 +1839,15 @@ class _AppRootState extends State<AppRoot>
   String? selectedDomainId;
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
-  _Tab _tab = _Tab.dashboard;
+  _Tab _tab = _Tab.aujourdhui;
+  // Onglet unique Aujourd'hui (handoff iOS 2026-09, PR 2) : toute navigation
+  // « vers Maintenant » atterrit ici, carte MAINTENANT en tête.
+  final _todayKey = GlobalKey<TodayViewState>();
+  _Tab _goNowTab() {
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _todayKey.currentState?.scrollToTop());
+    return _Tab.aujourdhui;
+  }
 // affiché une seule fois tant que l'app reste ouverte
 
   Timer? _saveDebounce;
@@ -2776,7 +2783,7 @@ class _AppRootState extends State<AppRoot>
         setState(() {
           _focusProject = null;
           _focusTask = null;
-          if (goToNow) _tab = _Tab.maintenant;
+          if (goToNow) _tab = _goNowTab();
         });
         return;
       }
@@ -2816,7 +2823,7 @@ class _AppRootState extends State<AppRoot>
             setState(() {
               _focusProject = null;
               _focusTask = null;
-              if (goToNow) _tab = _Tab.maintenant;
+              if (goToNow) _tab = _goNowTab();
             });
             return;
           }
@@ -2832,7 +2839,7 @@ class _AppRootState extends State<AppRoot>
         setState(() {
           _focusProject = null;
           _focusTask = null;
-          if (goToNow) _tab = _Tab.maintenant;
+          if (goToNow) _tab = _goNowTab();
         });
       }
       return;
@@ -2901,7 +2908,7 @@ class _AppRootState extends State<AppRoot>
       _focusProject = project;
       _focusTask = task;
       _focusActivityId = focusActId;
-      if (goToNow) _tab = _Tab.maintenant;
+      if (goToNow) _tab = _goNowTab();
     });
   }
 
@@ -2958,22 +2965,20 @@ class _AppRootState extends State<AppRoot>
   // « Stats » = l'ancien Accueil (tableau de bord), promu onglet principal :
   // les stats de temps sont un moteur d'ouverture de l'app (constat user).
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
-      ? const [_Tab.dashboard, _Tab.stats, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant]
-      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.actions, _Tab.aujourdhui, _Tab.maintenant];
+      ? const [_Tab.dashboard, _Tab.stats, _Tab.aujourdhui, _Tab.actions]
+      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.aujourdhui, _Tab.actions];
 
   int _tabIndex(_Tab t) {
     switch (t) {
       case _Tab.dashboard:   return 0;
       case _Tab.projets:     return 1;
       case _Tab.aujourdhui:  return 2;
-      case _Tab.maintenant:  return 3;
-      case _Tab.actions:     return 4;
-      case _Tab.stats:       return 5;
+      case _Tab.actions:     return 3;
+      case _Tab.stats:       return 4;
     }
   }
 
   Widget _buildBody(BuildContext context) {
-    final st = _state!;
     // Le focus de tâche (« Maintenant ») ne survit que tant que SON activité
     // tourne (ou qu'un décompte est actif). Sinon — session arrêtée par
     // n'importe quel bouton, étoile décochée, app relancée, OU lancement d'une
@@ -3032,7 +3037,7 @@ class _AppRootState extends State<AppRoot>
               setState(() {
                 _focusProject = project;
                 _focusTask = task;
-                _tab = _Tab.maintenant;
+                _tab = _goNowTab();
               });
             },
             onBadgeCheck: (doneCount) {
@@ -3050,6 +3055,7 @@ class _AppRootState extends State<AppRoot>
           ),
           // Onglet Aujourd'hui : programme du jour + planif du lendemain.
           TodayView(
+            key: _todayKey,
             logic: logic,
             onLaunch: _launchScheduledBlock,
             onOpenSource: _openBlockSource,
@@ -3078,21 +3084,28 @@ class _AppRootState extends State<AppRoot>
             onOpenRoutines: () => _showRoutinesSheet(context),
             onOpenActivities: () => _showLaunchActivitySheet(context),
             onChallenge: _showChallenge,
-          ),
-          FocusView(
-            logic: logic,
-            state: st,
-            focusProject: _focusProject,
-            focusTask: _focusTask,
-            countdownEndsAt: _countdownEndsAt,
-            countdownTotalSec: _countdownTotalSec,
-            onLaunchScheduledBlock: _launchScheduledBlock,
-            onOpenScheduledBlockSource: _openBlockSource,
-            // Maintenant adaptatif (24) : les « ouvertures sans action » se
-            // comptent quand l'onglet devient visible.
-            visible: _tab == _Tab.maintenant,
-            // Chrono + décompte d'une durée CHOISIE (5/10/15 à plat, 2 h à
-            // fond) — routine cochée à la fin, comme le ▶ du programme.
+            onOpenTask: (project, task) => showProjectSheet(
+              context,
+              project: project,
+              domains: _state?.domains ?? [],
+              targetTaskId: task.id,
+              activities: _state?.activities ?? const [],
+            ),
+            onOpenDayReview: () => showDayReviewSheet(context,
+                logic: logic, projects: _dashboardProjects),
+            // « Je relève » de la carte coach → chrono + minuteur-alarme +
+            // streak (même flow que le bouton doré) ; « Programmer » → défi daté.
+            onChallengeAccept: (a, minutes) {
+              logic.start(a.id);
+              _startCountdown(minutes, a.name);
+              final now = DateTime.now();
+              logic.recordChallengeAccepted(
+                  '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}');
+              setState(() {});
+            },
+            onChallengeSchedule: (a, minutes) => _programChallenge(a, minutes),
+            // Minuteur d'une routine (« Le meilleur à faire ») : chrono ciblé +
+            // décompte, routine cochée à la fin.
             onStartTimed: (a, minutes) {
               if (a.isHabit) {
                 final linkedId = (a.linkedActivityId ?? '').trim();
@@ -3110,75 +3123,13 @@ class _AppRootState extends State<AppRoot>
               setState(() {
                 _focusProject = null;
                 _focusTask = null;
-                _tab = _Tab.maintenant;
               });
             },
-            // « Voir » les blocs en attente du mode à plat → Aujourd'hui.
-            onOpenToday: () {
-              _tabFadeController.forward(from: 0);
-              setState(() => _tab = _Tab.aujourdhui);
-            },
-            // État vide « Que souhaites-tu faire maintenant ? » → sheets existantes.
-            onOpenRoutines: () => _showRoutinesSheet(context),
-            onOpenActivities: () => _showLaunchActivitySheet(context),
-            // Carte coach du soir → résumé du jour (check-in).
-            onOpenDayReview: () => showDayReviewSheet(context,
-                logic: logic, projects: _dashboardProjects),
-            // Défi ORION dans Maintenant : chip du guide → dialog existant ;
-            // « Je relève 🔥 » de la carte → même flow que le bouton doré
-            // (chrono + minuteur-alarme + streak) ; « Programmer 📅 » → défi daté.
-            onChallenge: _showChallenge,
-            onChallengeAccept: (a, minutes) {
-              logic.start(a.id);
-              _startCountdown(minutes, a.name);
-              final now = DateTime.now();
-              logic.recordChallengeAccepted(
-                  '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}');
-              setState(() {});
-            },
-            onChallengeSchedule: (a, minutes) => _programChallenge(a, minutes),
-            onStartTimer: (activity, project, task) {
-              logic.start(activity.id);
-              setState(() {
-                _focusProject = project;
-                _focusTask = task;
-                _focusActivityId = activity.id;
-              });
-            },
-            // Couper le minuteur AVANT la fin → bascule en chrono (session continue).
-            onStopCountdown: () {
-              _cancelCountdown();
-              setState(() {});
-            },
-            // Arrêter (mode chrono) → stoppe la session pour de bon.
-            onStopTimer: () {
-              _cancelCountdown(); // sécurité si un décompte traînait
-              logic.stopActive();
-              setState(() {
-                _focusProject = null;
-                _focusTask = null;
-                _focusActivityId = null;
-              });
-            },
-            onClearFocusTask: (project, task) {
-              setState(() {
-                _focusProject = null;
-                _focusTask = null;
-                _focusActivityId = null;
-              });
-            },
-            onTaskTap: (project, task) => showProjectSheet(
-              context,
-              project: project,
-              domains: _state?.domains ?? [],
-              targetTaskId: task.id,
-              activities: _state?.activities ?? const [],
-            ),
           ),
-          // Onglet « Actions » (index 4) : liste GTD par projet + contexte du
+          // Onglet « Actions » (index 3) : liste GTD par projet + contexte du
           // moment — remplace « Projets » quand le Gantt est en retrait.
           ActionsView(logic: logic),
-          // Onglet « Stats » (index 5) : l'ancien Accueil (tableau de bord),
+          // Onglet « Stats » (index 4) : l'ancien Accueil (tableau de bord),
           // promu onglet principal — jauges, temps, domaines, retards.
           _buildDashboardBody(context),
         ],
@@ -3199,7 +3150,7 @@ class _AppRootState extends State<AppRoot>
           targetTaskId: action.payload?['taskId'] as String?,
         );
       case 'open_activity':
-        setState(() => _tab = _Tab.maintenant);
+        setState(() => _tab = _goNowTab());
     }
   }
 
@@ -3290,7 +3241,7 @@ class _AppRootState extends State<AppRoot>
     final ymd =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     logic.recordChallengeAccepted(ymd);
-    if (mounted) setState(() => _tab = _Tab.maintenant);
+    if (mounted) setState(() => _tab = _goNowTab());
   }
 
   /// Programme un défi dans le futur : pose un bloc 🔥 dans le plan du jour
@@ -4026,9 +3977,7 @@ class _AppRootState extends State<AppRoot>
   }
 
   bool _shouldShowFab() {
-    return _tab == _Tab.dashboard ||
-        _tab == _Tab.aujourdhui ||
-        _tab == _Tab.maintenant;
+    return _tab == _Tab.dashboard || _tab == _Tab.aujourdhui;
   }
 
   Widget _buildFab() {
@@ -4094,7 +4043,7 @@ class _AppRootState extends State<AppRoot>
     final target = linked ?? r;
     logic.start(target.id);
     _startCountdown(minutes, target.name, routineId: r.id);
-    setState(() => _tab = _Tab.maintenant);
+    setState(() => _tab = _goNowTab());
   }
 
   /// ▶ sur une routine sans activité liée : « Où tracer le temps ? » — les
@@ -4176,7 +4125,7 @@ class _AppRootState extends State<AppRoot>
     setState(() {
       _focusProject = null;
       _focusTask = null;
-      _tab = _Tab.maintenant;
+      _tab = _goNowTab();
     });
   }
 
@@ -4210,7 +4159,7 @@ class _AppRootState extends State<AppRoot>
                 setState(() {
                   _focusProject = null;
                   _focusTask = null;
-                  _tab = _Tab.maintenant;
+                  _tab = _goNowTab();
                 });
               },
             ),
@@ -4347,7 +4296,7 @@ class _AppRootState extends State<AppRoot>
             logic.start(linked.id);
             logic.rev.value++;
             Navigator.pop(sheetCtx); // ferme le lanceur
-            setState(() => _tab = _Tab.maintenant);
+            setState(() => _tab = _goNowTab());
           }),
         // Lancement minuteur (si réglé)
         if (hasTimer)
@@ -4963,7 +4912,7 @@ class _AppRootState extends State<AppRoot>
                 state: _state,
                 logic: logic,
                 countdownEndsAt: _countdownEndsAt,
-                onTap: () => setState(() => _tab = _Tab.maintenant),
+                onTap: () => setState(() => _tab = _goNowTab()),
               );
             },
           ),
@@ -5000,10 +4949,9 @@ class _AppRootState extends State<AppRoot>
           setState(() => _tab = tapped);
         },
         type: BottomNavigationBarType.fixed,
-        // 6 onglets : les libellés n'ont plus la place de cohabiter
-        // (« Aujourd'hui »/« Maintenant » tronqués). Seul l'onglet ACTIF
-        // affiche le sien, en entier ; les autres restent en icône.
-        showUnselectedLabels: false,
+        // 5 onglets (Maintenant fusionné dans Aujourd'hui) : les libellés
+        // tiennent à nouveau, y compris sur iPhone SE.
+        showUnselectedLabels: true,
         selectedFontSize: 11,
         unselectedFontSize: 11,
         items: [
@@ -5022,13 +4970,9 @@ class _AppRootState extends State<AppRoot>
                   activeIcon: Icon(Icons.account_tree),
                   label: 'Projets'),
               _Tab.aujourdhui => const BottomNavigationBarItem(
-                  icon: Icon(Icons.today_outlined),
-                  activeIcon: Icon(Icons.today),
+                  icon: Icon(Icons.wb_sunny_outlined),
+                  activeIcon: Icon(Icons.wb_sunny),
                   label: 'Aujourd\'hui'),
-              _Tab.maintenant => const BottomNavigationBarItem(
-                  icon: Icon(Icons.play_circle_outline),
-                  activeIcon: Icon(Icons.play_circle),
-                  label: 'Maintenant'),
               _Tab.actions => const BottomNavigationBarItem(
                   icon: Icon(Icons.checklist_rtl_outlined),
                   activeIcon: Icon(Icons.checklist_rtl),
@@ -6048,7 +5992,7 @@ class _AppRootState extends State<AppRoot>
       },
       onOpenNow: () {
         _tabFadeController.forward(from: 0);
-        setState(() => _tab = _Tab.maintenant);
+        setState(() => _tab = _goNowTab());
       },
     );
   }
@@ -6155,7 +6099,7 @@ class _AppRootState extends State<AppRoot>
                                 null, startCal, endCal, days,
                                 focus: 'time');
                             if (!mounted) return;
-                            if (goNow == true) setState(() => _tab = _Tab.maintenant);
+                            if (goNow == true) setState(() => _tab = _goNowTab());
                           },
                         ),
                         GaugeRing(
@@ -6894,7 +6838,7 @@ class _AppRootState extends State<AppRoot>
                 final goNow = await _showDomainDetail(
                     d, startCal, endCal, days, focus: 'time');
                 if (!mounted) return;
-                if (goNow == true) setState(() => _tab = _Tab.maintenant);
+                if (goNow == true) setState(() => _tab = _goNowTab());
               },
               child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7554,7 +7498,7 @@ class _AppRootState extends State<AppRoot>
                                         setState(() {
                                           _focusProject = null;
                                           _focusTask = null;
-                                          _tab = _Tab.maintenant;
+                                          _tab = _goNowTab();
                                         });
                                       },
                                     ),
@@ -7780,7 +7724,7 @@ class _AppRootState extends State<AppRoot>
                               _startCountdown(_sheetMinutes, a.name);
                             }
                             Navigator.pop(ctx, true);
-                            setState(() => _tab = _Tab.maintenant);
+                            setState(() => _tab = _goNowTab());
                           },
                           icon: Icon(
                             _sheetMinutes == 0

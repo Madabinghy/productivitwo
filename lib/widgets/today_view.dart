@@ -5,11 +5,19 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart';
+import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
+import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
@@ -36,6 +44,13 @@ class TodayView extends StatefulWidget {
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
   final VoidCallback? onChallenge;
+  // PR 2 : onglet unique — tâche en retard → fiche projet ; résumé du jour ;
+  // défi ORION de la carte coach ; minuteur d'une routine (« Le meilleur à faire »).
+  final void Function(Project project, ProjectTask task)? onOpenTask;
+  final VoidCallback? onOpenDayReview;
+  final void Function(Activity activity, int minutes)? onChallengeAccept;
+  final Future<void> Function(Activity activity, int minutes)? onChallengeSchedule;
+  final void Function(Activity activity, int minutes)? onStartTimed;
 
   const TodayView(
       {super.key,
@@ -52,14 +67,26 @@ class TodayView extends StatefulWidget {
       this.onStopCountdown,
       this.onOpenRoutines,
       this.onOpenActivities,
-      this.onChallenge});
+      this.onChallenge,
+      this.onOpenTask,
+      this.onOpenDayReview,
+      this.onChallengeAccept,
+      this.onChallengeSchedule,
+      this.onStartTimed});
 
   @override
-  State<TodayView> createState() => _TodayViewState();
+  State<TodayView> createState() => TodayViewState();
 }
 
-class _TodayViewState extends State<TodayView> {
+class TodayViewState extends State<TodayView> {
   bool _showTomorrow = false;
+  // Programme du jour : UNIQUE abonnement de l'onglet (carte MAINTENANT,
+  // en-tête « n / N blocs · restantes », zone coach).
+  StreamSubscription<DailySchedule?>? _schedSub;
+  DailySchedule? _schedule;
+  String _schedDate = '';
+  // Ouvertures de l'onglet (déclencheur n° 1 de la question d'état, 24a).
+  final List<DateTime> _tabOpens = [];
   // Timeline 24 h (façon Calendar) ⇄ liste compacte. La timeline est l'outil
   // de planification (drag, resize, ajout au créneau) ; la liste — vue par
   // DÉFAUT (demande user) — donne la journée d'un coup d'œil et se coche vite.
@@ -80,17 +107,54 @@ class _TodayViewState extends State<TodayView> {
         setState(() => _timeline = saved);
       }
     });
-    // La jauge suit le chrono en cours + le trait « maintenant ».
+    _subscribeSchedule();
+    if (widget.visible) _tabOpens.add(DateTime.now());
+    // La jauge suit le chrono en cours + le trait « maintenant » ; passage de
+    // minuit → le stream bascule sur le nouveau jour.
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (mounted && !_showTomorrow) setState(() {});
+      if (!mounted) return;
+      if (_ymd(DateTime.now()) != _schedDate) _subscribeSchedule();
+      if (!_showTomorrow) setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(TodayView old) {
+    super.didUpdateWidget(old);
+    if (!old.visible && widget.visible) _tabOpens.add(DateTime.now());
   }
 
   @override
   void dispose() {
     _gaugeTick?.cancel();
+    _schedSub?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _subscribeSchedule() {
+    _schedSub?.cancel();
+    _schedDate = _ymd(DateTime.now());
+    _tabOpens.clear();
+    _schedSub = FirestoreSync().streamDailySchedule(_schedDate).listen((s) {
+      if (!mounted) return;
+      setState(() => _schedule = s);
+      widget.logic.todayBlocks = s?.blocks ?? [];
+    });
+  }
+
+  List<ScheduleBlock> get _liveBlocks =>
+      (_schedule?.blocks ?? const <ScheduleBlock>[])
+          .where((b) => b.status != 'deleted')
+          .toList()
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+
+  /// Navigation programmée vers l'onglet (lancement, widget, Siri…) : la carte
+  /// MAINTENANT est en tête, on y revient.
+  void scrollToTop() {
+    if (!_scroll.hasClients) return;
+    _scroll.animateTo(0,
+        duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
   }
 
   String _ymd(DateTime d) =>
@@ -341,188 +405,377 @@ class _TodayViewState extends State<TodayView> {
     return null;
   }
 
+  static const _kDays = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+  Future<void> _openPlan(String date) async {
+    final count = await Navigator.of(context).push<int>(MaterialPageRoute(
+      builder: (_) => PlanDayScreen(
+        logic: widget.logic,
+        targetDate: date,
+        rattrapage: !_showTomorrow,
+        onLaunchBlock: _showTomorrow ? null : widget.onLaunch,
+      ),
+    ));
+    if (count != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Journée posée — $count blocs'),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
     final date =
         _showTomorrow ? _ymd(now.add(const Duration(days: 1))) : _ymd(now);
+    final dark = cs.brightness == Brightness.dark;
+    final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.6);
+    final link = dark ? kBPrimary : cs.primary;
 
     return SafeArea(
       child: Stack(
         children: [
           SingleChildScrollView(
-        controller: _scroll,
-        // Padding bas généreux : dégage la pile de boutons du FAB (~156px) pour
-        // que les derniers items du programme restent cochables.
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+            controller: _scroll,
+            // Padding bas généreux : dégage la rangée du FAB pour que les
+            // derniers items du programme restent cochables.
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Spacer(),
-                SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment(
-                        value: false,
-                        label: Text('Aujourd\'hui'),
-                        icon: Icon(Icons.today_outlined, size: 16)),
-                    ButtonSegment(
-                        value: true,
-                        label: Text('Demain'),
-                        icon: Icon(Icons.event_outlined, size: 16)),
-                  ],
-                  selected: {_showTomorrow},
-                  onSelectionChanged: (s) =>
-                      setState(() => _showTomorrow = s.first),
-                  showSelectedIcon: false,
-                  style: ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    textStyle: WidgetStatePropertyAll(const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600)),
+                _header(cs, now, text3),
+                if (!_showTomorrow) ...[
+                  const SizedBox(height: 16),
+                  NowCard(
+                    logic: widget.logic,
+                    blocks: _liveBlocks,
+                    date: _schedDate,
+                    focusProject: widget.focusProject,
+                    focusTask: widget.focusTask,
+                    countdownEndsAt: widget.countdownEndsAt,
+                    countdownTotalSec: widget.countdownTotalSec,
+                    onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                    onOpenSource: widget.onOpenSource,
+                    onStopTimer: widget.onStopTimer ?? () {},
+                    onStopCountdown: widget.onStopCountdown ?? () {},
+                    onOpenRoutines: widget.onOpenRoutines,
+                    onOpenActivities: widget.onOpenActivities,
+                    onChallenge: widget.onChallenge,
                   ),
-                ),
-                const Spacer(),
-                // Sync Google Agenda à la demande (aujourd'hui + demain).
-                IconButton(
-                  tooltip: 'Synchroniser Google Agenda',
-                  visualDensity: VisualDensity.compact,
-                  icon: _syncing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.sync_rounded, size: 20),
-                  onPressed: _syncing ? null : _forceSync,
-                ),
-                // Espace réservé au toggle liste⇄agenda ÉPINGLÉ (voir Stack) —
-                // il ne défile pas avec le contenu, plus besoin de remonter.
-                const SizedBox(width: 44),
+                  NowCoachZone(
+                    logic: widget.logic,
+                    schedule: _schedule,
+                    date: _schedDate,
+                    tabOpens: _tabOpens,
+                    onLaunch: widget.onNowLaunch ?? widget.onLaunch,
+                    onChallengeAccept: widget.onChallengeAccept,
+                    onChallengeSchedule: widget.onChallengeSchedule,
+                  ),
+                ],
+                const SizedBox(height: 22),
+                _programHeader(cs, link, text3),
+                const SizedBox(height: 8),
+                // key par date : force un nouveau state (nouveau stream Firestore)
+                // quand on bascule aujourd'hui ↔ demain.
+                if (_timeline)
+                  DayTimelineView(
+                    key: ValueKey('tl-$date'),
+                    date: date,
+                    logic: widget.logic,
+                    visible: widget.visible,
+                    // ▶ n'a de sens que pour le jour même (chrono maintenant).
+                    onLaunch: _showTomorrow ? null : widget.onLaunch,
+                    onOpenSource: widget.onOpenSource,
+                  )
+                else
+                  DailyScheduleView(
+                    key: ValueKey(date),
+                    date: date,
+                    logic: widget.logic,
+                    visible: widget.visible,
+                    onLaunch: _showTomorrow ? null : widget.onLaunch,
+                    onOpenSource: widget.onOpenSource,
+                    // Demain = préparation → regroupé par contexte GTD (batching).
+                    groupByContext: _showTomorrow,
+                    // Saut minimap (jauge) en mode liste.
+                    onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
+                    title: '',
+                    // Placeholder 21a/22c : sans domaine, le programme ne peut pas
+                    // exister — l'étape est juste au-dessus (nudge de Maintenant).
+                    emptyText: _showTomorrow
+                        ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
+                        : _domainsPlaceholder(),
+                  ),
+                if (_showTomorrow) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest.withOpacity(.35),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Prépare demain ce soir : un plan posé la veille se suit '
+                      'beaucoup mieux le matin.',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.4,
+                          color: cs.onSurface.withOpacity(.55)),
+                    ),
+                  ),
+                ] else ...[
+                  _overdueCard(cs, now, link, text3),
+                  // « Le meilleur à faire » : les routines à rattraper,
+                  // actionnables sur place (+1 / −1 / passer) — ex-Maintenant.
+                  BestToDoCard(logic: widget.logic, onStartTimed: widget.onStartTimed),
+                  const SizedBox(height: 14),
+                  Row(children: [
+                    if (widget.onOpenDayReview != null)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.bar_chart_rounded, size: 18),
+                          label: const Text('Résumé du jour'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size.fromHeight(44),
+                            side: BorderSide(color: link.withOpacity(.4)),
+                            foregroundColor: link,
+                          ),
+                          onPressed: widget.onOpenDayReview,
+                        ),
+                      ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.explore_outlined, size: 18),
+                        label: const Text('Où on va'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          side: BorderSide(color: cs.onSurface.withOpacity(.2)),
+                          foregroundColor: cs.onSurface.withOpacity(.7),
+                        ),
+                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => WhereWeGoScreen(logic: widget.logic),
+                        )),
+                      ),
+                    ),
+                  ]),
+                ],
               ],
             ),
-            const SizedBox(height: 16),
-            if (!_showTomorrow && widget.onStopTimer != null) ...[
-              NowCard(
-                logic: widget.logic,
-                focusProject: widget.focusProject,
-                focusTask: widget.focusTask,
-                countdownEndsAt: widget.countdownEndsAt,
-                countdownTotalSec: widget.countdownTotalSec,
-                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
-                onOpenSource: widget.onOpenSource,
-                onStopTimer: widget.onStopTimer!,
-                onStopCountdown: widget.onStopCountdown ?? () {},
-                onOpenRoutines: widget.onOpenRoutines,
-                onOpenActivities: widget.onOpenActivities,
-                onChallenge: widget.onChallenge,
-              ),
-              const SizedBox(height: 20),
-            ],
-            // key par date : force un nouveau state (nouveau stream Firestore)
-            // quand on bascule aujourd'hui ↔ demain.
-            if (_timeline)
-              DayTimelineView(
-                key: ValueKey('tl-$date'),
-                date: date,
-                logic: widget.logic,
-                visible: widget.visible,
-                // ▶ n'a de sens que pour le jour même (chrono maintenant).
-                onLaunch: _showTomorrow ? null : widget.onLaunch,
-                onOpenSource: widget.onOpenSource,
-              )
-            else
-              DailyScheduleView(
-                key: ValueKey(date),
-                date: date,
-                logic: widget.logic,
-                visible: widget.visible,
-                onLaunch: _showTomorrow ? null : widget.onLaunch,
-                onOpenSource: widget.onOpenSource,
-                // Demain = préparation → regroupé par contexte GTD (batching).
-                groupByContext: _showTomorrow,
-                // Saut minimap (jauge) en mode liste.
-                onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
-                title:
-                    _showTomorrow ? 'Programme de demain' : 'Programme du jour',
-                // Placeholder 21a/22c : sans domaine, le programme ne peut pas
-                // exister — l'étape est juste au-dessus (nudge de Maintenant).
-                emptyText: _showTomorrow
-                    ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
-                    : _domainsPlaceholder(),
-              ),
-            if (_showTomorrow) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest.withOpacity(.35),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Prépare demain ce soir : un plan posé la veille se suit '
-                  'beaucoup mieux le matin.',
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      height: 1.4,
-                      color: cs.onSurface.withOpacity(.55)),
-                ),
-              ),
-            ],
-            // « Prochaines actions » a migré dans l'onglet Actions (le canal
-            // pull GTD y vit désormais en entier) — Aujourd'hui reste le
-            // programme du jour.
-          ],
-        ),
           ),
           // Jauge 00:00 → 23:59 (façon Waze) : le loggué du jour aux couleurs
           // des domaines, minimap tappable — uniquement sur Aujourd'hui.
           if (!_showTomorrow) _dayGauge(cs, now),
-          // Toggle liste ⇄ agenda ÉPINGLÉ en haut à droite : accessible sans
-          // remonter les 24 h de timeline (demande user).
-          Positioned(
-            top: 6,
-            right: 16,
-            child: Material(
-              color: cs.surfaceContainerHighest.withOpacity(.92),
-              shape: const CircleBorder(),
-              elevation: 2,
-              child: IconButton(
-                tooltip: _timeline ? 'Vue liste' : 'Vue agenda',
-                icon: Icon(
-                    _timeline
-                        ? Icons.view_list_outlined
-                        : Icons.calendar_view_day_outlined,
-                    size: 20),
-                onPressed: () {
-                  setState(() => _timeline = !_timeline);
-                  SharedPreferences.getInstance()
-                      .then((p) => p.setBool(_timelinePrefKey, _timeline));
-                },
-              ),
-            ),
-          ),
-          // 🗑 « Reprogrammer la journée » (réveil tardif, maladie…) — vide
-          // les blocs restants puis replanifie depuis MAINTENANT.
-          if (!_showTomorrow)
-            Positioned(
-              top: 54,
-              right: 16,
-              child: Material(
-                color: cs.surfaceContainerHighest.withOpacity(.92),
-                shape: const CircleBorder(),
-                elevation: 2,
-                child: IconButton(
-                  tooltip: 'Reprogrammer la journée',
-                  icon: Icon(Icons.delete_sweep_outlined,
-                      size: 20, color: cs.error.withOpacity(.85)),
-                  onPressed: _replanToday,
-                ),
-              ),
-            ),
         ],
       ),
+    );
+  }
+
+  /// En-tête (§ 3.1) : « Lundi 28 » + « 3 / 9 blocs · 6 h 15 restantes », à
+  /// droite Chrono libre et ORION (44 px).
+  Widget _header(ColorScheme cs, DateTime now, Color text3) {
+    final day = _showTomorrow ? now.add(const Duration(days: 1)) : now;
+    final name = _kDays[day.weekday - 1];
+    final title = _showTomorrow
+        ? 'Demain · ${name[0].toUpperCase()}${name.substring(1)} ${day.day}'
+        : '${name[0].toUpperCase()}${name.substring(1)} ${day.day}';
+    final live = _liveBlocks;
+    final done = live.where((b) => b.status == 'done').length;
+    final nowMin = now.hour * 60 + now.minute;
+    final remaining = remainingPlannedMin(live, nowMin);
+    final sub = _showTomorrow
+        ? 'Prépare la journée de demain'
+        : live.isEmpty
+            ? 'Pas de programme aujourd\'hui'
+            : '$done / ${live.length} blocs · ${fmtMin(remaining)} restantes';
+    return Row(children: [
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w700, letterSpacing: -.3, color: cs.onSurface)),
+          const SizedBox(height: 2),
+          Text(sub,
+              style: TextStyle(
+                  fontSize: 13, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+        ]),
+      ),
+      if (widget.onOpenActivities != null)
+        _roundBtn(cs, Icons.timer_outlined, 'Chrono libre', widget.onOpenActivities!),
+      const SizedBox(width: 8),
+      _roundBtn(cs, Icons.auto_awesome, 'ORION',
+          () => OrionScreen.show(context, FirestoreSync()),
+          accent: true),
+    ]);
+  }
+
+  Widget _roundBtn(ColorScheme cs, IconData icon, String tooltip, VoidCallback onTap,
+      {bool accent = false}) {
+    final dark = cs.brightness == Brightness.dark;
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: Material(
+        color: accent
+            ? (dark ? kBActive : cs.primaryContainer.withOpacity(.5))
+            : cs.onSurface.withOpacity(.05),
+        shape: CircleBorder(
+            side: BorderSide(
+                color: accent
+                    ? (dark ? kBPrimary : cs.primary).withOpacity(.35)
+                    : cs.onSurface.withOpacity(.1))),
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Tooltip(
+            message: tooltip,
+            child: Icon(icon,
+                size: 18, color: accent ? (dark ? kBPrimary : cs.primary) : cs.onSurface),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ligne « PROGRAMME DU JOUR » (§ 3.3) : liens Demain / Modifier + outils
+  /// (sync agenda, liste ⇄ frise, reprogrammer) — plus de boutons épinglés.
+  Widget _programHeader(ColorScheme cs, Color link, Color text3) {
+    Widget tlink(String label, VoidCallback onTap) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            child: Text(label,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: link)),
+          ),
+        );
+    return Row(children: [
+      Expanded(
+        child: Text(_showTomorrow ? 'PROGRAMME DE DEMAIN' : 'PROGRAMME DU JOUR',
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
+      ),
+      tlink(_showTomorrow ? 'Aujourd\'hui' : 'Demain',
+          () => setState(() => _showTomorrow = !_showTomorrow)),
+      tlink('Modifier', () {
+        final n = DateTime.now();
+        _openPlan(_showTomorrow ? _ymd(n.add(const Duration(days: 1))) : _ymd(n));
+      }),
+      IconButton(
+        tooltip: 'Synchroniser Google Agenda',
+        visualDensity: VisualDensity.compact,
+        icon: _syncing
+            ? const SizedBox(
+                width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : Icon(Icons.sync_rounded, size: 18, color: text3),
+        onPressed: _syncing ? null : _forceSync,
+      ),
+      IconButton(
+        tooltip: _timeline ? 'Voir en liste' : 'Voir en frise',
+        visualDensity: VisualDensity.compact,
+        icon: Icon(
+            _timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined,
+            size: 18,
+            color: text3),
+        onPressed: () {
+          setState(() => _timeline = !_timeline);
+          SharedPreferences.getInstance().then((p) => p.setBool(_timelinePrefKey, _timeline));
+        },
+      ),
+      if (!_showTomorrow)
+        IconButton(
+          tooltip: 'Reprogrammer la journée',
+          visualDensity: VisualDensity.compact,
+          icon: Icon(Icons.delete_sweep_outlined, size: 18, color: cs.error.withOpacity(.85)),
+          onPressed: _replanToday,
+        ),
+    ]);
+  }
+
+  /// « À TRAITER · n » (§ 3.4) : tâches en retard des projets actifs non en
+  /// pause, 3 max + « + n autres ». Masquée si vide.
+  Widget _overdueCard(ColorScheme cs, DateTime now, Color link, Color text3) {
+    final items = <({Project p, ProjectTask t})>[];
+    for (final p in widget.logic.currentProjects) {
+      if (p.status != 'active' || p.paused) continue;
+      for (final t in overdueTasks(p, now)) {
+        items.add((p: p, t: t));
+      }
+    }
+    if (items.isEmpty) return const SizedBox.shrink();
+    items.sort((a, b) => a.t.endDate!.compareTo(b.t.endDate!));
+    final dark = cs.brightness == Brightness.dark;
+    final alert = dark ? kBAlert : cs.error;
+    String ddmm(DateTime d) =>
+        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+    return Container(
+      margin: const EdgeInsets.only(top: 22),
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+      decoration: BoxDecoration(
+        color: dark ? kBSurface : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: alert.withOpacity(.25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(
+            child: Text('À TRAITER · ${items.length}',
+                style: TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
+          ),
+          InkWell(
+            onTap: () => _openPlan(_ymd(now)),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Text('Replanifier',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: link)),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        for (final it in items.take(3))
+          InkWell(
+            onTap: widget.onOpenTask == null ? null : () => widget.onOpenTask!(it.p, it.t),
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(it.t.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                    Text(it.p.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: text3)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Text(ddmm(it.t.endDate!),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: alert,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+                const SizedBox(width: 8),
+              ]),
+            ),
+          ),
+        if (items.length > 3)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text('+ ${items.length - 3} autres',
+                style: TextStyle(fontSize: 12, color: text3)),
+          ),
+      ]),
     );
   }
 }
