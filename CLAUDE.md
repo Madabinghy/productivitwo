@@ -68,6 +68,10 @@ route `?proto=` (le prototype `?proto=pisteb` de la PR #425 a été absorbé au 
 `lib/web/views/`. ORION n'est plus un onglet (route plein écran via le menu ⋯), plus d'overlay flottant.
 Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette semaine (`week_view.dart` +
 `lib/utils/week_planner.dart`) et Projets ; la carte Vision vit dans le menu ⋯ (`vision_dialog.dart`).
+**Cette semaine v2** (handoff `docs/specs/cette-semaine-2026-09/README.md`, remplace le § 3) : Gantt
+7 / 14 jours pleine page, tout se manipule dans la grille (clic sur un jour = popover « caser », points =
+blocs du programme, glisser = déplacer les dates, tirer le bord = échéance, clic droit = couleur). Pas de
+tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le

@@ -28,7 +28,7 @@ Project _proj(String id, List<ProjectTask> tasks,
         paused: paused);
 
 void main() {
-  _insertAtTests();
+  _windowTests();
   final monday = DateTime(2026, 9, 28); // lundi
   final today = DateTime(2026, 9, 30); // mercredi
 
@@ -169,42 +169,45 @@ void main() {
   });
 }
 
-void _insertAtTests() {
-  ScheduleBlock b(String id, String start, int dur) =>
-      ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id);
+void _windowTests() {
+  ScheduleBlock b(String start, int dur, {String? taskId}) =>
+      ScheduleBlock(startTime: start, durationMin: dur, title: 't', taskId: taskId);
 
-  group('insertAt (insertion entre deux blocs, décalage en cascade)', () {
-    test('journée vide → 8 h, rien à décaler', () {
-      final r = insertAt([], 0, 45)!;
-      expect(r.start, 8 * 60);
-      expect(r.shifted, isEmpty);
+  group('fenêtre 14 jours / reste à caser / créneau proposé', () {
+    test('windowDates : n jours à partir du début', () {
+      final d = windowDates(DateTime(2026, 9, 30, 11), 14);
+      expect(d.length, 14);
+      expect(d.first, DateTime(2026, 9, 30));
+      expect(d.last, DateTime(2026, 10, 13));
     });
-    test('après un bloc : démarre à sa fin, décale ce qui chevauche', () {
-      final blocks = [
-        b('a', '09:00', 60),
-        b('b', '10:00', 30),
-        b('c', '10:30', 30),
-        b('d', '12:00', 30)
+    test('windowTasks : 14 jours attrape ce que la semaine ne voit pas', () {
+      final projects = [
+        _proj('p', [_task('far', '2026-10-08', '2026-10-09'), _task('near', '2026-09-29', null)])
       ];
-      final r = insertAt(blocks, 1, 45)!;
-      expect(r.start, 10 * 60);
-      // b → 10:45, c → 11:15 (fin 11:45) ; d à 12:00 n'est pas touché.
-      expect(r.shifted, {'b': 10 * 60 + 45, 'c': 11 * 60 + 15});
+      final week = weekTasks(
+          projects: projects, monday: DateTime(2026, 9, 28), scheduled: [], today: DateTime(2026, 9, 30));
+      final two = windowTasks(
+          projects: projects,
+          start: DateTime(2026, 9, 30),
+          days: 14,
+          scheduled: [],
+          today: DateTime(2026, 9, 30));
+      expect(week.map((t) => t.task.id).toList(), ['near']);
+      expect(two.map((t) => t.task.id).toList(), ['far', 'near']);
     });
-    test('en tête : 8 h, ou avant le premier bloc s\'il commence plus tôt', () {
-      expect(insertAt([b('a', '09:00', 60)], 0, 30)!.start, 8 * 60);
-      final r = insertAt([b('a', '07:00', 60)], 0, 30)!;
-      expect(r.start, 7 * 60);
-      expect(r.shifted, {'a': 7 * 60 + 30});
+    test('remainingToPlaceMin : estimation − blocs liés, jamais négatif', () {
+      final t = _task('t', '2026-09-28', null, est: 90);
+      expect(remainingToPlaceMin(t, []), 90);
+      expect(remainingToPlaceMin(t, [b('09:00', 60, taskId: 't'), b('11:00', 15, taskId: 'x')]), 30);
+      expect(remainingToPlaceMin(t, [b('09:00', 120, taskId: 't')]), 0);
+      expect(remainingToPlaceMin(_task('u', '2026-09-28', null), []), kDefaultTaskEstimatedMin);
     });
-    test('en fin : après le dernier, index hors bornes toléré', () {
-      final r = insertAt([b('a', '09:00', 60)], 5, 30)!;
-      expect(r.start, 10 * 60);
-      expect(r.shifted, isEmpty);
-    });
-    test('la cascade qui dépasse minuit est refusée', () {
-      expect(
-          insertAt([b('a', '22:00', 90)], 0, 60, dayStartMin: 22 * 60), isNull);
+    test('proposedSlot : 8 h, ou après maintenant aujourd\'hui, avant 20 h, sinon plein', () {
+      expect(proposedSlot([], 30, isToday: false), (start: 8 * 60, full: false));
+      expect(proposedSlot([], 30, isToday: true, nowMin: 9 * 60 + 47), (start: 10 * 60, full: false));
+      expect(proposedSlot([b('08:00', 60)], 30, isToday: false), (start: 9 * 60, full: false));
+      expect(proposedSlot([b('08:00', 12 * 60)], 30, isToday: false), (start: 8 * 60, full: true));
+      expect(proposedSlot([], 30, isToday: true, nowMin: 19 * 60 + 45), (start: 8 * 60, full: true));
     });
   });
 }
