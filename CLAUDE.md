@@ -60,7 +60,7 @@ Espace Coach peuvent démarrer sans attendre le 17/08) :
    coach `8a` ; le design dépasse le périmètre V1.1, suivre le MoSCoW de la spec.
 4. Parcours de cohorte (T1 2027), puis onboarding self-service + Stripe + essai 14 j (T2-T3 2027).
 
-**Refonte de l'app web (2026-09, en cours)** : handoff dans `docs/specs/refonte-web-2026-09/README.md`
+**Refonte de l'app web (2026-09, lots 0 à 7 livrés)** : handoff dans `docs/specs/refonte-web-2026-09/README.md`
 (shell à 5 onglets Aujourd'hui / Cette semaine / Projets / Actions / Bibliothèque, thème vert sombre
 de l'Espace coach, 8 lots = 8 PR). La nouvelle interface **remplace** le shell web actuel, sans flag ni
 route `?proto=` (le prototype `?proto=pisteb` de la PR #425 a été absorbé au lot 1). Shell :
@@ -127,9 +127,13 @@ lib/
 ├── storage.dart         — persistance locale JSON (SharedPreferences)
 ├── notifications.dart   — notifications locales
 ├── pro_manager.dart     — gestion abonnement RevenueCat
-├── web/                 — app web autonome (Gantt, auth, assistant)
-│   ├── web_home_screen.dart
-│   ├── gantt_screen.dart
+├── web/                 — app web autonome (refonte 2026-09, thème vert sombre)
+│   ├── web_home_screen.dart — shell : barre d'onglets (WebTab) + IndexedStack des vues + fiche projet hébergée
+│   ├── web_shell.dart / theme_tokens.dart — barre du haut, menu ⋯, tokens kB*
+│   ├── views/           — une vue par fichier : today, week, projects, project_plan, actions,
+│   │                      library (documents + archives), orion
+│   ├── gantt_screen.dart, project_doc_view.dart — onglets Gantt / Document de la fiche projet
+│   ├── *_dialog.dart, tokens_panel.dart, vision_dialog.dart — dialogs partagés
 │   └── …
 └── widgets/             — sheets, tiles, vues partagées mobile
     ├── daily_schedule_view.dart  — timeline programme horaire (onglet Maintenant)

@@ -1,5 +1,4 @@
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/models.dart';
 
 /// Moteur de RECONQUÊTE (couche jeu, découplée du relevé factuel).
 ///
