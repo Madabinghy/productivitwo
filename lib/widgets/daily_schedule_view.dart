@@ -514,8 +514,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           constraints: const BoxConstraints(minHeight: 44),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: Row(children: [
-            SizedBox(
-              width: 40,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 40),
               child: Icon(Icons.add, size: 18, color: cs.primary),
             ),
             const SizedBox(width: 12),
@@ -748,11 +748,15 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Heure
-                SizedBox(
-                  width: 40,
+                // Heure — largeur mini 40 px, mais jamais coupée : avec une
+                // grande taille de police iOS, « 07:00 » doit rester sur une ligne.
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 40),
                   child: Text(
                     block.startTime,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: current ? FontWeight.w700 : FontWeight.w400,
