@@ -24,6 +24,26 @@ const TASK_ACTION_ITEM_SCHEMA = {
           type: "integer",
           description: "Durée estimée en minutes (optionnel).",
         },
+        checklist: {
+          type: "array",
+          description:
+            "Micro-actions de l'action (3ᵉ niveau), cochées pendant un bloc du programme — " +
+            "string simple, OU objet { title, done? } (id/done préservés au re-push).",
+          items: {
+            anyOf: [
+              { type: "string" },
+              {
+                type: "object",
+                required: ["title"],
+                properties: {
+                  id: { type: "string" },
+                  title: { type: "string" },
+                  done: { type: "boolean" },
+                },
+              },
+            ],
+          },
+        },
       },
     },
   ],
@@ -808,6 +828,25 @@ const MARK_ACTION_DONE_TOOL = {
   },
 };
 
+const MARK_CHECKLIST_ITEM_TOOL = {
+  name: "mark_checklist_item",
+  description:
+    "Coche/décoche une micro-action (item de checklist) d'une sous-action de tâche Gantt. " +
+    "Tous les items cochés → la sous-action passe faite ; décocher un item d'une sous-action " +
+    "faite la rouvre. Récupère projectId, taskId, actionId et l'id de l'item via get_project.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId", "actionId", "itemId", "done"],
+    properties: {
+      projectId: { type: "string", description: "id du projet (list_projects)" },
+      taskId:    { type: "string", description: "id de la tâche (get_project)" },
+      actionId:  { type: "string", description: "id de la sous-action (get_project)" },
+      itemId:    { type: "string", description: "id de l'item de checklist (get_project)" },
+      done:      { type: "boolean", description: "true pour cocher, false pour décocher" },
+    },
+  },
+};
+
 const LINK_ACTION_TO_ACTIVITY_TOOL = {
   name: "link_action_to_activity",
   description:
@@ -977,6 +1016,7 @@ PUSH_GANTT_MCP_TOOL,
 ADD_TASK_TOOL,
 UPDATE_TASK_TOOL,
 MARK_ACTION_DONE_TOOL,
+MARK_CHECKLIST_ITEM_TOOL,
 LINK_ACTION_TO_ACTIVITY_TOOL,
 ADD_ACTIVITY_ACTION_TOOL,
 LOG_ROUTINE_HIT_TOOL,

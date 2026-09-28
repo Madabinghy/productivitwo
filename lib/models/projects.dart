@@ -25,6 +25,37 @@ int? _parseEstimatedMin(dynamic raw) {
   return v != null && v > 0 ? v : null;
 }
 
+/// Micro-action d'une checklist (3ᵉ niveau : projet → tâche → action → item).
+/// Cochée pendant un bloc du programme ; le dernier item coché marque
+/// l'action faite (règle appliquée par l'UI et par `mark_checklist_item`).
+class ChecklistItem {
+  String id;
+  String title;
+  bool done;
+  DateTime? doneAt;
+
+  ChecklistItem({String? id, required this.title, this.done = false, this.doneAt})
+      : id = id ?? _uuid.v4();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'done': done,
+        'doneAt': doneAt?.toIso8601String(),
+      };
+
+  /// Tolère un item réduit à son titre (string).
+  static ChecklistItem from(dynamic j) {
+    if (j is! Map) return ChecklistItem(title: j.toString());
+    return ChecklistItem(
+      id: j['id'] as String? ?? _uuid.v4(),
+      title: (j['title'] ?? '').toString(),
+      done: j['done'] == true,
+      doneAt: j['doneAt'] is String ? DateTime.tryParse(j['doneAt']) : null,
+    );
+  }
+}
+
 class TaskAction {
   String id;
   String title;
@@ -37,6 +68,7 @@ class TaskAction {
   // contextes (@ordinateur ET @bureau). `context` reste le principal (1er).
   List<String> contexts;
   int? estimatedMin; // durée estimée ; null = passe tous les filtres « J'ai… »
+  List<ChecklistItem> checklist; // micro-actions ; vide = pas de checklist
 
   TaskAction({
     String? id,
@@ -48,9 +80,14 @@ class TaskAction {
     this.context,
     List<String>? contexts,
     this.estimatedMin,
+    List<ChecklistItem>? checklist,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
-        contexts = contexts ?? [];
+        contexts = contexts ?? [],
+        checklist = checklist ?? [];
+
+  int get checklistDone => checklist.where((c) => c.done).length;
+  int get checklistTotal => checklist.length;
 
   /// Tous les contextes de l'action (multi + legacy mono), sans doublon.
   Set<String> get allContexts =>
@@ -73,6 +110,7 @@ class TaskAction {
         'context': context,
         'contexts': contexts,
         'estimatedMin': estimatedMin,
+        'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
   static TaskAction from(Map j) => TaskAction(
@@ -87,6 +125,7 @@ class TaskAction {
         context: j['context'] as String?,
         contexts: (j['contexts'] as List?)?.cast<String>() ?? [],
         estimatedMin: _parseEstimatedMin(j['estimatedMin']),
+        checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
       );
 }
 

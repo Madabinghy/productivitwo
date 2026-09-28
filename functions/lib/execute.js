@@ -33,6 +33,7 @@ exports.executePushGantt = executePushGantt;
 exports.executeAddTask = executeAddTask;
 exports.executeUpdateTask = executeUpdateTask;
 exports.executeMarkActionDone = executeMarkActionDone;
+exports.executeMarkChecklistItem = executeMarkChecklistItem;
 exports.executeLinkActionToActivity = executeLinkActionToActivity;
 exports.executeAddActivityAction = executeAddActivityAction;
 exports.executeLogRoutineHit = executeLogRoutineHit;
@@ -175,14 +176,37 @@ function pickTask(t) {
         }
         const o = typeof a === "object" && a !== null
             ? a : {};
-        return Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
             ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (estimatedMinOrUndefined(o.estimatedMin) !== undefined
-            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}));
+            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions }), (estimatedMin !== undefined ? { estimatedMin } : {}));
+}
+// Checklist d'une action : string (item neuf) ou objet — id/done/doneAt
+// préservés quand fournis (round-trip get_project → push_gantt).
+function normalizeChecklist(raw) {
+    return raw.flatMap((c) => {
+        var _a;
+        if (typeof c === "string") {
+            const title = c.trim();
+            return title ? [{ id: (0, uuid_1.v4)(), title, done: false, doneAt: null }] : [];
+        }
+        if (typeof c !== "object" || c === null)
+            return [];
+        const o = c;
+        const title = typeof o.title === "string" ? o.title.trim() : String((_a = o.title) !== null && _a !== void 0 ? _a : "").trim();
+        if (!title)
+            return [];
+        return [{
+                id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(),
+                title,
+                done: o.done === true,
+                doneAt: typeof o.doneAt === "string" ? o.doneAt : null,
+            }];
+    });
 }
 // Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
 // type inattendu = « pas d'estimation », l'app applique son défaut).
@@ -1251,11 +1275,13 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         context: (_g = a.context) !== null && _g !== void 0 ? _g : null,
                         contexts: Array.isArray(a.contexts) ? a.contexts : [],
                         estimatedMin: (_h = estimatedMinOrUndefined(a.estimatedMin)) !== null && _h !== void 0 ? _h : null,
+                        checklist: Array.isArray(a.checklist)
+                            ? a.checklist : [],
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1275,6 +1301,10 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
                         : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
                     estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : null,
+                    // Checklist fournie → normalisée ; sinon celle de l'action conservée.
+                    checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
+                        ? normalizeChecklist(obj.checklist)
+                        : (_m = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _m !== void 0 ? _m : [],
                 };
             });
         }
@@ -1310,6 +1340,54 @@ async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
+}
+// Coche/décoche un item de checklist. Règle d'achèvement : tous les items
+// cochés → l'action passe faite ; décocher un item d'une action faite la rouvre.
+async function executeMarkChecklistItem(uid, projectId, taskId, actionId, itemId, done) {
+    var _a, _b;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    const rawTasks = (data.tasks || []);
+    const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function"
+        ? v.toDate().toISOString()
+        : v)));
+    const taskIdx = tasks.findIndex((t) => t.id === taskId);
+    if (taskIdx === -1)
+        return `Tâche introuvable : ${taskId}`;
+    const actions = ((_a = tasks[taskIdx].actions) !== null && _a !== void 0 ? _a : []).slice();
+    const actionIdx = actions.findIndex((a) => a.id === actionId);
+    if (actionIdx === -1)
+        return `Sous-action introuvable : ${actionId}`;
+    const items = (Array.isArray(actions[actionIdx].checklist)
+        ? actions[actionIdx].checklist : []).slice();
+    const itemIdx = items.findIndex((c) => c.id === itemId);
+    if (itemIdx === -1)
+        return `Item de checklist introuvable : ${itemId}`;
+    const now = new Date().toISOString();
+    items[itemIdx] = Object.assign(Object.assign({}, items[itemIdx]), { done, doneAt: done ? now : null });
+    const allDone = items.length > 0 && items.every((c) => c.done === true);
+    const wasDone = actions[actionIdx].done === true;
+    const action = Object.assign(Object.assign({}, actions[actionIdx]), { checklist: items });
+    let note = "";
+    if (allDone && !wasDone) {
+        action.done = true;
+        action.doneAt = now;
+        note = " · tous les items cochés → action marquée faite";
+    }
+    else if (!done && wasDone) {
+        action.done = false;
+        action.doneAt = null;
+        note = " · action rouverte";
+    }
+    actions[actionIdx] = action;
+    tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    const title = (_b = items[itemIdx].title) !== null && _b !== void 0 ? _b : itemId;
+    const n = items.filter((c) => c.done === true).length;
+    return `✅ Item "${title}" ${done ? "coché" : "décoché"} (${n}/${items.length})${note}.`;
 }
 // Associe une sous-action de tâche (TaskAction) à une activité-temps : pose
 // linkedActivityId → le chrono lancé depuis cette action est ciblé (la session
