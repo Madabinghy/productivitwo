@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
+import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
@@ -158,15 +159,19 @@ class _ProjectsViewState extends State<ProjectsView> {
     if (_creating) return;
     final uid = FirebaseAuth.instance.currentUser?.uid ?? widget.sync.uid;
     if (uid == null) return;
-    setState(() => _creating = true);
     final p = Project(
-      title: 'Nouveau projet',
+      title: '',
       startDate: _today,
       createdBy: uid,
       domainId: _domainId,
     );
+    // Titre, domaine, dates, phases saisis AVANT la création — le dialog
+    // sauvegarde lui-même ; annuler ne crée rien.
+    setState(() => _creating = true);
     try {
-      await widget.sync.saveProject(p);
+      final saved = await showProjectEditDialog(context,
+          project: p, domains: widget.domains, sync: widget.sync, isNew: true);
+      if (!saved || !mounted) return;
     } finally {
       if (mounted) setState(() => _creating = false);
     }

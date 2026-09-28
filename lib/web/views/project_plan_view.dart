@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/web/add_task_dialog.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
 import 'package:productivitwo_v1/web/project_doc_view.dart';
+import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
 // Fiche projet (refonte web § 4.5) : s'ouvre dans le shell à la place du
@@ -205,6 +206,17 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     await _save();
   }
 
+  Future<void> _editProject() async {
+    final saved = await showProjectEditDialog(context,
+        project: _p, domains: widget.domains, sync: widget.sync);
+    if (!saved || !mounted) return;
+    setState(() {
+      _phasesInit = false;
+      _expanded.clear();
+    });
+    widget.onChanged();
+  }
+
   Future<void> _addTask() async {
     final task = await showAddTaskDialog(context, project: _p, sync: widget.sync);
     if (task == null || !mounted) return;
@@ -317,14 +329,25 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
                   decoration: BoxDecoration(color: _accent, shape: BoxShape.circle)),
               const SizedBox(width: 10),
               Flexible(
-                child: Text(_p.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        color: kBText,
-                        letterSpacing: -.2)),
+                child: InkWell(
+                  onTap: _editProject,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Text(_p.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          color: kBText,
+                          letterSpacing: -.2)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Modifier le projet (titre, domaine, dates, phases)',
+                icon: const Icon(Icons.edit_outlined, size: 17, color: kBText3),
+                visualDensity: VisualDensity.compact,
+                onPressed: _editProject,
               ),
             ]),
             const SizedBox(height: 3),
