@@ -222,7 +222,7 @@ class _DataSettingsScreenState extends State<DataSettingsScreen> {
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: () async {
-                      final b = bundle!;
+                      final b = bundle;
                       final ok = await saveBackupFile(b.fileName, b.encoded,
                           origin: _shareOrigin());
                       if (ok) await _recordBackup(b.sizeBytes);

@@ -9,9 +9,9 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 /// Lanceur de chrono/minuteur GLOBAL (barre du haut de l'app web).
 ///
 /// Permet de démarrer une activité‑temps depuis N'IMPORTE QUEL onglet, sans
-/// passer par l'Arène. Affiche le chrono en cours (élapsé + objectif éventuel)
+/// passer par Aujourd'hui. Affiche le chrono en cours (élapsé + objectif éventuel)
 /// avec un bouton stop. Auto‑synchronisé avec les chronos lancés ailleurs
-/// (Arène, mobile) via `streamSessions`.
+/// (Aujourd'hui, mobile) via `streamSessions`.
 class ChronoLauncher extends StatefulWidget {
   final FirestoreSync sync;
   const ChronoLauncher({required this.sync, super.key});
@@ -42,7 +42,7 @@ class _ChronoLauncherState extends State<ChronoLauncher> {
     });
     logic.sync = sync;
     setState(() => _logic = logic);
-    // Reflète en direct les chronos lancés/arrêtés ailleurs (Arène, mobile).
+    // Reflète en direct les chronos lancés/arrêtés ailleurs (Aujourd'hui, mobile).
     _sessionsSub = sync.streamSessions().listen((sessions) {
       final l = _logic;
       if (l == null) return;
