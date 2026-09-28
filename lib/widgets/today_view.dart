@@ -442,7 +442,9 @@ class TodayViewState extends State<TodayView> {
             controller: _scroll,
             // Padding bas généreux : dégage la rangée du FAB pour que les
             // derniers items du programme restent cochables.
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
+            // Gauche 30 px aujourd'hui : la jauge du jour (23 px, collée au
+            // bord) ne doit pas mordre sur le contenu.
+            padding: EdgeInsets.fromLTRB(_showTomorrow ? 16 : 30, 12, 16, 140),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
