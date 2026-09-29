@@ -123,7 +123,69 @@ class _NowCardState extends State<NowCard> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
+  String _fmtMin(int min) {
+    if (min < 60) return '$min min';
+    final h = min ~/ 60, m = min % 60;
+    return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
+  }
+
   // ── Actions ─────────────────────────────────────────────────────────────────
+
+  /// Menu du bloc en cours quand on fait autre chose : reprendre (chrono sur
+  /// sa source), décaler après la parenthèse, fait, passer.
+  Future<void> _blockMenu(BuildContext anchor, ScheduleBlock b) async {
+    final box = anchor.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(anchor).context.findRenderObject() as RenderBox;
+    final pos = RelativeRect.fromRect(
+        box.localToGlobal(Offset.zero, ancestor: overlay) & box.size, Offset.zero & overlay.size);
+    final launchable = b.projectId != null || b.activityId != null;
+    final choice = await showMenu<String>(
+      context: anchor,
+      position: pos,
+      items: [
+        PopupMenuItem(
+            enabled: false,
+            child: Text(b.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600))),
+        if (launchable) const PopupMenuItem(value: 'resume', child: Text('Reprendre ce bloc')),
+        const PopupMenuItem(value: 'shift', child: Text('Décaler après ma parenthèse')),
+        const PopupMenuItem(value: 'done', child: Text('Marquer fait')),
+        const PopupMenuItem(value: 'skip', child: Text('Passer')),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case 'resume':
+        widget.onLaunch(b);
+      case 'shift':
+        await _shiftToNow(b);
+      case 'done':
+        await _markDone(b);
+      case 'skip':
+        b.status = 'skipped';
+        setState(() {});
+        await _sync.updateBlockStatus(_date, b.id, 'skipped');
+    }
+  }
+
+  /// Décale le bloc au prochain quart d'heure : la parenthèse (vaisselle,
+  /// appel…) ne mange pas le créneau, elle le pousse.
+  Future<void> _shiftToNow(ScheduleBlock b) async {
+    final n = DateTime.now();
+    final start = (((n.hour * 60 + n.minute) + 14) ~/ 15) * 15;
+    if (start + b.durationMin > 24 * 60) return;
+    b.startTime = _clock(start);
+    setState(() {});
+    await _sync.upsertScheduleBlock(_date, b);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${b.title} décalé à ${_clock(start)}'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
+  }
 
   Future<void> _markDone(ScheduleBlock b) async {
     b.status = 'done';
@@ -197,7 +259,11 @@ class _NowCardState extends State<NowCard> {
       center = _mmss(remaining);
     } else if (session != null) {
       final elapsed = now.difference(session.startAt);
-      final totalMin = b != null && current ? b.durationMin : 0;
+      final onBlock = b != null &&
+          current &&
+          sessionMatchesBlock(session, b,
+              projectLinkedActivityId: _project(b.projectId)?.linkedActivityId);
+      final totalMin = onBlock ? b.durationMin : 0;
       progress = totalMin > 0 ? elapsed.inSeconds / (totalMin * 60) : 0;
       center = _mmss(elapsed);
     } else if (b != null && current) {
@@ -211,16 +277,28 @@ class _NowCardState extends State<NowCard> {
     progress = progress.clamp(0.0, 1.0);
 
     final project = _project(b?.projectId);
-    final origin = project?.title ??
-        _activity(b?.activityId)?.name ??
-        (b == null ? _activity(running?.id)?.name : null);
-    final title = b != null && (current || session == null)
-        ? b.title
-        : (running?.name.isNotEmpty == true ? running!.name : 'Chrono libre');
+    // Session ouverte sur AUTRE CHOSE que la source du bloc en cours : la
+    // carte montre ce qu'on fait (session) ET ce qui était prévu (bloc), avec
+    // des commandes séparées — « Terminer » ne cocherait pas le bon bloc.
+    final aside = session != null &&
+        b != null &&
+        current &&
+        !sessionMatchesBlock(session, b, projectLinkedActivityId: project?.linkedActivityId);
+    final runningName = running?.name.isNotEmpty == true ? running!.name : 'Chrono libre';
+    final origin = aside
+        ? null
+        : project?.title ??
+            _activity(b?.activityId)?.name ??
+            (b == null ? _activity(running?.id)?.name : null);
+    final title = b != null && (current || session == null) && !aside ? b.title : runningName;
     final next = b != null ? nextBlockAfter(_blocks, b) : null;
-    final ensuite = b != null && !current && session != null
-        ? b.title // session hors bloc : le bloc à venir est « ensuite »
-        : next?.title;
+    final ensuite = aside
+        ? 'Prévu : ${b.title} · ${_fmtMin(b.durationMin)}'
+        : b != null && !current && session != null
+            ? 'Ensuite · ${b.title}' // session hors bloc : le bloc à venir est « ensuite »
+            : next != null
+                ? 'Ensuite · ${next.title}'
+                : null;
     final catColor = kBCategoryColor[b?.category] ?? pal.primary;
 
     String? right;
@@ -238,7 +316,14 @@ class _NowCardState extends State<NowCard> {
     final launchable = b != null && (b.projectId != null || b.activityId != null);
 
     final buttons = <Widget>[];
-    if (session != null) {
+    if (aside) {
+      buttons.add(Expanded(
+          child: _btn(pal, countdown ? 'Arrêter le minuteur' : 'Arrêter',
+              primary: true, onTap: countdown ? widget.onStopCountdown : widget.onStopTimer)));
+      buttons.add(const SizedBox(width: 8));
+      buttons.add(Builder(
+          builder: (bctx) => _btn(pal, 'Bloc ▾', onTap: () => _blockMenu(bctx, b))));
+    } else if (session != null) {
       if (b != null && current) {
         buttons.add(Expanded(child: _btn(pal, 'Terminer', primary: true, onTap: () => _finish(b))));
         buttons.add(const SizedBox(width: 8));
@@ -316,7 +401,7 @@ class _NowCardState extends State<NowCard> {
                       fontSize: 17, fontWeight: FontWeight.w600, height: 1.25, color: pal.text)),
               if (ensuite != null) ...[
                 const SizedBox(height: 4),
-                Text('Ensuite · $ensuite',
+                Text(ensuite,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12.5, color: pal.text3)),
