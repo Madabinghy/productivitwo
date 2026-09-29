@@ -92,3 +92,15 @@ List<({String category, int min})> minutesByCategory(List<ScheduleBlock> blocks)
       if ((byCat[c] ?? 0) > 0) (category: c, min: byCat[c]!),
   ];
 }
+
+/// La session ouverte travaille-t-elle sur la SOURCE du bloc ? Tâche du bloc
+/// (projet), sinon son activité, sinon l'activité liée du projet. Faux quand
+/// on fait autre chose pendant le créneau (vaisselle pendant « Contenu ») :
+/// la carte doit alors montrer les deux, et ne jamais cocher le bloc par
+/// accident.
+bool sessionMatchesBlock(Session s, ScheduleBlock b, {String? projectLinkedActivityId}) {
+  if (b.taskId != null) return s.taskId == b.taskId;
+  if (b.activityId != null) return s.activityId == b.activityId;
+  if (projectLinkedActivityId != null) return s.activityId == projectLinkedActivityId;
+  return false;
+}
