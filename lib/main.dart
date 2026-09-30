@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -2937,6 +2938,80 @@ class _AppRootState extends State<AppRoot>
     });
   }
 
+  /// Chrono lancé pendant un bloc en cours d'une autre source : une question
+  /// courte, jamais bloquante (fermer = parenthèse). « Pour ce bloc » ré-attribue
+  /// la session au bloc (elle compte alors pour lui) ; « Décaler » pousse le
+  /// bloc au prochain quart d'heure.
+  void _askSessionVsBlock(Session session, ScheduleBlock block) {
+    final ctx = _navigatorKey.currentState?.overlay?.context;
+    if (ctx == null || !mounted) return;
+    final actName = _state?.activities
+            .firstWhereOrNull((a) => a.id == session.activityId)
+            ?.name ??
+        'ce chrono';
+    final end = blockEndMin(block);
+    final endLabel =
+        '${(end ~/ 60).toString().padLeft(2, '0')}:${(end % 60).toString().padLeft(2, '0')}';
+    final cs = Theme.of(ctx).colorScheme;
+    showModalBottomSheet<void>(
+      context: ctx,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Tu es sur « ${block.title} » jusqu\'à $endLabel',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text('$actName, c\'est…',
+                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+              ]),
+            ),
+          ),
+          ListTile(
+            leading: Icon(Icons.link_rounded, color: cs.primary),
+            title: const Text('Pour ce bloc'),
+            subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              session.taskId = block.taskId;
+              if (block.actionId != null) session.actionId = block.actionId;
+              final blockAct = _state?.activities
+                  .firstWhereOrNull((a) => a.id == block.activityId);
+              if (blockAct != null && !blockAct.isHabit) session.activityId = blockAct.id;
+              logic.onChange();
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.pause_circle_outline, color: cs.onSurface.withOpacity(.7)),
+            title: const Text('Une parenthèse — je reprends après'),
+            subtitle: const Text('Le bloc reste en attente, rien ne bouge'),
+            onTap: () => Navigator.pop(sheetCtx),
+          ),
+          ListTile(
+            leading: Icon(Icons.schedule_send_outlined, color: cs.onSurface.withOpacity(.7)),
+            title: const Text('Décaler le bloc après'),
+            subtitle: const Text('Il repart au prochain quart d\'heure'),
+            onTap: () async {
+              Navigator.pop(sheetCtx);
+              final n = DateTime.now();
+              final start = shiftedStartAfter(n.hour * 60 + n.minute, block.durationMin);
+              if (start == null) return;
+              block.startTime = start;
+              final ymd =
+                  '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+              await _sync.upsertScheduleBlock(ymd, block);
+            },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   void _cancelCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = null;
@@ -3041,6 +3116,7 @@ class _AppRootState extends State<AppRoot>
             expeditionNodeId: expeditionNodeId,
             expeditionBonus: expeditionBonus);
     logic.programBacklogHook ??= _programBacklogItem;
+    logic.onSessionOffBlock ??= _askSessionVsBlock;
 
 
 

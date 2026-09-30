@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -323,9 +324,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         reached =
             tgt > 0 && widget.logic.habitValueOn(b.activityId!, dayStart) >= tgt;
       } else {
-        final loggedMin = widget.logic
-            .totalForRangeByActivity(b.activityId!, dayStart, now)
-            .inMinutes;
+        // Temps attribuable À CE BLOC (action → tâche → activité) : travailler
+        // une autre tâche de la même activité ne coche plus ce bloc.
+        final loggedMin = loggedMinForBlock(b, widget.logic.state.sessions, dayStart, now);
         final threshold = (b.durationMin * 0.6).round();
         reached = loggedMin >= (threshold < 10 ? 10 : threshold);
       }
@@ -356,26 +357,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Temps loggué AUJOURD'HUI sur la source du bloc (activité-temps directe,
   /// ou tâche Gantt via `Session.taskId`), borné à la journée. Le réel mesuré
   /// à côté du prévu — la timeline a sa couche « réalisé », la liste a ce badge.
+  /// Réel attribuable au bloc (action → tâche → activité, cf. loggedMinForBlock).
+  /// Bloc routine (activité habit) sans tâche : pas de temps, c'est un compteur.
   int _loggedMinFor(ScheduleBlock b, DateTime dayStart, DateTime dayEnd) {
-    if (b.activityId != null) {
+    if (b.actionId == null && b.taskId == null && b.activityId != null) {
       final act = _activityById(b.activityId!);
       if (act == null || act.isHabit) return 0;
-      return widget.logic
-          .totalForRangeByActivity(b.activityId!, dayStart, dayEnd)
-          .inMinutes;
     }
-    if (b.taskId == null) return 0;
-    var sum = Duration.zero;
-    for (final s in widget.logic.state.sessions) {
-      if (s.taskId != b.taskId) continue;
-      final e = s.endAt ?? DateTime.now();
-      if (s.startAt.isBefore(dayEnd) && e.isAfter(dayStart)) {
-        final st = s.startAt.isBefore(dayStart) ? dayStart : s.startAt;
-        final en = e.isAfter(dayEnd) ? dayEnd : e;
-        if (en.isAfter(st)) sum += en.difference(st);
-      }
-    }
-    return sum.inMinutes;
+    return loggedMinForBlock(b, widget.logic.state.sessions, dayStart, dayEnd);
   }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {

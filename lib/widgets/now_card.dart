@@ -262,7 +262,8 @@ class _NowCardState extends State<NowCard> {
       final onBlock = b != null &&
           current &&
           sessionMatchesBlock(session, b,
-              projectLinkedActivityId: _project(b.projectId)?.linkedActivityId);
+              projectLinkedActivityId: _project(b.projectId)?.linkedActivityId,
+              activityLinkedActivityId: _activity(b.activityId)?.linkedActivityId);
       final totalMin = onBlock ? b.durationMin : 0;
       progress = totalMin > 0 ? elapsed.inSeconds / (totalMin * 60) : 0;
       center = _mmss(elapsed);
@@ -283,7 +284,9 @@ class _NowCardState extends State<NowCard> {
     final aside = session != null &&
         b != null &&
         current &&
-        !sessionMatchesBlock(session, b, projectLinkedActivityId: project?.linkedActivityId);
+        !sessionMatchesBlock(session, b,
+            projectLinkedActivityId: project?.linkedActivityId,
+            activityLinkedActivityId: _activity(b.activityId)?.linkedActivityId);
     final runningName = running?.name.isNotEmpty == true ? running!.name : 'Chrono libre';
     final origin = aside
         ? null

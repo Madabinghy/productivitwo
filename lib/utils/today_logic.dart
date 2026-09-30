@@ -98,9 +98,62 @@ List<({String category, int min})> minutesByCategory(List<ScheduleBlock> blocks)
 /// on fait autre chose pendant le créneau (vaisselle pendant « Contenu ») :
 /// la carte doit alors montrer les deux, et ne jamais cocher le bloc par
 /// accident.
-bool sessionMatchesBlock(Session s, ScheduleBlock b, {String? projectLinkedActivityId}) {
+/// [activityLinkedActivityId] : activité-temps liée d'un bloc ROUTINE (le
+/// chrono d'une routine tourne sur son activité liée, pas sur la routine).
+bool sessionMatchesBlock(Session s, ScheduleBlock b,
+    {String? projectLinkedActivityId, String? activityLinkedActivityId}) {
   if (b.taskId != null) return s.taskId == b.taskId;
-  if (b.activityId != null) return s.activityId == b.activityId;
+  if (b.activityId != null) {
+    return s.activityId == b.activityId ||
+        (activityLinkedActivityId != null && s.activityId == activityLinkedActivityId);
+  }
   if (projectLinkedActivityId != null) return s.activityId == projectLinkedActivityId;
   return false;
+}
+
+/// Temps loggué attribuable à UN bloc dans [start, end) — du plus précis au
+/// plus large : `actionId` (chrono ciblé) → `taskId` (sessions de la tâche)
+/// → `activityId` (total de l'activité, blocs routine/activité sans tâche).
+/// Avant, l'activité primait : tous les blocs d'une même activité affichaient
+/// (et se validaient sur) le même total, sans avoir été travaillés.
+int loggedMinForBlock(ScheduleBlock b, Iterable<Session> sessions, DateTime start, DateTime end,
+    {DateTime? now}) {
+  bool Function(Session) match;
+  if (b.actionId != null) {
+    match = (s) => s.actionId == b.actionId;
+  } else if (b.taskId != null) {
+    match = (s) => s.taskId == b.taskId;
+  } else if (b.activityId != null) {
+    match = (s) => s.activityId == b.activityId;
+  } else {
+    return 0;
+  }
+  var sum = Duration.zero;
+  for (final s in sessions.where(match)) {
+    final e = s.endAt ?? (now ?? DateTime.now());
+    if (s.startAt.isBefore(end) && e.isAfter(start)) {
+      final st = s.startAt.isBefore(start) ? start : s.startAt;
+      final en = e.isAfter(end) ? end : e;
+      if (en.isAfter(st)) sum += en.difference(st);
+    }
+  }
+  return sum.inMinutes;
+}
+
+/// Bloc pending dont le créneau contient [nowMin] (le premier), sinon null.
+ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
+  for (final b in blocks) {
+    if (b.status != 'pending' || b.status == 'deleted') continue;
+    final s = blockStartMin(b);
+    if (s <= nowMin && nowMin < s + b.durationMin) return b;
+  }
+  return null;
+}
+
+/// « Décaler après ma parenthèse » : prochain quart d'heure ≥ maintenant, en
+/// "HH:mm" ; null si le bloc ne tiendrait plus dans la journée.
+String? shiftedStartAfter(int nowMin, int durationMin) {
+  final start = ((nowMin + 14) ~/ 15) * 15;
+  if (start + durationMin > 24 * 60) return null;
+  return '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}';
 }
