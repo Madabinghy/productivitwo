@@ -745,7 +745,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                       borderRadius: BorderRadius.circular(2)),
                 ),
                 const SizedBox(width: 10),
-                // Titre
+                // Titre sur TOUTE la largeur (2 lignes) ; la méta (durée ·
+                // fait · contexte · provenance) et le ▶ passent en 2ᵉ ligne :
+                // ~40 % de titre visible en plus, sans réduire la police.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,63 +765,58 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           decorationColor: muted,
                         ),
                       ),
-                      // Contexte GTD de l'action visée (@ordinateur…) : petite
-                      // étiquette — l'ordre chronologique reste intact (le
-                      // regroupement par contexte mettait 7 h avant 5 h).
-                      if (blockCtx != null)
-                        Text(
-                          blockCtx,
-                          style: TextStyle(
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(text: fmtMin(block.durationMin)),
+                              // Réel attribuable au bloc (action → tâche → activité).
+                              if (loggedMin > 0)
+                                TextSpan(
+                                    text: ' · ${fmtMin(loggedMin)} fait',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: primary.withOpacity(isDone ? .5 : .9))),
+                              // Contexte GTD de l'action visée (@ordinateur…) —
+                              // l'ordre chronologique reste intact.
+                              if (blockCtx != null)
+                                TextSpan(
+                                    text: ' · $blockCtx',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: isDone ? muted : primary.withOpacity(.75))),
+                              if (block.carriedFromDate != null && !isDone)
+                                TextSpan(
+                                    text: ' · reporté d\'hier',
+                                    style: TextStyle(
+                                        fontStyle: FontStyle.italic,
+                                        color: cs.tertiary.withOpacity(.9))),
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
                               fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: isDone ? muted : primary.withOpacity(.75)),
-                        ),
-                      // Réel loggué du jour sur la source : en sous-ligne du
-                      // titre (à droite, il volait la place du titre).
-                      if (loggedMin > 0)
-                        Text(
-                          '${fmtMin(loggedMin)} fait',
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
                               fontFeatures: const [FontFeature.tabularFigures()],
-                              color: primary.withOpacity(isDone ? .5 : .9)),
+                              color: muted,
+                            ),
+                          ),
                         ),
-                      // Bloc copié par « Reporter au lendemain » : provenance.
-                      if (block.carriedFromDate != null && !isDone)
-                        Text(
-                          'reporté d\'hier',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontStyle: FontStyle.italic,
-                              color: cs.tertiary.withOpacity(.9)),
-                        ),
+                        // ▶ lancer (chrono + focus tâche) — le bloc en cours se
+                        // lance depuis la carte MAINTENANT.
+                        if (launchable)
+                          GestureDetector(
+                            onTap: () => widget.onLaunch!(block),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(Icons.play_circle_outline, size: 20, color: color),
+                            ),
+                          ),
+                      ]),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Durée
-                Text(
-                  fmtMin(block.durationMin),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: muted,
-                  ),
-                ),
-                // ▶ lancer (chrono + focus tâche) — le bloc en cours se lance
-                // depuis la carte MAINTENANT.
-                if (launchable)
-                  GestureDetector(
-                    onTap: () => widget.onLaunch!(block),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Icon(Icons.play_circle_outline, size: 22, color: color),
-                    ),
-                  ),
               ],
             ),
           ),
