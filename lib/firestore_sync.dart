@@ -369,6 +369,8 @@ class FirestoreSync {
         unifiedPos: meta['unifiedPos'] as String?,
         snoozedUntil: (meta['snoozedUntil'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), v.toString())),
+        nowSkippedByYmd: _decodeByYmd(meta['nowSkippedByYmd']),
+        nowDoneByYmd: _decodeByYmd(meta['nowDoneByYmd']),
         expeditionPicked:
             (meta['expeditionPicked'] as List?)?.cast<String>(),
         expeditionEntities:
@@ -602,6 +604,11 @@ class FirestoreSync {
       todayItems:            local.todayItems,
       focusTodayIds:         local.focusTodayIds,
       snoozedUntil:          local.snoozedUntil,
+      // « Le meilleur à faire » : routines validées ✅ / reculées du jour —
+      // union par jour local ∪ distant (sinon la liste revient entière à
+      // chaque relance : bug constaté 2026-09-30).
+      nowSkippedByYmd:       _unionByYmd(local.nowSkippedByYmd, remote.nowSkippedByYmd),
+      nowDoneByYmd:          _unionByYmd(local.nowDoneByYmd, remote.nowDoneByYmd),
       // Checklist routines : union pour ne rien perdre entre appareils.
       // Template (habitId -> items) : on garde la liste la plus longue par habitId.
       habitChecklistByHabitId: () {
@@ -683,9 +690,31 @@ class FirestoreSync {
     }
   }
 
+  /// Union clé par clé (ymd → ids), sans doublon, ordre local d'abord ;
+  /// les jours de plus de 14 j sont oubliés (l'état n'a de sens que le jour
+  /// même — sans purge, la map grossirait indéfiniment dans `meta`).
+  static Map<String, List<String>> _unionByYmd(
+      Map<String, List<String>> a, Map<String, List<String>> b) {
+    final c = DateTime.now().subtract(const Duration(days: 14));
+    final cutoff =
+        '${c.year}${c.month.toString().padLeft(2, '0')}${c.day.toString().padLeft(2, '0')}';
+    final out = <String, List<String>>{};
+    for (final k in {...a.keys, ...b.keys}) {
+      if (k.length == 8 && k.compareTo(cutoff) < 0) continue;
+      out[k] = {...?a[k], ...?b[k]}.toList();
+    }
+    return out;
+  }
+
+  static Map<String, List<String>>? _decodeByYmd(dynamic raw) => (raw as Map?)?.map(
+      (k, v) => MapEntry(k.toString(), (v as List?)?.map((e) => e.toString()).toList() ?? []));
+
   Map<String, dynamic> _encodeMeta(AppState st) => {
         'onboardingDone': st.onboardingDone,
         'snoozedUntil': st.snoozedUntil, // activités désactivées jusqu'à une date
+        // Routines validées ✅ / reculées du jour (« Le meilleur à faire »).
+        'nowSkippedByYmd': st.nowSkippedByYmd,
+        'nowDoneByYmd': st.nowDoneByYmd,
         // Checklist des routines : template (habitId -> items) + coches (habitId ->
         // periodKey -> indices). Synchronisé pour que le dashboard web la voie.
         'habitChecklistByHabitId': st.habitChecklistByHabitId,

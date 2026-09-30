@@ -830,6 +830,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           decorationColor: muted,
                         ),
                       ),
+                      // Réel loggué du jour sur la source : en sous-ligne du
+                      // titre (à droite, il volait la place du titre).
+                      if (loggedMin > 0)
+                        Text(
+                          '${fmtMin(loggedMin)} fait',
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [FontFeature.tabularFigures()],
+                              color: primary.withOpacity(isDone ? .5 : .9)),
+                        ),
                       // Bloc copié par « Reporter au lendemain » : provenance.
                       if (block.carriedFromDate != null && !isDone)
                         Text(
@@ -845,16 +856,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Durée (+ réel loggué du jour sur la source)
+                // Durée
                 Text(
-                  loggedMin > 0
-                      ? '${fmtMin(block.durationMin)} · ${fmtMin(loggedMin)} fait'
-                      : fmtMin(block.durationMin),
+                  fmtMin(block.durationMin),
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: loggedMin > 0 ? FontWeight.w600 : FontWeight.w400,
                     fontFeatures: const [FontFeature.tabularFigures()],
-                    color: loggedMin > 0 ? primary.withOpacity(isDone ? .5 : .9) : muted,
+                    color: muted,
                   ),
                 ),
                 // ▶ lancer (chrono + focus tâche) — le bloc en cours se lance
