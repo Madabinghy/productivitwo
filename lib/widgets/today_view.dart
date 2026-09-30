@@ -500,8 +500,6 @@ class TodayViewState extends State<TodayView> {
                     visible: widget.visible,
                     onLaunch: _showTomorrow ? null : widget.onLaunch,
                     onOpenSource: widget.onOpenSource,
-                    // Demain = préparation → regroupé par contexte GTD (batching).
-                    groupByContext: _showTomorrow,
                     // Saut minimap (jauge) en mode liste.
                     onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
                     title: '',

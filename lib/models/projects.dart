@@ -90,8 +90,15 @@ class TaskAction {
   int get checklistTotal => checklist.length;
 
   /// Tous les contextes de l'action (multi + legacy mono), sans doublon.
+  /// C'est LE lecteur unique des contextes : ne jamais lire `context` seul.
   Set<String> get allContexts =>
       {...contexts, if (context != null && context!.isNotEmpty) context!};
+
+  /// Contexte principal (badge, étiquette du programme) : `contexts[0]`,
+  /// repli sur le legacy `context`.
+  String? get primaryContext => contexts.isNotEmpty
+      ? contexts.first
+      : (context != null && context!.isNotEmpty ? context : null);
 
   /// Pose la liste des contextes (le principal = premier, pour les lecteurs
   /// mono : badges, ORION, groupement de la vue Demain).
@@ -113,20 +120,30 @@ class TaskAction {
         'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
-  static TaskAction from(Map j) => TaskAction(
-        id: j['id'] ?? _uuid.v4(),
-        title: j['title'] ?? '',
-        done: j['done'] as bool? ?? (j['doneAt'] != null),
-        doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
-        createdAt: j['createdAt'] != null
-            ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
-            : DateTime.now(),
-        linkedActivityId: j['linkedActivityId'] as String?,
-        context: j['context'] as String?,
-        contexts: (j['contexts'] as List?)?.cast<String>() ?? [],
-        estimatedMin: _parseEstimatedMin(j['estimatedMin']),
-        checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
-      );
+  static TaskAction from(Map j) {
+    // Migration à la lecture : les deux champs se complètent (une action MCP
+    // n'avait que `contexts`, une action app ancienne que `context`) ; la
+    // prochaine sauvegarde persiste la forme complète.
+    final legacy = (j['context'] as String?)?.trim();
+    final multi = ((j['contexts'] as List?)?.map((e) => e.toString()).toList() ?? [])
+        .where((c) => c.trim().isNotEmpty)
+        .toList();
+    if (multi.isEmpty && legacy != null && legacy.isNotEmpty) multi.add(legacy);
+    return TaskAction(
+      id: j['id'] ?? _uuid.v4(),
+      title: j['title'] ?? '',
+      done: j['done'] as bool? ?? (j['doneAt'] != null),
+      doneAt: j['doneAt'] != null ? DateTime.tryParse(j['doneAt']) : null,
+      createdAt: j['createdAt'] != null
+          ? DateTime.tryParse(j['createdAt']) ?? DateTime.now()
+          : DateTime.now(),
+      linkedActivityId: j['linkedActivityId'] as String?,
+      context: multi.isNotEmpty ? multi.first : null,
+      contexts: multi,
+      estimatedMin: _parseEstimatedMin(j['estimatedMin']),
+      checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
+    );
+  }
 }
 
 //

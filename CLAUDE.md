@@ -211,7 +211,7 @@ Claude ne les recrée pas lors d'une régénération.
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
 - `schedule_day(date, blocks[])` — crée ou remplace le programme entier (un bloc peut porter `actionId` → chrono ciblé)
-- `add_activity_action(activityId, title)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
+- `add_activity_action(activityId, title, context?, contexts?)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
 - `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
 - `plan_day(date?, startHour?, endHour?, syncToCalendar?)` — agrège user context + schedule existant + projets actifs en un appel ; retourne le contexte consolidé + workflow pour générer le programme et le syncer dans Google Calendar
@@ -443,6 +443,10 @@ actions: [
 - Routine = `Activity` `type: habit`, mesurable (`habitFreq` + `habitTarget`), rattachée à un domaine ; `activityId` (lien vers une activité temps) **optionnel** — full routines, plus de « recurring action »
 - Les actions de tâches Gantt (`ProjectTask.actions`) sont des `TaskAction` maps en Firestore —
   `ProjectTask.from()` gère les deux formats (string et map) pour compatibilité ascendante
+- **Contextes GTD d'une action** : `contexts` (multi) est la référence, `context` (mono, legacy) =
+  `contexts[0]`. Lire via `allContexts` / `primaryContext` — **jamais `context` seul**. Les deux champs se
+  complètent à la lecture (`TaskAction.from`) et à l'écriture MCP (`withBothContexts`, execute.ts) ;
+  migration one-shot des données : `adminProductivitwo` action `migrateContexts` (`payload.uid?`, `dryRun?`).
 - **Édition structurelle directe autorisée** (le dogme « tout par l'IA » est levé pour la
   structure) : déplacer une tâche entre projets, une action entre tâches, promouvoir une
   action en sous-projet. Helpers centralisés dans `FirestoreSync` (`moveTaskToProject`,

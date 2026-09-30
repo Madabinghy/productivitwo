@@ -133,7 +133,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
     }
     const o = typeof a === "object" && a !== null
       ? a as Record<string, unknown> : {};
-    return {
+    return withBothContexts({
       id: typeof o.id === "string" ? o.id : uuidv4(),
       title: typeof o.title === "string" ? o.title : String(o.title ?? ""),
       done: o.done === true,
@@ -148,7 +148,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
       ...(estimatedMinOrUndefined(o.estimatedMin) !== undefined
         ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}),
       ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
-    };
+    });
   });
   const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
   return {
@@ -169,6 +169,19 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
 
 // Checklist d'une action : string (item neuf) ou objet — id/done/doneAt
 // préservés quand fournis (round-trip get_project → push_gantt).
+/** `context` (legacy mono) et `contexts` (multi) se complètent toujours :
+ *  contexts fourni → context = contexts[0] ; context seul → contexts = [context].
+ *  Sans ça, une action créée via le MCP tombait dans « Sans contexte » côté app. */
+function withBothContexts<T extends Record<string, unknown>>(a: T): T {
+  const multi = Array.isArray(a.contexts)
+    ? (a.contexts as unknown[]).filter((c): c is string => typeof c === "string" && c.trim() !== "")
+    : [];
+  const legacy = typeof a.context === "string" && a.context.trim() !== "" ? a.context : null;
+  if (multi.length > 0) return { ...a, contexts: multi, context: multi[0] };
+  if (legacy) return { ...a, contexts: [legacy], context: legacy };
+  return a;
+}
+
 function normalizeChecklist(raw: unknown[]): Array<Record<string, unknown>> {
   return raw.flatMap((c) => {
     if (typeof c === "string") {
@@ -1463,7 +1476,7 @@ async function executeUpdateTask(
           ? a
           : (obj && "title" in obj ? String(obj.title) : "");
         const previous = oldByTitle[title];
-        return {
+        return withBothContexts({
           id: previous?.id ?? uuidv4(),
           title,
           done: previous?.done ?? false,
@@ -1484,7 +1497,7 @@ async function executeUpdateTask(
           checklist: Array.isArray(obj?.checklist)
             ? normalizeChecklist(obj!.checklist as unknown[])
             : previous?.checklist ?? [],
-        };
+        });
       });
     }
     tasks[idx] = { ...tasks[idx], ...patch };
@@ -1632,7 +1645,8 @@ async function executeAddActivityAction(
   uid: string,
   activityId: string,
   title: string,
-  context?: string | null
+  context?: string | null,
+  contexts?: string[] | null
 ): Promise<string> {
   if (!title?.trim()) return "Titre de l'action requis.";
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -1644,7 +1658,7 @@ async function executeAddActivityAction(
   const own = Array.isArray(data.ownActions)
     ? (data.ownActions as Array<Record<string, unknown>>).slice()
     : [];
-  const action = {
+  const action = withBothContexts({
     id: uuidv4(),
     title: title.trim(),
     done: false,
@@ -1652,7 +1666,8 @@ async function executeAddActivityAction(
     createdAt: new Date().toISOString(),
     linkedActivityId: activityId,
     context: context?.trim() || null, // contexte GTD (@maison…)
-  };
+    contexts: Array.isArray(contexts) ? contexts : [],
+  });
   own.push(action);
   await ref.update({ ownActions: own });
 
@@ -2958,6 +2973,7 @@ async function executeGenerateWeeklyReport(
 }
 
 export {
+  withBothContexts,
   executePushAssistantMessage,
   validateToken,
   executeGetUserContext,

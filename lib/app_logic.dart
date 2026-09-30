@@ -289,7 +289,7 @@ class AppLogic {
         for (final t in p.tasks) {
           if (t.id != taskId) continue;
           for (final a in t.actions) {
-            if (a.id == actionId) return a.context;
+            if (a.id == actionId) return a.primaryContext;
           }
         }
       }
@@ -300,7 +300,7 @@ class AppLogic {
       for (final act in state.activities) {
         if (act.id != activityId) continue;
         for (final a in act.ownActions) {
-          if (a.id == actionId) return a.context;
+          if (a.id == actionId) return a.primaryContext;
         }
       }
     }
