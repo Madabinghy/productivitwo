@@ -91,7 +91,7 @@ Widget routineTileButton({
     child: GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(left: 6),
+        margin: const EdgeInsets.only(left: 4),
         padding: const EdgeInsets.all(7),
         decoration: BoxDecoration(
           color: background,
