@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/week_planner.dart' show firstFreeSlot;
 
 // ─── VERDICT DU CHECK-IN DU SOIR ─────────────────────────────────────────────
 //
@@ -34,10 +35,14 @@ String _parade(String? cause) => switch (cause) {
 /// [todayBlocks] : blocs du jour (hors `deleted`). [weekBlocks] : blocs des
 /// 7 derniers jours (aujourd'hui exclu), pour compter les récurrences.
 /// [dayReason] : cause globale posée à l'étape 2 quand 3+ blocs ont sauté.
+/// [tomorrowBlocks] : programme de demain déjà en place (miroirs agenda
+/// compris) — l'heure du « Demain je le pose à … » est un VRAI créneau libre,
+/// jamais une heure inventée ; null = programme de demain inconnu.
 String buildEveningVerdict({
   required List<ScheduleBlock> todayBlocks,
   required List<ScheduleBlock> weekBlocks,
   String? dayReason,
+  List<ScheduleBlock>? tomorrowBlocks,
 }) {
   final engagements = todayBlocks
       .where((b) =>
@@ -111,11 +116,7 @@ String buildEveningVerdict({
     }
     // Une seule parade, sur le premier rompu (garder le verdict court).
     final first = broken.first;
-    final hour = first.startTime.compareTo('12:00') < 0
-        ? _hhmmToFr(first.startTime)
-        : '9 h';
-    parts.add(
-        'Demain je le pose à $hour — ${_parade(first.skipReason)}.');
+    parts.add(_tomorrowProposal(first, tomorrowBlocks));
   }
 
   // ── Ce qui a tenu ───────────────────────────────────────────────────────────
@@ -127,6 +128,25 @@ String buildEveningVerdict({
   }
 
   return parts.join(' ');
+}
+
+/// Proposition pour demain : premier créneau libre du programme de demain
+/// (7 h → 21 h) pour la durée du bloc raté ; demain plein → on le dit, et
+/// c'est « Poser demain » qui tranche ; programme inconnu → pas d'heure.
+String _tomorrowProposal(ScheduleBlock broken, List<ScheduleBlock>? tomorrow) {
+  final parade = _parade(broken.skipReason);
+  if (tomorrow == null) return 'Demain je le pose tôt — $parade.';
+  final live = tomorrow.where((b) => b.status != 'deleted').toList();
+  final slot = firstFreeSlot(live, broken.durationMin, fromMin: 7 * 60, untilMin: 21 * 60);
+  if (slot == null) {
+    return 'Demain est déjà plein (${live.length} blocs) — on le case en posant demain.';
+  }
+  return 'Demain je le pose à ${_minToFr(slot)} — $parade.';
+}
+
+String _minToFr(int min) {
+  final h = min ~/ 60, m = min % 60;
+  return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
 }
 
 /// Nombre de fois où CET engagement a sauté sur les 7 derniers jours
@@ -166,11 +186,4 @@ List<ScheduleBlock> _sameEngagement(
     if (b.activityId != null) return w.activityId == b.activityId;
     return w.title.trim().toLowerCase() == b.title.trim().toLowerCase();
   }).toList();
-}
-
-String _hhmmToFr(String hm) {
-  final parts = hm.split(':');
-  final h = int.tryParse(parts.first) ?? 0;
-  final m = parts.length > 1 ? parts[1] : '00';
-  return m == '00' ? '$h h' : '$h h $m';
 }
