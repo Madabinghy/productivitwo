@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -323,9 +324,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         reached =
             tgt > 0 && widget.logic.habitValueOn(b.activityId!, dayStart) >= tgt;
       } else {
-        final loggedMin = widget.logic
-            .totalForRangeByActivity(b.activityId!, dayStart, now)
-            .inMinutes;
+        // Temps attribuable À CE BLOC (action → tâche → activité) : travailler
+        // une autre tâche de la même activité ne coche plus ce bloc.
+        final loggedMin = loggedMinForBlock(b, widget.logic.state.sessions, dayStart, now);
         final threshold = (b.durationMin * 0.6).round();
         reached = loggedMin >= (threshold < 10 ? 10 : threshold);
       }
@@ -356,26 +357,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Temps loggué AUJOURD'HUI sur la source du bloc (activité-temps directe,
   /// ou tâche Gantt via `Session.taskId`), borné à la journée. Le réel mesuré
   /// à côté du prévu — la timeline a sa couche « réalisé », la liste a ce badge.
+  /// Réel attribuable au bloc (action → tâche → activité, cf. loggedMinForBlock).
+  /// Bloc routine (activité habit) sans tâche : pas de temps, c'est un compteur.
   int _loggedMinFor(ScheduleBlock b, DateTime dayStart, DateTime dayEnd) {
-    if (b.activityId != null) {
+    if (b.actionId == null && b.taskId == null && b.activityId != null) {
       final act = _activityById(b.activityId!);
       if (act == null || act.isHabit) return 0;
-      return widget.logic
-          .totalForRangeByActivity(b.activityId!, dayStart, dayEnd)
-          .inMinutes;
     }
-    if (b.taskId == null) return 0;
-    var sum = Duration.zero;
-    for (final s in widget.logic.state.sessions) {
-      if (s.taskId != b.taskId) continue;
-      final e = s.endAt ?? DateTime.now();
-      if (s.startAt.isBefore(dayEnd) && e.isAfter(dayStart)) {
-        final st = s.startAt.isBefore(dayStart) ? dayStart : s.startAt;
-        final en = e.isAfter(dayEnd) ? dayEnd : e;
-        if (en.isAfter(st)) sum += en.difference(st);
-      }
-    }
-    return sum.inMinutes;
+    return loggedMinForBlock(b, widget.logic.state.sessions, dayStart, dayEnd);
   }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {
@@ -756,7 +745,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                       borderRadius: BorderRadius.circular(2)),
                 ),
                 const SizedBox(width: 10),
-                // Titre
+                // Titre sur TOUTE la largeur (2 lignes) ; la méta (durée ·
+                // fait · contexte · provenance) et le ▶ passent en 2ᵉ ligne :
+                // ~40 % de titre visible en plus, sans réduire la police.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -774,63 +765,58 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           decorationColor: muted,
                         ),
                       ),
-                      // Contexte GTD de l'action visée (@ordinateur…) : petite
-                      // étiquette — l'ordre chronologique reste intact (le
-                      // regroupement par contexte mettait 7 h avant 5 h).
-                      if (blockCtx != null)
-                        Text(
-                          blockCtx,
-                          style: TextStyle(
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Expanded(
+                          child: Text.rich(
+                            TextSpan(children: [
+                              TextSpan(text: fmtMin(block.durationMin)),
+                              // Réel attribuable au bloc (action → tâche → activité).
+                              if (loggedMin > 0)
+                                TextSpan(
+                                    text: ' · ${fmtMin(loggedMin)} fait',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: primary.withOpacity(isDone ? .5 : .9))),
+                              // Contexte GTD de l'action visée (@ordinateur…) —
+                              // l'ordre chronologique reste intact.
+                              if (blockCtx != null)
+                                TextSpan(
+                                    text: ' · $blockCtx',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: isDone ? muted : primary.withOpacity(.75))),
+                              if (block.carriedFromDate != null && !isDone)
+                                TextSpan(
+                                    text: ' · reporté d\'hier',
+                                    style: TextStyle(
+                                        fontStyle: FontStyle.italic,
+                                        color: cs.tertiary.withOpacity(.9))),
+                            ]),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
                               fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
-                              color: isDone ? muted : primary.withOpacity(.75)),
-                        ),
-                      // Réel loggué du jour sur la source : en sous-ligne du
-                      // titre (à droite, il volait la place du titre).
-                      if (loggedMin > 0)
-                        Text(
-                          '${fmtMin(loggedMin)} fait',
-                          style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
                               fontFeatures: const [FontFeature.tabularFigures()],
-                              color: primary.withOpacity(isDone ? .5 : .9)),
+                              color: muted,
+                            ),
+                          ),
                         ),
-                      // Bloc copié par « Reporter au lendemain » : provenance.
-                      if (block.carriedFromDate != null && !isDone)
-                        Text(
-                          'reporté d\'hier',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontStyle: FontStyle.italic,
-                              color: cs.tertiary.withOpacity(.9)),
-                        ),
+                        // ▶ lancer (chrono + focus tâche) — le bloc en cours se
+                        // lance depuis la carte MAINTENANT.
+                        if (launchable)
+                          GestureDetector(
+                            onTap: () => widget.onLaunch!(block),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(Icons.play_circle_outline, size: 20, color: color),
+                            ),
+                          ),
+                      ]),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Durée
-                Text(
-                  fmtMin(block.durationMin),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    color: muted,
-                  ),
-                ),
-                // ▶ lancer (chrono + focus tâche) — le bloc en cours se lance
-                // depuis la carte MAINTENANT.
-                if (launchable)
-                  GestureDetector(
-                    onTap: () => widget.onLaunch!(block),
-                    behavior: HitTestBehavior.opaque,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Icon(Icons.play_circle_outline, size: 22, color: color),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -945,25 +931,33 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Widget _buildEmptyState(ColorScheme cs) {
+    // Sans compte Firebase, le flux est vide (pas « pas de programme ») : le
+    // programme ne vit que dans le cloud — dire la vraie cause (constaté :
+    // session Apple expirée, l'utilisateur a cherché un bug d'affichage).
+    final offline = _sync.uid == null;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _addManualBlock(context),
+      onTap: offline ? null : () => _addManualBlock(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(.4),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outline.withOpacity(.12)),
+          border: Border.all(
+              color: offline ? cs.error.withOpacity(.35) : cs.outline.withOpacity(.12)),
         ),
         child: Row(
           children: [
-            Icon(Icons.today_outlined,
-                size: 20, color: cs.onSurface.withOpacity(.3)),
+            Icon(offline ? Icons.cloud_off_outlined : Icons.today_outlined,
+                size: 20,
+                color: offline ? cs.error.withOpacity(.8) : cs.onSurface.withOpacity(.3)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                widget.emptyText ??
-                    'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
+                offline
+                    ? 'Non connecté — ton programme vit dans le cloud.\nReconnecte-toi (menu ⋯ → Paramètres) pour le retrouver.'
+                    : widget.emptyText ??
+                        'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
                 style: TextStyle(
                     fontSize: 13,
                     color: cs.onSurface.withOpacity(.4),

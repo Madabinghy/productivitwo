@@ -8,6 +8,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -248,6 +249,10 @@ class AppLogic {
   /// de combat : « je le fais plus tard ») comme un défi daté + rappel.
   /// [type] = spider|scorpion|snake, [itemId] = l'id de la routine/activité/tâche.
   Future<void> Function(String type, String itemId)? programBacklogHook;
+  // Chrono lancé pendant un bloc en cours dont il n'est PAS la source
+  // (vaisselle pendant « Contenu ») : l'UI demande quoi en faire — pour ce
+  // bloc / parenthèse / décaler. Un seul point d'entrée pour tous les lanceurs.
+  void Function(Session session, ScheduleBlock block)? onSessionOffBlock;
 
   /// Blocs du programme du jour, mis à jour par DailyScheduleView via son stream.
   /// Utilisé pour masquer « Programmer pour plus tard » quand un défi existe déjà.
@@ -994,13 +999,31 @@ class AppLogic {
     }
 
     // 2) nouvelle session (liée à une tâche Gantt / action si fournies)
-    state.sessions.add(Session(
+    final session = Session(
         activityId: activityId,
         startAt: DateTime.now(),
         taskId: taskId,
-        actionId: actionId));
+        actionId: actionId);
+    state.sessions.add(session);
 
     onChange();
+
+    // 3) bloc en cours sur une AUTRE source → l'UI propose (pas d'écriture ici).
+    final hook = onSessionOffBlock;
+    if (hook != null) {
+      final n = DateTime.now();
+      final live = todayBlocks.where((b) => b.status != 'deleted').toList();
+      final current = currentBlockAt(live, n.hour * 60 + n.minute);
+      if (current != null) {
+        final project = currentProjects.firstWhereOrNull((p) => p.id == current.projectId);
+        final blockAct = state.activities.firstWhereOrNull((a) => a.id == current.activityId);
+        if (!sessionMatchesBlock(session, current,
+            projectLinkedActivityId: project?.linkedActivityId,
+            activityLinkedActivityId: blockAct?.linkedActivityId)) {
+          hook(session, current);
+        }
+      }
+    }
   }
 
   // Actions de projet LIÉES à une activité (chrono ciblé) — remonte (projet, tâche,
