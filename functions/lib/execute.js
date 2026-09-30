@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
+exports.withBothContexts = withBothContexts;
 exports.executePushAssistantMessage = executePushAssistantMessage;
 exports.validateToken = validateToken;
 exports.executeGetUserContext = executeGetUserContext;
@@ -176,17 +177,31 @@ function pickTask(t) {
         }
         const o = typeof a === "object" && a !== null
             ? a : {};
-        return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
             ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (estimatedMinOrUndefined(o.estimatedMin) !== undefined
-            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}));
+            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions }), (estimatedMin !== undefined ? { estimatedMin } : {}));
 }
 // Checklist d'une action : string (item neuf) ou objet — id/done/doneAt
 // préservés quand fournis (round-trip get_project → push_gantt).
+/** `context` (legacy mono) et `contexts` (multi) se complètent toujours :
+ *  contexts fourni → context = contexts[0] ; context seul → contexts = [context].
+ *  Sans ça, une action créée via le MCP tombait dans « Sans contexte » côté app. */
+function withBothContexts(a) {
+    const multi = Array.isArray(a.contexts)
+        ? a.contexts.filter((c) => typeof c === "string" && c.trim() !== "")
+        : [];
+    const legacy = typeof a.context === "string" && a.context.trim() !== "" ? a.context : null;
+    if (multi.length > 0)
+        return Object.assign(Object.assign({}, a), { contexts: multi, context: multi[0] });
+    if (legacy)
+        return Object.assign(Object.assign({}, a), { contexts: [legacy], context: legacy });
+    return a;
+}
 function normalizeChecklist(raw) {
     return raw.flatMap((c) => {
         var _a;
@@ -1287,7 +1302,7 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     ? a
                     : (obj && "title" in obj ? String(obj.title) : "");
                 const previous = oldByTitle[title];
-                return {
+                return withBothContexts({
                     id: (_a = previous === null || previous === void 0 ? void 0 : previous.id) !== null && _a !== void 0 ? _a : (0, uuid_1.v4)(),
                     title,
                     done: (_b = previous === null || previous === void 0 ? void 0 : previous.done) !== null && _b !== void 0 ? _b : false,
@@ -1305,7 +1320,7 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
                         ? normalizeChecklist(obj.checklist)
                         : (_m = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _m !== void 0 ? _m : [],
-                };
+                });
             });
         }
         tasks[idx] = Object.assign(Object.assign({}, tasks[idx]), patch);
@@ -1426,7 +1441,7 @@ async function executeLinkActionToActivity(uid, projectId, taskId, actionId, act
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title, context) {
+async function executeAddActivityAction(uid, activityId, title, context, contexts) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
@@ -1440,7 +1455,7 @@ async function executeAddActivityAction(uid, activityId, title, context) {
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = {
+    const action = withBothContexts({
         id: (0, uuid_1.v4)(),
         title: title.trim(),
         done: false,
@@ -1448,7 +1463,8 @@ async function executeAddActivityAction(uid, activityId, title, context) {
         createdAt: new Date().toISOString(),
         linkedActivityId: activityId,
         context: (context === null || context === void 0 ? void 0 : context.trim()) || null, // contexte GTD (@maison…)
-    };
+        contexts: Array.isArray(contexts) ? contexts : [],
+    });
     own.push(action);
     await ref.update({ ownActions: own });
     return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;

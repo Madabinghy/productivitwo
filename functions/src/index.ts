@@ -65,6 +65,7 @@ import {
   executeGenerateWeeklyReport,
   executeListSessionTemplates, executeCreateSessionTemplate,
   executeUpdateSessionTemplate,
+  withBothContexts,
 } from "./execute";
 import type { PushGanttBody } from "./types";
 
@@ -1827,6 +1828,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.activityId as string,
             args.title as string,
             args.context as string | undefined,
+            args.contexts as string[] | undefined,
           );
         } else if (toolName === "log_routine_hit") {
           text = await executeLogRoutineHit(
@@ -3576,7 +3578,7 @@ export const adminProductivitwo = onRequest(
     const { adminSecret, uid, action, payload } = req.body as {
       adminSecret?: string;
       uid?: string;
-      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro" | "setGroups" | "setCoach";
+      action?: "inspect" | "addTask" | "updateTask" | "addProject" | "updateProject" | "addActionToTask" | "markActionDone" | "setSchedule" | "listUsers" | "addAllowlist" | "removeAllowlist" | "deleteUser" | "checkAccess" | "setPro" | "setGroups" | "setCoach" | "migrateContexts";
       payload?: Record<string, unknown>;
     };
 
@@ -3728,6 +3730,54 @@ export const adminProductivitwo = onRequest(
         }
         await db.collection("formation_access").doc(targetUid).set(patch, { merge: true });
         res.status(200).json({ success: true, uid: targetUid, until: untilStr });
+        return;
+      }
+
+      if (action === "migrateContexts") {
+        // Migration one-shot (2026-09-30) : toute action (tâches Gantt +
+        // ownActions) n'ayant qu'un des deux champs reçoit l'autre. Idempotent ;
+        // payload.uid optionnel (sinon tous les utilisateurs), payload.dryRun.
+        const onlyUid = (payload?.uid as string | undefined)?.trim();
+        const dryRun = payload?.dryRun === true;
+        const users = onlyUid
+          ? [onlyUid]
+          : (await db.collection("users").listDocuments()).map((d) => d.id);
+        let projectsFixed = 0, activitiesFixed = 0, actionsFixed = 0;
+        const needsFix = (a: Record<string, unknown>) => {
+          const fixed = withBothContexts(a);
+          return JSON.stringify(fixed) !== JSON.stringify(a) ? fixed : null;
+        };
+        for (const u of users) {
+          const projSnap = await db.collection(`users/${u}/projects`).get();
+          for (const d of projSnap.docs) {
+            const tasks = Array.isArray(d.data().tasks) ? (d.data().tasks as Array<Record<string, unknown>>) : [];
+            let changed = false;
+            const newTasks = tasks.map((t) => {
+              const acts = Array.isArray(t.actions) ? (t.actions as unknown[]) : [];
+              const newActs = acts.map((a) => {
+                if (typeof a !== "object" || a === null) return a;
+                const f = needsFix(a as Record<string, unknown>);
+                if (f) { changed = true; actionsFixed++; return f; }
+                return a;
+              });
+              return changed ? { ...t, actions: newActs } : t;
+            });
+            if (changed) { projectsFixed++; if (!dryRun) await d.ref.update({ tasks: newTasks }); }
+          }
+          const actSnap = await db.collection(`users/${u}/activities`).get();
+          for (const d of actSnap.docs) {
+            const own = Array.isArray(d.data().ownActions) ? (d.data().ownActions as unknown[]) : [];
+            let changed = false;
+            const newOwn = own.map((a) => {
+              if (typeof a !== "object" || a === null) return a;
+              const f = needsFix(a as Record<string, unknown>);
+              if (f) { changed = true; actionsFixed++; return f; }
+              return a;
+            });
+            if (changed) { activitiesFixed++; if (!dryRun) await d.ref.update({ ownActions: newOwn }); }
+          }
+        }
+        res.json({ ok: true, dryRun, users: users.length, projectsFixed, activitiesFixed, actionsFixed });
         return;
       }
 

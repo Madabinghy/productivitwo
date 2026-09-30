@@ -218,7 +218,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
       opacity: e.passed ? .55 : 1,
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+        padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(.4),
           borderRadius: BorderRadius.circular(12),
@@ -249,11 +249,13 @@ class _BestToDoCardState extends State<BestToDoCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // 2 lignes : avec 5 boutons à droite, une ligne tronquait
+                  // le nom (« Planifier ma jo… »).
                   Text(r.name,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600)),
+                          fontSize: 14, fontWeight: FontWeight.w600, height: 1.2)),
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     if (streak > 0) ...[
                       routineStreakBadge(streak),

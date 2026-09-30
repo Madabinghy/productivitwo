@@ -55,6 +55,9 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
   String? _dayReasonChoice; // 3+ rompus → cause globale
   // Blocs des 7 derniers jours (aujourd'hui exclu) — récurrences du verdict.
   List<ScheduleBlock> _weekBlocks = const [];
+  // Programme de demain (miroirs agenda compris) : le verdict propose un
+  // créneau RÉEL, pas « 9 h » par défaut. Null tant que non chargé.
+  List<ScheduleBlock>? _tomorrowBlocks;
   int? _plannedCount; // « Poser demain » validé → N blocs (état 9a)
 
   @override
@@ -68,6 +71,17 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
       if (mounted) setState(() => _schedule = s);
     });
     _loadWeekHistory(_anchor);
+    _loadTomorrow(_anchor);
+  }
+
+  Future<void> _loadTomorrow(DateTime now) async {
+    final d = now.add(const Duration(days: 1));
+    final ymd =
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    try {
+      final s = await _sync.fetchDailySchedule(ymd);
+      if (mounted) setState(() => _tomorrowBlocks = s?.blocks ?? const []);
+    } catch (_) {}
   }
 
   Future<void> _loadWeekHistory(DateTime now) async {
@@ -778,6 +792,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
             todayBlocks: _liveBlocks,
             weekBlocks: _weekBlocks,
             dayReason: _dayReasonChoice ?? _schedule?.dayReason,
+            tomorrowBlocks: _tomorrowBlocks,
           );
 
     return Column(

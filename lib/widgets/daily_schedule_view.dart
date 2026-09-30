@@ -24,9 +24,6 @@ class DailyScheduleView extends StatefulWidget {
   // Titre de section et texte d'état vide — surchargés par la vue « Demain ».
   final String title;
   final String? emptyText;
-  // Vue « Demain » : regroupe les blocs par contexte GTD (@maison, @courses…)
-  // pour préparer le batching — le programme du jour reste une timeline pure.
-  final bool groupByContext;
   // Minimap (jauge d'Aujourd'hui) : la vue expose son « scroll vers HH:mm »
   // au parent via ce registre — les offsets d'une liste de blocs ne sont pas
   // linéaires en temps, seul la vue sait où vit chaque bloc.
@@ -44,7 +41,6 @@ class DailyScheduleView extends StatefulWidget {
       this.onOpenSource,
       this.title = 'Programme du jour',
       this.emptyText,
-      this.groupByContext = false,
       this.onRegisterScrollToMinute,
       this.visible = true});
 
@@ -471,8 +467,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         SizedBox(height: bare ? 8 : 12),
         if (visible.isEmpty)
           _buildEmptyState(cs)
-        else if (widget.groupByContext)
-          _buildGroupedByContext(context, cs, visible)
         else
           Builder(builder: (context) {
             // Trait « maintenant » (comme Calendar) : inséré à sa position
@@ -562,57 +556,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     );
   }
 
-  /// Vue « Demain » groupée par contexte GTD : un en-tête par contexte
-  /// (@maison, @courses…), blocs sans contexte en dernier, ordre chronologique
-  /// conservé à l'intérieur de chaque groupe.
-  Widget _buildGroupedByContext(
-      BuildContext context, ColorScheme cs, List<ScheduleBlock> visible) {
-    final byContext = <String?, List<ScheduleBlock>>{};
-    for (final b in visible) {
-      final ctx = widget.logic.contextOfBlock(b);
-      byContext.putIfAbsent(ctx, () => []).add(b);
-    }
-    // Contextes dans l'ordre de première apparition chronologique, null en fin.
-    final ordered = <String?>[
-      ...byContext.keys.where((c) => c != null),
-      if (byContext.containsKey(null)) null,
-    ];
-    // Un seul groupe « sans contexte » → affichage plat, en-têtes inutiles.
-    if (ordered.length == 1 && ordered.first == null) {
-      return Column(children: [
-        for (final b in visible) _buildBlock(context, cs, b, key: ValueKey(b.id)),
-      ]);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final ctx in ordered) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 6, bottom: 6, left: 2),
-            child: Row(children: [
-              Icon(
-                ctx == null ? Icons.more_horiz : Icons.place_outlined,
-                size: 13,
-                color: cs.primary.withOpacity(.7),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                (ctx ?? 'Sans contexte').toUpperCase(),
-                style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .8,
-                    color: cs.primary.withOpacity(.75)),
-              ),
-            ]),
-          ),
-          for (final b in byContext[ctx]!)
-            _buildBlock(context, cs, b, key: ValueKey(b.id)),
-        ],
-      ],
-    );
-  }
-
   /// Le trait rouge « maintenant » — pastille heure + ligne, comme Calendar.
   Widget _nowLine(DateTime now) {
     const red = Color(0xFFE53935);
@@ -682,6 +625,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         !isDone &&
         !current &&
         (block.projectId != null || block.activityId != null);
+    final blockCtx = widget.logic.contextOfBlock(block);
 
     return Dismissible(
       key: key,
@@ -830,6 +774,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           decorationColor: muted,
                         ),
                       ),
+                      // Contexte GTD de l'action visée (@ordinateur…) : petite
+                      // étiquette — l'ordre chronologique reste intact (le
+                      // regroupement par contexte mettait 7 h avant 5 h).
+                      if (blockCtx != null)
+                        Text(
+                          blockCtx,
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: isDone ? muted : primary.withOpacity(.75)),
+                        ),
                       // Réel loggué du jour sur la source : en sous-ligne du
                       // titre (à droite, il volait la place du titre).
                       if (loggedMin > 0)

@@ -834,6 +834,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
             activityId: { type: "string", description: "id de l'activité-temps propriétaire (get_user_context)" },
             title: { type: "string", description: "intitulé court et actionnable de l'action" },
             context: { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
+            contexts: { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
         },
     },
 };
