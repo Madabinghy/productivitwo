@@ -945,25 +945,33 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Widget _buildEmptyState(ColorScheme cs) {
+    // Sans compte Firebase, le flux est vide (pas « pas de programme ») : le
+    // programme ne vit que dans le cloud — dire la vraie cause (constaté :
+    // session Apple expirée, l'utilisateur a cherché un bug d'affichage).
+    final offline = _sync.uid == null;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _addManualBlock(context),
+      onTap: offline ? null : () => _addManualBlock(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(.4),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outline.withOpacity(.12)),
+          border: Border.all(
+              color: offline ? cs.error.withOpacity(.35) : cs.outline.withOpacity(.12)),
         ),
         child: Row(
           children: [
-            Icon(Icons.today_outlined,
-                size: 20, color: cs.onSurface.withOpacity(.3)),
+            Icon(offline ? Icons.cloud_off_outlined : Icons.today_outlined,
+                size: 20,
+                color: offline ? cs.error.withOpacity(.8) : cs.onSurface.withOpacity(.3)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                widget.emptyText ??
-                    'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
+                offline
+                    ? 'Non connecté — ton programme vit dans le cloud.\nReconnecte-toi (menu ⋯ → Paramètres) pour le retrouver.'
+                    : widget.emptyText ??
+                        'Pas de programme pour aujourd\'hui.\nTouche pour ajouter un bloc, ou dis à Claude ce que tu veux faire.',
                 style: TextStyle(
                     fontSize: 13,
                     color: cs.onSurface.withOpacity(.4),
