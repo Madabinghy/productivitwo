@@ -1882,6 +1882,10 @@ class _AppRootState extends State<AppRoot>
   // arrête OU quand on lance une AUTRE activité (voir _buildBody).
   String? _focusActivityId;
   bool _wasOffline = false;
+  // Session Apple/email perdue au démarrage (voir _init) : bannière jusqu'à
+  // la reconnexion — les données restent locales, rien ne se synchronise.
+  bool _authLost = false;
+  StreamSubscription<String?>? _authSub;
 
   late final ValueNotifier<int> _tick; // seconds
   late final ConfettiController _confettiController;
@@ -1910,6 +1914,12 @@ class _AppRootState extends State<AppRoot>
     _startMinuteHeartbeat();
     _startConnectivityListener();
     _initDeepLinks();
+    _authSub = _sync.authUidChanges.listen((uid) {
+      if (uid != null && _authLost && mounted) {
+        setState(() => _authLost = false);
+        unawaited(_sync.rememberAccount());
+      }
+    });
     // Sonnerie du minuteur : déclenchée par le package `alarm` (même app en arrière-plan).
     if (!kIsWeb) _alarmRingSub = Alarm.ringStream.stream.listen(_onAlarmRing);
     // Timeout global 15s sur _init() — l'app s'ouvre toujours en local si ça bloque
@@ -1981,6 +1991,7 @@ class _AppRootState extends State<AppRoot>
     _heartbeat?.cancel();
     _countdownTimer?.cancel();
     _alarmRingSub?.cancel();
+    _authSub?.cancel();
     _connectivitySub?.cancel();
     _deepLinkSub?.cancel();
     _domainsSub?.cancel();
@@ -2140,11 +2151,25 @@ class _AppRootState extends State<AppRoot>
     // est stable dans le Keychain iOS, et Claude écrit via cet UID.
     final onMobile = !kIsWeb && !Platform.isMacOS && !Platform.isWindows && !Platform.isLinux;
 
-    // Garantit une session Firebase Auth — crée une session anonyme si nécessaire
-    // (cas : première installation ou après suppression de compte)
+    // Garantit une session Firebase Auth. On attend d'abord la restauration
+    // de la session persistée ; si elle manque ALORS QU'un compte Apple/email
+    // a déjà été utilisé ici, on ne crée PAS d'anonyme (ça « déconnectait »
+    // l'utilisateur en silence et forkait ses données sur un compte fantôme) :
+    // on reste en local avec une bannière « Se reconnecter ». L'anonyme n'est
+    // créé qu'à la première installation / après une déconnexion voulue.
     if (onMobile && _sync.uid == null) {
-      try { await _sync.signInAnonymously(); } catch (_) {}
+      final restored = await _sync.restoredUid();
+      if (restored == null) {
+        if (await _sync.hadNamedAccount()) {
+          if (mounted) setState(() => _authLost = true);
+          devLog.error('Session Apple/email absente au démarrage — pas d\'anonyme, mode local',
+              tag: 'FIREBASE');
+        } else {
+          try { await _sync.signInAnonymously(); } catch (_) {}
+        }
+      }
     }
+    if (_sync.uid != null) unawaited(_sync.rememberAccount());
 
     // Web inclus : le clone web (auth déjà faite par le gate) lit/écrit Firestore
     // comme le mobile. Les services NATIFS (widgets, alarme, FCM) restent gardés ailleurs.
@@ -4903,6 +4928,27 @@ class _AppRootState extends State<AppRoot>
 
       body: Column(
         children: [
+          if (_authLost)
+            Material(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: SafeArea(
+                bottom: false,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.cloud_off_outlined,
+                      color: Theme.of(context).colorScheme.onErrorContainer),
+                  title: Text(
+                      'Session expirée — tes données restent ici, mais rien ne se synchronise.',
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          color: Theme.of(context).colorScheme.onErrorContainer)),
+                  trailing: TextButton(
+                    onPressed: () => _showSettingsSheet(context),
+                    child: const Text('Se reconnecter'),
+                  ),
+                ),
+              ),
+            ),
           ValueListenableBuilder<int>(
             valueListenable: _tick,
             builder: (_, __, ___) {

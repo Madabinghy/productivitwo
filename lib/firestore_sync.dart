@@ -32,10 +32,50 @@ class FirestoreSync {
 
   bool get isAnonymous => _auth.currentUser?.isAnonymous ?? true;
   String? get appleEmail => _auth.currentUser?.email;
+  Stream<String?> get authUidChanges => _auth.authStateChanges().map((u) => u?.uid);
+
+  // Dernier compte vu sur cet appareil ('account:<uid>' = Apple/email,
+  // 'anon:<uid>'). Sert à ne JAMAIS recréer un anonyme par-dessus une session
+  // Apple simplement absente au démarrage (Keychain pas encore restauré ou
+  // verrouillé) : c'est ce qui « déconnectait » l'utilisateur et forkait ses
+  // données sur un compte fantôme (constaté à répétition, 2026-09-30).
+  static const _kLastAccountKey = 'auth_last_account';
+
+  /// Attend la restauration de la session persistée avant de conclure « pas
+  /// d'utilisateur » : `currentUser` peut être null quelques centaines de ms
+  /// après `initializeApp`.
+  Future<String?> restoredUid({Duration timeout = const Duration(seconds: 3)}) async {
+    if (_auth.currentUser != null) return _auth.currentUser!.uid;
+    try {
+      final u = await _auth.authStateChanges().first.timeout(timeout);
+      return u?.uid ?? _auth.currentUser?.uid;
+    } catch (_) {
+      return _auth.currentUser?.uid;
+    }
+  }
+
+  Future<void> rememberAccount() async {
+    final u = _auth.currentUser;
+    if (u == null) return;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kLastAccountKey, '${u.isAnonymous ? 'anon' : 'account'}:${u.uid}');
+  }
+
+  /// Un compte Apple/email a déjà été utilisé ici (et pas déconnecté exprès).
+  Future<bool> hadNamedAccount() async {
+    final p = await SharedPreferences.getInstance();
+    return (p.getString(_kLastAccountKey) ?? '').startsWith('account:');
+  }
+
+  Future<void> forgetAccount() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kLastAccountKey);
+  }
 
   Future<String> signInAnonymously() async {
     if (_auth.currentUser != null) return _auth.currentUser!.uid;
     final cred = await _auth.signInAnonymously();
+    await rememberAccount();
     return cred.user!.uid;
   }
 
@@ -71,6 +111,7 @@ class FirestoreSync {
     // rendant tout appel suivant invalide. La migration des données locales
     // est gérée dans apple_sign_in_button.dart via pushAll/pull.
     final cred = await _auth.signInWithCredential(oauthCredential);
+    await rememberAccount();
     final isNew = cred.additionalUserInfo?.isNewUser ?? false;
     return (isNew: isNew, uid: cred.user!.uid);
   }
@@ -115,6 +156,7 @@ class FirestoreSync {
     } else {
       cred = await _auth.signInWithCredential(credential);
     }
+    await rememberAccount();
     final isNew = cred.additionalUserInfo?.isNewUser ?? false;
     return (isNew: isNew, uid: cred.user!.uid);
   }
@@ -123,8 +165,11 @@ class FirestoreSync {
   bool isEmailSignInLink(String link) => _auth.isSignInWithEmailLink(link);
 
   Future<void> signOut() async {
+    // Déconnexion VOULUE : on oublie le compte, l'anonyme qui suit est légitime.
+    await forgetAccount();
     await _auth.signOut();
     await _auth.signInAnonymously();
+    await rememberAccount();
   }
 
   static String _generateNonce([int length = 32]) {
