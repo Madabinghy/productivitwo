@@ -13,7 +13,7 @@ void main() {
 
   test('demain inconnu : pas d\'heure inventée', () {
     final v = buildEveningVerdict(todayBlocks: today, weekBlocks: const []);
-    expect(v, contains('Demain je le pose tôt'));
+    expect(v, contains('Demain je le pose tôt, tant que la journée'));
     expect(v, isNot(contains('9 h')));
   });
 

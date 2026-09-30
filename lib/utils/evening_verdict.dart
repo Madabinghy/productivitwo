@@ -135,7 +135,7 @@ String buildEveningVerdict({
 /// c'est « Poser demain » qui tranche ; programme inconnu → pas d'heure.
 String _tomorrowProposal(ScheduleBlock broken, List<ScheduleBlock>? tomorrow) {
   final parade = _parade(broken.skipReason);
-  if (tomorrow == null) return 'Demain je le pose tôt — $parade.';
+  if (tomorrow == null) return 'Demain je le pose $parade.';
   final live = tomorrow.where((b) => b.status != 'deleted').toList();
   final slot = firstFreeSlot(live, broken.durationMin, fromMin: 7 * 60, untilMin: 21 * 60);
   if (slot == null) {

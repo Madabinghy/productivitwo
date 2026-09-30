@@ -91,15 +91,18 @@ void main() {
       expect(v, contains('1/1'));
     });
 
-    test('bloc du matin rompu → reproposé à son heure ; aprem → 9 h', () {
-      final morning = buildEveningVerdict(todayBlocks: [
+    test('bloc rompu → heure = créneau libre réel de demain, jamais inventée', () {
+      // Programme de demain inconnu : pas d'heure.
+      final unknown = buildEveningVerdict(todayBlocks: [
         _block(title: 'Séance', startTime: '07:15'),
       ], weekBlocks: []);
-      expect(morning, contains('7 h 15'));
-      final afternoon = buildEveningVerdict(todayBlocks: [
+      expect(unknown, contains('Demain je le pose tôt'));
+      expect(unknown, isNot(contains(' h ')));
+      // Demain vide : premier créneau de la journée.
+      final empty = buildEveningVerdict(todayBlocks: [
         _block(title: 'Relances', startTime: '15:00'),
-      ], weekBlocks: []);
-      expect(afternoon, contains('9 h'));
+      ], weekBlocks: [], tomorrowBlocks: const []);
+      expect(empty, contains('Demain je le pose à 7 h'));
     });
   });
 }
