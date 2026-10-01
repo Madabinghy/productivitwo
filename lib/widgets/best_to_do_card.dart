@@ -1,4 +1,6 @@
 import 'package:collection/collection.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -30,6 +32,28 @@ class BestToDoCard extends StatefulWidget {
 class _BestToDoCardState extends State<BestToDoCard> {
   AppLogic get logic => widget.logic;
 
+  // Latence anti-faux-clic : après +1 / −1, l'ordre de la liste est GELÉ
+  // 2,5 s (la routine qui vient d'atteindre sa cible ne descend pas tout de
+  // suite en fin de liste, sinon le tap suivant tombe sur la routine
+  // d'en dessous). `_lastOrder` = ordre affiché au dernier build non gelé.
+  static const _holdFor = Duration(milliseconds: 2500);
+  Timer? _hold;
+  List<String> _lastOrder = const [];
+
+  void _holdOrder() {
+    _hold?.cancel();
+    _hold = Timer(_holdFor, () {
+      _hold = null;
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _hold?.cancel();
+    super.dispose();
+  }
+
   // Le décrément est UNIFIÉ dans AppLogic.incHabit (delta < 0 retire aussi
   // le dernier hit du jour vécu, local + Firestore). On vise la journée du
   // dernier hit — pour une hebdo, il peut dater d'un autre jour.
@@ -42,6 +66,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
         ? t.subtract(const Duration(days: 1))
         : t;
     logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
+    _holdOrder();
     setState(() {});
   }
 
@@ -153,7 +178,18 @@ class _BestToDoCardState extends State<BestToDoCard> {
       });
     final reachedList = entries.where((e) => e.reached).toList()
       ..sort((x, y) => y.score.compareTo(x.score));
-    final pending = [...unreached.take(3), ...reachedList];
+    var pending = [...unreached.take(3), ...reachedList];
+    if (_hold != null && _lastOrder.isNotEmpty) {
+      // Gel : on garde l'ordre précédent ; une nouvelle entrée va en fin.
+      int rank(String id) {
+        final i = _lastOrder.indexOf(id);
+        return i < 0 ? _lastOrder.length : i;
+      }
+      pending = List.of(pending)
+        ..sort((x, y) => rank(x.act.id).compareTo(rank(y.act.id)));
+    } else {
+      _lastOrder = [for (final e in pending) e.act.id];
+    }
 
     return Container(
       margin: const EdgeInsets.only(top: 14),
@@ -321,6 +357,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
               background: accent.withOpacity(.12),
               onTap: () {
                 logic.incHabit(r.id, 1, DateTime.now());
+                _holdOrder();
                 setState(() {});
               },
             ),
