@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
@@ -19,6 +20,7 @@ import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -781,6 +783,37 @@ class TodayViewState extends State<TodayView> {
             child: Text('+ ${items.length - 3} autres',
                 style: TextStyle(fontSize: 12, color: text3)),
           ),
+        // Replanifier AVEC le Claude de l'utilisateur : claude.ai/new?q=… avec
+        // les retards et la journée ; il envoie, Claude replanifie via son
+        // connecteur. Zéro appel à nos functions.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 6, 8, 4),
+          child: SizedBox(
+            height: 44,
+            child: OutlinedButton.icon(
+              icon: Icon(Icons.auto_awesome, size: 16, color: link),
+              label: const Text('Replanifier avec Claude'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: cs.onSurface,
+                side: BorderSide(color: link.withOpacity(.45)),
+                shape: const StadiumBorder(),
+                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              ),
+              onPressed: () {
+                final prompt = replanOverduePrompt(
+                  date: _ymd(now),
+                  now: now,
+                  overdue: [
+                    for (final it in items)
+                      (task: it.t.title, project: it.p.title, due: it.t.endDate!),
+                  ],
+                  todayBlocks: _liveBlocks,
+                );
+                launchUrl(claudeNewUri(prompt), mode: LaunchMode.externalApplication);
+              },
+            ),
+          ),
+        ),
       ]),
     );
   }

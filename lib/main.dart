@@ -11,9 +11,11 @@ import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
+import 'package:productivitwo_v1/widgets/claude_automation_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
@@ -3019,6 +3021,29 @@ class _AppRootState extends State<AppRoot>
               await _sync.upsertScheduleBlock(ymd, block);
             },
           ),
+          const Divider(height: 8, indent: 20, endIndent: 20),
+          // Ouvre LE Claude de l'utilisateur (claude.ai/new?q=…) avec la
+          // demande écrite : il envoie, Claude replanifie via son connecteur
+          // Productivitwo — rien ne passe par nos functions ni une clé API.
+          ListTile(
+            leading: Icon(Icons.auto_awesome, color: cs.primary),
+            title: const Text('Réorganiser la suite avec Claude'),
+            subtitle: const Text('Ouvre Claude avec la journée et ce qui vient de changer'),
+            onTap: () {
+              Navigator.pop(sheetCtx);
+              final n = DateTime.now();
+              final ymd =
+                  '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+              final prompt = reorganizeAfterAsidePrompt(
+                date: ymd,
+                now: n,
+                block: block,
+                activityName: actName,
+                todayBlocks: logic.todayBlocks,
+              );
+              launchUrl(claudeNewUri(prompt), mode: LaunchMode.externalApplication);
+            },
+          ),
           const SizedBox(height: 8),
         ]),
       ),
@@ -5243,6 +5268,17 @@ class _AppRootState extends State<AppRoot>
                     'Programme synchronisé automatiquement dans ton agenda'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () => showGcalSettingsSheet(context, sync: _sync),
+              ),
+              // Automatiser avec Claude : tâches planifiées dans LE Claude de
+              // l'utilisateur (ouvre claude.ai/new?q=…, rien côté serveur).
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Automatiser avec Claude'),
+                subtitle: const Text(
+                    'Préparer demain chaque soir, bilan du dimanche…'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showClaudeAutomationSheet(context, sync: _sync),
               ),
               // Sonnerie de l'alarme
               StatefulBuilder(
