@@ -8,12 +8,14 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/focus_context.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
+import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
@@ -59,6 +61,9 @@ class TodayView extends StatefulWidget {
   final List<Domain> domains;
   final List<Activity> activities;
   final FirestoreSync sync;
+  // Bande Focus : objectif du projet + documents (clé = projectId) ; optionnels.
+  final List<StrategicObjective> objectives;
+  final Map<String, List<Map<String, dynamic>>> documentsByProject;
   final void Function(Project project, {String? taskId}) onOpenProject;
   final VoidCallback onOpenProjects;
   final VoidCallback onOpenWeek;
@@ -69,6 +74,8 @@ class TodayView extends StatefulWidget {
     required this.domains,
     required this.activities,
     required this.sync,
+    this.objectives = const [],
+    this.documentsByProject = const {},
     required this.onOpenProject,
     required this.onOpenProjects,
     required this.onOpenWeek,
@@ -168,6 +175,17 @@ class _TodayViewState extends State<TodayView> {
 
   ScheduleBlock? _nextAfter(ScheduleBlock block) => nextBlockAfter(_blocks, block);
 
+  /// Cible de la bande Focus : action en cours de chrono (null = carte
+  /// MAINTENANT classique).
+  FocusTarget? get _focusTarget {
+    final f = _focusBlock;
+    return resolveFocusTarget(
+      open: _openSession,
+      currentBlock: f != null && f.current ? f.block : null,
+      projects: widget.projects,
+    );
+  }
+
   String? _activityName(String? id) {
     if (id == null) return null;
     for (final a in widget.activities) {
@@ -237,6 +255,58 @@ class _TodayViewState extends State<TodayView> {
       content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
       duration: const Duration(seconds: 2),
     ));
+  }
+
+  Future<void> _addBlockChecklist(Project p, TaskAction a, String title) async {
+    if (addChecklistItem(a, title) == null) return;
+    setState(() {});
+    await widget.sync.saveProjectTasks(p.id, p.tasks);
+  }
+
+  Future<void> _toggleTaskAction(Project p, TaskAction a, bool done) async {
+    setState(() {
+      a.done = done;
+      a.doneAt = done ? DateTime.now() : null;
+    });
+    await widget.sync.saveProjectTasks(p.id, p.tasks);
+  }
+
+  /// « Terminé » de la bande Focus : l'action est faite, le chrono s'arrête,
+  /// le bloc d'origine passe à fait.
+  Future<void> _finishFocus(FocusTarget t) async {
+    if (!t.action.done) await _toggleTaskAction(t.project, t.action, true);
+    final b = t.block;
+    if (b != null) {
+      await _finishBlock(b);
+    } else {
+      await _stopChrono();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Action faite : ${t.action.title}'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  Widget _focusBand(FocusTarget t) {
+    StrategicObjective? obj;
+    for (final o in widget.objectives) {
+      if (o.id == t.project.strategicObjectiveId) obj = o;
+    }
+    return FocusBand(
+      target: t,
+      open: _openSession!,
+      blocks: _blocks,
+      objective: obj,
+      documents: focusDocuments(widget.documentsByProject[t.project.id] ?? const [], t.task.id),
+      sync: widget.sync,
+      onOpenProject: widget.onOpenProject,
+      onToggleChecklist: (a, c, v) => _toggleBlockChecklist(t.project, a, c, v),
+      onAddChecklist: (a, title) => _addBlockChecklist(t.project, a, title),
+      onToggleAction: (a, v) => _toggleTaskAction(t.project, a, v),
+      onPause: _stopChrono,
+      onDone: () => _finishFocus(t),
+    );
   }
 
   Future<void> _editBlock(ScheduleBlock b) async {
@@ -328,14 +398,37 @@ class _TodayViewState extends State<TodayView> {
           const SizedBox(height: 18),
           Expanded(
             child: LayoutBuilder(builder: (ctx, box) {
+              // Chrono sur une action → la carte MAINTENANT se déploie en
+              // bande Focus pleine largeur (étapes + contexte).
+              final focus = _focusTarget;
               if (box.maxWidth < 1000) {
                 // Écran étroit : les trois temps s'empilent.
                 return ListView(children: [
-                  _nowCard(),
+                  if (focus != null) _focusBand(focus) else _nowCard(),
                   const SizedBox(height: 18),
                   SizedBox(height: 640, child: _timelineCard()),
                   const SizedBox(height: 18),
                   _weekColumn(),
+                ]);
+              }
+              if (focus != null) {
+                return ListView(children: [
+                  _focusBand(focus),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 640,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: _timelineCard()),
+                        const SizedBox(width: 24),
+                        SizedBox(
+                          width: 340,
+                          child: SingleChildScrollView(child: _weekColumn()),
+                        ),
+                      ],
+                    ),
+                  ),
                 ]);
               }
               return Row(

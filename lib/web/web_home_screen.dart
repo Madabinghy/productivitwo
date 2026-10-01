@@ -295,6 +295,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               domains: _domains,
               activities: _activities,
               sync: _sync,
+              objectives: _objectives,
+              documentsByProject: _documentsByProject,
               onOpenProject: _openProjectInShell,
               onOpenProjects: () => _go(WebTab.projects),
               onOpenWeek: () => _go(WebTab.week),
