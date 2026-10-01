@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
+import 'package:productivitwo_v1/widgets/claude_automation_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/softpop/softpop_preview_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
@@ -5267,6 +5268,17 @@ class _AppRootState extends State<AppRoot>
                     'Programme synchronisé automatiquement dans ton agenda'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () => showGcalSettingsSheet(context, sync: _sync),
+              ),
+              // Automatiser avec Claude : tâches planifiées dans LE Claude de
+              // l'utilisateur (ouvre claude.ai/new?q=…, rien côté serveur).
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.auto_awesome_outlined),
+                title: const Text('Automatiser avec Claude'),
+                subtitle: const Text(
+                    'Préparer demain chaque soir, bilan du dimanche…'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showClaudeAutomationSheet(context, sync: _sync),
               ),
               // Sonnerie de l'alarme
               StatefulBuilder(

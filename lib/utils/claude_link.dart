@@ -65,3 +65,47 @@ String replanOverduePrompt({
       'Pour chacune, propose un créneau réaliste (aujourd\'hui s\'il reste de la place, sinon les prochains jours) '
       'et, si tu la cases, mets à jour son échéance. ${_dayContext(todayBlocks)}';
 }
+
+// ─── AUTOMATISER AVEC CLAUDE ─────────────────────────────────────────────────
+//
+// L'app n'exécute rien : elle ouvre Claude avec la demande « crée une tâche
+// planifiée qui… ». Le récurrent vit chez l'utilisateur (son abonnement
+// Claude, son connecteur Productivitwo) ; ORION reste l'automatique serveur.
+
+class ClaudeAutomation {
+  final String id;
+  final String title;
+  final String subtitle;
+  final String prompt;
+  const ClaudeAutomation(
+      {required this.id, required this.title, required this.subtitle, required this.prompt});
+}
+
+/// Les deux automatisations proposées dans Paramètres. `gcalNative` = l'agenda
+/// Google est déjà synchronisé par l'app : on demande à Claude de ne pas
+/// écrire lui-même dans l'agenda (sinon doublons).
+List<ClaudeAutomation> claudeAutomations({required bool gcalNative}) {
+  final noGcal = gcalNative
+      ? ' N\'écris pas toi-même dans Google Agenda (syncToCalendar: false) : Productivitwo synchronise déjà mon agenda.'
+      : '';
+  return [
+    ClaudeAutomation(
+      id: 'tomorrow',
+      title: 'Préparer demain chaque soir',
+      subtitle:
+          'Une tâche planifiée dans ton Claude appelle Productivitwo tous les soirs à 21 h et pose le programme du lendemain. Tourne sur ton abonnement Claude.',
+      prompt: 'Crée une tâche planifiée qui tourne tous les soirs à 21h : prépare mon programme de demain '
+          'avec Productivitwo (plan_day pour demain, puis schedule_day). Respecte mes rendez-vous '
+          'Google Agenda et mes routines du soir, et ne recrée pas les blocs marqués supprimés.$noGcal',
+    ),
+    ClaudeAutomation(
+      id: 'sunday',
+      title: 'Bilan du dimanche',
+      subtitle:
+          'Chaque dimanche 18 h : lecture de la semaine (generate_weekly_report) et plan de la suivante (plan_week).',
+      prompt: 'Crée une tâche planifiée qui tourne chaque dimanche à 18h : fais le bilan de ma semaine '
+          'avec Productivitwo (generate_weekly_report), puis prépare la semaine suivante (plan_week) '
+          'et envoie-moi le bilan avec le plan proposé.$noGcal',
+    ),
+  ];
+}

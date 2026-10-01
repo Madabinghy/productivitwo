@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 
 void main() {
+  automationTests();
   final now = DateTime(2026, 9, 30, 12, 14);
   final blocks = [
     ScheduleBlock(startTime: '08:30', durationMin: 240, title: 'Cléa Numérique', gcalEventId: 'g1'),
@@ -35,5 +36,21 @@ void main() {
     ]);
     expect(p, contains('« Réserver la salle » (Séminaire, échéance 25/09)'));
     expect(p, contains('pas de rendez-vous Google Agenda'));
+  });
+}
+
+void automationTests() {
+  test('automatisations : deux tâches, consigne agenda seulement si sync native', () {
+    final plain = claudeAutomations(gcalNative: false);
+    expect(plain.map((a) => a.id), ['tomorrow', 'sunday']);
+    expect(plain.first.prompt, contains('tous les soirs à 21h'));
+    expect(plain.first.prompt, contains('plan_day'));
+    expect(plain.last.prompt, contains('generate_weekly_report'));
+    expect(plain.first.prompt, isNot(contains('syncToCalendar')));
+    final native = claudeAutomations(gcalNative: true);
+    for (final a in native) {
+      expect(a.prompt, contains('syncToCalendar: false'));
+    }
+    expect(claudeNewUri(native.first.prompt).queryParameters['q'], native.first.prompt);
   });
 }

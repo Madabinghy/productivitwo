@@ -431,3 +431,10 @@ class _GcalSheetState extends State<_GcalSheet> {
     );
   }
 }
+
+/// Agenda connecté ET sync automatique active → l'app est l'écrivain de
+/// l'agenda (les prompts Claude lui demandent alors de ne pas y écrire).
+Future<bool> gcalNativeSyncActive(FirestoreSync sync) async {
+  final s = await _gcalCall(sync, {'action': 'status'});
+  return s != null && s['connected'] == true && s['autoSync'] != false;
+}
