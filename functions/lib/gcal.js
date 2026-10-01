@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = void 0;
+exports.isOurEvent = isOurEvent;
 exports.importGcalDay = importGcalDay;
 exports.syncDayToGcal = syncDayToGcal;
 const https_1 = require("firebase-functions/v2/https");
@@ -115,8 +116,19 @@ function dateTimeOf(date, minutes) {
 // dans GCal → le bloc suit ; supprimé dans GCal → le bloc part ; swipé dans
 // l'app → masqué SANS toucher au vrai rendez-vous (jamais recréé). La sync
 // sortante les ignore : chaque objet ne se supprime que chez son propriétaire.
+/** Event créé par Productivitwo (sync natif ou Claude via connecteur GCal). */
+function isOurEvent(ev) {
+    var _a, _b, _c, _d;
+    if (((_b = (_a = ev.extendedProperties) === null || _a === void 0 ? void 0 : _a.private) === null || _b === void 0 ? void 0 : _b.pwo) === "1")
+        return true;
+    const desc = String((_c = ev.description) !== null && _c !== void 0 ? _c : "").toLowerCase();
+    if (desc.includes("source: productivitwo") || desc.includes("source:productivitwo"))
+        return true;
+    const title = String((_d = ev.summary) !== null && _d !== void 0 ? _d : "").trim().toLowerCase();
+    return title.endsWith(" - productivitwo") || title.endsWith(" – productivitwo");
+}
 async function importGcalDay(uid, date) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h;
     const none = { imported: 0, updated: 0, removed: 0 };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return Object.assign(Object.assign({ ok: false }, none), { reason: "bad_date" });
@@ -139,19 +151,24 @@ async function importGcalDay(uid, date) {
         return Object.assign(Object.assign({ ok: false }, none), { reason: `list_http_${listRes.status}` });
     }
     const items = (_b = (await listRes.json()).items) !== null && _b !== void 0 ? _b : [];
-    // Événements retenus : PAS les nôtres (pwo), avec une heure (pas de
-    // « journée entière » en v1), non annulés, non refusés par l'utilisateur.
+    // Événements retenus : PAS les nôtres, avec une heure (pas de « journée
+    // entière » en v1), non annulés, non refusés par l'utilisateur.
+    // « Les nôtres » = propriété privée pwo (sync natif) OU les conventions que
+    // Claude suit via son connecteur Google Calendar (description
+    // « source: productivitwo », titre « … - Productivitwo ») : ce connecteur ne
+    // peut pas poser de propriété privée, et sans ce filtre ces events revenaient
+    // en blocs MIROIRS protégés — doublons + réorganisation figée (constaté).
     const events = new Map();
     for (const ev of items) {
         if (ev.status === "cancelled")
             continue;
-        if (((_d = (_c = ev.extendedProperties) === null || _c === void 0 ? void 0 : _c.private) === null || _d === void 0 ? void 0 : _d.pwo) === "1")
+        if (isOurEvent(ev))
             continue;
-        const startIso = (_e = ev.start) === null || _e === void 0 ? void 0 : _e.dateTime;
-        const endIso = (_f = ev.end) === null || _f === void 0 ? void 0 : _f.dateTime;
+        const startIso = (_c = ev.start) === null || _c === void 0 ? void 0 : _c.dateTime;
+        const endIso = (_d = ev.end) === null || _d === void 0 ? void 0 : _d.dateTime;
         if (!startIso || !endIso)
             continue; // journée entière
-        const self = ((_g = ev.attendees) !== null && _g !== void 0 ? _g : []).find((a) => a.self === true);
+        const self = ((_e = ev.attendees) !== null && _e !== void 0 ? _e : []).find((a) => a.self === true);
         if ((self === null || self === void 0 ? void 0 : self.responseStatus) === "declined")
             continue;
         const startMs = Date.parse(startIso);
@@ -162,7 +179,7 @@ async function importGcalDay(uid, date) {
         if (local.slice(0, 10) !== date)
             continue; // instance d'un autre jour vécu
         events.set(String(ev.id), {
-            title: String((_h = ev.summary) !== null && _h !== void 0 ? _h : "(Sans titre)").trim() || "(Sans titre)",
+            title: String((_f = ev.summary) !== null && _f !== void 0 ? _f : "(Sans titre)").trim() || "(Sans titre)",
             startMin: parseInt(local.slice(11, 13), 10) * 60 + parseInt(local.slice(14, 16), 10),
             durationMin: Math.max(5, Math.round((endMs - startMs) / 60000)),
         });
@@ -170,7 +187,7 @@ async function importGcalDay(uid, date) {
     // Merge dans le doc du jour — écrit UNIQUEMENT si quelque chose change.
     const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
     const snap = await ref.get();
-    const blocks = ((_k = (_j = snap.data()) === null || _j === void 0 ? void 0 : _j.blocks) !== null && _k !== void 0 ? _k : []).slice();
+    const blocks = ((_h = (_g = snap.data()) === null || _g === void 0 ? void 0 : _g.blocks) !== null && _h !== void 0 ? _h : []).slice();
     let imported = 0, updated = 0, removed = 0;
     for (let i = blocks.length - 1; i >= 0; i--) {
         const b = blocks[i];

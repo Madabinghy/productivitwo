@@ -161,6 +161,16 @@ function dateTimeOf(date: string, minutes: number): { ymd: string; hm: string } 
 // l'app → masqué SANS toucher au vrai rendez-vous (jamais recréé). La sync
 // sortante les ignore : chaque objet ne se supprime que chez son propriétaire.
 
+/** Event créé par Productivitwo (sync natif ou Claude via connecteur GCal). */
+export function isOurEvent(ev: { extendedProperties?: { private?: Record<string, unknown> };
+  description?: unknown; summary?: unknown }): boolean {
+  if (ev.extendedProperties?.private?.pwo === "1") return true;
+  const desc = String(ev.description ?? "").toLowerCase();
+  if (desc.includes("source: productivitwo") || desc.includes("source:productivitwo")) return true;
+  const title = String(ev.summary ?? "").trim().toLowerCase();
+  return title.endsWith(" - productivitwo") || title.endsWith(" – productivitwo");
+}
+
 export async function importGcalDay(
   uid: string,
   date: string
@@ -190,12 +200,17 @@ export async function importGcalDay(
   }
   const items = (((await listRes.json()) as Json).items as Json[]) ?? [];
 
-  // Événements retenus : PAS les nôtres (pwo), avec une heure (pas de
-  // « journée entière » en v1), non annulés, non refusés par l'utilisateur.
+  // Événements retenus : PAS les nôtres, avec une heure (pas de « journée
+  // entière » en v1), non annulés, non refusés par l'utilisateur.
+  // « Les nôtres » = propriété privée pwo (sync natif) OU les conventions que
+  // Claude suit via son connecteur Google Calendar (description
+  // « source: productivitwo », titre « … - Productivitwo ») : ce connecteur ne
+  // peut pas poser de propriété privée, et sans ce filtre ces events revenaient
+  // en blocs MIROIRS protégés — doublons + réorganisation figée (constaté).
   const events = new Map<string, { title: string; startMin: number; durationMin: number }>();
   for (const ev of items) {
     if (ev.status === "cancelled") continue;
-    if (ev.extendedProperties?.private?.pwo === "1") continue;
+    if (isOurEvent(ev)) continue;
     const startIso = ev.start?.dateTime as string | undefined;
     const endIso = ev.end?.dateTime as string | undefined;
     if (!startIso || !endIso) continue; // journée entière
