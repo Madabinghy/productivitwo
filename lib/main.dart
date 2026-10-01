@@ -2943,6 +2943,19 @@ class _AppRootState extends State<AppRoot>
   /// la session au bloc (elle compte alors pour lui) ; « Décaler » pousse le
   /// bloc au prochain quart d'heure.
   void _askSessionVsBlock(Session session, ScheduleBlock block) {
+    // Appelé PENDANT le tap du lanceur (FAB, routines…) qui enchaîne
+    // start() puis Navigator.pop() : ouvrir la feuille tout de suite la fait
+    // fermer par ce pop (dernière route) et laisse le lanceur ouvert — vu sur
+    // build 443. On laisse la navigation se poser, puis on vérifie que la
+    // session tourne encore avant de poser la question.
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      if (!mounted || session.endAt != null) return;
+      if (!logic.state.sessions.contains(session)) return;
+      _showSessionVsBlockSheet(session, block);
+    });
+  }
+
+  void _showSessionVsBlockSheet(Session session, ScheduleBlock block) {
     final ctx = _navigatorKey.currentState?.overlay?.context;
     if (ctx == null || !mounted) return;
     final actName = _state?.activities
