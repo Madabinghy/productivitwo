@@ -672,157 +672,162 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           },
           child: Container(
             constraints: const BoxConstraints(minHeight: 48),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
             decoration: BoxDecoration(
               color: current ? (dark ? kBActive : cs.primaryContainer.withOpacity(.35)) : null,
               borderRadius: BorderRadius.circular(12),
               border: current ? Border.all(color: primary.withOpacity(.35)) : null,
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            // Disposition « B » (choix user 2026-10-01) : ligne 1 = début → fin
+            // (+ en cours) à gauche, méta (durée · fait · contexte) à droite ;
+            // ligne 2 = coche, pastille, titre sur TOUTE la largeur, ▶.
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Heure — largeur mini 40 px, mais jamais coupée : avec une
-                // grande taille de police iOS, « 07:00 » doit rester sur une ligne.
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 40),
-                  child: Text(
-                    block.startTime,
+                Row(crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                  Text(
+                    '${block.startTime} → ${_clockOfMin(startMin + block.durationMin)}'
+                    '${current ? ' · en cours' : ''}',
                     maxLines: 1,
                     softWrap: false,
-                    overflow: TextOverflow.visible,
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: current ? FontWeight.w700 : FontWeight.w400,
+                      fontSize: 12.5,
+                      fontWeight: current ? FontWeight.w700 : FontWeight.w500,
                       fontFeatures: const [FontFeature.tabularFigures()],
                       color: current ? primary : hourColor,
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                // Coche 24 px (point vert pour le bloc en cours)
-                GestureDetector(
-                  onTap: () => _toggleDone(block),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: Center(
-                        child: current
-                            ? Container(
-                                width: 10,
-                                height: 10,
-                                decoration:
-                                    BoxDecoration(color: primary, shape: BoxShape.circle))
-                            : AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: isDone ? color : Colors.transparent,
-                                  border: isDone
-                                      ? null
-                                      : Border.all(
-                                          color: cs.onSurface.withOpacity(.25), width: 1.5),
-                                ),
-                                child: isDone
-                                    ? Icon(Icons.check, size: 14, color: cs.surface)
-                                    : null,
-                              ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(text: fmtMin(block.durationMin)),
+                        // Réel attribuable au bloc (action → tâche → activité).
+                        if (loggedMin > 0)
+                          TextSpan(
+                              text: ' · ${fmtMin(loggedMin)} fait',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: primary.withOpacity(isDone ? .5 : .9))),
+                        // Contexte GTD de l'action visée (@ordinateur…).
+                        if (blockCtx != null)
+                          TextSpan(
+                              text: ' · $blockCtx',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: isDone ? muted : primary.withOpacity(.75))),
+                        if (block.carriedFromDate != null && !isDone)
+                          TextSpan(
+                              text: ' · reporté d\'hier',
+                              style: TextStyle(
+                                  fontStyle: FontStyle.italic,
+                                  color: cs.tertiary.withOpacity(.9))),
+                      ]),
+                      textAlign: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                        color: muted,
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                // Pastille catégorie 8 px
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                      color: isDone ? color.withOpacity(.35) : color,
-                      borderRadius: BorderRadius.circular(2)),
-                ),
-                const SizedBox(width: 10),
-                // Titre sur TOUTE la largeur (2 lignes) ; la méta (durée ·
-                // fait · contexte · provenance) et le ▶ passent en 2ᵉ ligne :
-                // ~40 % de titre visible en plus, sans réduire la police.
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
+                ]),
+                const SizedBox(height: 4),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Coche 24 px (point vert pour le bloc en cours)
+                  GestureDetector(
+                    onTap: () => _toggleDone(block),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Center(
+                          child: current
+                              ? Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration:
+                                      BoxDecoration(color: primary, shape: BoxShape.circle))
+                              : AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: isDone ? color : Colors.transparent,
+                                    border: isDone
+                                        ? null
+                                        : Border.all(
+                                            color: cs.onSurface.withOpacity(.25), width: 1.5),
+                                  ),
+                                  child: isDone
+                                      ? Icon(Icons.check, size: 14, color: cs.surface)
+                                      : null,
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Pastille catégorie 8 px
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, right: 10),
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: isDone ? color.withOpacity(.35) : color,
+                          borderRadius: BorderRadius.circular(2)),
+                    ),
+                  ),
+                  // Titre : toute la largeur restante, 2 lignes
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
                         block.title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+                          height: 1.3,
                           color: isDone ? muted : cs.onSurface,
                           decoration: isDone ? TextDecoration.lineThrough : null,
                           decorationColor: muted,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Row(children: [
-                        Expanded(
-                          child: Text.rich(
-                            TextSpan(children: [
-                              TextSpan(text: fmtMin(block.durationMin)),
-                              // Réel attribuable au bloc (action → tâche → activité).
-                              if (loggedMin > 0)
-                                TextSpan(
-                                    text: ' · ${fmtMin(loggedMin)} fait',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: primary.withOpacity(isDone ? .5 : .9))),
-                              // Contexte GTD de l'action visée (@ordinateur…) —
-                              // l'ordre chronologique reste intact.
-                              if (blockCtx != null)
-                                TextSpan(
-                                    text: ' · $blockCtx',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        color: isDone ? muted : primary.withOpacity(.75))),
-                              if (block.carriedFromDate != null && !isDone)
-                                TextSpan(
-                                    text: ' · reporté d\'hier',
-                                    style: TextStyle(
-                                        fontStyle: FontStyle.italic,
-                                        color: cs.tertiary.withOpacity(.9))),
-                            ]),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontFeatures: const [FontFeature.tabularFigures()],
-                              color: muted,
-                            ),
-                          ),
-                        ),
-                        // ▶ lancer (chrono + focus tâche) — le bloc en cours se
-                        // lance depuis la carte MAINTENANT.
-                        if (launchable)
-                          GestureDetector(
-                            onTap: () => widget.onLaunch!(block),
-                            behavior: HitTestBehavior.opaque,
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Icon(Icons.play_circle_outline, size: 20, color: color),
-                            ),
-                          ),
-                      ]),
-                    ],
+                    ),
                   ),
-                ),
+                  // ▶ lancer (chrono + focus tâche) — le bloc en cours se
+                  // lance depuis la carte MAINTENANT.
+                  if (launchable)
+                    GestureDetector(
+                      onTap: () => widget.onLaunch!(block),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 8, top: 2),
+                        child: Icon(Icons.play_circle_outline, size: 20, color: color),
+                      ),
+                    ),
+                ]),
               ],
             ),
           ),
         ),
       ),
     );
+  }
+
+  String _clockOfMin(int min) {
+    final m = min.clamp(0, 24 * 60 - 1);
+    return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
   }
 
   /// Bloc de préparation la veille (kind:"prep") : rangée compacte, icône sac,
