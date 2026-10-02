@@ -20,12 +20,16 @@ Aucune compilation séparée : c'est le **même binaire iOS** (`SUPPORTED_PLATFO
 ## Activer (toi, dans App Store Connect)
 
 1. App Store Connect → **Productivitwo** → **Tarifs et disponibilité** (Pricing and Availability).
-2. Section **Mac** (ou « Disponibilité des apps iPhone et iPad sur Mac ») → cocher
-   **« Rendre cette app disponible sur Mac »** (Make this app available on Mac) → Enregistrer.
+2. Tout en bas de la page, section **« Apps iPhone et iPad sur Mac avec puce Apple »** (iPhone and
+   iPad Apps on Apple Silicon Mac) → bloc « Disponibilité sur Mac avec puce Apple » → cocher
+   **« Rendre cette app disponible »** (Make this app available) → **Enregistrer** en haut à droite.
+   Le menu du même bloc fixe la version macOS minimale. Rôle requis : titulaire, admin ou
+   gestionnaire d'app. (Variante : liste des apps → menu ⋯ en haut à gauche → « iOS Apps on Mac
+   Availability » pour plusieurs apps d'un coup.) État 2026-10 : **déjà cochée** pour Productivitwo.
 3. La prochaine build déjà approuvée devient téléchargeable sur le Mac App Store
    (Apple Silicon, macOS 12+), étiquetée « Conçue pour iPhone ». Pas de nouvelle soumission
-   nécessaire ; si la case est grisée, le Review a jugé l'app incompatible : il faut alors
-   soumettre une build avec une note Review.
+   nécessaire. La case est indisponible si aucune build n'a encore été envoyée pour la plateforme,
+   ou si l'app est en achat universel avec une app macOS déjà publiée.
 4. Sur le Mac : App Store → Mon compte → onglet **iPhone et iPad** → installer Productivitwo.
 
 Tester avant d'ouvrir au public :

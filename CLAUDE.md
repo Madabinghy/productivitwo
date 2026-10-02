@@ -339,7 +339,8 @@ chaque build Xcode Cloud ; en montant la version, mettre quand même le pbxproj 
 
 Le widget iPhone relayé sur le Mac ne peut pas ouvrir l'app en UE (Recopie de l'iPhone indisponible,
 DMA). Réponse retenue : rendre le **même binaire iOS** installable sur Mac via App Store Connect
-(case « Rendre cette app disponible sur Mac »), pas de cible Catalyst ni `flutter build macos`.
+(Tarifs et disponibilité → « Apps iPhone et iPad sur Mac avec puce Apple », **déjà cochée**),
+pas de cible Catalyst ni `flutter build macos`.
 Procédure, test TestFlight Mac et audit des plugins : `docs/mac_designed_for_iphone.md`.
 Sur Mac, `Platform.isIOS` reste vrai ; côté natif, tester `ProcessInfo.processInfo.isiOSAppOnMac`.
 
