@@ -379,6 +379,10 @@ class FirestoreSync {
         challengesDone: meta['challengesDone'] ?? 0,
         challengeStreak: meta['challengeStreak'] ?? 0,
         lastChallengeYmd: meta['lastChallengeYmd'] as String?,
+        dayGoalRoutines: (meta['dayGoalRoutines'] as int?) ?? 1,
+        dayGoalBlocks: (meta['dayGoalBlocks'] as int?) ?? 1,
+        dayGoalSince: meta['dayGoalSince'] as String?,
+        wonDays: (meta['wonDays'] as List?)?.cast<String>(),
         ganttActionsByDay: (meta['ganttActionsByDay'] as Map?)
             ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())),
         dailyStakeByDay: (meta['dailyStakeByDay'] as Map?)
@@ -585,6 +589,14 @@ class FirestoreSync {
                                  ? local.challengeStreak : remote.challengeStreak,
       lastChallengeYmd:      (local.lastChallengeYmd ?? '').compareTo(remote.lastChallengeYmd ?? '') >= 0
                                  ? local.lastChallengeYmd : remote.lastChallengeYmd,
+      // Journée gagnée : jours gagnés = union ; seuil = le plus récemment changé.
+      wonDays:               {...local.wonDays, ...remote.wonDays}.toList()..sort(),
+      dayGoalRoutines:       (local.dayGoalSince ?? '').compareTo(remote.dayGoalSince ?? '') >= 0
+                                 ? local.dayGoalRoutines : remote.dayGoalRoutines,
+      dayGoalBlocks:         (local.dayGoalSince ?? '').compareTo(remote.dayGoalSince ?? '') >= 0
+                                 ? local.dayGoalBlocks : remote.dayGoalBlocks,
+      dayGoalSince:          (local.dayGoalSince ?? '').compareTo(remote.dayGoalSince ?? '') >= 0
+                                 ? local.dayGoalSince : remote.dayGoalSince,
       weeklyScoreTarget:     local.weeklyScoreTarget,
       // Or : on garde le côté le plus avancé (goldLifetime monotone le plus élevé).
       gold:                  local.goldLifetime >= remote.goldLifetime ? local.gold : remote.gold,
@@ -767,6 +779,10 @@ class FirestoreSync {
         'challengesDone': st.challengesDone,
         'challengeStreak': st.challengeStreak,
         'lastChallengeYmd': st.lastChallengeYmd,
+        'dayGoalRoutines': st.dayGoalRoutines,
+        'dayGoalBlocks': st.dayGoalBlocks,
+        'dayGoalSince': st.dayGoalSince,
+        'wonDays': st.wonDays,
         'ganttActionsByDay': st.ganttActionsByDay,
         'dailyStakeByDay': st.dailyStakeByDay,
         'dailyStakeSettledDays': st.dailyStakeSettledDays,

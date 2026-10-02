@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -8,6 +9,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
+import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
@@ -19,6 +21,7 @@ import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
+import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,6 +115,9 @@ class TodayViewState extends State<TodayView> {
     });
     _subscribeSchedule();
     if (widget.visible) _tabOpens.add(DateTime.now());
+    // Journée gagnée : à l'ouverture, deux journées perdues d'affilée font
+    // redescendre le seuil d'un cran (sans rien demander).
+    _dayGoalStepped = widget.logic.adaptDayGoalOnOpen(DateTime.now());
     // La jauge suit le chrono en cours + le trait « maintenant » ; passage de
     // minuit → le stream bascule sur le nouveau jour.
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -144,6 +150,150 @@ class TodayViewState extends State<TodayView> {
       setState(() => _schedule = s);
       widget.logic.todayBlocks = s?.blocks ?? [];
     });
+  }
+
+  // Seuil descendu à l'ouverture du jour → la carte le dit le matin.
+  DayGoal? _dayGoalStepped;
+  // Vibration + carte verte une seule fois par journée gagnée.
+  String? _wonCelebrated;
+
+  DayWinProgress _dayWin(DateTime now) => DayWinProgress(
+        goal: widget.logic.dayGoal,
+        routinesDone: widget.logic.routinesReachedOn(now),
+        blocksDone: _liveBlocks.where((b) => b.status == 'done').length,
+      );
+
+  /// Carte « journée gagnée » sous l'en-tête : la règle du jour, ce qui
+  /// manque, puis l'état gagné avec la série. Masquée tant qu'il n'y a ni
+  /// programme ni routine quotidienne (nouvel utilisateur).
+  Widget? _dayWinCard(ColorScheme cs, DateTime now) {
+    final logic = widget.logic;
+    final hasDaily = logic.state.activeActivities
+        .any((a) => a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily);
+    if (_liveBlocks.isEmpty && !hasDaily) return null;
+    final p = _dayWin(now);
+    final key = ymdKey(now);
+    final already = logic.state.wonDays.contains(key);
+    if (p.won && !already) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (logic.markDayWon(now) && _wonCelebrated != key) {
+          _wonCelebrated = key;
+          HapticFeedback.mediumImpact();
+          setState(() {});
+        }
+      });
+    }
+    final won = p.won || already;
+    final streak = logic.dayWinStreak(now) + (p.won && !already ? 1 : 0);
+    final dark = cs.brightness == Brightness.dark;
+    final primary = dark ? kBPrimary : cs.primary;
+    final surface = dark ? kBSurface : cs.surface;
+    final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.6);
+    final track = dark ? kBRaised : cs.onSurface.withOpacity(.08);
+
+    final String title;
+    final String sub;
+    if (won) {
+      title = 'Journée gagnée';
+      sub = streak > 1 ? '${streak}ᵉ d\'affilée · le reste est du bonus' : 'Le reste est du bonus';
+    } else if (p.done == 0) {
+      title = 'Pour gagner la journée';
+      sub = _dayGoalStepped != null
+          ? 'On repart à ${p.goal.label}'
+          : p.goal.label;
+    } else {
+      title = p.missingLabel ?? '';
+      sub = [
+        if (p.routinesLeft == 0) 'Routine${p.goal.routines > 1 ? 's' : ''} faite${p.goal.routines > 1 ? 's' : ''}',
+        if (p.blocksLeft == 0) 'Bloc${p.goal.blocks > 1 ? 's' : ''} terminé${p.goal.blocks > 1 ? 's' : ''}',
+        if (p.blocksLeft > 0) 'termine ${p.blocksLeft == 1 ? 'un bloc' : '${p.blocksLeft} blocs'} du programme',
+        if (p.routinesLeft > 0) 'coche ${p.routinesLeft == 1 ? 'une routine' : '${p.routinesLeft} routines'}',
+      ].join(' · ');
+    }
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeOut,
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: won ? primary.withOpacity(dark ? .16 : .12) : surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: won ? primary.withOpacity(.5) : cs.onSurface.withOpacity(.08)),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: Stack(alignment: Alignment.center, children: [
+            if (won)
+              Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: primary, shape: BoxShape.circle),
+                  child: Icon(Icons.check_rounded, color: dark ? kBBg : Colors.white, size: 24))
+            else ...[
+              CustomPaint(
+                size: const Size(44, 44),
+                painter: RingPainter(
+                    progress: p.ratio, color: primary, stroke: 5, trackColor: track, cap: StrokeCap.round),
+              ),
+              Text('${p.done}/${p.total}',
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: cs.onSurface,
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ],
+          ]),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
+            const SizedBox(height: 2),
+            Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, color: text3)),
+            if (!won) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                for (var i = 0; i < p.total; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      height: 5,
+                      decoration: BoxDecoration(
+                          color: i < p.done ? primary : track,
+                          borderRadius: BorderRadius.circular(3)),
+                    ),
+                  ),
+                ],
+              ]),
+            ],
+          ]),
+        ),
+        if (streak > 0) ...[
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+                color: won ? primary.withOpacity(.18) : track,
+                borderRadius: BorderRadius.circular(999)),
+            child: Text('🔥 $streak j',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: won ? primary : cs.onSurface.withOpacity(.75),
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+          ),
+        ],
+      ]),
+    );
   }
 
   List<ScheduleBlock> get _liveBlocks =>
@@ -453,6 +603,7 @@ class TodayViewState extends State<TodayView> {
               children: [
                 _header(cs, now, text3),
                 if (!_showTomorrow) ...[
+                  if (_dayWinCard(cs, now) case final card?) card,
                   const SizedBox(height: 16),
                   NowCard(
                     logic: widget.logic,
