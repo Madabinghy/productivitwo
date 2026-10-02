@@ -1950,9 +1950,11 @@ class _AppRootState extends State<AppRoot>
       switch (id) {
         case 2: // Résumé du jour
           showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
-        case 3: // Streak en danger → onglet À faire
-        case 4: // Défi du jour → onglet À faire
-          setState(() => _tab = _Tab.projets);
+        case 3: // Streak en danger → Aujourd'hui (routines du jour en tête)
+          setState(() => _tab = _goNowTab());
+        case 4: // Défi du jour → le défi lui-même
+          setState(() => _tab = _goNowTab());
+          _showChallenge();
         case 5: // Score mi-journée → résumé du jour
           showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
       }

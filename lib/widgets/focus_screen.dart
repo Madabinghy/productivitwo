@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -164,6 +165,7 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   void _toggleItem(TaskAction a, ChecklistItem c, bool v, Future<void> Function() save) {
+    HapticFeedback.lightImpact();
     final changed = setChecklistItem(a, c.id, v);
     setState(() {});
     save();
@@ -171,6 +173,7 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   void _toggleAction(TaskAction a, bool v, Future<void> Function() save) {
+    HapticFeedback.lightImpact();
     a.done = v;
     a.doneAt = v ? DateTime.now() : null;
     if (v) {
@@ -216,6 +219,7 @@ class _FocusScreenState extends State<_FocusScreen> {
 
   /// « Terminé » : l'action est faite, le chrono s'arrête, le bloc passe à fait.
   Future<void> _finish({TaskAction? action, Future<void> Function()? save, ScheduleBlock? block}) async {
+    HapticFeedback.mediumImpact();
     if (action != null && !action.done && save != null) _toggleAction(action, true, save);
     widget.onStopTimer();
     if (block != null && block.status != 'done') {

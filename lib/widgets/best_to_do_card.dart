@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -39,6 +40,16 @@ class _BestToDoCardState extends State<BestToDoCard> {
   static const _holdFor = Duration(milliseconds: 2500);
   Timer? _hold;
   List<String> _lastOrder = const [];
+  // Halo d'une seconde sur la ligne dont la cible vient d'être atteinte
+  // (retour visuel au +1 qui compte, sans confettis).
+  final Set<String> _justReached = {};
+
+  void _flashReached(String id) {
+    _justReached.add(id);
+    Timer(const Duration(milliseconds: 1100), () {
+      if (mounted) setState(() => _justReached.remove(id));
+    });
+  }
 
   void _holdOrder() {
     _hold?.cancel();
@@ -66,6 +77,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
         ? t.subtract(const Duration(days: 1))
         : t;
     logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
+    HapticFeedback.selectionClick();
     _holdOrder();
     setState(() {});
   }
@@ -75,6 +87,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
   // routine disparaissait dès la première). Elle descend en fin de liste,
   // reste incrémentable, et c'est CE bouton qui la sort pour la journée.
   void _validate(Activity a) {
+    HapticFeedback.mediumImpact();
     final ymd = yyyymmdd(DateTime.now());
     logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
     setState(() {});
@@ -250,15 +263,21 @@ class _BestToDoCardState extends State<BestToDoCard> {
         : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
     final timerMin = r.timerMin ?? 0;
 
+    final flash = _justReached.contains(r.id);
     return Opacity(
       opacity: e.passed ? .55 : 1,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOut,
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
         decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withOpacity(.4),
+          color: flash
+              ? accent.withOpacity(.22)
+              : cs.surfaceContainerHighest.withOpacity(.4),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
+          border: Border.all(
+              color: flash ? accent.withOpacity(.7) : cs.outlineVariant.withOpacity(.3)),
         ),
         child: Row(
           children: [
@@ -356,7 +375,17 @@ class _BestToDoCardState extends State<BestToDoCard> {
               color: accent,
               background: accent.withOpacity(.12),
               onTap: () {
+                final reachesNow = !e.reached &&
+                    (e.dayTarget != null
+                        ? e.dayDone + 1 >= e.dayTarget!
+                        : e.weekDone + 1 >= e.weekTarget);
                 logic.incHabit(r.id, 1, DateTime.now());
+                if (reachesNow) {
+                  HapticFeedback.mediumImpact();
+                  _flashReached(r.id);
+                } else {
+                  HapticFeedback.lightImpact();
+                }
                 _holdOrder();
                 setState(() {});
               },

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -192,6 +193,7 @@ class _NowCardState extends State<NowCard> {
   }
 
   Future<void> _markDone(ScheduleBlock b) async {
+    HapticFeedback.mediumImpact();
     b.status = 'done';
     setState(() {});
     await _sync.updateBlockStatus(_date, b.id, 'done');
@@ -343,7 +345,10 @@ class _NowCardState extends State<NowCard> {
     } else if (b != null) {
       if (launchable) {
         buttons.add(Expanded(
-            child: _btn(pal, current ? 'Lancer' : 'Commencer', primary: true, onTap: () => widget.onLaunch(b))));
+            child: _btn(pal, current ? 'Lancer' : 'Commencer', primary: true, onTap: () {
+          HapticFeedback.lightImpact();
+          widget.onLaunch(b);
+        })));
         buttons.add(const SizedBox(width: 8));
         buttons.add(_btn(pal, 'Fait', onTap: () => _markDone(b)));
       } else {
