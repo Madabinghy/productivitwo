@@ -82,10 +82,10 @@ class TodayView extends StatefulWidget {
   });
 
   @override
-  State<TodayView> createState() => _TodayViewState();
+  State<TodayView> createState() => TodayViewState();
 }
 
-class _TodayViewState extends State<TodayView> {
+class TodayViewState extends State<TodayView> {
   StreamSubscription<DailySchedule?>? _scheduleSub;
   StreamSubscription<List<Session>>? _sessionsSub;
   StreamSubscription<List<HabitHit>>? _hitsSub;
@@ -288,7 +288,16 @@ class _TodayViewState extends State<TodayView> {
     ));
   }
 
-  Widget _focusBand(FocusTarget t) {
+  /// Cible et chrono exposés au shell (pastille de la barre + tiroir Focus).
+  FocusTarget? get focusTarget => _focusTarget;
+  Session? get openSession => _openSession;
+
+  /// Tiroir Focus (depuis n'importe quel onglet) : même contenu que la
+  /// bande, en colonne. Construit ici pour partager toutes les actions.
+  Widget focusDrawer(FocusTarget t, {required VoidCallback onClose}) =>
+      _focusBand(t, compact: true, onClose: onClose);
+
+  Widget _focusBand(FocusTarget t, {bool compact = false, VoidCallback? onClose}) {
     StrategicObjective? obj;
     for (final o in widget.objectives) {
       if (o.id == t.project.strategicObjectiveId) obj = o;
@@ -306,6 +315,8 @@ class _TodayViewState extends State<TodayView> {
       onToggleAction: (a, v) => _toggleTaskAction(t.project, a, v),
       onPause: _stopChrono,
       onDone: () => _finishFocus(t),
+      compact: compact,
+      onClose: onClose,
     );
   }
 
