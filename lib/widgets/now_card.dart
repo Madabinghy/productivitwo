@@ -32,6 +32,9 @@ class NowCard extends StatefulWidget {
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
   final VoidCallback? onChallenge;
+  /// Écran Focus plein écran (PR 3 Focus) : la carte entière s'ouvre quand un
+  /// chrono tourne ; null = pas d'écran.
+  final VoidCallback? onOpenFocus;
 
   const NowCard({
     super.key,
@@ -49,6 +52,7 @@ class NowCard extends StatefulWidget {
     this.onOpenRoutines,
     this.onOpenActivities,
     this.onChallenge,
+    this.onOpenFocus,
   });
 
   @override
@@ -224,7 +228,7 @@ class _NowCardState extends State<NowCard> {
 
   @override
   Widget build(BuildContext context) {
-    final pal = _Palette.of(context);
+    final pal = NowPalette.of(context);
     final now = DateTime.now();
     final nowMin = now.hour * 60 + now.minute;
     final focus = focusBlock(_blocks, nowMin);
@@ -351,9 +355,11 @@ class _NowCardState extends State<NowCard> {
       buttons.add(_iconBtn(pal, Icons.chevron_right, 'Voir la source', () => widget.onOpenSource!(b)));
     }
 
+    final openFocus = session != null && widget.onOpenFocus != null ? widget.onOpenFocus : null;
     return _frame(
       pal,
-      header: _header(pal, right),
+      onTap: openFocus,
+      header: _header(pal, right, chevron: openFocus != null),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           SizedBox(
@@ -442,7 +448,7 @@ class _NowCardState extends State<NowCard> {
     );
   }
 
-  Widget _header(_Palette pal, String? right) => Row(children: [
+  Widget _header(NowPalette pal, String? right, {bool chevron = false}) => Row(children: [
         Container(
             width: 7, height: 7, decoration: BoxDecoration(color: pal.primary, shape: BoxShape.circle)),
         const SizedBox(width: 8),
@@ -455,24 +461,37 @@ class _NowCardState extends State<NowCard> {
           Text(right,
               style: TextStyle(
                   fontSize: 12, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+        if (chevron) ...[
+          const SizedBox(width: 4),
+          Icon(Icons.open_in_full_rounded, size: 14, color: pal.text3),
+        ],
       ]);
 
-  Widget _frame(_Palette pal, {required Widget header, required Widget child}) => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-        decoration: BoxDecoration(
-          color: pal.surface,
+  Widget _frame(NowPalette pal,
+          {required Widget header, required Widget child, VoidCallback? onTap}) =>
+      Material(
+        color: pal.surface,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: pal.primary.withOpacity(.3)),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: pal.primary.withOpacity(.3)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              header,
+              const SizedBox(height: 14),
+              child,
+            ]),
+          ),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          header,
-          const SizedBox(height: 14),
-          child,
-        ]),
       );
 
-  Widget _btn(_Palette pal, String label, {bool primary = false, required VoidCallback onTap}) =>
+  Widget _btn(NowPalette pal, String label, {bool primary = false, required VoidCallback onTap}) =>
       SizedBox(
         height: 48,
         child: Material(
@@ -497,7 +516,7 @@ class _NowCardState extends State<NowCard> {
         ),
       );
 
-  Widget _iconBtn(_Palette pal, IconData icon, String tooltip, VoidCallback onTap) => SizedBox(
+  Widget _iconBtn(NowPalette pal, IconData icon, String tooltip, VoidCallback onTap) => SizedBox(
         width: 48,
         height: 48,
         child: Material(
@@ -520,7 +539,7 @@ class NowSessionPanel extends StatefulWidget {
   final Project? project;
   final ProjectTask? task;
   final Activity? activity;
-  final _Palette palette;
+  final NowPalette palette;
 
   const NowSessionPanel({
     super.key,
@@ -607,7 +626,7 @@ class _NowSessionPanelState extends State<NowSessionPanel> {
     ]);
   }
 
-  Widget _label(_Palette pal, String text) => Padding(
+  Widget _label(NowPalette pal, String text) => Padding(
         padding: const EdgeInsets.only(top: 6, bottom: 2),
         child: Text(text.toUpperCase(),
             maxLines: 1,
@@ -616,7 +635,7 @@ class _NowSessionPanelState extends State<NowSessionPanel> {
                 fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: .8, color: pal.text4)),
       );
 
-  Widget _actionRows(_Palette pal, TaskAction a,
+  Widget _actionRows(NowPalette pal, TaskAction a,
       {required ValueChanged<bool> onToggle,
       required void Function(ChecklistItem, bool) onItem}) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -632,7 +651,7 @@ class _NowSessionPanelState extends State<NowSessionPanel> {
     ]);
   }
 
-  Widget _checkRow(_Palette pal, String title, bool done,
+  Widget _checkRow(NowPalette pal, String title, bool done,
       {required double size,
       required double fontSize,
       String? trailing,
@@ -685,7 +704,7 @@ class NowEmptyPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pal = _Palette.of(context);
+    final pal = NowPalette.of(context);
     final hasChallenge = onChallenge != null && logic.challengeActivity() != null;
     return Column(children: [
       Icon(Icons.self_improvement, size: 36, color: pal.text4),
@@ -710,7 +729,7 @@ class NowEmptyPanel extends StatelessWidget {
     ]);
   }
 
-  Widget _chip(_Palette pal, IconData icon, String label, VoidCallback onTap) => Material(
+  Widget _chip(NowPalette pal, IconData icon, String label, VoidCallback onTap) => Material(
         color: pal.chip,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
@@ -731,9 +750,9 @@ class NowEmptyPanel extends StatelessWidget {
 
 /// Couleurs de la carte : jetons du web en sombre, `ColorScheme` en clair
 /// (handoff § 4 — le mode clair n'est pas supprimé).
-class _Palette {
+class NowPalette {
   final Color surface, primary, onPrimary, track, chip, text, text2, text3, text4;
-  const _Palette({
+  const NowPalette({
     required this.surface,
     required this.primary,
     required this.onPrimary,
@@ -745,10 +764,10 @@ class _Palette {
     required this.text4,
   });
 
-  static _Palette of(BuildContext context) {
+  static NowPalette of(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (cs.brightness == Brightness.dark) {
-      return const _Palette(
+      return const NowPalette(
         surface: kBSurface,
         primary: kBPrimary,
         onPrimary: kBBg,
@@ -760,7 +779,7 @@ class _Palette {
         text4: kBText4,
       );
     }
-    return _Palette(
+    return NowPalette(
       surface: cs.surfaceContainerLow,
       primary: cs.primary,
       onPrimary: cs.onPrimary,

@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/focus_screen.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
@@ -468,6 +469,17 @@ class TodayViewState extends State<TodayView> {
                     onOpenRoutines: widget.onOpenRoutines,
                     onOpenActivities: widget.onOpenActivities,
                     onChallenge: widget.onChallenge,
+                    onOpenFocus: widget.onStopTimer == null
+                        ? null
+                        : () => showFocusScreen(
+                              context,
+                              logic: widget.logic,
+                              blocks: _liveBlocks,
+                              date: _schedDate,
+                              onStopTimer: widget.onStopTimer!,
+                              onLaunch: widget.onNowLaunch ?? widget.onLaunch,
+                              onOpenSource: widget.onOpenSource,
+                            ),
                   ),
                   NowCoachZone(
                     logic: widget.logic,

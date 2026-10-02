@@ -2029,7 +2029,7 @@ class _DocListSheet extends StatelessWidget {
                     onTap: () => Navigator.push(
                       ctx,
                       MaterialPageRoute(
-                        builder: (_) => _DocViewer(title: title, html: html),
+                        builder: (_) => DocViewer(title: title, html: html),
                       ),
                     ),
                   ),
@@ -2043,16 +2043,16 @@ class _DocListSheet extends StatelessWidget {
   }
 }
 
-class _DocViewer extends StatefulWidget {
+class DocViewer extends StatefulWidget {
   final String title;
   final String html;
-  const _DocViewer({required this.title, required this.html});
+  const DocViewer({required this.title, required this.html});
 
   @override
-  State<_DocViewer> createState() => _DocViewerState();
+  State<DocViewer> createState() => DocViewerState();
 }
 
-class _DocViewerState extends State<_DocViewer> {
+class DocViewerState extends State<DocViewer> {
   WebViewController? _ctrl;
   bool _ready = false;
 
