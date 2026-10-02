@@ -76,6 +76,10 @@ Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette sema
 7 / 14 jours pleine page, tout se manipule dans la grille (clic sur un jour = popover « caser », points =
 blocs du programme, glisser = déplacer les dates, tirer le bord = échéance, clic droit = couleur). Pas de
 tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff).
+Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
+tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
+Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
+et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil ≥ 1280 px ; en dessous, repos.
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
@@ -227,7 +231,10 @@ de la routine, sinon activité liée du projet ; l'action n'est pas regardée). 
 bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
 est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` (la session prend la
 tâche/action du bloc et bascule sur son activité-temps). Même action après coup : menu « Bloc ▾ » de la carte
-mobile, pilule « Pour ce bloc » de la carte web. Le web n'affiche jamais « Terminer le bloc » pour un chrono
+mobile, pilule « Pour ce bloc » de la carte web. **Réveil au changement de bloc** : `BlockTransitionWatcher`
+(tick minute `AppLogic.tickBlockTransition` côté mobile → même feuille ; ticker de `TodayView` web → SnackBar
+« Pour ce bloc ») signale un bloc qui VIENT de devenir courant pendant un chrono hors source, une fois par
+couple session × bloc, jamais à l'ouverture de l'app. Le web n'affiche jamais « Terminer le bloc » pour un chrono
 hors bloc (état `aside`, comme le mobile). Passage auto en « fait » = mobile mode liste uniquement
 (`_maybeAutoWin`), blocs avec `activityId` ; rien côté serveur.
 
