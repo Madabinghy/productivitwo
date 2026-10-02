@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet « Actions » : la liste GTD qui remplace l'onglet Projets quand le
 /// Gantt est en retrait. Mode liste PAR PROJET : chaque projet actif expose
@@ -53,6 +54,28 @@ class _ActionsViewState extends State<ActionsView> {
 
   AppState get _state => widget.logic.state;
 
+  // Filtre « Domaine de vie » (au-dessus de JE SUIS…) : multi, vide = tous.
+  // Persisté localement (SharedPreferences), comme les filtres de l'app web.
+  static const _kDomainPrefKey = 'actions_domain_filter';
+  Set<String> _domainFilter = {};
+
+  Future<void> _loadDomainFilter() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_kDomainPrefKey) ?? const [];
+    if (mounted && ids.isNotEmpty) setState(() => _domainFilter = ids.toSet());
+  }
+
+  Future<void> _toggleDomain(String id) async {
+    setState(() {
+      _domainFilter.contains(id) ? _domainFilter.remove(id) : _domainFilter.add(id);
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kDomainPrefKey, _domainFilter.toList());
+  }
+
+  /// Domaine d'une entrée : celui du projet, sinon celui de l'activité.
+  String? _domainOf(_Entry e) => e.project?.domainId ?? e.activity?.domainId;
+
   // À l'écoute d'AppLogic : un contexte ajouté depuis une fiche/dialog doit
   // apparaître SANS changer d'onglet (constaté sur build — la vue n'était
   // rafraîchie que par les rebuilds du parent).
@@ -60,6 +83,7 @@ class _ActionsViewState extends State<ActionsView> {
   void initState() {
     super.initState();
     widget.logic.addListener(_onLogicChange);
+    _loadDomainFilter();
   }
 
   @override
@@ -959,7 +983,20 @@ class _ActionsViewState extends State<ActionsView> {
     // complète était trop longue) : aucun contexte sélectionné → aucune
     // action. Une action SANS contexte est faisable partout → visible dès
     // qu'un contexte est actif (sinon elle serait inatteignable).
+    // Domaines proposés = ceux qui portent au moins une action en attente ;
+    // un filtre mémorisé sur un domaine disparu ne masque rien.
+    final domainIds = <String>{
+      for (final g in pGroups)
+        if (g.entries.isNotEmpty && g.project.domainId != null) g.project.domainId!,
+      for (final g in aGroups) g.activity.domainId,
+    };
+    final domains = _state.activeDomains.where((d) => domainIds.contains(d.id)).toList();
+    final activeDomains = _domainFilter.where(domainIds.contains).toSet();
+    bool inDomain(_Entry e) =>
+        activeDomains.isEmpty || activeDomains.contains(_domainOf(e));
+
     bool visible(_Entry e) =>
+        inDomain(e) &&
         active.isNotEmpty &&
         (e.action.allContexts.isEmpty ||
             e.action.allContexts.any(active.contains));
@@ -971,7 +1008,8 @@ class _ActionsViewState extends State<ActionsView> {
         (
           project: g.project,
           entries: g.entries.where(visible).toList(),
-          needsNext: g.entries.isEmpty,
+          needsNext: g.entries.isEmpty &&
+              (activeDomains.isEmpty || activeDomains.contains(g.project.domainId)),
         ),
     ].where((g) => g.entries.isNotEmpty || g.needsNext).toList();
     final visibleActivityGroups = [
@@ -1015,6 +1053,76 @@ class _ActionsViewState extends State<ActionsView> {
               ),
             ),
           ]),
+
+          // ── Domaine de vie : premier filtre, au-dessus du contexte ─────────
+          if (domains.length > 1) ...[
+            Row(children: [
+              Icon(Icons.category_outlined,
+                  size: 14, color: cs.onSurface.withOpacity(.45)),
+              const SizedBox(width: 6),
+              Text('DOMAINE',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: cs.onSurface.withOpacity(.45))),
+              if (activeDomains.isNotEmpty) ...[
+                const Spacer(),
+                InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () async {
+                    setState(() => _domainFilter.clear());
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove(_kDomainPrefKey);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    child: Text('Tous',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: cs.primary)),
+                  ),
+                ),
+              ],
+            ]),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final d in domains)
+                  Builder(builder: (_) {
+                    final on = activeDomains.contains(d.id);
+                    final color = domainColor(d.id, _state.activeDomains) ?? cs.primary;
+                    return ChoiceChip(
+                      selected: on,
+                      onSelected: (_) => _toggleDomain(d.id),
+                      showCheckmark: false,
+                      avatar: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      ),
+                      label: Text(d.name),
+                      labelStyle: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+                        color: on ? color : cs.onSurface.withOpacity(.65),
+                      ),
+                      selectedColor: color.withOpacity(.14),
+                      backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
+                      side: BorderSide(
+                          color: on ? color.withOpacity(.5) : Colors.transparent),
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                    );
+                  }),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
 
           // ── « Je suis… » : le contexte du moment filtre la liste ───────────
           if (contexts.isNotEmpty) ...[

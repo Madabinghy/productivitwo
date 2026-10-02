@@ -3102,9 +3102,11 @@ class _AppRootState extends State<AppRoot>
   /// index — seule la barre change.
   // « Stats » = l'ancien Accueil (tableau de bord), promu onglet principal :
   // les stats de temps sont un moteur d'ouverture de l'app (constat user).
+  // Ordre de la barre (demande user 2026-10) : Actions AVANT Aujourd'hui,
+  // l'onglet d'arrivée reste tout à droite.
   List<_Tab> get _visibleTabs => _state?.hideProjectsTab == true
-      ? const [_Tab.dashboard, _Tab.stats, _Tab.aujourdhui, _Tab.actions]
-      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.aujourdhui, _Tab.actions];
+      ? const [_Tab.dashboard, _Tab.stats, _Tab.actions, _Tab.aujourdhui]
+      : const [_Tab.dashboard, _Tab.stats, _Tab.projets, _Tab.actions, _Tab.aujourdhui];
 
   int _tabIndex(_Tab t) {
     switch (t) {
