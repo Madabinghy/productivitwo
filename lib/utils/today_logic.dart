@@ -218,6 +218,35 @@ String? shiftedStartAfter(int nowMin, int durationMin) {
   return '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}';
 }
 
+/// Où écrire quand l'utilisateur dit « Pour ce bloc » :
+/// - [session] : le bloc a une source (tâche, activité-temps, routine liée,
+///   projet lié) → la session est réécrite dessus (`attachSessionToBlock`) ;
+/// - [block] : bloc LIBRE (import Google Agenda, bloc perso, projet sans
+///   activité liée) → le bloc prend l'activité du chrono (`attachBlockToSession`) ;
+/// - null : rien à faire (routine sans activité liée).
+enum AttachTarget { session, block }
+
+AttachTarget? attachTargetFor(ScheduleBlock b,
+    {Activity? blockActivity, Project? project}) {
+  if (canAttachSessionToBlock(b, blockActivity: blockActivity, project: project)) {
+    return AttachTarget.session;
+  }
+  if (b.taskId == null && b.activityId == null) return AttachTarget.block;
+  return null;
+}
+
+/// « Pour ce bloc » sur un bloc libre : le bloc devient un bloc de l'activité
+/// du chrono (et de son action propre, le cas échéant), donc
+/// [sessionMatchesBlock] devient vrai. Mutation en mémoire : l'appelant
+/// persiste le bloc (`upsertScheduleBlock`). Les miroirs Google Agenda gardent
+/// ce lien : la resynchronisation ne touche qu'heure, durée et titre.
+bool attachBlockToSession(ScheduleBlock b, Session s) {
+  if (b.taskId != null || b.activityId != null) return false;
+  b.activityId = s.activityId;
+  b.actionId = s.taskId == null ? s.actionId : null;
+  return true;
+}
+
 /// Réveil au changement de bloc : à chaque tick (minute), signale qu'un bloc
 /// VIENT de devenir courant alors que le chrono en cours ne lui correspond pas
 /// — le cours de 14 h qui arrive pendant un chrono « Productivité » lancé à

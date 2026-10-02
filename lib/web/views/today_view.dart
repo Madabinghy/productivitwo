@@ -136,8 +136,7 @@ class TodayViewState extends State<TodayView> {
       matches: _sessionOnBlock,
     );
     if (b == null || open == null) return;
-    final attachable = canAttachSessionToBlock(b,
-        blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
+    final attachable = _attachTarget(b) != null;
     final who = _activityName(open.activityId) ?? 'ton chrono';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('« ${b.title} » commence — $who, c\'est pour ce bloc ?'),
@@ -276,14 +275,26 @@ class TodayViewState extends State<TodayView> {
     return _sessionOnBlock(open, f.block) ? (block: f.block, open: open) : null;
   }
 
+  AttachTarget? _attachTarget(ScheduleBlock b) => attachTargetFor(b,
+      blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
+
   /// « Pour ce bloc » : le chrono en cours (lancé sur autre chose, ou avant
-  /// l'heure du bloc) est ré-attribué au bloc — même règle que le mobile.
+  /// l'heure du bloc) est ré-attribué au bloc ; un bloc LIBRE (agenda Google,
+  /// perso) prend lui l'activité du chrono — même règle que le mobile.
   Future<void> _attachToBlock(Session s, ScheduleBlock b) async {
-    final ok = attachSessionToBlock(s, b,
-        blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
-    if (!ok) return;
-    setState(() {});
-    await widget.sync.saveSession(s);
+    switch (_attachTarget(b)) {
+      case AttachTarget.session:
+        if (!attachSessionToBlock(s, b,
+            blockActivity: _activityOf(b.activityId), project: _project(b.projectId))) return;
+        setState(() {});
+        await widget.sync.saveSession(s);
+      case AttachTarget.block:
+        if (!attachBlockToSession(b, s)) return;
+        setState(() {});
+        await widget.sync.upsertScheduleBlock(_today, b);
+      case null:
+        return;
+    }
   }
 
   Future<void> _toggleDone(ScheduleBlock b) async {
@@ -637,8 +648,6 @@ class TodayViewState extends State<TodayView> {
     } else {
       final b = focus?.block;
       final isCurrent = focus?.current ?? false;
-      final blockAct = _activityOf(b?.activityId);
-      final blockProject = _project(b?.projectId);
       // Le chrono tourne-t-il sur la SOURCE du bloc en cours ? Sinon la carte
       // montre ce qu'on fait ET ce qui était prévu, sans jamais cocher le bloc
       // par accident (même règle que la carte mobile).
@@ -654,7 +663,7 @@ class TodayViewState extends State<TodayView> {
           b != null &&
           !onBlock &&
           (isCurrent || soon) &&
-          canAttachSessionToBlock(b, blockActivity: blockAct, project: blockProject);
+          _attachTarget(b) != null;
       // Le chrono en cours prime ; sinon le temps écoulé dans le créneau.
       final Duration elapsed;
       final int totalMin;

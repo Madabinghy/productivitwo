@@ -47,7 +47,7 @@ jobs:
 
       - name: Build web
         run: |
-          flutter build web --release --no-tree-shake-icons \
+          flutter build web --release --no-tree-shake-icons --pwa-strategy=none \
             --dart-define=GIT_SHA=${GITHUB_SHA::7} \
             --dart-define=BUILD_TIME=$(date -u +%Y-%m-%dT%H:%MZ)
 

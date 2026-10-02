@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/chrono_launcher.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -119,6 +120,14 @@ class WebTopBar extends StatelessWidget {
             const PopupMenuDivider(),
             const PopupMenuItem(
                 value: WebMenuItem.logout, child: Text('Déconnexion')),
+            // Version servie (SHA + heure de build injectés par le CI) : pour
+            // vérifier d'un coup d'œil qu'un déploiement est bien arrivé.
+            PopupMenuItem<WebMenuItem>(
+              enabled: false,
+              height: 30,
+              child: Text(kBuildLabel,
+                  style: const TextStyle(fontSize: 11, color: kBText4)),
+            ),
           ],
         ),
         const SizedBox(width: 8),

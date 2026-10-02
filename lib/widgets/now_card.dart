@@ -148,8 +148,8 @@ class _NowCardState extends State<NowCard> {
     final session = _openSession;
     final blockAct = _activity(b.activityId);
     final project = _project(b.projectId);
-    final attachable = session != null &&
-        canAttachSessionToBlock(b, blockActivity: blockAct, project: project);
+    final target = attachTargetFor(b, blockActivity: blockAct, project: project);
+    final attachable = session != null && target != null;
     final choice = await showMenu<String>(
       context: anchor,
       position: pos,
@@ -170,8 +170,16 @@ class _NowCardState extends State<NowCard> {
     if (!mounted || choice == null) return;
     switch (choice) {
       case 'attach':
-        if (session != null &&
-            attachSessionToBlock(session, b, blockActivity: blockAct, project: project)) {
+        if (session == null) break;
+        if (target == AttachTarget.block) {
+          // Bloc libre (agenda Google, perso) : il prend l'activité du chrono.
+          if (attachBlockToSession(b, session)) {
+            HapticFeedback.selectionClick();
+            setState(() {});
+            await _sync.upsertScheduleBlock(_date, b);
+          }
+        } else if (attachSessionToBlock(session, b,
+            blockActivity: blockAct, project: project)) {
           HapticFeedback.selectionClick();
           widget.logic.onChange();
           setState(() {});
