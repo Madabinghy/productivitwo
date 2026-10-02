@@ -136,14 +136,20 @@ class _NowCardState extends State<NowCard> {
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  /// Menu du bloc en cours quand on fait autre chose : reprendre (chrono sur
-  /// sa source), décaler après la parenthèse, fait, passer.
+  /// Menu du bloc en cours quand on fait autre chose : rattacher le chrono en
+  /// cours au bloc, reprendre (nouveau chrono sur sa source), décaler après
+  /// la parenthèse, fait, passer.
   Future<void> _blockMenu(BuildContext anchor, ScheduleBlock b) async {
     final box = anchor.findRenderObject() as RenderBox;
     final overlay = Overlay.of(anchor).context.findRenderObject() as RenderBox;
     final pos = RelativeRect.fromRect(
         box.localToGlobal(Offset.zero, ancestor: overlay) & box.size, Offset.zero & overlay.size);
     final launchable = b.projectId != null || b.activityId != null;
+    final session = _openSession;
+    final blockAct = _activity(b.activityId);
+    final project = _project(b.projectId);
+    final attachable = session != null &&
+        canAttachSessionToBlock(b, blockActivity: blockAct, project: project);
     final choice = await showMenu<String>(
       context: anchor,
       position: pos,
@@ -154,6 +160,7 @@ class _NowCardState extends State<NowCard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w600))),
+        if (attachable) const PopupMenuItem(value: 'attach', child: Text('C\'est pour ce bloc')),
         if (launchable) const PopupMenuItem(value: 'resume', child: Text('Reprendre ce bloc')),
         const PopupMenuItem(value: 'shift', child: Text('Décaler après ma parenthèse')),
         const PopupMenuItem(value: 'done', child: Text('Marquer fait')),
@@ -162,6 +169,13 @@ class _NowCardState extends State<NowCard> {
     );
     if (!mounted || choice == null) return;
     switch (choice) {
+      case 'attach':
+        if (session != null &&
+            attachSessionToBlock(session, b, blockActivity: blockAct, project: project)) {
+          HapticFeedback.selectionClick();
+          widget.logic.onChange();
+          setState(() {});
+        }
       case 'resume':
         widget.onLaunch(b);
       case 'shift':

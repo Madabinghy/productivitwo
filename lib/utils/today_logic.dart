@@ -150,6 +150,66 @@ ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   return null;
 }
 
+/// Fenêtre d'anticipation : un chrono lancé moins de 15 min avant un bloc est
+/// probablement pour lui (le cours de 14 h qu'on démarre à 13 h 55).
+const int kBlockAttachLookaheadMin = 15;
+
+/// Bloc auquel un chrono qui démarre à [nowMin] peut se rattacher : le bloc en
+/// cours (`current: true`), sinon le premier bloc pending qui commence dans
+/// les [lookaheadMin] prochaines minutes (`current: false`), sinon null.
+({ScheduleBlock block, bool current})? blockToAttachAt(
+    List<ScheduleBlock> blocks, int nowMin,
+    {int lookaheadMin = kBlockAttachLookaheadMin}) {
+  final cur = currentBlockAt(blocks, nowMin);
+  if (cur != null) return (block: cur, current: true);
+  ScheduleBlock? soon;
+  for (final b in blocks) {
+    if (b.status != 'pending') continue;
+    final s = blockStartMin(b);
+    if (s <= nowMin || s > nowMin + lookaheadMin) continue;
+    if (soon == null || s < blockStartMin(soon)) soon = b;
+  }
+  return soon == null ? null : (block: soon, current: false);
+}
+
+/// Activité-temps sur laquelle doit tourner le chrono d'un bloc : son
+/// activité si c'est une activité-temps, l'activité liée si c'est une routine,
+/// sinon l'activité liée du projet. Null = le bloc n'impose pas d'activité.
+String? blockChronoActivityId(ScheduleBlock b,
+    {Activity? blockActivity, Project? project}) {
+  if (b.activityId != null) {
+    if (blockActivity == null) return b.activityId;
+    return blockActivity.isHabit ? blockActivity.linkedActivityId : blockActivity.id;
+  }
+  return project?.linkedActivityId;
+}
+
+/// Peut-on rattacher une session à ce bloc de façon à ce que
+/// [sessionMatchesBlock] devienne vrai ? Faux pour un bloc libre (ni tâche,
+/// ni activité-temps, ni projet avec activité liée).
+bool canAttachSessionToBlock(ScheduleBlock b,
+    {Activity? blockActivity, Project? project}) {
+  if (b.taskId != null) return true;
+  return blockChronoActivityId(b, blockActivity: blockActivity, project: project) != null;
+}
+
+/// « Pour ce bloc » : ré-attribue la session EN COURS au bloc — elle porte
+/// désormais la tâche et l'action du bloc, et tourne sur son activité-temps
+/// quand le bloc en impose une. Le temps compte alors pour le bloc (et peut le
+/// valider). Mutation en mémoire : l'appelant persiste (`onChange` / save).
+/// Retourne false (sans rien toucher) si le bloc n'est pas rattachable.
+bool attachSessionToBlock(Session s, ScheduleBlock b,
+    {Activity? blockActivity, Project? project}) {
+  if (!canAttachSessionToBlock(b, blockActivity: blockActivity, project: project)) {
+    return false;
+  }
+  s.taskId = b.taskId;
+  s.actionId = b.actionId;
+  final act = blockChronoActivityId(b, blockActivity: blockActivity, project: project);
+  if (act != null) s.activityId = act;
+  return true;
+}
+
 /// « Décaler après ma parenthèse » : prochain quart d'heure ≥ maintenant, en
 /// "HH:mm" ; null si le bloc ne tiendrait plus dans la journée.
 String? shiftedStartAfter(int nowMin, int durationMin) {

@@ -221,6 +221,16 @@ Claude ne les recrée pas lors d'une régénération.
 **Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant.
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
+**Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien
+est recalculé à l'affichage par `sessionMatchesBlock` (tâche du bloc, sinon activité-temps ou activité liée
+de la routine, sinon activité liée du projet ; l'action n'est pas regardée). Au `start()` d'un chrono, si le
+bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
+est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` (la session prend la
+tâche/action du bloc et bascule sur son activité-temps). Même action après coup : menu « Bloc ▾ » de la carte
+mobile, pilule « Pour ce bloc » de la carte web. Le web n'affiche jamais « Terminer le bloc » pour un chrono
+hors bloc (état `aside`, comme le mobile). Passage auto en « fait » = mobile mode liste uniquement
+(`_maybeAutoWin`), blocs avec `activityId` ; rien côté serveur.
+
 ---
 
 ## Suppression : soft-delete partout
