@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
+import 'package:productivitwo_v1/utils/streak_logic.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -2217,7 +2218,8 @@ class AppLogic {
         .where((a) =>
             a.isHabit &&
             effectiveHabitFreq(a) == HabitFreq.daily &&
-            habitCurrentStreak(a.id) >= 3 &&
+            habitStreakInfo(a.id).streak >= 3 &&
+            !habitStreakInfo(a.id).jokerAvailable && // un joker couvrirait
             !habitReached(a))
         .map((a) => a.name)
         .toList();
@@ -2874,34 +2876,21 @@ class AppLogic {
     return streak;
   }
 
-  int habitCurrentStreak(String habitId) {
+  int habitCurrentStreak(String habitId) => habitStreakInfo(habitId).streak;
+
+  /// Série + joker hebdomadaire automatique (utils/streak_logic.dart) : un
+  /// jour raté par semaine glissante ne casse pas la série.
+  StreakInfo habitStreakInfo(String habitId, {DateTime? today}) {
+    const none = StreakInfo(streak: 0, jokerDay: null, jokerAvailable: true);
     final act = state.activeActivities.firstWhereOrNull((a) => a.id == habitId);
-    if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return 0;
-
+    if (act == null || effectiveHabitFreq(act) != HabitFreq.daily) return none;
     final quota = dayQuotaFor(act);
-    if (quota <= 0) return 0;
-
-    final now = DateTime.now();
-    DateTime d = DateTime(now.year, now.month, now.day);
-
-    if (habitValueOn(habitId, d) < quota) {
-      d = d.subtract(const Duration(days: 1));
-    }
-
-    int streak = 0;
-    while (streak < 3650) {
-      if (habitValueOn(habitId, d) >= quota) {
-        streak++;
-        d = d.subtract(const Duration(days: 1));
-      } else if (state.goldGelDays.contains('${habitId}_${yyyymmdd(d)}')) {
-        // Jour gelé (Gel de série acheté) : on enjambe sans casser la chaîne
-        // — ni incrément, ni rupture, comme un vrai jour de repos.
-        d = d.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
-    }
-    return streak;
+    if (quota <= 0) return none;
+    return computeStreak(
+      today: today ?? DateTime.now(),
+      reached: (d) => habitValueOn(habitId, d) >= quota,
+      frozen: (d) => state.goldGelDays.contains('${habitId}_${yyyymmdd(d)}'),
+    );
   }
 
   /// Meilleur streak jamais atteint (jours consécutifs avec quota atteint).

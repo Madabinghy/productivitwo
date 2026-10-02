@@ -254,7 +254,11 @@ class _BestToDoCardState extends State<BestToDoCard> {
     final r = e.act;
     final dColor = domainColor(r.domainId, logic.state.activeDomains);
     final accent = dColor ?? cs.primary;
-    final streak = logic.habitCurrentStreak(r.id);
+    final streakInfo = logic.habitStreakInfo(r.id, today: now);
+    final streak = streakInfo.streak;
+    // Série en danger : ≥ 3 jours, pas atteinte, pas de joker, après 18 h.
+    final atRisk = !e.reached && streak >= 3 && !streakInfo.jokerAvailable && now.hour >= 18;
+    const dayAbbr = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
 
     // ▶ chrono (activité liée) / ⏱ minuteur (si réglé) — comme le lanceur.
     final linkedId = (r.linkedActivityId ?? '').trim();
@@ -329,7 +333,25 @@ class _BestToDoCardState extends State<BestToDoCard> {
                               FontFeature.tabularFigures()
                             ],
                             color: cs.onSurface.withOpacity(.5))),
+                    if (streakInfo.jokerDay != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                            color: cs.onSurface.withOpacity(.08),
+                            borderRadius: BorderRadius.circular(5)),
+                        child: Text('joker ${dayAbbr[streakInfo.jokerDay!.weekday - 1]}',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: cs.onSurface.withOpacity(.55))),
+                      ),
+                    ],
                   ]),
+                  if (atRisk)
+                    Text('à faire avant minuit',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w700, color: cs.error)),
                 ],
               ),
             ),
