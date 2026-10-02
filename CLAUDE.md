@@ -335,6 +335,14 @@ ITMS-90473 (« CFBundleShortVersionString Mismatch », vu sur la 1.0.6 build 510
 `ios/ci_scripts/ci_pre_xcodebuild.sh` réaligne toutes les `MARKETING_VERSION` sur le pubspec avant
 chaque build Xcode Cloud ; en montant la version, mettre quand même le pbxproj à jour (build locale).
 
+## Mac (Apple Silicon, « Conçue pour iPhone »)
+
+Le widget iPhone relayé sur le Mac ne peut pas ouvrir l'app en UE (Recopie de l'iPhone indisponible,
+DMA). Réponse retenue : rendre le **même binaire iOS** installable sur Mac via App Store Connect
+(case « Rendre cette app disponible sur Mac »), pas de cible Catalyst ni `flutter build macos`.
+Procédure, test TestFlight Mac et audit des plugins : `docs/mac_designed_for_iphone.md`.
+Sur Mac, `Platform.isIOS` reste vrai ; côté natif, tester `ProcessInfo.processInfo.isiOSAppOnMac`.
+
 ## Siri (App Intents, iOS 16+)
 
 Raccourcis vocaux dans `ios/Runner/SiriIntents.swift` (target Runner — un
