@@ -231,7 +231,11 @@ de la routine, sinon activité liée du projet ; l'action n'est pas regardée). 
 bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
 est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` (la session prend la
 tâche/action du bloc et bascule sur son activité-temps). Même action après coup : menu « Bloc ▾ » de la carte
-mobile, pilule « Pour ce bloc » de la carte web. **Réveil au changement de bloc** : `BlockTransitionWatcher`
+mobile, pilule « Pour ce bloc » de la carte web. **Bloc libre** (miroir Google Agenda, bloc perso, projet sans
+activité liée) : c'est le BLOC qui prend l'activité du chrono (`attachTargetFor` → `attachBlockToSession`,
+persisté par `upsertScheduleBlock`, qui fusionne pour garder `subtitle` des miroirs) ; la resync Google ne
+touche qu'heure/durée/titre, le lien survit. Un miroir d'événement récurrent change d'id chaque occurrence :
+rattachement à refaire (mémoire « titre → activité » = piste ultérieure). **Réveil au changement de bloc** : `BlockTransitionWatcher`
 (tick minute `AppLogic.tickBlockTransition` côté mobile → même feuille ; ticker de `TodayView` web → SnackBar
 « Pour ce bloc ») signale un bloc qui VIENT de devenir courant pendant un chrono hors source, une fois par
 couple session × bloc, jamais à l'ouverture de l'app. Le web n'affiche jamais « Terminer le bloc » pour un chrono

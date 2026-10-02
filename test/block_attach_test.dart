@@ -72,6 +72,33 @@ void main() {
       expect(sessionMatchesBlock(s2, rb, activityLinkedActivityId: routine.linkedActivityId), isTrue);
     });
 
+    test('bloc libre (agenda Google) : c\'est le BLOC qui prend l\'activité du chrono', () {
+      final s = Session(activityId: 'enseignement', startAt: t0, actionId: 'propre');
+      final gcal = blk('14:00');
+      expect(attachTargetFor(gcal), AttachTarget.block);
+      expect(attachBlockToSession(gcal, s), isTrue);
+      expect(gcal.activityId, 'enseignement');
+      expect(gcal.actionId, 'propre');
+      expect(sessionMatchesBlock(s, gcal), isTrue);
+      // Session sur une tâche : l'action (de tâche) n'est pas copiée sur le bloc.
+      final s2 = Session(activityId: 'dev', startAt: t0, taskId: 't', actionId: 'a');
+      final b2 = blk('15:00');
+      expect(attachBlockToSession(b2, s2), isTrue);
+      expect(b2.actionId, isNull);
+    });
+
+    test('cible du rattachement : session si le bloc a une source, bloc si libre, rien pour une routine orpheline', () {
+      final time = Activity(id: 'cours', name: 'Cours', type: 'time', domainId: 'd');
+      expect(attachTargetFor(blk('14:00', projectId: 'p', taskId: 't')), AttachTarget.session);
+      expect(attachTargetFor(blk('14:00', activityId: 'cours'), blockActivity: time), AttachTarget.session);
+      final p = Project(
+          id: 'p', title: 'P', startDate: DateTime(2026, 10, 1), createdBy: 'test');
+      expect(attachTargetFor(blk('14:00', projectId: 'p'), project: p), AttachTarget.block);
+      final routine = Activity(id: 'r', name: 'R', type: 'habit', domainId: 'd');
+      expect(attachTargetFor(blk('14:00', activityId: 'r'), blockActivity: routine), isNull);
+      expect(attachBlockToSession(blk('14:00', activityId: 'r'), Session(activityId: 'x', startAt: t0)), isFalse);
+    });
+
     test('bloc libre ou routine sans activité liée : non rattachable, session intacte', () {
       final s = Session(activityId: 'productivite', startAt: t0, taskId: 't');
       expect(canAttachSessionToBlock(blk('14:00')), isFalse);

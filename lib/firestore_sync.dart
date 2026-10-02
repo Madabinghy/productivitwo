@@ -3186,7 +3186,9 @@ class FirestoreSync {
     if (idx == -1) {
       blocks.add(block.toJson());
     } else {
-      blocks[idx] = block.toJson();
+      // Fusion : les clés que le modèle Dart ne porte pas (ex. `subtitle`
+      // des miroirs Google Agenda) survivent à la réécriture.
+      blocks[idx] = {...blocks[idx], ...block.toJson()};
     }
     await ref.update({'blocks': blocks});
   }

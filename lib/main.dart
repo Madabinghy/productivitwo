@@ -2979,8 +2979,9 @@ class _AppRootState extends State<AppRoot>
         logic.currentProjects.firstWhereOrNull((p) => p.id == block.projectId);
     final blockAct =
         _state?.activities.firstWhereOrNull((a) => a.id == block.activityId);
-    final attachable = canAttachSessionToBlock(block,
-        blockActivity: blockAct, project: blockProject);
+    final attachTarget =
+        attachTargetFor(block, blockActivity: blockAct, project: blockProject);
+    final attachable = attachTarget != null;
     final cs = Theme.of(ctx).colorScheme;
     showModalBottomSheet<void>(
       context: ctx,
@@ -3008,9 +3009,16 @@ class _AppRootState extends State<AppRoot>
               leading: Icon(Icons.link_rounded, color: cs.primary),
               title: const Text('Pour ce bloc'),
               subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(sheetCtx);
-                if (attachSessionToBlock(session, block,
+                if (attachTarget == AttachTarget.block) {
+                  // Bloc libre (agenda Google, perso) : il prend l'activité du chrono.
+                  if (!attachBlockToSession(block, session)) return;
+                  final n = DateTime.now();
+                  final ymd =
+                      '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
+                  await _sync.upsertScheduleBlock(ymd, block);
+                } else if (attachSessionToBlock(session, block,
                     blockActivity: blockAct, project: blockProject)) {
                   logic.onChange();
                 }
