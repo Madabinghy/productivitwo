@@ -1017,16 +1017,39 @@ class AppLogic {
       final n = DateTime.now();
       final live = todayBlocks.where((b) => b.status != 'deleted').toList();
       final target = blockToAttachAt(live, n.hour * 60 + n.minute)?.block;
-      if (target != null) {
-        final project = currentProjects.firstWhereOrNull((p) => p.id == target.projectId);
-        final blockAct = state.activities.firstWhereOrNull((a) => a.id == target.activityId);
-        if (!sessionMatchesBlock(session, target,
-            projectLinkedActivityId: project?.linkedActivityId,
-            activityLinkedActivityId: blockAct?.linkedActivityId)) {
-          hook(session, target);
-        }
+      if (target != null && !sessionOnBlock(session, target)) {
+        blockWatcher.markAsked(session, target);
+        hook(session, target);
       }
     }
+  }
+
+  /// `sessionMatchesBlock` avec les activités liées résolues (projet, routine).
+  bool sessionOnBlock(Session s, ScheduleBlock b) {
+    final project = currentProjects.firstWhereOrNull((p) => p.id == b.projectId);
+    final blockAct = state.activities.firstWhereOrNull((a) => a.id == b.activityId);
+    return sessionMatchesBlock(s, b,
+        projectLinkedActivityId: project?.linkedActivityId,
+        activityLinkedActivityId: blockAct?.linkedActivityId);
+  }
+
+  /// Réveil au changement de bloc : appelé à chaque minute par l'UI. Un bloc
+  /// vient de devenir courant alors que le chrono tourne sur autre chose →
+  /// même feuille qu'au démarrage, une fois par couple session × bloc.
+  final blockWatcher = BlockTransitionWatcher();
+
+  void tickBlockTransition() {
+    final n = DateTime.now();
+    final live = todayBlocks.where((b) => b.status != 'deleted').toList();
+    Session? open;
+    for (final s in state.sessions) {
+      if (s.endAt != null) continue;
+      if (open == null || s.startAt.isAfter(open.startAt)) open = s;
+    }
+    final b = blockWatcher.tick(
+        blocks: live, nowMin: n.hour * 60 + n.minute, open: open, matches: sessionOnBlock);
+    final hook = onSessionOffBlock;
+    if (b != null && open != null && hook != null) hook(open, b);
   }
 
   // Actions de projet LIÉES à une activité (chrono ciblé) — remonte (projet, tâche,

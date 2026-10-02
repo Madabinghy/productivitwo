@@ -1978,10 +1978,12 @@ class _AppRootState extends State<AppRoot>
     Timer(delay, () {
       if (!mounted) return;
       _tick.value++;
+      logic.tickBlockTransition();
 
       // 2) puis toutes les minutes
       _heartbeat = Timer.periodic(const Duration(minutes: 1), (_) {
         _tick.value++;
+        logic.tickBlockTransition();
       });
     });
   }

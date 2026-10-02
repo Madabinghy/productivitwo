@@ -217,3 +217,39 @@ String? shiftedStartAfter(int nowMin, int durationMin) {
   if (start + durationMin > 24 * 60) return null;
   return '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}';
 }
+
+/// Réveil au changement de bloc : à chaque tick (minute), signale qu'un bloc
+/// VIENT de devenir courant alors que le chrono en cours ne lui correspond pas
+/// — le cours de 14 h qui arrive pendant un chrono « Productivité » lancé à
+/// 13 h 40. Une seule fois par couple session × bloc (réponse « parenthèse »
+/// respectée, question déjà posée au `start()` non répétée) ; l'état trouvé au
+/// premier tick avec un programme n'est jamais signalé (ouverture de l'app).
+class BlockTransitionWatcher {
+  String? _lastCurrentId;
+  bool _primed = false;
+  final Set<String> _asked = {};
+
+  static String _key(Session s, ScheduleBlock b) => '${s.id}:${b.id}';
+
+  /// À appeler quand la question a déjà été posée par un autre chemin.
+  void markAsked(Session s, ScheduleBlock b) => _asked.add(_key(s, b));
+
+  /// Bloc à proposer au chrono [open], ou null. [matches] = la règle
+  /// `sessionMatchesBlock` avec ses activités liées résolues par l'appelant.
+  ScheduleBlock? tick({
+    required List<ScheduleBlock> blocks,
+    required int nowMin,
+    required Session? open,
+    required bool Function(Session s, ScheduleBlock b) matches,
+  }) {
+    final cur = currentBlockAt(blocks, nowMin);
+    final changed = _primed && cur != null && cur.id != _lastCurrentId;
+    if (blocks.isNotEmpty) _primed = true;
+    _lastCurrentId = cur?.id;
+    if (!changed || open == null) return null;
+    final key = _key(open, cur);
+    if (_asked.contains(key) || matches(open, cur)) return null;
+    _asked.add(key);
+    return cur;
+  }
+}

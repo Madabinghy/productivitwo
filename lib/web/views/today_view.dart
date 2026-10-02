@@ -116,8 +116,37 @@ class TodayViewState extends State<TodayView> {
         _scheduleSub?.cancel();
         _scheduleSub = widget.sync.streamDailySchedule(_today).listen(_onSchedule);
       }
+      _checkBlockTransition();
       setState(() {});
     });
+  }
+
+  /// Réveil au changement de bloc : un bloc vient de devenir courant alors que
+  /// le chrono tourne sur autre chose → la carte passe « hors bloc » d'elle-même,
+  /// et une barre propose le rattachement (une fois par couple session × bloc).
+  final _blockWatcher = BlockTransitionWatcher();
+
+  void _checkBlockTransition() {
+    final open = _openSession;
+    final b = _blockWatcher.tick(
+      blocks: _blocks,
+      nowMin: _nowMin,
+      open: open,
+      matches: (s, b) => sessionMatchesBlock(s, b,
+          projectLinkedActivityId: _project(b.projectId)?.linkedActivityId,
+          activityLinkedActivityId: _activityOf(b.activityId)?.linkedActivityId),
+    );
+    if (b == null || open == null) return;
+    final attachable = canAttachSessionToBlock(b,
+        blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
+    final who = _activityName(open.activityId) ?? 'ton chrono';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('« ${b.title} » commence — $who, c\'est pour ce bloc ?'),
+      duration: const Duration(seconds: 12),
+      action: attachable
+          ? SnackBarAction(label: 'Pour ce bloc', onPressed: () => _attachToBlock(open, b))
+          : null,
+    ));
   }
 
   void _subscribe() {
