@@ -82,6 +82,12 @@ class AppState {
   int challengesDone;          // total de défis relevés
   int challengeStreak;         // jours consécutifs avec ≥1 défi
   String? lastChallengeYmd;    // dernier jour (YYYYMMDD) où un défi a été relevé
+  // « Journée gagnée » (utils/day_win.dart) : seuil du jour (R routines + B
+  // blocs), date du dernier changement de seuil, jours gagnés (YYYY-MM-DD).
+  int dayGoalRoutines;
+  int dayGoalBlocks;
+  String? dayGoalSince;
+  List<String> wonDays;
   Map<String, int> ganttActionsByDay;  // actions Gantt cochées par jour (XP)
   // « Mise du jour » (Royaume) : or misé sur la journée, par jour "YYYYMMDD".
   // Présent = mise placée (or déjà débité). Réglé via dailyStakeSettledDays.
@@ -231,6 +237,10 @@ class AppState {
     this.challengesDone = 0,
     this.challengeStreak = 0,
     this.lastChallengeYmd,
+    this.dayGoalRoutines = 1,
+    this.dayGoalBlocks = 1,
+    this.dayGoalSince,
+    List<String>? wonDays,
     Map<String, int>? ganttActionsByDay,
     Map<String, int>? dailyStakeByDay,
     List<String>? dailyStakeSettledDays,
@@ -326,6 +336,7 @@ class AppState {
         battleShurikensByDay = battleShurikensByDay ?? <String, int>{},
         goldInventory = goldInventory ?? <String, int>{},
         goldGelDays = goldGelDays ?? <String>[],
+        wonDays = wonDays ?? <String>[],
         goldTaskShieldDays = goldTaskShieldDays ?? <String>[],
         goldBoostDays = goldBoostDays ?? <String>[],
         expeditionCleared = expeditionCleared ?? <String>[],
@@ -394,6 +405,10 @@ class AppState {
         'challengesDone': challengesDone,
         'challengeStreak': challengeStreak,
         'lastChallengeYmd': lastChallengeYmd,
+        'dayGoalRoutines': dayGoalRoutines,
+        'dayGoalBlocks': dayGoalBlocks,
+        'dayGoalSince': dayGoalSince,
+        'wonDays': wonDays,
         'ganttActionsByDay': ganttActionsByDay,
         'dailyStakeByDay': dailyStakeByDay,
         'dailyStakeSettledDays': dailyStakeSettledDays,
@@ -549,6 +564,10 @@ class AppState {
       challengesDone: (j['challengesDone'] as int?) ?? 0,
       challengeStreak: (j['challengeStreak'] as int?) ?? 0,
       lastChallengeYmd: j['lastChallengeYmd'] as String?,
+      dayGoalRoutines: (j['dayGoalRoutines'] as int?) ?? 1,
+      dayGoalBlocks: (j['dayGoalBlocks'] as int?) ?? 1,
+      dayGoalSince: j['dayGoalSince'] as String?,
+      wonDays: (j['wonDays'] as List?)?.cast<String>() ?? <String>[],
       ganttActionsByDay: (j['ganttActionsByDay'] as Map?)
               ?.map((k, v) => MapEntry(k.toString(), (v as num).toInt())) ??
           <String, int>{},

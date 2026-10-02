@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -3114,6 +3115,67 @@ extension TodayLogic on AppLogic {
 
   Set<String> nowDoneSet(String ymd) =>
       (state.nowDoneByYmd[ymd] ?? const <String>[]).toSet();
+
+  // ── Journée gagnée (utils/day_win.dart) ─────────────────────────────────
+
+  DayGoal get dayGoal => DayGoal(state.dayGoalRoutines, state.dayGoalBlocks);
+
+  void setDayGoal(DayGoal g, DateTime today) {
+    state.dayGoalRoutines = g.routines;
+    state.dayGoalBlocks = g.blocks;
+    state.dayGoalSince = ymdKey(today);
+    onChange();
+  }
+
+  /// Routines quotidiennes atteintes ce jour (quota atteint) ∪ validées ✅.
+  int routinesReachedOn(DateTime day) {
+    final d = DateTime(day.year, day.month, day.day);
+    final validated = nowDoneSet(yyyymmdd(d));
+    var n = 0;
+    for (final a in state.activeActivities) {
+      if (!a.isHabit || effectiveHabitFreq(a) != HabitFreq.daily) continue;
+      final q = dayQuotaFor(a);
+      if ((q > 0 && habitValueOn(a.id, d) >= q) || validated.contains(a.id)) n++;
+    }
+    return n;
+  }
+
+  /// Jour « au repos » : un week-end sans aucune trace d'usage (ni session,
+  /// ni routine) — enjambé par la série, jamais compté comme perdu.
+  bool dayIdle(DateTime day) {
+    if (day.weekday < 6) return false;
+    final d0 = DateTime(day.year, day.month, day.day);
+    final d1 = d0.add(const Duration(days: 1));
+    final hasSession = state.sessions.any((s) => !s.startAt.isBefore(d0) && s.startAt.isBefore(d1));
+    if (hasSession) return false;
+    return !state.habitHits.any((h) => !h.ts.isBefore(d0) && h.ts.isBefore(d1));
+  }
+
+  /// Marque la journée gagnée (idempotent) ; true si c'est nouveau.
+  bool markDayWon(DateTime day) {
+    final k = ymdKey(day);
+    if (state.wonDays.contains(k)) return false;
+    state.wonDays.add(k);
+    onChange();
+    return true;
+  }
+
+  int dayWinStreak(DateTime today) =>
+      wonStreak(wonDays: state.wonDays.toSet(), today: today, isIdle: dayIdle);
+
+  /// À l'ouverture d'un jour : deux journées perdues d'affilée → un cran de
+  /// moins, sans rien demander. Retourne le nouveau seuil si descendu.
+  DayGoal? adaptDayGoalOnOpen(DateTime today) {
+    final next = stepDownIfNeeded(
+        goal: dayGoal,
+        today: today,
+        wonDays: state.wonDays.toSet(),
+        isIdle: dayIdle,
+        since: state.dayGoalSince);
+    if (next == null) return null;
+    setDayGoal(next, today);
+    return next;
+  }
 
   void setNowSkipped(String ymd, Set<String> ids) {
     state.nowSkippedByYmd[ymd] = ids.toList();
