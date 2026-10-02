@@ -1,3 +1,4 @@
+import { splitAgainstMirrors } from "./schedule_dedupe";
 import { db, FieldValue } from "./db";
 import { v4 as uuidv4 } from "uuid";
 import * as admin from "firebase-admin";
@@ -1977,7 +1978,10 @@ async function executePlanDay(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}`;
   const startHour = args.startHour ?? 7;
   const endHour = args.endHour ?? 20;
-  const syncToCalendar = args.syncToCalendar !== false;
+  // Défaut SANS écriture dans Google Calendar : l'app synchronise déjà le
+  // programme (sync native) et les rendez-vous arrivent en miroirs ; une
+  // 2ᵉ écriture par le connecteur Claude créait des doublons des deux côtés.
+  const syncToCalendar = args.syncToCalendar === true;
 
   // Planifier AUJOURD'HUI ne doit jamais créer de blocs déjà passés : le
   // départ effectif est calé sur le prochain quart d'heure (s'il est 15h12 et
@@ -2017,7 +2021,7 @@ async function executePlanDay(
         `1. list_calendars() → trouver le calendrier "Productivitwo"`,
         `2. list_events(calendarId, "${date}T00:00:00Z", "${date}T23:59:59Z") → events existants`,
         `3. Supprimer les events dont description contient "source: productivitwo"`,
-        `4. create_event() pour chaque bloc (sauf conflits avec calendrier principal)`,
+        `4. create_event() pour chaque bloc SAUF les miroirs 📅 (déjà dans l'agenda)`,
         `   description format : "source: productivitwo | category: [project|routine|break|personal]"`,
         `   colorId : routine=2, project=7, break=5, personal=4`,
       ]
@@ -2052,7 +2056,9 @@ async function executePlanDay(
     ``,
     `══════════════════════════════════════════`,
     `WORKFLOW :`,
-    `1. list_events() Google Calendar principal → identifier les créneaux occupés`,
+    `1. Les rendez-vous Google Agenda sont DÉJÀ dans le programme existant (blocs 📅) :`,
+    `   planifie AUTOUR, ne les recrée jamais dans schedule_day (ils seraient écartés).`,
+    `   list_events() ne sert qu'à voir des rendez-vous pas encore importés.`,
     `2. Générer les blocs (${startLabel}-${endHour}h) : tâches Gantt + routines + activités-temps + pauses`,
     `   → Tâche la plus proche de la deadline en premier`,
     `   → Arbitre selon objectives[] du contexte : les engagements en retard (onTrack:false) passent en premier`,
@@ -2111,9 +2117,9 @@ async function executePlanWeek(
     schedules.push(`${d} : ${s}`);
   }
 
-  const syncNote = args.syncToCalendar !== false
-    ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4).`
-    : "";
+  const syncNote = args.syncToCalendar === true
+    ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4) — jamais les miroirs 📅.`
+    : `\n📅 Les rendez-vous Google Agenda (blocs 📅) sont déjà dans les programmes : planifie autour, ne les recrée pas.`;
 
   return [
     `══════════════════════════════════════════`,
@@ -2161,7 +2167,9 @@ async function executeSyncCalendar(uid: string, date?: string): Promise<string> 
 
   const data = snap.data() as Record<string, unknown>;
   const blocks = (data.blocks as Array<Record<string, unknown>>) ?? [];
-  const activeBlocks = blocks.filter((b) => b.status !== "deleted");
+  // Les miroirs (gcalEventId) sont des rendez-vous qui existent déjà dans
+  // l'agenda : les renvoyer les dupliquerait.
+  const activeBlocks = blocks.filter((b) => b.status !== "deleted" && b.gcalEventId == null);
 
   const colorMap: Record<string, number> = { routine: 2, project: 7, break: 5, personal: 4 };
 
@@ -2190,6 +2198,7 @@ async function executeSyncCalendar(uid: string, date?: string): Promise<string> 
     ...eventLines,
     ``,
     `Note : ne pas dupliquer les events déjà présents dans le calendrier principal.`,
+    `Les rendez-vous importés de l'agenda (blocs 📅) ne sont volontairement pas listés.`,
   ].join("\n");
 }
 
@@ -2208,6 +2217,12 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
   const lines = blocks.map((b) => {
     const icon = statusIcon(b.status as string);
     const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
+    // Miroir d'un rendez-vous Google Agenda : il est DÉJÀ dans le programme et
+    // dans l'agenda — Claude ne doit ni le recréer dans schedule_day ni le
+    // renvoyer vers Google Calendar.
+    const mirrorNote = b.gcalEventId != null && b.status !== "deleted"
+      ? " 📅 [rendez-vous Google Agenda — déjà dans le programme : ne pas recréer, ne pas synchroniser]"
+      : "";
     // id indispensable (mark_block_done le demande) + rattachements pour
     // savoir quel projet/tâche/activité le bloc sert (constaté au test du
     // connecteur : impossible de valider un bloc sans son id).
@@ -2218,7 +2233,7 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
       ...(b.activityId ? [`activité:${b.activityId}`] : []),
       ...(b.actionId ? [`action:${b.actionId}`] : []),
     ].join(" · ");
-    return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${deletedNote}`;
+    return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${mirrorNote}${deletedNote}`;
   });
   // L'intention du jour (onglet Objectifs) fait partie du contexte : le
   // programme généré/ajusté doit la servir.
@@ -2404,12 +2419,16 @@ async function executeScheduleDay(
       (b.challenge === true && b.status !== "deleted") ||
       ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
         b.status !== "deleted"));
+  // Un bloc entrant qui doublonne un miroir agenda (même début + même titre
+  // ou durée) n'est PAS recréé : le rendez-vous est déjà là (doublons
+  // constatés dans Aujourd'hui, 2026-10-02).
+  const { kept: newBlocks, dropped } = splitAgainstMirrors(normalizedBlocks, preserved);
 
   await ref.set({
     date,
     generatedBy: "claude",
     generatedAt: FieldValue.serverTimestamp(),
-    blocks: [...preserved, ...normalizedBlocks],
+    blocks: [...preserved, ...newBlocks],
     dayReason: prevData.dayReason ?? null,
     plannedAt: prevData.plannedAt ?? null,
     plannedSameDay: prevData.plannedSameDay ?? false,
@@ -2423,8 +2442,11 @@ async function executeScheduleDay(
     intention: prevData.intention ?? null, // intention du jour (onglet Objectifs)
   });
 
-  const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
-  return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+  const lines = newBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
+  const skipped = dropped.length
+    ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
+    : "";
+  return `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)\n${lines.join("\n")}${skipped}`;
 }
 
 // Ajoute un bloc de préparation la veille (kind:"prep") au programme existant

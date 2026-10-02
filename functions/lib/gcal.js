@@ -4,6 +4,7 @@ exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = void
 exports.isOurEvent = isOurEvent;
 exports.importGcalDay = importGcalDay;
 exports.syncDayToGcal = syncDayToGcal;
+const schedule_dedupe_1 = require("./schedule_dedupe");
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const firestore_2 = require("firebase-admin/firestore");
@@ -228,16 +229,21 @@ async function importGcalDay(uid, date) {
         });
         imported++;
     }
+    // Copies ordinaires d'un miroir (recréées par un planificateur qui voyait le
+    // rendez-vous dans l'agenda) : retirées, le miroir suffit.
+    const dedup = (0, schedule_dedupe_1.dropPlainDuplicates)(blocks);
+    const finalBlocks = dedup.blocks;
+    removed += dedup.removed;
     if (imported + updated + removed > 0) {
         if (snap.exists) {
-            await ref.update({ blocks });
+            await ref.update({ blocks: finalBlocks });
         }
         else {
             await ref.set({
                 date,
                 generatedBy: "gcal",
                 generatedAt: firestore_2.FieldValue.serverTimestamp(),
-                blocks,
+                blocks: finalBlocks,
             });
         }
     }

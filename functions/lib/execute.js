@@ -68,6 +68,7 @@ exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
+const schedule_dedupe_1 = require("./schedule_dedupe");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
@@ -1742,7 +1743,10 @@ async function executePlanDay(uid, args) {
         return `Date invalide : ${date}`;
     const startHour = (_b = args.startHour) !== null && _b !== void 0 ? _b : 7;
     const endHour = (_c = args.endHour) !== null && _c !== void 0 ? _c : 20;
-    const syncToCalendar = args.syncToCalendar !== false;
+    // Défaut SANS écriture dans Google Calendar : l'app synchronise déjà le
+    // programme (sync native) et les rendez-vous arrivent en miroirs ; une
+    // 2ᵉ écriture par le connecteur Claude créait des doublons des deux côtés.
+    const syncToCalendar = args.syncToCalendar === true;
     // Planifier AUJOURD'HUI ne doit jamais créer de blocs déjà passés : le
     // départ effectif est calé sur le prochain quart d'heure (s'il est 15h12 et
     // que startHour=7, on planifie à partir de 15h15 — les blocs passés du
@@ -1778,7 +1782,7 @@ async function executePlanDay(uid, args) {
             `1. list_calendars() → trouver le calendrier "Productivitwo"`,
             `2. list_events(calendarId, "${date}T00:00:00Z", "${date}T23:59:59Z") → events existants`,
             `3. Supprimer les events dont description contient "source: productivitwo"`,
-            `4. create_event() pour chaque bloc (sauf conflits avec calendrier principal)`,
+            `4. create_event() pour chaque bloc SAUF les miroirs 📅 (déjà dans l'agenda)`,
             `   description format : "source: productivitwo | category: [project|routine|break|personal]"`,
             `   colorId : routine=2, project=7, break=5, personal=4`,
         ]
@@ -1812,7 +1816,9 @@ async function executePlanDay(uid, args) {
         ``,
         `══════════════════════════════════════════`,
         `WORKFLOW :`,
-        `1. list_events() Google Calendar principal → identifier les créneaux occupés`,
+        `1. Les rendez-vous Google Agenda sont DÉJÀ dans le programme existant (blocs 📅) :`,
+        `   planifie AUTOUR, ne les recrée jamais dans schedule_day (ils seraient écartés).`,
+        `   list_events() ne sert qu'à voir des rendez-vous pas encore importés.`,
         `2. Générer les blocs (${startLabel}-${endHour}h) : tâches Gantt + routines + activités-temps + pauses`,
         `   → Tâche la plus proche de la deadline en premier`,
         `   → Arbitre selon objectives[] du contexte : les engagements en retard (onTrack:false) passent en premier`,
@@ -1865,9 +1871,9 @@ async function executePlanWeek(uid, args) {
         const s = await executeGetDaySchedule(uid, d);
         schedules.push(`${d} : ${s}`);
     }
-    const syncNote = args.syncToCalendar !== false
-        ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4).`
-        : "";
+    const syncNote = args.syncToCalendar === true
+        ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4) — jamais les miroirs 📅.`
+        : `\n📅 Les rendez-vous Google Agenda (blocs 📅) sont déjà dans les programmes : planifie autour, ne les recrée pas.`;
     return [
         `══════════════════════════════════════════`,
         `📋 CONTEXTE PLANIFICATION SEMAINE`,
@@ -1913,7 +1919,9 @@ async function executeSyncCalendar(uid, date) {
     }
     const data = snap.data();
     const blocks = (_a = data.blocks) !== null && _a !== void 0 ? _a : [];
-    const activeBlocks = blocks.filter((b) => b.status !== "deleted");
+    // Les miroirs (gcalEventId) sont des rendez-vous qui existent déjà dans
+    // l'agenda : les renvoyer les dupliquerait.
+    const activeBlocks = blocks.filter((b) => b.status !== "deleted" && b.gcalEventId == null);
     const colorMap = { routine: 2, project: 7, break: 5, personal: 4 };
     const eventLines = activeBlocks.map((b) => {
         var _a;
@@ -1940,6 +1948,7 @@ async function executeSyncCalendar(uid, date) {
         ...eventLines,
         ``,
         `Note : ne pas dupliquer les events déjà présents dans le calendrier principal.`,
+        `Les rendez-vous importés de l'agenda (blocs 📅) ne sont volontairement pas listés.`,
     ].join("\n");
 }
 async function executeGetDaySchedule(uid, date) {
@@ -1959,6 +1968,12 @@ async function executeGetDaySchedule(uid, date) {
     const lines = blocks.map((b) => {
         const icon = statusIcon(b.status);
         const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
+        // Miroir d'un rendez-vous Google Agenda : il est DÉJÀ dans le programme et
+        // dans l'agenda — Claude ne doit ni le recréer dans schedule_day ni le
+        // renvoyer vers Google Calendar.
+        const mirrorNote = b.gcalEventId != null && b.status !== "deleted"
+            ? " 📅 [rendez-vous Google Agenda — déjà dans le programme : ne pas recréer, ne pas synchroniser]"
+            : "";
         // id indispensable (mark_block_done le demande) + rattachements pour
         // savoir quel projet/tâche/activité le bloc sert (constaté au test du
         // connecteur : impossible de valider un bloc sans son id).
@@ -1969,7 +1984,7 @@ async function executeGetDaySchedule(uid, date) {
             ...(b.activityId ? [`activité:${b.activityId}`] : []),
             ...(b.actionId ? [`action:${b.actionId}`] : []),
         ].join(" · ");
-        return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${deletedNote}`;
+        return `${icon} ${b.startTime} (${b.durationMin}min) — ${b.title} [${b.category}] (${links})${mirrorNote}${deletedNote}`;
     });
     // L'intention du jour (onglet Objectifs) fait partie du contexte : le
     // programme généré/ajusté doit la servir.
@@ -2128,11 +2143,15 @@ async function executeScheduleDay(uid, date, blocks) {
         (b.challenge === true && b.status !== "deleted") ||
         ((b.kind === "prep" || b.kind === "bilan" || b.kind === "session") &&
             b.status !== "deleted"));
+    // Un bloc entrant qui doublonne un miroir agenda (même début + même titre
+    // ou durée) n'est PAS recréé : le rendez-vous est déjà là (doublons
+    // constatés dans Aujourd'hui, 2026-10-02).
+    const { kept: newBlocks, dropped } = (0, schedule_dedupe_1.splitAgainstMirrors)(normalizedBlocks, preserved);
     await ref.set({
         date,
         generatedBy: "claude",
         generatedAt: db_1.FieldValue.serverTimestamp(),
-        blocks: [...preserved, ...normalizedBlocks],
+        blocks: [...preserved, ...newBlocks],
         dayReason: (_b = prevData.dayReason) !== null && _b !== void 0 ? _b : null,
         plannedAt: (_c = prevData.plannedAt) !== null && _c !== void 0 ? _c : null,
         plannedSameDay: (_d = prevData.plannedSameDay) !== null && _d !== void 0 ? _d : false,
@@ -2145,8 +2164,11 @@ async function executeScheduleDay(uid, date, blocks) {
         recoverySequence: (_m = prevData.recoverySequence) !== null && _m !== void 0 ? _m : null, // remontée (25) — idem
         intention: (_o = prevData.intention) !== null && _o !== void 0 ? _o : null, // intention du jour (onglet Objectifs)
     });
-    const lines = normalizedBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
-    return `✅ Programme du ${date} enregistré — ${normalizedBlocks.length} bloc(s)\n${lines.join("\n")}`;
+    const lines = newBlocks.map((b) => `• ${b.startTime} (${b.durationMin}min) — ${b.title}`);
+    const skipped = dropped.length
+        ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
+        : "";
+    return `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)\n${lines.join("\n")}${skipped}`;
 }
 // Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
 // SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).
