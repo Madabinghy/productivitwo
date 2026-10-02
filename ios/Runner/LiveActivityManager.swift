@@ -49,6 +49,9 @@ final class LiveActivityManager {
   // (Phase 2) Token push‑to‑start (iOS 17.2+) pour démarrage distant app fermée.
   @available(iOS 17.2, *)
   func pushToStartToken(_ completion: @escaping (String?) -> Void) {
+    // Mac (app iPhone « Conçue pour iPhone ») : pas de Live Activities, et le
+    // flux de tokens ne produit jamais rien → on répondrait jamais au Dart.
+    if ProcessInfo.processInfo.isiOSAppOnMac { completion(nil); return }
     Task {
       for await data in Activity<TimerActivityAttributes>.pushToStartTokenUpdates {
         completion(data.map { String(format: "%02x", $0) }.joined())
