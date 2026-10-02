@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
 import 'package:productivitwo_v1/utils/where_we_go.dart';
+import 'package:productivitwo_v1/widgets/weekly_report_screen.dart';
 
 /// Vue « Où on va » (maquette 24d) — la ligne d'horizon, accessible depuis le
 /// header de Maintenant. 3 cartes, 100 % assemblage de faits : le cap
@@ -225,6 +226,16 @@ class _WhereWeGoScreenState extends State<WhereWeGoScreen> {
         title: const Text('Où on va',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
         actions: [
+          // Rapport hebdo complet (narratif + décision) : l'écran existait
+          // sans entrée — il vit ici, à côté de la stratégie qu'il nourrit.
+          if (_report != null)
+            IconButton(
+              tooltip: 'Rapport de la semaine',
+              icon: const Icon(Icons.article_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) =>
+                      WeeklyReportScreen(logic: widget.logic, report: _report!))),
+            ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(

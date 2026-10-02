@@ -32,6 +32,8 @@ class WebTopBar extends StatelessWidget {
   final bool hasAssistantMessages;
   final VoidCallback onMyCoach;
   final ValueChanged<WebMenuItem> onMenu;
+  /// Zone chrono (pastille Focus + lanceur) ; null = lanceur seul.
+  final Widget? chrono;
 
   const WebTopBar({
     super.key,
@@ -45,6 +47,7 @@ class WebTopBar extends StatelessWidget {
     required this.hasAssistantMessages,
     required this.onMyCoach,
     required this.onMenu,
+    this.chrono,
   });
 
   @override
@@ -79,7 +82,7 @@ class WebTopBar extends StatelessWidget {
         for (final t in WebTab.values)
           _Tab(t.label, selected: t == selected, onTap: () => onSelect(t)),
         const Spacer(),
-        if (signedIn) ChronoLauncher(sync: sync),
+        if (signedIn) chrono ?? ChronoLauncher(sync: sync),
         const SizedBox(width: 6),
         IconButton(
           tooltip: 'Mon coach',

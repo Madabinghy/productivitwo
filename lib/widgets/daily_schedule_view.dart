@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -154,6 +155,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       }
     }
     final newStatus = block.status == 'done' ? 'pending' : 'done';
+    if (newStatus == 'done') {
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.selectionClick();
+    }
     await _sync.updateBlockStatus(widget.date, block.id, newStatus);
     // Défi coché → plus rien à rappeler.
     if (newStatus == 'done') await cancelChallengeNotifications(block);
@@ -296,6 +302,28 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     } else if (block.taskId != null && block.projectId != null) {
       await _sync.toggleTaskTodayFlag(block.projectId!, block.taskId!, false);
     }
+    // Filet : un glisser sur une ligne de 48 px part vite — « Annuler » 5 s
+    // remet le bloc (et son étoile) tel quel.
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('« ${block.title} » supprimé'),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () async {
+            await _sync.updateBlockStatus(widget.date, block.id, 'pending');
+            if (block.activityId != null) {
+              widget.logic.setActivityTodayFlag(block.activityId!, true);
+              await _sync.toggleActivityTodayFlag(block.activityId!, true);
+            } else if (block.taskId != null && block.projectId != null) {
+              await _sync.toggleTaskTodayFlag(block.projectId!, block.taskId!, true);
+            }
+          },
+        ),
+      ));
   }
 
   /// Défi programmé gagné automatiquement si du temps a été loggué sur
@@ -809,7 +837,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   // lance depuis la carte MAINTENANT.
                   if (launchable)
                     GestureDetector(
-                      onTap: () => widget.onLaunch!(block),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        widget.onLaunch!(block);
+                      },
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: const EdgeInsets.only(left: 8, top: 2),

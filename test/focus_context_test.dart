@@ -73,4 +73,24 @@ void main() {
     expect(nextStepAfter(t1, steps[1])?.id, 'a3');
     expect(nextStepAfter(t1, steps[2])?.id, 'a2'); // repli : étape ouverte restante
   });
+
+  test('action propre d\'une activité : cible seulement si session ciblée sans tâche', () {
+    final a = Activity(id: 'act', name: 'Contenu', domainId: 'd', ownActions: [
+      TaskAction(id: 'o1', title: 'Post LinkedIn'),
+    ]);
+    final s = Session(activityId: 'act', startAt: d0, actionId: 'o1');
+    expect(resolveOwnActionTarget(open: s, activities: [a])?.action.id, 'o1');
+    final withTask = Session(activityId: 'act', startAt: d0, taskId: 't1', actionId: 'o1');
+    expect(resolveOwnActionTarget(open: withTask, activities: [a]), isNull);
+    expect(resolveOwnActionTarget(open: null, activities: [a]), isNull);
+  });
+
+  test('dernière session terminée sur la tâche, hors session en cours', () {
+    final s1 = Session(id: 's1', activityId: 'a', startAt: d0, endAt: d0.add(const Duration(hours: 1)), taskId: 't1');
+    final s2 = Session(id: 's2', activityId: 'a', startAt: d0.add(const Duration(days: 1)),
+        endAt: d0.add(const Duration(days: 1, minutes: 30)), taskId: 't1');
+    final open = Session(id: 's3', activityId: 'a', startAt: d0.add(const Duration(days: 2)), taskId: 't1');
+    expect(lastSessionOn([s1, s2, open], taskId: 't1', exceptId: 's3')?.id, 's2');
+    expect(lastSessionOn([s1, s2, open], taskId: 't9'), isNull);
+  });
 }

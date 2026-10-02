@@ -106,3 +106,29 @@ TaskAction? nextStepAfter(ProjectTask t, TaskAction current) {
   }
   return taskSteps(t).where((a) => !a.done && a.id != current.id).firstOrNull;
 }
+
+/// Chrono ciblé sur une action PROPRE d'une activité-temps (`Session.actionId`
+/// sans tâche) : l'écran Focus mobile montre sa checklist.
+({Activity activity, TaskAction action})? resolveOwnActionTarget({
+  required Session? open,
+  required List<Activity> activities,
+}) {
+  if (open == null || open.actionId == null || open.taskId != null) return null;
+  final a = activities.where((x) => x.id == open.activityId).firstOrNull;
+  if (a == null) return null;
+  final act = a.ownActions.where((x) => x.id == open.actionId).firstOrNull;
+  return act == null ? null : (activity: a, action: act);
+}
+
+/// Dernière session TERMINÉE sur la même tâche (ou action propre), hors la
+/// session en cours — « dernière fois » du panneau Contexte.
+Session? lastSessionOn(List<Session> sessions, {String? taskId, String? actionId, String? exceptId}) {
+  Session? best;
+  for (final s in sessions) {
+    if (s.endAt == null || s.id == exceptId) continue;
+    final match = taskId != null ? s.taskId == taskId : (actionId != null && s.actionId == actionId);
+    if (!match) continue;
+    if (best == null || s.startAt.isAfter(best.startAt)) best = s;
+  }
+  return best;
+}

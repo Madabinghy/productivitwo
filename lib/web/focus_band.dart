@@ -24,6 +24,9 @@ class FocusBand extends StatelessWidget {
   final Future<void> Function(TaskAction a, bool done) onToggleAction;
   final VoidCallback onPause;
   final VoidCallback onDone;
+  /// Tiroir (barre du haut, autres onglets) : tout en colonne, bouton ✕.
+  final bool compact;
+  final VoidCallback? onClose;
 
   const FocusBand({
     super.key,
@@ -39,6 +42,8 @@ class FocusBand extends StatelessWidget {
     required this.onToggleAction,
     required this.onPause,
     required this.onDone,
+    this.compact = false,
+    this.onClose,
   });
 
   static const _tabular = [FontFeature.tabularFigures()];
@@ -129,25 +134,45 @@ class FocusBand extends StatelessWidget {
                   ),
                 ]),
               ),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                _btn('Pause', onPause),
-                const SizedBox(width: 8),
-                _btn('Terminé', onDone, primary: true),
-              ]),
+              if (compact)
+                IconButton(
+                  tooltip: 'Fermer',
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close, size: 18, color: kBText3),
+                )
+              else
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  _btn('Pause', onPause),
+                  const SizedBox(width: 8),
+                  _btn('Terminé', onDone, primary: true),
+                ]),
             ],
           ),
         ),
         const Divider(height: 1, color: kBLine),
         // ── Corps : étapes | contexte ─────────────────────────────────────
         LayoutBuilder(builder: (ctx, box) {
-          final narrow = box.maxWidth < 820;
+          final narrow = compact || box.maxWidth < 820;
           final steps = Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 16), child: _steps(context));
           final info = Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 16), child: _context(context));
           if (narrow) {
             return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              steps, const Divider(height: 1, color: kBLine), info,
+              steps,
+              const Divider(height: 1, color: kBLine),
+              info,
+              if (compact) ...[
+                const Divider(height: 1, color: kBLine),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
+                  child: Row(children: [
+                    Expanded(child: _btn('Pause', onPause)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _btn('Terminé', onDone, primary: true)),
+                  ]),
+                ),
+              ],
             ]);
           }
           return IntrinsicHeight(

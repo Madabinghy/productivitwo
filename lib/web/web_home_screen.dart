@@ -17,6 +17,8 @@ import 'package:productivitwo_v1/web/views/project_plan_view.dart';
 import 'package:productivitwo_v1/web/vision_dialog.dart';
 import 'package:productivitwo_v1/web/views/library_view.dart';
 import 'package:productivitwo_v1/web/views/archives_view.dart';
+import 'package:productivitwo_v1/web/chrono_launcher.dart';
+import 'package:productivitwo_v1/web/focus_pill.dart';
 import 'package:productivitwo_v1/web/views/documents_view.dart';
 import 'package:productivitwo_v1/web/views/orion_view.dart';
 import 'package:productivitwo_v1/web/tokens_panel.dart';
@@ -55,6 +57,20 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   ({Project project, String? taskId})? _shellGantt;
   // Bibliothèque filtrée sur un projet (« Tout voir » de la fiche projet).
   String? _libraryProjectId;
+  // Focus : la vue Aujourd'hui porte l'état (chrono, cible) ; la pastille de
+  // la barre et le tiroir le lisent par cette clé.
+  final _todayKey = GlobalKey<TodayViewState>();
+  bool _focusDrawerOpen = false;
+
+  /// Pastille Focus : sur Aujourd'hui la bande est déjà à l'écran (on y
+  /// revient si la fiche projet la recouvre) ; ailleurs → tiroir.
+  void _onFocusPill() {
+    if (_tab == WebTab.today) {
+      setState(() => _shellGantt = null);
+      return;
+    }
+    setState(() => _focusDrawerOpen = !_focusDrawerOpen);
+  }
 
   void _openLibraryFor(String projectId) => setState(() {
         _libraryProjectId = projectId;
@@ -204,6 +220,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
 
   void _go(WebTab tab) => setState(() {
         _tab = tab;
+        _focusDrawerOpen = false;
         // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay masquait
         // la vue choisie.
         _shellGantt = null;
@@ -268,6 +285,11 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
             onMyCoach: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSpaceScreen())),
             onMenu: _onMenu,
+            chrono: FocusPill(
+              todayKey: _todayKey,
+              fallback: ChronoLauncher(sync: _sync),
+              onTap: _onFocusPill,
+            ),
           ),
           if (widget.isDemo) const DemoBanner(),
           Expanded(
@@ -291,6 +313,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
           index: _tab.index,
           children: [
             TodayView(
+              key: _todayKey,
               projects: activeProjects,
               domains: _domains,
               activities: _activities,
@@ -362,6 +385,17 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               },
               onChanged: _load,
               onOpenLibrary: _openLibraryFor,
+            ),
+          ),
+        // Tiroir Focus (pastille de la barre, hors Aujourd'hui) : par-dessus
+        // tout, fiche projet comprise.
+        if (_focusDrawerOpen)
+          Positioned.fill(
+            child: FocusDrawer(
+              todayKey: _todayKey,
+              onClose: () {
+                if (_focusDrawerOpen) setState(() => _focusDrawerOpen = false);
+              },
             ),
           ),
       ],
