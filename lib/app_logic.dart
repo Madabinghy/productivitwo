@@ -1010,19 +1010,20 @@ class AppLogic {
 
     onChange();
 
-    // 3) bloc en cours sur une AUTRE source → l'UI propose (pas d'écriture ici).
+    // 3) bloc en cours — ou qui commence dans les 15 min (cours de 14 h lancé
+    //    à 13 h 55) — sur une AUTRE source → l'UI propose (pas d'écriture ici).
     final hook = onSessionOffBlock;
     if (hook != null) {
       final n = DateTime.now();
       final live = todayBlocks.where((b) => b.status != 'deleted').toList();
-      final current = currentBlockAt(live, n.hour * 60 + n.minute);
-      if (current != null) {
-        final project = currentProjects.firstWhereOrNull((p) => p.id == current.projectId);
-        final blockAct = state.activities.firstWhereOrNull((a) => a.id == current.activityId);
-        if (!sessionMatchesBlock(session, current,
+      final target = blockToAttachAt(live, n.hour * 60 + n.minute)?.block;
+      if (target != null) {
+        final project = currentProjects.firstWhereOrNull((p) => p.id == target.projectId);
+        final blockAct = state.activities.firstWhereOrNull((a) => a.id == target.activityId);
+        if (!sessionMatchesBlock(session, target,
             projectLinkedActivityId: project?.linkedActivityId,
             activityLinkedActivityId: blockAct?.linkedActivityId)) {
-          hook(session, current);
+          hook(session, target);
         }
       }
     }

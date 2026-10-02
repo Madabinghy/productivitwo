@@ -2969,6 +2969,16 @@ class _AppRootState extends State<AppRoot>
     final end = blockEndMin(block);
     final endLabel =
         '${(end ~/ 60).toString().padLeft(2, '0')}:${(end % 60).toString().padLeft(2, '0')}';
+    final n0 = DateTime.now();
+    // Bloc pas encore commencé (anticipation ≤ 15 min) : on ne propose que
+    // le rattachement — décaler ou réorganiser n'a pas de sens avant l'heure.
+    final upcoming = blockStartMin(block) > n0.hour * 60 + n0.minute;
+    final blockProject =
+        logic.currentProjects.firstWhereOrNull((p) => p.id == block.projectId);
+    final blockAct =
+        _state?.activities.firstWhereOrNull((a) => a.id == block.activityId);
+    final attachable = canAttachSessionToBlock(block,
+        blockActivity: blockAct, project: blockProject);
     final cs = Theme.of(ctx).colorScheme;
     showModalBottomSheet<void>(
       context: ctx,
@@ -2980,7 +2990,10 @@ class _AppRootState extends State<AppRoot>
             child: Align(
               alignment: Alignment.centerLeft,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Tu es sur « ${block.title} » jusqu\'à $endLabel',
+                Text(
+                    upcoming
+                        ? '« ${block.title} » commence à ${block.startTime}'
+                        : 'Tu es sur « ${block.title} » jusqu\'à $endLabel',
                     style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 const SizedBox(height: 4),
                 Text('$actName, c\'est…',
@@ -2988,26 +3001,26 @@ class _AppRootState extends State<AppRoot>
               ]),
             ),
           ),
-          ListTile(
-            leading: Icon(Icons.link_rounded, color: cs.primary),
-            title: const Text('Pour ce bloc'),
-            subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
-            onTap: () {
-              Navigator.pop(sheetCtx);
-              session.taskId = block.taskId;
-              if (block.actionId != null) session.actionId = block.actionId;
-              final blockAct = _state?.activities
-                  .firstWhereOrNull((a) => a.id == block.activityId);
-              if (blockAct != null && !blockAct.isHabit) session.activityId = blockAct.id;
-              logic.onChange();
-            },
-          ),
+          if (attachable)
+            ListTile(
+              leading: Icon(Icons.link_rounded, color: cs.primary),
+              title: const Text('Pour ce bloc'),
+              subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                if (attachSessionToBlock(session, block,
+                    blockActivity: blockAct, project: blockProject)) {
+                  logic.onChange();
+                }
+              },
+            ),
           ListTile(
             leading: Icon(Icons.pause_circle_outline, color: cs.onSurface.withOpacity(.7)),
-            title: const Text('Une parenthèse — je reprends après'),
+            title: Text(upcoming ? 'Non, autre chose' : 'Une parenthèse — je reprends après'),
             subtitle: const Text('Le bloc reste en attente, rien ne bouge'),
             onTap: () => Navigator.pop(sheetCtx),
           ),
+          if (!upcoming) ...[
           ListTile(
             leading: Icon(Icons.schedule_send_outlined, color: cs.onSurface.withOpacity(.7)),
             title: const Text('Décaler le bloc après'),
@@ -3046,6 +3059,7 @@ class _AppRootState extends State<AppRoot>
               launchUrl(claudeNewUri(prompt), mode: LaunchMode.externalApplication);
             },
           ),
+          ],
           const SizedBox(height: 8),
         ]),
       ),

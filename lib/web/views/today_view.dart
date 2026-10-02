@@ -186,10 +186,12 @@ class TodayViewState extends State<TodayView> {
     );
   }
 
-  String? _activityName(String? id) {
+  String? _activityName(String? id) => _activityOf(id)?.name;
+
+  Activity? _activityOf(String? id) {
     if (id == null) return null;
     for (final a in widget.activities) {
-      if (a.id == id) return a.name;
+      if (a.id == id) return a;
     }
     return null;
   }
@@ -226,6 +228,16 @@ class TodayViewState extends State<TodayView> {
     final s = _openSession;
     if (s == null) return;
     s.endAt = DateTime.now();
+    setState(() {});
+    await widget.sync.saveSession(s);
+  }
+
+  /// « Pour ce bloc » : le chrono en cours (lancé sur autre chose, ou avant
+  /// l'heure du bloc) est ré-attribué au bloc — même règle que le mobile.
+  Future<void> _attachToBlock(Session s, ScheduleBlock b) async {
+    final ok = attachSessionToBlock(s, b,
+        blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
+    if (!ok) return;
     setState(() {});
     await widget.sync.saveSession(s);
   }
@@ -560,12 +572,35 @@ class TodayViewState extends State<TodayView> {
     } else {
       final b = focus?.block;
       final isCurrent = focus?.current ?? false;
+      final blockAct = _activityOf(b?.activityId);
+      final blockProject = _project(b?.projectId);
+      // Le chrono tourne-t-il sur la SOURCE du bloc en cours ? Sinon la carte
+      // montre ce qu'on fait ET ce qui était prévu, sans jamais cocher le bloc
+      // par accident (même règle que la carte mobile).
+      final onBlock = open != null &&
+          b != null &&
+          isCurrent &&
+          sessionMatchesBlock(open, b,
+              projectLinkedActivityId: blockProject?.linkedActivityId,
+              activityLinkedActivityId: blockAct?.linkedActivityId);
+      final aside = open != null && b != null && isCurrent && !onBlock;
+      // Bloc qui commence dans les 15 min : un chrono lancé avant l'heure
+      // peut déjà lui être rattaché.
+      final soon = b != null &&
+          !isCurrent &&
+          blockStartMin(b) > _nowMin &&
+          blockStartMin(b) - _nowMin <= kBlockAttachLookaheadMin;
+      final attachable = open != null &&
+          b != null &&
+          !onBlock &&
+          (isCurrent || soon) &&
+          canAttachSessionToBlock(b, blockActivity: blockAct, project: blockProject);
       // Le chrono en cours prime ; sinon le temps écoulé dans le créneau.
       final Duration elapsed;
       final int totalMin;
       if (open != null) {
         elapsed = DateTime.now().difference(open.startAt);
-        totalMin = b != null && isCurrent ? b.durationMin : math.max(elapsed.inMinutes, 1);
+        totalMin = onBlock ? b.durationMin : math.max(elapsed.inMinutes, 1);
       } else if (b != null && isCurrent) {
         final n = DateTime.now();
         final start = DateTime(n.year, n.month, n.day).add(Duration(minutes: blockStartMin(b)));
@@ -605,7 +640,7 @@ class TodayViewState extends State<TodayView> {
                   const SizedBox(height: 2),
                   Text(
                     open != null
-                        ? 'chrono en cours'
+                        ? (aside ? 'chrono en cours · hors bloc' : 'chrono en cours')
                         : isCurrent
                             ? 'sur ${_fmtHm(totalMin)} · chrono arrêté'
                             : 'prochain bloc',
@@ -617,7 +652,22 @@ class TodayViewState extends State<TodayView> {
           ),
         ),
         const SizedBox(height: 18),
-        if (b != null) ...[
+        if (aside) ...[
+          Text(_activityName(open.activityId) ?? 'Chrono libre',
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w600, color: kBText)),
+          const SizedBox(height: 6),
+          Text(
+            'Prévu : ${b.title} · jusqu\'à ${_clockOf(blockEndMin(b))}',
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, color: kBText3),
+          ),
+        ] else if (b != null) ...[
           if (origin != null)
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Container(
@@ -661,13 +711,26 @@ class TodayViewState extends State<TodayView> {
         Row(children: [
           if (open != null) ...[
             Expanded(
-              child: _pillButton(b != null && isCurrent ? 'Terminer le bloc' : 'Arrêter le chrono',
+              child: _pillButton(
+                  onBlock
+                      ? 'Terminer le bloc'
+                      : aside
+                          ? 'Arrêter'
+                          : 'Arrêter le chrono',
                   primary: true,
-                  onTap: () => b != null && isCurrent ? _finishBlock(b) : _stopChrono()),
+                  onTap: () => onBlock ? _finishBlock(b) : _stopChrono()),
             ),
-            if (b != null && isCurrent) ...[
+            if (onBlock) ...[
               const SizedBox(width: 10),
               _pillButton('Pause', onTap: _stopChrono),
+            ],
+            if (attachable) ...[
+              const SizedBox(width: 10),
+              _pillButton('Pour ce bloc', onTap: () => _attachToBlock(open, b)),
+            ],
+            if (aside) ...[
+              const SizedBox(width: 10),
+              _pillButton('Fait', onTap: () => _toggleDone(b)),
             ],
           ] else if (b != null) ...[
             if (canChrono) ...[
