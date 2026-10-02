@@ -1,3 +1,4 @@
+import { dropPlainDuplicates } from "./schedule_dedupe";
 import { onRequest } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { FieldValue } from "firebase-admin/firestore";
@@ -272,15 +273,21 @@ export async function importGcalDay(
     imported++;
   }
 
+  // Copies ordinaires d'un miroir (recréées par un planificateur qui voyait le
+  // rendez-vous dans l'agenda) : retirées, le miroir suffit.
+  const dedup = dropPlainDuplicates(blocks as Record<string, unknown>[]);
+  const finalBlocks = dedup.blocks as Json[];
+  removed += dedup.removed;
+
   if (imported + updated + removed > 0) {
     if (snap.exists) {
-      await ref.update({ blocks });
+      await ref.update({ blocks: finalBlocks });
     } else {
       await ref.set({
         date,
         generatedBy: "gcal",
         generatedAt: FieldValue.serverTimestamp(),
-        blocks,
+        blocks: finalBlocks,
       });
     }
   }

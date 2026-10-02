@@ -938,17 +938,17 @@ exports.PLAN_DAY_TOOL = {
         "Retourne le contexte consolidé + les instructions de workflow à suivre pour générer " +
         "le programme et le synchroniser dans Google Calendar.\n\n" +
         "Workflow attendu après cet appel :\n" +
-        "1. Lire list_events() Google Calendar pour la date (éviter les conflits)\n" +
+        "1. Les rendez-vous Google Agenda sont DÉJÀ dans le programme (blocs 📅) : planifier autour, ne jamais les recréer\n" +
         "2. Générer les blocs horaires en tenant compte des tâches Gantt, routines et pauses\n" +
         "3. Appeler schedule_day(date, blocks[])\n" +
-        "4. Si syncToCalendar=true : créer les events dans le calendrier Google 'Productivitwo'",
+        "4. Seulement si syncToCalendar=true : créer les events dans Google Calendar (jamais les blocs 📅)",
     inputSchema: {
         type: "object",
         properties: {
             date: { type: "string", description: "YYYY-MM-DD (défaut: aujourd'hui)" },
             startHour: { type: "number", description: "Heure de début (défaut: 7)" },
             endHour: { type: "number", description: "Heure de fin (défaut: 20)" },
-            syncToCalendar: { type: "boolean", description: "Synchroniser dans Google Calendar après schedule_day (défaut: true)" },
+            syncToCalendar: { type: "boolean", description: "Écrire aussi les blocs dans Google Calendar via le connecteur (défaut: false — l'app synchronise déjà l'agenda)" },
         },
     },
 };
@@ -964,7 +964,7 @@ exports.PLAN_WEEK_TOOL = {
         type: "object",
         properties: {
             startDate: { type: "string", description: "YYYY-MM-DD du lundi de début (défaut: lundi prochain, ou aujourd'hui si lundi)" },
-            syncToCalendar: { type: "boolean", description: "Synchroniser dans Google Calendar après schedule_day (défaut: true)" },
+            syncToCalendar: { type: "boolean", description: "Écrire aussi les blocs dans Google Calendar via le connecteur (défaut: false — l'app synchronise déjà l'agenda)" },
         },
     },
 };
@@ -976,7 +976,7 @@ exports.SYNC_CALENDAR_TOOL = {
         "Workflow attendu :\n" +
         "1. Trouver le calendrier 'Productivitwo' via list_calendars()\n" +
         "2. Supprimer les events existants avec 'source: productivitwo' dans la description\n" +
-        "3. Créer les events listés dans la réponse de cet outil",
+        "3. Créer les events listés dans la réponse de cet outil (les rendez-vous importés de l'agenda, blocs 📅, n'y figurent pas)",
     inputSchema: {
         type: "object",
         properties: {
@@ -1000,6 +1000,7 @@ exports.SCHEDULE_DAY_TOOL = {
     name: "schedule_day",
     description: "Génère ou remplace le programme horaire d'une journée dans Productivitwo. " +
         "Chaque bloc est un créneau horaire avec une action concrète. " +
+        "⚠️ Ne JAMAIS recréer un rendez-vous Google Agenda déjà présent comme bloc 📅 : il serait écarté. " +
         "⚠️ Pour la date du JOUR, ne JAMAIS créer de blocs à des heures déjà passées " +
         "(planifie à partir de l'heure actuelle) ; les blocs passés existants restent intacts. " +
         "Un bloc peut porter uniquement activityId (sans projet/tâche) → temps bloqué " +

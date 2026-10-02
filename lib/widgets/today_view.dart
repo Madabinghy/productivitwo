@@ -10,6 +10,8 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/morning_three.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
@@ -22,6 +24,7 @@ import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,6 +115,14 @@ class TodayViewState extends State<TodayView> {
       if (saved != null && mounted && saved != _timeline) {
         setState(() => _timeline = saved);
       }
+      final snooze = p.getString(_kDayGoalUpSnooze);
+      final morning = p.getString(_kMorningDismissed);
+      if (mounted) {
+        setState(() {
+          _dayGoalUpSnoozeUntil = snooze;
+          _morningDismissedYmd = morning;
+        });
+      }
     });
     _subscribeSchedule();
     if (widget.visible) _tabOpens.add(DateTime.now());
@@ -154,6 +165,166 @@ class TodayViewState extends State<TodayView> {
 
   // Seuil descendu à l'ouverture du jour → la carte le dit le matin.
   DayGoal? _dayGoalStepped;
+  // Proposition « un cran de plus » refusée → on se tait 14 jours.
+  static const _kDayGoalUpSnooze = 'daygoal_up_snooze_until';
+  String? _dayGoalUpSnoozeUntil;
+  // « Le matin en trois choses » fermé à la main → plus ce jour-là.
+  static const _kMorningDismissed = 'morning_three_dismissed';
+  String? _morningDismissedYmd;
+
+  Future<void> _snoozeDayGoalUp(DateTime now) async {
+    final until = ymdKey(now.add(const Duration(days: 14)));
+    setState(() => _dayGoalUpSnoozeUntil = until);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kDayGoalUpSnooze, until);
+  }
+
+  Future<void> _dismissMorning(DateTime now) async {
+    final k = ymdKey(now);
+    setState(() => _morningDismissedYmd = k);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kMorningDismissed, k);
+  }
+
+  /// Proposition coach « un cran de plus » (7 journées gagnées d'affilée) :
+  /// proposée, jamais imposée ; « Plus tard » = silence 14 jours.
+  Widget? _dayGoalUpRow(ColorScheme cs, DateTime now, int streak) {
+    final logic = widget.logic;
+    final goal = logic.dayGoal;
+    if (!canStepUp(goal: goal, streak: streak)) return null;
+    final until = _dayGoalUpSnoozeUntil;
+    if (until != null && ymdKey(now).compareTo(until) < 0) return null;
+    final next = goal.up();
+    final dark = cs.brightness == Brightness.dark;
+    final primary = dark ? kBPrimary : cs.primary;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Une semaine pleine. On passe à ${next.label} ?',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface)),
+        const SizedBox(height: 6),
+        Row(children: [
+          TextButton(
+            onPressed: () => _snoozeDayGoalUp(now),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            child: Text('Plus tard', style: TextStyle(color: cs.onSurface.withOpacity(.6))),
+          ),
+          const SizedBox(width: 4),
+          FilledButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              logic.setDayGoal(next, now);
+              setState(() {});
+            },
+            style: FilledButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: dark ? kBBg : Colors.white,
+                visualDensity: VisualDensity.compact),
+            child: const Text('On monte'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  /// « Le matin en trois choses » : avant 9 h, bloc clé + routine en retard +
+  /// action en retard la plus ancienne. Disparaît dès qu'une des trois est
+  /// faite, à 9 h, ou d'un ✕ pour la journée.
+  Widget? _morningCard(ColorScheme cs, DateTime now, Color text3) {
+    if (!isMorningWindow(now) || _morningDismissedYmd == ymdKey(now)) return null;
+    final logic = widget.logic;
+    final st = logic.state;
+    final blocks = _liveBlocks;
+    bool reached(Activity a) {
+      final q = logic.dayQuotaFor(a);
+      return q > 0 && logic.habitValueOn(a.id, now) >= q;
+    }
+    final three = MorningThree(
+      keyBlock: keyBlockOf(blocks),
+      routine: laggingRoutineOf(st.activeActivities,
+          weekDone: (a) => rollingStatFor(a, st.habitHits)?.done ?? 0,
+          weekTarget: (a) => rollingStatFor(a, st.habitHits)?.target ?? 0,
+          reachedToday: reached),
+      overdue: oldestOverdueOf(logic.currentProjects, now),
+    );
+    if (three.count < 2) return null;
+    // Une des trois faite → la carte a joué son rôle.
+    if (blocks.any((b) => b.status == 'done')) return null;
+    final dark = cs.brightness == Brightness.dark;
+    final primary = dark ? kBPrimary : cs.primary;
+    final surface = dark ? kBSurface : cs.surface;
+    final alert = dark ? kBAlert : cs.error;
+    String hm(int min) =>
+        '${(min ~/ 60).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
+
+    Widget row(IconData icon, Color color, String title, String sub, VoidCallback? onTap) => InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Row(children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  Text(sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: text3)),
+                ]),
+              ),
+              if (onTap != null) Icon(Icons.chevron_right, size: 18, color: text3),
+            ]),
+          ),
+        );
+
+    final b = three.keyBlock;
+    final r = three.routine;
+    final o = three.overdue;
+    final launch = widget.onNowLaunch ?? widget.onLaunch;
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.fromLTRB(14, 10, 6, 8),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cs.onSurface.withOpacity(.08)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.wb_twilight_rounded, size: 14, color: text3),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text('AUJOURD\'HUI, TROIS CHOSES',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
+          ),
+          IconButton(
+            tooltip: 'Pas aujourd\'hui',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _dismissMorning(now),
+            icon: Icon(Icons.close, size: 16, color: text3),
+          ),
+        ]),
+        if (b != null)
+          row(Icons.play_circle_outline, primary, b.title,
+              '${hm(blockStartMin(b))} → ${hm(blockEndMin(b))} · le bloc clé',
+              launch == null || (b.projectId == null && b.activityId == null) ? null : () => launch(b)),
+        if (r != null)
+          row(Icons.repeat_rounded, dark ? kBAttention : Colors.orange.shade700, r.name,
+              'la routine la plus en retard cette semaine',
+              () => showRoutineSheet(context, logic: logic, habitId: r.id, day: now,
+                  onSaved: () { if (mounted) setState(() {}); })),
+        if (o != null)
+          row(Icons.flag_outlined, alert, o.task.title,
+              '${o.project.title} · en retard depuis le ${o.task.endDate!.day}/${o.task.endDate!.month.toString().padLeft(2, '0')}',
+              widget.onOpenTask == null ? null : () => widget.onOpenTask!(o.project, o.task)),
+      ]),
+    );
+  }
   // Vibration + carte verte une seule fois par journée gagnée.
   String? _wonCelebrated;
 
@@ -212,6 +383,7 @@ class TodayViewState extends State<TodayView> {
       ].join(' · ');
     }
 
+    final upRow = won ? _dayGoalUpRow(cs, now, streak) : null;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 450),
       curve: Curves.easeOut,
@@ -222,7 +394,8 @@ class TodayViewState extends State<TodayView> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: won ? primary.withOpacity(.5) : cs.onSurface.withOpacity(.08)),
       ),
-      child: Row(children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
         SizedBox(
           width: 44,
           height: 44,
@@ -292,6 +465,8 @@ class TodayViewState extends State<TodayView> {
                     fontFeatures: const [FontFeature.tabularFigures()])),
           ),
         ],
+      ]),
+        if (upRow != null) upRow,
       ]),
     );
   }
@@ -604,6 +779,7 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
+                  if (_morningCard(cs, now, text3) case final card?) card,
                   const SizedBox(height: 16),
                   NowCard(
                     logic: widget.logic,
