@@ -76,6 +76,10 @@ Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette sema
 7 / 14 jours pleine page, tout se manipule dans la grille (clic sur un jour = popover « caser », points =
 blocs du programme, glisser = déplacer les dates, tirer le bord = échéance, clic droit = couleur). Pas de
 tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff).
+Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
+tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
+Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
+et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil ≥ 1280 px ; en dessous, repos.
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le

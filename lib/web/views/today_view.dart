@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
+import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -132,9 +133,7 @@ class TodayViewState extends State<TodayView> {
       blocks: _blocks,
       nowMin: _nowMin,
       open: open,
-      matches: (s, b) => sessionMatchesBlock(s, b,
-          projectLinkedActivityId: _project(b.projectId)?.linkedActivityId,
-          activityLinkedActivityId: _activityOf(b.activityId)?.linkedActivityId),
+      matches: _sessionOnBlock,
     );
     if (b == null || open == null) return;
     final attachable = canAttachSessionToBlock(b,
@@ -259,6 +258,22 @@ class TodayViewState extends State<TodayView> {
     s.endAt = DateTime.now();
     setState(() {});
     await widget.sync.saveSession(s);
+  }
+
+  /// `sessionMatchesBlock` avec les activités liées résolues (projet, routine).
+  bool _sessionOnBlock(Session s, ScheduleBlock b) => sessionMatchesBlock(s, b,
+      projectLinkedActivityId: _project(b.projectId)?.linkedActivityId,
+      activityLinkedActivityId: _activityOf(b.activityId)?.linkedActivityId);
+
+  /// Chrono en cours SUR la source du bloc en cours : la vue passe en
+  /// disposition active (MAINTENANT prend la largeur, programme en liste).
+  /// Null = disposition de repos. Les blocs de tâche sont servis avant par la
+  /// bande Focus (`_focusTarget`).
+  ({ScheduleBlock block, Session open})? get _liveBlock {
+    final open = _openSession;
+    final f = _focusBlock;
+    if (open == null || f == null || !f.current) return null;
+    return _sessionOnBlock(open, f.block) ? (block: f.block, open: open) : null;
   }
 
   /// « Pour ce bloc » : le chrono en cours (lancé sur autre chose, ou avant
@@ -483,6 +498,27 @@ class TodayViewState extends State<TodayView> {
                   ),
                 ]);
               }
+              // Chrono SUR le bloc en cours (bloc d'activité) → disposition
+              // active : MAINTENANT prend la largeur, le programme se replie
+              // en liste de 340 px (handoff « Maintenant en mode actif », A).
+              // Sous 1280 px la colonne large ferait moins de 490 px : on
+              // garde la disposition de repos.
+              final live = box.maxWidth >= 1280 ? _liveBlock : null;
+              if (live != null) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _nowCardWide(live.block, live.open)),
+                    const SizedBox(width: 24),
+                    SizedBox(width: 340, child: _scheduleListCard()),
+                    const SizedBox(width: 24),
+                    SizedBox(
+                      width: 340,
+                      child: SingleChildScrollView(child: _weekColumn()),
+                    ),
+                  ],
+                );
+              }
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -606,12 +642,7 @@ class TodayViewState extends State<TodayView> {
       // Le chrono tourne-t-il sur la SOURCE du bloc en cours ? Sinon la carte
       // montre ce qu'on fait ET ce qui était prévu, sans jamais cocher le bloc
       // par accident (même règle que la carte mobile).
-      final onBlock = open != null &&
-          b != null &&
-          isCurrent &&
-          sessionMatchesBlock(open, b,
-              projectLinkedActivityId: blockProject?.linkedActivityId,
-              activityLinkedActivityId: blockAct?.linkedActivityId);
+      final onBlock = open != null && b != null && isCurrent && _sessionOnBlock(open, b);
       final aside = open != null && b != null && isCurrent && !onBlock;
       // Bloc qui commence dans les 15 min : un chrono lancé avant l'heure
       // peut déjà lui être rattaché.
@@ -804,6 +835,548 @@ class TodayViewState extends State<TodayView> {
 
   String _clockOf(int min) =>
       '${(min ~/ 60) % 24} h ${(min % 60).toString().padLeft(2, '0')}';
+
+  // ── MAINTENANT en mode actif (disposition A) ────────────────────────────────
+
+  /// Carte large : anneau + temps restant, titre, boutons ; puis déroulé du
+  /// bloc (checklist de l'action visée) et contexte (temps du jour, semaine,
+  /// dernière fois, documents) ; « Ensuite » ; la journée en un coup d'œil.
+  Widget _nowCardWide(ScheduleBlock b, Session open) {
+    final now = DateTime.now();
+    final elapsed = now.difference(open.startAt);
+    final endMin = blockEndMin(b);
+    final remaining = math.max(0, endMin - _nowMin);
+    final progress = (elapsed.inSeconds / (b.durationMin * 60)).clamp(0.0, 1.0);
+    final catColor = _kCategoryColor[b.category] ?? kBPrimaryDark;
+    final project = _project(b.projectId);
+    final act = _activityOf(open.activityId);
+    final origin = [
+      if (project != null) project.title,
+      if (act != null && act.name != project?.title) act.name,
+    ].join(' · ');
+    final next = _nextAfter(b);
+    final steps = _blockSteps(b);
+
+    return _card(
+      padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+      child: LayoutBuilder(builder: (ctx, box) {
+        // Carte serrée (< 600 px) : anneau et titre plus petits.
+        final tight = box.maxWidth < 600;
+        final ring = tight ? 200.0 : 240.0;
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          _label('MAINTENANT', dot: true),
+          const SizedBox(width: 10),
+          _chip('sur le bloc'),
+        ]),
+        const SizedBox(height: 18),
+        Row(children: [
+          SizedBox(
+            width: ring,
+            height: ring,
+            child: CustomPaint(
+              painter: _RingPainter(progress, running: true),
+              child: Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_fmtClock(elapsed),
+                      style: TextStyle(
+                          fontSize: tight ? 42 : 52,
+                          fontWeight: FontWeight.w700,
+                          color: kBText,
+                          letterSpacing: -1,
+                          height: 1,
+                          fontFeatures: _tabular)),
+                  const SizedBox(height: 8),
+                  Text('sur ${_fmtHm(b.durationMin)} · reste ${_fmtHm(remaining)}',
+                      style: const TextStyle(
+                          fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(width: 28),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (origin.isNotEmpty)
+                  Row(children: [
+                    Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            color: catColor, borderRadius: BorderRadius.circular(3))),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(origin,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12.5, color: kBText2)),
+                    ),
+                  ]),
+                const SizedBox(height: 8),
+                Text(b.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: tight ? 22 : 26,
+                        fontWeight: FontWeight.w600,
+                        color: kBText,
+                        letterSpacing: -.3,
+                        height: 1.15)),
+                const SizedBox(height: 8),
+                Text(
+                  '${_clockOf(blockStartMin(b))} → ${_clockOf(endMin)}'
+                  '${next != null ? ' · ensuite ${next.title} à ${_clockOf(blockStartMin(next))}' : ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: kBText3),
+                ),
+                const SizedBox(height: 16),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  _pillButton('Terminer le bloc', primary: true, onTap: () => _finishBlock(b)),
+                  const SizedBox(width: 10),
+                  _pillButton('Pause', onTap: _stopChrono),
+                ]),
+              ],
+            ),
+          ),
+        ]),
+        const SizedBox(height: 22),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (steps != null) ...[
+                  Expanded(flex: 13, child: _stepsPanel(steps)),
+                  const SizedBox(width: 18),
+                ],
+                Expanded(flex: 10, child: _contextPanel(b, open)),
+              ]),
+              if (next != null) ...[
+                const SizedBox(height: 18),
+                _nextStrip(next),
+              ],
+            ]),
+          ),
+        ),
+        const SizedBox(height: 18),
+        _dayGlance(),
+        ]);
+      }),
+    );
+  }
+
+  Widget _chip(String text) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+            color: kBPrimary.withOpacity(.12), borderRadius: BorderRadius.circular(999)),
+        child: Text(text,
+            style: const TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w600, color: kBPrimary)),
+      );
+
+  Widget _panel({required String label, Widget? trailing, required List<Widget> children}) =>
+      Container(
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        decoration: BoxDecoration(
+          color: kBActive,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kBLine),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(children: [
+              Expanded(child: _label(label)),
+              if (trailing != null) trailing,
+            ]),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
+      );
+
+  /// Étapes du bloc : l'action visée (sous-action de tâche d'un projet, ou
+  /// action propre d'une activité) et la sauvegarde qui va avec.
+  ({TaskAction action, Future<void> Function() save})? _blockSteps(ScheduleBlock b) {
+    final p = _project(b.projectId);
+    if (p != null) {
+      final r = resolveBlockAction(p, b);
+      if (r != null) {
+        return (action: r.action, save: () => widget.sync.saveProjectTasks(p.id, p.tasks));
+      }
+    }
+    final act = _activityOf(b.activityId);
+    if (act != null && b.actionId != null) {
+      for (final own in act.ownActions) {
+        if (own.id == b.actionId) {
+          return (action: own, save: () => widget.sync.updateOwnActions(act.id, act.ownActions));
+        }
+      }
+    }
+    return null;
+  }
+
+  Widget _stepsPanel(({TaskAction action, Future<void> Function() save}) steps) {
+    final a = steps.action;
+    return _panel(label: 'DÉROULÉ DU BLOC', trailing: checklistBadge(a), children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16, color: a.done ? kBPrimaryDark : kBText3),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(a.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: a.done ? kBText3 : kBText,
+                  decoration: a.done ? TextDecoration.lineThrough : null,
+                  decorationColor: kBText3)),
+        ),
+      ]),
+      const SizedBox(height: 10),
+      if (a.checklist.isNotEmpty)
+        ChecklistEditor(
+          items: a.checklist,
+          dense: true,
+          onToggle: (c, v) => _toggleStep(steps, c, v),
+          onAdd: (title) => _addStep(steps, title),
+        )
+      else
+        const Text('Pas d\'étapes pour ce bloc.',
+            style: TextStyle(fontSize: 12.5, color: kBText3)),
+    ]);
+  }
+
+  Future<void> _toggleStep(
+      ({TaskAction action, Future<void> Function() save}) steps, ChecklistItem c, bool v) async {
+    final a = steps.action;
+    final changed = setChecklistItem(a, c.id, v);
+    setState(() {});
+    await steps.save();
+    if (!changed || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  Future<void> _addStep(
+      ({TaskAction action, Future<void> Function() save}) steps, String title) async {
+    if (addChecklistItem(steps.action, title) == null) return;
+    setState(() {});
+    await steps.save();
+  }
+
+  Widget _contextPanel(ScheduleBlock b, Session open) {
+    final act = _activityOf(open.activityId);
+    final now = DateTime.now();
+    final day0 = DateTime(now.year, now.month, now.day);
+    final day1 = day0.add(const Duration(days: 1));
+    final monday = day0.subtract(Duration(days: day0.weekday - 1));
+    final todayMin = _minutesOn(open.activityId, day0, day1);
+    final weekMin = _minutesOn(open.activityId, monday, day1);
+    final goal = act != null && act.goalMin > 1 ? act.goalMin : null;
+    final last = _lastSessionBefore(b, open);
+    final project = _project(b.projectId);
+    final docs = project == null
+        ? const <Map<String, dynamic>>[]
+        : focusDocuments(widget.documentsByProject[project.id] ?? const [], b.taskId ?? '');
+    final name = act?.name ?? 'Chrono';
+
+    return _panel(label: 'CONTEXTE', children: [
+      _kvRow('$name aujourd\'hui',
+          goal != null ? '${_fmtHm(todayMin)} / ${_fmtHm(goal)}' : _fmtHm(todayMin)),
+      if (goal != null) ...[
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 6,
+            child: LinearProgressIndicator(
+                value: (todayMin / goal).clamp(0.0, 1.0),
+                backgroundColor: kBRaised,
+                color: kBPrimaryDark),
+          ),
+        ),
+      ],
+      const SizedBox(height: 10),
+      _kvRow('Cette semaine', _fmtHm(weekMin)),
+      const SizedBox(height: 10),
+      _kvRow(
+          'Dernière fois',
+          last == null
+              ? 'première fois'
+              : '${_dayLabel(last.startAt)} · ${_fmtHm(last.duration.inMinutes)}'),
+      if (docs.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        _label('DOCUMENTS'),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final d in docs) _docChip(d, docs, project!.title),
+        ]),
+      ],
+    ]);
+  }
+
+  Widget _kvRow(String k, String v) => Row(children: [
+        Expanded(
+          child: Text(k,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: kBText3)),
+        ),
+        const SizedBox(width: 12),
+        Text(v,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: kBText,
+                fontFeatures: _tabular)),
+      ]);
+
+  Widget _docChip(Map<String, dynamic> d, List<Map<String, dynamic>> all, String projectTitle) {
+    final title = (d['title'] as String?) ?? 'Document';
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (_) => DocumentViewerDialog(
+          projectTitle: projectTitle,
+          documents: [d, ...all.where((x) => x != d)],
+          sync: widget.sync,
+        ),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: kBRaised,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: kBLine),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.description_outlined, size: 14, color: kBText3),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, color: kBText2)),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _nextStrip(ScheduleBlock next) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBLine),
+        ),
+        child: Row(children: [
+          const Text('Ensuite', style: TextStyle(fontSize: 13, color: kBText3)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(next.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600, color: kBText)),
+          ),
+          const SizedBox(width: 12),
+          Text('${_clockOf(blockStartMin(next))} · ${_fmtHm(next.durationMin)}',
+              style: const TextStyle(
+                  fontSize: 13, color: kBText3, fontFeatures: _tabular)),
+        ]),
+      );
+
+  /// Minutes loguées sur une activité dans [start, end), session ouverte comprise.
+  int _minutesOn(String activityId, DateTime start, DateTime end) {
+    final now = DateTime.now();
+    var sum = Duration.zero;
+    for (final s in _sessions) {
+      if (s.activityId != activityId) continue;
+      final e = s.endAt ?? now;
+      if (s.startAt.isBefore(end) && e.isAfter(start)) {
+        final st = s.startAt.isBefore(start) ? start : s.startAt;
+        final en = e.isAfter(end) ? end : e;
+        if (en.isAfter(st)) sum += en.difference(st);
+      }
+    }
+    return sum.inMinutes;
+  }
+
+  /// Dernière session TERMINÉE sur la même source que le bloc (sa tâche, sinon
+  /// l'activité du chrono), hors la session en cours.
+  Session? _lastSessionBefore(ScheduleBlock b, Session open) {
+    Session? best;
+    for (final s in _sessions) {
+      if (s.endAt == null || s.id == open.id) continue;
+      final match = b.taskId != null ? s.taskId == b.taskId : s.activityId == open.activityId;
+      if (!match) continue;
+      if (best == null || s.startAt.isAfter(best.startAt)) best = s;
+    }
+    return best;
+  }
+
+  String _dayLabel(DateTime d) {
+    const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final diff = today.difference(DateTime(d.year, d.month, d.day)).inDays;
+    if (diff == 0) return 'aujourd\'hui';
+    if (diff == 1) return 'hier';
+    if (diff < 7) return days[d.weekday - 1];
+    return _ddmm(d);
+  }
+
+  // ── PROGRAMME DU JOUR : liste compacte (disposition active) ─────────────────
+
+  /// Liste centrée sur maintenant : la matinée repliée en une ligne, les trois
+  /// derniers blocs passés, le bloc en cours avec sa progression, la suite.
+  Widget _scheduleListCard() {
+    final cur = currentBlockAt(_blocks, _nowMin);
+    final pivot = cur != null ? blockStartMin(cur) : _nowMin;
+    final before = <ScheduleBlock>[];
+    final after = <ScheduleBlock>[];
+    for (final b in _blocks) {
+      if (cur != null && b.id == cur.id) continue;
+      (blockStartMin(b) < pivot ? before : after).add(b);
+    }
+    final shown = before.length > 3 ? before.sublist(before.length - 3) : before;
+    final folded = before.take(before.length - shown.length).toList();
+    final foldedDone = folded.where((b) => b.status == 'done').length;
+    final foldedMin = folded.fold<int>(0, (s, b) => s + b.durationMin);
+
+    return _card(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: _label('PROGRAMME DU JOUR')),
+          if (_editing) ...[
+            _textLink('+ Ajouter un bloc', _addBlock),
+            const SizedBox(width: 14),
+          ],
+          _textLink(_editing ? 'Terminé' : 'Modifier',
+              () => setState(() => _editing = !_editing)),
+        ]),
+        const SizedBox(height: 12),
+        Expanded(
+          child: _blocks.isEmpty
+              ? const Center(
+                  child: Text('Aucun programme.',
+                      style: TextStyle(fontSize: 13, color: kBText3)))
+              : ListView(children: [
+                  if (folded.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+                      child: Text(
+                        '$foldedDone bloc${foldedDone > 1 ? 's' : ''} fait${foldedDone > 1 ? 's' : ''}'
+                        ' sur ${folded.length} plus tôt · ${_fmtHm(foldedMin)}',
+                        style: const TextStyle(
+                            fontSize: 12, color: kBText4, fontFeatures: _tabular),
+                      ),
+                    ),
+                  for (final b in shown) _listRow(b, current: false),
+                  if (cur != null) _listRow(cur, current: true),
+                  for (final b in after) _listRow(b, current: false),
+                ]),
+        ),
+      ]),
+    );
+  }
+
+  Widget _listRow(ScheduleBlock b, {required bool current}) {
+    final color = _kCategoryColor[b.category] ?? const Color(0xFF8E9AAF);
+    final done = b.status == 'done';
+    final skipped = b.status == 'skipped';
+    final project = _project(b.projectId);
+    final trailing = current
+        ? 'reste ${_fmtHm(math.max(0, blockEndMin(b) - _nowMin))}'
+        : skipped
+            ? 'passé'
+            : fmtMin(b.durationMin);
+    final frac = current ? ((_nowMin - blockStartMin(b)) / b.durationMin).clamp(0.0, 1.0) : 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: current ? kBActive : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: current ? BorderSide(color: kBPrimary.withOpacity(.45)) : BorderSide.none,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: project != null && !_editing
+              ? () => widget.onOpenProject(project, taskId: b.taskId)
+              : () => _editBlock(b),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                SizedBox(
+                  width: 44,
+                  child: Text(b.startTime,
+                      style: const TextStyle(
+                          fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+                ),
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => _toggleDone(b),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Icon(done ? Icons.check_circle : Icons.radio_button_unchecked,
+                        size: 16, color: done ? kBPrimaryDark : color.withOpacity(.8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(b.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                          color: done || skipped ? kBText3 : kBText,
+                          decoration: done || skipped ? TextDecoration.lineThrough : null,
+                          decorationColor: kBText3)),
+                ),
+                const SizedBox(width: 8),
+                Text(trailing,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                        color: current ? kBPrimary : kBText3,
+                        fontFeatures: _tabular)),
+              ]),
+              if (current) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: SizedBox(
+                    height: 4,
+                    child: LinearProgressIndicator(
+                        value: frac, backgroundColor: kBRaised, color: kBPrimary),
+                  ),
+                ),
+              ],
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _dayGlance() {
     final entries = minutesByCategory(_blocks);
