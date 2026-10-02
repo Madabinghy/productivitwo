@@ -426,9 +426,13 @@ Affiche : projets Gantt, documents HTML, assistant IA.
 
 **Build + deploy web :**
 ```
-flutter build web --release --no-tree-shake-icons
+flutter build web --release --no-tree-shake-icons --pwa-strategy=none
 firebase deploy --only hosting
 ```
+**Sans service worker** depuis 2026-10 (`--pwa-strategy=none`, `web/flutter_bootstrap.js` :
+`serviceWorkerSettings: null`) : Firebase Hosting sert `index.html` / bootstrap / `main.dart.js` sans cache,
+chaque ouverture charge la version en ligne ; `index.html` désinscrit les anciens SW et vide leurs caches.
+Version visible : dernière ligne du menu ⋯ (`kBuildLabel`, `lib/build_info.dart`, injectée par le CI).
 
 ---
 

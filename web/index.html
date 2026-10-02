@@ -34,13 +34,20 @@
   <title>Productivitwo — Projects</title>
   <link rel="manifest" href="manifest.json?v=2">
 
-  <!-- Safari : déregistre tout service worker existant avant le chargement Flutter
-       (évite que des fichiers obsolètes en cache bloquent le rendu CanvasKit) -->
+  <!-- Plus de service worker depuis 2026-10 (build --pwa-strategy=none) : on
+       désinscrit ceux posés par les anciennes builds et on vide leurs caches,
+       sinon l'ancienne version reste servie tant que tous les onglets ne sont
+       pas fermés. Sans effet (et sans coût) une fois le nettoyage fait. -->
   <script>
-    if (/apple/i.test(navigator.vendor) && 'serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(function(regs) {
         regs.forEach(function(r) { r.unregister(); });
-      });
+      }).catch(function() {});
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(function(keys) {
+        keys.forEach(function(k) { caches.delete(k); });
+      }).catch(function() {});
     }
   </script>
   <script src="flutter_bootstrap.js" async></script>
