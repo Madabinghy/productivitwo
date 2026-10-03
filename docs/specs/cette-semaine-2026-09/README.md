@@ -1,5 +1,9 @@
 # Handoff — Onglet « Cette semaine » (app web)
 
+> **Complément 2026-10** : la colonne des tâches passe de 320 à **400 px par défaut** et se **redimensionne à la
+> souris** (poignée `ColumnResizeHandle` de `lib/web/column_resizer.dart`, 220–640 px, double-clic = défaut),
+> largeur persistée (`week_left_col`).
+
 Périmètre : **uniquement** la vue de l'onglet « Cette semaine » de l'app web (`lib/web/`).
 Ce handoff remplace la section 3 du handoff `refonte-web-2026-09` — si une première version de
 la vue existe déjà, la reprendre ; sinon la créer. Implémentation directe, pas de route `?proto=`.

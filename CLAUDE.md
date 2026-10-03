@@ -78,7 +78,9 @@ blocs du programme, glisser = déplacer les dates, tirer le bord = échéance, c
 tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff). Audit d'ergonomie 2026-10
 (3 lots livrés, détail dans le handoff) : annulation partout, infobulles/curseurs, dates + estimation sur la ligne
 (`estimatedMin` éditable depuis le popover), capacité dans le popover, groupe « En retard » en tête, et
-« Planifier la semaine avec Claude » (`planWeekPrompt`, `claude_link.dart`) à la place du bouton ORION.
+« Planifier la semaine avec Claude » (`planWeekPrompt`, `claude_link.dart`) à la place du bouton ORION. Colonne des
+tâches **réglable à la souris** (400 px par défaut, persistée), poignée partagée avec le Gantt projet :
+`lib/web/column_resizer.dart`.
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
