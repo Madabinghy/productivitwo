@@ -36,6 +36,36 @@ void main() {
     expect(ganttOrder(p).map((t) => t.id).toList(), ['c', 'b', 'a']);
   });
 
+  test('phaseSections : phases par date de début, orphelines dans « Sans phase »', () {
+    final ph1 = ProjectPhase(id: 'p1', label: 'Cadrage', startDate: DateTime(2026, 9, 1), endDate: DateTime(2026, 9, 15));
+    final ph2 = ProjectPhase(id: 'p2', label: 'Build', startDate: DateTime(2026, 9, 16), endDate: DateTime(2026, 10, 30));
+    final a = _task('a', '2026-09-20')..phaseId = 'p2';
+    final b = _task('b', '2026-09-02')..phaseId = 'p1';
+    final c = _task('c', '2026-09-03')..phaseId = 'p1';
+    final loose = _task('x', '2026-09-05')..phaseId = 'disparue';
+    final p = _proj([a, loose, c, b], phases: [ph2, ph1]);
+    final sections = phaseSections(p);
+    expect(sections.map((s) => s.phase?.id).toList(), ['p1', 'p2', null]);
+    expect(sections[0].tasks.map((t) => t.id).toList(), ['b', 'c']);
+    expect(sections[1].tasks.map((t) => t.id).toList(), ['a']);
+    expect(sections[2].tasks.map((t) => t.id).toList(), ['x']);
+  });
+
+  test('phaseSections : sans phase → une seule section nulle, même vide', () {
+    expect(phaseSections(_proj([])).map((s) => s.phase).toList(), [null]);
+    final withPhase = _proj([_task('a', '2026-09-02')..phaseId = 'p1'],
+        phases: [ProjectPhase(id: 'p1', label: 'A', startDate: DateTime(2026, 9, 1), endDate: DateTime(2026, 9, 9))]);
+    expect(phaseSections(withPhase).length, 1); // pas de « Sans phase » vide
+  });
+
+  test('isTaskOverdue : ouverte et échéance passée uniquement', () {
+    expect(isTaskOverdue(_task('a', '2026-09-01', end: '2026-09-29'), _now), isTrue);
+    expect(isTaskOverdue(_task('a', '2026-09-01', end: '2026-09-30'), _now), isFalse); // le jour même
+    expect(isTaskOverdue(_task('a', '2026-09-01', end: '2026-09-29', status: 'done'), _now), isFalse);
+    expect(isTaskOverdue(_task('a', '2026-09-01', end: '2026-09-29', status: 'skipped'), _now), isFalse);
+    expect(isTaskOverdue(_task('a', '2026-09-01'), _now), isFalse); // sans échéance
+  });
+
   test('taskProgress ignore les skipped', () {
     final p = _proj([
       _task('1', '2026-09-01', status: 'done'),

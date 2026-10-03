@@ -69,10 +69,27 @@ Même grammaire de gestes que Cette semaine :
   (`saveProjectTasks`). Le glisser à la souris gagne l'arène contre le défilement (le `ScrollView` web
   n'accepte pas la souris comme périphérique de glisser).
 
-## Lot 3 « lire l'état » — à faire
+## Lot 3 « lire l'état » — livré
 
-Titre et progression sur la barre, marque de retard, points des blocs du programme (comme Cette semaine),
-groupes par `phaseId` triés par date et repliables, tableau de bord aligné sur `project_health`.
+- **Barre parlante** : titre (ou `barLabel`) dessus, déporté à droite quand la barre fait moins de 72 px ;
+  **progression** = voile clair sur la part d'actions cochées ; **retard** (ouverte, échéance passée) =
+  contour et halo `kBAlert`, triangle dans la colonne des libellés, « EN RETARD » dans l'infobulle.
+- **Points des blocs du programme** sous la barre, à la date de chaque bloc (plein = fait, vide = à venir,
+  grisé = sauté ; infobulle date · heure · durée · état) ; résumé « n blocs · durée · k faits » dans
+  l'infobulle de la barre. Source : une requête `fetchDailySchedulesRange` sur la plage de l'axe
+  (`FieldPath.documentId` entre deux `YYYY-MM-DD`), blocs supprimés exclus, filtrés sur les `taskId`
+  du projet. Lecture seule (reporter / retirer un bloc reste dans Cette semaine).
+- **Sections par phase** = `phaseSections(p)` (`lib/utils/project_health.dart`, partagé avec le plan
+  d'action : phases triées par date de début, tâches en ordre Gantt, « Sans phase » pour les orphelines ;
+  liste plate si le projet n'a aucune phase). Ligne de phase **repliable** (chevron, compte fait/total,
+  « n en retard »), avec un trait résumé première → dernière tâche et sa progression, lisible replié.
+  L'ancien groupement par `groupLabel` disparaît.
+- **Bandeau d'état** (`_GanttDashboard`) : une ligne de pastilles alignée sur `project_health`
+  (`taskProgress`, `overdueTasks`, `currentPhase`, `nextMilestone`, `daysLeftLabel`) — mêmes chiffres que
+  l'onglet Projets et les tuiles du plan d'action. Les anciennes cartes « Suivi stratégique » (avancement
+  hors jalons, chips par phase, liste des jalons) sont retirées : les phases et jalons se lisent dans la
+  grille.
+- `isTaskOverdue(t, today)` extrait dans `project_health.dart` (utilisé par `overdueTasks`).
 
 ## Lot 4 « nettoyage » — à faire
 

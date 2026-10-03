@@ -10,8 +10,11 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/gantt_axis.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:uuid/uuid.dart';
@@ -76,6 +79,8 @@ class _GanttScreenState extends State<GanttScreen> {
   ProjectTask? _panelTask;
   StrategicObjective? _objective;
   double? _objectiveWeekPct; // progression hebdo des engagements (0..1)
+  // Blocs du programme liés aux tâches du projet, par taskId (points des barres).
+  Map<String, List<_DatedBlock>> _blocksByTask = const {};
 
   @override
   void initState() {
@@ -85,6 +90,35 @@ class _GanttScreenState extends State<GanttScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openTargetTask());
     }
     _loadObjective();
+    _loadBlocks();
+  }
+
+  // Une requête sur la plage de l'axe ; les blocs sans taskId ou d'un autre
+  // projet sont ignorés.
+  Future<void> _loadBlocks() async {
+    final axis = GanttAxis.forProject(_project);
+    final from = ymdOf(axis.rangeStart);
+    final to = ymdOf(axis.rangeEnd.subtract(const Duration(days: 1)));
+    final schedules = await _sync.fetchDailySchedulesRange(from, to);
+    if (!mounted) return;
+    final taskIds = {for (final t in _project.tasks) t.id};
+    final map = <String, List<_DatedBlock>>{};
+    for (final sch in schedules) {
+      final date = DateTime.tryParse(sch.date);
+      if (date == null) continue;
+      for (final b in sch.blocks) {
+        final tid = b.taskId;
+        if (tid == null || !taskIds.contains(tid)) continue;
+        map.putIfAbsent(tid, () => []).add(_DatedBlock(date, b));
+      }
+    }
+    for (final l in map.values) {
+      l.sort((a, b) {
+        final c = a.date.compareTo(b.date);
+        return c != 0 ? c : blockStartMin(a.block).compareTo(blockStartMin(b.block));
+      });
+    }
+    setState(() => _blocksByTask = map);
   }
 
   // Charge l'objectif stratégique lié (s'il existe) pour l'afficher en tête du Gantt.
@@ -282,6 +316,7 @@ class _GanttScreenState extends State<GanttScreen> {
                     onPhaseTap: _editPhase,
                     onShiftTask: _shiftTask,
                     onResizeTask: _resizeTask,
+                    blocksByTask: _blocksByTask,
                     onExportPdf: _exportPdf,
                     onChangeDomain:
                         widget.domains.isNotEmpty ? _changeDomain : null,
@@ -483,6 +518,7 @@ class _GanttBody extends StatefulWidget {
   final void Function(ProjectPhase)? onPhaseTap;
   final void Function(ProjectTask, int deltaDays) onShiftTask;
   final void Function(ProjectTask, int deltaDays) onResizeTask;
+  final Map<String, List<_DatedBlock>> blocksByTask;
   final VoidCallback onExportPdf;
   final VoidCallback? onChangeDomain;
   const _GanttBody({
@@ -493,6 +529,7 @@ class _GanttBody extends StatefulWidget {
     this.onPhaseTap,
     required this.onShiftTask,
     required this.onResizeTask,
+    this.blocksByTask = const {},
     required this.onExportPdf,
     this.onChangeDomain,
   });
@@ -513,6 +550,11 @@ class _GanttBodyState extends State<_GanttBody> {
   double _viewportW = 0;
   // Glisser en cours sur une barre (aperçu avant enregistrement).
   _BarDrag? _drag;
+  // Sections (phases) repliées — clé = id de phase, '_none' pour « Sans phase ».
+  final Set<String> _collapsed = {};
+
+  void _toggleGroup(String key) =>
+      setState(() => _collapsed.contains(key) ? _collapsed.remove(key) : _collapsed.add(key));
 
   void _dragStart(ProjectTask t, bool resize) =>
       setState(() => _drag = _BarDrag(t.id, resize));
@@ -657,8 +699,10 @@ class _GanttBodyState extends State<_GanttBody> {
   Widget build(BuildContext context) {
     final axis = _axis;
     final hasPhases = widget.project.phases.isNotEmpty;
-    final headerH = (hasPhases ? _kPhaseH : 0) + _kMonthH + _kDaysH + 1;
-    final groups = _buildGroups(widget.project.tasks);
+    final headerH = (hasPhases ? _kPhaseH : 0.0) + _kMonthH + _kDaysH + 1;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final groups = _buildGroups(widget.project, today, _collapsed);
 
     return Column(
       children: [
@@ -697,6 +741,9 @@ class _GanttBodyState extends State<_GanttBody> {
                               headerH: headerH,
                               onTaskTap: widget.onTaskTap,
                               onPhaseTap: widget.onPhaseTap,
+                              onToggleGroup: _toggleGroup,
+                              blocksByTask: widget.blocksByTask,
+                              today: today,
                               drag: _drag,
                               onDragStart: _dragStart,
                               onDragUpdate: _dragUpdate,
@@ -752,6 +799,7 @@ class _GanttBodyState extends State<_GanttBody> {
                           child: _GanttLabelColumn(
                             groups: groups,
                             onTaskTap: widget.onTaskTap,
+                            onToggleGroup: _toggleGroup,
                           ),
                         ),
                       ),
@@ -899,11 +947,14 @@ class _GanttBodyState extends State<_GanttBody> {
 class _GanttGrid extends StatelessWidget {
   final Project project;
   final GanttAxis axis;
-  final List<({String label, List<ProjectTask> tasks})> groups;
+  final List<_GanttGroup> groups;
   final Color? domainColor;
   final double headerH;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
+  final void Function(String key) onToggleGroup;
+  final Map<String, List<_DatedBlock>> blocksByTask;
+  final DateTime today;
   final _BarDrag? drag;
   final void Function(ProjectTask, bool resize) onDragStart;
   final void Function(double dx) onDragUpdate;
@@ -918,6 +969,9 @@ class _GanttGrid extends StatelessWidget {
     required this.headerH,
     this.onTaskTap,
     this.onPhaseTap,
+    required this.onToggleGroup,
+    required this.blocksByTask,
+    required this.today,
     this.drag,
     required this.onDragStart,
     required this.onDragUpdate,
@@ -937,34 +991,39 @@ class _GanttGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final timeW = axis.width;
     final totalW = _kLabelW + timeW;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
 
     final rows = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final group in groups) ...[
-          if (group.label.isNotEmpty)
+          if (group.showHeader)
             SizedBox(
               height: _kGroupH,
               width: totalW,
               child: Row(children: [
-                _GroupLabelCell(label: group.label),
-                _GroupBarCell(width: timeW),
+                _GroupLabelCell(group: group, onTap: () => onToggleGroup(group.key)),
+                _GroupBarCell(
+                    group: group,
+                    axis: axis,
+                    color: _hex(group.phase?.color, domainColor ?? kBText4)),
               ]),
             ),
-          for (final task in group.tasks)
+          if (!group.collapsed)
+            for (final task in group.tasks)
             SizedBox(
               height: _kRowH,
               width: totalW,
               child: Row(children: [
                 _TaskLabelCell(
                     task: task,
+                    overdue: isTaskOverdue(task, today),
                     onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
                 _TaskBarCell(
                   task: task,
                   axis: axis,
                   fallbackColor: _taskFallbackColor(task),
+                  overdue: isTaskOverdue(task, today),
+                  blocks: blocksByTask[task.id] ?? const [],
                   drag: drag?.taskId == task.id ? drag : null,
                   onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
                   onDragStart: (resize) => onDragStart(task, resize),
@@ -1277,9 +1336,11 @@ class _GanttTimeHeader extends StatelessWidget {
 // ── Colonne des libellés (overlay figé) ───────────────────────────────────────
 
 class _GanttLabelColumn extends StatelessWidget {
-  final List<({String label, List<ProjectTask> tasks})> groups;
+  final List<_GanttGroup> groups;
   final void Function(ProjectTask)? onTaskTap;
-  const _GanttLabelColumn({required this.groups, this.onTaskTap});
+  final void Function(String key) onToggleGroup;
+  const _GanttLabelColumn(
+      {required this.groups, this.onTaskTap, required this.onToggleGroup});
 
   @override
   Widget build(BuildContext context) {
@@ -1293,15 +1354,20 @@ class _GanttLabelColumn extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final group in groups) ...[
-            if (group.label.isNotEmpty)
-              SizedBox(height: _kGroupH, child: _GroupLabelCell(label: group.label)),
-            for (final task in group.tasks)
+            if (group.showHeader)
               SizedBox(
-                height: _kRowH,
-                child: _TaskLabelCell(
-                    task: task,
-                    onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
-              ),
+                  height: _kGroupH,
+                  child: _GroupLabelCell(
+                      group: group, onTap: () => onToggleGroup(group.key))),
+            if (!group.collapsed)
+              for (final task in group.tasks)
+                SizedBox(
+                  height: _kRowH,
+                  child: _TaskLabelCell(
+                      task: task,
+                      overdue: isTaskOverdue(task, DateTime.now()),
+                      onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
+                ),
           ],
         ],
       ),
@@ -1312,46 +1378,96 @@ class _GanttLabelColumn extends StatelessWidget {
 // ── Cellules ──────────────────────────────────────────────────────────────────
 
 class _GroupLabelCell extends StatelessWidget {
-  final String label;
-  const _GroupLabelCell({required this.label});
+  final _GanttGroup group;
+  final VoidCallback onTap;
+  const _GroupLabelCell({required this.group, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: _kLabelW,
-      height: _kGroupH,
-      color: kBRaised.withOpacity(.45),
-      alignment: Alignment.centerLeft,
-      padding: const EdgeInsets.only(left: 12, right: 8),
-      child: Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w600, color: kBText3, letterSpacing: 0.8),
-        overflow: TextOverflow.ellipsis,
+    final g = group;
+    return Tooltip(
+      message: g.collapsed ? 'Déplier la phase' : 'Replier la phase',
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: _kLabelW,
+          height: _kGroupH,
+          color: kBRaised.withOpacity(.45),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 6, right: 8),
+          child: Row(children: [
+            Icon(g.collapsed ? Icons.chevron_right : Icons.expand_more, size: 14, color: kBText3),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Text(
+                g.label.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w600, color: kBText3, letterSpacing: 0.8),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (g.overdue > 0) ...[
+              Text('${g.overdue} en retard',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: kBAlert)),
+              const SizedBox(width: 6),
+            ],
+            Text('${g.done}/${g.total}',
+                style: const TextStyle(fontSize: 10, color: kBText4)),
+          ]),
+        ),
       ),
     );
   }
 }
 
+/// Zone de temps d'une ligne de phase : trait résumé de la première à la
+/// dernière tâche (lisible même replié) et progression.
 class _GroupBarCell extends StatelessWidget {
-  final double width;
-  const _GroupBarCell({required this.width});
+  final _GanttGroup group;
+  final GanttAxis axis;
+  final Color color;
+  const _GroupBarCell({required this.group, required this.axis, required this.color});
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: width,
-        height: _kGroupH,
-        decoration: BoxDecoration(
-          color: kBRaised.withOpacity(.45),
-          border: const Border(bottom: BorderSide(color: kBLine)),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final span = group.span;
+    final pct = group.total == 0 ? 0.0 : group.done / group.total;
+    return Container(
+      width: axis.width,
+      height: _kGroupH,
+      decoration: BoxDecoration(
+        color: kBRaised.withOpacity(.45),
+        border: const Border(bottom: BorderSide(color: kBLine)),
+      ),
+      child: span == null
+          ? null
+          : Stack(children: [
+              Positioned(
+                left: axis.x(span.start),
+                width: max(4.0, axis.x(span.end.add(const Duration(days: 1))) - axis.x(span.start)),
+                top: _kGroupH / 2 - 3,
+                height: 6,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: Stack(children: [
+                    Positioned.fill(child: ColoredBox(color: color.withOpacity(.25))),
+                    FractionallySizedBox(
+                        widthFactor: pct.clamp(0.0, 1.0),
+                        child: ColoredBox(color: color.withOpacity(.85))),
+                  ]),
+                ),
+              ),
+            ]),
+    );
+  }
 }
 
 class _TaskLabelCell extends StatelessWidget {
   final ProjectTask task;
+  final bool overdue;
   final VoidCallback? onTap;
-  const _TaskLabelCell({required this.task, this.onTap});
+  const _TaskLabelCell({required this.task, this.overdue = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1390,6 +1506,11 @@ class _TaskLabelCell extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (overdue)
+                const Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: Icon(Icons.warning_amber_rounded, size: 12, color: kBAlert),
+                ),
               if (task.stepsTotal > 0)
                 Text('${task.stepsDone}/${task.stepsTotal}',
                     style: const TextStyle(fontSize: 9, color: kBText4)),
@@ -1416,6 +1537,8 @@ class _TaskBarCell extends StatelessWidget {
   final ProjectTask task;
   final GanttAxis axis;
   final Color fallbackColor;
+  final bool overdue;
+  final List<_DatedBlock> blocks;
   final _BarDrag? drag;
   final VoidCallback? onTap;
   final void Function(bool resize) onDragStart;
@@ -1426,6 +1549,8 @@ class _TaskBarCell extends StatelessWidget {
     required this.task,
     required this.axis,
     required this.fallbackColor,
+    this.overdue = false,
+    this.blocks = const [],
     this.drag,
     this.onTap,
     required this.onDragStart,
@@ -1450,7 +1575,13 @@ class _TaskBarCell extends StatelessWidget {
           '${task.endDate == null && !task.isMilestone ? ' (barre indicative : 7 j)' : ''}');
       lines.add('Estimé ${fmtMin(task.plannedMin)}'
           '${task.stepsTotal > 0 ? ' · ${task.stepsDone}/${task.stepsTotal} action${task.stepsTotal > 1 ? 's' : ''}' : ''}'
-          '${task.status == 'done' ? ' · terminée' : task.status == 'skipped' ? ' · ignorée' : ''}');
+          '${task.status == 'done' ? ' · terminée' : task.status == 'skipped' ? ' · ignorée' : overdue ? ' · EN RETARD' : ''}');
+      if (blocks.isNotEmpty) {
+        final done = blocks.where((b) => b.block.status == 'done').length;
+        final min = blocks.fold<int>(0, (s, b) => s + b.block.durationMin);
+        lines.add('${blocks.length} bloc${blocks.length > 1 ? 's' : ''} du programme · ${fmtMin(min)}'
+            '${done > 0 ? ' · $done fait${done > 1 ? 's' : ''}' : ''}');
+      }
     }
     if (drag == null) {
       lines.add(task.isMilestone
@@ -1520,12 +1651,22 @@ class _TaskBarCell extends StatelessWidget {
     final textColor = _isDark(barColor)
         ? Colors.white.withOpacity(0.9)
         : Colors.black.withOpacity(0.7);
+    // Progression : actions cochées (sinon 0 ou 1 selon le statut).
+    final pct = isDone
+        ? 1.0
+        : task.stepsTotal > 0
+            ? task.stepsDone / task.stepsTotal
+            : 0.0;
+    final label = task.barLabel ?? task.title;
+    // Barre trop courte pour son titre : le texte déborde à droite.
+    final labelOutside = barW < 72;
+    const barH = _kRowH - _kBarVPad * 2;
 
     return [
       Positioned(
         left: left,
         top: _kBarVPad,
-        height: _kRowH - _kBarVPad * 2,
+        height: barH,
         width: barW,
         child: _gestures(
           resize: false,
@@ -1533,23 +1674,64 @@ class _TaskBarCell extends StatelessWidget {
             decoration: BoxDecoration(
               color: barColor,
               borderRadius: BorderRadius.circular(3),
-              border: dragging ? Border.all(color: Colors.white.withOpacity(.7)) : null,
+              border: dragging
+                  ? Border.all(color: Colors.white.withOpacity(.7))
+                  : overdue
+                      ? Border.all(color: kBAlert, width: 1.5)
+                      : null,
               boxShadow: isDone
                   ? null
-                  : [BoxShadow(color: barColor.withOpacity(0.35), blurRadius: 8)],
+                  : [BoxShadow(color: (overdue ? kBAlert : barColor).withOpacity(0.35), blurRadius: 8)],
             ),
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: task.barLabel != null
-                ? Text(
-                    task.barLabel!,
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
-                    overflow: TextOverflow.ellipsis,
-                  )
-                : null,
+            clipBehavior: Clip.antiAlias,
+            child: Stack(children: [
+              if (pct > 0 && pct < 1)
+                FractionallySizedBox(
+                  widthFactor: pct,
+                  child: ColoredBox(color: Colors.white.withOpacity(.22)),
+                ),
+              if (!labelOutside)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      label,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+            ]),
           ),
         ),
       ),
+      if (labelOutside)
+        Positioned(
+          left: left + barW + 8,
+          top: _kBarVPad,
+          height: barH,
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(label,
+                  style: TextStyle(fontSize: 10, color: overdue ? kBAlert : kBText3),
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  softWrap: false),
+            ),
+          ),
+        ),
+      // Points des blocs du programme, sous la barre, à la date de chaque bloc.
+      for (final db in blocks)
+        Positioned(
+          left: axis.x(db.date) + axis.dayW / 2 - 4,
+          top: _kRowH - _kBarVPad + 1,
+          width: 8,
+          height: 6,
+          child: _blockDot(db),
+        ),
       // Poignée droite : tirer pour changer l'échéance.
       Positioned(
         left: left + barW - 5,
@@ -1569,6 +1751,29 @@ class _TaskBarCell extends StatelessWidget {
         ),
       ),
     ];
+  }
+
+  Widget _blockDot(_DatedBlock db) {
+    final b = db.block;
+    final done = b.status == 'done';
+    final skipped = b.status == 'skipped';
+    return Tooltip(
+      message: '${_dmy(db.date)} · ${b.startTime} · ${fmtMin(b.durationMin)}'
+          ' · ${done ? 'fait' : skipped ? 'sauté' : 'à venir'}',
+      waitDuration: const Duration(milliseconds: 400),
+      child: Center(
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: done ? kBPrimary : skipped ? Colors.transparent : kBBg,
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: skipped ? kBText4 : kBPrimary, width: 1.5),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildMilestone() {
@@ -1626,472 +1831,143 @@ Color _onDark(Color c) {
 
 bool _isDark(Color c) => c.computeLuminance() < 0.4;
 
-Color _darken(Color c) {
-  final hsl = HSLColor.fromColor(c);
-  return hsl.withLightness((hsl.lightness - 0.35).clamp(0.0, 1.0)).toColor();
-}
 
 String _dmy(DateTime d) => '${d.day} ${kGanttMonthsShort[d.month - 1]} ${d.year}';
 
-// Grouper les tâches par groupLabel
-List<({String label, List<ProjectTask> tasks})> _buildGroups(
-    List<ProjectTask> tasks) {
-  final seen = <String>[];
-  final map = <String, List<ProjectTask>>{};
-  for (final t in tasks) {
-    final g = t.groupLabel ?? '';
-    if (!seen.contains(g)) seen.add(g);
-    map.putIfAbsent(g, () => []).add(t);
-  }
-  return seen.map((g) => (label: g, tasks: map[g]!)).toList();
+/// Bloc du programme daté (le doc `daily_schedules` porte la date).
+class _DatedBlock {
+  final DateTime date;
+  final ScheduleBlock block;
+  const _DatedBlock(this.date, this.block);
 }
 
-// ── Dashboard stratégique ─────────────────────────────────────────────────────
+/// Section du Gantt = phase (ou « Sans phase »), avec ses tâches en ordre
+/// Gantt et ses compteurs.
+class _GanttGroup {
+  final ProjectPhase? phase;
+  final List<ProjectTask> tasks;
+  final bool collapsed;
+  final int done;
+  final int total;
+  final int overdue;
+  /// Faux quand le projet n'a aucune phase : la liste est plate.
+  final bool showHeader;
+  const _GanttGroup({
+    required this.phase,
+    required this.tasks,
+    required this.collapsed,
+    required this.done,
+    required this.total,
+    required this.overdue,
+    required this.showHeader,
+  });
 
-class _GanttDashboard extends StatefulWidget {
+  String get key => phase?.id ?? '_none';
+  String get label => phase?.label ?? 'Sans phase';
+
+  /// Étendue des tâches (début min → fin visuelle max), null si vide.
+  ({DateTime start, DateTime end})? get span {
+    if (tasks.isEmpty) return null;
+    DateTime? s, e;
+    for (final t in tasks) {
+      final ts = DateTime(t.startDate.year, t.startDate.month, t.startDate.day);
+      final te = taskVisualEnd(t).subtract(const Duration(days: 1));
+      if (s == null || ts.isBefore(s)) s = ts;
+      if (e == null || te.isAfter(e)) e = te;
+    }
+    return (start: s!, end: e!);
+  }
+}
+
+List<_GanttGroup> _buildGroups(Project p, DateTime today, Set<String> collapsed) {
+  final sections = phaseSections(p);
+  final flat = p.phases.isEmpty;
+  return [
+    for (final sec in sections)
+      _GanttGroup(
+        phase: sec.phase,
+        tasks: sec.tasks,
+        collapsed: !flat && collapsed.contains(sec.phase?.id ?? '_none'),
+        done: sec.tasks.where((t) => t.status == 'done').length,
+        total: sec.tasks.where((t) => t.status != 'skipped').length,
+        overdue: sec.tasks.where((t) => isTaskOverdue(t, today)).length,
+        showHeader: !flat,
+      ),
+  ];
+}
+
+// ── Bandeau d'état (aligné sur project_health, comme l'onglet Projets) ───────
+
+class _GanttDashboard extends StatelessWidget {
   final Project project;
   const _GanttDashboard({required this.project});
 
   @override
-  State<_GanttDashboard> createState() => _GanttDashboardState();
-}
-
-class _GanttDashboardState extends State<_GanttDashboard> {
-  bool _expanded = false;
-
-  Project get p => widget.project;
-
-  // ── Calculs ────────────────────────────────────────────────────────────────
-
-  DateTime get _today => DateTime.now();
-
-  bool _isOverdue(ProjectTask t) =>
-      t.endDate != null &&
-      DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day)
-          .isBefore(DateTime(_today.year, _today.month, _today.day)) &&
-      t.status != 'done' &&
-      t.status != 'skipped';
-
-  List<ProjectTask> get _realTasks =>
-      p.tasks.where((t) => !t.isMilestone).toList();
-  List<ProjectTask> get _milestones =>
-      p.tasks.where((t) => t.isMilestone).toList();
-
-  int get _totalTasks => _realTasks.length;
-  int get _doneTasks => _realTasks.where((t) => t.status == 'done').length;
-  int get _overdueTasks => _realTasks.where(_isOverdue).length;
-  double get _globalPct =>
-      _totalTasks > 0 ? _doneTasks / _totalTasks : 0.0;
-
-  // Statut d'une phase
-  ({int done, int total, int overdue, String label, Color color})
-      _phaseStats(ProjectPhase phase) {
-    final tasks = _realTasks.where((t) => t.phaseId == phase.id).toList();
-    final done = tasks.where((t) => t.status == 'done').length;
-    final overdue = tasks.where(_isOverdue).length;
-    final today = _today;
-    final start = DateTime(phase.startDate.year, phase.startDate.month, phase.startDate.day);
-    final end = DateTime(phase.endDate.year, phase.endDate.month, phase.endDate.day);
-    final todayD = DateTime(today.year, today.month, today.day);
-
-    String label;
-    Color color;
-    if (tasks.isNotEmpty && done == tasks.length) {
-      label = 'Terminée';
-      color = Colors.green;
-    } else if (overdue > 0) {
-      label = '$overdue en retard';
-      color = Colors.orange;
-    } else if (todayD.isBefore(start)) {
-      label = 'À venir';
-      color = Colors.grey;
-    } else if (todayD.isAfter(end)) {
-      label = 'Dépassée';
-      color = Colors.red;
-    } else {
-      label = 'En cours';
-      color = Colors.blue;
-    }
-    return (done: done, total: tasks.length, overdue: overdue, label: label, color: color);
-  }
-
-  // Statut d'un jalon
-  ({Color color, String label, IconData icon}) _milestoneStatus(ProjectTask m) {
-    if (m.status == 'done') {
-      return (color: Colors.green, label: 'Atteint', icon: Icons.check_circle_outline);
-    }
-    if (_isOverdue(m)) {
-      return (color: Colors.red, label: 'En retard', icon: Icons.warning_amber_outlined);
-    }
-    return (color: Colors.grey, label: 'À venir', icon: Icons.radio_button_unchecked);
-  }
-
-  String _fmtDate(DateTime d) {
-    const months = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
-                    'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
-    return '${d.day} ${months[d.month - 1]}';
-  }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
-
-  @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      color: cs.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Header cliquable ───────────────────────────────────────────
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.analytics_outlined, size: 16, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text('Suivi stratégique',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface)),
-                  const SizedBox(width: 12),
-                  // Résumé compact toujours visible
-                  _PillStat(
-                    label: '${(_globalPct * 100).round()}%',
-                    color: cs.primary,
-                  ),
-                  if (_overdueTasks > 0) ...[
-                    const SizedBox(width: 6),
-                    _PillStat(
-                      label: '$_overdueTasks en retard',
-                      color: Colors.orange,
-                    ),
-                  ],
-                  const Spacer(),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: cs.onSurface.withOpacity(0.4),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Contenu dépliable ──────────────────────────────────────────
-          if (_expanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Ligne 1 : stats globales
-                  Row(
-                    children: [
-                      _StatCard(
-                        label: 'Avancement',
-                        value: '$_doneTasks / $_totalTasks tâches',
-                        progress: _globalPct,
-                        color: cs.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        label: 'En retard',
-                        value: '$_overdueTasks tâche${_overdueTasks != 1 ? 's' : ''}',
-                        color: _overdueTasks > 0 ? Colors.orange : Colors.green,
-                        icon: _overdueTasks > 0
-                            ? Icons.warning_amber_outlined
-                            : Icons.check_circle_outline,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        label: 'Jalons',
-                        value:
-                            '${_milestones.where((m) => m.status == 'done').length} / ${_milestones.length} atteint${_milestones.where((m) => m.status == 'done').length != 1 ? 's' : ''}',
-                        color: cs.secondary,
-                        icon: Icons.diamond_outlined,
-                      ),
-                    ],
-                  ),
-
-                  if (p.phases.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text('Par phase',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.onSurface.withOpacity(0.45))),
-                    const SizedBox(height: 8),
-                    // Grille des phases
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: p.phases.map((phase) {
-                        final s = _phaseStats(phase);
-                        final pct = s.total > 0 ? s.done / s.total : 0.0;
-                        return _PhaseChip(
-                          label: phase.label,
-                          done: s.done,
-                          total: s.total,
-                          pct: pct,
-                          statusLabel: s.label,
-                          statusColor: s.color,
-                          bgColor: _hex(phase.color, cs.primaryContainer),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-
-                  if (_milestones.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text('Jalons',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.onSurface.withOpacity(0.45))),
-                    const SizedBox(height: 6),
-                    ..._milestones.map((m) {
-                      final s = _milestoneStatus(m);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            Icon(s.icon, size: 14, color: s.color),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(m.title,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: cs.onSurface.withOpacity(0.8))),
-                            ),
-                            Text(_fmtDate(m.startDate),
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withOpacity(0.4))),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: s.color.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(s.label,
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: s.color)),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Widgets du dashboard ──────────────────────────────────────────────────────
-
-class _PillStat extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _PillStat({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-      );
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final double? progress;
-  final IconData? icon;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.progress,
-    this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.2), width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.45),
-                    letterSpacing: 0.5)),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 14, color: color),
-                  const SizedBox(width: 5),
-                ],
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ],
-            ),
-            if (progress != null) ...[
-              const SizedBox(height: 6),
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                borderRadius: BorderRadius.circular(2),
-                backgroundColor: color.withOpacity(0.12),
-                color: color,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhaseChip extends StatelessWidget {
-  final String label;
-  final int done;
-  final int total;
-  final double pct;
-  final String statusLabel;
-  final Color statusColor;
-  final Color bgColor;
-
-  const _PhaseChip({
-    required this.label,
-    required this.done,
-    required this.total,
-    required this.pct,
-    required this.statusLabel,
-    required this.statusColor,
-    required this.bgColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final labelColor = _isDark(bgColor) || dark
-        ? Colors.white.withOpacity(0.92)
-        : _darken(bgColor);
+    final p = project;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final prog = taskProgress(p);
+    final pct = prog.total == 0 ? 0 : (prog.done * 100 / prog.total).round();
+    final overdue = overdueTasks(p, today);
+    final phase = currentPhase(p, today);
+    final milestone = nextMilestone(p, today);
+    final msDays = milestone == null
+        ? null
+        : (milestone.endDate ?? milestone.startDate).difference(today).inDays;
+    final left = p.endDate == null ? null : daysLeftLabel(p.endDate, today);
 
     return Container(
-      width: 180,
-      decoration: BoxDecoration(
-        color: dark ? bgColor.withOpacity(0.10) : bgColor.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: bgColor.withOpacity(0.5), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Header coloré (style phase Gantt) ─────────────────────────
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: bgColor.withOpacity(dark ? 0.35 : 0.5),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-            ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: labelColor),
-                overflow: TextOverflow.ellipsis),
-          ),
-          // ── Contenu ───────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: LinearProgressIndicator(
-                        value: pct,
-                        minHeight: 4,
-                        borderRadius: BorderRadius.circular(2),
-                        backgroundColor: bgColor.withOpacity(0.2),
-                        color: bgColor,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text('$done/$total',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: bgColor)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      width: 6, height: 6,
-                      decoration: BoxDecoration(
-                          color: statusColor, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(statusLabel,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
+      color: kBSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      child: Row(children: [
+        _chip(Icons.task_alt_outlined,
+            prog.total == 0 ? 'Aucune tâche' : '${prog.done} / ${prog.total} · $pct %',
+            tip: 'Avancement : tâches faites / tâches comptées (hors ignorées)'),
+        if (overdue.isNotEmpty)
+          _chip(Icons.warning_amber_rounded,
+              '${overdue.length} en retard',
+              color: kBAlert,
+              tip: 'Tâches ouvertes dont l\'échéance est passée'),
+        if (phase != null)
+          _chip(Icons.layers_outlined, 'Phase : ${phase.label}',
+              color: _onDark(_hex(phase.color, kBPrimary)),
+              tip: 'Phase contenant aujourd\'hui'),
+        if (milestone != null)
+          _chip(Icons.diamond_outlined, 'J-$msDays · ${milestone.title}',
+              color: msDays != null && msDays <= 7 ? kBAttention : null,
+              tip: 'Prochain jalon'),
+        const Spacer(),
+        if (left != null)
+          Text('Fin du projet ${_dmy(p.endDate!)} · $left',
+              style: const TextStyle(fontSize: 11, color: kBText4)),
+      ]),
+    );
+  }
+
+  Widget _chip(IconData icon, String label, {Color? color, required String tip}) {
+    final c = color ?? kBText2;
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.withOpacity(color == null ? .08 : .14),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: c),
+          const SizedBox(width: 5),
+          Text(label,
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c),
+              overflow: TextOverflow.ellipsis),
+        ]),
       ),
     );
   }
 }
-
 
 // ── Dialog détail tâche (web) ─────────────────────────────────────────────────
 

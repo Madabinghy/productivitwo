@@ -97,7 +97,10 @@ n'a plus d'AppBar ni de Scaffold (un seul en-tête = celui de la fiche), couleur
 pure `lib/utils/gantt_axis.dart` (`GanttAxis` : plage lundi−7 j → +14 j couvrant toutes les tâches, `x(date)`,
 mois, semaines calées sur les lundis, zoom 0,2–3) ; défilement à deux `ScrollController` (molette = défilement,
 Ctrl/⌘ + molette ou pincement = zoom autour du curseur), en-têtes et colonne des libellés figés par overlays,
-boutons Aujourd'hui / Ajuster au projet. Ne pas réintroduire `InteractiveViewer` ni de thème clair.
+boutons Aujourd'hui / Ajuster au projet ; barres manipulables (glisser = dates, bord droit = échéance,
+annulation) ; sections par phase repliables via `phaseSections()` (`utils/project_health.dart`) ; points des
+blocs du programme via `FirestoreSync.fetchDailySchedulesRange`. Ne pas réintroduire `InteractiveViewer` ni
+de thème clair.
 Actions (lot 6) = `views/actions_view.dart` + `lib/utils/actions_logic.dart` (filtres Je suis / J'ai /
 Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant) ; CRUD des actions dans
 `web/action_dialogs.dart`. `ActionsHubView` et `WebActionsView` ont été supprimés.

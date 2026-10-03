@@ -3299,6 +3299,25 @@ class FirestoreSync {
     return ids;
   }
 
+  /// Programmes journaliers de [fromYmd] à [toYmd] inclus (une requête sur
+  /// l'id de document), blocs supprimés exclus. Gantt : points des blocs.
+  Future<List<DailySchedule>> fetchDailySchedulesRange(String fromYmd, String toYmd) async {
+    if (uid == null) return [];
+    try {
+      final snap = await _col('daily_schedules')
+          .where(FieldPath.documentId, isGreaterThanOrEqualTo: fromYmd)
+          .where(FieldPath.documentId, isLessThanOrEqualTo: toYmd)
+          .get();
+      return [
+        for (final doc in snap.docs)
+          DailySchedule.from(doc.data() as Map)
+            ..blocks.removeWhere((b) => b.status == 'deleted'),
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Renvoie les `taskId` (Gantt) portés par un bloc encore en attente,
   /// aujourd'hui ou dans le futur — l'étape est déjà PROGRAMMÉE à un moment
   /// choisi par le user : la carte coach ne re-propose pas la tâche.
