@@ -7,7 +7,12 @@
 > **Correctif 2026-10 — blocs de nuit** : la charge d'un jour (`plannedMin`) et la règle « journée bloquée »
 > (`isBlockedDay`, ≥ 6 h) ne comptent que la part des blocs dans la **journée active 8 h – 22 h**
 > (`activeMin`, `lib/utils/week_planner.dart`). Un bloc de sommeil 23 h → 7 h ne bloque plus la journée et ne
-> remplit plus la jauge ; une formation 9 h → 17 h la bloque toujours.
+> remplit plus la jauge ; une formation 9 h → 17 h la bloque toujours. La fenêtre est **réglable** (dialog
+> « Capacité par jour et journée active », bouton ⚙ de Cette semaine) : `DayWindow` dans
+> `utils/week_capacity.dart`, stockée dans `data/meta.dayWindow {startMin, endMin}` (au moins 4 h d'écart,
+> 0 h – 24 h). Un lève-tôt met 4 h → 20 h : ses blocs de 4 h comptent, sa nuit 20 h → 4 h non. Les créneaux
+> proposés (« Caser », placement auto) partent du début de la fenêtre et s'arrêtent 2 h avant sa fin ; côté
+> serveur, `plan_day` prend ses heures par défaut dans cette fenêtre (`readDayWindowHours`).
 
 Périmètre : **uniquement** la vue de l'onglet « Cette semaine » de l'app web (`lib/web/`).
 Ce handoff remplace la section 3 du handoff `refonte-web-2026-09` — si une première version de

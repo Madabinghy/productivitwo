@@ -188,6 +188,18 @@ void _activeDayTests() {
       expect(plannedMin(sleep), 0);
       expect(plannedMin([...sleep, b('09:00', 90)]), 90);
     });
+    test('fenêtre réglée 4 h → 20 h : le lève-tôt compte, la nuit 20 h → 4 h non', () {
+      const w = DayWindow(4 * 60, 20 * 60);
+      expect(activeMin(b('04:00', 120), window: w), 120); // 4 h → 6 h compte
+      expect(activeMin(b('04:00', 120)), 0); // hors fenêtre par défaut
+      expect(activeMin(b('20:00', 8 * 60), window: w), 0); // sommeil 20 h → 4 h
+      expect(isBlockedDay([b('20:00', 8 * 60)], window: w), isFalse);
+      expect(plannedMin([b('04:00', 180), b('20:00', 8 * 60)], window: w), 180);
+      // Créneau proposé : dès 4 h, et au plus tard 2 h avant la fin (18 h).
+      expect(proposedSlot([], 60, isToday: false, window: w).start, 4 * 60);
+      expect(proposedSlot([b('04:00', 14 * 60)], 60, isToday: false, window: w).full, isTrue);
+      expect(firstFreeSlot([b('04:00', 60)], 60, window: w), 5 * 60);
+    });
     test('une formation 9 h → 17 h bloque la journée', () {
       expect(isBlockedDay([b('09:00', 8 * 60)]), isTrue);
       expect(isBlockedDay([b('08:00', 6 * 60)]), isTrue);

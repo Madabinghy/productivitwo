@@ -102,41 +102,44 @@ List<WeekTask> tasksToPlace(List<WeekTask> tasks) {
   return list;
 }
 
-/// Journée active : seule la part des blocs comprise entre 8 h et 22 h compte
-/// dans la charge et dans la règle « journée bloquée ». Un bloc de sommeil
-/// (23 h → 7 h) ou une nuit d'hôtel ne bloque donc pas la journée.
-const int kActiveDayStartMin = 8 * 60;
-const int kActiveDayEndMin = 22 * 60;
+/// Journée active ([DayWindow], réglable : `data/meta.dayWindow`, défaut
+/// 8 h → 22 h) : seule la part des blocs comprise dedans compte dans la charge
+/// et dans la règle « journée bloquée ». Un bloc de sommeil (23 h → 7 h, ou
+/// 20 h → 4 h pour un lève-tôt dont la fenêtre commence à 4 h) ne bloque donc
+/// pas la journée.
 
-/// Minutes d'un bloc à l'intérieur de la journée active (8 h – 22 h). La part
-/// qui déborde après minuit appartient à la nuit : ignorée.
-int activeMin(ScheduleBlock b) {
+/// Minutes d'un bloc à l'intérieur de la journée active. La part qui déborde
+/// après minuit appartient à la nuit : ignorée.
+int activeMin(ScheduleBlock b, {DayWindow window = kDefaultDayWindow}) {
   final start = blockStartMin(b);
   final end = blockEndMin(b);
-  final s = start > kActiveDayStartMin ? start : kActiveDayStartMin;
-  final e = end < kActiveDayEndMin ? end : kActiveDayEndMin;
+  final s = start > window.startMin ? start : window.startMin;
+  final e = end < window.endMin ? end : window.endMin;
   return e > s ? e - s : 0;
 }
 
 /// Minutes planifiées d'un jour (blocs non supprimés, faits ou non), dans la
 /// journée active.
-int plannedMin(List<ScheduleBlock> blocks) =>
-    blocks.fold(0, (s, b) => s + activeMin(b));
+int plannedMin(List<ScheduleBlock> blocks, {DayWindow window = kDefaultDayWindow}) =>
+    blocks.fold(0, (s, b) => s + activeMin(b, window: window));
 
 /// Journée bloquée : un bloc couvre au moins 6 h de la journée active
 /// (déplacement, formation…).
-bool isBlockedDay(List<ScheduleBlock> blocks) =>
-    blocks.any((b) => activeMin(b) >= 6 * 60);
+bool isBlockedDay(List<ScheduleBlock> blocks, {DayWindow window = kDefaultDayWindow}) =>
+    blocks.any((b) => activeMin(b, window: window) >= 6 * 60);
 
 /// Premier créneau libre d'au moins [durationMin] à partir de [fromMin]
-/// (défaut 8 h) et finissant avant [untilMin] (défaut 22 h), hors blocs
-/// existants. Null si aucun.
+/// (défaut : début de la journée active) et finissant avant [untilMin]
+/// (défaut : fin de la journée active), hors blocs existants. Null si aucun.
 int? firstFreeSlot(
   List<ScheduleBlock> blocks,
   int durationMin, {
-  int fromMin = 8 * 60,
-  int untilMin = 22 * 60,
+  int? fromMin,
+  int? untilMin,
+  DayWindow window = kDefaultDayWindow,
 }) {
+  fromMin ??= window.startMin;
+  untilMin ??= window.endMin;
   final busy = blocks
       .map((b) => (start: blockStartMin(b), end: blockEndMin(b)))
       .toList()
@@ -161,22 +164,25 @@ int remainingToPlaceMin(ProjectTask t, List<ScheduleBlock> scheduled) {
 }
 
 /// Créneau proposé par le popover « Caser » : premier intervalle libre de
-/// [durationMin] à partir de 8 h (ou de maintenant, arrondi au quart d'heure
-/// suivant, si c'est aujourd'hui) et finissant avant 20 h. À défaut, 8 h 00
+/// [durationMin] à partir du début de la journée active (ou de maintenant,
+/// arrondi au quart d'heure suivant, si c'est aujourd'hui) et finissant au
+/// plus tard 2 h avant sa fin (22 h → 20 h). À défaut, le début de journée
 /// avec `full: true` (« la journée est pleine »).
 ({int start, bool full}) proposedSlot(
   List<ScheduleBlock> blocks,
   int durationMin, {
   required bool isToday,
   int nowMin = 0,
+  DayWindow window = kDefaultDayWindow,
 }) {
-  var from = 8 * 60;
+  var from = window.startMin;
   if (isToday) {
     final rounded = ((nowMin + 14) ~/ 15) * 15;
     if (rounded > from) from = rounded;
   }
-  final s = firstFreeSlot(blocks, durationMin, fromMin: from, untilMin: 20 * 60);
-  return s == null ? (start: 8 * 60, full: true) : (start: s, full: false);
+  final until = window.endMin - 120 > from ? window.endMin - 120 : window.endMin;
+  final s = firstFreeSlot(blocks, durationMin, fromMin: from, untilMin: until);
+  return s == null ? (start: window.startMin, full: true) : (start: s, full: false);
 }
 
 String minToClock(int min) =>
@@ -193,6 +199,7 @@ String minToClock(int min) =>
   required Map<String, List<ScheduleBlock>> scheduledByDay,
   required Map<String, int> capacity,
   required DateTime today,
+  DayWindow window = kDefaultDayWindow,
 }) {
   final created = <String, List<ScheduleBlock>>{};
   final left = <WeekTask>[];
@@ -208,9 +215,9 @@ String minToClock(int min) =>
         ...?created[key],
       ];
       final cap = capacityMinFor(capacity, day);
-      if (cap == 0 || isBlockedDay(existing)) continue;
-      if (plannedMin(existing) + dur > cap) continue;
-      final start = firstFreeSlot(existing, dur);
+      if (cap == 0 || isBlockedDay(existing, window: window)) continue;
+      if (plannedMin(existing, window: window) + dur > cap) continue;
+      final start = firstFreeSlot(existing, dur, window: window);
       if (start == null) continue;
       created.putIfAbsent(key, () => []).add(taskBlock(wt, start));
       placed = true;
@@ -230,14 +237,15 @@ String minToClock(int min) =>
   Map<String, int> capacity,
   int durationMin, {
   required DateTime today,
+  DayWindow window = kDefaultDayWindow,
 }) {
-  final load = plannedMin(existing);
+  final load = plannedMin(existing, window: window);
   final cap = capacityMinFor(capacity, day);
   final fits = !day.isBefore(dateOnly(today)) &&
       cap > 0 &&
-      !isBlockedDay(existing) &&
+      !isBlockedDay(existing, window: window) &&
       load + durationMin <= cap &&
-      firstFreeSlot(existing, durationMin) != null;
+      firstFreeSlot(existing, durationMin, window: window) != null;
   return (loadMin: load, capMin: cap, fits: fits);
 }
 
@@ -249,10 +257,11 @@ DateTime? firstFittingDay(
   Map<String, int> capacity,
   int durationMin, {
   required DateTime today,
+  DayWindow window = kDefaultDayWindow,
 }) {
   for (final d in days) {
     final l = dayLoad(d, scheduledByDay[ymdOf(d)] ?? const [], capacity, durationMin,
-        today: today);
+        today: today, window: window);
     if (l.fits) return d;
   }
   return null;

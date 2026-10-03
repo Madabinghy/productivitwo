@@ -116,7 +116,10 @@ Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
-filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`).
+filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`). **Journée active** (2026-10) :
+`data/meta.dayWindow {startMin, endMin}` (`DayWindow`, défaut 8 h → 22 h, réglable dans le dialog Capacité de
+Cette semaine) ; seule la part des blocs dans cette fenêtre compte pour la charge, « journée bloquée » (≥ 6 h) et
+les créneaux proposés (`activeMin`, `week_planner.dart`) ; `plan_day` (serveur) y prend ses heures par défaut.
 
 **Règles de décision** :
 - Privilégier ce qui renforce la boucle coaché → données d'exécution → coach.

@@ -85,6 +85,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   final Map<String, List<ScheduleBlock>> _byDay = {};
   final List<StreamSubscription<DailySchedule?>> _subs = [];
   Map<String, int> _capacity = defaultWeekCapacity();
+  DayWindow _window = kDefaultDayWindow;
 
   Project get _p => widget.project;
   DateTime get _today => dateOnly(DateTime.now());
@@ -108,6 +109,9 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     }
     widget.sync.fetchWeekCapacity().then((c) {
       if (mounted) setState(() => _capacity = c);
+    });
+    widget.sync.fetchDayWindow().then((w) {
+      if (mounted) setState(() => _window = w);
     });
   }
 
@@ -327,10 +331,11 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     final all = [for (final l in _byDay.values) ...l];
     final rest = remainingToPlaceMin(t, all);
     final duration = rest == 0 ? t.plannedMin : rest;
-    final first = firstFittingDay(days, _byDay, _capacity, duration, today: _today) ?? _today;
+    final first =
+        firstFittingDay(days, _byDay, _capacity, duration, today: _today, window: _window) ?? _today;
     final now = DateTime.now();
     ({int loadMin, int capMin, bool fits}) load(DateTime d, int dur) =>
-        dayLoad(d, _byDay[ymdOf(d)] ?? const [], _capacity, dur, today: _today);
+        dayLoad(d, _byDay[ymdOf(d)] ?? const [], _capacity, dur, today: _today, window: _window);
     if (!mounted) return;
     await showWeekTaskPopover(
       context,
@@ -343,7 +348,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       ],
       fits: (d, dur) => load(d, dur).fits,
       propose: (d, dur) => proposedSlot(_byDay[ymdOf(d)] ?? const [], dur,
-          isToday: d == _today, nowMin: now.hour * 60 + now.minute),
+          isToday: d == _today, nowMin: now.hour * 60 + now.minute, window: _window),
       durationMin: duration,
       estimatedMin: t.estimatedMin,
       onEstimate: (m) async {
