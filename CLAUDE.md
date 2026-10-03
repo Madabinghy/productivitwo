@@ -83,7 +83,8 @@ et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil �
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
-shell à la place du Gantt nu ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
+shell à la place du Gantt nu ; **s'ouvre toujours sur Plan d'action** (2026-10), y compris depuis un bloc ou une
+action (`targetTaskId` → phase de la tâche dépliée) ; l'onglet Gantt n'a plus sa propre bascule Gantt/Document ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
 documents dans `web/document_viewer_dialog.dart`.
 Actions (lot 6) = `views/actions_view.dart` + `lib/utils/actions_logic.dart` (filtres Je suis / J'ai /
 Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant) ; CRUD des actions dans

@@ -90,9 +90,10 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   @override
   void initState() {
     super.initState();
-    // Ouverture ciblée sur une tâche (depuis Aujourd'hui, Cette semaine…)
-    // → directement le Gantt ; sinon le plan d'action.
-    _tab = widget.targetTaskId != null ? ProjectPlanTab.gantt : ProjectPlanTab.plan;
+    // Toujours le plan d'action, même à l'ouverture ciblée sur une tâche
+    // (depuis Aujourd'hui, Cette semaine…) : sa phase est dépliée par
+    // `_initExpanded`. Le Gantt reste à un clic (décision 2026-10).
+    _tab = ProjectPlanTab.plan;
     for (final d in _weekDays) {
       final key = ymdOf(d);
       _subs.add(widget.sync.streamDailySchedule(key).listen((s) {
@@ -169,6 +170,16 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   void _initExpanded() {
     if (_phasesInit) return;
     _phasesInit = true;
+    // Tâche visée (ouverture depuis un bloc ou une action) : sa phase d'abord.
+    final target = widget.targetTaskId;
+    if (target != null) {
+      for (final s in _sections) {
+        if (s.tasks.any((t) => t.id == target)) {
+          _expanded.add(s.phase?.id ?? '_none');
+          return;
+        }
+      }
+    }
     final cur = currentPhase(_p, DateTime.now());
     if (cur != null) {
       _expanded.add(cur.id);
