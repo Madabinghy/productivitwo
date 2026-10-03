@@ -38,7 +38,17 @@ Future<void> showWeekTaskPopover(
   bool Function(DateTime day, int durationMin)? fits,
   // Créneau proposé pour un jour et une durée (recalculé à chaque changement).
   required ({int start, bool full}) Function(DateTime day, int durationMin) propose,
+  // Charge du jour (lot 2 de l'audit) : affichée sous le jour, et « journée
+  // pleine » quand la durée ne tient plus dans la capacité. Null = pas de
+  // notion de capacité.
+  ({int loadMin, int capMin, bool fits}) Function(DateTime day, int durationMin)? load,
+  // Premier jour à venir où la durée tient (proposé quand le jour est plein).
+  DateTime? Function(int durationMin)? firstFitting,
   required int durationMin, // durée par défaut (reste à caser, sinon 45 min)
+  // Estimation de la tâche : valeur actuelle (null = défaut 45 min) et
+  // sauvegarde de la durée sélectionnée comme estimation.
+  int? estimatedMin,
+  void Function(int min)? onEstimate,
   required void Function(DateTime day, int startMin, int durationMin) onPlace,
   required VoidCallback onOpen,
   required VoidCallback onDone,
@@ -50,9 +60,11 @@ Future<void> showWeekTaskPopover(
   DateTime? deadline,
 }) {
   final size = MediaQuery.of(context).size;
-  final w = dayChoices == null ? 260.0 : 300.0;
+  final w = dayChoices == null ? 272.0 : 300.0;
   final h = (onRescheduleDeadline == null ? 226.0 : 258.0) +
-      (dayChoices == null ? 0 : 56);
+      (dayChoices == null ? 0 : 56) +
+      (load == null ? 0 : 18) +
+      (onEstimate == null ? 0 : 24);
   final left = (anchor.dx - w / 2).clamp(12.0, size.width - w - 12);
   final top =
       (anchor.dy + 12 + h > size.height ? anchor.dy - h - 12 : anchor.dy + 12)
@@ -70,6 +82,11 @@ Future<void> showWeekTaskPopover(
       final slot = propose(day, duration);
       final proposedStartMin = slot.start;
       final dayFull = slot.full;
+      final dayLoad = load?.call(day, duration);
+      final overCap = dayLoad != null && dayLoad.capMin > 0 && !dayLoad.fits && !dayFull;
+      final nextFit = (dayFull || overCap) ? firstFitting?.call(duration) : null;
+      final sameDay = nextFit != null &&
+          nextFit.year == day.year && nextFit.month == day.month && nextFit.day == day.day;
       final dayLabel = _kDayLong[day.weekday - 1];
       final dayCap =
           '${dayLabel[0].toUpperCase()}${dayLabel.substring(1)} ${day.day}';
@@ -138,6 +155,40 @@ Future<void> showWeekTaskPopover(
                           color: dayFull ? kBAttention : kBText3,
                           fontFeatures: const [FontFeature.tabularFigures()]),
                     ),
+                    if (dayLoad != null) ...[
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Expanded(
+                          child: Text(
+                            dayLoad.capMin == 0
+                                ? 'Jour de repos (capacité 0)'
+                                : overCap
+                                    ? 'Journée pleine : ${_fmtHm(dayLoad.loadMin)} + ${_fmtHm(duration)} > ${_fmtHm(dayLoad.capMin)}'
+                                    : 'Charge ${_fmtHm(dayLoad.loadMin)} / ${_fmtHm(dayLoad.capMin)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: overCap || dayLoad.capMin == 0 ? kBAttention : kBText4,
+                                fontFeatures: const [FontFeature.tabularFigures()]),
+                          ),
+                        ),
+                        if (nextFit != null && !sameDay)
+                          InkWell(
+                            onTap: () => setLocal(() => day = nextFit),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text(
+                                  '${_kDayShort[nextFit.weekday - 1]} ${nextFit.day} tient →',
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: kBPrimary)),
+                            ),
+                          ),
+                      ]),
+                    ],
                     const SizedBox(height: 8),
                     // Durée : le défaut est le reste à caser (45 min sans
                     // estimation) ; les autres valeurs sont à un clic.
@@ -149,6 +200,40 @@ Future<void> showWeekTaskPopover(
                           onTap: () => setLocal(() => duration = d),
                         ),
                     ]),
+                    if (onEstimate != null) ...[
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        Expanded(
+                          child: Text(
+                            estimatedMin == null
+                                ? 'Tâche non estimée (45 min par défaut)'
+                                : 'Tâche estimée ${_fmtHm(estimatedMin)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 11.5,
+                                color: kBText4,
+                                fontFeatures: [FontFeature.tabularFigures()]),
+                          ),
+                        ),
+                        if (estimatedMin != duration)
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              onEstimate(duration);
+                            },
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                              child: Text('Estimer à ${_fmtHm(duration)}',
+                                  style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: kBPrimary)),
+                            ),
+                          ),
+                      ]),
+                    ],
                     const SizedBox(height: 10),
                     Row(children: [
                       Expanded(

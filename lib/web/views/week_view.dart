@@ -39,6 +39,10 @@ const _kBarTop = 8.0;
 const _kPrefHideDone = 'week_hide_done';
 const _kPrefCollapsed = 'week_collapsed_domains';
 const _kPrefDays = 'week_window_days';
+// Fenêtre affichée (début YYYY-MM-DD), restaurée seulement le jour même : un
+// rechargement garde la semaine qu'on regardait, le lendemain repart d'ici.
+const _kPrefStart = 'week_window_start';
+const _kPrefStartSavedOn = 'week_window_saved_on';
 
 String _fmtHm(int min) {
   final h = min ~/ 60, m = min % 60;
@@ -126,8 +130,14 @@ class _WeekViewState extends State<WeekView> {
           _days = 14;
           _start = _today;
         }
+        final savedOn = p.getString(_kPrefStartSavedOn);
+        final savedStart = p.getString(_kPrefStart);
+        if (savedOn == ymdOf(_today) && savedStart != null) {
+          final d = DateTime.tryParse(savedStart);
+          if (d != null) _start = dateOnly(d);
+        }
       });
-      if (days == 14) _subscribe();
+      _subscribe();
     } catch (_) {}
   }
 
@@ -142,6 +152,8 @@ class _WeekViewState extends State<WeekView> {
       await p.setBool(_kPrefHideDone, _hideDone);
       await p.setStringList(_kPrefCollapsed, _collapsed.toList());
       await p.setInt(_kPrefDays, _days);
+      await p.setString(_kPrefStart, ymdOf(_start));
+      await p.setString(_kPrefStartSavedOn, ymdOf(_today));
     } catch (_) {}
   }
 
@@ -244,6 +256,18 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Future<void> _saveTasks(Project p) => widget.sync.saveProjectTasks(p.id, p.tasks);
+
+  /// Estimation de la tâche posée depuis le popover (durée sélectionnée).
+  Future<void> _setEstimate(WeekTask wt, int min) async {
+    final t = wt.task;
+    final old = t.estimatedMin;
+    setState(() => t.estimatedMin = min);
+    await _saveTasks(wt.project);
+    _snack('Tâche estimée ${_fmtHm(min)}', actionLabel: 'Annuler', onAction: () async {
+      setState(() => t.estimatedMin = old);
+      await _saveTasks(wt.project);
+    });
+  }
 
   Future<void> _placeAt(WeekTask wt, DateTime day, int startMin, int durationMin) async {
     final key = ymdOf(day);
@@ -412,7 +436,13 @@ class _WeekViewState extends State<WeekView> {
       initialDay: day,
       propose: (dd, d) => proposedSlot(_byDay[ymdOf(dd)] ?? const [], d,
           isToday: dd == _today, nowMin: now.hour * 60 + now.minute),
+      load: (dd, d) => dayLoad(dd, _byDay[ymdOf(dd)] ?? const [], _capacity, d, today: _today),
+      firstFitting: (d) => firstFittingDay(
+          _dates.where((x) => !x.isBefore(_today)).toList(), _byDay, _capacity, d,
+          today: _today),
       durationMin: duration,
+      estimatedMin: wt.task.estimatedMin,
+      onEstimate: (m) => _setEstimate(wt, m),
       taskDone: wt.done,
       onPlace: (dd, startMin, d) => _placeAt(wt, dd, startMin, d),
       onOpen: () => _openTask(wt),
@@ -470,7 +500,9 @@ class _WeekViewState extends State<WeekView> {
     final tasks = _tasks;
     final active = tasks.where((t) => !t.task.isMilestone).toList();
     final done = active.where((t) => t.done).length;
-    final late = tasks.where((t) => t.overdue).length;
+    // Les compteurs suivent le filtre « Masquer le fait » : en retard et à
+    // caser ne concernent que des tâches ouvertes, donc inchangés.
+    final late = tasks.where((t) => t.overdue && !t.done).length;
     final toPlace = tasksToPlace(tasks).where((t) => !t.task.isMilestone).length;
 
     return Container(
@@ -489,40 +521,63 @@ class _WeekViewState extends State<WeekView> {
         ? 'Semaine du ${_start.day} ${_kMonthLong[_start.month - 1]}'
         : '14 jours à partir du ${_start.day} ${_kMonthShort[_start.month - 1]}';
     final isCurrent = _days == 7 ? _start == weekStart(_today) : _start == _today;
-    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+    final open = active - done;
+    final summary = _hideDone
+        ? '$open tâche${open > 1 ? 's' : ''} à faire · $late en retard · $toPlace à caser'
+            '${done > 0 ? ' · $done faite${done > 1 ? 's' : ''} masquée${done > 1 ? 's' : ''}' : ''}'
+        : '$done / $active tâche${active > 1 ? 's' : ''} active${active > 1 ? 's' : ''} faite${done > 1 ? 's' : ''}'
+            ' · $late en retard · $toPlace à caser';
+    final titleBlock = Row(children: [
       _iconBtn(Icons.chevron_left, _days == 7 ? 'Semaine précédente' : '14 jours avant', () => _shift(-1)),
       _iconBtn(Icons.chevron_right, _days == 7 ? 'Semaine suivante' : '14 jours après', () => _shift(1)),
       const SizedBox(width: 6),
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+            Flexible(
+              child: Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w600, color: kBText, letterSpacing: -.2)),
+            ),
             if (!isCurrent) ...[
               const SizedBox(width: 8),
               _textLink(_days == 7 ? 'Cette semaine' : "Aujourd'hui", () => _setWindow()),
             ],
           ]),
           const SizedBox(height: 2),
-          Text(
-            '$done / $active tâche${active > 1 ? 's' : ''} active${active > 1 ? 's' : ''} faite${done > 1 ? 's' : ''}'
-            ' · $late en retard · $toPlace à caser',
-            style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular),
-          ),
+          Text(summary,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
         ]),
       ),
+    ]);
+    final controls = <Widget>[
       _segmented(),
-      const SizedBox(width: 8),
       _pillButton(_hideDone ? 'Afficher le fait' : 'Masquer le fait',
           icon: _hideDone ? Icons.visibility_outlined : Icons.visibility_off_outlined,
           onTap: () => _setHideDone(!_hideDone)),
-      const SizedBox(width: 4),
       _iconBtn(Icons.tune_outlined, 'Capacité par jour', _editCapacity),
-      const SizedBox(width: 4),
       _pillButton('Planifier avec ORION',
           primary: true, icon: Icons.auto_awesome, onTap: _busy ? null : _planWithOrion),
-    ]);
+    ];
+    // Sous ~1100 px, les commandes passent sous le titre au lieu de l'écraser.
+    return LayoutBuilder(builder: (ctx, box) {
+      if (box.maxWidth < 1100) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          titleBlock,
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: controls),
+        ]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Expanded(child: titleBlock),
+        const SizedBox(width: 12),
+        for (final c in controls) ...[c, const SizedBox(width: 8)],
+      ]);
+    });
   }
 
   Widget _segmented() {
@@ -778,13 +833,20 @@ class _WeekViewState extends State<WeekView> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (t.isMilestone)
-                _badge('jalon', kBAttention)
-              else if (wt.overdue && !wt.done)
-                _badge('−$overdueDays j', kBAlert)
-              else if (t.actions.isNotEmpty)
-                Text('${t.actions.length - openActions}/${t.actions.length}',
-                    style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+              // Marqueur (jalon / retard / actions) + dates et estimation en
+              // clair : « 3 j · 2 h » (≈ = estimation par défaut, non saisie).
+              Column(crossAxisAlignment: CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                if (t.isMilestone)
+                  _badge('jalon', kBAttention)
+                else if (wt.overdue && !wt.done)
+                  _badge('−$overdueDays j', kBAlert)
+                else if (t.actions.isNotEmpty)
+                  Text('${t.actions.length - openActions}/${t.actions.length}',
+                      style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+                const SizedBox(height: 2),
+                Text(_taskMeta(t),
+                    style: const TextStyle(fontSize: 10.5, color: kBText4, fontFeatures: _tabular)),
+              ]),
             ]),
           ),
         ),
@@ -818,6 +880,16 @@ class _WeekViewState extends State<WeekView> {
         ),
       ]),
     );
+  }
+
+  /// « 3 j · 2 h » : étendue en jours, puis estimation (≈ = défaut 45 min,
+  /// non saisie) ; un jalon n'a qu'une date.
+  String _taskMeta(ProjectTask t) {
+    final end = dateOnly(t.endDate ?? t.startDate);
+    if (t.isMilestone) return _dm(end);
+    final days = end.difference(dateOnly(t.startDate)).inDays + 1;
+    final est = t.estimatedMin == null ? '≈${_fmtHm(t.plannedMin)}' : _fmtHm(t.plannedMin);
+    return '$days j · $est';
   }
 
   Widget _cell(WeekTask wt, int i) {
