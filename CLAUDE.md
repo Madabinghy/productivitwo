@@ -88,10 +88,17 @@ appelé par `_go(WebTab.today)` du shell ; aussi au premier programme chargé, a
 frise revient après la disposition active).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
-Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
-shell à la place du Gantt nu ; **s'ouvre toujours sur Plan d'action** (2026-10), y compris depuis un bloc ou une
-action (`targetTaskId` → phase de la tâche dépliée) ; l'onglet Gantt n'a plus sa propre bascule Gantt/Document ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
-documents dans `web/document_viewer_dialog.dart`.
+Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
+plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
+dans le shell ; **s'ouvre toujours sur Plan d'action**, y compris depuis un bloc ou une
+action (`targetTaskId` → phase de la tâche dépliée) ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
+documents dans `web/document_viewer_dialog.dart`. L'onglet **Document** (`ProjectDocView`, playbook Markdown) a été
+**retiré** en 2026-10 au profit de **Réalisation** (`views/project_checklists_view.dart`, handoff
+`docs/specs/checklists-2026-10/README.md`) : plan phases → tâches → actions à gauche, espace de travail de l'action à
+droite (étapes cochables, renommables en place, réordonnables, ajout à la volée, marquer faite / rouvrir). Pas de 4ᵉ
+niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur mobile et par le MCP. Helpers purs dans
+`utils/checklist_logic.dart` (`setChecklistItem`, `addChecklistItem`, `renameChecklistItem`, `moveChecklistItem`,
+`setActionDone`, `nextChecklistItem`).
 **Gantt projet** (refonte 2026-10, handoff `docs/specs/gantt-projet-2026-10/README.md`, 4 lots) : `gantt_screen.dart`
 n'a plus d'AppBar ni de Scaffold (un seul en-tête = celui de la fiche), couleurs `kB*` ; axe de temps en logique
 pure `lib/utils/gantt_axis.dart` (`GanttAxis` : plage lundi−7 j → +14 j couvrant toutes les tâches, `x(date)`,
@@ -158,9 +165,9 @@ lib/
 ├── web/                 — app web autonome (refonte 2026-09, thème vert sombre)
 │   ├── web_home_screen.dart — shell : barre d'onglets (WebTab) + IndexedStack des vues + fiche projet hébergée
 │   ├── web_shell.dart / theme_tokens.dart — barre du haut, menu ⋯, tokens kB*
-│   ├── views/           — une vue par fichier : today, week, projects, project_plan, actions,
-│   │                      library (documents + archives), orion
-│   ├── gantt_screen.dart, project_doc_view.dart — onglets Gantt / Document de la fiche projet
+│   ├── views/           — une vue par fichier : today, week, projects, project_plan, project_checklists,
+│   │                      actions, library (documents + archives), orion
+│   ├── gantt_screen.dart — onglet Vision (Gantt) de la fiche projet (Réalisation = views/project_checklists_view.dart)
 │   ├── *_dialog.dart, tokens_panel.dart, vision_dialog.dart — dialogs partagés
 │   └── …
 └── widgets/             — sheets, tiles, vues partagées mobile

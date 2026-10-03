@@ -73,4 +73,53 @@ void main() {
       expect(resolveBlockAction(null, blk(taskId: 't')), isNull);
     });
   });
+
+  group('renameChecklistItem / moveChecklistItem', () {
+    test('renommer : titre vide ou identique → false', () {
+      final a = _a(['x', 'y']);
+      expect(renameChecklistItem(a, 'i0', '  '), isFalse);
+      expect(renameChecklistItem(a, 'i0', 'x'), isFalse);
+      expect(renameChecklistItem(a, 'i0', ' z '), isTrue);
+      expect(a.checklist[0].title, 'z');
+      expect(renameChecklistItem(a, 'absent', 'q'), isFalse);
+    });
+    test('déplacer : sémantique ReorderableListView', () {
+      final a = _a(['a', 'b', 'c', 'd']);
+      moveChecklistItem(a, 0, 4); // premier → fin
+      expect(a.checklist.map((c) => c.title).toList(), ['b', 'c', 'd', 'a']);
+      moveChecklistItem(a, 3, 0); // dernier → début
+      expect(a.checklist.map((c) => c.title).toList(), ['a', 'b', 'c', 'd']);
+      moveChecklistItem(a, 1, 3); // b après c
+      expect(a.checklist.map((c) => c.title).toList(), ['a', 'c', 'b', 'd']);
+      moveChecklistItem(a, 9, 0); // hors bornes : rien
+      expect(a.checklist.map((c) => c.title).toList(), ['a', 'c', 'b', 'd']);
+    });
+  });
+
+  group('setActionDone', () {
+    test('faite → toutes les étapes cochées à la même date', () {
+      final a = _a(['x', 'y']);
+      setChecklistItem(a, 'i0', true, now: DateTime(2026, 9, 1));
+      setActionDone(a, true, now: now);
+      expect(a.done, isTrue);
+      expect(a.doneAt, now);
+      expect(a.checklist.every((c) => c.done), isTrue);
+      expect(a.checklist[0].doneAt, DateTime(2026, 9, 1)); // déjà cochée : date gardée
+      expect(a.checklist[1].doneAt, now);
+    });
+    test('rouvrir laisse les étapes telles quelles', () {
+      final a = _a(['x', 'y']);
+      setActionDone(a, true, now: now);
+      setActionDone(a, false);
+      expect(a.done, isFalse);
+      expect(a.doneAt, isNull);
+      expect(a.checklist.every((c) => c.done), isTrue);
+      expect(nextChecklistItem(a), isNull);
+    });
+    test('nextChecklistItem : première non cochée', () {
+      final a = _a(['x', 'y', 'z']);
+      setChecklistItem(a, 'i0', true, now: now);
+      expect(nextChecklistItem(a)!.id, 'i1');
+    });
+  });
 }
