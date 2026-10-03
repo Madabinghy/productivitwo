@@ -140,8 +140,9 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       ]);
       if (!mounted) return;
       final allDocs = results[4] as List<Map<String, dynamic>>;
-      // Group documents by projectId (hors playbooks : ils ont leur vue dédiée
-      // sous le Gantt — pas dans l'ancien viewer HTML « Voir le document »).
+      // Group documents by projectId. Les playbooks (ancien « Document de
+      // pilotage » Markdown, onglet retiré en 2026-10 au profit des Checklists)
+      // ne sont pas des HTML : on ne les montre pas dans le viewer.
       final byProject = <String, List<Map<String, dynamic>>>{};
       for (final doc in allDocs) {
         if ((doc['category'] as String?) == 'playbook') continue;

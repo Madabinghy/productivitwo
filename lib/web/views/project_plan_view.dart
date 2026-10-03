@@ -16,15 +16,17 @@ import 'package:productivitwo_v1/web/add_task_dialog.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
-import 'package:productivitwo_v1/web/project_doc_view.dart';
+import 'package:productivitwo_v1/web/views/project_checklists_view.dart';
 import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 
 // Fiche projet (refonte web § 4.5) : s'ouvre dans le shell à la place du
-// Gantt. Segmented « Plan d'action · Gantt · Document » — Gantt = GanttScreen
-// existant, Document = ProjectDocView.
+// Gantt. Segmented « Vision · Plan d'action · Réalisation », du plus large au
+// plus fin : Vision = GanttScreen (phases, horizon), Plan d'action = tâches et
+// actions, Réalisation = ProjectChecklistsView (chaque action comme un
+// micro-projet, étapes). La fiche s'ouvre sur Plan d'action.
 
 const _tabular = [FontFeature.tabularFigures()];
 const _kMonthShort = [
@@ -43,7 +45,7 @@ String _fmtHm(int min) {
   return m == 0 ? '$h h' : '$h h ${m.toString().padLeft(2, '0')}';
 }
 
-enum ProjectPlanTab { plan, gantt, document }
+enum ProjectPlanTab { vision, plan, realisation }
 
 class ProjectPlanView extends StatefulWidget {
   final Project project;
@@ -395,28 +397,31 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
           child: IndexedStack(
             index: _tab.index,
             children: [
-              _plan(),
               // La fiche s'ouvre sur Plan d'action : le Gantt (construit en
               // arrière-plan par l'IndexedStack) ne doit pas ouvrir la tâche
               // visée tant qu'il n'est pas affiché — sous 1100 px, il posait
               // une boîte de dialogue par-dessus le plan d'action.
               GanttScreen(
                 key: ValueKey(
-                    'gantt/${_p.id}/${_tab == ProjectPlanTab.gantt ? widget.targetTaskId : null}'),
+                    'gantt/${_p.id}/${_tab == ProjectPlanTab.vision ? widget.targetTaskId : null}'),
                 project: _p,
-                targetTaskId: _tab == ProjectPlanTab.gantt ? widget.targetTaskId : null,
+                targetTaskId: _tab == ProjectPlanTab.vision ? widget.targetTaskId : null,
                 domains: widget.domains,
                 onChanged: () {
                   if (mounted) setState(() {});
                   widget.onChanged();
                 },
               ),
-              ProjectDocView(
-                key: ValueKey('doc/${_p.id}'),
+              _plan(),
+              ProjectChecklistsView(
+                key: ValueKey('checklists/${_p.id}'),
                 project: _p,
                 sync: widget.sync,
-                accentColor: _accent,
-                onProjectChanged: widget.onChanged,
+                activities: widget.activities,
+                onChanged: () {
+                  if (mounted) setState(() {});
+                  widget.onChanged();
+                },
               ),
             ],
           ),
@@ -503,9 +508,9 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
 
   Widget _segmented() {
     const labels = {
+      ProjectPlanTab.vision: 'Vision',
       ProjectPlanTab.plan: "Plan d'action",
-      ProjectPlanTab.gantt: 'Gantt',
-      ProjectPlanTab.document: 'Document',
+      ProjectPlanTab.realisation: 'Réalisation',
     };
     return Container(
       height: 40,

@@ -44,6 +44,45 @@ ChecklistItem? addChecklistItem(TaskAction a, String title) {
 void removeChecklistItem(TaskAction a, String itemId) =>
     a.checklist.removeWhere((c) => c.id == itemId);
 
+/// Renomme un item (titre non vide). Retourne true si le titre a changé.
+bool renameChecklistItem(TaskAction a, String itemId, String title) {
+  final t = title.trim();
+  final item = a.checklist.where((c) => c.id == itemId).firstOrNull;
+  if (item == null || t.isEmpty || item.title == t) return false;
+  item.title = t;
+  return true;
+}
+
+/// Déplace l'item [oldIndex] vers [newIndex] (sémantique `ReorderableListView` :
+/// newIndex est l'index AVANT retrait). Sans effet si hors bornes.
+void moveChecklistItem(TaskAction a, int oldIndex, int newIndex) {
+  final n = a.checklist.length;
+  if (oldIndex < 0 || oldIndex >= n || newIndex < 0 || newIndex > n) return;
+  if (newIndex > oldIndex) newIndex--;
+  if (newIndex == oldIndex) return;
+  final item = a.checklist.removeAt(oldIndex);
+  a.checklist.insert(newIndex, item);
+}
+
+/// Marque l'action faite (toutes les étapes cochées) ou la rouvre (les étapes
+/// restent telles quelles : on rouvre pour en ajouter ou en refaire une).
+void setActionDone(TaskAction a, bool done, {DateTime? now}) {
+  final at = now ?? DateTime.now();
+  a.done = done;
+  a.doneAt = done ? at : null;
+  if (done) {
+    for (final c in a.checklist) {
+      if (!c.done) {
+        c.done = true;
+        c.doneAt = at;
+      }
+    }
+  }
+}
+
+/// Prochaine étape à faire d'une action (première non cochée), null si aucune.
+ChecklistItem? nextChecklistItem(TaskAction a) => a.checklist.where((c) => !c.done).firstOrNull;
+
 /// Première action ouverte d'une tâche (ordre du tableau = ordre d'affichage).
 TaskAction? nextOpenAction(ProjectTask t) => t.actions.where((a) => !a.done).firstOrNull;
 
