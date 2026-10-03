@@ -64,6 +64,10 @@ Même grammaire de gestes que Cette semaine :
 - **Fiche** : le titre se renomme au clic, la ligne des dates ouvre un sélecteur de plage (début → échéance ;
   date simple pour un jalon) ; l'ancien « Repousser la deadline » (date postérieure uniquement) devient
   « Modifier les dates ».
+- **Description** (retour utilisateur après livraison) : la fiche affiche le texte complet jusqu'à 8 lignes
+  puis « Voir toute la description » (zone défilante plafonnée) ; édition **en place** (plus de dialog) :
+  champ 6 → 24 lignes, Ctrl / ⌘ + Entrée enregistre, Échap annule, « Effacer » ; panneau latéral élargi de
+  420 à 480 px.
 - Implémentation : état `_BarDrag` (tâche, poignée, dx cumulé) dans `_GanttBodyState`, `_TaskBarCell`
   stateless rendu avec l'aperçu ; persistance et annulation dans `_GanttScreenState._shiftTask/_resizeTask`
   (`saveProjectTasks`). Le glisser à la souris gagne l'arène contre le défilement (le `ScrollView` web

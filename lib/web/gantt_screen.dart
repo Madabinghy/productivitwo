@@ -331,7 +331,7 @@ class _GanttScreenState extends State<GanttScreen> {
                 if (_panelTask != null) ...[
                   const VerticalDivider(width: 1, color: kBLine),
                   SizedBox(
-                    width: 420,
+                    width: 480,
                     child: _TaskDetailDialog(
                       key: ValueKey(_panelTask!.id),
                       project: _project,
@@ -2032,6 +2032,11 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
   late ProjectTask _task;
   bool _saving = false;
   late final TabController _tabCtrl;
+  // Description : édition en place (plus de dialog) et dépliage du texte long.
+  bool _descEditing = false;
+  bool _descExpanded = false;
+  final _descCtrl = TextEditingController();
+  final _descFocus = FocusNode();
 
   // Fichiers
   List<Map<String, dynamic>> _docs = [];
@@ -2050,6 +2055,8 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _descCtrl.dispose();
+    _descFocus.dispose();
     super.dispose();
   }
 
@@ -2708,45 +2715,10 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
               ),
             ),
 
-            // Description (éditable au tap)
+            // Description : texte complet (dépliable), édition en place.
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-              child: GestureDetector(
-                onTap: _editDescription,
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _task.description?.isNotEmpty == true
-                              ? _task.description!
-                              : 'Ajouter une description…',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _task.description?.isNotEmpty == true
-                                ? cs.onSurface.withOpacity(.75)
-                                : cs.onSurface.withOpacity(.35),
-                            fontStyle: _task.description?.isNotEmpty == true
-                                ? FontStyle.normal
-                                : FontStyle.italic,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Icon(Icons.edit_outlined, size: 12, color: cs.onSurface.withOpacity(.25)),
-                    ],
-                  ),
-                ),
-              ),
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+              child: _descriptionBlock(cs),
             ),
 
             // Tab bar
@@ -2926,40 +2898,152 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
 
   // ── Description ─────────────────────────────────────────────────────────────
 
-  Future<void> _editDescription() async {
-    final ctrl = TextEditingController(text: _task.description ?? '');
-    final result = await showDialog<String?>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Description'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 6,
-          minLines: 3,
-          decoration: const InputDecoration(
-            hintText: 'Contexte, objectifs, notes…',
-            border: OutlineInputBorder(),
-          ),
+  static const _kDescCollapsedLines = 8;
+
+  bool get _descIsLong {
+    final d = _task.description ?? '';
+    return d.length > 420 || '\n'.allMatches(d).length >= _kDescCollapsedLines;
+  }
+
+  void _editDescription() {
+    _descCtrl.text = _task.description ?? '';
+    setState(() => _descEditing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _descFocus.requestFocus());
+  }
+
+  Future<void> _saveDescription() async {
+    final text = _descCtrl.text.trim();
+    setState(() {
+      _descEditing = false;
+      _task.description = text.isEmpty ? null : text;
+    });
+    await _save();
+  }
+
+  Widget _descriptionBlock(ColorScheme cs) {
+    final hint = cs.onSurface.withOpacity(.35);
+    if (_descEditing) {
+      return Container(
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerLowest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: cs.primary.withOpacity(.5)),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
-          if (_task.description?.isNotEmpty == true)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, ''),
-              child: Text('Effacer', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // Ctrl/⌘ + Entrée enregistre ; Échap annule.
+          CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.enter, control: true): _saveDescription,
+              const SingleActivator(LogicalKeyboardKey.enter, meta: true): _saveDescription,
+              const SingleActivator(LogicalKeyboardKey.escape): () =>
+                  setState(() => _descEditing = false),
+            },
+            child: TextField(
+              controller: _descCtrl,
+              focusNode: _descFocus,
+              minLines: 6,
+              maxLines: widget.panel ? 24 : 12,
+              style: const TextStyle(fontSize: 13, height: 1.45),
+              decoration: InputDecoration(
+                hintText: 'Contexte, objectifs, notes, liens…',
+                hintStyle: TextStyle(color: hint, fontStyle: FontStyle.italic),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+              ),
             ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('Enregistrer'),
           ),
-        ],
+          Row(children: [
+            Text('Ctrl / ⌘ + Entrée pour enregistrer',
+                style: TextStyle(fontSize: 11, color: hint, fontStyle: FontStyle.italic)),
+            const Spacer(),
+            if (_task.description?.isNotEmpty == true)
+              TextButton(
+                onPressed: () {
+                  _descCtrl.clear();
+                  _saveDescription();
+                },
+                style: TextButton.styleFrom(
+                    foregroundColor: cs.error, visualDensity: VisualDensity.compact),
+                child: const Text('Effacer'),
+              ),
+            TextButton(
+              onPressed: () => setState(() => _descEditing = false),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              child: const Text('Annuler'),
+            ),
+            const SizedBox(width: 4),
+            FilledButton(
+              onPressed: _saveDescription,
+              style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+              child: const Text('Enregistrer'),
+            ),
+          ]),
+        ]),
+      );
+    }
+
+    final has = _task.description?.isNotEmpty == true;
+    final showToggle = has && _descIsLong;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant.withOpacity(.3)),
       ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 6, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(
+            child: GestureDetector(
+              onTap: _editDescription,
+              behavior: HitTestBehavior.opaque,
+              // Déplié : hauteur plafonnée et défilement interne, pour que la
+              // fiche (panneau ou dialog) ne déborde jamais.
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    maxHeight: _descExpanded ? (widget.panel ? 360 : 240) : double.infinity),
+                child: SingleChildScrollView(
+                  physics: _descExpanded ? null : const NeverScrollableScrollPhysics(),
+                  child: Text(
+                    has ? _task.description! : 'Ajouter une description…',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: has ? cs.onSurface.withOpacity(.8) : hint,
+                      fontStyle: has ? FontStyle.normal : FontStyle.italic,
+                    ),
+                    maxLines: _descExpanded ? null : _kDescCollapsedLines,
+                    overflow: _descExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Modifier la description',
+            icon: Icon(Icons.edit_outlined, size: 14, color: cs.onSurface.withOpacity(.4)),
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: _editDescription,
+          ),
+        ]),
+        if (showToggle)
+          TextButton(
+            onPressed: () => setState(() => _descExpanded = !_descExpanded),
+            style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            child: Text(_descExpanded ? 'Réduire' : 'Voir toute la description',
+                style: const TextStyle(fontSize: 12)),
+          ),
+      ]),
     );
-    ctrl.dispose();
-    if (result == null) return;
-    setState(() => _task.description = result.isEmpty ? null : result);
-    _save();
   }
 
   // ── Upload fichier ───────────────────────────────────────────────────────────
