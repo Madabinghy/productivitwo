@@ -406,7 +406,6 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
                 project: _p,
                 targetTaskId: _tab == ProjectPlanTab.gantt ? widget.targetTaskId : null,
                 domains: widget.domains,
-                onClose: () => setState(() => _tab = ProjectPlanTab.plan),
               ),
               ProjectDocView(
                 key: ValueKey('doc/${_p.id}'),

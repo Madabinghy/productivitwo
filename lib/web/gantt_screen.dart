@@ -3,13 +3,16 @@ import 'dart:html' as html;
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'dart:ui_web' as ui_web;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/gantt_axis.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
-import 'package:productivitwo_v1/web/add_task_dialog.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -17,21 +20,12 @@ const _uuid = Uuid();
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
 const double _kLabelW = 280.0;
-const double _kCellW = 68.0;
-const double _kDayCellW = 28.0;
 const double _kRowH = 36.0;
 const double _kGroupH = 30.0;
 const double _kPhaseH = 28.0;
-const double _kWeekH = 26.0;
+const double _kMonthH = 22.0;
+const double _kDaysH = 26.0;
 const double _kBarVPad = 8.0;
-
-// Couleur de grille — vert teal subtil en sombre, gris discret en clair
-const _kTealGrid = Color(0xFF1D9E75);
-
-Color _gridColor(BuildContext ctx) {
-  final dark = Theme.of(ctx).brightness == Brightness.dark;
-  return dark ? _kTealGrid.withOpacity(0.18) : const Color(0xFFE8E8E8);
-}
 
 // ── Entrée publique pour afficher la dialog tâche depuis d'autres écrans ──────
 
@@ -56,46 +50,28 @@ Future<void> showGanttTaskDetailDialog(
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+/// Onglet Gantt de la fiche projet (web). Pas d'en-tête propre : titre,
+/// retour et « Ajouter une tâche » vivent dans l'en-tête de la fiche
+/// (`project_plan_view.dart`).
 class GanttScreen extends StatefulWidget {
   final Project project;
   final String? targetTaskId;
   final List<Domain> domains;
-  // Mode embarqué dans le shell web (lot 3b) : le retour appelle onClose au
-  // lieu de Navigator.pop (l'écran n'est pas une route poussée).
-  final VoidCallback? onClose;
   const GanttScreen({
     super.key,
     required this.project,
     this.targetTaskId,
     this.domains = const [],
-    this.onClose,
   });
 
   @override
   State<GanttScreen> createState() => _GanttScreenState();
 }
 
-// Thème clair Productivitwo (même palette que web_app.dart)
-final _kGanttLightTheme = ThemeData(
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF1D9E75),
-    brightness: Brightness.light,
-  ).copyWith(
-    primary: const Color(0xFF1D9E75),
-    secondary: const Color(0xFF155F47),
-    surface: const Color(0xFFD6EEE6),
-    surfaceContainerLowest: const Color(0xFFC8E8DC),
-    surfaceContainerHighest: const Color(0xFFB0DDCB),
-  ),
-  scaffoldBackgroundColor: const Color(0xFFC8E8DC),
-  useMaterial3: true,
-);
-
 class _GanttScreenState extends State<GanttScreen> {
   late Project _project;
   final _sync = FirestoreSync();
-  bool _forceLight = false;
-  // Fiche tâche en panneau latéral (lot 3) — null = fermé.
+  // Fiche tâche en panneau latéral — null = fermé.
   ProjectTask? _panelTask;
   StrategicObjective? _objective;
   double? _objectiveWeekPct; // progression hebdo des engagements (0..1)
@@ -156,24 +132,19 @@ class _GanttScreenState extends State<GanttScreen> {
   Future<void> _changeDomain() async {
     final domains = widget.domains;
     if (domains.isEmpty) return;
-    final cs = Theme.of(context).colorScheme;
 
     final selected = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Changer de domaine'),
         children: [
-          // Option "Aucun domaine"
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, ''),
-            child: Row(
+            child: const Row(
               children: [
-                Icon(Icons.remove_circle_outline,
-                    size: 14, color: cs.onSurface.withOpacity(.4)),
-                const SizedBox(width: 10),
-                Text('Aucun domaine',
-                    style:
-                        TextStyle(color: cs.onSurface.withOpacity(.5))),
+                Icon(Icons.remove_circle_outline, size: 14, color: kBText4),
+                SizedBox(width: 10),
+                Text('Aucun domaine', style: TextStyle(color: kBText3)),
               ],
             ),
           ),
@@ -202,7 +173,7 @@ class _GanttScreenState extends State<GanttScreen> {
                       )),
                   if (_project.domainId == d.id) ...[
                     const Spacer(),
-                    Icon(Icons.check, size: 16, color: cs.primary),
+                    const Icon(Icons.check, size: 16, color: kBPrimary),
                   ],
                 ],
               ),
@@ -228,8 +199,8 @@ class _GanttScreenState extends State<GanttScreen> {
   }
 
   void _onTaskTap(ProjectTask task) {
-    // Lot 3 : sur écran large la fiche s'ouvre en PANNEAU latéral — le Gantt
-    // reste visible et manipulable. En étroit, la Dialog d'origine.
+    // Sur écran large la fiche s'ouvre en PANNEAU latéral — le Gantt reste
+    // visible et manipulable. En étroit, la Dialog d'origine.
     if (MediaQuery.of(context).size.width >= 1100) {
       setState(() => _panelTask = task);
       return;
@@ -289,187 +260,101 @@ class _GanttScreenState extends State<GanttScreen> {
     await _sync.saveProjectTasks(_project.id, _project.tasks);
   }
 
-  Future<void> _addTask() async {
-    final task = await showAddTaskDialog(context, project: _project, sync: _sync);
-    if (task != null && mounted) setState(() {});
-  }
-
-
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final child = _buildScaffold(context);
-    if (_forceLight && isDark) {
-      return Theme(data: _kGanttLightTheme, child: Builder(builder: _buildScaffold));
-    }
-    return child;
-  }
-
-  Widget _buildScaffold(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: widget.onClose != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Retour',
-                onPressed: widget.onClose,
-              )
-            : const BackButton(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_objective != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.flag_outlined, size: 12, color: cs.primary),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        _objective!.title.toUpperCase(),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.primary),
-                      ),
-                    ),
-                    if (_objective!.kpiTarget != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        _objective!.kpiTarget!,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.75)),
-                      ),
-                    ],
-                    if (_objective!.horizonLabel != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '· ${_objective!.horizonLabel!}',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.55)),
-                      ),
-                    ],
-                    if (_objectiveWeekPct != null) ...[
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 60,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(
-                            value: _objectiveWeekPct,
-                            minHeight: 4,
-                            backgroundColor: cs.primary.withOpacity(.12),
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(cs.primary),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${(_objectiveWeekPct! * 100).round()}%',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.75)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            Text(_project.title,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
-            if (_project.description != null && _project.description!.isNotEmpty)
-              Text(_project.description!,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurface.withOpacity(0.5),
-                      fontWeight: FontWeight.normal)),
-          ],
-        ),
-        actions: [
-          _ZoomHint(),
-          if (widget.domains.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.move_to_inbox_outlined),
-              tooltip: 'Changer de domaine',
-              onPressed: _changeDomain,
-            ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Exporter en PDF',
-            onPressed: _exportPdf,
-          ),
-          const SizedBox(width: 4),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        ),
-      ),
-      body: Column(
+    return Container(
+      color: kBBg,
+      child: Column(
         children: [
-          if (_project.status == 'draft') _buildDraftBanner(cs),
+          if (_project.status == 'draft') _buildDraftBanner(),
+          _GanttDashboard(project: _project),
           Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Column(children: [
-                      _GanttDashboard(project: _project),
-                      Expanded(child: _GanttBody(
-                        project: _project,
-                        domainColor: _domainColor(),
-                        onTaskTap: _onTaskTap,
-                        forceLight: _forceLight,
-                        onToggleLight: () =>
-                            setState(() => _forceLight = !_forceLight),
-                        onAddTask: _addTask,
-                        onPhaseTap: _editPhase,
-                      )),
-                    ]),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _GanttBody(
+                    project: _project,
+                    domainColor: _domainColor(),
+                    leading: _objectiveLine(),
+                    onTaskTap: _onTaskTap,
+                    onPhaseTap: _editPhase,
+                    onExportPdf: _exportPdf,
+                    onChangeDomain:
+                        widget.domains.isNotEmpty ? _changeDomain : null,
                   ),
-                  // Fiche tâche en panneau latéral (lot 3).
-                  if (_panelTask != null) ...[
-                    VerticalDivider(
-                        width: 1,
-                        color: cs.outlineVariant.withOpacity(0.4)),
-                    SizedBox(
-                      width: 420,
-                      child: _TaskDetailDialog(
-                        key: ValueKey(_panelTask!.id),
-                        project: _project,
-                        task: _panelTask!,
-                        sync: _sync,
-                        panel: true,
-                        onClose: () => setState(() => _panelTask = null),
-                        onProjectUpdated: (p) =>
-                            setState(() => _project = p),
-                      ),
+                ),
+                // Fiche tâche en panneau latéral.
+                if (_panelTask != null) ...[
+                  const VerticalDivider(width: 1, color: kBLine),
+                  SizedBox(
+                    width: 420,
+                    child: _TaskDetailDialog(
+                      key: ValueKey(_panelTask!.id),
+                      project: _project,
+                      task: _panelTask!,
+                      sync: _sync,
+                      panel: true,
+                      onClose: () => setState(() => _panelTask = null),
+                      onProjectUpdated: (p) => setState(() => _project = p),
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
+          ),
         ],
       ),
     );
   }
 
-  // Couleur d'accent du document = couleur du domaine du projet (sinon or).
+  // Ligne d'objectif stratégique (barre d'outils du Gantt), ou null.
+  Widget? _objectiveLine() {
+    final o = _objective;
+    if (o == null) return null;
+    const base = TextStyle(fontSize: 10, fontWeight: FontWeight.w600);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.flag_outlined, size: 12, color: kBPrimary),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            o.title.toUpperCase(),
+            overflow: TextOverflow.ellipsis,
+            style: base.copyWith(
+                fontWeight: FontWeight.w700, letterSpacing: 0.8, color: kBPrimary),
+          ),
+        ),
+        if (o.kpiTarget != null) ...[
+          const SizedBox(width: 6),
+          Text(o.kpiTarget!, style: base.copyWith(color: kBPrimary.withOpacity(.75))),
+        ],
+        if (o.horizonLabel != null) ...[
+          const SizedBox(width: 6),
+          Text('· ${o.horizonLabel!}', style: base.copyWith(color: kBPrimary.withOpacity(.55))),
+        ],
+        if (_objectiveWeekPct != null) ...[
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 60,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: _objectiveWeekPct,
+                minHeight: 4,
+                backgroundColor: kBPrimary.withOpacity(.12),
+                valueColor: const AlwaysStoppedAnimation<Color>(kBPrimary),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text('${(_objectiveWeekPct! * 100).round()}%',
+              style: base.copyWith(color: kBPrimary.withOpacity(.75))),
+        ],
+      ],
+    );
+  }
 
   // Couleur du domaine du projet, ou null s'il n'en a pas (fallback des barres Gantt).
   Color? _domainColor() {
@@ -478,37 +363,37 @@ class _GanttScreenState extends State<GanttScreen> {
     return cv != null ? Color(cv) : null;
   }
 
-  /// Bandeau brouillon : le projet reste hors économie d'Or et hors score tant
-  /// qu'il n'est pas validé. Le bouton bascule le projet en actif.
-  Widget _buildDraftBanner(ColorScheme cs) {
+  /// Bandeau brouillon : le projet reste hors suivi tant qu'il n'est pas
+  /// validé. Le bouton bascule le projet en actif.
+  Widget _buildDraftBanner() {
     return Container(
       width: double.infinity,
-      color: cs.tertiaryContainer.withOpacity(.5),
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      color: kBAttention.withOpacity(.10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
         children: [
-          Icon(Icons.edit_note_outlined, size: 18, color: cs.tertiary),
+          const Icon(Icons.edit_note_outlined, size: 18, color: kBAttention),
           const SizedBox(width: 8),
-          Expanded(
+          const Expanded(
             child: Text(
-              'Brouillon — modifie librement, hors or et hors score.',
-              style: TextStyle(fontSize: 13, color: cs.onTertiaryContainer),
+              'Brouillon — modifie librement, le projet n\'entre pas encore dans le suivi.',
+              style: TextStyle(fontSize: 13, color: kBText2),
             ),
           ),
           const SizedBox(width: 8),
-          FilledButton.tonalIcon(
+          TextButton.icon(
             onPressed: _validatePlan,
             icon: const Icon(Icons.rocket_launch_outlined, size: 16),
             label: const Text('Valider le plan'),
-            style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact),
+            style: TextButton.styleFrom(
+                foregroundColor: kBPrimary, visualDensity: VisualDensity.compact),
           ),
         ],
       ),
     );
   }
 
-  /// Valide le plan : brouillon → actif (entre dans l'économie d'Or + le score).
+  /// Valide le plan : brouillon → actif.
   Future<void> _validatePlan() async {
     final today = DateTime.now();
     final todayMid = DateTime(today.year, today.month, today.day);
@@ -523,6 +408,1017 @@ class _GanttScreenState extends State<GanttScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
+}
+
+// ── Corps : barre d'outils + grille défilante à deux axes ─────────────────────
+
+class _GanttBody extends StatefulWidget {
+  final Project project;
+  final Color? domainColor;
+  final Widget? leading;
+  final void Function(ProjectTask)? onTaskTap;
+  final void Function(ProjectPhase)? onPhaseTap;
+  final VoidCallback onExportPdf;
+  final VoidCallback? onChangeDomain;
+  const _GanttBody({
+    required this.project,
+    this.domainColor,
+    this.leading,
+    this.onTaskTap,
+    this.onPhaseTap,
+    required this.onExportPdf,
+    this.onChangeDomain,
+  });
+
+  @override
+  State<_GanttBody> createState() => _GanttBodyState();
+}
+
+class _GanttBodyState extends State<_GanttBody> {
+  final _h = ScrollController();
+  final _v = ScrollController();
+  final _gridKey = GlobalKey();
+  GanttScale _scale = GanttScale.day;
+  double _zoom = 1;
+  bool _exportingPng = false;
+  bool _initialScrollDone = false;
+  // Largeur visible de la zone de temps (hors colonne des libellés).
+  double _viewportW = 0;
+
+  GanttAxis get _axis =>
+      GanttAxis.forProject(widget.project, scale: _scale, zoom: _zoom);
+
+  double get _hOffset => _h.hasClients ? _h.offset : 0;
+
+  @override
+  void dispose() {
+    _h.dispose();
+    _v.dispose();
+    super.dispose();
+  }
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  void _jumpH(double target) {
+    if (!_h.hasClients) return;
+    _h.jumpTo(target.clamp(0, _h.position.maxScrollExtent).toDouble());
+  }
+
+  void _animateH(double target) {
+    if (!_h.hasClients) return;
+    _h.animateTo(target.clamp(0, _h.position.maxScrollExtent).toDouble(),
+        duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+  }
+
+  void _goToday() {
+    final axis = _axis;
+    final today = DateTime.now();
+    _animateH(axis.contains(today) ? axis.scrollToCenter(today, _viewportW) : 0);
+  }
+
+  void _fit() {
+    setState(() => _zoom = _axis.zoomToFit(_viewportW));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpH(0));
+  }
+
+  /// Zoome d'un facteur en gardant fixe le point de la grille sous [contentDx]
+  /// (abscisse dans le contenu défilant, colonne des libellés comprise).
+  void _zoomAt(double factor, double contentDx) {
+    final old = _zoom;
+    final nz = (old * factor).clamp(kGanttZoomMin, kGanttZoomMax).toDouble();
+    if (nz == old) return;
+    final timeX = contentDx - _kLabelW;
+    final viewX = timeX - _hOffset;
+    setState(() => _zoom = nz);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _jumpH(timeX * nz / old - viewX));
+  }
+
+  void _zoomCenter(double factor) =>
+      _zoomAt(factor, _kLabelW + _hOffset + _viewportW / 2);
+
+  void _setScale(GanttScale s) {
+    if (s == _scale) return;
+    final before = _axis;
+    final centerDate = before.dateAt(_hOffset + _viewportW / 2);
+    setState(() => _scale = s);
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _jumpH(_axis.scrollToCenter(centerDate, _viewportW)));
+  }
+
+  // Molette : défilement par défaut (géré par les Scrollable ; Maj bascule
+  // l'axe nativement) ; Ctrl / ⌘ + molette = zoom autour du curseur ;
+  // pincement (PointerScaleEvent, émis aussi pour Ctrl + molette sur le web)
+  // = zoom. Le resolver garantit qu'un zoom ne défile pas en même temps.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is PointerScaleEvent) {
+      _zoomAt(e.scale, e.localPosition.dx);
+      return;
+    }
+    if (e is! PointerScrollEvent) return;
+    final keys = HardwareKeyboard.instance;
+    if (!keys.isControlPressed && !keys.isMetaPressed) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (ev) {
+      final dy = (ev as PointerScrollEvent).scrollDelta.dy;
+      if (dy == 0) return;
+      _zoomAt(dy < 0 ? 1.15 : 1 / 1.15, ev.localPosition.dx);
+    });
+  }
+
+  void _initialScroll() {
+    if (_initialScrollDone) return;
+    _initialScrollDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final axis = _axis;
+      final today = DateTime.now();
+      _jumpH(axis.contains(today) ? axis.scrollToCenter(today, _viewportW) : 0);
+    });
+  }
+
+  // ── Export PNG ─────────────────────────────────────────────────────────────
+
+  Future<void> _exportPng() async {
+    setState(() => _exportingPng = true);
+    try {
+      final boundary = _gridKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) return;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) return;
+      final bytes = byteData.buffer.asUint8List();
+      final blob = html.Blob([bytes], 'image/png');
+      final url = html.Url.createObjectUrl(blob);
+      html.AnchorElement(href: url)
+        ..setAttribute(
+            'download',
+            '${widget.project.title.replaceAll(' ', '_')}_gantt.png')
+        ..click();
+      html.Url.revokeObjectUrl(url);
+    } finally {
+      if (mounted) setState(() => _exportingPng = false);
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final axis = _axis;
+    final hasPhases = widget.project.phases.isNotEmpty;
+    final headerH = (hasPhases ? _kPhaseH : 0) + _kMonthH + _kDaysH + 1;
+    final groups = _buildGroups(widget.project.tasks);
+
+    return Column(
+      children: [
+        _toolbar(),
+        const Divider(height: 1, color: kBLine),
+        Expanded(
+          child: LayoutBuilder(builder: (ctx, box) {
+            _viewportW = max(0, box.maxWidth - _kLabelW);
+            _initialScroll();
+            return Stack(
+              children: [
+                // ── Contenu défilant (grille complète, exportable en PNG) ──
+                Scrollbar(
+                  controller: _h,
+                  thumbVisibility: true,
+                  notificationPredicate: (n) =>
+                      n.metrics.axis == Axis.horizontal,
+                  child: Scrollbar(
+                    controller: _v,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _v,
+                      child: SingleChildScrollView(
+                        controller: _h,
+                        scrollDirection: Axis.horizontal,
+                        child: Listener(
+                          onPointerSignal: _onPointerSignal,
+                          behavior: HitTestBehavior.translucent,
+                          child: RepaintBoundary(
+                            key: _gridKey,
+                            child: _GanttGrid(
+                              project: widget.project,
+                              axis: axis,
+                              groups: groups,
+                              domainColor: widget.domainColor,
+                              headerH: headerH,
+                              onTaskTap: widget.onTaskTap,
+                              onPhaseTap: widget.onPhaseTap,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── En-tête figé (suit le défilement horizontal) ──────────
+                Positioned(
+                  left: _kLabelW,
+                  right: 0,
+                  top: 0,
+                  height: headerH,
+                  child: ClipRect(
+                    child: AnimatedBuilder(
+                      animation: _h,
+                      builder: (_, __) => Transform.translate(
+                        offset: Offset(-_hOffset, 0),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minWidth: 0,
+                          maxWidth: double.infinity,
+                          child: _GanttTimeHeader(
+                            project: widget.project,
+                            axis: axis,
+                            onPhaseTap: widget.onPhaseTap,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Colonne des libellés figée (suit le défilement vertical)
+                Positioned(
+                  left: 0,
+                  top: headerH,
+                  bottom: 0,
+                  width: _kLabelW,
+                  child: ClipRect(
+                    child: AnimatedBuilder(
+                      animation: _v,
+                      builder: (_, __) => Transform.translate(
+                        offset: Offset(0, -(_v.hasClients ? _v.offset : 0.0)),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                          child: _GanttLabelColumn(
+                            groups: groups,
+                            onTaskTap: widget.onTaskTap,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Coin fixe ─────────────────────────────────────────────
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  width: _kLabelW,
+                  height: headerH,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: kBSurface,
+                      border: Border(
+                          right: BorderSide(color: kBLine),
+                          bottom: BorderSide(color: kBLine)),
+                    ),
+                    alignment: Alignment.bottomLeft,
+                    padding: const EdgeInsets.only(left: 16, bottom: 6),
+                    child: Text(
+                      '${widget.project.tasks.length} tâche${widget.project.tasks.length > 1 ? 's' : ''}'
+                      ' · ${axis.totalWeeks} sem.',
+                      style: const TextStyle(fontSize: 11, color: kBText4),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _toolbar() {
+    final leading = widget.leading;
+    return Container(
+      color: kBSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          if (leading != null) Expanded(child: leading) else const Spacer(),
+          const SizedBox(width: 12),
+          _toolBtn(Icons.today_outlined, 'Aujourd\'hui — centrer sur la colonne du jour',
+              _goToday),
+          _toolBtn(Icons.fit_screen_outlined, 'Ajuster au projet — toute la plage dans la largeur',
+              _fit),
+          const SizedBox(width: 6),
+          _toolBtn(Icons.remove, 'Zoom arrière (Ctrl / ⌘ + molette)',
+              _zoom > kGanttZoomMin ? () => _zoomCenter(1 / 1.25) : null),
+          SizedBox(
+            width: 40,
+            child: Text('${(_zoom * 100).round()} %',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: kBText3)),
+          ),
+          _toolBtn(Icons.add, 'Zoom avant (Ctrl / ⌘ + molette)',
+              _zoom < kGanttZoomMax ? () => _zoomCenter(1.25) : null),
+          const SizedBox(width: 10),
+          SegmentedButton<GanttScale>(
+            segments: const [
+              ButtonSegment(value: GanttScale.week, label: Text('Semaine')),
+              ButtonSegment(value: GanttScale.day, label: Text('Jour')),
+            ],
+            selected: {_scale},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => _setScale(s.first),
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStateProperty.all(
+                const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              padding: WidgetStateProperty.all(
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected) ? kBBg : kBText2),
+              backgroundColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected) ? kBPrimary : Colors.transparent),
+              side: WidgetStateProperty.all(const BorderSide(color: kBLine)),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _exportingPng
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: kBPrimary)),
+                )
+              : PopupMenuButton<String>(
+                  tooltip: 'Plus',
+                  icon: const Icon(Icons.more_horiz, size: 18, color: kBText2),
+                  color: kBRaised,
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'png':
+                        _exportPng();
+                      case 'pdf':
+                        widget.onExportPdf();
+                      case 'domain':
+                        widget.onChangeDomain?.call();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    _menuItem('png', Icons.image_outlined, 'Exporter en PNG'),
+                    _menuItem('pdf', Icons.picture_as_pdf_outlined, 'Exporter en PDF'),
+                    if (widget.onChangeDomain != null)
+                      _menuItem('domain', Icons.move_to_inbox_outlined, 'Changer de domaine'),
+                  ],
+                ),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _menuItem(String v, IconData icon, String label) =>
+      PopupMenuItem(
+        value: v,
+        height: 38,
+        child: Row(children: [
+          Icon(icon, size: 16, color: kBText2),
+          const SizedBox(width: 10),
+          Text(label, style: const TextStyle(fontSize: 13, color: kBText)),
+        ]),
+      );
+
+  Widget _toolBtn(IconData icon, String tooltip, VoidCallback? onTap) => Tooltip(
+        message: tooltip,
+        child: IconButton(
+          icon: Icon(icon, size: 18),
+          color: kBText2,
+          disabledColor: kBText4.withOpacity(.5),
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+        ),
+      );
+}
+
+// ── Grille complète (contenu défilant) ───────────────────────────────────────
+
+class _GanttGrid extends StatelessWidget {
+  final Project project;
+  final GanttAxis axis;
+  final List<({String label, List<ProjectTask> tasks})> groups;
+  final Color? domainColor;
+  final double headerH;
+  final void Function(ProjectTask)? onTaskTap;
+  final void Function(ProjectPhase)? onPhaseTap;
+
+  const _GanttGrid({
+    required this.project,
+    required this.axis,
+    required this.groups,
+    this.domainColor,
+    required this.headerH,
+    this.onTaskTap,
+    this.onPhaseTap,
+  });
+
+  // Couleur de repli d'une barre quand la tâche n'a pas de couleur propre :
+  // couleur de sa phase → couleur du domaine → violet.
+  Color _taskFallbackColor(ProjectTask task) {
+    final phase = project.phases.where((p) => p.id == task.phaseId).firstOrNull ??
+        project.phases.where((p) => p.label == task.groupLabel).firstOrNull;
+    return _hex(phase?.color, domainColor ?? const Color(0xFF6B57F0));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeW = axis.width;
+    final totalW = _kLabelW + timeW;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    final rows = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final group in groups) ...[
+          if (group.label.isNotEmpty)
+            SizedBox(
+              height: _kGroupH,
+              width: totalW,
+              child: Row(children: [
+                _GroupLabelCell(label: group.label),
+                _GroupBarCell(width: timeW),
+              ]),
+            ),
+          for (final task in group.tasks)
+            SizedBox(
+              height: _kRowH,
+              width: totalW,
+              child: Row(children: [
+                _TaskLabelCell(
+                    task: task,
+                    onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
+                _TaskBarCell(
+                    task: task,
+                    axis: axis,
+                    fallbackColor: _taskFallbackColor(task)),
+              ]),
+            ),
+        ],
+        SizedBox(height: 24, width: totalW),
+      ],
+    );
+
+    return Container(
+      color: kBBg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: headerH,
+            width: totalW,
+            child: Row(children: [
+              const SizedBox(width: _kLabelW),
+              _GanttTimeHeader(project: project, axis: axis, onPhaseTap: onPhaseTap),
+            ]),
+          ),
+          Stack(
+            children: [
+              rows,
+              // Week-ends ombrés (vue Jour) et colonne d'aujourd'hui.
+              Positioned.fill(
+                left: _kLabelW,
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ColumnsPainter(axis: axis, today: today),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fond de la zone de temps : week-ends (vue Jour) + colonne d'aujourd'hui.
+class _ColumnsPainter extends CustomPainter {
+  final GanttAxis axis;
+  final DateTime today;
+  _ColumnsPainter({required this.axis, required this.today});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (axis.scale == GanttScale.day && axis.dayW >= 6) {
+      final we = Paint()..color = Colors.white.withOpacity(.025);
+      for (var i = 0; i < axis.totalDays; i++) {
+        final d = axis.rangeStart.add(Duration(days: i));
+        if (d.weekday >= DateTime.saturday) {
+          canvas.drawRect(Rect.fromLTWH(i * axis.dayW, 0, axis.dayW, size.height), we);
+        }
+      }
+    }
+    if (axis.contains(today)) {
+      final x = axis.x(today);
+      canvas.drawRect(Rect.fromLTWH(x, 0, axis.dayW, size.height),
+          Paint()..color = kBPrimary.withOpacity(.07));
+      final line = Paint()
+        ..color = kBPrimary.withOpacity(.35)
+        ..strokeWidth = 1;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), line);
+      canvas.drawLine(Offset(x + axis.dayW, 0), Offset(x + axis.dayW, size.height), line);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_ColumnsPainter old) =>
+      old.axis.dayW != axis.dayW ||
+      old.axis.rangeStart != axis.rangeStart ||
+      old.axis.totalDays != axis.totalDays ||
+      old.axis.scale != axis.scale ||
+      old.today != today;
+}
+
+// ── En-tête de la zone de temps : phases · mois · jours ou semaines ──────────
+
+class _GanttTimeHeader extends StatelessWidget {
+  final Project project;
+  final GanttAxis axis;
+  final void Function(ProjectPhase)? onPhaseTap;
+  const _GanttTimeHeader({required this.project, required this.axis, this.onPhaseTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final timeW = axis.width;
+    return Container(
+      width: timeW,
+      decoration: const BoxDecoration(
+        color: kBSurface,
+        border: Border(bottom: BorderSide(color: kBLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (project.phases.isNotEmpty) _phasesRow(timeW),
+          _monthsRow(timeW, today),
+          if (axis.scale == GanttScale.day) _daysRow(today) else _weeksRow(today),
+        ],
+      ),
+    );
+  }
+
+  Widget _phasesRow(double timeW) {
+    return SizedBox(
+      height: _kPhaseH,
+      width: timeW,
+      child: Stack(
+        children: project.phases.map((phase) {
+          final left = max(0.0, axis.x(phase.startDate));
+          final right = min(timeW, axis.x(phase.endDate.add(const Duration(days: 1))));
+          final w = max(0.0, right - left);
+          final c = _hex(phase.color, kBPrimaryDark);
+          final fg = _onDark(c);
+          return Positioned(
+            left: left,
+            top: 3,
+            width: w,
+            height: _kPhaseH - 5,
+            child: Tooltip(
+              message: '${phase.label}\n${_dmy(phase.startDate)} → ${_dmy(phase.endDate)}'
+                  '${onPhaseTap != null ? '\nCliquer pour renommer' : ''}',
+              waitDuration: const Duration(milliseconds: 500),
+              child: MouseRegion(
+                cursor: onPhaseTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+                child: GestureDetector(
+                  onTap: onPhaseTap != null ? () => onPhaseTap!(phase) : null,
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 2),
+                    decoration: BoxDecoration(
+                      color: c.withOpacity(.22),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border(left: BorderSide(color: c, width: 2)),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      phase.label,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: fg),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _monthsRow(double timeW, DateTime today) {
+    final segs = axis.monthSegments();
+    return SizedBox(
+      height: _kMonthH,
+      width: timeW,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Row(
+            children: [
+              for (final s in segs)
+                Container(
+                  width: s.days * axis.dayW,
+                  height: _kMonthH,
+                  decoration: const BoxDecoration(
+                    border: Border(left: BorderSide(color: kBLine)),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text(
+                    s.days * axis.dayW < 60 ? '' : s.label,
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600, color: kBText2),
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    maxLines: 1,
+                  ),
+                ),
+            ],
+          ),
+          if (axis.contains(today))
+            Positioned(
+              left: axis.x(today) + axis.dayW / 2 - 14,
+              top: 3,
+              child: Container(
+                width: 28,
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                decoration: BoxDecoration(
+                  color: kBPrimary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: const Text('auj.',
+                    style: TextStyle(
+                        fontSize: 9, fontWeight: FontWeight.w700, color: kBBg)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _daysRow(DateTime today) {
+    final w = axis.dayW;
+    // En zoom arrière, n'étiqueter que les lundis pour rester lisible.
+    final every = w >= 18 ? 1 : 7;
+    return SizedBox(
+      height: _kDaysH,
+      child: Row(
+        children: List.generate(axis.totalDays, (i) {
+          final d = axis.rangeStart.add(Duration(days: i));
+          final weekend = d.weekday >= DateTime.saturday;
+          final isToday = d == today;
+          final labelled = every == 1 || d.weekday == DateTime.monday;
+          return Container(
+            width: w,
+            height: _kDaysH,
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                    color: d.weekday == DateTime.monday ? kBLine : Colors.transparent),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: !labelled
+                ? null
+                : isToday
+                    ? Container(
+                        width: min(w - 2, 22),
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: kBPrimary.withOpacity(.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('${d.day}',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: kBPrimary)),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${d.day}',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: weekend ? kBText4 : kBText3)),
+                          if (w >= 24)
+                            Text(kGanttWeekdayInitials[d.weekday - 1],
+                                style: TextStyle(
+                                    fontSize: 8,
+                                    color: (weekend ? kBText4 : kBText3).withOpacity(.7))),
+                        ],
+                      ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _weeksRow(DateTime today) {
+    final w = axis.dayW * 7;
+    return SizedBox(
+      height: _kDaysH,
+      child: Row(
+        children: axis.weekStarts().map((monday) {
+          final isCurrent = !today.isBefore(monday) &&
+              today.isBefore(monday.add(const Duration(days: 7)));
+          return Container(
+            width: w,
+            height: _kDaysH,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: kBLine)),
+            ),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 6),
+            child: Text(
+              w < 48 ? '${monday.day}' : ganttWeekLabel(monday),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  color: isCurrent ? kBPrimary : kBText3),
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              maxLines: 1,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ── Colonne des libellés (overlay figé) ───────────────────────────────────────
+
+class _GanttLabelColumn extends StatelessWidget {
+  final List<({String label, List<ProjectTask> tasks})> groups;
+  final void Function(ProjectTask)? onTaskTap;
+  const _GanttLabelColumn({required this.groups, this.onTaskTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _kLabelW,
+      decoration: const BoxDecoration(
+        color: kBBg,
+        border: Border(right: BorderSide(color: kBLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final group in groups) ...[
+            if (group.label.isNotEmpty)
+              SizedBox(height: _kGroupH, child: _GroupLabelCell(label: group.label)),
+            for (final task in group.tasks)
+              SizedBox(
+                height: _kRowH,
+                child: _TaskLabelCell(
+                    task: task,
+                    onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Cellules ──────────────────────────────────────────────────────────────────
+
+class _GroupLabelCell extends StatelessWidget {
+  final String label;
+  const _GroupLabelCell({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _kLabelW,
+      height: _kGroupH,
+      color: kBRaised.withOpacity(.45),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.only(left: 12, right: 8),
+      child: Text(
+        label.toUpperCase(),
+        style: const TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w600, color: kBText3, letterSpacing: 0.8),
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _GroupBarCell extends StatelessWidget {
+  final double width;
+  const _GroupBarCell({required this.width});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: width,
+        height: _kGroupH,
+        decoration: BoxDecoration(
+          color: kBRaised.withOpacity(.45),
+          border: const Border(bottom: BorderSide(color: kBLine)),
+        ),
+      );
+}
+
+class _TaskLabelCell extends StatelessWidget {
+  final ProjectTask task;
+  final VoidCallback? onTap;
+  const _TaskLabelCell({required this.task, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = task.status == 'done';
+    return SizedBox(
+      width: _kLabelW,
+      height: _kRowH,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: kBLine)),
+          ),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: Row(
+            children: [
+              if (task.isMilestone)
+                const Icon(Icons.diamond_outlined, size: 12, color: kBText3)
+              else
+                Icon(
+                  isDone ? Icons.check_circle_outline : Icons.radio_button_unchecked,
+                  size: 12,
+                  color: isDone ? kBPrimary : kBText4,
+                ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  task.title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDone ? kBText4 : kBText,
+                    decoration: isDone ? TextDecoration.lineThrough : null,
+                    decorationColor: kBText4,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (task.stepsTotal > 0)
+                Text('${task.stepsDone}/${task.stepsTotal}',
+                    style: const TextStyle(fontSize: 9, color: kBText4)),
+              if (onTap != null)
+                const Icon(Icons.chevron_right, size: 12, color: kBText4),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskBarCell extends StatelessWidget {
+  final ProjectTask task;
+  final GanttAxis axis;
+  final Color fallbackColor;
+  const _TaskBarCell({required this.task, required this.axis, required this.fallbackColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = task.status == 'done';
+    return SizedBox(
+      width: axis.width,
+      height: _kRowH,
+      child: Stack(
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: kBLine)),
+              ),
+            ),
+          ),
+          if (task.isMilestone) _buildMilestone() else _buildBar(isDone),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBar(bool isDone) {
+    final end = task.endDate ?? task.startDate.add(const Duration(days: 7));
+    final left = axis.x(task.startDate);
+    final right = axis.x(end.add(const Duration(days: 1)));
+    final barW = max(4.0, right - left);
+
+    final barColor = isDone ? kBText4.withOpacity(.45) : _hex(task.color, fallbackColor);
+    final textColor = _isDark(barColor)
+        ? Colors.white.withOpacity(0.9)
+        : Colors.black.withOpacity(0.7);
+
+    return Positioned(
+      left: left,
+      top: _kBarVPad,
+      height: _kRowH - _kBarVPad * 2,
+      width: barW,
+      child: Container(
+        decoration: BoxDecoration(
+          color: barColor,
+          borderRadius: BorderRadius.circular(3),
+          boxShadow: isDone
+              ? null
+              : [BoxShadow(color: barColor.withOpacity(0.35), blurRadius: 8)],
+        ),
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        child: task.barLabel != null
+            ? Text(
+                task.barLabel!,
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
+                overflow: TextOverflow.ellipsis,
+              )
+            : null,
+      ),
+    );
+  }
+
+  Widget _buildMilestone() {
+    final centerX = axis.x(task.startDate) + axis.dayW / 2;
+    final color = _hex(task.color, fallbackColor);
+    const size = 13.0;
+
+    return Positioned(
+      left: centerX - size / 2,
+      top: _kRowH / 2 - size / 2,
+      width: size,
+      height: size,
+      child: Transform.rotate(
+        angle: pi / 4,
+        child: Container(
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+            boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 10, spreadRadius: 1)],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Utilitaires ───────────────────────────────────────────────────────────────
+
+Color _hex(String? hex, Color fallback) {
+  if (hex == null || hex.isEmpty) return fallback;
+  final s = hex.replaceFirst('#', '');
+  if (s.length != 6) return fallback;
+  try {
+    return Color(int.parse('FF$s', radix: 16));
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/// Variante lisible sur fond sombre (luminosité ≥ 0.72).
+Color _onDark(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withLightness(max(hsl.lightness, 0.72)).toColor();
+}
+
+bool _isDark(Color c) => c.computeLuminance() < 0.4;
+
+Color _darken(Color c) {
+  final hsl = HSLColor.fromColor(c);
+  return hsl.withLightness((hsl.lightness - 0.35).clamp(0.0, 1.0)).toColor();
+}
+
+String _dmy(DateTime d) => '${d.day} ${kGanttMonthsShort[d.month - 1]} ${d.year}';
+
+// Grouper les tâches par groupLabel
+List<({String label, List<ProjectTask> tasks})> _buildGroups(
+    List<ProjectTask> tasks) {
+  final seen = <String>[];
+  final map = <String, List<ProjectTask>>{};
+  for (final t in tasks) {
+    final g = t.groupLabel ?? '';
+    if (!seen.contains(g)) seen.add(g);
+    map.putIfAbsent(g, () => []).add(t);
+  }
+  return seen.map((g) => (label: g, tasks: map[g]!)).toList();
 }
 
 // ── Dashboard stratégique ─────────────────────────────────────────────────────
@@ -971,891 +1867,6 @@ class _PhaseChip extends StatelessWidget {
   }
 }
 
-class _ZoomHint extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: 'Pincer / molette pour zoomer · Glisser pour naviguer',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.zoom_in_outlined,
-                size: 16, color: cs.onSurface.withOpacity(0.4)),
-            const SizedBox(width: 4),
-            Text('Pincer pour zoomer',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurface.withOpacity(0.4))),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Body avec InteractiveViewer ───────────────────────────────────────────────
-
-class _GanttBody extends StatefulWidget {
-  final Project project;
-  final Color? domainColor;
-  final void Function(ProjectTask)? onTaskTap;
-  final void Function(ProjectPhase)? onPhaseTap;
-  final bool forceLight;
-  final VoidCallback onToggleLight;
-  final VoidCallback? onAddTask;
-  const _GanttBody({
-    required this.project,
-    this.domainColor,
-    this.onTaskTap,
-    this.onPhaseTap,
-    required this.forceLight,
-    required this.onToggleLight,
-    this.onAddTask,
-  });
-
-  @override
-  State<_GanttBody> createState() => _GanttBodyState();
-}
-
-class _GanttBodyState extends State<_GanttBody> {
-  late final TransformationController _ctrl;
-  bool _dayView = true; // vue Jour par défaut (plus lisible que Semaine)
-  bool _exportingPng = false;
-  final _gridKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TransformationController();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _exportPng() async {
-    setState(() => _exportingPng = true);
-    try {
-      final boundary = _gridKey.currentContext
-          ?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) return;
-      final image = await boundary.toImage(pixelRatio: 2.0);
-      final byteData =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return;
-      final bytes = byteData.buffer.asUint8List();
-      final blob = html.Blob([bytes], 'image/png');
-      final url = html.Url.createObjectUrl(blob);
-      html.AnchorElement(href: url)
-        ..setAttribute(
-            'download',
-            '${widget.project.title.replaceAll(' ', '_')}_gantt.png')
-        ..click();
-      html.Url.revokeObjectUrl(url);
-    } finally {
-      if (mounted) setState(() => _exportingPng = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final project = widget.project;
-    final start = project.startDate;
-    final end = project.endDate ?? start.add(const Duration(days: 84));
-    final weeks = max(4, ((end.difference(start).inDays / 7).ceil() + 1));
-
-    return Column(
-      children: [
-        // Toggle Semaine / Jour + thème + export PNG
-        Container(
-          color: cs.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Row(
-            children: [
-              Tooltip(
-                message: 'Exporter en PNG (haute résolution)',
-                child: _exportingPng
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : IconButton(
-                        icon: const Icon(Icons.image_outlined, size: 18),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _exportPng,
-                      ),
-              ),
-              const Spacer(),
-              // Ajouter une tâche
-              if (widget.onAddTask != null)
-                Tooltip(
-                  message: 'Ajouter une tâche',
-                  child: IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.onAddTask,
-                  ),
-                ),
-              // Toggle clair/sombre
-              Tooltip(
-                message: widget.forceLight ? 'Mode sombre' : 'Mode clair',
-                child: IconButton(
-                  icon: Icon(
-                    Theme.of(context).brightness == Brightness.dark && widget.forceLight
-                        ? Icons.dark_mode_outlined
-                        : Icons.light_mode_outlined,
-                    size: 18,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: widget.onToggleLight,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment<bool>(value: false, label: Text('Semaine')),
-                  ButtonSegment<bool>(value: true, label: Text('Jour')),
-                ],
-                selected: {_dayView},
-                onSelectionChanged: (s) => setState(() => _dayView = s.first),
-                style: ButtonStyle(
-                  textStyle: WidgetStateProperty.all(
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  padding: WidgetStateProperty.all(
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        // Grille
-        Expanded(
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                transformationController: _ctrl,
-                constrained: false,
-                minScale: 0.25,
-                maxScale: 4.0,
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: RepaintBoundary(
-                    key: _gridKey,
-                    child: _GanttGrid(
-                      project: widget.project,
-                      domainColor: widget.domainColor,
-                      projectStart: start,
-                      totalWeeks: weeks,
-                      dayView: _dayView,
-                      onTaskTap: widget.onTaskTap,
-                      onPhaseTap: widget.onPhaseTap,
-                    ),
-                  ),
-                ),
-              ),
-              // ── Colonne des libellés FIGÉE (lot 3) ────────────────────────
-              // Quand la grille est panoramiquée vers la gauche (tx < 0), une
-              // copie de la grille, clippée à la zone des libellés et calée
-              // sur la même transformation verticale/zoom, reste épinglée au
-              // bord gauche — les noms de tâches ne sortent plus de l'écran.
-              AnimatedBuilder(
-                animation: _ctrl,
-                builder: (ctx, _) {
-                  final m = _ctrl.value;
-                  final tx = m.storage[12];
-                  final ty = m.storage[13];
-                  final scale = m.storage[0];
-                  if (tx >= -32 * scale) return const SizedBox.shrink();
-                  final w = (32 + _kLabelW) * scale;
-                  return Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: w,
-                    child: ClipRect(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Theme.of(ctx).scaffoldBackgroundColor,
-                          border: Border(
-                            right: BorderSide(
-                                color: cs.outlineVariant.withOpacity(.5)),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(.18),
-                              blurRadius: 8,
-                              offset: const Offset(2, 0),
-                            ),
-                          ],
-                        ),
-                        child: OverflowBox(
-                          alignment: Alignment.topLeft,
-                          minWidth: 0,
-                          minHeight: 0,
-                          maxWidth: double.infinity,
-                          maxHeight: double.infinity,
-                          child: Transform(
-                            alignment: Alignment.topLeft,
-                            transform: Matrix4.identity()
-                              ..translate(0.0, ty)
-                              ..scale(scale),
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: _GanttGrid(
-                                project: widget.project,
-                                domainColor: widget.domainColor,
-                                projectStart: start,
-                                totalWeeks: weeks,
-                                dayView: _dayView,
-                                onTaskTap: widget.onTaskTap,
-                                onPhaseTap: widget.onPhaseTap,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Grille principale ─────────────────────────────────────────────────────────
-
-class _GanttGrid extends StatelessWidget {
-  final Project project;
-  final Color? domainColor;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final bool dayView;
-  final void Function(ProjectTask)? onTaskTap;
-  final void Function(ProjectPhase)? onPhaseTap;
-
-  const _GanttGrid({
-    required this.project,
-    this.domainColor,
-    required this.projectStart,
-    required this.totalWeeks,
-    this.dayView = false,
-    this.onTaskTap,
-    this.onPhaseTap,
-  });
-
-  int get totalDays {
-    final end = project.endDate ?? projectStart.add(const Duration(days: 84));
-    return end.difference(projectStart).inDays + 7;
-  }
-
-  double get timeW => dayView ? totalDays * _kDayCellW : totalWeeks * _kCellW;
-  double get totalW => _kLabelW + timeW;
-
-  // Couleur de repli d'une barre quand la tâche n'a pas de couleur propre :
-  // couleur de sa phase → couleur du domaine → violet.
-  Color _taskFallbackColor(ProjectTask task) {
-    final phase = project.phases.where((p) => p.id == task.phaseId).firstOrNull ??
-        project.phases.where((p) => p.label == task.groupLabel).firstOrNull;
-    return _hex(phase?.color, domainColor ?? const Color(0xFF6B57F0));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final groups = _buildGroups(project.tasks);
-
-    // Repère « aujourd'hui » : colonne du jour surlignée (cf. vue Focus).
-    final now = DateTime.now();
-    final todayD = DateTime(now.year, now.month, now.day);
-    final offsetDays = todayD.difference(projectStart).inDays;
-    double? todayLeft;
-    double todayW = 0;
-    if (dayView) {
-      if (offsetDays >= 0 && offsetDays < totalDays) {
-        todayLeft = _kLabelW + offsetDays * _kDayCellW;
-        todayW = _kDayCellW;
-      }
-    } else {
-      final wi = offsetDays ~/ 7;
-      if (offsetDays >= 0 && wi < totalWeeks) {
-        todayLeft = _kLabelW + wi * _kCellW;
-        todayW = _kCellW;
-      }
-    }
-
-    final column = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Phase header ──────────────────────────────────────
-        _PhaseHeaderRow(
-          project: project,
-          projectStart: projectStart,
-          totalWeeks: totalWeeks,
-          totalDays: totalDays,
-          dayView: dayView,
-          timeW: timeW,
-          onPhaseTap: onPhaseTap,
-        ),
-        // ── Week header ───────────────────────────────────────
-        _WeekHeaderRow(
-          projectStart: projectStart,
-          totalWeeks: totalWeeks,
-          totalDays: totalDays,
-          dayView: dayView,
-          timeW: timeW,
-        ),
-        // ── Séparateur ────────────────────────────────────────
-        Builder(builder: (ctx) => Container(
-          height: 1, width: totalW,
-          color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5),
-        )),
-        // ── Groupes et tâches ─────────────────────────────────
-        for (final group in groups) ...[
-          if (group.label.isNotEmpty)
-            _GroupRow(
-                label: group.label, timeW: timeW, totalW: totalW),
-          for (final task in group.tasks)
-            _TaskRow(
-              task: task,
-              fallbackColor: _taskFallbackColor(task),
-              projectStart: projectStart,
-              totalWeeks: totalWeeks,
-              totalDays: totalDays,
-              dayView: dayView,
-              timeW: timeW,
-              onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
-            ),
-        ],
-        // Padding bas
-        SizedBox(height: 24, width: totalW),
-      ],
-    );
-
-    if (todayLeft == null) return column;
-    return Stack(
-      children: [
-        column,
-        Positioned(
-          left: todayLeft,
-          top: 0,
-          bottom: 0,
-          width: todayW,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _kTealGrid.withOpacity(0.05),
-                border: Border(
-                  left: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
-                  right: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Phase header ──────────────────────────────────────────────────────────────
-
-class _PhaseHeaderRow extends StatelessWidget {
-  final Project project;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-  final void Function(ProjectPhase)? onPhaseTap;
-
-  const _PhaseHeaderRow({
-    required this.project,
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-    this.onPhaseTap,
-  });
-
-  double _toX(int inDays) =>
-      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
-
-  @override
-  Widget build(BuildContext context) {
-    if (project.phases.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: _kPhaseH,
-      width: _kLabelW + timeW,
-      child: Row(
-        children: [
-          // Cellule vide (align avec les labels)
-          const SizedBox(width: _kLabelW),
-          // Stack des phases
-          SizedBox(
-            width: timeW,
-            height: _kPhaseH,
-            child: Stack(
-              children: project.phases.map((phase) {
-                final left = max(
-                    0.0,
-                    _toX(phase.startDate.difference(projectStart).inDays));
-                final right = min(
-                    timeW,
-                    _toX(phase.endDate.difference(projectStart).inDays));
-                final w = max(0.0, right - left);
-                final bg = _hex(phase.color, const Color(0xFFEEEDFE));
-                final fg = _darken(bg);
-
-                return Positioned(
-                  left: left,
-                  top: 0,
-                  width: w,
-                  height: _kPhaseH,
-                  child: GestureDetector(
-                    onTap: onPhaseTap != null ? () => onPhaseTap!(phase) : null,
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 1),
-                      decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4)),
-                      ),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              phase.label,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: fg),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (onPhaseTap != null) ...[
-                            const SizedBox(width: 3),
-                            Icon(Icons.edit_outlined, size: 9, color: fg.withOpacity(.6)),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Week header ───────────────────────────────────────────────────────────────
-
-class _WeekHeaderRow extends StatelessWidget {
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-
-  const _WeekHeaderRow({
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-  });
-
-  String _weekLabel(int i) {
-    final d = projectStart.add(Duration(days: i * 7));
-    return '${d.day}/${d.month}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final grid = _gridColor(context);
-    return SizedBox(
-      height: _kWeekH,
-      width: _kLabelW + timeW,
-      child: Row(
-        children: [
-          const SizedBox(width: _kLabelW),
-          if (dayView)
-            ...List.generate(totalDays, (i) {
-              final d = projectStart.add(Duration(days: i));
-              final isWeekend = d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
-              return SizedBox(
-                width: _kDayCellW,
-                height: _kWeekH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isWeekend ? const Color(0x11AAAAAA) : null,
-                    border: Border(
-                      left: BorderSide(color: grid, width: 1),
-                      bottom: BorderSide(color: grid, width: 1),
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${d.day}',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500,
-                      color: isWeekend
-                          ? const Color(0xFFAAAAAA)
-                          : const Color(0xFF888888),
-                    ),
-                  ),
-                ),
-              );
-            })
-          else
-            ...List.generate(totalWeeks, (i) {
-              return SizedBox(
-                width: _kCellW,
-                height: _kWeekH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: grid, width: 1),
-                      bottom: BorderSide(color: grid, width: 1),
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _weekLabel(i),
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF888888)),
-                  ),
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Ligne de groupe ───────────────────────────────────────────────────────────
-
-class _GroupRow extends StatelessWidget {
-  final String label;
-  final double timeW;
-  final double totalW;
-
-  const _GroupRow(
-      {required this.label, required this.timeW, required this.totalW});
-
-  @override
-  Widget build(BuildContext context) {
-    return Builder(builder: (context) {
-      final cs = Theme.of(context).colorScheme;
-      final groupBg = cs.surfaceContainerHighest.withOpacity(0.5);
-      return SizedBox(
-        height: _kGroupH,
-        width: totalW,
-        child: Container(
-          color: groupBg,
-          child: Row(
-            children: [
-              SizedBox(
-                width: _kLabelW,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4, right: 8),
-                  child: Text(
-                    label.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface.withOpacity(0.5),
-                      letterSpacing: 0.8,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              Container(
-                width: timeW,
-                height: _kGroupH,
-                decoration: BoxDecoration(
-                  color: groupBg,
-                  border: Border(
-                      bottom: BorderSide(
-                          color: cs.outlineVariant.withOpacity(0.4),
-                          width: 1)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-}
-
-// ── Ligne de tâche ────────────────────────────────────────────────────────────
-
-class _TaskRow extends StatelessWidget {
-  final ProjectTask task;
-  final Color fallbackColor;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-  final VoidCallback? onTap;
-
-  const _TaskRow({
-    required this.task,
-    required this.fallbackColor,
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDone = task.status == 'done';
-
-    return SizedBox(
-      height: _kRowH,
-      width: _kLabelW + timeW,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Label (cliquable)
-          SizedBox(
-            width: _kLabelW,
-            height: _kRowH,
-            child: InkWell(
-              onTap: onTap,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                      bottom: BorderSide(color: _gridColor(context), width: 1)),
-                ),
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 16, right: 8),
-                child: Row(
-                  children: [
-                    if (task.isMilestone)
-                      const Icon(Icons.diamond_outlined,
-                          size: 12, color: Color(0xFF888888))
-                    else
-                      Icon(
-                        isDone
-                            ? Icons.check_circle_outline
-                            : Icons.radio_button_unchecked,
-                        size: 12,
-                        color: isDone ? Colors.green : const Color(0xFFCCCCCC),
-                      ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        task.title,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDone
-                              ? Theme.of(context).colorScheme.onSurface.withOpacity(0.35)
-                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (task.stepsTotal > 0)
-                      Text(
-                        '${task.stepsDone}/${task.stepsTotal}',
-                        style: const TextStyle(
-                            fontSize: 9, color: Color(0xFFAAAAAA)),
-                      ),
-                    if (onTap != null)
-                      const Icon(Icons.chevron_right,
-                          size: 12, color: Color(0xFFCCCCCC)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Barre Gantt
-          SizedBox(
-            width: timeW,
-            height: _kRowH,
-            child: Stack(
-              children: [
-                // Fond épuré : séparateur de ligne subtil, sans lignes verticales
-                ..._buildGridLines(context, timeW),
-                // Bar ou Milestone
-                if (task.isMilestone)
-                  _buildMilestone()
-                else
-                  _buildBar(isDone),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<Widget> _buildGridLines(BuildContext context, double timeW) {
-    // Style épuré (cf. vue Focus) : uniquement un séparateur de ligne discret,
-    // pas de lignes verticales de colonnes.
-    return [
-      Positioned.fill(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(
-                bottom: BorderSide(color: _gridColor(context), width: 1)),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  double _toX(int inDays) =>
-      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
-
-  Widget _buildBar(bool isDone) {
-    final end = task.endDate ?? task.startDate.add(const Duration(days: 7));
-    final startDays = task.startDate.difference(projectStart).inDays;
-    final endDays = end.difference(projectStart).inDays;
-
-    final left = max(0.0, _toX(startDays));
-    final right = min(timeW, _toX(endDays));
-    final barW = max(4.0, right - left);
-
-    final barColor = isDone
-        ? const Color(0xFFCCCCCC)
-        : _hex(task.color, fallbackColor);
-    final textColor = _isDark(barColor)
-        ? Colors.white.withOpacity(0.9)
-        : barColor.withOpacity(0.7).computeLuminance() > 0.5
-            ? Colors.black.withOpacity(0.7)
-            : Colors.white.withOpacity(0.9);
-
-    return Positioned(
-      left: left,
-      top: _kBarVPad,
-      height: _kRowH - _kBarVPad * 2,
-      width: barW,
-      child: Container(
-        decoration: BoxDecoration(
-          color: barColor,
-          borderRadius: BorderRadius.circular(3),
-          boxShadow: isDone
-              ? null
-              : [
-                  BoxShadow(
-                    color: barColor.withOpacity(0.55),
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ],
-        ),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: task.barLabel != null
-            ? Text(
-                task.barLabel!,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
-                ),
-                overflow: TextOverflow.ellipsis,
-              )
-            : null,
-      ),
-    );
-  }
-
-  Widget _buildMilestone() {
-    final inDays = task.startDate.difference(projectStart).inDays;
-    final cellHalf = dayView ? _kDayCellW / 2 : _kCellW / 2;
-    final centerX = _toX(inDays) + cellHalf;
-    final color = _hex(task.color, fallbackColor);
-    const size = 13.0;
-
-    return Positioned(
-      left: centerX - size / 2,
-      top: _kRowH / 2 - size / 2,
-      width: size,
-      height: size,
-      child: Transform.rotate(
-        angle: pi / 4,
-        child: Container(
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.7),
-                blurRadius: 10,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Utilitaires ───────────────────────────────────────────────────────────────
-
-Color _hex(String? hex, Color fallback) {
-  if (hex == null || hex.isEmpty) return fallback;
-  final s = hex.replaceFirst('#', '');
-  if (s.length != 6) return fallback;
-  try {
-    return Color(int.parse('FF$s', radix: 16));
-  } catch (_) {
-    return fallback;
-  }
-}
-
-Color _darken(Color c) {
-  final hsl = HSLColor.fromColor(c);
-  return hsl.withLightness((hsl.lightness - 0.35).clamp(0.0, 1.0)).toColor();
-}
-
-bool _isDark(Color c) => c.computeLuminance() < 0.4;
-
-// Grouper les tâches par groupLabel
-List<({String label, List<ProjectTask> tasks})> _buildGroups(
-    List<ProjectTask> tasks) {
-  final seen = <String>[];
-  final map = <String, List<ProjectTask>>{};
-  for (final t in tasks) {
-    final g = t.groupLabel ?? '';
-    if (!seen.contains(g)) seen.add(g);
-    map.putIfAbsent(g, () => []).add(t);
-  }
-  return seen.map((g) => (label: g, tasks: map[g]!)).toList();
-}
 
 // ── Dialog détail tâche (web) ─────────────────────────────────────────────────
 

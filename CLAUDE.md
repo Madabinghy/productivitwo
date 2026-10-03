@@ -92,6 +92,12 @@ Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt ·
 shell à la place du Gantt nu ; **s'ouvre toujours sur Plan d'action** (2026-10), y compris depuis un bloc ou une
 action (`targetTaskId` → phase de la tâche dépliée) ; l'onglet Gantt n'a plus sa propre bascule Gantt/Document ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
 documents dans `web/document_viewer_dialog.dart`.
+**Gantt projet** (refonte 2026-10, handoff `docs/specs/gantt-projet-2026-10/README.md`, 4 lots) : `gantt_screen.dart`
+n'a plus d'AppBar ni de Scaffold (un seul en-tête = celui de la fiche), couleurs `kB*` ; axe de temps en logique
+pure `lib/utils/gantt_axis.dart` (`GanttAxis` : plage lundi−7 j → +14 j couvrant toutes les tâches, `x(date)`,
+mois, semaines calées sur les lundis, zoom 0,2–3) ; défilement à deux `ScrollController` (molette = défilement,
+Ctrl/⌘ + molette ou pincement = zoom autour du curseur), en-têtes et colonne des libellés figés par overlays,
+boutons Aujourd'hui / Ajuster au projet. Ne pas réintroduire `InteractiveViewer` ni de thème clair.
 Actions (lot 6) = `views/actions_view.dart` + `lib/utils/actions_logic.dart` (filtres Je suis / J'ai /
 Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant) ; CRUD des actions dans
 `web/action_dialogs.dart`. `ActionsHubView` et `WebActionsView` ont été supprimés.
