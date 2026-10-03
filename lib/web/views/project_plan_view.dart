@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
@@ -342,6 +343,12 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       propose: (d, dur) => proposedSlot(_byDay[ymdOf(d)] ?? const [], dur,
           isToday: d == _today, nowMin: now.hour * 60 + now.minute),
       durationMin: duration,
+      estimatedMin: t.estimatedMin,
+      onEstimate: (m) async {
+        setState(() => t.estimatedMin = m);
+        await _save();
+        _snack('Tâche estimée ${fmtMin(m)}');
+      },
       onPlace: (d, startMin, dur) async {
         final key = ymdOf(d);
         final block = taskBlock(wt, startMin, durationMin: dur);

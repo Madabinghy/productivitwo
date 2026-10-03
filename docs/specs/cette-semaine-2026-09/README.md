@@ -172,11 +172,17 @@ Inventaire complet du code fait le 2026-10-03 ; constats et décisions, par ordr
 - État vide quand tout est masqué (« Tout est fait sur cette période. » + Afficher le fait) ;
   « repos · n blocs » le week-end ; légende complétée (point = bloc (menu)).
 
-**Lot 2 « information » — à faire**
-- Dates et estimation en clair sur la ligne (« 3 j · 2 h ») ; estimation éditable dans le popover.
-- Capacité dans le popover « caser » (« journée pleine 7 h 20 / 7 h », premier jour qui tient) : unifier
-  avec le popover de la fiche projet (`dayLoad` / `firstFittingDay`).
-- En-tête réactif (repli sous ~1100 px), compteurs alignés sur le filtre, fenêtre persistée.
+**Lot 2 « information » — livré (PR du 2026-10-03)**
+- Ligne de tâche : « 3 j · 2 h » sous le marqueur (≈ = estimation par défaut, non saisie) ; un jalon
+  n'a que sa date.
+- Popover « caser » : ligne de charge du jour (« Charge 3 h 10 / 7 h », « Journée pleine : 6 h 30 + 1 h
+  > 7 h », « Jour de repos ») via `dayLoad`, lien « jeu. 9 tient → » vers le premier jour de la fenêtre
+  qui tient (`firstFittingDay`) ; ligne « Tâche estimée 2 h » / « non estimée » avec « Estimer à <durée
+  sélectionnée> » (écrit `estimatedMin`, annulable) — aussi dans le popover « Planifier » de la fiche projet.
+- En-tête : sous 1100 px les commandes passent sous le titre (Wrap) ; titre et résumé tronqués proprement ;
+  avec « Masquer le fait » le résumé devient « N à faire · … · M faites masquées ».
+- Fenêtre affichée mémorisée **le jour même** (`week_window_start` + `week_window_saved_on`) : un
+  rechargement garde la semaine regardée, le lendemain repart de la semaine courante.
 
 **Lot 3 « navigation » — à faire**
 - Remplacer « Planifier avec ORION » par « Planifier la semaine avec Claude » (claudeNewUri, comme le
