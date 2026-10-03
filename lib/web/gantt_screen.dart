@@ -15,15 +15,18 @@ import 'package:productivitwo_v1/utils/gantt_axis.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/web/column_resizer.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
-const double _kLabelW = 280.0;
+const double _kLabelDefaultW = 360.0;
+const _kPrefLabelW = 'gantt_label_w';
 const double _kRowH = 36.0;
 const double _kGroupH = 30.0;
 const double _kPhaseH = 28.0;
@@ -580,6 +583,24 @@ class _GanttBodyState extends State<_GanttBody> {
   bool _initialScrollDone = false;
   // Largeur visible de la zone de temps (hors colonne des libellés).
   double _viewportW = 0;
+  // Colonne des libellés : réglable à la souris, persistée.
+  double _labelW = _kLabelDefaultW;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((p) {
+      final w = p.getDouble(_kPrefLabelW);
+      if (w != null && mounted) setState(() => _labelW = clampColumnWidth(w));
+    }).catchError((_) {});
+  }
+
+  Future<void> _saveLabelW() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_kPrefLabelW, _labelW);
+    } catch (_) {}
+  }
   // Glisser en cours sur une barre (aperçu avant enregistrement).
   _BarDrag? _drag;
   // Sections (phases) repliées — clé = id de phase, '_none' pour « Sans phase ».
@@ -650,7 +671,7 @@ class _GanttBodyState extends State<_GanttBody> {
     final old = _zoom;
     final nz = (old * factor).clamp(kGanttZoomMin, kGanttZoomMax).toDouble();
     if (nz == old) return;
-    final timeX = contentDx - _kLabelW;
+    final timeX = contentDx - _labelW;
     final viewX = timeX - _hOffset;
     setState(() => _zoom = nz);
     WidgetsBinding.instance
@@ -658,7 +679,7 @@ class _GanttBodyState extends State<_GanttBody> {
   }
 
   void _zoomCenter(double factor) =>
-      _zoomAt(factor, _kLabelW + _hOffset + _viewportW / 2);
+      _zoomAt(factor, _labelW + _hOffset + _viewportW / 2);
 
   void _setScale(GanttScale s) {
     if (s == _scale) return;
@@ -742,7 +763,7 @@ class _GanttBodyState extends State<_GanttBody> {
         const Divider(height: 1, color: kBLine),
         Expanded(
           child: LayoutBuilder(builder: (ctx, box) {
-            _viewportW = max(0, box.maxWidth - _kLabelW);
+            _viewportW = max(0, box.maxWidth - _labelW);
             _initialScroll();
             return Stack(
               children: [
@@ -768,6 +789,7 @@ class _GanttBodyState extends State<_GanttBody> {
                             child: _GanttGrid(
                               project: widget.project,
                               axis: axis,
+                              labelW: _labelW,
                               groups: groups,
                               domainColor: widget.domainColor,
                               headerH: headerH,
@@ -790,7 +812,7 @@ class _GanttBodyState extends State<_GanttBody> {
                 ),
                 // ── En-tête figé (suit le défilement horizontal) ──────────
                 Positioned(
-                  left: _kLabelW,
+                  left: _labelW,
                   right: 0,
                   top: 0,
                   height: headerH,
@@ -818,7 +840,7 @@ class _GanttBodyState extends State<_GanttBody> {
                   left: 0,
                   top: headerH,
                   bottom: 0,
-                  width: _kLabelW,
+                  width: _labelW,
                   child: ClipRect(
                     child: AnimatedBuilder(
                       animation: _v,
@@ -830,6 +852,7 @@ class _GanttBodyState extends State<_GanttBody> {
                           maxHeight: double.infinity,
                           child: _GanttLabelColumn(
                             groups: groups,
+                            width: _labelW,
                             onTaskTap: widget.onTaskTap,
                             onToggleGroup: _toggleGroup,
                           ),
@@ -842,7 +865,7 @@ class _GanttBodyState extends State<_GanttBody> {
                 Positioned(
                   left: 0,
                   top: 0,
-                  width: _kLabelW,
+                  width: _labelW,
                   height: headerH,
                   child: Container(
                     decoration: const BoxDecoration(
@@ -859,6 +882,16 @@ class _GanttBodyState extends State<_GanttBody> {
                       style: const TextStyle(fontSize: 11, color: kBText4),
                     ),
                   ),
+                ),
+                // ── Poignée : largeur de la colonne des libellés ──────────
+                ColumnResizeHandle(
+                  left: _labelW,
+                  onDrag: (dx) => setState(() => _labelW = clampColumnWidth(_labelW + dx)),
+                  onEnd: _saveLabelW,
+                  onReset: () {
+                    setState(() => _labelW = _kLabelDefaultW);
+                    _saveLabelW();
+                  },
                 ),
               ],
             );
@@ -980,6 +1013,7 @@ class _GanttGrid extends StatelessWidget {
   final Project project;
   final GanttAxis axis;
   final List<_GanttGroup> groups;
+  final double labelW;
   final Color? domainColor;
   final double headerH;
   final void Function(ProjectTask)? onTaskTap;
@@ -997,6 +1031,7 @@ class _GanttGrid extends StatelessWidget {
     required this.project,
     required this.axis,
     required this.groups,
+    required this.labelW,
     this.domainColor,
     required this.headerH,
     this.onTaskTap,
@@ -1022,7 +1057,7 @@ class _GanttGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final timeW = axis.width;
-    final totalW = _kLabelW + timeW;
+    final totalW = labelW + timeW;
 
     final rows = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1033,7 +1068,7 @@ class _GanttGrid extends StatelessWidget {
               height: _kGroupH,
               width: totalW,
               child: Row(children: [
-                _GroupLabelCell(group: group, onTap: () => onToggleGroup(group.key)),
+                _GroupLabelCell(group: group, width: labelW, onTap: () => onToggleGroup(group.key)),
                 _GroupBarCell(
                     group: group,
                     axis: axis,
@@ -1048,6 +1083,7 @@ class _GanttGrid extends StatelessWidget {
               child: Row(children: [
                 _TaskLabelCell(
                     task: task,
+                    width: labelW,
                     overdue: isTaskOverdue(task, today),
                     onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
                 _TaskBarCell(
@@ -1079,7 +1115,7 @@ class _GanttGrid extends StatelessWidget {
             height: headerH,
             width: totalW,
             child: Row(children: [
-              const SizedBox(width: _kLabelW),
+              SizedBox(width: labelW),
               _GanttTimeHeader(project: project, axis: axis, onPhaseTap: onPhaseTap),
             ]),
           ),
@@ -1088,7 +1124,7 @@ class _GanttGrid extends StatelessWidget {
               rows,
               // Week-ends ombrés (vue Jour) et colonne d'aujourd'hui.
               Positioned.fill(
-                left: _kLabelW,
+                left: labelW,
                 child: IgnorePointer(
                   child: CustomPaint(
                     painter: _ColumnsPainter(axis: axis, today: today),
@@ -1369,15 +1405,16 @@ class _GanttTimeHeader extends StatelessWidget {
 
 class _GanttLabelColumn extends StatelessWidget {
   final List<_GanttGroup> groups;
+  final double width;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(String key) onToggleGroup;
   const _GanttLabelColumn(
-      {required this.groups, this.onTaskTap, required this.onToggleGroup});
+      {required this.groups, required this.width, this.onTaskTap, required this.onToggleGroup});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: _kLabelW,
+      width: width,
       decoration: const BoxDecoration(
         color: kBBg,
         border: Border(right: BorderSide(color: kBLine)),
@@ -1390,13 +1427,14 @@ class _GanttLabelColumn extends StatelessWidget {
               SizedBox(
                   height: _kGroupH,
                   child: _GroupLabelCell(
-                      group: group, onTap: () => onToggleGroup(group.key))),
+                      group: group, width: width, onTap: () => onToggleGroup(group.key))),
             if (!group.collapsed)
               for (final task in group.tasks)
                 SizedBox(
                   height: _kRowH,
                   child: _TaskLabelCell(
                       task: task,
+                      width: width,
                       overdue: isTaskOverdue(task, DateTime.now()),
                       onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
                 ),
@@ -1411,8 +1449,9 @@ class _GanttLabelColumn extends StatelessWidget {
 
 class _GroupLabelCell extends StatelessWidget {
   final _GanttGroup group;
+  final double width;
   final VoidCallback onTap;
-  const _GroupLabelCell({required this.group, required this.onTap});
+  const _GroupLabelCell({required this.group, required this.width, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1423,7 +1462,7 @@ class _GroupLabelCell extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          width: _kLabelW,
+          width: width,
           height: _kGroupH,
           color: kBRaised.withOpacity(.45),
           alignment: Alignment.centerLeft,
@@ -1497,15 +1536,17 @@ class _GroupBarCell extends StatelessWidget {
 
 class _TaskLabelCell extends StatelessWidget {
   final ProjectTask task;
+  final double width;
   final bool overdue;
   final VoidCallback? onTap;
-  const _TaskLabelCell({required this.task, this.overdue = false, this.onTap});
+  const _TaskLabelCell(
+      {required this.task, required this.width, this.overdue = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final isDone = task.status == 'done';
     return SizedBox(
-      width: _kLabelW,
+      width: width,
       height: _kRowH,
       child: InkWell(
         onTap: onTap,

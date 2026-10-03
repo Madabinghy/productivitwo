@@ -107,6 +107,13 @@ Même grammaire de gestes que Cette semaine :
 - `_shellGantt` → `_shellProject` dans `web_home_screen.dart` (c'est la fiche entière qui est hébergée) ;
   commentaires « lot n » orphelins retirés de `gantt_screen.dart`.
 
+## Complément (retour utilisateur) — colonne des libellés réglable
+
+La colonne de gauche passe de 280 à **360 px par défaut** et se **redimensionne à la souris** (poignée sur
+la frontière, 220–640 px, double-clic = défaut), largeur persistée en SharedPreferences (`gantt_label_w`).
+Poignée partagée avec Cette semaine : `lib/web/column_resizer.dart` (`ColumnResizeHandle`,
+`clampColumnWidth`).
+
 ## État final (après les 4 lots)
 
 Le Gantt est l'éditeur de planning du projet : même grammaire de gestes que Cette semaine (glisser, bord
