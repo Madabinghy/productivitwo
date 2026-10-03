@@ -102,13 +102,15 @@ class TodayViewState extends State<TodayView> {
   // Mode « Modifier » de la frise : chaque bloc s'ouvre dans l'éditeur.
   bool _editing = false;
   late String _today;
-  // Frise : défilement automatique vers le trait « maintenant » (sans chrono
-  // en cours) à l'arrivée sur l'onglet, au premier programme chargé, et quand
-  // un chrono se termine. Le flag est consommé au build suivant de la frise.
+  // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
+  // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
+  // changement de jour, et quand elle réapparaît après la disposition active
+  // (chrono ou pas : un chrono hors bloc laisse la frise visible). Le flag est
+  // consommé au build suivant de la frise.
   final ScrollController _timelineCtrl = ScrollController();
   bool _scrollNowPending = false;
   bool _initialScrollDone = false;
-  bool _hadOpen = false;
+  bool _timelineHidden = false;
 
   @override
   void initState() {
@@ -127,16 +129,12 @@ class TodayViewState extends State<TodayView> {
         _scrollNowPending = true;
       }
       _checkBlockTransition();
-      final hasOpen = _openSession != null;
-      if (_hadOpen && !hasOpen) _scrollNowPending = true;
-      _hadOpen = hasOpen;
       setState(() {});
     });
   }
 
   /// Recentre la frise sur l'heure courante (appelé par le shell quand
-  /// l'onglet Aujourd'hui est activé). Sans effet si un chrono tourne : la
-  /// carte MAINTENANT porte alors l'attention.
+  /// l'onglet Aujourd'hui est activé).
   void scrollToNow() {
     if (!mounted) return;
     setState(() => _scrollNowPending = true);
@@ -544,6 +542,9 @@ class TodayViewState extends State<TodayView> {
               // garde la disposition de repos.
               final live = box.maxWidth >= 1280 ? _liveBlock : null;
               if (live != null) {
+                // La frise est remplacée par la liste compacte : quand elle
+                // reviendra, elle se recentrera.
+                _timelineHidden = true;
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -1554,9 +1555,13 @@ class TodayViewState extends State<TodayView> {
           ),
       ]),
     );
+    if (_timelineHidden) {
+      _timelineHidden = false;
+      _scrollNowPending = true;
+    }
     if (_scrollNowPending) {
       _scrollNowPending = false;
-      if (showNow && _openSession == null) {
+      if (showNow) {
         final nowY = y(now);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_timelineCtrl.hasClients) return;

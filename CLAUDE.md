@@ -83,8 +83,9 @@ Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
 et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil ≥ 1280 px ; en dessous, repos.
-Sans chrono, la frise se **recentre sur le trait « maintenant »** (`scrollToNow`, appelé par `_go(WebTab.today)`
-du shell ; aussi au premier programme chargé, au changement de jour et quand un chrono se termine).
+Dès qu'elle est affichée (chrono ou pas), la frise se **recentre sur le trait « maintenant »** (`scrollToNow`,
+appelé par `_go(WebTab.today)` du shell ; aussi au premier programme chargé, au changement de jour et quand la
+frise revient après la disposition active).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart` (Plan d'action · Gantt · Document), hébergée dans le
