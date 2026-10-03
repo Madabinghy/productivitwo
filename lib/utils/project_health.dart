@@ -15,6 +15,29 @@ List<ProjectTask> ganttOrder(Project p) {
   return list;
 }
 
+/// Sections par phase (triées par date de début), puis « Sans phase »
+/// (phase nulle) pour les tâches orphelines. Tâches dans l'ordre du Gantt.
+/// Partagé par le plan d'action et le Gantt.
+List<({ProjectPhase? phase, List<ProjectTask> tasks})> phaseSections(Project p) {
+  final phases = List.of(p.phases)..sort((a, b) => a.startDate.compareTo(b.startDate));
+  final ordered = ganttOrder(p);
+  final out = <({ProjectPhase? phase, List<ProjectTask> tasks})>[];
+  for (final ph in phases) {
+    out.add((phase: ph, tasks: ordered.where((t) => t.phaseId == ph.id).toList()));
+  }
+  final phaseIds = {for (final ph in phases) ph.id};
+  final loose = ordered.where((t) => t.phaseId == null || !phaseIds.contains(t.phaseId)).toList();
+  if (loose.isNotEmpty || out.isEmpty) out.add((phase: null, tasks: loose));
+  return out;
+}
+
+/// Tâche ouverte dont l'échéance est passée.
+bool isTaskOverdue(ProjectTask t, DateTime today) =>
+    t.status != 'done' &&
+    t.status != 'skipped' &&
+    t.endDate != null &&
+    _day(t.endDate!).isBefore(_day(today));
+
 /// Avancement : tâches faites / tâches comptées (hors `skipped`).
 ({int done, int total}) taskProgress(Project p) {
   var done = 0, total = 0;
@@ -38,14 +61,7 @@ ProjectPhase? currentPhase(Project p, DateTime today) {
 /// Tâches ouvertes dont l'échéance est passée.
 List<ProjectTask> overdueTasks(Project p, DateTime today) {
   final d = _day(today);
-  return [
-    for (final t in p.tasks)
-      if (t.status != 'done' &&
-          t.status != 'skipped' &&
-          t.endDate != null &&
-          _day(t.endDate!).isBefore(d))
-        t,
-  ];
+  return [for (final t in p.tasks) if (isTaskOverdue(t, d)) t];
 }
 
 /// Prochaine action : première `TaskAction` non faite de la première tâche

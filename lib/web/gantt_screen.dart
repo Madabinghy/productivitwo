@@ -3,13 +3,20 @@ import 'dart:html' as html;
 import 'dart:math';
 import 'dart:ui' as ui;
 import 'dart:ui_web' as ui_web;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/gantt_axis.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
-import 'package:productivitwo_v1/web/add_task_dialog.dart';
+import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
@@ -17,21 +24,12 @@ const _uuid = Uuid();
 // ── Constantes de layout ──────────────────────────────────────────────────────
 
 const double _kLabelW = 280.0;
-const double _kCellW = 68.0;
-const double _kDayCellW = 28.0;
 const double _kRowH = 36.0;
 const double _kGroupH = 30.0;
 const double _kPhaseH = 28.0;
-const double _kWeekH = 26.0;
+const double _kMonthH = 22.0;
+const double _kDaysH = 26.0;
 const double _kBarVPad = 8.0;
-
-// Couleur de grille — vert teal subtil en sombre, gris discret en clair
-const _kTealGrid = Color(0xFF1D9E75);
-
-Color _gridColor(BuildContext ctx) {
-  final dark = Theme.of(ctx).brightness == Brightness.dark;
-  return dark ? _kTealGrid.withOpacity(0.18) : const Color(0xFFE8E8E8);
-}
 
 // ── Entrée publique pour afficher la dialog tâche depuis d'autres écrans ──────
 
@@ -56,49 +54,37 @@ Future<void> showGanttTaskDetailDialog(
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+/// Onglet Gantt de la fiche projet (web). Pas d'en-tête propre : titre,
+/// retour et « Ajouter une tâche » vivent dans l'en-tête de la fiche
+/// (`project_plan_view.dart`).
 class GanttScreen extends StatefulWidget {
   final Project project;
   final String? targetTaskId;
   final List<Domain> domains;
-  // Mode embarqué dans le shell web (lot 3b) : le retour appelle onClose au
-  // lieu de Navigator.pop (l'écran n'est pas une route poussée).
-  final VoidCallback? onClose;
+  /// Appelé après chaque enregistrement (dates, titre, phase, domaine,
+  /// statut, suppression) pour que la fiche et le shell se rafraîchissent.
+  final VoidCallback? onChanged;
   const GanttScreen({
     super.key,
     required this.project,
     this.targetTaskId,
     this.domains = const [],
-    this.onClose,
+    this.onChanged,
   });
 
   @override
   State<GanttScreen> createState() => _GanttScreenState();
 }
 
-// Thème clair Productivitwo (même palette que web_app.dart)
-final _kGanttLightTheme = ThemeData(
-  colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF1D9E75),
-    brightness: Brightness.light,
-  ).copyWith(
-    primary: const Color(0xFF1D9E75),
-    secondary: const Color(0xFF155F47),
-    surface: const Color(0xFFD6EEE6),
-    surfaceContainerLowest: const Color(0xFFC8E8DC),
-    surfaceContainerHighest: const Color(0xFFB0DDCB),
-  ),
-  scaffoldBackgroundColor: const Color(0xFFC8E8DC),
-  useMaterial3: true,
-);
-
 class _GanttScreenState extends State<GanttScreen> {
   late Project _project;
   final _sync = FirestoreSync();
-  bool _forceLight = false;
-  // Fiche tâche en panneau latéral (lot 3) — null = fermé.
+  // Fiche tâche en panneau latéral — null = fermé.
   ProjectTask? _panelTask;
   StrategicObjective? _objective;
   double? _objectiveWeekPct; // progression hebdo des engagements (0..1)
+  // Blocs du programme liés aux tâches du projet, par taskId (points des barres).
+  Map<String, List<_DatedBlock>> _blocksByTask = const {};
 
   @override
   void initState() {
@@ -108,6 +94,35 @@ class _GanttScreenState extends State<GanttScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openTargetTask());
     }
     _loadObjective();
+    _loadBlocks();
+  }
+
+  // Une requête sur la plage de l'axe ; les blocs sans taskId ou d'un autre
+  // projet sont ignorés.
+  Future<void> _loadBlocks() async {
+    final axis = GanttAxis.forProject(_project);
+    final from = ymdOf(axis.rangeStart);
+    final to = ymdOf(axis.rangeEnd.subtract(const Duration(days: 1)));
+    final schedules = await _sync.fetchDailySchedulesRange(from, to);
+    if (!mounted) return;
+    final taskIds = {for (final t in _project.tasks) t.id};
+    final map = <String, List<_DatedBlock>>{};
+    for (final sch in schedules) {
+      final date = DateTime.tryParse(sch.date);
+      if (date == null) continue;
+      for (final b in sch.blocks) {
+        final tid = b.taskId;
+        if (tid == null || !taskIds.contains(tid)) continue;
+        map.putIfAbsent(tid, () => []).add(_DatedBlock(date, b));
+      }
+    }
+    for (final l in map.values) {
+      l.sort((a, b) {
+        final c = a.date.compareTo(b.date);
+        return c != 0 ? c : blockStartMin(a.block).compareTo(blockStartMin(b.block));
+      });
+    }
+    setState(() => _blocksByTask = map);
   }
 
   // Charge l'objectif stratégique lié (s'il existe) pour l'afficher en tête du Gantt.
@@ -156,24 +171,19 @@ class _GanttScreenState extends State<GanttScreen> {
   Future<void> _changeDomain() async {
     final domains = widget.domains;
     if (domains.isEmpty) return;
-    final cs = Theme.of(context).colorScheme;
 
     final selected = await showDialog<String?>(
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Changer de domaine'),
         children: [
-          // Option "Aucun domaine"
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, ''),
-            child: Row(
+            child: const Row(
               children: [
-                Icon(Icons.remove_circle_outline,
-                    size: 14, color: cs.onSurface.withOpacity(.4)),
-                const SizedBox(width: 10),
-                Text('Aucun domaine',
-                    style:
-                        TextStyle(color: cs.onSurface.withOpacity(.5))),
+                Icon(Icons.remove_circle_outline, size: 14, color: kBText4),
+                SizedBox(width: 10),
+                Text('Aucun domaine', style: TextStyle(color: kBText3)),
               ],
             ),
           ),
@@ -202,7 +212,7 @@ class _GanttScreenState extends State<GanttScreen> {
                       )),
                   if (_project.domainId == d.id) ...[
                     const Spacer(),
-                    Icon(Icons.check, size: 16, color: cs.primary),
+                    const Icon(Icons.check, size: 16, color: kBPrimary),
                   ],
                 ],
               ),
@@ -214,6 +224,7 @@ class _GanttScreenState extends State<GanttScreen> {
     if (selected == null) return; // annulé
     setState(() => _project = _project..domainId = selected.isEmpty ? null : selected);
     await _sync.saveProject(_project);
+    widget.onChanged?.call();
   }
 
   Future<void> _exportPdf() async {
@@ -228,8 +239,8 @@ class _GanttScreenState extends State<GanttScreen> {
   }
 
   void _onTaskTap(ProjectTask task) {
-    // Lot 3 : sur écran large la fiche s'ouvre en PANNEAU latéral — le Gantt
-    // reste visible et manipulable. En étroit, la Dialog d'origine.
+    // Sur écran large la fiche s'ouvre en PANNEAU latéral — le Gantt reste
+    // visible et manipulable. En étroit, la Dialog d'origine.
     if (MediaQuery.of(context).size.width >= 1100) {
       setState(() => _panelTask = task);
       return;
@@ -240,7 +251,7 @@ class _GanttScreenState extends State<GanttScreen> {
         project: _project,
         task: task,
         sync: _sync,
-        onProjectUpdated: (p) => setState(() => _project = p),
+        onProjectUpdated: _onProjectUpdated,
       ),
     );
   }
@@ -286,190 +297,176 @@ class _GanttScreenState extends State<GanttScreen> {
       }
     });
     await _sync.saveProject(_project);
-    await _sync.saveProjectTasks(_project.id, _project.tasks);
+    await _saveTasks();
   }
-
-  Future<void> _addTask() async {
-    final task = await showAddTaskDialog(context, project: _project, sync: _sync);
-    if (task != null && mounted) setState(() {});
-  }
-
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final child = _buildScaffold(context);
-    if (_forceLight && isDark) {
-      return Theme(data: _kGanttLightTheme, child: Builder(builder: _buildScaffold));
-    }
-    return child;
-  }
-
-  Widget _buildScaffold(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: cs.surfaceContainerLowest,
-      appBar: AppBar(
-        backgroundColor: cs.surface,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: widget.onClose != null
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: 'Retour',
-                onPressed: widget.onClose,
-              )
-            : const BackButton(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_objective != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 2),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.flag_outlined, size: 12, color: cs.primary),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        _objective!.title.toUpperCase(),
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.primary),
-                      ),
-                    ),
-                    if (_objective!.kpiTarget != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        _objective!.kpiTarget!,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.75)),
-                      ),
-                    ],
-                    if (_objective!.horizonLabel != null) ...[
-                      const SizedBox(width: 6),
-                      Text(
-                        '· ${_objective!.horizonLabel!}',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.55)),
-                      ),
-                    ],
-                    if (_objectiveWeekPct != null) ...[
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 60,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(2),
-                          child: LinearProgressIndicator(
-                            value: _objectiveWeekPct,
-                            minHeight: 4,
-                            backgroundColor: cs.primary.withOpacity(.12),
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(cs.primary),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${(_objectiveWeekPct! * 100).round()}%',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary.withOpacity(0.75)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            Text(_project.title,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w700)),
-            if (_project.description != null && _project.description!.isNotEmpty)
-              Text(_project.description!,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: cs.onSurface.withOpacity(0.5),
-                      fontWeight: FontWeight.normal)),
-          ],
-        ),
-        actions: [
-          _ZoomHint(),
-          if (widget.domains.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.move_to_inbox_outlined),
-              tooltip: 'Changer de domaine',
-              onPressed: _changeDomain,
-            ),
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            tooltip: 'Exporter en PDF',
-            onPressed: _exportPdf,
-          ),
-          const SizedBox(width: 4),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        ),
-      ),
-      body: Column(
+    return Container(
+      color: kBBg,
+      child: Column(
         children: [
-          if (_project.status == 'draft') _buildDraftBanner(cs),
+          if (_project.status == 'draft') _buildDraftBanner(),
+          _GanttDashboard(project: _project),
           Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: Column(children: [
-                      _GanttDashboard(project: _project),
-                      Expanded(child: _GanttBody(
-                        project: _project,
-                        domainColor: _domainColor(),
-                        onTaskTap: _onTaskTap,
-                        forceLight: _forceLight,
-                        onToggleLight: () =>
-                            setState(() => _forceLight = !_forceLight),
-                        onAddTask: _addTask,
-                        onPhaseTap: _editPhase,
-                      )),
-                    ]),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _GanttBody(
+                    project: _project,
+                    domainColor: _domainColor(),
+                    leading: _objectiveLine(),
+                    onTaskTap: _onTaskTap,
+                    onPhaseTap: _editPhase,
+                    onShiftTask: _shiftTask,
+                    onResizeTask: _resizeTask,
+                    blocksByTask: _blocksByTask,
+                    onExportPdf: _exportPdf,
+                    onChangeDomain:
+                        widget.domains.isNotEmpty ? _changeDomain : null,
                   ),
-                  // Fiche tâche en panneau latéral (lot 3).
-                  if (_panelTask != null) ...[
-                    VerticalDivider(
-                        width: 1,
-                        color: cs.outlineVariant.withOpacity(0.4)),
-                    SizedBox(
-                      width: 420,
-                      child: _TaskDetailDialog(
-                        key: ValueKey(_panelTask!.id),
-                        project: _project,
-                        task: _panelTask!,
-                        sync: _sync,
-                        panel: true,
-                        onClose: () => setState(() => _panelTask = null),
-                        onProjectUpdated: (p) =>
-                            setState(() => _project = p),
-                      ),
+                ),
+                // Fiche tâche en panneau latéral.
+                if (_panelTask != null) ...[
+                  const VerticalDivider(width: 1, color: kBLine),
+                  SizedBox(
+                    width: 420,
+                    child: _TaskDetailDialog(
+                      key: ValueKey(_panelTask!.id),
+                      project: _project,
+                      task: _panelTask!,
+                      sync: _sync,
+                      panel: true,
+                      onClose: () => setState(() => _panelTask = null),
+                      onProjectUpdated: _onProjectUpdated,
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
+          ),
         ],
       ),
     );
   }
 
-  // Couleur d'accent du document = couleur du domaine du projet (sinon or).
+  void _snack(String msg, {String? actionLabel, VoidCallback? onAction}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: actionLabel == null ? 2000 : 5000),
+        action: actionLabel == null
+            ? null
+            : SnackBarAction(label: actionLabel, textColor: kBPrimary, onPressed: onAction!),
+      ));
+  }
+
+  Future<void> _saveTasks() async {
+    await _sync.saveProjectTasks(_project.id, _project.tasks);
+    widget.onChanged?.call();
+  }
+
+  // Mise à jour venant de la fiche de tâche (déjà enregistrée par elle).
+  void _onProjectUpdated(Project p) {
+    setState(() => _project = p);
+    widget.onChanged?.call();
+  }
+
+  /// Glisser une barre : décale début et échéance de [deltaDays]. Annulable.
+  Future<void> _shiftTask(ProjectTask t, int deltaDays) async {
+    if (deltaDays == 0) return;
+    final oldStart = t.startDate, oldEnd = t.endDate;
+    setState(() {
+      t.startDate = t.startDate.add(Duration(days: deltaDays));
+      if (t.endDate != null) t.endDate = t.endDate!.add(Duration(days: deltaDays));
+    });
+    await _saveTasks();
+    final n = deltaDays.abs();
+    _snack(
+      '${t.isMilestone ? 'Jalon' : 'Tâche'} ${deltaDays > 0 ? 'repoussé' : 'avancé'}'
+      '${t.isMilestone ? '' : 'e'} de $n jour${n > 1 ? 's' : ''}'
+      ' · ${_dmy(t.startDate)}${t.endDate != null ? ' → ${_dmy(t.endDate!)}' : ''}',
+      actionLabel: 'Annuler',
+      onAction: () async {
+        setState(() {
+          t.startDate = oldStart;
+          t.endDate = oldEnd;
+        });
+        await _saveTasks();
+      },
+    );
+  }
+
+  /// Tirer le bord droit : change l'échéance de [deltaDays] (jamais avant le
+  /// début). Annulable.
+  Future<void> _resizeTask(ProjectTask t, int deltaDays) async {
+    if (deltaDays == 0) return;
+    final oldEnd = t.endDate;
+    final start = DateTime(t.startDate.year, t.startDate.month, t.startDate.day);
+    final base = t.endDate == null
+        ? start.add(const Duration(days: 7))
+        : DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day);
+    var end = base.add(Duration(days: deltaDays));
+    if (end.isBefore(start)) end = start;
+    setState(() => t.endDate = end);
+    await _saveTasks();
+    _snack('Échéance : ${_dmy(end)}', actionLabel: 'Annuler', onAction: () async {
+      setState(() => t.endDate = oldEnd);
+      await _saveTasks();
+    });
+  }
+
+  // Ligne d'objectif stratégique (barre d'outils du Gantt), ou null.
+  Widget? _objectiveLine() {
+    final o = _objective;
+    if (o == null) return null;
+    const base = TextStyle(fontSize: 10, fontWeight: FontWeight.w600);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.flag_outlined, size: 12, color: kBPrimary),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            o.title.toUpperCase(),
+            overflow: TextOverflow.ellipsis,
+            style: base.copyWith(
+                fontWeight: FontWeight.w700, letterSpacing: 0.8, color: kBPrimary),
+          ),
+        ),
+        if (o.kpiTarget != null) ...[
+          const SizedBox(width: 6),
+          Text(o.kpiTarget!, style: base.copyWith(color: kBPrimary.withOpacity(.75))),
+        ],
+        if (o.horizonLabel != null) ...[
+          const SizedBox(width: 6),
+          Text('· ${o.horizonLabel!}', style: base.copyWith(color: kBPrimary.withOpacity(.55))),
+        ],
+        if (_objectiveWeekPct != null) ...[
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 60,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: _objectiveWeekPct,
+                minHeight: 4,
+                backgroundColor: kBPrimary.withOpacity(.12),
+                valueColor: const AlwaysStoppedAnimation<Color>(kBPrimary),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text('${(_objectiveWeekPct! * 100).round()}%',
+              style: base.copyWith(color: kBPrimary.withOpacity(.75))),
+        ],
+      ],
+    );
+  }
 
   // Couleur du domaine du projet, ou null s'il n'en a pas (fallback des barres Gantt).
   Color? _domainColor() {
@@ -478,38 +475,55 @@ class _GanttScreenState extends State<GanttScreen> {
     return cv != null ? Color(cv) : null;
   }
 
-  /// Bandeau brouillon : le projet reste hors économie d'Or et hors score tant
-  /// qu'il n'est pas validé. Le bouton bascule le projet en actif.
-  Widget _buildDraftBanner(ColorScheme cs) {
+  /// Bandeau brouillon : le projet reste hors suivi tant qu'il n'est pas
+  /// validé. Le bouton bascule le projet en actif.
+  Widget _buildDraftBanner() {
     return Container(
       width: double.infinity,
-      color: cs.tertiaryContainer.withOpacity(.5),
-      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      color: kBAttention.withOpacity(.10),
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
         children: [
-          Icon(Icons.edit_note_outlined, size: 18, color: cs.tertiary),
+          const Icon(Icons.edit_note_outlined, size: 18, color: kBAttention),
           const SizedBox(width: 8),
-          Expanded(
+          const Expanded(
             child: Text(
-              'Brouillon — modifie librement, hors or et hors score.',
-              style: TextStyle(fontSize: 13, color: cs.onTertiaryContainer),
+              'Brouillon — modifie librement, le projet n\'entre pas encore dans le suivi.',
+              style: TextStyle(fontSize: 13, color: kBText2),
             ),
           ),
           const SizedBox(width: 8),
-          FilledButton.tonalIcon(
+          TextButton.icon(
             onPressed: _validatePlan,
             icon: const Icon(Icons.rocket_launch_outlined, size: 16),
             label: const Text('Valider le plan'),
-            style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact),
+            style: TextButton.styleFrom(
+                foregroundColor: kBPrimary, visualDensity: VisualDensity.compact),
           ),
         ],
       ),
     );
   }
 
-  /// Valide le plan : brouillon → actif (entre dans l'économie d'Or + le score).
+  /// Valide le plan : brouillon → actif, après confirmation.
   Future<void> _validatePlan() async {
+    final n = _project.tasks.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Valider le plan ?'),
+        content: Text(
+            'Le projet « ${_project.title} » devient actif : ses $n tâche${n > 1 ? 's' : ''} '
+            'entrent dans le suivi (retards, programme, onglet Projets). '
+            'Tu pourras toujours modifier le plan ensuite.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Valider le plan')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     final today = DateTime.now();
     final todayMid = DateTime(today.year, today.month, today.day);
     setState(() {
@@ -519,501 +533,37 @@ class _GanttScreenState extends State<GanttScreen> {
       }
     });
     await _sync.saveProject(_project);
+    widget.onChanged?.call();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Plan validé — le projet est actif. 🚀')));
   }
 }
 
-// ── Dashboard stratégique ─────────────────────────────────────────────────────
-
-class _GanttDashboard extends StatefulWidget {
-  final Project project;
-  const _GanttDashboard({required this.project});
-
-  @override
-  State<_GanttDashboard> createState() => _GanttDashboardState();
-}
-
-class _GanttDashboardState extends State<_GanttDashboard> {
-  bool _expanded = false;
-
-  Project get p => widget.project;
-
-  // ── Calculs ────────────────────────────────────────────────────────────────
-
-  DateTime get _today => DateTime.now();
-
-  bool _isOverdue(ProjectTask t) =>
-      t.endDate != null &&
-      DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day)
-          .isBefore(DateTime(_today.year, _today.month, _today.day)) &&
-      t.status != 'done' &&
-      t.status != 'skipped';
-
-  List<ProjectTask> get _realTasks =>
-      p.tasks.where((t) => !t.isMilestone).toList();
-  List<ProjectTask> get _milestones =>
-      p.tasks.where((t) => t.isMilestone).toList();
-
-  int get _totalTasks => _realTasks.length;
-  int get _doneTasks => _realTasks.where((t) => t.status == 'done').length;
-  int get _overdueTasks => _realTasks.where(_isOverdue).length;
-  double get _globalPct =>
-      _totalTasks > 0 ? _doneTasks / _totalTasks : 0.0;
-
-  // Statut d'une phase
-  ({int done, int total, int overdue, String label, Color color})
-      _phaseStats(ProjectPhase phase) {
-    final tasks = _realTasks.where((t) => t.phaseId == phase.id).toList();
-    final done = tasks.where((t) => t.status == 'done').length;
-    final overdue = tasks.where(_isOverdue).length;
-    final today = _today;
-    final start = DateTime(phase.startDate.year, phase.startDate.month, phase.startDate.day);
-    final end = DateTime(phase.endDate.year, phase.endDate.month, phase.endDate.day);
-    final todayD = DateTime(today.year, today.month, today.day);
-
-    String label;
-    Color color;
-    if (tasks.isNotEmpty && done == tasks.length) {
-      label = 'Terminée';
-      color = Colors.green;
-    } else if (overdue > 0) {
-      label = '$overdue en retard';
-      color = Colors.orange;
-    } else if (todayD.isBefore(start)) {
-      label = 'À venir';
-      color = Colors.grey;
-    } else if (todayD.isAfter(end)) {
-      label = 'Dépassée';
-      color = Colors.red;
-    } else {
-      label = 'En cours';
-      color = Colors.blue;
-    }
-    return (done: done, total: tasks.length, overdue: overdue, label: label, color: color);
-  }
-
-  // Statut d'un jalon
-  ({Color color, String label, IconData icon}) _milestoneStatus(ProjectTask m) {
-    if (m.status == 'done') {
-      return (color: Colors.green, label: 'Atteint', icon: Icons.check_circle_outline);
-    }
-    if (_isOverdue(m)) {
-      return (color: Colors.red, label: 'En retard', icon: Icons.warning_amber_outlined);
-    }
-    return (color: Colors.grey, label: 'À venir', icon: Icons.radio_button_unchecked);
-  }
-
-  String _fmtDate(DateTime d) {
-    const months = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
-                    'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
-    return '${d.day} ${months[d.month - 1]}';
-  }
-
-  // ── Build ──────────────────────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      color: cs.surface,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Header cliquable ───────────────────────────────────────────
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.analytics_outlined, size: 16, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text('Suivi stratégique',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface)),
-                  const SizedBox(width: 12),
-                  // Résumé compact toujours visible
-                  _PillStat(
-                    label: '${(_globalPct * 100).round()}%',
-                    color: cs.primary,
-                  ),
-                  if (_overdueTasks > 0) ...[
-                    const SizedBox(width: 6),
-                    _PillStat(
-                      label: '$_overdueTasks en retard',
-                      color: Colors.orange,
-                    ),
-                  ],
-                  const Spacer(),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: cs.onSurface.withOpacity(0.4),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Contenu dépliable ──────────────────────────────────────────
-          if (_expanded) ...[
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Ligne 1 : stats globales
-                  Row(
-                    children: [
-                      _StatCard(
-                        label: 'Avancement',
-                        value: '$_doneTasks / $_totalTasks tâches',
-                        progress: _globalPct,
-                        color: cs.primary,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        label: 'En retard',
-                        value: '$_overdueTasks tâche${_overdueTasks != 1 ? 's' : ''}',
-                        color: _overdueTasks > 0 ? Colors.orange : Colors.green,
-                        icon: _overdueTasks > 0
-                            ? Icons.warning_amber_outlined
-                            : Icons.check_circle_outline,
-                      ),
-                      const SizedBox(width: 12),
-                      _StatCard(
-                        label: 'Jalons',
-                        value:
-                            '${_milestones.where((m) => m.status == 'done').length} / ${_milestones.length} atteint${_milestones.where((m) => m.status == 'done').length != 1 ? 's' : ''}',
-                        color: cs.secondary,
-                        icon: Icons.diamond_outlined,
-                      ),
-                    ],
-                  ),
-
-                  if (p.phases.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text('Par phase',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.onSurface.withOpacity(0.45))),
-                    const SizedBox(height: 8),
-                    // Grille des phases
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: p.phases.map((phase) {
-                        final s = _phaseStats(phase);
-                        final pct = s.total > 0 ? s.done / s.total : 0.0;
-                        return _PhaseChip(
-                          label: phase.label,
-                          done: s.done,
-                          total: s.total,
-                          pct: pct,
-                          statusLabel: s.label,
-                          statusColor: s.color,
-                          bgColor: _hex(phase.color, cs.primaryContainer),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-
-                  if (_milestones.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text('Jalons',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                            color: cs.onSurface.withOpacity(0.45))),
-                    const SizedBox(height: 6),
-                    ..._milestones.map((m) {
-                      final s = _milestoneStatus(m);
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            Icon(s.icon, size: 14, color: s.color),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(m.title,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: cs.onSurface.withOpacity(0.8))),
-                            ),
-                            Text(_fmtDate(m.startDate),
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: cs.onSurface.withOpacity(0.4))),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: s.color.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(s.label,
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: s.color)),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                  ],
-                ],
-              ),
-            ),
-          ],
-          Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Widgets du dashboard ──────────────────────────────────────────────────────
-
-class _PillStat extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _PillStat({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-      );
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-  final double? progress;
-  final IconData? icon;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.progress,
-    this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.2), width: 1),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(0.45),
-                    letterSpacing: 0.5)),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                if (icon != null) ...[
-                  Icon(icon, size: 14, color: color),
-                  const SizedBox(width: 5),
-                ],
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ],
-            ),
-            if (progress != null) ...[
-              const SizedBox(height: 6),
-              LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                borderRadius: BorderRadius.circular(2),
-                backgroundColor: color.withOpacity(0.12),
-                color: color,
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhaseChip extends StatelessWidget {
-  final String label;
-  final int done;
-  final int total;
-  final double pct;
-  final String statusLabel;
-  final Color statusColor;
-  final Color bgColor;
-
-  const _PhaseChip({
-    required this.label,
-    required this.done,
-    required this.total,
-    required this.pct,
-    required this.statusLabel,
-    required this.statusColor,
-    required this.bgColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final labelColor = _isDark(bgColor) || dark
-        ? Colors.white.withOpacity(0.92)
-        : _darken(bgColor);
-
-    return Container(
-      width: 180,
-      decoration: BoxDecoration(
-        color: dark ? bgColor.withOpacity(0.10) : bgColor.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: bgColor.withOpacity(0.5), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Header coloré (style phase Gantt) ─────────────────────────
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: bgColor.withOpacity(dark ? 0.35 : 0.5),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
-            ),
-            child: Text(label,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: labelColor),
-                overflow: TextOverflow.ellipsis),
-          ),
-          // ── Contenu ───────────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: LinearProgressIndicator(
-                        value: pct,
-                        minHeight: 4,
-                        borderRadius: BorderRadius.circular(2),
-                        backgroundColor: bgColor.withOpacity(0.2),
-                        color: bgColor,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text('$done/$total',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: bgColor)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Container(
-                      width: 6, height: 6,
-                      decoration: BoxDecoration(
-                          color: statusColor, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(statusLabel,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ZoomHint extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: 'Pincer / molette pour zoomer · Glisser pour naviguer',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.zoom_in_outlined,
-                size: 16, color: cs.onSurface.withOpacity(0.4)),
-            const SizedBox(width: 4),
-            Text('Pincer pour zoomer',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: cs.onSurface.withOpacity(0.4))),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Body avec InteractiveViewer ───────────────────────────────────────────────
+// ── Corps : barre d'outils + grille défilante à deux axes ─────────────────────
 
 class _GanttBody extends StatefulWidget {
   final Project project;
   final Color? domainColor;
+  final Widget? leading;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
-  final bool forceLight;
-  final VoidCallback onToggleLight;
-  final VoidCallback? onAddTask;
+  final void Function(ProjectTask, int deltaDays) onShiftTask;
+  final void Function(ProjectTask, int deltaDays) onResizeTask;
+  final Map<String, List<_DatedBlock>> blocksByTask;
+  final VoidCallback onExportPdf;
+  final VoidCallback? onChangeDomain;
   const _GanttBody({
     required this.project,
     this.domainColor,
+    this.leading,
     this.onTaskTap,
     this.onPhaseTap,
-    required this.forceLight,
-    required this.onToggleLight,
-    this.onAddTask,
+    required this.onShiftTask,
+    required this.onResizeTask,
+    this.blocksByTask = const {},
+    required this.onExportPdf,
+    this.onChangeDomain,
   });
 
   @override
@@ -1021,22 +571,135 @@ class _GanttBody extends StatefulWidget {
 }
 
 class _GanttBodyState extends State<_GanttBody> {
-  late final TransformationController _ctrl;
-  bool _dayView = true; // vue Jour par défaut (plus lisible que Semaine)
-  bool _exportingPng = false;
+  final _h = ScrollController();
+  final _v = ScrollController();
   final _gridKey = GlobalKey();
+  GanttScale _scale = GanttScale.day;
+  double _zoom = 1;
+  bool _exportingPng = false;
+  bool _initialScrollDone = false;
+  // Largeur visible de la zone de temps (hors colonne des libellés).
+  double _viewportW = 0;
+  // Glisser en cours sur une barre (aperçu avant enregistrement).
+  _BarDrag? _drag;
+  // Sections (phases) repliées — clé = id de phase, '_none' pour « Sans phase ».
+  final Set<String> _collapsed = {};
 
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TransformationController();
+  void _toggleGroup(String key) =>
+      setState(() => _collapsed.contains(key) ? _collapsed.remove(key) : _collapsed.add(key));
+
+  void _dragStart(ProjectTask t, bool resize) =>
+      setState(() => _drag = _BarDrag(t.id, resize));
+  void _dragUpdate(double dx) {
+    final d = _drag;
+    if (d == null) return;
+    setState(() => _drag = _BarDrag(d.taskId, d.resize, d.dx + dx));
   }
+  void _dragEnd(ProjectTask t) {
+    final d = _drag;
+    if (d == null) return;
+    final delta = (d.dx / _axis.dayW).round();
+    setState(() => _drag = null);
+    if (d.resize) {
+      widget.onResizeTask(t, delta);
+    } else {
+      widget.onShiftTask(t, delta);
+    }
+  }
+  void _dragCancel() => setState(() => _drag = null);
+
+  GanttAxis get _axis =>
+      GanttAxis.forProject(widget.project, scale: _scale, zoom: _zoom);
+
+  double get _hOffset => _h.hasClients ? _h.offset : 0;
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _h.dispose();
+    _v.dispose();
     super.dispose();
   }
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  void _jumpH(double target) {
+    if (!_h.hasClients) return;
+    _h.jumpTo(target.clamp(0, _h.position.maxScrollExtent).toDouble());
+  }
+
+  void _animateH(double target) {
+    if (!_h.hasClients) return;
+    _h.animateTo(target.clamp(0, _h.position.maxScrollExtent).toDouble(),
+        duration: const Duration(milliseconds: 260), curve: Curves.easeOut);
+  }
+
+  void _goToday() {
+    final axis = _axis;
+    final today = DateTime.now();
+    _animateH(axis.contains(today) ? axis.scrollToCenter(today, _viewportW) : 0);
+  }
+
+  void _fit() {
+    setState(() => _zoom = _axis.zoomToFit(_viewportW));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpH(0));
+  }
+
+  /// Zoome d'un facteur en gardant fixe le point de la grille sous [contentDx]
+  /// (abscisse dans le contenu défilant, colonne des libellés comprise).
+  void _zoomAt(double factor, double contentDx) {
+    final old = _zoom;
+    final nz = (old * factor).clamp(kGanttZoomMin, kGanttZoomMax).toDouble();
+    if (nz == old) return;
+    final timeX = contentDx - _kLabelW;
+    final viewX = timeX - _hOffset;
+    setState(() => _zoom = nz);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _jumpH(timeX * nz / old - viewX));
+  }
+
+  void _zoomCenter(double factor) =>
+      _zoomAt(factor, _kLabelW + _hOffset + _viewportW / 2);
+
+  void _setScale(GanttScale s) {
+    if (s == _scale) return;
+    final before = _axis;
+    final centerDate = before.dateAt(_hOffset + _viewportW / 2);
+    setState(() => _scale = s);
+    WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _jumpH(_axis.scrollToCenter(centerDate, _viewportW)));
+  }
+
+  // Molette : défilement par défaut (géré par les Scrollable ; Maj bascule
+  // l'axe nativement) ; Ctrl / ⌘ + molette = zoom autour du curseur ;
+  // pincement (PointerScaleEvent, émis aussi pour Ctrl + molette sur le web)
+  // = zoom. Le resolver garantit qu'un zoom ne défile pas en même temps.
+  void _onPointerSignal(PointerSignalEvent e) {
+    if (e is PointerScaleEvent) {
+      _zoomAt(e.scale, e.localPosition.dx);
+      return;
+    }
+    if (e is! PointerScrollEvent) return;
+    final keys = HardwareKeyboard.instance;
+    if (!keys.isControlPressed && !keys.isMetaPressed) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (ev) {
+      final dy = (ev as PointerScrollEvent).scrollDelta.dy;
+      if (dy == 0) return;
+      _zoomAt(dy < 0 ? 1.15 : 1 / 1.15, ev.localPosition.dx);
+    });
+  }
+
+  void _initialScroll() {
+    if (_initialScrollDone) return;
+    _initialScrollDone = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final axis = _axis;
+      final today = DateTime.now();
+      _jumpH(axis.contains(today) ? axis.scrollToCenter(today, _viewportW) : 0);
+    });
+  }
+
+  // ── Export PNG ─────────────────────────────────────────────────────────────
 
   Future<void> _exportPng() async {
     setState(() => _exportingPng = true);
@@ -1062,207 +725,291 @@ class _GanttBodyState extends State<_GanttBody> {
     }
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final project = widget.project;
-    final start = project.startDate;
-    final end = project.endDate ?? start.add(const Duration(days: 84));
-    final weeks = max(4, ((end.difference(start).inDays / 7).ceil() + 1));
+    final axis = _axis;
+    final hasPhases = widget.project.phases.isNotEmpty;
+    final headerH = (hasPhases ? _kPhaseH : 0.0) + _kMonthH + _kDaysH + 1;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final groups = _buildGroups(widget.project, today, _collapsed);
 
     return Column(
       children: [
-        // Toggle Semaine / Jour + thème + export PNG
-        Container(
-          color: cs.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          child: Row(
-            children: [
-              Tooltip(
-                message: 'Exporter en PNG (haute résolution)',
-                child: _exportingPng
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : IconButton(
-                        icon: const Icon(Icons.image_outlined, size: 18),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _exportPng,
-                      ),
-              ),
-              const Spacer(),
-              // Ajouter une tâche
-              if (widget.onAddTask != null)
-                Tooltip(
-                  message: 'Ajouter une tâche',
-                  child: IconButton(
-                    icon: const Icon(Icons.add_circle_outline, size: 18),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: widget.onAddTask,
-                  ),
-                ),
-              // Toggle clair/sombre
-              Tooltip(
-                message: widget.forceLight ? 'Mode sombre' : 'Mode clair',
-                child: IconButton(
-                  icon: Icon(
-                    Theme.of(context).brightness == Brightness.dark && widget.forceLight
-                        ? Icons.dark_mode_outlined
-                        : Icons.light_mode_outlined,
-                    size: 18,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: widget.onToggleLight,
-                ),
-              ),
-              const SizedBox(width: 8),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment<bool>(value: false, label: Text('Semaine')),
-                  ButtonSegment<bool>(value: true, label: Text('Jour')),
-                ],
-                selected: {_dayView},
-                onSelectionChanged: (s) => setState(() => _dayView = s.first),
-                style: ButtonStyle(
-                  textStyle: WidgetStateProperty.all(
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  padding: WidgetStateProperty.all(
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Divider(height: 1, color: cs.outlineVariant.withOpacity(0.4)),
-        // Grille
+        _toolbar(),
+        const Divider(height: 1, color: kBLine),
         Expanded(
-          child: Stack(
-            children: [
-              InteractiveViewer(
-                transformationController: _ctrl,
-                constrained: false,
-                minScale: 0.25,
-                maxScale: 4.0,
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: RepaintBoundary(
-                    key: _gridKey,
-                    child: _GanttGrid(
-                      project: widget.project,
-                      domainColor: widget.domainColor,
-                      projectStart: start,
-                      totalWeeks: weeks,
-                      dayView: _dayView,
-                      onTaskTap: widget.onTaskTap,
-                      onPhaseTap: widget.onPhaseTap,
+          child: LayoutBuilder(builder: (ctx, box) {
+            _viewportW = max(0, box.maxWidth - _kLabelW);
+            _initialScroll();
+            return Stack(
+              children: [
+                // ── Contenu défilant (grille complète, exportable en PNG) ──
+                Scrollbar(
+                  controller: _h,
+                  thumbVisibility: true,
+                  notificationPredicate: (n) =>
+                      n.metrics.axis == Axis.horizontal,
+                  child: Scrollbar(
+                    controller: _v,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _v,
+                      child: SingleChildScrollView(
+                        controller: _h,
+                        scrollDirection: Axis.horizontal,
+                        child: Listener(
+                          onPointerSignal: _onPointerSignal,
+                          behavior: HitTestBehavior.translucent,
+                          child: RepaintBoundary(
+                            key: _gridKey,
+                            child: _GanttGrid(
+                              project: widget.project,
+                              axis: axis,
+                              groups: groups,
+                              domainColor: widget.domainColor,
+                              headerH: headerH,
+                              onTaskTap: widget.onTaskTap,
+                              onPhaseTap: widget.onPhaseTap,
+                              onToggleGroup: _toggleGroup,
+                              blocksByTask: widget.blocksByTask,
+                              today: today,
+                              drag: _drag,
+                              onDragStart: _dragStart,
+                              onDragUpdate: _dragUpdate,
+                              onDragEnd: _dragEnd,
+                              onDragCancel: _dragCancel,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              // ── Colonne des libellés FIGÉE (lot 3) ────────────────────────
-              // Quand la grille est panoramiquée vers la gauche (tx < 0), une
-              // copie de la grille, clippée à la zone des libellés et calée
-              // sur la même transformation verticale/zoom, reste épinglée au
-              // bord gauche — les noms de tâches ne sortent plus de l'écran.
-              AnimatedBuilder(
-                animation: _ctrl,
-                builder: (ctx, _) {
-                  final m = _ctrl.value;
-                  final tx = m.storage[12];
-                  final ty = m.storage[13];
-                  final scale = m.storage[0];
-                  if (tx >= -32 * scale) return const SizedBox.shrink();
-                  final w = (32 + _kLabelW) * scale;
-                  return Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: w,
-                    child: ClipRect(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Theme.of(ctx).scaffoldBackgroundColor,
-                          border: Border(
-                            right: BorderSide(
-                                color: cs.outlineVariant.withOpacity(.5)),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(.18),
-                              blurRadius: 8,
-                              offset: const Offset(2, 0),
-                            ),
-                          ],
-                        ),
+                // ── En-tête figé (suit le défilement horizontal) ──────────
+                Positioned(
+                  left: _kLabelW,
+                  right: 0,
+                  top: 0,
+                  height: headerH,
+                  child: ClipRect(
+                    child: AnimatedBuilder(
+                      animation: _h,
+                      builder: (_, __) => Transform.translate(
+                        offset: Offset(-_hOffset, 0),
                         child: OverflowBox(
                           alignment: Alignment.topLeft,
                           minWidth: 0,
-                          minHeight: 0,
                           maxWidth: double.infinity,
-                          maxHeight: double.infinity,
-                          child: Transform(
-                            alignment: Alignment.topLeft,
-                            transform: Matrix4.identity()
-                              ..translate(0.0, ty)
-                              ..scale(scale),
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: _GanttGrid(
-                                project: widget.project,
-                                domainColor: widget.domainColor,
-                                projectStart: start,
-                                totalWeeks: weeks,
-                                dayView: _dayView,
-                                onTaskTap: widget.onTaskTap,
-                                onPhaseTap: widget.onPhaseTap,
-                              ),
-                            ),
+                          child: _GanttTimeHeader(
+                            project: widget.project,
+                            axis: axis,
+                            onPhaseTap: widget.onPhaseTap,
                           ),
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-            ],
-          ),
+                  ),
+                ),
+                // ── Colonne des libellés figée (suit le défilement vertical)
+                Positioned(
+                  left: 0,
+                  top: headerH,
+                  bottom: 0,
+                  width: _kLabelW,
+                  child: ClipRect(
+                    child: AnimatedBuilder(
+                      animation: _v,
+                      builder: (_, __) => Transform.translate(
+                        offset: Offset(0, -(_v.hasClients ? _v.offset : 0.0)),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minHeight: 0,
+                          maxHeight: double.infinity,
+                          child: _GanttLabelColumn(
+                            groups: groups,
+                            onTaskTap: widget.onTaskTap,
+                            onToggleGroup: _toggleGroup,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // ── Coin fixe ─────────────────────────────────────────────
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  width: _kLabelW,
+                  height: headerH,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: kBSurface,
+                      border: Border(
+                          right: BorderSide(color: kBLine),
+                          bottom: BorderSide(color: kBLine)),
+                    ),
+                    alignment: Alignment.bottomLeft,
+                    padding: const EdgeInsets.only(left: 16, bottom: 6),
+                    child: Text(
+                      '${widget.project.tasks.length} tâche${widget.project.tasks.length > 1 ? 's' : ''}'
+                      ' · ${axis.totalWeeks} sem.',
+                      style: const TextStyle(fontSize: 11, color: kBText4),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }),
         ),
       ],
     );
   }
+
+  Widget _toolbar() {
+    final leading = widget.leading;
+    return Container(
+      color: kBSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          if (leading != null) Expanded(child: leading) else const Spacer(),
+          const SizedBox(width: 12),
+          _toolBtn(Icons.today_outlined, 'Aujourd\'hui — centrer sur la colonne du jour',
+              _goToday),
+          _toolBtn(Icons.fit_screen_outlined, 'Ajuster au projet — toute la plage dans la largeur',
+              _fit),
+          const SizedBox(width: 6),
+          _toolBtn(Icons.remove, 'Zoom arrière (Ctrl / ⌘ + molette)',
+              _zoom > kGanttZoomMin ? () => _zoomCenter(1 / 1.25) : null),
+          SizedBox(
+            width: 40,
+            child: Text('${(_zoom * 100).round()} %',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11, color: kBText3)),
+          ),
+          _toolBtn(Icons.add, 'Zoom avant (Ctrl / ⌘ + molette)',
+              _zoom < kGanttZoomMax ? () => _zoomCenter(1.25) : null),
+          const SizedBox(width: 10),
+          SegmentedButton<GanttScale>(
+            segments: const [
+              ButtonSegment(value: GanttScale.week, label: Text('Semaine')),
+              ButtonSegment(value: GanttScale.day, label: Text('Jour')),
+            ],
+            selected: {_scale},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => _setScale(s.first),
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStateProperty.all(
+                const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              padding: WidgetStateProperty.all(
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected) ? kBBg : kBText2),
+              backgroundColor: WidgetStateProperty.resolveWith((s) =>
+                  s.contains(WidgetState.selected) ? kBPrimary : Colors.transparent),
+              side: WidgetStateProperty.all(const BorderSide(color: kBLine)),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _exportingPng
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: kBPrimary)),
+                )
+              : PopupMenuButton<String>(
+                  tooltip: 'Plus',
+                  icon: const Icon(Icons.more_horiz, size: 18, color: kBText2),
+                  color: kBRaised,
+                  onSelected: (v) {
+                    switch (v) {
+                      case 'png':
+                        _exportPng();
+                      case 'pdf':
+                        widget.onExportPdf();
+                      case 'domain':
+                        widget.onChangeDomain?.call();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    _menuItem('png', Icons.image_outlined, 'Exporter en PNG'),
+                    _menuItem('pdf', Icons.picture_as_pdf_outlined, 'Exporter en PDF'),
+                    if (widget.onChangeDomain != null)
+                      _menuItem('domain', Icons.move_to_inbox_outlined, 'Changer de domaine'),
+                  ],
+                ),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<String> _menuItem(String v, IconData icon, String label) =>
+      PopupMenuItem(
+        value: v,
+        height: 38,
+        child: Row(children: [
+          Icon(icon, size: 16, color: kBText2),
+          const SizedBox(width: 10),
+          Text(label, style: const TextStyle(fontSize: 13, color: kBText)),
+        ]),
+      );
+
+  Widget _toolBtn(IconData icon, String tooltip, VoidCallback? onTap) => Tooltip(
+        message: tooltip,
+        child: IconButton(
+          icon: Icon(icon, size: 18),
+          color: kBText2,
+          disabledColor: kBText4.withOpacity(.5),
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap,
+        ),
+      );
 }
 
-// ── Grille principale ─────────────────────────────────────────────────────────
+// ── Grille complète (contenu défilant) ───────────────────────────────────────
 
 class _GanttGrid extends StatelessWidget {
   final Project project;
+  final GanttAxis axis;
+  final List<_GanttGroup> groups;
   final Color? domainColor;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final bool dayView;
+  final double headerH;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
+  final void Function(String key) onToggleGroup;
+  final Map<String, List<_DatedBlock>> blocksByTask;
+  final DateTime today;
+  final _BarDrag? drag;
+  final void Function(ProjectTask, bool resize) onDragStart;
+  final void Function(double dx) onDragUpdate;
+  final void Function(ProjectTask) onDragEnd;
+  final VoidCallback onDragCancel;
 
   const _GanttGrid({
     required this.project,
+    required this.axis,
+    required this.groups,
     this.domainColor,
-    required this.projectStart,
-    required this.totalWeeks,
-    this.dayView = false,
+    required this.headerH,
     this.onTaskTap,
     this.onPhaseTap,
+    required this.onToggleGroup,
+    required this.blocksByTask,
+    required this.today,
+    this.drag,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.onDragCancel,
   });
-
-  int get totalDays {
-    final end = project.endDate ?? projectStart.add(const Duration(days: 84));
-    return end.difference(projectStart).inDays + 7;
-  }
-
-  double get timeW => dayView ? totalDays * _kDayCellW : totalWeeks * _kCellW;
-  double get totalW => _kLabelW + timeW;
 
   // Couleur de repli d'une barre quand la tâche n'a pas de couleur propre :
   // couleur de sa phase → couleur du domaine → violet.
@@ -1274,549 +1021,820 @@ class _GanttGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final groups = _buildGroups(project.tasks);
+    final timeW = axis.width;
+    final totalW = _kLabelW + timeW;
 
-    // Repère « aujourd'hui » : colonne du jour surlignée (cf. vue Focus).
-    final now = DateTime.now();
-    final todayD = DateTime(now.year, now.month, now.day);
-    final offsetDays = todayD.difference(projectStart).inDays;
-    double? todayLeft;
-    double todayW = 0;
-    if (dayView) {
-      if (offsetDays >= 0 && offsetDays < totalDays) {
-        todayLeft = _kLabelW + offsetDays * _kDayCellW;
-        todayW = _kDayCellW;
-      }
-    } else {
-      final wi = offsetDays ~/ 7;
-      if (offsetDays >= 0 && wi < totalWeeks) {
-        todayLeft = _kLabelW + wi * _kCellW;
-        todayW = _kCellW;
-      }
-    }
-
-    final column = Column(
+    final rows = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Phase header ──────────────────────────────────────
-        _PhaseHeaderRow(
-          project: project,
-          projectStart: projectStart,
-          totalWeeks: totalWeeks,
-          totalDays: totalDays,
-          dayView: dayView,
-          timeW: timeW,
-          onPhaseTap: onPhaseTap,
-        ),
-        // ── Week header ───────────────────────────────────────
-        _WeekHeaderRow(
-          projectStart: projectStart,
-          totalWeeks: totalWeeks,
-          totalDays: totalDays,
-          dayView: dayView,
-          timeW: timeW,
-        ),
-        // ── Séparateur ────────────────────────────────────────
-        Builder(builder: (ctx) => Container(
-          height: 1, width: totalW,
-          color: Theme.of(ctx).colorScheme.outlineVariant.withOpacity(0.5),
-        )),
-        // ── Groupes et tâches ─────────────────────────────────
         for (final group in groups) ...[
-          if (group.label.isNotEmpty)
-            _GroupRow(
-                label: group.label, timeW: timeW, totalW: totalW),
-          for (final task in group.tasks)
-            _TaskRow(
-              task: task,
-              fallbackColor: _taskFallbackColor(task),
-              projectStart: projectStart,
-              totalWeeks: totalWeeks,
-              totalDays: totalDays,
-              dayView: dayView,
-              timeW: timeW,
-              onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
+          if (group.showHeader)
+            SizedBox(
+              height: _kGroupH,
+              width: totalW,
+              child: Row(children: [
+                _GroupLabelCell(group: group, onTap: () => onToggleGroup(group.key)),
+                _GroupBarCell(
+                    group: group,
+                    axis: axis,
+                    color: _hex(group.phase?.color, domainColor ?? kBText4)),
+              ]),
+            ),
+          if (!group.collapsed)
+            for (final task in group.tasks)
+            SizedBox(
+              height: _kRowH,
+              width: totalW,
+              child: Row(children: [
+                _TaskLabelCell(
+                    task: task,
+                    overdue: isTaskOverdue(task, today),
+                    onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
+                _TaskBarCell(
+                  task: task,
+                  axis: axis,
+                  fallbackColor: _taskFallbackColor(task),
+                  overdue: isTaskOverdue(task, today),
+                  blocks: blocksByTask[task.id] ?? const [],
+                  drag: drag?.taskId == task.id ? drag : null,
+                  onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
+                  onDragStart: (resize) => onDragStart(task, resize),
+                  onDragUpdate: onDragUpdate,
+                  onDragEnd: () => onDragEnd(task),
+                  onDragCancel: onDragCancel,
+                ),
+              ]),
             ),
         ],
-        // Padding bas
         SizedBox(height: 24, width: totalW),
       ],
     );
 
-    if (todayLeft == null) return column;
-    return Stack(
-      children: [
-        column,
-        Positioned(
-          left: todayLeft,
-          top: 0,
-          bottom: 0,
-          width: todayW,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _kTealGrid.withOpacity(0.05),
-                border: Border(
-                  left: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
-                  right: BorderSide(color: _kTealGrid.withOpacity(0.20), width: 1),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ── Phase header ──────────────────────────────────────────────────────────────
-
-class _PhaseHeaderRow extends StatelessWidget {
-  final Project project;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-  final void Function(ProjectPhase)? onPhaseTap;
-
-  const _PhaseHeaderRow({
-    required this.project,
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-    this.onPhaseTap,
-  });
-
-  double _toX(int inDays) =>
-      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
-
-  @override
-  Widget build(BuildContext context) {
-    if (project.phases.isEmpty) return const SizedBox.shrink();
-
-    return SizedBox(
-      height: _kPhaseH,
-      width: _kLabelW + timeW,
-      child: Row(
+    return Container(
+      color: kBBg,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cellule vide (align avec les labels)
-          const SizedBox(width: _kLabelW),
-          // Stack des phases
           SizedBox(
-            width: timeW,
-            height: _kPhaseH,
-            child: Stack(
-              children: project.phases.map((phase) {
-                final left = max(
-                    0.0,
-                    _toX(phase.startDate.difference(projectStart).inDays));
-                final right = min(
-                    timeW,
-                    _toX(phase.endDate.difference(projectStart).inDays));
-                final w = max(0.0, right - left);
-                final bg = _hex(phase.color, const Color(0xFFEEEDFE));
-                final fg = _darken(bg);
-
-                return Positioned(
-                  left: left,
-                  top: 0,
-                  width: w,
-                  height: _kPhaseH,
-                  child: GestureDetector(
-                    onTap: onPhaseTap != null ? () => onPhaseTap!(phase) : null,
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 1),
-                      decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(4)),
-                      ),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              phase.label,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: fg),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (onPhaseTap != null) ...[
-                            const SizedBox(width: 3),
-                            Icon(Icons.edit_outlined, size: 9, color: fg.withOpacity(.6)),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
+            height: headerH,
+            width: totalW,
+            child: Row(children: [
+              const SizedBox(width: _kLabelW),
+              _GanttTimeHeader(project: project, axis: axis, onPhaseTap: onPhaseTap),
+            ]),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Week header ───────────────────────────────────────────────────────────────
-
-class _WeekHeaderRow extends StatelessWidget {
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-
-  const _WeekHeaderRow({
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-  });
-
-  String _weekLabel(int i) {
-    final d = projectStart.add(Duration(days: i * 7));
-    return '${d.day}/${d.month}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final grid = _gridColor(context);
-    return SizedBox(
-      height: _kWeekH,
-      width: _kLabelW + timeW,
-      child: Row(
-        children: [
-          const SizedBox(width: _kLabelW),
-          if (dayView)
-            ...List.generate(totalDays, (i) {
-              final d = projectStart.add(Duration(days: i));
-              final isWeekend = d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
-              return SizedBox(
-                width: _kDayCellW,
-                height: _kWeekH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isWeekend ? const Color(0x11AAAAAA) : null,
-                    border: Border(
-                      left: BorderSide(color: grid, width: 1),
-                      bottom: BorderSide(color: grid, width: 1),
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${d.day}',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500,
-                      color: isWeekend
-                          ? const Color(0xFFAAAAAA)
-                          : const Color(0xFF888888),
-                    ),
-                  ),
-                ),
-              );
-            })
-          else
-            ...List.generate(totalWeeks, (i) {
-              return SizedBox(
-                width: _kCellW,
-                height: _kWeekH,
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      left: BorderSide(color: grid, width: 1),
-                      bottom: BorderSide(color: grid, width: 1),
-                    ),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    _weekLabel(i),
-                    style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF888888)),
-                  ),
-                ),
-              );
-            }),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Ligne de groupe ───────────────────────────────────────────────────────────
-
-class _GroupRow extends StatelessWidget {
-  final String label;
-  final double timeW;
-  final double totalW;
-
-  const _GroupRow(
-      {required this.label, required this.timeW, required this.totalW});
-
-  @override
-  Widget build(BuildContext context) {
-    return Builder(builder: (context) {
-      final cs = Theme.of(context).colorScheme;
-      final groupBg = cs.surfaceContainerHighest.withOpacity(0.5);
-      return SizedBox(
-        height: _kGroupH,
-        width: totalW,
-        child: Container(
-          color: groupBg,
-          child: Row(
+          Stack(
             children: [
-              SizedBox(
-                width: _kLabelW,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4, right: 8),
-                  child: Text(
-                    label.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface.withOpacity(0.5),
-                      letterSpacing: 0.8,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+              rows,
+              // Week-ends ombrés (vue Jour) et colonne d'aujourd'hui.
+              Positioned.fill(
+                left: _kLabelW,
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: _ColumnsPainter(axis: axis, today: today),
                   ),
-                ),
-              ),
-              Container(
-                width: timeW,
-                height: _kGroupH,
-                decoration: BoxDecoration(
-                  color: groupBg,
-                  border: Border(
-                      bottom: BorderSide(
-                          color: cs.outlineVariant.withOpacity(0.4),
-                          width: 1)),
                 ),
               ),
             ],
           ),
-        ),
-      );
-    });
+        ],
+      ),
+    );
   }
 }
 
-// ── Ligne de tâche ────────────────────────────────────────────────────────────
+/// Fond de la zone de temps : week-ends (vue Jour) + colonne d'aujourd'hui.
+class _ColumnsPainter extends CustomPainter {
+  final GanttAxis axis;
+  final DateTime today;
+  _ColumnsPainter({required this.axis, required this.today});
 
-class _TaskRow extends StatelessWidget {
-  final ProjectTask task;
-  final Color fallbackColor;
-  final DateTime projectStart;
-  final int totalWeeks;
-  final int totalDays;
-  final bool dayView;
-  final double timeW;
-  final VoidCallback? onTap;
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (axis.scale == GanttScale.day && axis.dayW >= 6) {
+      final we = Paint()..color = Colors.white.withOpacity(.025);
+      for (var i = 0; i < axis.totalDays; i++) {
+        final d = axis.rangeStart.add(Duration(days: i));
+        if (d.weekday >= DateTime.saturday) {
+          canvas.drawRect(Rect.fromLTWH(i * axis.dayW, 0, axis.dayW, size.height), we);
+        }
+      }
+    }
+    if (axis.contains(today)) {
+      final x = axis.x(today);
+      canvas.drawRect(Rect.fromLTWH(x, 0, axis.dayW, size.height),
+          Paint()..color = kBPrimary.withOpacity(.07));
+      final line = Paint()
+        ..color = kBPrimary.withOpacity(.35)
+        ..strokeWidth = 1;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), line);
+      canvas.drawLine(Offset(x + axis.dayW, 0), Offset(x + axis.dayW, size.height), line);
+    }
+  }
 
-  const _TaskRow({
-    required this.task,
-    required this.fallbackColor,
-    required this.projectStart,
-    required this.totalWeeks,
-    required this.totalDays,
-    required this.dayView,
-    required this.timeW,
-    this.onTap,
-  });
+  @override
+  bool shouldRepaint(_ColumnsPainter old) =>
+      old.axis.dayW != axis.dayW ||
+      old.axis.rangeStart != axis.rangeStart ||
+      old.axis.totalDays != axis.totalDays ||
+      old.axis.scale != axis.scale ||
+      old.today != today;
+}
+
+// ── En-tête de la zone de temps : phases · mois · jours ou semaines ──────────
+
+class _GanttTimeHeader extends StatelessWidget {
+  final Project project;
+  final GanttAxis axis;
+  final void Function(ProjectPhase)? onPhaseTap;
+  const _GanttTimeHeader({required this.project, required this.axis, this.onPhaseTap});
 
   @override
   Widget build(BuildContext context) {
-    final isDone = task.status == 'done';
-
-    return SizedBox(
-      height: _kRowH,
-      width: _kLabelW + timeW,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final timeW = axis.width;
+    return Container(
+      width: timeW,
+      decoration: const BoxDecoration(
+        color: kBSurface,
+        border: Border(bottom: BorderSide(color: kBLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label (cliquable)
-          SizedBox(
-            width: _kLabelW,
-            height: _kRowH,
-            child: InkWell(
-              onTap: onTap,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(
-                      bottom: BorderSide(color: _gridColor(context), width: 1)),
-                ),
-                alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.only(left: 16, right: 8),
-                child: Row(
-                  children: [
-                    if (task.isMilestone)
-                      const Icon(Icons.diamond_outlined,
-                          size: 12, color: Color(0xFF888888))
-                    else
-                      Icon(
-                        isDone
-                            ? Icons.check_circle_outline
-                            : Icons.radio_button_unchecked,
-                        size: 12,
-                        color: isDone ? Colors.green : const Color(0xFFCCCCCC),
-                      ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        task.title,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDone
-                              ? Theme.of(context).colorScheme.onSurface.withOpacity(0.35)
-                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.85),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (task.stepsTotal > 0)
-                      Text(
-                        '${task.stepsDone}/${task.stepsTotal}',
-                        style: const TextStyle(
-                            fontSize: 9, color: Color(0xFFAAAAAA)),
-                      ),
-                    if (onTap != null)
-                      const Icon(Icons.chevron_right,
-                          size: 12, color: Color(0xFFCCCCCC)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Barre Gantt
-          SizedBox(
-            width: timeW,
-            height: _kRowH,
-            child: Stack(
-              children: [
-                // Fond épuré : séparateur de ligne subtil, sans lignes verticales
-                ..._buildGridLines(context, timeW),
-                // Bar ou Milestone
-                if (task.isMilestone)
-                  _buildMilestone()
-                else
-                  _buildBar(isDone),
-              ],
-            ),
-          ),
+          if (project.phases.isNotEmpty) _phasesRow(timeW),
+          _monthsRow(timeW, today),
+          if (axis.scale == GanttScale.day) _daysRow(today) else _weeksRow(today),
         ],
       ),
     );
   }
 
-  List<Widget> _buildGridLines(BuildContext context, double timeW) {
-    // Style épuré (cf. vue Focus) : uniquement un séparateur de ligne discret,
-    // pas de lignes verticales de colonnes.
+  Widget _phasesRow(double timeW) {
+    return SizedBox(
+      height: _kPhaseH,
+      width: timeW,
+      child: Stack(
+        children: project.phases.map((phase) {
+          final left = max(0.0, axis.x(phase.startDate));
+          final right = min(timeW, axis.x(phase.endDate.add(const Duration(days: 1))));
+          final w = max(0.0, right - left);
+          final c = _hex(phase.color, kBPrimaryDark);
+          final fg = _onDark(c);
+          return Positioned(
+            left: left,
+            top: 3,
+            width: w,
+            height: _kPhaseH - 5,
+            child: Tooltip(
+              message: '${phase.label}\n${_dmy(phase.startDate)} → ${_dmy(phase.endDate)}'
+                  '${onPhaseTap != null ? '\nCliquer pour renommer' : ''}',
+              waitDuration: const Duration(milliseconds: 500),
+              child: MouseRegion(
+                cursor: onPhaseTap != null ? SystemMouseCursors.click : MouseCursor.defer,
+                child: GestureDetector(
+                  onTap: onPhaseTap != null ? () => onPhaseTap!(phase) : null,
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 2),
+                    decoration: BoxDecoration(
+                      color: c.withOpacity(.22),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border(left: BorderSide(color: c, width: 2)),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      phase.label,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: fg),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _monthsRow(double timeW, DateTime today) {
+    final segs = axis.monthSegments();
+    return SizedBox(
+      height: _kMonthH,
+      width: timeW,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Row(
+            children: [
+              for (final s in segs)
+                Container(
+                  width: s.days * axis.dayW,
+                  height: _kMonthH,
+                  decoration: const BoxDecoration(
+                    border: Border(left: BorderSide(color: kBLine)),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Text(
+                    s.days * axis.dayW < 60 ? '' : s.label,
+                    style: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w600, color: kBText2),
+                    overflow: TextOverflow.clip,
+                    softWrap: false,
+                    maxLines: 1,
+                  ),
+                ),
+            ],
+          ),
+          if (axis.contains(today))
+            Positioned(
+              left: axis.x(today) + axis.dayW / 2 - 14,
+              top: 3,
+              child: Container(
+                width: 28,
+                padding: const EdgeInsets.symmetric(vertical: 1),
+                decoration: BoxDecoration(
+                  color: kBPrimary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                alignment: Alignment.center,
+                child: const Text('auj.',
+                    style: TextStyle(
+                        fontSize: 9, fontWeight: FontWeight.w700, color: kBBg)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _daysRow(DateTime today) {
+    final w = axis.dayW;
+    // En zoom arrière, n'étiqueter que les lundis pour rester lisible.
+    final every = w >= 18 ? 1 : 7;
+    return SizedBox(
+      height: _kDaysH,
+      child: Row(
+        children: List.generate(axis.totalDays, (i) {
+          final d = axis.rangeStart.add(Duration(days: i));
+          final weekend = d.weekday >= DateTime.saturday;
+          final isToday = d == today;
+          final labelled = every == 1 || d.weekday == DateTime.monday;
+          return Container(
+            width: w,
+            height: _kDaysH,
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                    color: d.weekday == DateTime.monday ? kBLine : Colors.transparent),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: !labelled
+                ? null
+                : isToday
+                    ? Container(
+                        width: min(w - 2, 22),
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: kBPrimary.withOpacity(.2),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text('${d.day}',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: kBPrimary)),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('${d.day}',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: weekend ? kBText4 : kBText3)),
+                          if (w >= 24)
+                            Text(kGanttWeekdayInitials[d.weekday - 1],
+                                style: TextStyle(
+                                    fontSize: 8,
+                                    color: (weekend ? kBText4 : kBText3).withOpacity(.7))),
+                        ],
+                      ),
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _weeksRow(DateTime today) {
+    final w = axis.dayW * 7;
+    return SizedBox(
+      height: _kDaysH,
+      child: Row(
+        children: axis.weekStarts().map((monday) {
+          final isCurrent = !today.isBefore(monday) &&
+              today.isBefore(monday.add(const Duration(days: 7)));
+          return Container(
+            width: w,
+            height: _kDaysH,
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: kBLine)),
+            ),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(left: 6),
+            child: Text(
+              w < 48 ? '${monday.day}' : ganttWeekLabel(monday),
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  color: isCurrent ? kBPrimary : kBText3),
+              overflow: TextOverflow.clip,
+              softWrap: false,
+              maxLines: 1,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ── Colonne des libellés (overlay figé) ───────────────────────────────────────
+
+class _GanttLabelColumn extends StatelessWidget {
+  final List<_GanttGroup> groups;
+  final void Function(ProjectTask)? onTaskTap;
+  final void Function(String key) onToggleGroup;
+  const _GanttLabelColumn(
+      {required this.groups, this.onTaskTap, required this.onToggleGroup});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: _kLabelW,
+      decoration: const BoxDecoration(
+        color: kBBg,
+        border: Border(right: BorderSide(color: kBLine)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final group in groups) ...[
+            if (group.showHeader)
+              SizedBox(
+                  height: _kGroupH,
+                  child: _GroupLabelCell(
+                      group: group, onTap: () => onToggleGroup(group.key))),
+            if (!group.collapsed)
+              for (final task in group.tasks)
+                SizedBox(
+                  height: _kRowH,
+                  child: _TaskLabelCell(
+                      task: task,
+                      overdue: isTaskOverdue(task, DateTime.now()),
+                      onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ── Cellules ──────────────────────────────────────────────────────────────────
+
+class _GroupLabelCell extends StatelessWidget {
+  final _GanttGroup group;
+  final VoidCallback onTap;
+  const _GroupLabelCell({required this.group, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final g = group;
+    return Tooltip(
+      message: g.collapsed ? 'Déplier la phase' : 'Replier la phase',
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          width: _kLabelW,
+          height: _kGroupH,
+          color: kBRaised.withOpacity(.45),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 6, right: 8),
+          child: Row(children: [
+            Icon(g.collapsed ? Icons.chevron_right : Icons.expand_more, size: 14, color: kBText3),
+            const SizedBox(width: 2),
+            Expanded(
+              child: Text(
+                g.label.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w600, color: kBText3, letterSpacing: 0.8),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (g.overdue > 0) ...[
+              Text('${g.overdue} en retard',
+                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: kBAlert)),
+              const SizedBox(width: 6),
+            ],
+            Text('${g.done}/${g.total}',
+                style: const TextStyle(fontSize: 10, color: kBText4)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Zone de temps d'une ligne de phase : trait résumé de la première à la
+/// dernière tâche (lisible même replié) et progression.
+class _GroupBarCell extends StatelessWidget {
+  final _GanttGroup group;
+  final GanttAxis axis;
+  final Color color;
+  const _GroupBarCell({required this.group, required this.axis, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final span = group.span;
+    final pct = group.total == 0 ? 0.0 : group.done / group.total;
+    return Container(
+      width: axis.width,
+      height: _kGroupH,
+      decoration: BoxDecoration(
+        color: kBRaised.withOpacity(.45),
+        border: const Border(bottom: BorderSide(color: kBLine)),
+      ),
+      child: span == null
+          ? null
+          : Stack(children: [
+              Positioned(
+                left: axis.x(span.start),
+                width: max(4.0, axis.x(span.end.add(const Duration(days: 1))) - axis.x(span.start)),
+                top: _kGroupH / 2 - 3,
+                height: 6,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: Stack(children: [
+                    Positioned.fill(child: ColoredBox(color: color.withOpacity(.25))),
+                    FractionallySizedBox(
+                        widthFactor: pct.clamp(0.0, 1.0),
+                        child: ColoredBox(color: color.withOpacity(.85))),
+                  ]),
+                ),
+              ),
+            ]),
+    );
+  }
+}
+
+class _TaskLabelCell extends StatelessWidget {
+  final ProjectTask task;
+  final bool overdue;
+  final VoidCallback? onTap;
+  const _TaskLabelCell({required this.task, this.overdue = false, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = task.status == 'done';
+    return SizedBox(
+      width: _kLabelW,
+      height: _kRowH,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: kBLine)),
+          ),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: Row(
+            children: [
+              if (task.isMilestone)
+                const Icon(Icons.diamond_outlined, size: 12, color: kBText3)
+              else
+                Icon(
+                  isDone ? Icons.check_circle_outline : Icons.radio_button_unchecked,
+                  size: 12,
+                  color: isDone ? kBPrimary : kBText4,
+                ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  task.title,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDone ? kBText4 : kBText,
+                    decoration: isDone ? TextDecoration.lineThrough : null,
+                    decorationColor: kBText4,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (overdue)
+                const Padding(
+                  padding: EdgeInsets.only(right: 4),
+                  child: Icon(Icons.warning_amber_rounded, size: 12, color: kBAlert),
+                ),
+              if (task.stepsTotal > 0)
+                Text('${task.stepsDone}/${task.stepsTotal}',
+                    style: const TextStyle(fontSize: 9, color: kBText4)),
+              if (onTap != null)
+                const Icon(Icons.chevron_right, size: 12, color: kBText4),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Glisser en cours : barre [taskId], poignée droite si [resize], décalage
+/// cumulé [dx] en pixels.
+class _BarDrag {
+  final String taskId;
+  final bool resize;
+  final double dx;
+  const _BarDrag(this.taskId, this.resize, [this.dx = 0]);
+}
+
+class _TaskBarCell extends StatelessWidget {
+  final ProjectTask task;
+  final GanttAxis axis;
+  final Color fallbackColor;
+  final bool overdue;
+  final List<_DatedBlock> blocks;
+  final _BarDrag? drag;
+  final VoidCallback? onTap;
+  final void Function(bool resize) onDragStart;
+  final void Function(double dx) onDragUpdate;
+  final VoidCallback onDragEnd;
+  final VoidCallback onDragCancel;
+  const _TaskBarCell({
+    required this.task,
+    required this.axis,
+    required this.fallbackColor,
+    this.overdue = false,
+    this.blocks = const [],
+    this.drag,
+    this.onTap,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.onDragCancel,
+  });
+
+  int get _previewDays => drag == null ? 0 : (drag!.dx / axis.dayW).round();
+
+  String get _tip {
+    final d = _previewDays;
+    final start = task.startDate.add(Duration(days: drag != null && !drag!.resize ? d : 0));
+    final visEnd = task.endDate ?? (task.isMilestone ? null : task.startDate.add(const Duration(days: 7)));
+    final end = visEnd?.add(Duration(days: drag != null ? d : 0));
+    final lines = <String>[task.title];
+    if (task.isMilestone) {
+      lines.add(_dmy(start));
+    } else {
+      final days = end == null ? null : end.difference(start).inDays + 1;
+      lines.add('${_dmy(start)}${end != null ? ' → ${_dmy(end)} · $days j' : ' · sans échéance'}'
+          '${task.endDate == null && !task.isMilestone ? ' (barre indicative : 7 j)' : ''}');
+      lines.add('Estimé ${fmtMin(task.plannedMin)}'
+          '${task.stepsTotal > 0 ? ' · ${task.stepsDone}/${task.stepsTotal} action${task.stepsTotal > 1 ? 's' : ''}' : ''}'
+          '${task.status == 'done' ? ' · terminée' : task.status == 'skipped' ? ' · ignorée' : overdue ? ' · EN RETARD' : ''}');
+      if (blocks.isNotEmpty) {
+        final done = blocks.where((b) => b.block.status == 'done').length;
+        final min = blocks.fold<int>(0, (s, b) => s + b.block.durationMin);
+        lines.add('${blocks.length} bloc${blocks.length > 1 ? 's' : ''} du programme · ${fmtMin(min)}'
+            '${done > 0 ? ' · $done fait${done > 1 ? 's' : ''}' : ''}');
+      }
+    }
+    if (drag == null) {
+      lines.add(task.isMilestone
+          ? 'Clic = fiche · glisser = déplacer'
+          : 'Clic = fiche · glisser = déplacer · bord droit = échéance');
+    }
+    return lines.join('\n');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = task.status == 'done';
+    return SizedBox(
+      width: axis.width,
+      height: _kRowH,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: kBLine)),
+              ),
+            ),
+          ),
+          if (task.isMilestone) _buildMilestone() else ..._buildBar(isDone),
+        ],
+      ),
+    );
+  }
+
+  Widget _gestures({required Widget child, required bool resize, MouseCursor? cursor}) {
+    final dragging = drag != null;
+    return MouseRegion(
+      cursor: cursor ??
+          (dragging && !drag!.resize ? SystemMouseCursors.grabbing : SystemMouseCursors.grab),
+      child: Tooltip(
+        message: _tip,
+        waitDuration: const Duration(milliseconds: 600),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: resize ? null : onTap,
+          onHorizontalDragStart: (_) => onDragStart(resize),
+          onHorizontalDragUpdate: (d) => onDragUpdate(d.delta.dx),
+          onHorizontalDragEnd: (_) => onDragEnd(),
+          onHorizontalDragCancel: onDragCancel,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildBar(bool isDone) {
+    final d = _previewDays;
+    final shift = drag != null && !drag!.resize ? d : 0;
+    final grow = drag != null ? d : 0;
+    final start = task.startDate.add(Duration(days: shift));
+    final baseEnd = task.endDate ?? task.startDate.add(const Duration(days: 7));
+    var end = baseEnd.add(Duration(days: grow));
+    if (end.isBefore(start)) end = start;
+    final left = axis.x(start);
+    final right = axis.x(end.add(const Duration(days: 1)));
+    final barW = max(4.0, right - left);
+    final dragging = drag != null;
+
+    final barColor = isDone ? kBText4.withOpacity(.45) : _hex(task.color, fallbackColor);
+    final textColor = _isDark(barColor)
+        ? Colors.white.withOpacity(0.9)
+        : Colors.black.withOpacity(0.7);
+    // Progression : actions cochées (sinon 0 ou 1 selon le statut).
+    final pct = isDone
+        ? 1.0
+        : task.stepsTotal > 0
+            ? task.stepsDone / task.stepsTotal
+            : 0.0;
+    final label = task.barLabel ?? task.title;
+    // Barre trop courte pour son titre : le texte déborde à droite.
+    final labelOutside = barW < 72;
+    const barH = _kRowH - _kBarVPad * 2;
+
     return [
-      Positioned.fill(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(
-                bottom: BorderSide(color: _gridColor(context), width: 1)),
+      Positioned(
+        left: left,
+        top: _kBarVPad,
+        height: barH,
+        width: barW,
+        child: _gestures(
+          resize: false,
+          child: Container(
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: BorderRadius.circular(3),
+              border: dragging
+                  ? Border.all(color: Colors.white.withOpacity(.7))
+                  : overdue
+                      ? Border.all(color: kBAlert, width: 1.5)
+                      : null,
+              boxShadow: isDone
+                  ? null
+                  : [BoxShadow(color: (overdue ? kBAlert : barColor).withOpacity(0.35), blurRadius: 8)],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(children: [
+              if (pct > 0 && pct < 1)
+                FractionallySizedBox(
+                  widthFactor: pct,
+                  child: ColoredBox(color: Colors.white.withOpacity(.22)),
+                ),
+              if (!labelOutside)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      label,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+      ),
+      if (labelOutside)
+        Positioned(
+          left: left + barW + 8,
+          top: _kBarVPad,
+          height: barH,
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(label,
+                  style: TextStyle(fontSize: 10, color: overdue ? kBAlert : kBText3),
+                  maxLines: 1,
+                  overflow: TextOverflow.clip,
+                  softWrap: false),
+            ),
+          ),
+        ),
+      // Points des blocs du programme, sous la barre, à la date de chaque bloc.
+      for (final db in blocks)
+        Positioned(
+          left: axis.x(db.date) + axis.dayW / 2 - 4,
+          top: _kRowH - _kBarVPad + 1,
+          width: 8,
+          height: 6,
+          child: _blockDot(db),
+        ),
+      // Poignée droite : tirer pour changer l'échéance.
+      Positioned(
+        left: left + barW - 5,
+        top: _kBarVPad,
+        height: _kRowH - _kBarVPad * 2,
+        width: 8,
+        child: _gestures(
+          resize: true,
+          cursor: SystemMouseCursors.resizeLeftRight,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(dragging && drag!.resize ? .9 : .45),
+              borderRadius: BorderRadius.circular(2),
+            ),
           ),
         ),
       ),
     ];
   }
 
-  double _toX(int inDays) =>
-      dayView ? inDays * _kDayCellW : inDays / 7 * _kCellW;
-
-  Widget _buildBar(bool isDone) {
-    final end = task.endDate ?? task.startDate.add(const Duration(days: 7));
-    final startDays = task.startDate.difference(projectStart).inDays;
-    final endDays = end.difference(projectStart).inDays;
-
-    final left = max(0.0, _toX(startDays));
-    final right = min(timeW, _toX(endDays));
-    final barW = max(4.0, right - left);
-
-    final barColor = isDone
-        ? const Color(0xFFCCCCCC)
-        : _hex(task.color, fallbackColor);
-    final textColor = _isDark(barColor)
-        ? Colors.white.withOpacity(0.9)
-        : barColor.withOpacity(0.7).computeLuminance() > 0.5
-            ? Colors.black.withOpacity(0.7)
-            : Colors.white.withOpacity(0.9);
-
-    return Positioned(
-      left: left,
-      top: _kBarVPad,
-      height: _kRowH - _kBarVPad * 2,
-      width: barW,
-      child: Container(
-        decoration: BoxDecoration(
-          color: barColor,
-          borderRadius: BorderRadius.circular(3),
-          boxShadow: isDone
-              ? null
-              : [
-                  BoxShadow(
-                    color: barColor.withOpacity(0.55),
-                    blurRadius: 8,
-                    spreadRadius: 0,
-                  ),
-                ],
+  Widget _blockDot(_DatedBlock db) {
+    final b = db.block;
+    final done = b.status == 'done';
+    final skipped = b.status == 'skipped';
+    return Tooltip(
+      message: '${_dmy(db.date)} · ${b.startTime} · ${fmtMin(b.durationMin)}'
+          ' · ${done ? 'fait' : skipped ? 'sauté' : 'à venir'}',
+      waitDuration: const Duration(milliseconds: 400),
+      child: Center(
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: done ? kBPrimary : skipped ? Colors.transparent : kBBg,
+            shape: BoxShape.circle,
+            border: Border.all(
+                color: skipped ? kBText4 : kBPrimary, width: 1.5),
+          ),
         ),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: task.barLabel != null
-            ? Text(
-                task.barLabel!,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: textColor,
-                ),
-                overflow: TextOverflow.ellipsis,
-              )
-            : null,
       ),
     );
   }
 
   Widget _buildMilestone() {
-    final inDays = task.startDate.difference(projectStart).inDays;
-    final cellHalf = dayView ? _kDayCellW / 2 : _kCellW / 2;
-    final centerX = _toX(inDays) + cellHalf;
+    final start = task.startDate.add(Duration(days: _previewDays));
+    final centerX = axis.x(start) + axis.dayW / 2;
     final color = _hex(task.color, fallbackColor);
     const size = 13.0;
+    const hit = 24.0;
 
     return Positioned(
-      left: centerX - size / 2,
-      top: _kRowH / 2 - size / 2,
-      width: size,
-      height: size,
-      child: Transform.rotate(
-        angle: pi / 4,
-        child: Container(
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [
-              BoxShadow(
-                color: color.withOpacity(0.7),
-                blurRadius: 10,
-                spreadRadius: 1,
+      left: centerX - hit / 2,
+      top: _kRowH / 2 - hit / 2,
+      width: hit,
+      height: hit,
+      child: _gestures(
+        resize: false,
+        child: Center(
+          child: Transform.rotate(
+            angle: pi / 4,
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+                border: drag != null ? Border.all(color: Colors.white.withOpacity(.8)) : null,
+                boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 10, spreadRadius: 1)],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1837,24 +1855,150 @@ Color _hex(String? hex, Color fallback) {
   }
 }
 
-Color _darken(Color c) {
+/// Variante lisible sur fond sombre (luminosité ≥ 0.72).
+Color _onDark(Color c) {
   final hsl = HSLColor.fromColor(c);
-  return hsl.withLightness((hsl.lightness - 0.35).clamp(0.0, 1.0)).toColor();
+  return hsl.withLightness(max(hsl.lightness, 0.72)).toColor();
 }
 
 bool _isDark(Color c) => c.computeLuminance() < 0.4;
 
-// Grouper les tâches par groupLabel
-List<({String label, List<ProjectTask> tasks})> _buildGroups(
-    List<ProjectTask> tasks) {
-  final seen = <String>[];
-  final map = <String, List<ProjectTask>>{};
-  for (final t in tasks) {
-    final g = t.groupLabel ?? '';
-    if (!seen.contains(g)) seen.add(g);
-    map.putIfAbsent(g, () => []).add(t);
+
+String _dmy(DateTime d) => '${d.day} ${kGanttMonthsShort[d.month - 1]} ${d.year}';
+
+/// Bloc du programme daté (le doc `daily_schedules` porte la date).
+class _DatedBlock {
+  final DateTime date;
+  final ScheduleBlock block;
+  const _DatedBlock(this.date, this.block);
+}
+
+/// Section du Gantt = phase (ou « Sans phase »), avec ses tâches en ordre
+/// Gantt et ses compteurs.
+class _GanttGroup {
+  final ProjectPhase? phase;
+  final List<ProjectTask> tasks;
+  final bool collapsed;
+  final int done;
+  final int total;
+  final int overdue;
+  /// Faux quand le projet n'a aucune phase : la liste est plate.
+  final bool showHeader;
+  const _GanttGroup({
+    required this.phase,
+    required this.tasks,
+    required this.collapsed,
+    required this.done,
+    required this.total,
+    required this.overdue,
+    required this.showHeader,
+  });
+
+  String get key => phase?.id ?? '_none';
+  String get label => phase?.label ?? 'Sans phase';
+
+  /// Étendue des tâches (début min → fin visuelle max), null si vide.
+  ({DateTime start, DateTime end})? get span {
+    if (tasks.isEmpty) return null;
+    DateTime? s, e;
+    for (final t in tasks) {
+      final ts = DateTime(t.startDate.year, t.startDate.month, t.startDate.day);
+      final te = taskVisualEnd(t).subtract(const Duration(days: 1));
+      if (s == null || ts.isBefore(s)) s = ts;
+      if (e == null || te.isAfter(e)) e = te;
+    }
+    return (start: s!, end: e!);
   }
-  return seen.map((g) => (label: g, tasks: map[g]!)).toList();
+}
+
+List<_GanttGroup> _buildGroups(Project p, DateTime today, Set<String> collapsed) {
+  final sections = phaseSections(p);
+  final flat = p.phases.isEmpty;
+  return [
+    for (final sec in sections)
+      _GanttGroup(
+        phase: sec.phase,
+        tasks: sec.tasks,
+        collapsed: !flat && collapsed.contains(sec.phase?.id ?? '_none'),
+        done: sec.tasks.where((t) => t.status == 'done').length,
+        total: sec.tasks.where((t) => t.status != 'skipped').length,
+        overdue: sec.tasks.where((t) => isTaskOverdue(t, today)).length,
+        showHeader: !flat,
+      ),
+  ];
+}
+
+// ── Bandeau d'état (aligné sur project_health, comme l'onglet Projets) ───────
+
+class _GanttDashboard extends StatelessWidget {
+  final Project project;
+  const _GanttDashboard({required this.project});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = project;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final prog = taskProgress(p);
+    final pct = prog.total == 0 ? 0 : (prog.done * 100 / prog.total).round();
+    final overdue = overdueTasks(p, today);
+    final phase = currentPhase(p, today);
+    final milestone = nextMilestone(p, today);
+    final msDays = milestone == null
+        ? null
+        : (milestone.endDate ?? milestone.startDate).difference(today).inDays;
+    final left = p.endDate == null ? null : daysLeftLabel(p.endDate, today);
+
+    return Container(
+      color: kBSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+      child: Row(children: [
+        _chip(Icons.task_alt_outlined,
+            prog.total == 0 ? 'Aucune tâche' : '${prog.done} / ${prog.total} · $pct %',
+            tip: 'Avancement : tâches faites / tâches comptées (hors ignorées)'),
+        if (overdue.isNotEmpty)
+          _chip(Icons.warning_amber_rounded,
+              '${overdue.length} en retard',
+              color: kBAlert,
+              tip: 'Tâches ouvertes dont l\'échéance est passée'),
+        if (phase != null)
+          _chip(Icons.layers_outlined, 'Phase : ${phase.label}',
+              color: _onDark(_hex(phase.color, kBPrimary)),
+              tip: 'Phase contenant aujourd\'hui'),
+        if (milestone != null)
+          _chip(Icons.diamond_outlined, 'J-$msDays · ${milestone.title}',
+              color: msDays != null && msDays <= 7 ? kBAttention : null,
+              tip: 'Prochain jalon'),
+        const Spacer(),
+        if (left != null)
+          Text('Fin du projet ${_dmy(p.endDate!)} · $left',
+              style: const TextStyle(fontSize: 11, color: kBText4)),
+      ]),
+    );
+  }
+
+  Widget _chip(IconData icon, String label, {Color? color, required String tip}) {
+    final c = color ?? kBText2;
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.withOpacity(color == null ? .08 : .14),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 13, color: c),
+          const SizedBox(width: 5),
+          Text(label,
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c),
+              overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+    );
+  }
 }
 
 // ── Dialog détail tâche (web) ─────────────────────────────────────────────────
@@ -1864,7 +2008,7 @@ class _TaskDetailDialog extends StatefulWidget {
   final ProjectTask task;
   final FirestoreSync sync;
   final void Function(Project) onProjectUpdated;
-  // Mode panneau latéral (lot 3) : la fiche vit à droite du Gantt au lieu
+  // Mode panneau latéral : la fiche vit à droite du Gantt au lieu
   // d'une Dialog 720×360 — onClose remplace alors le Navigator.pop.
   final bool panel;
   final VoidCallback? onClose;
@@ -2065,26 +2209,71 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) setState(() => _saving = false);
   }
 
-  /// Repousser l'échéance : date postérieure via date picker. Sort la tâche de
-  /// `lateTasks()`. (L'économie d'or du jeu — coût par semaine, sursis — a été
-  /// retirée.)
-  Future<void> _pushDeadline() async {
-    final cur = _task.endDate;
-    if (cur == null) return;
-    final ref = DateTime(cur.year, cur.month, cur.day);
-    final picked = await showDatePicker(
+  /// Renommer la tâche (clic sur le titre).
+  Future<void> _renameTask() async {
+    final ctrl = TextEditingController(text: _task.title);
+    final ok = await showDialog<bool>(
       context: context,
-      initialDate: ref.add(const Duration(days: 7)),
-      firstDate: ref.add(const Duration(days: 1)),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer la tâche'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Titre', border: OutlineInputBorder()),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Renommer'),
+          ),
+        ],
+      ),
+    );
+    final title = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true || title.isEmpty || title == _task.title || !mounted) return;
+    setState(() => _task.title = title);
+    await _save();
+  }
+
+  /// Modifier début et échéance (clic sur la ligne des dates). Un jalon n'a
+  /// qu'une date ; une tâche sans échéance peut en recevoir une.
+  Future<void> _editDates() async {
+    final start = DateTime(_task.startDate.year, _task.startDate.month, _task.startDate.day);
+    if (_task.isMilestone) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: start,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+        helpText: 'Date du jalon',
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _task.startDate = DateTime(picked.year, picked.month, picked.day));
+      await _save();
+      return;
+    }
+    final end = _task.endDate;
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(
+          start: start,
+          end: end == null ? start : DateTime(end.year, end.month, end.day)),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      helpText: 'Repousser l\'échéance au…',
+      helpText: 'Début → échéance',
+      saveText: 'Enregistrer',
     );
     if (picked == null || !mounted) return;
-    final pickedMid = DateTime(picked.year, picked.month, picked.day);
-    if (pickedMid.difference(ref).inDays <= 0) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Échéance repoussée.')));
-    setState(() => _task.endDate = pickedMid);
+    setState(() {
+      _task.startDate = DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _task.endDate = DateTime(picked.end.year, picked.end.month, picked.end.day);
+    });
     await _save();
   }
 
@@ -2290,15 +2479,38 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                                 fontSize: 10, fontWeight: FontWeight.w700,
                                 letterSpacing: 1, color: cs.primary)),
                         const SizedBox(height: 4),
-                        Text(_task.title,
-                            style: const TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.w700)),
+                        Tooltip(
+                          message: 'Renommer la tâche',
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: InkWell(
+                            onTap: _renameTask,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Text(_task.title,
+                                style: const TextStyle(
+                                    fontSize: 17, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${_fmtDate(_task.startDate)}'
-                          '${_task.endDate != null ? ' → ${_fmtDate(_task.endDate!)}' : ''}',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                        Tooltip(
+                          message: _task.isMilestone
+                              ? 'Modifier la date du jalon'
+                              : 'Modifier le début et l\'échéance',
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: InkWell(
+                            onTap: _editDates,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text(
+                                '${_fmtDate(_task.startDate)}'
+                                '${_task.endDate != null ? ' → ${_fmtDate(_task.endDate!)}' : _task.isMilestone ? '' : ' · sans échéance'}',
+                                style: TextStyle(
+                                    fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit_calendar_outlined, size: 12,
+                                  color: cs.onSurface.withOpacity(.35)),
+                            ]),
+                          ),
                         ),
                         // Phase (si le projet en a)
                         if (widget.project.phases.isNotEmpty) ...[
@@ -2369,18 +2581,17 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                         color: cs.onSurface.withOpacity(.4)),
                     onSelected: (v) {
                       if (v == 'move_task') _moveTaskToAnotherProject();
-                      if (v == 'push') _pushDeadline();
+                      if (v == 'dates') _editDates();
                     },
                     itemBuilder: (_) => [
                       const PopupMenuItem(
                         value: 'move_task',
                         child: Text('Déplacer vers un autre projet'),
                       ),
-                      if (_task.endDate != null)
-                        const PopupMenuItem(
-                          value: 'push',
-                          child: Text('Repousser la deadline'),
-                        ),
+                      PopupMenuItem(
+                        value: 'dates',
+                        child: Text(_task.isMilestone ? 'Modifier la date' : 'Modifier les dates'),
+                      ),
                     ],
                   ),
                   IconButton(
@@ -2665,7 +2876,8 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer la tâche ?'),
         content: Text(
-            'Supprimer "${_task.title}" ? Cette action est irréversible.'),
+            'Supprimer « ${_task.title} » et ses ${_task.actions.length} action'
+            '${_task.actions.length > 1 ? 's' : ''} ? Tu pourras annuler juste après.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -2680,13 +2892,36 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     );
     if (confirm != true || !mounted) return;
 
-    final updatedTasks =
-        widget.project.tasks.where((t) => t.id != _task.id).toList();
-    await widget.sync.saveProjectTasks(widget.project.id, updatedTasks);
-    final updatedProject = widget.project
-      ..tasks.replaceRange(0, widget.project.tasks.length, updatedTasks);
-    widget.onProjectUpdated(updatedProject);
+    final project = widget.project;
+    final sync = widget.sync;
+    final onUpdated = widget.onProjectUpdated;
+    final removed = _task;
+    final index = project.tasks.indexWhere((t) => t.id == removed.id);
+    // Le messager est pris avant la fermeture : la fiche n'existera plus.
+    final messenger = ScaffoldMessenger.of(context);
+
+    project.tasks.removeWhere((t) => t.id == removed.id);
+    await sync.saveProjectTasks(project.id, project.tasks);
+    onUpdated(project);
     if (mounted) _close();
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Tâche « ${removed.title} » supprimée'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Annuler',
+          textColor: kBPrimary,
+          onPressed: () async {
+            if (project.tasks.any((t) => t.id == removed.id)) return;
+            project.tasks.insert(index.clamp(0, project.tasks.length), removed);
+            await sync.saveProjectTasks(project.id, project.tasks);
+            onUpdated(project);
+          },
+        ),
+      ));
   }
 
   // ── Description ─────────────────────────────────────────────────────────────

@@ -52,9 +52,10 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   // Refonte web 2026-09 : barre d'onglets en haut (`WebTab`), Aujourd'hui
   // est la vue d'arrivée.
   WebTab _tab = WebTab.today;
-  // Gantt hébergé DANS le shell : recouvre la vue courante, la barre reste
-  // utilisable — null = aucun projet ouvert.
-  ({Project project, String? taskId})? _shellGantt;
+  // Fiche projet (Plan d'action · Gantt · Document) hébergée DANS le shell :
+  // recouvre la vue courante, la barre reste utilisable — null = aucun projet
+  // ouvert.
+  ({Project project, String? taskId})? _shellProject;
   // Bibliothèque filtrée sur un projet (« Tout voir » de la fiche projet).
   String? _libraryProjectId;
   // Focus : la vue Aujourd'hui porte l'état (chrono, cible) ; la pastille de
@@ -66,7 +67,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   /// revient si la fiche projet la recouvre) ; ailleurs → tiroir.
   void _onFocusPill() {
     if (_tab == WebTab.today) {
-      setState(() => _shellGantt = null);
+      setState(() => _shellProject = null);
       return;
     }
     setState(() => _focusDrawerOpen = !_focusDrawerOpen);
@@ -75,11 +76,11 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   void _openLibraryFor(String projectId) => setState(() {
         _libraryProjectId = projectId;
         _tab = WebTab.library;
-        _shellGantt = null;
+        _shellProject = null;
       });
 
   void _openProjectInShell(Project project, {String? taskId}) =>
-      setState(() => _shellGantt = (project: project, taskId: taskId));
+      setState(() => _shellProject = (project: project, taskId: taskId));
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
   StreamSubscription<bool>? _autoPlanSub;
@@ -229,9 +230,9 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         _focusDrawerOpen = false;
         // Aujourd'hui : la frise se recentre sur l'heure courante.
         if (tab == WebTab.today) _todayKey.currentState?.scrollToNow();
-        // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay masquait
-        // la vue choisie.
-        _shellGantt = null;
+        // Naviguer ferme aussi la fiche projet hébergée — sinon l'overlay
+        // masquait la vue choisie.
+        _shellProject = null;
       });
 
   // Agent ORION : plus un onglet, une route plein écran derrière le menu ⋯.
@@ -391,21 +392,21 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         ),
         // Fiche projet DANS le shell (Plan d'action · Gantt · Document) :
         // recouvre la vue active, la barre reste utilisable.
-        if (_shellGantt != null)
+        if (_shellProject != null)
           Positioned.fill(
             child: ProjectPlanView(
               key:
-                  ValueKey('${_shellGantt!.project.id}/${_shellGantt!.taskId}'),
-              project: _shellGantt!.project,
-              targetTaskId: _shellGantt!.taskId,
+                  ValueKey('${_shellProject!.project.id}/${_shellProject!.taskId}'),
+              project: _shellProject!.project,
+              targetTaskId: _shellProject!.taskId,
               domains: _domains,
               activities: _activities,
               recentSessions: _recentSessions,
               documents:
-                  _documentsByProject[_shellGantt!.project.id] ?? const [],
+                  _documentsByProject[_shellProject!.project.id] ?? const [],
               sync: _sync,
               onClose: () {
-                setState(() => _shellGantt = null);
+                setState(() => _shellProject = null);
                 _load();
               },
               onChanged: _load,
