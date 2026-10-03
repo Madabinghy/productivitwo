@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -14,6 +15,7 @@ import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Vue « Cette semaine » (handoff cette-semaine-2026-09) : le Gantt 7 / 14 jours
 // des tâches par domaine, en pleine page, où l'on organise la semaine sans
@@ -32,6 +34,8 @@ const _kMonthShort = [
 ];
 const _tabular = [FontFeature.tabularFigures()];
 const _kLeftCol = 320.0;
+/// Clé du groupe « En retard » (en tête de la grille, repliable comme un domaine).
+const _kLateGroup = '_late';
 const _kRowH = 40.0;
 const _kDomainH = 24.0;
 const _kBarH = 24.0;
@@ -94,7 +98,6 @@ class _WeekViewState extends State<WeekView> {
   Map<String, int> _capacity = defaultWeekCapacity();
   bool _hideDone = false;
   final Set<String> _collapsed = {};
-  bool _busy = false;
 
   // Glisser une barre (déplacer) / tirer sa poignée (étendre), en pixels.
   String? _dragTaskId;
@@ -446,6 +449,7 @@ class _WeekViewState extends State<WeekView> {
       taskDone: wt.done,
       onPlace: (dd, startMin, d) => _placeAt(wt, dd, startMin, d),
       onOpen: () => _openTask(wt),
+      onOpenProject: () => widget.onOpenProject(wt.project, taskId: wt.task.id),
       onDone: () => _toggleDone(wt),
       onRescheduleDeadline:
           wt.overdue && !wt.done ? (dd) => _rescheduleDeadline(wt, dd) : null,
@@ -483,14 +487,19 @@ class _WeekViewState extends State<WeekView> {
     await widget.sync.saveWeekCapacity(result);
   }
 
-  Future<void> _planWithOrion() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final ok = await widget.sync.triggerOrionCycle();
-    if (mounted) setState(() => _busy = false);
-    _snack(ok
-        ? 'ORION planifie ta semaine — le programme arrive dans Aujourd\'hui.'
-        : 'ORION indisponible pour l\'instant.');
+  /// « Planifier la semaine avec Claude » : ouvre LE Claude de l'utilisateur
+  /// avec la demande écrite (plan_week sur la fenêtre affichée, retards,
+  /// capacité). Il valide dans la conversation ; rien ne passe par ORION.
+  Future<void> _planWithClaude() async {
+    final overdue = [
+      for (final wt in _tasks)
+        if (wt.overdue && !wt.done)
+          (task: wt.task.title, project: wt.project.title, due: dateOnly(wt.task.endDate ?? wt.task.startDate)),
+    ]..sort((a, b) => a.due.compareTo(b.due));
+    final prompt = planWeekPrompt(
+        start: _start, days: _days, overdue: overdue.take(8).toList(), capacityMin: _capacity);
+    final ok = await launchUrl(claudeNewUri(prompt), mode: LaunchMode.externalApplication);
+    if (!ok) _snack('Impossible d\'ouvrir Claude dans le navigateur.');
   }
 
   // ── Build ───────────────────────────────────────────────────────────────────
@@ -560,8 +569,8 @@ class _WeekViewState extends State<WeekView> {
           icon: _hideDone ? Icons.visibility_outlined : Icons.visibility_off_outlined,
           onTap: () => _setHideDone(!_hideDone)),
       _iconBtn(Icons.tune_outlined, 'Capacité par jour', _editCapacity),
-      _pillButton('Planifier avec ORION',
-          primary: true, icon: Icons.auto_awesome, onTap: _busy ? null : _planWithOrion),
+      _pillButton('Planifier la semaine avec Claude',
+          primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
     // Sous ~1100 px, les commandes passent sous le titre au lieu de l'écraser.
     return LayoutBuilder(builder: (ctx, box) {
@@ -614,22 +623,28 @@ class _WeekViewState extends State<WeekView> {
   Widget _ganttCard(List<WeekTask> tasks) {
     // Groupes par domaine (ordre des domaines, puis sans domaine), tâches par
     // date de début.
+    // Les tâches en retard sortent de leur domaine pour un groupe « En
+    // retard » en tête, trié par échéance (lot 3 de l'audit).
     final byDomain = <String?, List<WeekTask>>{};
     for (final t in tasks) {
       if (_hideDone && t.done) continue;
-      byDomain.putIfAbsent(t.project.domainId, () => []).add(t);
+      final key = t.overdue && !t.done ? _kLateGroup : t.project.domainId;
+      byDomain.putIfAbsent(key, () => []).add(t);
     }
-    for (final l in byDomain.values) {
-      l.sort((a, b) {
-        final c = a.task.startDate.compareTo(b.task.startDate);
+    for (final e in byDomain.entries) {
+      e.value.sort((a, b) {
+        final c = e.key == _kLateGroup
+            ? dateOnly(a.task.endDate ?? a.task.startDate).compareTo(dateOnly(b.task.endDate ?? b.task.startDate))
+            : a.task.startDate.compareTo(b.task.startDate);
         return c != 0 ? c : a.task.title.compareTo(b.task.title);
       });
     }
     final order = <String?>[
+      if (byDomain.containsKey(_kLateGroup)) _kLateGroup,
       for (final d in widget.domains)
         if (byDomain.containsKey(d.id)) d.id,
       for (final k in byDomain.keys)
-        if (k != null && !widget.domains.any((d) => d.id == k)) k,
+        if (k != null && k != _kLateGroup && !widget.domains.any((d) => d.id == k)) k,
       if (byDomain.containsKey(null)) null,
     ];
 
@@ -756,8 +771,9 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Widget _domainHeader(String? domainId, List<WeekTask> tasks) {
-    final d = widget.domains.where((x) => x.id == domainId).firstOrNull;
-    final color = domainColor(domainId, widget.domains) ?? kBText4;
+    final late = domainId == _kLateGroup;
+    final d = late ? null : widget.domains.where((x) => x.id == domainId).firstOrNull;
+    final color = late ? kBAlert : (domainColor(domainId, widget.domains) ?? kBText4);
     final key = domainId ?? '_none';
     final collapsed = _collapsed.contains(key);
     final real = tasks.where((t) => !t.task.isMilestone).toList();
@@ -766,6 +782,16 @@ class _WeekViewState extends State<WeekView> {
     for (final t in tasks) {
       planned += plannedMinForTask(t.task, _allBlocks);
     }
+    final oldest = late && tasks.isNotEmpty
+        ? dateOnly(tasks.first.task.endDate ?? tasks.first.task.startDate)
+        : null;
+    final name = late ? 'En retard' : (d?.name ?? 'Sans domaine');
+    final meta = late
+        ? ' · ${tasks.length} tâche${tasks.length > 1 ? 's' : ''}'
+            '${oldest != null ? ' · la plus ancienne : ${_dm(oldest)}' : ''}'
+            '${planned > 0 ? ' · ${_fmtHm(planned)} planifiées' : ''}'
+        : ' · $done / ${real.length} faite${done > 1 ? 's' : ''}'
+            '${planned > 0 ? ' · ${_fmtHm(planned)} planifiées' : ''}';
     return InkWell(
       onTap: () {
         setState(() => collapsed ? _collapsed.remove(key) : _collapsed.add(key));
@@ -780,14 +806,10 @@ class _WeekViewState extends State<WeekView> {
           const SizedBox(width: 6),
           Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 8),
-          Text((d?.name ?? 'Sans domaine').toUpperCase(),
+          Text(name.toUpperCase(),
               style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .6, color: color)),
           const SizedBox(width: 6),
-          Text(
-            ' · $done / ${real.length} faite${done > 1 ? 's' : ''}'
-            '${planned > 0 ? ' · ${_fmtHm(planned)} planifiées' : ''}',
-            style: const TextStyle(fontSize: 11, color: kBText3, fontFeatures: _tabular),
-          ),
+          Text(meta, style: const TextStyle(fontSize: 11, color: kBText3, fontFeatures: _tabular)),
         ]),
       ),
     );
@@ -927,8 +949,14 @@ class _WeekViewState extends State<WeekView> {
   Widget _toPlaceBar(WeekTask wt, double colW, Color color, int remaining) {
     var start = dateOnly(wt.task.startDate);
     if (start.isBefore(_today)) start = _today;
-    final idx = _dayIndex(start) ?? 0;
+    // Aujourd'hui hors fenêtre : à droite si on regarde le passé, à gauche
+    // si on regarde l'avenir — et l'échéance réelle est écrite sur la barre.
+    final idx = _dayIndex(start) ?? (_today.isAfter(_dates.last) ? _days - 1 : 0);
     final c = wt.overdue ? kBAlert : color;
+    final due = dateOnly(wt.task.endDate ?? wt.task.startDate);
+    final label = wt.overdue
+        ? 'à caser · ${_fmtHm(remaining == 0 ? wt.task.plannedMin : remaining)} · éch. ${_dm(due)}'
+        : 'à caser · ${_fmtHm(remaining == 0 ? wt.task.plannedMin : remaining)}';
     return Positioned(
       left: colW * idx + 3,
       width: colW - 6,
@@ -940,7 +968,7 @@ class _WeekViewState extends State<WeekView> {
         child: CustomPaint(
           painter: _DashedRectPainter(color: c, radius: 6, strokeWidth: 1.5),
           child: Center(
-            child: Text('à caser · ${_fmtHm(remaining == 0 ? wt.task.plannedMin : remaining)}',
+            child: Text(label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c, fontFeatures: _tabular)),

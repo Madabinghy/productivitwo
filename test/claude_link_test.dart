@@ -53,4 +53,20 @@ void automationTests() {
     }
     expect(claudeNewUri(native.first.prompt).queryParameters['q'], native.first.prompt);
   });
+
+  test('planWeekPrompt : plan_week daté, capacité lisible, retards cités', () {
+    final p = planWeekPrompt(
+      start: DateTime(2026, 10, 5),
+      days: 7,
+      overdue: [(task: 'Fiche S3', project: 'BTS SIO', due: DateTime(2026, 10, 1))],
+      capacityMin: {'mon': 420, 'tue': 420, 'wed': 390, 'thu': 420, 'fri': 420, 'sat': 0, 'sun': 0},
+    );
+    expect(p, contains('plan_week(startDate: "2026-10-05")'));
+    expect(p, contains('7 jours'));
+    expect(p, contains('lundi 7 h'));
+    expect(p, contains('mercredi 6.5 h'));
+    expect(p, isNot(contains('samedi')));
+    expect(p, contains('« Fiche S3 » (BTS SIO, échéance 01/10)'));
+    expect(p, contains('schedule_day'));
+  });
 }

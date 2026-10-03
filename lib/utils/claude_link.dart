@@ -66,6 +66,39 @@ String replanOverduePrompt({
       'et, si tu la cases, mets à jour son échéance. ${_dayContext(todayBlocks)}';
 }
 
+/// Depuis Cette semaine : « Planifier la semaine avec Claude ». Remplace le
+/// bouton ORION (qui relançait le dernier besoin saisi, sans intention de
+/// semaine). Claude propose, l'utilisateur valide dans la conversation.
+String planWeekPrompt({
+  required DateTime start,
+  required int days,
+  required List<({String task, String project, DateTime due})> overdue,
+  required Map<String, int> capacityMin,
+}) {
+  String ymd(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String dm(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  const names = {
+    'mon': 'lundi', 'tue': 'mardi', 'wed': 'mercredi', 'thu': 'jeudi',
+    'fri': 'vendredi', 'sat': 'samedi', 'sun': 'dimanche',
+  };
+  final cap = names.keys
+      .where((k) => (capacityMin[k] ?? 0) > 0)
+      .map((k) => '${names[k]} ${((capacityMin[k] ?? 0) / 60).toStringAsFixed((capacityMin[k] ?? 0) % 60 == 0 ? 0 : 1)} h')
+      .join(', ');
+  final late = overdue.isEmpty
+      ? ''
+      : ' Tâches en retard à caser en priorité : ${overdue.map((o) => '« ${o.task} » (${o.project}, échéance ${dm(o.due)})').join(', ')}.'
+          ' Si tu en cases une, mets à jour son échéance.';
+  return 'Planifie ma semaine avec Productivitwo : appelle plan_week(startDate: "${ymd(start)}") '
+      'et propose une répartition des tâches de mes projets sur $days jours, tâche la plus proche de l\'échéance '
+      'd\'abord, en respectant ma capacité par jour (${cap.isEmpty ? 'aucune capacité définie' : cap}) '
+      'et mes rendez-vous Google Agenda, déjà présents dans les programmes.$late '
+      'N\'écris pas toi-même dans Google Agenda : Productivitwo synchronise déjà mon agenda. '
+      'Propose d\'abord, puis applique jour par jour avec schedule_day si je valide.';
+}
+
 // ─── AUTOMATISER AVEC CLAUDE ─────────────────────────────────────────────────
 //
 // L'app n'exécute rien : elle ouvre Claude avec la demande « crée une tâche

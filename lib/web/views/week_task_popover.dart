@@ -51,6 +51,8 @@ Future<void> showWeekTaskPopover(
   void Function(int min)? onEstimate,
   required void Function(DateTime day, int startMin, int durationMin) onPlace,
   required VoidCallback onOpen,
+  // Fiche projet (Plan d'action) — lot 3 de l'audit ; null = pas de lien.
+  VoidCallback? onOpenProject,
   required VoidCallback onDone,
   bool taskDone = false,
   // Report VOLONTAIRE de l'échéance au jour choisi (jamais automatique — le
@@ -287,6 +289,7 @@ Future<void> showWeekTaskPopover(
                     const SizedBox(height: 6),
                     Row(children: [
                       _link(ctx, 'Ouvrir la tâche', onOpen),
+                      if (onOpenProject != null) _link(ctx, 'Fiche projet', onOpenProject),
                       const Spacer(),
                       if (!taskDone) _link(ctx, 'Marquer faite', onDone),
                     ]),
