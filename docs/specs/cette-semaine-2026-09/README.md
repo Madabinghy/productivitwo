@@ -136,3 +136,50 @@ Aucun autre changement backend.
 - Titres de tâches 14 px sur 2 lignes, colonne 320 px : la lisibilité prime sur la densité.
 - Un clic sur un jour crée un bloc au premier créneau libre ; l'heure se change ensuite.
 - Capacité = réglage par jour de semaine, pas déduite des `DayBlock`.
+
+
+---
+
+## Audit d'ergonomie (2026-10-03) et lots retenus
+
+Inventaire complet du code fait le 2026-10-03 ; constats et décisions, par ordre de traitement.
+
+**Constats**
+1. Gestes invisibles : seule aide = ligne de légende 11 px ; barres au curseur flèche ; menu du point
+   (reporter / retirer) signalé nulle part ; aucune infobulle sur barres, points, poignée, jauges.
+2. Actions irréversibles ou muettes : glisser, étirer, couleur, « Marquer faite » sans annulation ni
+   retour ; aperçu du glisser non borné ; blocs non déplacés avec la tâche. **Bug** : « Déplacer à
+   demain » depuis un point copiait le bloc sur demain mais laissait l'original en attente côté serveur
+   (le mobile le marque sauté · reporté).
+3. La ligne de tâche ne montre ni dates ni estimation ; `estimatedMin` n'est éditable nulle part dans
+   l'UI ; points de blocs sans état (fait / sauté / à venir) et rognés en silence ; tâches en retard hors
+   fenêtre toutes posées en colonne 0.
+4. « Caser » ignore la capacité du jour (le popover de la fiche projet, lui, grise les jours pleins) ;
+   `autoPlace` existe et n'est appelé nulle part ; « repos » affiché même avec des blocs le week-end.
+5. En-tête : compteurs insensibles à « Masquer le fait » ; rien ne replie sous ~1100 px ; 7 jours part
+   du lundi, 14 jours d'aujourd'hui ; tout masquer = liste vide sans message ; jauges à 0 pendant le
+   chargement.
+6. « Planifier avec ORION » relance le dernier `userNeeds` d'ORION sans intention `plan_week`.
+7. Aucune passerelle vers la fiche projet ni Aujourd'hui (`onOpenProject` branché mais inutilisé).
+
+**Lot 1 « confiance » — livré (PR du 2026-10-03)**
+- Annulation (« Annuler » dans le bandeau) sur : glisser, étirer, couleur, Marquer faite, Retirer du
+  programme. Retour visible sur l'étirement (« Échéance : jeudi 9 »).
+- « Déplacer à demain » corrigé : original → `skipped` + `skipReason: reporte`, comme le mobile.
+- Curseur main sur les barres (poing pendant le glisser), infobulles : barre (dates, estimation, blocs,
+  reste à caser, rappel des gestes), point (jour, heure, durée, état, menu), poignée, jauge du jour.
+- Points par état : plein = fait, anneau = à venir, barré et atténué = sauté ; « +N » au lieu du rognage.
+- État vide quand tout est masqué (« Tout est fait sur cette période. » + Afficher le fait) ;
+  « repos · n blocs » le week-end ; légende complétée (point = bloc (menu)).
+
+**Lot 2 « information » — à faire**
+- Dates et estimation en clair sur la ligne (« 3 j · 2 h ») ; estimation éditable dans le popover.
+- Capacité dans le popover « caser » (« journée pleine 7 h 20 / 7 h », premier jour qui tient) : unifier
+  avec le popover de la fiche projet (`dayLoad` / `firstFittingDay`).
+- En-tête réactif (repli sous ~1100 px), compteurs alignés sur le filtre, fenêtre persistée.
+
+**Lot 3 « navigation » — à faire**
+- Remplacer « Planifier avec ORION » par « Planifier la semaine avec Claude » (claudeNewUri, comme le
+  mobile) ou s'appuyer sur la programmation automatique.
+- Titre / en-tête de domaine → fiche projet (Plan d'action) via `onOpenProject`.
+- Groupe « En retard » en tête avec la vraie date, au lieu de la colonne 0.

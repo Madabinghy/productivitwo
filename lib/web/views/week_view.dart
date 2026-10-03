@@ -48,6 +48,9 @@ String _fmtHm(int min) {
 
 String _clock(int min) => '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
 
+/// « mar. 7 » — jour court + numéro, pour les infobulles.
+String _dm(DateTime d) => '${_kDayShort[d.weekday - 1].toLowerCase()}. ${d.day}';
+
 Color? _hex(String? hex) {
   if (hex == null || hex.isEmpty) return null;
   final s = hex.replaceFirst('#', '').replaceFirst(RegExp(r'^0[xX]'), '');
@@ -126,6 +129,11 @@ class _WeekViewState extends State<WeekView> {
       });
       if (days == 14) _subscribe();
     } catch (_) {}
+  }
+
+  void _setHideDone(bool v) {
+    setState(() => _hideDone = v);
+    _savePrefs();
   }
 
   Future<void> _savePrefs() async {
@@ -246,25 +254,44 @@ class _WeekViewState extends State<WeekView> {
         actionLabel: 'Retirer', onAction: () => _removeBlock(key, block));
   }
 
-  Future<void> _removeBlock(String date, ScheduleBlock b) async {
+  Future<void> _removeBlock(String date, ScheduleBlock b, {bool undoable = false}) async {
     setState(() => _byDay[date]?.remove(b));
     await widget.sync.updateBlockStatus(date, b.id, 'deleted');
+    if (!undoable) return;
+    _snack('Bloc retiré du programme', actionLabel: 'Annuler', onAction: () async {
+      setState(() => (_byDay[date] ??= []).add(b));
+      await widget.sync.updateBlockStatus(date, b.id, 'pending');
+    });
   }
 
+  /// Report EFFECTIF au lendemain : copie dans le doc de demain, puis
+  /// l'original passe « sauté · reporté » — même règle que le mobile (avant,
+  /// le web laissait l'original en attente côté serveur).
   Future<void> _blockToTomorrow(String date, ScheduleBlock b) async {
     setState(() => _byDay[date]?.remove(b));
     await widget.sync.reportBlockToTomorrow(date, b);
-    _snack('Bloc déplacé à demain');
+    await widget.sync.updateBlockStatus(date, b.id, 'skipped');
+    await widget.sync.updateBlockSkipReason(date, b.id, 'reporte');
+    _snack('Bloc reporté à demain, à la même heure');
   }
 
   Future<void> _toggleDone(WeekTask wt) async {
-    setState(() => wt.task.status = wt.task.status == 'done' ? 'pending' : 'done');
+    final t = wt.task;
+    final before = t.status;
+    final nowDone = before != 'done';
+    setState(() => t.status = nowDone ? 'done' : 'pending');
     await _saveTasks(wt.project);
+    _snack(nowDone ? 'Tâche faite' : 'Tâche rouverte', actionLabel: 'Annuler',
+        onAction: () async {
+      setState(() => t.status = before);
+      await _saveTasks(wt.project);
+    });
   }
 
   Future<void> _shiftTask(WeekTask wt, int deltaDays) async {
     if (deltaDays == 0) return;
     final t = wt.task;
+    final oldStart = t.startDate, oldEnd = t.endDate;
     setState(() {
       t.startDate = t.startDate.add(Duration(days: deltaDays));
       if (t.endDate != null) t.endDate = t.endDate!.add(Duration(days: deltaDays));
@@ -274,6 +301,14 @@ class _WeekViewState extends State<WeekView> {
     _snack(
       'Tâche déplacée de ${deltaDays.abs()} jour${deltaDays.abs() > 1 ? 's' : ''}'
       '${n > 0 ? ' · $n bloc${n > 1 ? 's' : ''} reste${n > 1 ? 'nt' : ''} à ${n > 1 ? 'leur' : 'sa'} date' : ''}',
+      actionLabel: 'Annuler',
+      onAction: () async {
+        setState(() {
+          t.startDate = oldStart;
+          t.endDate = oldEnd;
+        });
+        await _saveTasks(wt.project);
+      },
     );
   }
 
@@ -300,11 +335,17 @@ class _WeekViewState extends State<WeekView> {
   Future<void> _resizeTask(WeekTask wt, int deltaDays) async {
     if (deltaDays == 0) return;
     final t = wt.task;
+    final oldEnd = t.endDate;
     final base = dateOnly(t.endDate ?? t.startDate);
     var end = base.add(Duration(days: deltaDays));
     if (end.isBefore(dateOnly(t.startDate))) end = dateOnly(t.startDate);
     setState(() => t.endDate = end);
     await _saveTasks(wt.project);
+    _snack('Échéance : ${_kDayLong[end.weekday - 1]} ${end.day}', actionLabel: 'Annuler',
+        onAction: () async {
+      setState(() => t.endDate = oldEnd);
+      await _saveTasks(wt.project);
+    });
   }
 
   Future<void> _pickColor(WeekTask wt) async {
@@ -339,8 +380,14 @@ class _WeekViewState extends State<WeekView> {
       ),
     );
     if (picked == null) return;
+    final oldColor = wt.task.color;
     setState(() => wt.task.color = picked.isEmpty ? null : picked);
     await _saveTasks(wt.project);
+    _snack(picked.isEmpty ? 'Couleur du domaine rétablie' : 'Couleur de la barre modifiée',
+        actionLabel: 'Annuler', onAction: () async {
+      setState(() => wt.task.color = oldColor);
+      await _saveTasks(wt.project);
+    });
   }
 
   void _openTask(WeekTask wt) => showGanttTaskDetailDialog(context,
@@ -393,7 +440,7 @@ class _WeekViewState extends State<WeekView> {
       ],
     );
     if (choice == 'tomorrow') await _blockToTomorrow(date, b);
-    if (choice == 'remove') await _removeBlock(date, b);
+    if (choice == 'remove') await _removeBlock(date, b, undoable: true);
   }
 
   Future<void> _editCapacity() async {
@@ -469,10 +516,7 @@ class _WeekViewState extends State<WeekView> {
       const SizedBox(width: 8),
       _pillButton(_hideDone ? 'Afficher le fait' : 'Masquer le fait',
           icon: _hideDone ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-          onTap: () {
-            setState(() => _hideDone = !_hideDone);
-            _savePrefs();
-          }),
+          onTap: () => _setHideDone(!_hideDone)),
       const SizedBox(width: 4),
       _iconBtn(Icons.tune_outlined, 'Capacité par jour', _editCapacity),
       const SizedBox(width: 4),
@@ -549,6 +593,17 @@ class _WeekViewState extends State<WeekView> {
               ? const Center(
                   child: Text('Aucune tâche sur cette période.',
                       style: TextStyle(fontSize: 13, color: kBText3)))
+              : order.isEmpty
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Text('Tout est fait sur cette période.',
+                        style: TextStyle(fontSize: 13, color: kBText3)),
+                    const SizedBox(height: 8),
+                    TextButton(
+                        onPressed: () => _setHideDone(false),
+                        child: const Text('Afficher le fait')),
+                  ]),
+                )
               : ListView(
                   padding: const EdgeInsets.only(bottom: 8),
                   children: [
@@ -597,7 +652,17 @@ class _WeekViewState extends State<WeekView> {
     final weekend = d.weekday >= 6;
     final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
     final gaugeColor = blocked ? kBAttention : (v >= 1 ? kBAlert : kBPrimary);
-    return Container(
+    final nb = '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}';
+    final tip = blocked
+        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée'
+        : cap == 0
+            ? 'Jour de repos (capacité 0)${blocks.isEmpty ? '' : ' · $nb planifié${blocks.length > 1 ? 's' : ''}'}'
+            : '${_fmtHm(planned)} planifiées sur ${_fmtHm(cap)} de capacité · $nb'
+                '${planned >= cap ? ' · journée pleine' : ''}';
+    return Tooltip(
+      message: tip,
+      waitDuration: const Duration(milliseconds: 500),
+      child: Container(
       color: isToday ? kBPrimary.withOpacity(.10) : Colors.transparent,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -621,16 +686,17 @@ class _WeekViewState extends State<WeekView> {
         const SizedBox(height: 4),
         Text(
           cap == 0
-              ? 'repos'
+              ? (blocks.isEmpty ? 'repos' : 'repos · $nb')
               : blocked
                   ? 'journée bloquée'
-                  : '${_fmtHm(planned)} / ${_fmtHm(cap)} · ${blocks.length} bloc${blocks.length > 1 ? 's' : ''}',
+                  : '${_fmtHm(planned)} / ${_fmtHm(cap)} · $nb',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
               fontSize: 11, color: blocked ? kBAttention : kBText4, fontFeatures: _tabular),
         ),
       ]),
+      ),
     );
   }
 
@@ -836,13 +902,33 @@ class _WeekViewState extends State<WeekView> {
     final left = colW * s + 3;
     final width = math.max(colW * (e - s + 1) - 6, 18.0);
     final fill = color.withOpacity(wt.done ? .35 : .75);
+    final t = wt.task;
+    final doneBlocks = blocks.where((b) => b.status == 'done').length;
+    final barTip = [
+      '${_dm(t.startDate)}${t.endDate != null ? ' → ${_dm(t.endDate!)}' : ''}'
+          ' · estimé ${_fmtHm(t.plannedMin)}',
+      '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}'
+          '${doneBlocks > 0 ? ' · $doneBlocks fait${doneBlocks > 1 ? 's' : ''}' : ''}'
+          '${remaining > 0 && !wt.done ? ' · reste ${_fmtHm(remaining)} à caser' : ''}',
+      'Glisser = déplacer · bord droit = échéance · clic droit = couleur',
+    ].join('\n');
+    // Points visibles : ~48 px chacun ; au-delà, « +N » plutôt qu'un
+    // rognage silencieux.
+    final maxDots = math.max(1, ((width - 18) / 48).floor());
+    final shownBlocks = blocks.length > maxDots ? blocks.take(maxDots - 1).toList() : blocks;
+    final hiddenDots = blocks.length - shownBlocks.length;
     return [
       Positioned(
         left: left,
         width: width,
         top: _kBarTop,
         height: _kBarH,
-        child: GestureDetector(
+        child: MouseRegion(
+          cursor: dragging && !_dragResize ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+          child: Tooltip(
+          message: barTip,
+          waitDuration: const Duration(milliseconds: 700),
+          child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTapUp: (d) => _openPopover(
               wt, (s + (d.localPosition.dx / colW).floor()).clamp(0, _days - 1), d.globalPosition),
@@ -868,24 +954,14 @@ class _WeekViewState extends State<WeekView> {
             padding: const EdgeInsets.only(left: 8, right: 10),
             child: ClipRect(
               child: Row(children: [
-                for (final b in blocks) ...[
-                  InkWell(
-                    onTapDown: (d) => _openDotMenu(b, d.globalPosition),
-                    onTap: () {},
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(color: kBBg, shape: BoxShape.circle)),
-                        const SizedBox(width: 4),
-                        Text(_fmtHm(b.durationMin),
-                            style: const TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w700, color: kBBg, fontFeatures: _tabular)),
-                      ]),
-                    ),
-                  ),
+                for (final b in shownBlocks) ...[
+                  _dot(b),
+                  const SizedBox(width: 6),
+                ],
+                if (hiddenDots > 0) ...[
+                  Text('+$hiddenDots',
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w700, color: kBBg, fontFeatures: _tabular)),
                   const SizedBox(width: 6),
                 ],
                 if (remaining > 0 && !wt.done)
@@ -899,6 +975,8 @@ class _WeekViewState extends State<WeekView> {
               ]),
             ),
           ),
+          ),
+          ),
         ),
       ),
       // Poignée droite : étendre / réduire l'échéance.
@@ -909,6 +987,9 @@ class _WeekViewState extends State<WeekView> {
         height: _kBarH,
         child: MouseRegion(
           cursor: SystemMouseCursors.resizeLeftRight,
+          child: Tooltip(
+          message: 'Tirer pour changer l\'échéance',
+          waitDuration: const Duration(milliseconds: 500),
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onHorizontalDragStart: (_) => setState(() {
@@ -929,9 +1010,50 @@ class _WeekViewState extends State<WeekView> {
                   color: Colors.white.withOpacity(.55), borderRadius: BorderRadius.circular(2)),
             ),
           ),
+          ),
         ),
       ),
     ];
+  }
+
+  /// Point d'un bloc dans la barre : plein = fait, anneau = à venir, barré =
+  /// sauté. Infobulle avec le jour, l'heure, la durée et l'état ; le clic
+  /// ouvre le menu (reporter à demain / retirer).
+  Widget _dot(ScheduleBlock b) {
+    final done = b.status == 'done';
+    final skipped = b.status == 'skipped';
+    final date = _dateOfBlock(b);
+    final day = date == null ? '' : _dm(DateTime.parse(date));
+    final state = done ? 'fait' : skipped ? 'sauté' : 'à venir';
+    return Tooltip(
+      message: '$day · ${b.startTime} · ${_fmtHm(b.durationMin)} · $state\nClic : reporter à demain ou retirer',
+      waitDuration: const Duration(milliseconds: 500),
+      child: InkWell(
+        onTapDown: (d) => _openDotMenu(b, d.globalPosition),
+        onTap: () {},
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                    color: done ? kBBg : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kBBg.withOpacity(skipped ? .45 : 1), width: 1.5))),
+            const SizedBox(width: 4),
+            Text(_fmtHm(b.durationMin),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: kBBg.withOpacity(skipped ? .45 : 1),
+                    decoration: skipped ? TextDecoration.lineThrough : null,
+                    decorationColor: kBBg,
+                    fontFeatures: _tabular)),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _legend() {
@@ -972,7 +1094,7 @@ class _WeekViewState extends State<WeekView> {
         const Spacer(),
         const Flexible(
           child: Text(
-            'Clic sur un jour = caser · glisser une barre = déplacer · tirer le bord = étendre · clic droit = couleur',
+            'Clic sur un jour = caser · glisser = déplacer · bord droit = échéance · clic droit = couleur · point = bloc (menu)',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
