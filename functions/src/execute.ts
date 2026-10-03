@@ -421,6 +421,19 @@ async function readAutoPlan(uid: string): Promise<boolean> {
   return snap.exists && (snap.data() as Record<string, unknown>).autoPlan === true;
 }
 
+/** Journée active réglée dans l'app (`data/meta.dayWindow {startMin, endMin}`),
+ * en heures entières (début arrondi en bas, fin en haut). Null si absente ou
+ * incohérente : plan_day garde alors ses défauts 7 h – 20 h. */
+async function readDayWindowHours(uid: string): Promise<{ startHour: number; endHour: number } | null> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const raw = snap.exists ? (snap.data() as Record<string, unknown>).dayWindow : null;
+  if (!raw || typeof raw !== "object") return null;
+  const { startMin, endMin } = raw as { startMin?: unknown; endMin?: unknown };
+  if (typeof startMin !== "number" || typeof endMin !== "number") return null;
+  if (startMin < 0 || endMin > 24 * 60 || endMin - startMin < 4 * 60) return null;
+  return { startHour: Math.floor(startMin / 60), endHour: Math.ceil(endMin / 60) };
+}
+
 function autoPlanBanner(enabled: boolean, date: string): string[] {
   return enabled
     ? [
@@ -1999,8 +2012,11 @@ async function executePlanDay(
   const today = todayInParis();
   const date = args.date ?? today;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}`;
-  const startHour = args.startHour ?? 7;
-  const endHour = args.endHour ?? 20;
+  // Défauts = journée active réglée dans l'app (Cette semaine → Capacité),
+  // sinon 7 h – 20 h ; un lève-tôt qui a mis 4 h → 20 h est planifié dès 4 h.
+  const dayWindow = await readDayWindowHours(uid);
+  const startHour = args.startHour ?? dayWindow?.startHour ?? 7;
+  const endHour = args.endHour ?? dayWindow?.endHour ?? 20;
   // Défaut SANS écriture dans Google Calendar : l'app synchronise déjà le
   // programme (sync native) et les rendez-vous arrivent en miroirs ; une
   // 2ᵉ écriture par le connecteur Claude créait des doublons des deux côtés.

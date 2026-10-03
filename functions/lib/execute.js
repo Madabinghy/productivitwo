@@ -404,6 +404,21 @@ async function readAutoPlan(uid) {
     const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
     return snap.exists && snap.data().autoPlan === true;
 }
+/** Journée active réglée dans l'app (`data/meta.dayWindow {startMin, endMin}`),
+ * en heures entières (début arrondi en bas, fin en haut). Null si absente ou
+ * incohérente : plan_day garde alors ses défauts 7 h – 20 h. */
+async function readDayWindowHours(uid) {
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const raw = snap.exists ? snap.data().dayWindow : null;
+    if (!raw || typeof raw !== "object")
+        return null;
+    const { startMin, endMin } = raw;
+    if (typeof startMin !== "number" || typeof endMin !== "number")
+        return null;
+    if (startMin < 0 || endMin > 24 * 60 || endMin - startMin < 4 * 60)
+        return null;
+    return { startHour: Math.floor(startMin / 60), endHour: Math.ceil(endMin / 60) };
+}
 function autoPlanBanner(enabled, date) {
     return enabled
         ? [
@@ -1756,13 +1771,16 @@ async function executeProposeChange(uid, args) {
 }
 // ── Programme horaire journalier ─────────────────────────────────────────────
 async function executePlanDay(uid, args) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const today = todayInParis();
     const date = (_a = args.date) !== null && _a !== void 0 ? _a : today;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}`;
-    const startHour = (_b = args.startHour) !== null && _b !== void 0 ? _b : 7;
-    const endHour = (_c = args.endHour) !== null && _c !== void 0 ? _c : 20;
+    // Défauts = journée active réglée dans l'app (Cette semaine → Capacité),
+    // sinon 7 h – 20 h ; un lève-tôt qui a mis 4 h → 20 h est planifié dès 4 h.
+    const dayWindow = await readDayWindowHours(uid);
+    const startHour = (_c = (_b = args.startHour) !== null && _b !== void 0 ? _b : dayWindow === null || dayWindow === void 0 ? void 0 : dayWindow.startHour) !== null && _c !== void 0 ? _c : 7;
+    const endHour = (_e = (_d = args.endHour) !== null && _d !== void 0 ? _d : dayWindow === null || dayWindow === void 0 ? void 0 : dayWindow.endHour) !== null && _e !== void 0 ? _e : 20;
     // Défaut SANS écriture dans Google Calendar : l'app synchronise déjà le
     // programme (sync native) et les rendez-vous arrivent en miroirs ; une
     // 2ᵉ écriture par le connecteur Claude créait des doublons des deux côtés.

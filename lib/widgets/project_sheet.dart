@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
@@ -1003,6 +1004,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
   late ProjectTask _task;
   bool _saving = false;
   late TabController _actionTabs;
+  // Actions dont les étapes (checklist) sont dépliées.
+  final Set<String> _expandedActions = {};
 
   @override
   void initState() {
@@ -1027,6 +1030,78 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     widget.onChanged();
     if (mounted) setState(() => _saving = false);
   }
+
+  // ── Étapes (checklist) d'une action — même logique que le web et MAINTENANT.
+
+  void _toggleExpanded(TaskAction a) => setState(() =>
+      _expandedActions.contains(a.id) ? _expandedActions.remove(a.id) : _expandedActions.add(a.id));
+
+  void _toggleStep(TaskAction a, ChecklistItem c, bool v) {
+    final changed = setChecklistItem(a, c.id, v);
+    setState(() {});
+    _save();
+    if (changed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 2),
+        content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
+      ));
+    }
+  }
+
+  void _addStep(TaskAction a, String title) {
+    if (addChecklistItem(a, title) == null) return;
+    setState(() {});
+    _save();
+  }
+
+  void _removeStep(TaskAction a, ChecklistItem c) {
+    setState(() => removeChecklistItem(a, c.id));
+    _save();
+  }
+
+  void _renameStep(TaskAction a, ChecklistItem c, String title) {
+    if (!renameChecklistItem(a, c.id, title)) return;
+    setState(() {});
+    _save();
+  }
+
+  /// Titre d'une action + compteur d'étapes « 2/5 » + chevron de dépliage.
+  Widget _actionTitle(ColorScheme cs, TaskAction a, {required bool done}) {
+    final open = _expandedActions.contains(a.id);
+    final color = done ? cs.onSurface.withOpacity(.35) : cs.onSurface;
+    return Row(children: [
+      Expanded(
+        child: Text(a.title,
+            style: TextStyle(
+              fontSize: 14,
+              color: color,
+              decoration: done ? TextDecoration.lineThrough : null,
+            )),
+      ),
+      if (a.checklist.isNotEmpty) ...[
+        const SizedBox(width: 6),
+        Text('${a.checklistDone}/${a.checklistTotal}',
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: a.checklistDone == a.checklistTotal
+                    ? Colors.green
+                    : cs.onSurface.withOpacity(.5))),
+      ],
+      const SizedBox(width: 2),
+      Icon(open ? Icons.expand_less : Icons.expand_more,
+          size: 16, color: cs.onSurface.withOpacity(.3)),
+    ]);
+  }
+
+  Widget _stepsSection(ColorScheme cs, TaskAction a) => _StepsSection(
+        key: ValueKey('steps_${a.id}'),
+        action: a,
+        onToggle: (c, v) => _toggleStep(a, c, v),
+        onAdd: (t) => _addStep(a, t),
+        onRemove: (c) => _removeStep(a, c),
+        onRename: (c, t) => _renameStep(a, c, t),
+      );
 
   Future<void> _openDocs(BuildContext context) async {
     final taskDocs = await widget.sync.fetchDocuments(taskId: _task.id);
@@ -1699,27 +1774,23 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                               setState(() => _task.actions.remove(a));
                               _save();
                             },
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: const EdgeInsets.only(left: 0, right: 4),
-                              leading: Checkbox(
-                                value: true,
-                                activeColor: Colors.green,
-                                onChanged: (v) {
-                                  setState(() {
-                                    a.done = false;
-                                    a.doneAt = null;
-                                  });
-                                  _save();
-                                },
+                            child: Column(mainAxisSize: MainAxisSize.min, children: [
+                              ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                                onTap: () => _toggleExpanded(a),
+                                leading: Checkbox(
+                                  value: true,
+                                  activeColor: Colors.green,
+                                  onChanged: (v) {
+                                    setState(() => setActionDone(a, false));
+                                    _save();
+                                  },
+                                ),
+                                title: _actionTitle(cs, a, done: true),
                               ),
-                              title: Text(a.title,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: cs.onSurface.withOpacity(.35),
-                                    decoration: TextDecoration.lineThrough,
-                                  )),
-                            ),
+                              if (_expandedActions.contains(a.id)) _stepsSection(cs, a),
+                            ]),
                           );
                         },
                       ))
@@ -1776,10 +1847,12 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         content: Text('Action supprimée'),
                                       ));
                                     },
-                                    child: ListTile(
+                                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                    ListTile(
                                       key: ValueKey('tile_todo_${a.id}'),
                                       dense: true,
                                       contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                                      onTap: () => _toggleExpanded(a),
                                       onLongPress: () async {
                                         final ctrl = TextEditingController(text: a.title);
                                         var pickedContexts =
@@ -1839,18 +1912,11 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                       leading: Checkbox(
                                         value: false,
                                         onChanged: (v) {
-                                          setState(() {
-                                            a.done = v ?? false;
-                                            a.doneAt = a.done ? DateTime.now() : null;
-                                          });
+                                          setState(() => setActionDone(a, v ?? false));
                                           _save();
                                         },
                                       ),
-                                      title: Text(a.title,
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            color: cs.onSurface,
-                                          )),
+                                      title: _actionTitle(cs, a, done: false),
                                       subtitle: a.allContexts.isEmpty
                                           ? null
                                           : Text(
@@ -1919,6 +1985,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
                                         ],
                                       ),
                                     ),
+                                    if (_expandedActions.contains(a.id)) _stepsSection(cs, a),
+                                    ]),
                                   );
                                 },
                               ),
@@ -2485,5 +2553,155 @@ class _ExpandableDescriptionState extends State<_ExpandableDescription> {
         ],
       );
     });
+  }
+}
+
+// ── Étapes d'une action (fiche de tâche mobile) ───────────────────────────────
+
+/// Checklist dépliée sous une action : cocher (règle « dernière étape cochée =
+/// action faite », appliquée par l'appelant), ajouter (Entrée enchaîne),
+/// appui long = renommer ou retirer. Le modèle est celui du web et du MCP.
+class _StepsSection extends StatefulWidget {
+  final TaskAction action;
+  final void Function(ChecklistItem, bool) onToggle;
+  final void Function(String) onAdd;
+  final void Function(ChecklistItem) onRemove;
+  final void Function(ChecklistItem, String) onRename;
+  const _StepsSection({
+    super.key,
+    required this.action,
+    required this.onToggle,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onRename,
+  });
+
+  @override
+  State<_StepsSection> createState() => _StepsSectionState();
+}
+
+class _StepsSectionState extends State<_StepsSection> {
+  final _ctrl = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final t = _ctrl.text.trim();
+    if (t.isEmpty) return;
+    widget.onAdd(t);
+    _ctrl.clear();
+    _focus.requestFocus();
+  }
+
+  Future<void> _editItem(ChecklistItem c) async {
+    final ctrl = TextEditingController(text: c.title);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Étape'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+          onSubmitted: (v) {
+            if (v.trim().isNotEmpty) Navigator.pop(ctx, v.trim());
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: Text('Retirer', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+          const Spacer(),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              final v = ctrl.text.trim();
+              if (v.isNotEmpty) Navigator.pop(ctx, v);
+            },
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null) return;
+    if (result.isEmpty) {
+      widget.onRemove(c);
+    } else {
+      widget.onRename(c, result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final a = widget.action;
+    final next = nextChecklistItem(a);
+    return Padding(
+      padding: const EdgeInsets.only(left: 44, right: 8, bottom: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (a.checklist.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, bottom: 4),
+            child: Text(
+              'Découpe cette action en étapes : la dernière cochée la marque faite.',
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.45)),
+            ),
+          ),
+        for (final c in a.checklist)
+          InkWell(
+            onTap: () => widget.onToggle(c, !c.done),
+            onLongPress: () => _editItem(c),
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: Row(children: [
+                Icon(c.done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                    size: 18,
+                    color: c.done
+                        ? Colors.green
+                        : c.id == next?.id && !a.done
+                            ? cs.primary
+                            : cs.onSurface.withOpacity(.35)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(c.title,
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: c.done ? cs.onSurface.withOpacity(.4) : cs.onSurface,
+                          decoration: c.done ? TextDecoration.lineThrough : null)),
+                ),
+              ]),
+            ),
+          ),
+        Row(children: [
+          Icon(Icons.add, size: 18, color: cs.onSurface.withOpacity(.35)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              focusNode: _focus,
+              style: const TextStyle(fontSize: 13),
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                hintText: 'Ajouter une étape…',
+                hintStyle: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.35)),
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+          ),
+        ]),
+      ]),
+    );
   }
 }

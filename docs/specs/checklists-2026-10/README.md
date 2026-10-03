@@ -50,9 +50,13 @@ défaut, inchangée), **Réalisation** = les étapes de chaque action. Le code d
 `ReorderableListView`) · `setActionDone(a, done)` (faite = toutes les étapes cochées ; rouvrir ne touche pas
 aux étapes) · `nextChecklistItem(a)`.
 
-## Mobile — état et pistes
+## Mobile — livré
 
-Déjà en place : cocher les étapes pendant un bloc (carte MAINTENANT, `now_card.dart`) et dans l'écran Focus
-(`focus_screen.dart`, ajout possible). Non fait : la fiche projet mobile (`project_sheet.dart`) n'affiche
-pas les étapes des actions — piste suivante si le besoin se confirme (compteur « 2/5 » sur l'action, puis
-liste dépliable), en réutilisant les mêmes helpers.
+- Pendant un bloc : cocher les étapes dans la carte MAINTENANT (`now_card.dart`) et l'écran Focus
+  (`focus_screen.dart`), inchangé.
+- **Fiche de tâche mobile** (`project_sheet.dart`, `_TaskDetailSheet`) : chaque action porte un compteur
+  « 2/5 » et un chevron ; **tap = déplier** ses étapes (`_StepsSection`) : cocher (règle d'achèvement +
+  SnackBar « Action faite / rouverte »), **ajouter** (champ permanent, Entrée enchaîne), **appui long** sur une
+  étape = renommer ou retirer. Cocher l'action elle-même coche toutes ses étapes (`setActionDone`) ;
+  la décocher depuis « Fait » la rouvre sans toucher aux étapes. Pas de réordonnancement sur mobile
+  (poignée réservée aux actions). Mêmes helpers purs que le web.

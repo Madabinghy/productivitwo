@@ -1044,8 +1044,8 @@ export const PLAN_DAY_TOOL = {
     type: "object",
     properties: {
       date:            { type: "string", description: "YYYY-MM-DD (défaut: aujourd'hui)" },
-      startHour:       { type: "number", description: "Heure de début (défaut: 7)" },
-      endHour:         { type: "number", description: "Heure de fin (défaut: 20)" },
+      startHour:       { type: "number", description: "Heure de début (défaut : journée active réglée dans l'app, sinon 7)" },
+      endHour:         { type: "number", description: "Heure de fin (défaut : journée active réglée dans l'app, sinon 20)" },
       syncToCalendar:  { type: "boolean", description: "Écrire aussi les blocs dans Google Calendar via le connecteur (défaut: false — l'app synchronise déjà l'agenda)" },
     },
   },
