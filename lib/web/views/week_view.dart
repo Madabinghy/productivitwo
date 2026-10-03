@@ -741,7 +741,7 @@ class _WeekViewState extends State<WeekView> {
     final gaugeColor = blocked ? kBAttention : (v >= 1 ? kBAlert : kBPrimary);
     final nb = '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}';
     final tip = blocked
-        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée'
+        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée (8 h – 22 h)'
         : cap == 0
             ? 'Jour de repos (capacité 0)${blocks.isEmpty ? '' : ' · $nb planifié${blocks.length > 1 ? 's' : ''}'}'
             : '${_fmtHm(planned)} planifiées sur ${_fmtHm(cap)} de capacité · $nb'

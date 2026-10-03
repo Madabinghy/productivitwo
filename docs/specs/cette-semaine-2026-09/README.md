@@ -3,6 +3,11 @@
 > **Complément 2026-10** : la colonne des tâches passe de 320 à **400 px par défaut** et se **redimensionne à la
 > souris** (poignée `ColumnResizeHandle` de `lib/web/column_resizer.dart`, 220–640 px, double-clic = défaut),
 > largeur persistée (`week_left_col`).
+>
+> **Correctif 2026-10 — blocs de nuit** : la charge d'un jour (`plannedMin`) et la règle « journée bloquée »
+> (`isBlockedDay`, ≥ 6 h) ne comptent que la part des blocs dans la **journée active 8 h – 22 h**
+> (`activeMin`, `lib/utils/week_planner.dart`). Un bloc de sommeil 23 h → 7 h ne bloque plus la journée et ne
+> remplit plus la jauge ; une formation 9 h → 17 h la bloque toujours.
 
 Périmètre : **uniquement** la vue de l'onglet « Cette semaine » de l'app web (`lib/web/`).
 Ce handoff remplace la section 3 du handoff `refonte-web-2026-09` — si une première version de

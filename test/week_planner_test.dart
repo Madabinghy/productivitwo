@@ -28,6 +28,7 @@ Project _proj(String id, List<ProjectTask> tasks,
         paused: paused);
 
 void main() {
+  _activeDayTests();
   _windowTests();
   final monday = DateTime(2026, 9, 28); // lundi
   final today = DateTime(2026, 9, 30); // mercredi
@@ -165,6 +166,32 @@ void main() {
       expect(b.category, 'project');
       expect(b.projectId, 'p');
       expect(b.durationMin, kDefaultTaskEstimatedMin);
+    });
+  });
+}
+
+void _activeDayTests() {
+  ScheduleBlock b(String start, int dur) => ScheduleBlock(startTime: start, durationMin: dur, title: 't');
+
+  group('journée active (8 h – 22 h)', () {
+    test('activeMin : part du bloc dans la journée active', () {
+      expect(activeMin(b('09:00', 120)), 120);
+      expect(activeMin(b('07:00', 120)), 60); // 7 h → 9 h : 1 h après 8 h
+      expect(activeMin(b('21:00', 120)), 60); // 21 h → 23 h : 1 h avant 22 h
+      expect(activeMin(b('23:00', 8 * 60)), 0); // sommeil 23 h → 7 h
+      expect(activeMin(b('00:00', 7 * 60)), 0); // sommeil 0 h → 7 h
+      expect(activeMin(b('22:00', 60)), 0);
+    });
+    test('un bloc de sommeil ne bloque pas la journée ni ne charge la jauge', () {
+      final sleep = [b('23:00', 8 * 60), b('00:00', 7 * 60)];
+      expect(isBlockedDay(sleep), isFalse);
+      expect(plannedMin(sleep), 0);
+      expect(plannedMin([...sleep, b('09:00', 90)]), 90);
+    });
+    test('une formation 9 h → 17 h bloque la journée', () {
+      expect(isBlockedDay([b('09:00', 8 * 60)]), isTrue);
+      expect(isBlockedDay([b('08:00', 6 * 60)]), isTrue);
+      expect(isBlockedDay([b('16:30', 6 * 60)]), isFalse); // 5 h 30 avant 22 h
     });
   });
 }

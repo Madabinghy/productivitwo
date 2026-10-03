@@ -102,13 +102,31 @@ List<WeekTask> tasksToPlace(List<WeekTask> tasks) {
   return list;
 }
 
-/// Minutes planifiées d'un jour (blocs non supprimés, faits ou non).
-int plannedMin(List<ScheduleBlock> blocks) =>
-    blocks.fold(0, (s, b) => s + b.durationMin);
+/// Journée active : seule la part des blocs comprise entre 8 h et 22 h compte
+/// dans la charge et dans la règle « journée bloquée ». Un bloc de sommeil
+/// (23 h → 7 h) ou une nuit d'hôtel ne bloque donc pas la journée.
+const int kActiveDayStartMin = 8 * 60;
+const int kActiveDayEndMin = 22 * 60;
 
-/// Journée bloquée : un bloc d'au moins 6 h la couvre (déplacement, formation…).
+/// Minutes d'un bloc à l'intérieur de la journée active (8 h – 22 h). La part
+/// qui déborde après minuit appartient à la nuit : ignorée.
+int activeMin(ScheduleBlock b) {
+  final start = blockStartMin(b);
+  final end = blockEndMin(b);
+  final s = start > kActiveDayStartMin ? start : kActiveDayStartMin;
+  final e = end < kActiveDayEndMin ? end : kActiveDayEndMin;
+  return e > s ? e - s : 0;
+}
+
+/// Minutes planifiées d'un jour (blocs non supprimés, faits ou non), dans la
+/// journée active.
+int plannedMin(List<ScheduleBlock> blocks) =>
+    blocks.fold(0, (s, b) => s + activeMin(b));
+
+/// Journée bloquée : un bloc couvre au moins 6 h de la journée active
+/// (déplacement, formation…).
 bool isBlockedDay(List<ScheduleBlock> blocks) =>
-    blocks.any((b) => b.durationMin >= 6 * 60);
+    blocks.any((b) => activeMin(b) >= 6 * 60);
 
 /// Premier créneau libre d'au moins [durationMin] à partir de [fromMin]
 /// (défaut 8 h) et finissant avant [untilMin] (défaut 22 h), hors blocs
