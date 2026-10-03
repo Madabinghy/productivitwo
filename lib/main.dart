@@ -5324,6 +5324,21 @@ class _AppRootState extends State<AppRoot>
                 ),
               ),
               // Notifications — déplacé ici depuis le bas de l'onglet Stats.
+              // Programmation automatique : la routine Claude du matin lit ce
+              // réglage (data/meta.autoPlan) avant d'écrire le programme.
+              StreamBuilder<bool>(
+                stream: _sync.streamAutoPlan(),
+                builder: (ctx, snap) => SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.auto_mode_outlined),
+                  title: const Text('Programmation automatique'),
+                  subtitle: Text(snap.data == true
+                      ? 'Claude complète ton programme chaque matin vers 6 h'
+                      : 'Désactivée · tu planifies toi-même'),
+                  value: snap.data == true,
+                  onChanged: (v) => _sync.setAutoPlan(v),
+                ),
+              ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.notifications_outlined),

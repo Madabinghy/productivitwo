@@ -93,6 +93,7 @@ class TodayViewState extends State<TodayView> {
   Timer? _ticker;
 
   List<ScheduleBlock> _blocks = [];
+  String? _generatedBy;
   List<Session> _sessions = [];
   List<HabitHit> _hits = [];
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
@@ -184,7 +185,10 @@ class TodayViewState extends State<TodayView> {
       _initialScrollDone = true;
       _scrollNowPending = true;
     }
-    setState(() => _blocks = blocks);
+    setState(() {
+      _blocks = blocks;
+      _generatedBy = s?.generatedBy;
+    });
   }
 
   Future<void> _loadLogic() async {
@@ -583,7 +587,8 @@ class TodayViewState extends State<TodayView> {
     final summary = _blocks.isEmpty
         ? 'Aucun programme pour aujourd\'hui'
         : '$done bloc${done > 1 ? 's' : ''} fait${done > 1 ? 's' : ''} sur ${_blocks.length}'
-            '${remaining > 0 ? ' · ${_fmtHm(remaining)} planifiées restantes' : ''}';
+            '${remaining > 0 ? ' · ${_fmtHm(remaining)} planifiées restantes' : ''}'
+            '${_generatedBy == 'auto' ? ' · planifiée automatiquement' : ''}';
     return Row(children: [
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,

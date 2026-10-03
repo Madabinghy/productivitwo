@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -35,4 +35,26 @@ test("dropPlainDuplicates : retire les copies ordinaires des miroirs, garde les 
   assert.equal(r.removed, 1);
   assert.deepEqual(r.blocks.map((b) => b.id), ["gcal-1", "b", "c"]);
   assert.equal(dropPlainDuplicates([blocks[2]]).removed, 0);
+});
+
+test("fillAgainstExisting : garde les trous, écarte les chevauchements, ignore supprimés/sautés", () => {
+  const existing = [
+    { startTime: "09:00", durationMin: 60, title: "Fait", status: "done" },
+    { startTime: "14:00", durationMin: 120, title: "Cours", status: "pending" },
+    { startTime: "11:00", durationMin: 60, title: "Swipé", status: "deleted" },
+    { startTime: "16:30", durationMin: 30, title: "Sauté", status: "skipped" },
+  ];
+  const incoming = [
+    { startTime: "09:30", durationMin: 30, title: "Chevauche le fait" },
+    { startTime: "10:00", durationMin: 60, title: "Libre" },
+    { startTime: "11:00", durationMin: 60, title: "Sur un supprimé" },
+    { startTime: "13:30", durationMin: 60, title: "Mord sur le cours" },
+    { startTime: "16:30", durationMin: 30, title: "Sur un sauté" },
+    { startTime: "10:30", durationMin: 30, title: "Chevauche un entrant déjà posé" },
+  ];
+  const r = fillAgainstExisting(incoming, existing);
+  assert.deepEqual(r.kept.map((b) => b.title), ["Libre", "Sur un supprimé", "Sur un sauté"]);
+  assert.deepEqual(r.dropped.map((b) => b.title), ["Chevauche le fait", "Mord sur le cours", "Chevauche un entrant déjà posé"]);
+  assert.equal(toMin("09:30"), 570);
+  assert.equal(toMin("x"), 0);
 });

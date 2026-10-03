@@ -5,10 +5,11 @@
 // → deux lignes identiques dans Aujourd'hui. Règle unique : même début +
 // même titre (ou même durée) qu'un miroir vivant = le même rendez-vous.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.isLiveMirror = void 0;
+exports.isOccupying = exports.toMin = exports.isLiveMirror = void 0;
 exports.sameSlot = sameSlot;
 exports.splitAgainstMirrors = splitAgainstMirrors;
 exports.dropPlainDuplicates = dropPlainDuplicates;
+exports.fillAgainstExisting = fillAgainstExisting;
 const norm = (s) => String(s !== null && s !== void 0 ? s : "")
     .toLowerCase()
     .normalize("NFD")
@@ -53,5 +54,42 @@ function dropPlainDuplicates(blocks) {
         out.push(b);
     }
     return { blocks: out, removed };
+}
+/** "HH:mm" → minutes depuis minuit (format invalide → 0). */
+const toMin = (hm) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm !== null && hm !== void 0 ? hm : ""));
+    return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+};
+exports.toMin = toMin;
+/** Bloc qui OCCUPE son créneau : ni supprimé, ni sauté. */
+const isOccupying = (b) => b.status !== "deleted" && b.status !== "skipped";
+exports.isOccupying = isOccupying;
+const overlaps = (a, b) => {
+    var _a, _b;
+    const aS = (0, exports.toMin)(a.startTime), aE = aS + Number((_a = a.durationMin) !== null && _a !== void 0 ? _a : 0);
+    const bS = (0, exports.toMin)(b.startTime), bE = bS + Number((_b = b.durationMin) !== null && _b !== void 0 ? _b : 0);
+    return aS < bE && bS < aE;
+};
+/**
+ * Mode « compléter » de schedule_day (programmation automatique, 2026-10) :
+ * le programme existant est conservé TEL QUEL (blocs faits, manuels, reports,
+ * tombstones) et un bloc entrant n'est posé que s'il ne chevauche aucun bloc
+ * existant qui occupe son créneau. Les entrants qui se chevauchent entre eux
+ * sont posés dans l'ordre : le second est écarté.
+ */
+function fillAgainstExisting(incoming, existing) {
+    const busy = existing.filter(exports.isOccupying);
+    const kept = [];
+    const dropped = [];
+    for (const b of incoming) {
+        if (busy.some((e) => overlaps(b, e))) {
+            dropped.push(b);
+        }
+        else {
+            kept.push(b);
+            busy.push(b);
+        }
+    }
+    return { kept, dropped };
 }
 //# sourceMappingURL=schedule_dedupe.js.map

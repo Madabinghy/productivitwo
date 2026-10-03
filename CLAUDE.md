@@ -247,6 +247,16 @@ hors bloc (état `aside`, comme le mobile). Passage auto en « fait » = mobile 
 
 ---
 
+## Programmation automatique (2026-10, `docs/specs/programmation-auto-2026-10/README.md`)
+
+Toggle `data/meta.autoPlan` (mobile : Paramètres ; web : menu ⋯). **Pas de cycle serveur** : une **routine
+Claude** quotidienne (6 h Paris, connecteur Productivitwo) appelle `plan_day`, dont la **première bannière**
+dit si la programmation automatique est activée ; désactivée ⇒ la routine ne modifie rien (une demande
+directe de l'utilisateur n'est pas concernée). Elle écrit le programme en **`schedule_day(mode:"fill",
+generatedBy:"auto")`** (garde tout l'existant, remplit les trous — `fillAgainstExisting`) et passe les
+changements de projets par `propose_change`. `generatedBy:"auto"` ⇒ « planifiée automatiquement » dans
+l'en-tête d'Aujourd'hui (web). Le prompt de la routine est versionné dans le handoff : le modifier là d'abord.
+
 ## Suppression : soft-delete partout
 
 Ne jamais faire `delete()` direct sauf cas explicite.

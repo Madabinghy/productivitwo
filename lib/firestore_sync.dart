@@ -2721,6 +2721,24 @@ class FirestoreSync {
     }
   }
 
+  /// Programmation automatique (`data/meta.autoPlan`) : lu chaque matin par
+  /// la routine Claude via plan_day / get_user_context ; false = mode manuel.
+  Stream<bool> streamAutoPlan() {
+    if (uid == null) return Stream.value(false);
+    return _meta().snapshots().map((snap) {
+      final data = snap.data() as Map<String, dynamic>?;
+      return data?['autoPlan'] == true;
+    });
+  }
+
+  Future<void> setAutoPlan(bool enabled) async {
+    if (uid == null) return;
+    await _meta().set(
+      {'autoPlan': enabled, 'autoPlanUpdatedAt': FieldValue.serverTimestamp()},
+      SetOptions(merge: true),
+    );
+  }
+
   Future<void> saveWeekCapacity(Map<String, int> capacity) async {
     if (uid == null) return;
     await _meta().set(
