@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/gantt_axis.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
@@ -279,6 +280,8 @@ class _GanttScreenState extends State<GanttScreen> {
                     leading: _objectiveLine(),
                     onTaskTap: _onTaskTap,
                     onPhaseTap: _editPhase,
+                    onShiftTask: _shiftTask,
+                    onResizeTask: _resizeTask,
                     onExportPdf: _exportPdf,
                     onChangeDomain:
                         widget.domains.isNotEmpty ? _changeDomain : null,
@@ -306,6 +309,66 @@ class _GanttScreenState extends State<GanttScreen> {
         ],
       ),
     );
+  }
+
+  void _snack(String msg, {String? actionLabel, VoidCallback? onAction}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(milliseconds: actionLabel == null ? 2000 : 5000),
+        action: actionLabel == null
+            ? null
+            : SnackBarAction(label: actionLabel, textColor: kBPrimary, onPressed: onAction!),
+      ));
+  }
+
+  Future<void> _saveTasks() => _sync.saveProjectTasks(_project.id, _project.tasks);
+
+  /// Glisser une barre : décale début et échéance de [deltaDays]. Annulable.
+  Future<void> _shiftTask(ProjectTask t, int deltaDays) async {
+    if (deltaDays == 0) return;
+    final oldStart = t.startDate, oldEnd = t.endDate;
+    setState(() {
+      t.startDate = t.startDate.add(Duration(days: deltaDays));
+      if (t.endDate != null) t.endDate = t.endDate!.add(Duration(days: deltaDays));
+    });
+    await _saveTasks();
+    final n = deltaDays.abs();
+    _snack(
+      '${t.isMilestone ? 'Jalon' : 'Tâche'} ${deltaDays > 0 ? 'repoussé' : 'avancé'}'
+      '${t.isMilestone ? '' : 'e'} de $n jour${n > 1 ? 's' : ''}'
+      ' · ${_dmy(t.startDate)}${t.endDate != null ? ' → ${_dmy(t.endDate!)}' : ''}',
+      actionLabel: 'Annuler',
+      onAction: () async {
+        setState(() {
+          t.startDate = oldStart;
+          t.endDate = oldEnd;
+        });
+        await _saveTasks();
+      },
+    );
+  }
+
+  /// Tirer le bord droit : change l'échéance de [deltaDays] (jamais avant le
+  /// début). Annulable.
+  Future<void> _resizeTask(ProjectTask t, int deltaDays) async {
+    if (deltaDays == 0) return;
+    final oldEnd = t.endDate;
+    final start = DateTime(t.startDate.year, t.startDate.month, t.startDate.day);
+    final base = t.endDate == null
+        ? start.add(const Duration(days: 7))
+        : DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day);
+    var end = base.add(Duration(days: deltaDays));
+    if (end.isBefore(start)) end = start;
+    setState(() => t.endDate = end);
+    await _saveTasks();
+    _snack('Échéance : ${_dmy(end)}', actionLabel: 'Annuler', onAction: () async {
+      setState(() => t.endDate = oldEnd);
+      await _saveTasks();
+    });
   }
 
   // Ligne d'objectif stratégique (barre d'outils du Gantt), ou null.
@@ -418,6 +481,8 @@ class _GanttBody extends StatefulWidget {
   final Widget? leading;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
+  final void Function(ProjectTask, int deltaDays) onShiftTask;
+  final void Function(ProjectTask, int deltaDays) onResizeTask;
   final VoidCallback onExportPdf;
   final VoidCallback? onChangeDomain;
   const _GanttBody({
@@ -426,6 +491,8 @@ class _GanttBody extends StatefulWidget {
     this.leading,
     this.onTaskTap,
     this.onPhaseTap,
+    required this.onShiftTask,
+    required this.onResizeTask,
     required this.onExportPdf,
     this.onChangeDomain,
   });
@@ -444,6 +511,28 @@ class _GanttBodyState extends State<_GanttBody> {
   bool _initialScrollDone = false;
   // Largeur visible de la zone de temps (hors colonne des libellés).
   double _viewportW = 0;
+  // Glisser en cours sur une barre (aperçu avant enregistrement).
+  _BarDrag? _drag;
+
+  void _dragStart(ProjectTask t, bool resize) =>
+      setState(() => _drag = _BarDrag(t.id, resize));
+  void _dragUpdate(double dx) {
+    final d = _drag;
+    if (d == null) return;
+    setState(() => _drag = _BarDrag(d.taskId, d.resize, d.dx + dx));
+  }
+  void _dragEnd(ProjectTask t) {
+    final d = _drag;
+    if (d == null) return;
+    final delta = (d.dx / _axis.dayW).round();
+    setState(() => _drag = null);
+    if (d.resize) {
+      widget.onResizeTask(t, delta);
+    } else {
+      widget.onShiftTask(t, delta);
+    }
+  }
+  void _dragCancel() => setState(() => _drag = null);
 
   GanttAxis get _axis =>
       GanttAxis.forProject(widget.project, scale: _scale, zoom: _zoom);
@@ -608,6 +697,11 @@ class _GanttBodyState extends State<_GanttBody> {
                               headerH: headerH,
                               onTaskTap: widget.onTaskTap,
                               onPhaseTap: widget.onPhaseTap,
+                              drag: _drag,
+                              onDragStart: _dragStart,
+                              onDragUpdate: _dragUpdate,
+                              onDragEnd: _dragEnd,
+                              onDragCancel: _dragCancel,
                             ),
                           ),
                         ),
@@ -810,6 +904,11 @@ class _GanttGrid extends StatelessWidget {
   final double headerH;
   final void Function(ProjectTask)? onTaskTap;
   final void Function(ProjectPhase)? onPhaseTap;
+  final _BarDrag? drag;
+  final void Function(ProjectTask, bool resize) onDragStart;
+  final void Function(double dx) onDragUpdate;
+  final void Function(ProjectTask) onDragEnd;
+  final VoidCallback onDragCancel;
 
   const _GanttGrid({
     required this.project,
@@ -819,6 +918,11 @@ class _GanttGrid extends StatelessWidget {
     required this.headerH,
     this.onTaskTap,
     this.onPhaseTap,
+    this.drag,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.onDragCancel,
   });
 
   // Couleur de repli d'une barre quand la tâche n'a pas de couleur propre :
@@ -858,9 +962,16 @@ class _GanttGrid extends StatelessWidget {
                     task: task,
                     onTap: onTaskTap != null ? () => onTaskTap!(task) : null),
                 _TaskBarCell(
-                    task: task,
-                    axis: axis,
-                    fallbackColor: _taskFallbackColor(task)),
+                  task: task,
+                  axis: axis,
+                  fallbackColor: _taskFallbackColor(task),
+                  drag: drag?.taskId == task.id ? drag : null,
+                  onTap: onTaskTap != null ? () => onTaskTap!(task) : null,
+                  onDragStart: (resize) => onDragStart(task, resize),
+                  onDragUpdate: onDragUpdate,
+                  onDragEnd: () => onDragEnd(task),
+                  onDragCancel: onDragCancel,
+                ),
               ]),
             ),
         ],
@@ -1292,11 +1403,62 @@ class _TaskLabelCell extends StatelessWidget {
   }
 }
 
+/// Glisser en cours : barre [taskId], poignée droite si [resize], décalage
+/// cumulé [dx] en pixels.
+class _BarDrag {
+  final String taskId;
+  final bool resize;
+  final double dx;
+  const _BarDrag(this.taskId, this.resize, [this.dx = 0]);
+}
+
 class _TaskBarCell extends StatelessWidget {
   final ProjectTask task;
   final GanttAxis axis;
   final Color fallbackColor;
-  const _TaskBarCell({required this.task, required this.axis, required this.fallbackColor});
+  final _BarDrag? drag;
+  final VoidCallback? onTap;
+  final void Function(bool resize) onDragStart;
+  final void Function(double dx) onDragUpdate;
+  final VoidCallback onDragEnd;
+  final VoidCallback onDragCancel;
+  const _TaskBarCell({
+    required this.task,
+    required this.axis,
+    required this.fallbackColor,
+    this.drag,
+    this.onTap,
+    required this.onDragStart,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.onDragCancel,
+  });
+
+  int get _previewDays => drag == null ? 0 : (drag!.dx / axis.dayW).round();
+
+  String get _tip {
+    final d = _previewDays;
+    final start = task.startDate.add(Duration(days: drag != null && !drag!.resize ? d : 0));
+    final visEnd = task.endDate ?? (task.isMilestone ? null : task.startDate.add(const Duration(days: 7)));
+    final end = visEnd?.add(Duration(days: drag != null ? d : 0));
+    final lines = <String>[task.title];
+    if (task.isMilestone) {
+      lines.add(_dmy(start));
+    } else {
+      final days = end == null ? null : end.difference(start).inDays + 1;
+      lines.add('${_dmy(start)}${end != null ? ' → ${_dmy(end)} · $days j' : ' · sans échéance'}'
+          '${task.endDate == null && !task.isMilestone ? ' (barre indicative : 7 j)' : ''}');
+      lines.add('Estimé ${fmtMin(task.plannedMin)}'
+          '${task.stepsTotal > 0 ? ' · ${task.stepsDone}/${task.stepsTotal} action${task.stepsTotal > 1 ? 's' : ''}' : ''}'
+          '${task.status == 'done' ? ' · terminée' : task.status == 'skipped' ? ' · ignorée' : ''}');
+    }
+    if (drag == null) {
+      lines.add(task.isMilestone
+          ? 'Clic = fiche · glisser = déplacer'
+          : 'Clic = fiche · glisser = déplacer · bord droit = échéance');
+    }
+    return lines.join('\n');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1305,6 +1467,7 @@ class _TaskBarCell extends StatelessWidget {
       width: axis.width,
       height: _kRowH,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
           const Positioned.fill(
             child: DecoratedBox(
@@ -1313,66 +1476,128 @@ class _TaskBarCell extends StatelessWidget {
               ),
             ),
           ),
-          if (task.isMilestone) _buildMilestone() else _buildBar(isDone),
+          if (task.isMilestone) _buildMilestone() else ..._buildBar(isDone),
         ],
       ),
     );
   }
 
-  Widget _buildBar(bool isDone) {
-    final end = task.endDate ?? task.startDate.add(const Duration(days: 7));
-    final left = axis.x(task.startDate);
+  Widget _gestures({required Widget child, required bool resize, MouseCursor? cursor}) {
+    final dragging = drag != null;
+    return MouseRegion(
+      cursor: cursor ??
+          (dragging && !drag!.resize ? SystemMouseCursors.grabbing : SystemMouseCursors.grab),
+      child: Tooltip(
+        message: _tip,
+        waitDuration: const Duration(milliseconds: 600),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: resize ? null : onTap,
+          onHorizontalDragStart: (_) => onDragStart(resize),
+          onHorizontalDragUpdate: (d) => onDragUpdate(d.delta.dx),
+          onHorizontalDragEnd: (_) => onDragEnd(),
+          onHorizontalDragCancel: onDragCancel,
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildBar(bool isDone) {
+    final d = _previewDays;
+    final shift = drag != null && !drag!.resize ? d : 0;
+    final grow = drag != null ? d : 0;
+    final start = task.startDate.add(Duration(days: shift));
+    final baseEnd = task.endDate ?? task.startDate.add(const Duration(days: 7));
+    var end = baseEnd.add(Duration(days: grow));
+    if (end.isBefore(start)) end = start;
+    final left = axis.x(start);
     final right = axis.x(end.add(const Duration(days: 1)));
     final barW = max(4.0, right - left);
+    final dragging = drag != null;
 
     final barColor = isDone ? kBText4.withOpacity(.45) : _hex(task.color, fallbackColor);
     final textColor = _isDark(barColor)
         ? Colors.white.withOpacity(0.9)
         : Colors.black.withOpacity(0.7);
 
-    return Positioned(
-      left: left,
-      top: _kBarVPad,
-      height: _kRowH - _kBarVPad * 2,
-      width: barW,
-      child: Container(
-        decoration: BoxDecoration(
-          color: barColor,
-          borderRadius: BorderRadius.circular(3),
-          boxShadow: isDone
-              ? null
-              : [BoxShadow(color: barColor.withOpacity(0.35), blurRadius: 8)],
+    return [
+      Positioned(
+        left: left,
+        top: _kBarVPad,
+        height: _kRowH - _kBarVPad * 2,
+        width: barW,
+        child: _gestures(
+          resize: false,
+          child: Container(
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: BorderRadius.circular(3),
+              border: dragging ? Border.all(color: Colors.white.withOpacity(.7)) : null,
+              boxShadow: isDone
+                  ? null
+                  : [BoxShadow(color: barColor.withOpacity(0.35), blurRadius: 8)],
+            ),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: task.barLabel != null
+                ? Text(
+                    task.barLabel!,
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
+                    overflow: TextOverflow.ellipsis,
+                  )
+                : null,
+          ),
         ),
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        child: task.barLabel != null
-            ? Text(
-                task.barLabel!,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: textColor),
-                overflow: TextOverflow.ellipsis,
-              )
-            : null,
       ),
-    );
+      // Poignée droite : tirer pour changer l'échéance.
+      Positioned(
+        left: left + barW - 5,
+        top: _kBarVPad,
+        height: _kRowH - _kBarVPad * 2,
+        width: 8,
+        child: _gestures(
+          resize: true,
+          cursor: SystemMouseCursors.resizeLeftRight,
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(dragging && drag!.resize ? .9 : .45),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    ];
   }
 
   Widget _buildMilestone() {
-    final centerX = axis.x(task.startDate) + axis.dayW / 2;
+    final start = task.startDate.add(Duration(days: _previewDays));
+    final centerX = axis.x(start) + axis.dayW / 2;
     final color = _hex(task.color, fallbackColor);
     const size = 13.0;
+    const hit = 24.0;
 
     return Positioned(
-      left: centerX - size / 2,
-      top: _kRowH / 2 - size / 2,
-      width: size,
-      height: size,
-      child: Transform.rotate(
-        angle: pi / 4,
-        child: Container(
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 10, spreadRadius: 1)],
+      left: centerX - hit / 2,
+      top: _kRowH / 2 - hit / 2,
+      width: hit,
+      height: hit,
+      child: _gestures(
+        resize: false,
+        child: Center(
+          child: Transform.rotate(
+            angle: pi / 4,
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+                border: drag != null ? Border.all(color: Colors.white.withOpacity(.8)) : null,
+                boxShadow: [BoxShadow(color: color.withOpacity(0.6), blurRadius: 10, spreadRadius: 1)],
+              ),
+            ),
           ),
         ),
       ),
@@ -2076,26 +2301,71 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     if (mounted) setState(() => _saving = false);
   }
 
-  /// Repousser l'échéance : date postérieure via date picker. Sort la tâche de
-  /// `lateTasks()`. (L'économie d'or du jeu — coût par semaine, sursis — a été
-  /// retirée.)
-  Future<void> _pushDeadline() async {
-    final cur = _task.endDate;
-    if (cur == null) return;
-    final ref = DateTime(cur.year, cur.month, cur.day);
-    final picked = await showDatePicker(
+  /// Renommer la tâche (clic sur le titre).
+  Future<void> _renameTask() async {
+    final ctrl = TextEditingController(text: _task.title);
+    final ok = await showDialog<bool>(
       context: context,
-      initialDate: ref.add(const Duration(days: 7)),
-      firstDate: ref.add(const Duration(days: 1)),
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renommer la tâche'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Titre', border: OutlineInputBorder()),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+            onPressed: () {
+              if (ctrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Renommer'),
+          ),
+        ],
+      ),
+    );
+    final title = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true || title.isEmpty || title == _task.title || !mounted) return;
+    setState(() => _task.title = title);
+    await _save();
+  }
+
+  /// Modifier début et échéance (clic sur la ligne des dates). Un jalon n'a
+  /// qu'une date ; une tâche sans échéance peut en recevoir une.
+  Future<void> _editDates() async {
+    final start = DateTime(_task.startDate.year, _task.startDate.month, _task.startDate.day);
+    if (_task.isMilestone) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: start,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100),
+        helpText: 'Date du jalon',
+      );
+      if (picked == null || !mounted) return;
+      setState(() => _task.startDate = DateTime(picked.year, picked.month, picked.day));
+      await _save();
+      return;
+    }
+    final end = _task.endDate;
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(
+          start: start,
+          end: end == null ? start : DateTime(end.year, end.month, end.day)),
+      firstDate: DateTime(2000),
       lastDate: DateTime(2100),
-      helpText: 'Repousser l\'échéance au…',
+      helpText: 'Début → échéance',
+      saveText: 'Enregistrer',
     );
     if (picked == null || !mounted) return;
-    final pickedMid = DateTime(picked.year, picked.month, picked.day);
-    if (pickedMid.difference(ref).inDays <= 0) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Échéance repoussée.')));
-    setState(() => _task.endDate = pickedMid);
+    setState(() {
+      _task.startDate = DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _task.endDate = DateTime(picked.end.year, picked.end.month, picked.end.day);
+    });
     await _save();
   }
 
@@ -2301,15 +2571,38 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                                 fontSize: 10, fontWeight: FontWeight.w700,
                                 letterSpacing: 1, color: cs.primary)),
                         const SizedBox(height: 4),
-                        Text(_task.title,
-                            style: const TextStyle(
-                                fontSize: 17, fontWeight: FontWeight.w700)),
+                        Tooltip(
+                          message: 'Renommer la tâche',
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: InkWell(
+                            onTap: _renameTask,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Text(_task.title,
+                                style: const TextStyle(
+                                    fontSize: 17, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
                         const SizedBox(height: 4),
-                        Text(
-                          '${_fmtDate(_task.startDate)}'
-                          '${_task.endDate != null ? ' → ${_fmtDate(_task.endDate!)}' : ''}',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                        Tooltip(
+                          message: _task.isMilestone
+                              ? 'Modifier la date du jalon'
+                              : 'Modifier le début et l\'échéance',
+                          waitDuration: const Duration(milliseconds: 600),
+                          child: InkWell(
+                            onTap: _editDates,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Row(mainAxisSize: MainAxisSize.min, children: [
+                              Text(
+                                '${_fmtDate(_task.startDate)}'
+                                '${_task.endDate != null ? ' → ${_fmtDate(_task.endDate!)}' : _task.isMilestone ? '' : ' · sans échéance'}',
+                                style: TextStyle(
+                                    fontSize: 12, color: cs.onSurface.withOpacity(.5)),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.edit_calendar_outlined, size: 12,
+                                  color: cs.onSurface.withOpacity(.35)),
+                            ]),
+                          ),
                         ),
                         // Phase (si le projet en a)
                         if (widget.project.phases.isNotEmpty) ...[
@@ -2380,18 +2673,17 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
                         color: cs.onSurface.withOpacity(.4)),
                     onSelected: (v) {
                       if (v == 'move_task') _moveTaskToAnotherProject();
-                      if (v == 'push') _pushDeadline();
+                      if (v == 'dates') _editDates();
                     },
                     itemBuilder: (_) => [
                       const PopupMenuItem(
                         value: 'move_task',
                         child: Text('Déplacer vers un autre projet'),
                       ),
-                      if (_task.endDate != null)
-                        const PopupMenuItem(
-                          value: 'push',
-                          child: Text('Repousser la deadline'),
-                        ),
+                      PopupMenuItem(
+                        value: 'dates',
+                        child: Text(_task.isMilestone ? 'Modifier la date' : 'Modifier les dates'),
+                      ),
                     ],
                   ),
                   IconButton(

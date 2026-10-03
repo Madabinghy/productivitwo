@@ -50,10 +50,24 @@ Valeur propre du Gantt, à préserver : l'**horizon long** (mois) avec les **pha
   overlays `_GanttTimeHeader` / `_GanttLabelColumn` + coin fixe. Semaine ↔ Jour garde la date au centre.
   Le PDF (`gantt_pdf_exporter.dart`) n'est pas touché par ce lot.
 
-## Lot 2 « agir sur la barre » — à faire
+## Lot 2 « agir sur la barre » — livré
 
-Clic sur la barre → fiche ; glisser = déplacer les dates ; bord droit = échéance ; annulation ; infobulle
-(dates, estimation, progression) ; curseurs ; titre et dates modifiables dans la fiche.
+Même grammaire de gestes que Cette semaine :
+- **Clic sur la barre** (ou le jalon) → fiche de tâche ; **glisser** = déplacer début + échéance (aperçu
+  en direct, bordure blanche) ; **bord droit** = changer l'échéance (jamais avant le début ; une tâche sans
+  échéance en reçoit une à partir de sa barre indicative de 7 j) ; pas de 1 jour, arrondi au plus proche.
+- **Annulation** : chaque déplacement / redimensionnement affiche une SnackBar « Annuler » (5 s) qui
+  restaure les dates d'origine et réenregistre.
+- **Infobulle** sur la barre : titre, dates + durée en jours, estimation (`plannedMin`), progression des
+  actions, statut, rappel des gestes ; pendant le glisser, l'infobulle suit les dates prévisualisées.
+- **Curseurs** : main ouverte / fermée sur la barre, double flèche sur la poignée.
+- **Fiche** : le titre se renomme au clic, la ligne des dates ouvre un sélecteur de plage (début → échéance ;
+  date simple pour un jalon) ; l'ancien « Repousser la deadline » (date postérieure uniquement) devient
+  « Modifier les dates ».
+- Implémentation : état `_BarDrag` (tâche, poignée, dx cumulé) dans `_GanttBodyState`, `_TaskBarCell`
+  stateless rendu avec l'aperçu ; persistance et annulation dans `_GanttScreenState._shiftTask/_resizeTask`
+  (`saveProjectTasks`). Le glisser à la souris gagne l'arène contre le défilement (le `ScrollView` web
+  n'accepte pas la souris comme périphérique de glisser).
 
 ## Lot 3 « lire l'état » — à faire
 
