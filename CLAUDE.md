@@ -98,7 +98,9 @@ documents dans `web/document_viewer_dialog.dart`. L'onglet **Document** (`Projec
 **retiré** en 2026-10 au profit de **Réalisation** (`views/project_checklists_view.dart`, handoff
 `docs/specs/checklists-2026-10/README.md`) : plan phases → tâches → actions à gauche, espace de travail de l'action à
 droite (étapes cochables, renommables en place, réordonnables, ajout à la volée, marquer faite / rouvrir). Pas de 4ᵉ
-niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur mobile et par le MCP. Helpers purs dans
+niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur mobile et par le MCP ; la fiche de tâche
+mobile (`widgets/project_sheet.dart`, `_StepsSection`) déplie les étapes au tap (cocher, ajouter, appui long =
+renommer / retirer). Helpers purs dans
 `utils/checklist_logic.dart` (`setChecklistItem`, `addChecklistItem`, `renameChecklistItem`, `moveChecklistItem`,
 `setActionDone`, `nextChecklistItem`).
 **Gantt projet** (refonte 2026-10, handoff `docs/specs/gantt-projet-2026-10/README.md`, 4 lots) : `gantt_screen.dart`
