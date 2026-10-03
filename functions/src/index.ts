@@ -1764,7 +1764,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
         } else if (toolName === "get_day_schedule") {
           text = await executeGetDaySchedule(uid, args.date as string);
         } else if (toolName === "schedule_day") {
-          text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2]);
+          text = await executeScheduleDay(uid, args.date as string, args.blocks as Parameters<typeof executeScheduleDay>[2],
+            { mode: args.mode as string | undefined, generatedBy: args.generatedBy as string | undefined });
         } else if (toolName === "add_prep_block") {
           text = await executeAddPrepBlock(uid, args as Parameters<typeof executeAddPrepBlock>[1]);
         } else if (toolName === "add_event") {

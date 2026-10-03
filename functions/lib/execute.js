@@ -399,6 +399,25 @@ async function validateToken(uid, rawToken) {
     }
     return false;
 }
+/** Réglage « Programmation automatique » (toggle de l'app → data/meta.autoPlan). */
+async function readAutoPlan(uid) {
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    return snap.exists && snap.data().autoPlan === true;
+}
+function autoPlanBanner(enabled, date) {
+    return enabled
+        ? [
+            `🤖 PROGRAMMATION AUTOMATIQUE : ACTIVÉE (réglage de l'app).`,
+            `   Routine quotidienne : tu peux écrire le programme — schedule_day("${date}", blocks,`,
+            `   mode:"fill", generatedBy:"auto") : complète les trous, ne remplace rien.`,
+        ]
+        : [
+            `🤖 PROGRAMMATION AUTOMATIQUE : DÉSACTIVÉE (réglage de l'app).`,
+            `   Si tu es la routine automatique quotidienne : NE MODIFIE RIEN et réponds`,
+            `   « Programmation automatique désactivée dans l'app ». (Une demande directe`,
+            `   de l'utilisateur n'est pas concernée : planifie normalement.)`,
+        ];
+}
 async function executeGetUserContext(uid) {
     var _a, _b;
     // Fenêtre glissante : 7 derniers jours
@@ -429,6 +448,7 @@ async function executeGetUserContext(uid) {
         // Objectifs stratégiques (filtre actif en code : docs legacy sans champ status)
         db_1.db.collection(`users/${uid}/strategic_objectives`).get(),
     ]);
+    const autoPlanEnabled = await readAutoPlan(uid);
     const domains = domainsSnap.docs
         .map((d) => d.data())
         .filter((v) => !v.deleted)
@@ -588,7 +608,7 @@ async function executeGetUserContext(uid) {
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
-    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, domains,
+    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled }, domains,
         activities,
         objectives,
         activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
@@ -1756,9 +1776,10 @@ async function executePlanDay(uid, args) {
     const startLabel = floorHm && floorHm > `${String(startHour).padStart(2, "0")}:00`
         ? floorHm
         : `${String(startHour).padStart(2, "0")}h`;
-    const [userContext, existingSchedule] = await Promise.all([
+    const [userContext, existingSchedule, autoPlanEnabled] = await Promise.all([
         executeGetUserContext(uid),
         executeGetDaySchedule(uid, date),
+        readAutoPlan(uid),
     ]);
     const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
         .where("status", "==", "active").get();
@@ -1791,6 +1812,7 @@ async function executePlanDay(uid, args) {
         `══════════════════════════════════════════`,
         `📋 CONTEXTE PLANIFICATION — ${date} (${startLabel}-${endHour}h)`,
         `══════════════════════════════════════════`,
+        ...autoPlanBanner(autoPlanEnabled, date),
         ...(isToday
             ? [
                 ``,
@@ -2097,12 +2119,16 @@ async function executeUpdateSessionTemplate(uid, args) {
         ? `✅ Déroulé « ${t} » archivé.`
         : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
 }
-async function executeScheduleDay(uid, date, blocks) {
+async function executeScheduleDay(uid, date, blocks, opts = {}) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
         return `Aucun bloc fourni — le programme n'a pas été enregistré.`;
+    // mode "fill" (programmation automatique) : le programme existant est gardé
+    // tel quel, les entrants ne remplissent que les trous. Défaut "replace".
+    const fill = opts.mode === "fill";
+    const generatedBy = opts.generatedBy === "auto" ? "auto" : "claude";
     const normalizedBlocks = blocks.map((b) => {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
         return ({
@@ -2136,7 +2162,8 @@ async function executeScheduleDay(uid, date, blocks) {
     // sessions de définition de domaine (onboarding 18b) — et les MIROIRS
     // d'événements Google Agenda (tous statuts : un remplacement de programme
     // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
-    const preserved = ((_a = prevData.blocks) !== null && _a !== void 0 ? _a : [])
+    const prevBlocks = (_a = prevData.blocks) !== null && _a !== void 0 ? _a : [];
+    const preserved = fill ? prevBlocks : prevBlocks
         .filter((b) => b.gcalEventId != null ||
         // Défi programmé 🔥 = engagement pris (alarme locale armée côté app) —
         // un remplacement de programme ne l'efface jamais en silence.
@@ -2146,10 +2173,15 @@ async function executeScheduleDay(uid, date, blocks) {
     // Un bloc entrant qui doublonne un miroir agenda (même début + même titre
     // ou durée) n'est PAS recréé : le rendez-vous est déjà là (doublons
     // constatés dans Aujourd'hui, 2026-10-02).
-    const { kept: newBlocks, dropped } = (0, schedule_dedupe_1.splitAgainstMirrors)(normalizedBlocks, preserved);
+    const { kept: afterMirrors, dropped } = (0, schedule_dedupe_1.splitAgainstMirrors)(normalizedBlocks, preserved);
+    // En mode compléter, un entrant qui chevauche un bloc existant (fait, manuel,
+    // reporté…) est écarté : on ne touche pas à ce qui est déjà posé.
+    const { kept: newBlocks, dropped: overlapping } = fill
+        ? (0, schedule_dedupe_1.fillAgainstExisting)(afterMirrors, preserved)
+        : { kept: afterMirrors, dropped: [] };
     await ref.set({
         date,
-        generatedBy: "claude",
+        generatedBy,
         generatedAt: db_1.FieldValue.serverTimestamp(),
         blocks: [...preserved, ...newBlocks],
         dayReason: (_b = prevData.dayReason) !== null && _b !== void 0 ? _b : null,
@@ -2168,7 +2200,13 @@ async function executeScheduleDay(uid, date, blocks) {
     const skipped = dropped.length
         ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
         : "";
-    return `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)\n${lines.join("\n")}${skipped}`;
+    const clashed = overlapping.length
+        ? `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé dans le programme existant : ${overlapping.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
+        : "";
+    const head = fill
+        ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
+        : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;
+    return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
 }
 // Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
 // SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).

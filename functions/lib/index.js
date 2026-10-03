@@ -1755,7 +1755,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeGetDaySchedule)(uid, args.date);
                 }
                 else if (toolName === "schedule_day") {
-                    text = await (0, execute_1.executeScheduleDay)(uid, args.date, args.blocks);
+                    text = await (0, execute_1.executeScheduleDay)(uid, args.date, args.blocks, { mode: args.mode, generatedBy: args.generatedBy });
                 }
                 else if (toolName === "add_prep_block") {
                     text = await (0, execute_1.executeAddPrepBlock)(uid, args);

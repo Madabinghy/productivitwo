@@ -1116,12 +1116,17 @@ export const SCHEDULE_DAY_TOOL = {
     "ça casse le chrono ciblé et le ✓ par routine). Deux routines = deux blocs. " +
     "Étapes recommandées : (1) get_user_context pour récupérer projets et routines actifs, " +
     "(2) get_day_schedule pour vérifier si un programme existe déjà, " +
-    "(3) schedule_day pour créer ou remplacer le programme.",
+    "(3) schedule_day pour créer ou remplacer le programme. " +
+    "mode:'fill' = COMPLÉTER sans rien remplacer (programme existant gardé tel quel, " +
+    "entrants posés uniquement dans les trous) — obligatoire pour la routine de " +
+    "programmation automatique, avec generatedBy:'auto'.",
   inputSchema: {
     type: "object",
     required: ["date", "blocks"],
     properties: {
       date: { type: "string", description: "YYYY-MM-DD — date du programme" },
+      mode: { type: "string", enum: ["replace", "fill"], description: "défaut 'replace' (remplace le programme, miroirs/preps/défis conservés). 'fill' : garde TOUT l'existant et n'ajoute que les blocs qui ne chevauchent aucun bloc occupé (fait/en attente)." },
+      generatedBy: { type: "string", enum: ["claude", "auto"], description: "défaut 'claude'. 'auto' = écrit par la routine de programmation automatique (affiché dans l'app)." },
       blocks: {
         type: "array",
         description: "Liste des blocs horaires dans l'ordre chronologique",

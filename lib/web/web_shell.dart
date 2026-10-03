@@ -18,7 +18,7 @@ enum WebTab {
 }
 
 /// Entrées du menu ⋯ (« Réglages, Claude et aide »).
-enum WebMenuItem { orion, messages, vision, coachConsole, claude, uiScale, help, logout }
+enum WebMenuItem { orion, messages, vision, coachConsole, claude, autoPlan, uiScale, help, logout }
 
 /// Barre du haut (64 px) : logo · onglets · chrono global · « Mon coach » ·
 /// menu ⋯ · avatar. Sans état : `WebHomeScreen` garde l'onglet courant.
@@ -31,6 +31,8 @@ class WebTopBar extends StatelessWidget {
   final bool isCoach;
   final bool isDemo;
   final bool hasAssistantMessages;
+  /// Programmation automatique (data/meta.autoPlan) ; null = pas encore lu.
+  final bool? autoPlan;
   final VoidCallback onMyCoach;
   final ValueChanged<WebMenuItem> onMenu;
   /// Zone chrono (pastille Focus + lanceur) ; null = lanceur seul.
@@ -46,6 +48,7 @@ class WebTopBar extends StatelessWidget {
     required this.isCoach,
     required this.isDemo,
     required this.hasAssistantMessages,
+    this.autoPlan,
     required this.onMyCoach,
     required this.onMenu,
     this.chrono,
@@ -114,6 +117,22 @@ class WebTopBar extends StatelessWidget {
             if (!isDemo)
               const PopupMenuItem(
                   value: WebMenuItem.claude, child: Text('Connecter Claude')),
+            if (!isDemo)
+              PopupMenuItem(
+                value: WebMenuItem.autoPlan,
+                child: Row(children: [
+                  Icon(
+                      autoPlan == true
+                          ? Icons.toggle_on_rounded
+                          : Icons.toggle_off_outlined,
+                      size: 22,
+                      color: autoPlan == true ? kBPrimary : kBText3),
+                  const SizedBox(width: 10),
+                  Text(autoPlan == true
+                      ? 'Programmation automatique · activée'
+                      : 'Programmation automatique · désactivée'),
+                ]),
+              ),
             const PopupMenuItem(
                 value: WebMenuItem.uiScale, child: Text("Taille de l'interface")),
             const PopupMenuItem(value: WebMenuItem.help, child: Text('Aide')),

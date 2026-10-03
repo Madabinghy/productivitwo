@@ -82,6 +82,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       setState(() => _shellGantt = (project: project, taskId: taskId));
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
+  StreamSubscription<bool>? _autoPlanSub;
+  bool? _autoPlan;
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
   // (sonde coachApi — 403 pour tout le monde d'autre).
   bool _isCoach = false;
@@ -110,11 +112,15 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     _projectsSub = _sync.streamProjects().listen((projects) {
       if (mounted) setState(() => _projects = projects);
     });
+    _autoPlanSub = _sync.streamAutoPlan().listen((v) {
+      if (mounted) setState(() => _autoPlan = v);
+    });
   }
 
   @override
   void dispose() {
     _projectsSub?.cancel();
+    _autoPlanSub?.cancel();
     _authSub?.cancel();
     super.dispose();
   }
@@ -241,6 +247,20 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         ),
       ));
 
+  /// Programmation automatique : la routine Claude du matin lit ce réglage
+  /// (plan_day) avant d'écrire le programme ; off = fonctionnement manuel.
+  Future<void> _toggleAutoPlan() async {
+    final next = !(_autoPlan ?? false);
+    await _sync.setAutoPlan(next);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(next
+          ? 'Programmation automatique activée : Claude complète ton programme chaque matin vers 6 h.'
+          : 'Programmation automatique désactivée : retour au mode manuel.'),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
   void _onMenu(WebMenuItem item) {
     switch (item) {
       case WebMenuItem.orion:
@@ -254,6 +274,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
         showVisionDialog(context);
       case WebMenuItem.claude:
         _showTokensPanel(context);
+      case WebMenuItem.autoPlan:
+        _toggleAutoPlan();
       case WebMenuItem.uiScale:
         showUiScaleDialog(context);
       case WebMenuItem.help:
@@ -284,6 +306,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
             isCoach: _isCoach,
             isDemo: widget.isDemo,
             hasAssistantMessages: _assistantMessages.isNotEmpty,
+            autoPlan: _autoPlan,
             onMyCoach: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSpaceScreen())),
             onMenu: _onMenu,
