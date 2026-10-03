@@ -396,10 +396,15 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
             index: _tab.index,
             children: [
               _plan(),
+              // La fiche s'ouvre sur Plan d'action : le Gantt (construit en
+              // arrière-plan par l'IndexedStack) ne doit pas ouvrir la tâche
+              // visée tant qu'il n'est pas affiché — sous 1100 px, il posait
+              // une boîte de dialogue par-dessus le plan d'action.
               GanttScreen(
-                key: ValueKey('gantt/${_p.id}/${widget.targetTaskId}'),
+                key: ValueKey(
+                    'gantt/${_p.id}/${_tab == ProjectPlanTab.gantt ? widget.targetTaskId : null}'),
                 project: _p,
-                targetTaskId: widget.targetTaskId,
+                targetTaskId: _tab == ProjectPlanTab.gantt ? widget.targetTaskId : null,
                 domains: widget.domains,
                 onClose: () => setState(() => _tab = ProjectPlanTab.plan),
               ),
