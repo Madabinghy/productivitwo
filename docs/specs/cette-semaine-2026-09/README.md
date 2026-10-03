@@ -184,8 +184,11 @@ Inventaire complet du code fait le 2026-10-03 ; constats et décisions, par ordr
 - Fenêtre affichée mémorisée **le jour même** (`week_window_start` + `week_window_saved_on`) : un
   rechargement garde la semaine regardée, le lendemain repart de la semaine courante.
 
-**Lot 3 « navigation » — à faire**
-- Remplacer « Planifier avec ORION » par « Planifier la semaine avec Claude » (claudeNewUri, comme le
-  mobile) ou s'appuyer sur la programmation automatique.
-- Titre / en-tête de domaine → fiche projet (Plan d'action) via `onOpenProject`.
-- Groupe « En retard » en tête avec la vraie date, au lieu de la colonne 0.
+**Lot 3 « navigation » — livré (PR du 2026-10-03)**
+- « Planifier la semaine avec Claude » remplace le bouton ORION : ouvre claude.ai/new avec
+  `planWeekPrompt` (plan_week sur la fenêtre affichée, retards cités, capacité par jour, pas d'écriture
+  Google Agenda, proposer puis schedule_day). `triggerOrionCycle` n'est plus appelé depuis la vue.
+- Popover « caser » : lien « Fiche projet » (`onOpenProject` → fiche hébergée, Plan d'action, tâche visée).
+- Groupe **En retard** en tête de la grille (clé `_late`, repliable, trié par échéance, « la plus
+  ancienne : mar. 30 ») ; les tâches en retard sortent de leur domaine. Barre « à caser » d'une tâche en
+  retard : « éch. mar. 30 » écrit dessus ; hors fenêtre, à droite si on regarde le passé, à gauche sinon.

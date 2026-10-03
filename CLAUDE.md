@@ -75,7 +75,10 @@ Focus a disparu (lot 3) : son contenu est réparti entre Aujourd'hui, Cette sema
 **Cette semaine v2** (handoff `docs/specs/cette-semaine-2026-09/README.md`, remplace le § 3) : Gantt
 7 / 14 jours pleine page, tout se manipule dans la grille (clic sur un jour = popover « caser », points =
 blocs du programme, glisser = déplacer les dates, tirer le bord = échéance, clic droit = couleur). Pas de
-tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff).
+tableau de colonnes par jour ni de liste « à caser » séparée (décision § 7 du handoff). Audit d'ergonomie 2026-10
+(3 lots livrés, détail dans le handoff) : annulation partout, infobulles/curseurs, dates + estimation sur la ligne
+(`estimatedMin` éditable depuis le popover), capacité dans le popover, groupe « En retard » en tête, et
+« Planifier la semaine avec Claude » (`planWeekPrompt`, `claude_link.dart`) à la place du bouton ORION.
 Aujourd'hui, **disposition active** (2026-10, `docs/specs/maintenant-actif-2026-10/README.md`) : quand le chrono
 tourne SUR la source du bloc en cours (`_liveBlock`, bloc d'activité ; les blocs de tâche passent par la bande
 Focus), MAINTENANT prend la colonne large (`_nowCardWide` : anneau + reste, déroulé du bloc, contexte, Ensuite)
