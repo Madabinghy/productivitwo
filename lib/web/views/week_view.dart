@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/gantt_screen.dart';
+import 'package:productivitwo_v1/web/column_resizer.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
@@ -33,7 +34,8 @@ const _kMonthShort = [
   'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'
 ];
 const _tabular = [FontFeature.tabularFigures()];
-const _kLeftCol = 320.0;
+const _kLeftColDefault = 400.0;
+const _kPrefLeftCol = 'week_left_col';
 /// Clé du groupe « En retard » (en tête de la grille, repliable comme un domaine).
 const _kLateGroup = '_late';
 const _kRowH = 40.0;
@@ -97,6 +99,8 @@ class _WeekViewState extends State<WeekView> {
   final List<StreamSubscription<DailySchedule?>> _subs = [];
   Map<String, int> _capacity = defaultWeekCapacity();
   bool _hideDone = false;
+  // Largeur de la colonne des tâches (réglable à la souris, persistée).
+  double _leftW = _kLeftColDefault;
   final Set<String> _collapsed = {};
 
   // Glisser une barre (déplacer) / tirer sa poignée (étendre), en pixels.
@@ -126,6 +130,7 @@ class _WeekViewState extends State<WeekView> {
       final days = p.getInt(_kPrefDays);
       setState(() {
         _hideDone = p.getBool(_kPrefHideDone) ?? false;
+        _leftW = clampColumnWidth(p.getDouble(_kPrefLeftCol) ?? _kLeftColDefault);
         _collapsed
           ..clear()
           ..addAll(p.getStringList(_kPrefCollapsed) ?? const []);
@@ -153,6 +158,7 @@ class _WeekViewState extends State<WeekView> {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setBool(_kPrefHideDone, _hideDone);
+      await p.setDouble(_kPrefLeftCol, _leftW);
       await p.setStringList(_kPrefCollapsed, _collapsed.toList());
       await p.setInt(_kPrefDays, _days);
       await p.setString(_kPrefStart, ymdOf(_start));
@@ -655,7 +661,8 @@ class _WeekViewState extends State<WeekView> {
         border: Border.all(color: kBLine),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      child: Stack(children: [
+        Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _dayHeaderRow(),
         const Divider(height: 1, color: kBLine),
         Expanded(
@@ -687,6 +694,16 @@ class _WeekViewState extends State<WeekView> {
         ),
         const Divider(height: 1, color: kBLine),
         _legend(),
+        ]),
+        ColumnResizeHandle(
+          left: _leftW,
+          onDrag: (dx) => setState(() => _leftW = clampColumnWidth(_leftW + dx)),
+          onEnd: _savePrefs,
+          onReset: () {
+            setState(() => _leftW = _kLeftColDefault);
+            _savePrefs();
+          },
+        ),
       ]),
     );
   }
@@ -695,9 +712,9 @@ class _WeekViewState extends State<WeekView> {
     return SizedBox(
       height: 58,
       child: Row(children: [
-        const SizedBox(
-          width: _kLeftCol,
-          child: Padding(
+        SizedBox(
+          width: _leftW,
+          child: const Padding(
             padding: EdgeInsets.only(left: 18),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -827,7 +844,7 @@ class _WeekViewState extends State<WeekView> {
       height: _kRowH,
       child: Row(children: [
         SizedBox(
-          width: _kLeftCol,
+          width: _leftW,
           child: Padding(
             padding: const EdgeInsets.only(left: 18, right: 12),
             child: Row(children: [
