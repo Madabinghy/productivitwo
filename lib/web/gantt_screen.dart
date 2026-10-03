@@ -61,11 +61,15 @@ class GanttScreen extends StatefulWidget {
   final Project project;
   final String? targetTaskId;
   final List<Domain> domains;
+  /// Appelé après chaque enregistrement (dates, titre, phase, domaine,
+  /// statut, suppression) pour que la fiche et le shell se rafraîchissent.
+  final VoidCallback? onChanged;
   const GanttScreen({
     super.key,
     required this.project,
     this.targetTaskId,
     this.domains = const [],
+    this.onChanged,
   });
 
   @override
@@ -220,6 +224,7 @@ class _GanttScreenState extends State<GanttScreen> {
     if (selected == null) return; // annulé
     setState(() => _project = _project..domainId = selected.isEmpty ? null : selected);
     await _sync.saveProject(_project);
+    widget.onChanged?.call();
   }
 
   Future<void> _exportPdf() async {
@@ -246,7 +251,7 @@ class _GanttScreenState extends State<GanttScreen> {
         project: _project,
         task: task,
         sync: _sync,
-        onProjectUpdated: (p) => setState(() => _project = p),
+        onProjectUpdated: _onProjectUpdated,
       ),
     );
   }
@@ -292,7 +297,7 @@ class _GanttScreenState extends State<GanttScreen> {
       }
     });
     await _sync.saveProject(_project);
-    await _sync.saveProjectTasks(_project.id, _project.tasks);
+    await _saveTasks();
   }
 
   @override
@@ -334,7 +339,7 @@ class _GanttScreenState extends State<GanttScreen> {
                       sync: _sync,
                       panel: true,
                       onClose: () => setState(() => _panelTask = null),
-                      onProjectUpdated: (p) => setState(() => _project = p),
+                      onProjectUpdated: _onProjectUpdated,
                     ),
                   ),
                 ],
@@ -360,7 +365,16 @@ class _GanttScreenState extends State<GanttScreen> {
       ));
   }
 
-  Future<void> _saveTasks() => _sync.saveProjectTasks(_project.id, _project.tasks);
+  Future<void> _saveTasks() async {
+    await _sync.saveProjectTasks(_project.id, _project.tasks);
+    widget.onChanged?.call();
+  }
+
+  // Mise à jour venant de la fiche de tâche (déjà enregistrée par elle).
+  void _onProjectUpdated(Project p) {
+    setState(() => _project = p);
+    widget.onChanged?.call();
+  }
 
   /// Glisser une barre : décale début et échéance de [deltaDays]. Annulable.
   Future<void> _shiftTask(ProjectTask t, int deltaDays) async {
@@ -491,8 +505,25 @@ class _GanttScreenState extends State<GanttScreen> {
     );
   }
 
-  /// Valide le plan : brouillon → actif.
+  /// Valide le plan : brouillon → actif, après confirmation.
   Future<void> _validatePlan() async {
+    final n = _project.tasks.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Valider le plan ?'),
+        content: Text(
+            'Le projet « ${_project.title} » devient actif : ses $n tâche${n > 1 ? 's' : ''} '
+            'entrent dans le suivi (retards, programme, onglet Projets). '
+            'Tu pourras toujours modifier le plan ensuite.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true), child: const Text('Valider le plan')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     final today = DateTime.now();
     final todayMid = DateTime(today.year, today.month, today.day);
     setState(() {
@@ -502,6 +533,7 @@ class _GanttScreenState extends State<GanttScreen> {
       }
     });
     await _sync.saveProject(_project);
+    widget.onChanged?.call();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Plan validé — le projet est actif. 🚀')));
@@ -1976,7 +2008,7 @@ class _TaskDetailDialog extends StatefulWidget {
   final ProjectTask task;
   final FirestoreSync sync;
   final void Function(Project) onProjectUpdated;
-  // Mode panneau latéral (lot 3) : la fiche vit à droite du Gantt au lieu
+  // Mode panneau latéral : la fiche vit à droite du Gantt au lieu
   // d'une Dialog 720×360 — onClose remplace alors le Navigator.pop.
   final bool panel;
   final VoidCallback? onClose;
@@ -2844,7 +2876,8 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
       builder: (ctx) => AlertDialog(
         title: const Text('Supprimer la tâche ?'),
         content: Text(
-            'Supprimer "${_task.title}" ? Cette action est irréversible.'),
+            'Supprimer « ${_task.title} » et ses ${_task.actions.length} action'
+            '${_task.actions.length > 1 ? 's' : ''} ? Tu pourras annuler juste après.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -2859,13 +2892,36 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
     );
     if (confirm != true || !mounted) return;
 
-    final updatedTasks =
-        widget.project.tasks.where((t) => t.id != _task.id).toList();
-    await widget.sync.saveProjectTasks(widget.project.id, updatedTasks);
-    final updatedProject = widget.project
-      ..tasks.replaceRange(0, widget.project.tasks.length, updatedTasks);
-    widget.onProjectUpdated(updatedProject);
+    final project = widget.project;
+    final sync = widget.sync;
+    final onUpdated = widget.onProjectUpdated;
+    final removed = _task;
+    final index = project.tasks.indexWhere((t) => t.id == removed.id);
+    // Le messager est pris avant la fermeture : la fiche n'existera plus.
+    final messenger = ScaffoldMessenger.of(context);
+
+    project.tasks.removeWhere((t) => t.id == removed.id);
+    await sync.saveProjectTasks(project.id, project.tasks);
+    onUpdated(project);
     if (mounted) _close();
+
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Tâche « ${removed.title} » supprimée'),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Annuler',
+          textColor: kBPrimary,
+          onPressed: () async {
+            if (project.tasks.any((t) => t.id == removed.id)) return;
+            project.tasks.insert(index.clamp(0, project.tasks.length), removed);
+            await sync.saveProjectTasks(project.id, project.tasks);
+            onUpdated(project);
+          },
+        ),
+      ));
   }
 
   // ── Description ─────────────────────────────────────────────────────────────

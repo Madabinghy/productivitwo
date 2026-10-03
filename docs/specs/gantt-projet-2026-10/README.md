@@ -91,7 +91,22 @@ Même grammaire de gestes que Cette semaine :
   grille.
 - `isTaskOverdue(t, today)` extrait dans `project_health.dart` (utilisé par `overdueTasks`).
 
-## Lot 4 « nettoyage » — à faire
+## Lot 4 « nettoyage » — livré
 
-Confirmation de « Valider le plan », annulation à la suppression, propagation `onChanged`, commentaires
-orphelins, `_shellGantt` renommé.
+- **« Valider le plan »** demande confirmation (titre du projet, nombre de tâches, ce que « actif » implique).
+- **Suppression d'une tâche** : le texte « irréversible » disparaît ; après suppression, SnackBar « Annuler »
+  (6 s) qui réinsère la tâche à son index d'origine et réenregistre (le messager est capturé avant la
+  fermeture de la fiche).
+- **Propagation** : `GanttScreen.onChanged` est appelé après chaque enregistrement (glisser, échéance,
+  annulations, titre, dates, statut, phase, domaine, suppression, validation) ; la fiche projet le relaie au
+  shell (`_load`) et se rebâtit, donc le plan d'action et l'onglet Projets reflètent le Gantt sans recharger.
+- `_shellGantt` → `_shellProject` dans `web_home_screen.dart` (c'est la fiche entière qui est hébergée) ;
+  commentaires « lot n » orphelins retirés de `gantt_screen.dart`.
+
+## État final (après les 4 lots)
+
+Le Gantt est l'éditeur de planning du projet : même grammaire de gestes que Cette semaine (glisser, bord
+droit, clic = fiche, clic sur phase = renommer), repères temporels (mois, lundis, aujourd'hui), état lisible
+(progression, retards, blocs du programme, phases repliables), et un seul en-tête. Pistes non retenues pour
+l'instant : reporter / retirer un bloc depuis le Gantt (reste dans Cette semaine), dépendances entre tâches,
+glisser une tâche d'une phase à l'autre (passe par la fiche).
