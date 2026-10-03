@@ -221,6 +221,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   void _go(WebTab tab) => setState(() {
         _tab = tab;
         _focusDrawerOpen = false;
+        // Aujourd'hui : la frise se recentre sur l'heure courante.
+        if (tab == WebTab.today) _todayKey.currentState?.scrollToNow();
         // Naviguer ferme aussi le Gantt hébergé — sinon l'overlay masquait
         // la vue choisie.
         _shellGantt = null;

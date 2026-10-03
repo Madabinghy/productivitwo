@@ -101,6 +101,13 @@ class TodayViewState extends State<TodayView> {
   // Mode « Modifier » de la frise : chaque bloc s'ouvre dans l'éditeur.
   bool _editing = false;
   late String _today;
+  // Frise : défilement automatique vers le trait « maintenant » (sans chrono
+  // en cours) à l'arrivée sur l'onglet, au premier programme chargé, et quand
+  // un chrono se termine. Le flag est consommé au build suivant de la frise.
+  final ScrollController _timelineCtrl = ScrollController();
+  bool _scrollNowPending = false;
+  bool _initialScrollDone = false;
+  bool _hadOpen = false;
 
   @override
   void initState() {
@@ -116,10 +123,22 @@ class TodayViewState extends State<TodayView> {
         _today = t;
         _scheduleSub?.cancel();
         _scheduleSub = widget.sync.streamDailySchedule(_today).listen(_onSchedule);
+        _scrollNowPending = true;
       }
       _checkBlockTransition();
+      final hasOpen = _openSession != null;
+      if (_hadOpen && !hasOpen) _scrollNowPending = true;
+      _hadOpen = hasOpen;
       setState(() {});
     });
+  }
+
+  /// Recentre la frise sur l'heure courante (appelé par le shell quand
+  /// l'onglet Aujourd'hui est activé). Sans effet si un chrono tourne : la
+  /// carte MAINTENANT porte alors l'attention.
+  void scrollToNow() {
+    if (!mounted) return;
+    setState(() => _scrollNowPending = true);
   }
 
   /// Réveil au changement de bloc : un bloc vient de devenir courant alors que
@@ -161,6 +180,10 @@ class TodayViewState extends State<TodayView> {
     if (!mounted) return;
     final blocks = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    if (!_initialScrollDone && blocks.isNotEmpty) {
+      _initialScrollDone = true;
+      _scrollNowPending = true;
+    }
     setState(() => _blocks = blocks);
   }
 
@@ -178,6 +201,7 @@ class TodayViewState extends State<TodayView> {
     _sessionsSub?.cancel();
     _hitsSub?.cancel();
     _ticker?.cancel();
+    _timelineCtrl.dispose();
     super.dispose();
   }
 
@@ -1525,7 +1549,21 @@ class TodayViewState extends State<TodayView> {
           ),
       ]),
     );
-    return SingleChildScrollView(child: stack);
+    if (_scrollNowPending) {
+      _scrollNowPending = false;
+      if (showNow && _openSession == null) {
+        final nowY = y(now);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_timelineCtrl.hasClients) return;
+          final pos = _timelineCtrl.position;
+          final target =
+              (nowY - pos.viewportDimension / 2).clamp(0.0, pos.maxScrollExtent);
+          _timelineCtrl.animateTo(target,
+              duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
+        });
+      }
+    }
+    return SingleChildScrollView(controller: _timelineCtrl, child: stack);
   }
 
   /// Action visée par le bloc en cours + sa checklist cochable (micro-actions
