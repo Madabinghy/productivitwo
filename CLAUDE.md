@@ -257,6 +257,12 @@ Claude ne les recrée pas lors d'une régénération.
   clearEstimate?, linkedActivityId?, done?, delete?)` — retouche UNE action existante (propre d'une activité ou sous-action de
   projet) sans réécrire les autres ; `done:true` coche aussi la checklist. Logique pure `functions/src/action_patch.ts`.
   Préférer à `update_task` (qui remplace toutes les sous-actions) pour une modification ponctuelle
+- `estimate_accuracy(days?, limit?)` — **estimé vs réel** : temps réel = sessions de chrono ciblées (`actionId`,
+  tâches via `taskId`), facteur médian réel/estimé sur les actions terminées + par contexte / porteur, actions en cours
+  au-delà de l'estimation, actions travaillées sans estimation. `plan_day` en inclut un résumé et demande d'estimer
+  (avec ce facteur) puis de poser `estimatedMin` sur toute action programmée sans estimation. Logique pure
+  `functions/src/estimates.ts` ; côté app `lib/utils/time_spent.dart` (« ⏱ … passées » : Actions mobile, Réalisation web).
+  Handoff `docs/specs/estime-vs-reel-2026-10/README.md`
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

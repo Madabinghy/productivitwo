@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
@@ -189,6 +190,9 @@ class _ActionsViewState extends State<ActionsView> {
   /// Ids des actions portées par un bloc du programme d'aujourd'hui.
   Set<String> get _todayActionIds =>
       {for (final b in _todayBlocks) if (b.actionId != null) b.actionId!};
+
+  /// Minutes réellement passées par action (chrono ciblé), recalculées au build.
+  Map<String, int> _spent = const {};
 
   /// Chrono en cours (session ouverte), sinon null.
   Session? get _running => _state.sessions.where((s) => s.endAt == null).firstOrNull;
@@ -1039,6 +1043,7 @@ class _ActionsViewState extends State<ActionsView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    _spent = spentByAction(_state.sessions);
     final all = _openEntries();
     final needingNext = _projectsNeedingNext();
 
@@ -1684,6 +1689,15 @@ class _ActionsViewState extends State<ActionsView> {
       sep();
       meta.add(TextSpan(text: '≈ ${fmtMin(a.estimatedMin!)}', style: TextStyle(color: cs.onSurface.withOpacity(.55))));
     }
+    final spent = spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin);
+    if (spent != null) {
+      sep();
+      meta.add(TextSpan(
+          text: spent.label,
+          style: TextStyle(
+              color: spent.over ? cs.error : cs.onSurface.withOpacity(.55),
+              fontWeight: spent.over ? FontWeight.w700 : FontWeight.w500)));
+    }
     if (a.checklist.isNotEmpty) {
       sep();
       meta.add(TextSpan(
@@ -1871,6 +1885,8 @@ class _ActionsViewState extends State<ActionsView> {
               if (due != null)
                 pill(_dueLabel(due, today), color: due.isBefore(today) ? cs.error : null),
               if (a.estimatedMin != null) pill('≈ ${fmtMin(a.estimatedMin!)}'),
+              if (spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin) case final sp?)
+                pill(sp.label, color: sp.over ? cs.error : null),
               for (final c in a.allContexts) pill(c, color: cs.primary),
               if (_todayActionIds.contains(a.id)) pill("au programme aujourd'hui", color: cs.primary),
             ]),
