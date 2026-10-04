@@ -38,4 +38,24 @@ void main() {
     expect(capacityMinFor(cap, DateTime(2026, 9, 30)), 60); // mercredi
     expect(capacityMinFor(cap, DateTime(2026, 10, 3)), 0); // samedi
   });
+
+  group('DayWindow', () {
+    test('parseDayWindow : défaut si absent ou incohérent', () {
+      expect(parseDayWindow(null), kDefaultDayWindow);
+      expect(parseDayWindow({'startMin': 600}), kDefaultDayWindow);
+      expect(parseDayWindow({'startMin': 600, 'endMin': 700}), kDefaultDayWindow); // < 4 h
+      expect(parseDayWindow({'startMin': -10, 'endMin': 600}), kDefaultDayWindow);
+      expect(parseDayWindow({'startMin': 0, 'endMin': 25 * 60}), kDefaultDayWindow);
+    });
+    test('parseDayWindow : valeurs valides, nombres ou chaînes', () {
+      expect(parseDayWindow({'startMin': 240, 'endMin': 1200}), const DayWindow(240, 1200));
+      expect(parseDayWindow({'startMin': '240', 'endMin': '1200'}), const DayWindow(240, 1200));
+      expect(parseDayWindow({'startMin': 0, 'endMin': 24 * 60}), const DayWindow(0, 24 * 60));
+    });
+    test('label et toJson', () {
+      expect(const DayWindow(240, 1200).label, '4 h → 20 h');
+      expect(const DayWindow(270, 1230).label, '4 h 30 → 20 h 30');
+      expect(const DayWindow(240, 1200).toJson(), {'startMin': 240, 'endMin': 1200});
+    });
+  });
 }

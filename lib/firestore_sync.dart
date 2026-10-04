@@ -2739,6 +2739,23 @@ class FirestoreSync {
     );
   }
 
+  /// Journée active (`data/meta.dayWindow`), défaut 8 h → 22 h.
+  Future<DayWindow> fetchDayWindow() async {
+    if (uid == null) return kDefaultDayWindow;
+    try {
+      final snap = await _meta().get();
+      final data = snap.data() as Map<String, dynamic>?;
+      return parseDayWindow(data?['dayWindow']);
+    } catch (_) {
+      return kDefaultDayWindow;
+    }
+  }
+
+  Future<void> saveDayWindow(DayWindow w) async {
+    if (uid == null) return;
+    await _meta().set({'dayWindow': w.toJson()}, SetOptions(merge: true));
+  }
+
   Future<void> saveWeekCapacity(Map<String, int> capacity) async {
     if (uid == null) return;
     await _meta().set(

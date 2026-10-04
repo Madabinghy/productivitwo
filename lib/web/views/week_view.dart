@@ -98,6 +98,7 @@ class _WeekViewState extends State<WeekView> {
   final Map<String, List<ScheduleBlock>> _byDay = {};
   final List<StreamSubscription<DailySchedule?>> _subs = [];
   Map<String, int> _capacity = defaultWeekCapacity();
+  DayWindow _window = kDefaultDayWindow;
   bool _hideDone = false;
   // Largeur de la colonne des tâches (réglable à la souris, persistée).
   double _leftW = _kLeftColDefault;
@@ -120,6 +121,9 @@ class _WeekViewState extends State<WeekView> {
     _subscribe();
     widget.sync.fetchWeekCapacity().then((c) {
       if (mounted) setState(() => _capacity = c);
+    });
+    widget.sync.fetchDayWindow().then((w) {
+      if (mounted) setState(() => _window = w);
     });
   }
 
@@ -443,12 +447,13 @@ class _WeekViewState extends State<WeekView> {
       anchor: overlayLocal(context, global),
       title: wt.task.title,
       initialDay: day,
-      propose: (dd, d) => proposedSlot(_byDay[ymdOf(dd)] ?? const [], d,
+      propose: (dd, d) => proposedSlot(_byDay[ymdOf(dd)] ?? const [], d, window: _window,
           isToday: dd == _today, nowMin: now.hour * 60 + now.minute),
-      load: (dd, d) => dayLoad(dd, _byDay[ymdOf(dd)] ?? const [], _capacity, d, today: _today),
+      load: (dd, d) =>
+          dayLoad(dd, _byDay[ymdOf(dd)] ?? const [], _capacity, d, today: _today, window: _window),
       firstFitting: (d) => firstFittingDay(
           _dates.where((x) => !x.isBefore(_today)).toList(), _byDay, _capacity, d,
-          today: _today),
+          today: _today, window: _window),
       durationMin: duration,
       estimatedMin: wt.task.estimatedMin,
       onEstimate: (m) => _setEstimate(wt, m),
@@ -484,13 +489,18 @@ class _WeekViewState extends State<WeekView> {
   }
 
   Future<void> _editCapacity() async {
-    final result = await showDialog<Map<String, int>>(
+    final result = await showDialog<({Map<String, int> capacity, DayWindow window})>(
       context: context,
-      builder: (_) => _CapacityDialog(capacity: _capacity),
+      builder: (_) => _CapacityDialog(capacity: _capacity, window: _window),
     );
     if (result == null) return;
-    setState(() => _capacity = result);
-    await widget.sync.saveWeekCapacity(result);
+    final windowChanged = result.window != _window;
+    setState(() {
+      _capacity = result.capacity;
+      _window = result.window;
+    });
+    await widget.sync.saveWeekCapacity(result.capacity);
+    if (windowChanged) await widget.sync.saveDayWindow(result.window);
   }
 
   /// « Planifier la semaine avec Claude » : ouvre LE Claude de l'utilisateur
@@ -574,7 +584,7 @@ class _WeekViewState extends State<WeekView> {
       _pillButton(_hideDone ? 'Afficher le fait' : 'Masquer le fait',
           icon: _hideDone ? Icons.visibility_outlined : Icons.visibility_off_outlined,
           onTap: () => _setHideDone(!_hideDone)),
-      _iconBtn(Icons.tune_outlined, 'Capacité par jour', _editCapacity),
+      _iconBtn(Icons.tune_outlined, 'Capacité par jour et journée active', _editCapacity),
       _pillButton('Planifier la semaine avec Claude',
           primary: true, icon: Icons.auto_awesome, onTap: _planWithClaude),
     ];
@@ -733,15 +743,15 @@ class _WeekViewState extends State<WeekView> {
     final key = ymdOf(d);
     final blocks = _byDay[key] ?? const <ScheduleBlock>[];
     final cap = capacityMinFor(_capacity, d);
-    final planned = plannedMin(blocks);
-    final blocked = isBlockedDay(blocks);
+    final planned = plannedMin(blocks, window: _window);
+    final blocked = isBlockedDay(blocks, window: _window);
     final isToday = d == _today;
     final weekend = d.weekday >= 6;
     final v = cap == 0 ? 0.0 : (planned / cap).clamp(0.0, 1.0);
     final gaugeColor = blocked ? kBAttention : (v >= 1 ? kBAlert : kBPrimary);
     final nb = '${blocks.length} bloc${blocks.length > 1 ? 's' : ''}';
     final tip = blocked
-        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée'
+        ? 'Journée bloquée : un bloc de 6 h ou plus occupe la journée active (${_window.label})'
         : cap == 0
             ? 'Jour de repos (capacité 0)${blocks.isEmpty ? '' : ' · $nb planifié${blocks.length > 1 ? 's' : ''}'}'
             : '${_fmtHm(planned)} planifiées sur ${_fmtHm(cap)} de capacité · $nb'
@@ -1378,7 +1388,8 @@ class _DashedRectPainter extends CustomPainter {
 
 class _CapacityDialog extends StatefulWidget {
   final Map<String, int> capacity;
-  const _CapacityDialog({required this.capacity});
+  final DayWindow window;
+  const _CapacityDialog({required this.capacity, required this.window});
 
   @override
   State<_CapacityDialog> createState() => _CapacityDialogState();
@@ -1386,6 +1397,8 @@ class _CapacityDialog extends StatefulWidget {
 
 class _CapacityDialogState extends State<_CapacityDialog> {
   late final Map<String, TextEditingController> _ctrl;
+  late final TextEditingController _startCtrl;
+  late final TextEditingController _endCtrl;
 
   @override
   void initState() {
@@ -1393,6 +1406,8 @@ class _CapacityDialogState extends State<_CapacityDialog> {
     _ctrl = {
       for (final k in kWeekDayKeys) k: TextEditingController(text: _fmtHours(widget.capacity[k] ?? 0)),
     };
+    _startCtrl = TextEditingController(text: _fmtHours(widget.window.startMin));
+    _endCtrl = TextEditingController(text: _fmtHours(widget.window.endMin));
   }
 
   @override
@@ -1400,7 +1415,29 @@ class _CapacityDialogState extends State<_CapacityDialog> {
     for (final c in _ctrl.values) {
       c.dispose();
     }
+    _startCtrl.dispose();
+    _endCtrl.dispose();
     super.dispose();
+  }
+
+  // Heure de la journée active : « 4 », « 4,5 » ou « 4:30 » → minutes.
+  int? _parseClock(String s) {
+    final t = s.trim().replaceAll(',', '.');
+    if (t.contains(':')) {
+      final p = t.split(':');
+      final h = int.tryParse(p[0]), m = p.length > 1 ? int.tryParse(p[1]) : 0;
+      if (h == null || m == null || h < 0 || h > 24 || m < 0 || m > 59) return null;
+      return h * 60 + m;
+    }
+    final v = double.tryParse(t);
+    if (v == null || v < 0 || v > 24) return null;
+    return (v * 60).round();
+  }
+
+  DayWindow? get _window {
+    final s = _parseClock(_startCtrl.text), e = _parseClock(_endCtrl.text);
+    if (s == null || e == null || !isValidDayWindow(s, e)) return null;
+    return DayWindow(s, e);
   }
 
   static String _fmtHours(int min) {
@@ -1414,7 +1451,7 @@ class _CapacityDialogState extends State<_CapacityDialog> {
     return (v * 60).round();
   }
 
-  bool get _valid => _ctrl.values.every((c) => _parse(c.text) != null);
+  bool get _valid => _ctrl.values.every((c) => _parse(c.text) != null) && _window != null;
 
   @override
   Widget build(BuildContext context) {
@@ -1457,10 +1494,56 @@ class _CapacityDialogState extends State<_CapacityDialog> {
                   ),
                 ]),
               ),
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: kBLine),
+            const SizedBox(height: 12),
+            const Text('Journée active',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+            const SizedBox(height: 4),
+            const Text(
+                'Plage où tes blocs comptent (charge, journée bloquée, créneaux proposés). '
+                'En dehors, un bloc de sommeil ne compte pas. Lève-tôt ? Mets 4 h → 20 h.',
+                style: TextStyle(fontSize: 12.5, color: kBText3, height: 1.4)),
+            const SizedBox(height: 10),
+            Row(children: [
+              const SizedBox(width: 110, child: Text('De', style: TextStyle(fontSize: 13.5, color: kBText))),
+              SizedBox(
+                width: 90,
+                child: TextField(
+                  controller: _startCtrl,
+                  onChanged: (_) => setState(() {}),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: kBText, fontFeatures: _tabular),
+                  decoration: InputDecoration(
+                      isDense: true, suffixText: 'h', errorText: _window == null ? ' ' : null),
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Text('à', style: TextStyle(fontSize: 13.5, color: kBText)),
+              const SizedBox(width: 16),
+              SizedBox(
+                width: 90,
+                child: TextField(
+                  controller: _endCtrl,
+                  onChanged: (_) => setState(() {}),
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(color: kBText, fontFeatures: _tabular),
+                  decoration: InputDecoration(
+                      isDense: true, suffixText: 'h', errorText: _window == null ? ' ' : null),
+                ),
+              ),
+            ]),
+            if (_window == null)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('Au moins 4 h d\'écart, entre 0 h et 24 h (ex. 4 ou 4:30).',
+                    style: TextStyle(fontSize: 11.5, color: kBAlert)),
+              ),
             const SizedBox(height: 12),
             Row(children: [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(defaultWeekCapacity()),
+                onPressed: () => Navigator.of(context)
+                    .pop((capacity: defaultWeekCapacity(), window: kDefaultDayWindow)),
                 child: const Text('Par défaut'),
               ),
               const Spacer(),
@@ -1468,9 +1551,10 @@ class _CapacityDialogState extends State<_CapacityDialog> {
               const SizedBox(width: 8),
               FilledButton(
                 onPressed: _valid
-                    ? () => Navigator.of(context).pop({
-                          for (final k in kWeekDayKeys) k: _parse(_ctrl[k]!.text)!,
-                        })
+                    ? () => Navigator.of(context).pop((
+                          capacity: {for (final k in kWeekDayKeys) k: _parse(_ctrl[k]!.text)!},
+                          window: _window!,
+                        ))
                     : null,
                 style: FilledButton.styleFrom(backgroundColor: kBPrimary, foregroundColor: kBBg),
                 child: const Text('Enregistrer'),

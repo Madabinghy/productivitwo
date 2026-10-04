@@ -98,7 +98,9 @@ documents dans `web/document_viewer_dialog.dart`. L'onglet **Document** (`Projec
 **retiré** en 2026-10 au profit de **Réalisation** (`views/project_checklists_view.dart`, handoff
 `docs/specs/checklists-2026-10/README.md`) : plan phases → tâches → actions à gauche, espace de travail de l'action à
 droite (étapes cochables, renommables en place, réordonnables, ajout à la volée, marquer faite / rouvrir). Pas de 4ᵉ
-niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur mobile et par le MCP. Helpers purs dans
+niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur mobile et par le MCP ; la fiche de tâche
+mobile (`widgets/project_sheet.dart`, `_StepsSection`) déplie les étapes au tap (cocher, ajouter, appui long =
+renommer / retirer). Helpers purs dans
 `utils/checklist_logic.dart` (`setChecklistItem`, `addChecklistItem`, `renameChecklistItem`, `moveChecklistItem`,
 `setActionDone`, `nextChecklistItem`).
 **Gantt projet** (refonte 2026-10, handoff `docs/specs/gantt-projet-2026-10/README.md`, 4 lots) : `gantt_screen.dart`
@@ -116,7 +118,10 @@ Domaine persistés en SharedPreferences, groupes par projet, Possible maintenant
 ⚠️ Clé des docs `daily_schedules` = `ymdOf(d)` (`YYYY-MM-DD`, `utils/engagement_stats.dart`) — PAS
 `yyyymmdd(d)` (`YYYYMMDD`, réservé à `habitProgress`).
 Modèle (lot 0) : `ProjectTask.estimatedMin` / `TaskAction.estimatedMin` (null = 45 min / passe les
-filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`).
+filtres) et `data/meta.weekCapacityMin` (`lib/utils/week_capacity.dart`). **Journée active** (2026-10) :
+`data/meta.dayWindow {startMin, endMin}` (`DayWindow`, défaut 8 h → 22 h, réglable dans le dialog Capacité de
+Cette semaine) ; seule la part des blocs dans cette fenêtre compte pour la charge, « journée bloquée » (≥ 6 h) et
+les créneaux proposés (`activeMin`, `week_planner.dart`) ; `plan_day` (serveur) y prend ses heures par défaut.
 
 **Règles de décision** :
 - Privilégier ce qui renforce la boucle coaché → données d'exécution → coach.
