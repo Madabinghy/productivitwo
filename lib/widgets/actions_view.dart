@@ -5,18 +5,27 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
+import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Onglet « Actions » : la liste GTD qui remplace l'onglet Projets quand le
-/// Gantt est en retrait. Mode liste PAR PROJET : chaque projet actif expose
-/// ses actions en attente (cochables, ▶ chrono ciblé) + les actions simples
-/// des activités. En tête : « Je suis @… » — le contexte du moment filtre ce
-/// qui est réalisable ici (partagé avec l'onglet Maintenant via nowContext).
+/// Onglet « Actions » (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10`) :
+/// le canal « pull » GTD du mobile. Jamais vide : toutes les actions ouvertes,
+/// par urgence (Maintenant · Aujourd'hui · En retard · Cette semaine · par
+/// projet · actions simples) ou par projet. Filtres optionnels « J'ai… »,
+/// « Je suis @… » (partagé avec Maintenant via nowContexts) et Domaine.
+/// Tap = feuille d'action (étapes, chrono, caser, fait) ; glisser à droite =
+/// fait, à gauche = caser demain ; appui long = fiche projet. Capture rapide
+/// en tête → boîte d'entrée. Logique pure partagée avec le web
+/// (`utils/actions_logic.dart`).
 class ActionsView extends StatefulWidget {
   final AppLogic logic;
   final void Function(Activity activity, Project project, ProjectTask task)?
@@ -41,6 +50,9 @@ class _Entry {
   /// > lien hérité du projet.
   String? get chronoActivityId =>
       activity?.id ?? action.linkedActivityId ?? project?.linkedActivityId;
+
+  /// Porteur affiché dans la ligne de détail.
+  String get holder => project?.title ?? activity?.name ?? '';
 }
 
 class _ActionsViewState extends State<ActionsView> {
@@ -76,6 +88,54 @@ class _ActionsViewState extends State<ActionsView> {
   /// Domaine d'une entrée : celui du projet, sinon celui de l'activité.
   String? _domainOf(_Entry e) => e.project?.domainId ?? e.activity?.domainId;
 
+  // « J'ai… » : 15 min · 1 h · plus (null = tout). Persisté.
+  static const _kTimePrefKey = 'actions_time_filter';
+  TimeBucket? _time;
+  // Regroupement : par urgence (défaut) ou par projet. Persisté.
+  static const _kByProjectPrefKey = 'actions_by_project';
+  bool _byProject = false;
+  // Programme du jour : points « planifiée aujourd'hui » + section Maintenant.
+  StreamSubscription<DailySchedule?>? _schedSub;
+  List<ScheduleBlock> _todayBlocks = const [];
+  final _captureCtrl = TextEditingController();
+  final _captureFocus = FocusNode();
+
+  Future<void> _loadPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final t = prefs.getString(_kTimePrefKey);
+    setState(() {
+      _time = TimeBucket.values.where((b) => b.name == t).firstOrNull;
+      _byProject = prefs.getBool(_kByProjectPrefKey) ?? false;
+    });
+  }
+
+  Future<void> _setTime(TimeBucket? b) async {
+    setState(() => _time = b);
+    final prefs = await SharedPreferences.getInstance();
+    if (b == null) {
+      await prefs.remove(_kTimePrefKey);
+    } else {
+      await prefs.setString(_kTimePrefKey, b.name);
+    }
+  }
+
+  Future<void> _setByProject(bool v) async {
+    setState(() => _byProject = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kByProjectPrefKey, v);
+  }
+
+  void _subscribeToday() {
+    _schedSub?.cancel();
+    final now = DateTime.now();
+    _schedSub = _sync.streamDailySchedule(_ymdOf(now)).listen((sch) {
+      if (!mounted) return;
+      setState(() => _todayBlocks =
+          sch?.blocks.where((b) => b.status != 'deleted').toList() ?? const []);
+    });
+  }
+
   // À l'écoute d'AppLogic : un contexte ajouté depuis une fiche/dialog doit
   // apparaître SANS changer d'onglet (constaté sur build — la vue n'était
   // rafraîchie que par les rebuilds du parent).
@@ -84,11 +144,16 @@ class _ActionsViewState extends State<ActionsView> {
     super.initState();
     widget.logic.addListener(_onLogicChange);
     _loadDomainFilter();
+    _loadPrefs();
+    _subscribeToday();
   }
 
   @override
   void dispose() {
     widget.logic.removeListener(_onLogicChange);
+    _schedSub?.cancel();
+    _captureCtrl.dispose();
+    _captureFocus.dispose();
     super.dispose();
   }
 
@@ -96,47 +161,54 @@ class _ActionsViewState extends State<ActionsView> {
     if (mounted) setState(() {});
   }
 
-  // ── Dérivation : actions en attente, groupées par porteur ──────────────────
+  // ── Dérivation : actions ouvertes (logique partagée avec le web) ──────────
 
-  List<({Project project, List<_Entry> entries})> _projectGroups() {
-    final out = <({Project project, List<_Entry> entries})>[];
-    for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active' || p.paused) continue;
-      final entries = <_Entry>[];
-      final tasks = p.tasks
-          .where((t) =>
-              !t.isMilestone && t.status != 'done' && t.status != 'skipped')
-          .toList()
-        ..sort((a, b) {
-          final ae = a.endDate, be = b.endDate;
-          if (ae == null && be == null) return 0;
-          if (ae == null) return 1;
-          if (be == null) return -1;
-          return ae.compareTo(be);
-        });
-      for (final t in tasks) {
-        for (final a in t.actions.where((a) => !a.done)) {
-          entries.add(_Entry(action: a, project: p, task: t));
-        }
+  /// Toutes les actions ouvertes des projets actifs non en pause (prochaine
+  /// action du projet en tête, puis ordre Gantt) et des activités.
+  List<_Entry> _openEntries() {
+    final out = <_Entry>[];
+    for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true)) {
+      for (final e in g.entries) {
+        out.add(_Entry(action: e.action, project: g.project, task: e.task));
       }
-      // Groupe gardé même vide : un projet fraîchement créé (ou dont tout est
-      // fait) reste visible avec l'invitation « Définir la prochaine action ».
-      out.add((project: p, entries: entries));
+    }
+    for (final g in ownActionGroups(_state.activeActivities, filter: (_) => true)) {
+      for (final a in g.actions) {
+        out.add(_Entry(action: a, activity: g.activity));
+      }
     }
     return out;
   }
 
-  List<({Activity activity, List<_Entry> entries})> _activityGroups() {
-    final out = <({Activity activity, List<_Entry> entries})>[];
-    for (final act in _state.activeActivities) {
-      final entries = [
-        for (final a in act.ownActions.where((a) => !a.done))
-          _Entry(action: a, activity: act),
+  /// Projets actifs sans aucune action ouverte → « Définir la prochaine action ».
+  List<Project> _projectsNeedingNext() => [
+        for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true))
+          if (g.entries.isEmpty) g.project,
       ];
-      if (entries.isNotEmpty) out.add((activity: act, entries: entries));
+
+  /// Ids des actions portées par un bloc du programme d'aujourd'hui.
+  Set<String> get _todayActionIds =>
+      {for (final b in _todayBlocks) if (b.actionId != null) b.actionId!};
+
+  /// Chrono en cours (session ouverte), sinon null.
+  Session? get _running => _state.sessions.where((s) => s.endAt == null).firstOrNull;
+
+  /// Entrée correspondant à une action ciblée par un bloc (projet ou activité).
+  _Entry? _entryForBlock(ScheduleBlock b, List<_Entry> all) {
+    if (b.actionId != null) {
+      final direct = all.where((e) => e.action.id == b.actionId).firstOrNull;
+      if (direct != null) return direct;
     }
-    return out;
+    final p = widget.logic.currentProjects.firstWhereOrNull((x) => x.id == b.projectId);
+    final r = resolveBlockAction(p, b);
+    if (r == null) return null;
+    return all.where((e) => e.action.id == r.action.id).firstOrNull;
   }
+
+  static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Échéance de l'entrée (tâche porteuse), à minuit ; null pour une action simple.
+  DateTime? _dueOf(_Entry e) => e.task?.endDate == null ? null : _day(e.task!.endDate!);
 
   /// Actions VALIDÉES (projets — tous statuts — + actions simples), les plus
   /// récentes d'abord : retrouver ce qui a été fait, et décocher au besoin.
@@ -159,22 +231,15 @@ class _ActionsViewState extends State<ActionsView> {
     return out;
   }
 
-  Set<String> _allContexts(
-    List<({Project project, List<_Entry> entries})> pGroups,
-    List<({Activity activity, List<_Entry> entries})> aGroups,
-  ) {
-    final s = <String>{};
-    for (final g in pGroups) {
-      for (final e in g.entries) {
-        s.addAll(e.action.allContexts);
-      }
-    }
-    for (final g in aGroups) {
-      for (final e in g.entries) {
-        s.addAll(e.action.allContexts);
-      }
-    }
-    return s;
+  String _doneLabel(DateTime? d) {
+    if (d == null) return '';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff <= 0) return 'aujourd\'hui';
+    if (diff == 1) return 'hier';
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
   }
 
   // ── Mutations ───────────────────────────────────────────────────────────────
@@ -680,7 +745,7 @@ class _ActionsViewState extends State<ActionsView> {
   String _ymdOf(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  Future<void> _scheduleAction(_Entry e) async {
+  Future<void> _scheduleAction(_Entry e, {DateTime? presetDay}) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
@@ -692,9 +757,11 @@ class _ActionsViewState extends State<ActionsView> {
       return '${wd[d.weekday - 1]} ${d.day}';
     }
 
-    var pickedDay = _ymdOf(today);
-    var time = TimeOfDay.now();
-    var duration = 30;
+    var pickedDay = _ymdOf(presetDay ?? today);
+    var time = presetDay != null && presetDay.isAfter(today)
+        ? const TimeOfDay(hour: 9, minute: 0)
+        : TimeOfDay.now();
+    var duration = e.action.estimatedMin ?? 30;
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -972,56 +1039,33 @@ class _ActionsViewState extends State<ActionsView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final pGroups = _projectGroups();
-    final aGroups = _activityGroups();
-    final contexts = _allContexts(pGroups, aGroups).toList()..sort();
-    // Contextes actifs = ceux qui existent encore dans la liste (un contexte
-    // sans action ne filtre pas — il resterait invisible et bloquerait tout).
-    final active = _state.nowContexts.where(contexts.contains).toSet();
+    final all = _openEntries();
+    final needingNext = _projectsNeedingNext();
 
-    // Le contexte est le FILTRE PAR DÉFAUT (retour user 2026-09 : la liste
-    // complète était trop longue) : aucun contexte sélectionné → aucune
-    // action. Une action SANS contexte est faisable partout → visible dès
-    // qu'un contexte est actif (sinon elle serait inatteignable).
-    // Domaines proposés = ceux qui portent au moins une action en attente ;
-    // un filtre mémorisé sur un domaine disparu ne masque rien.
+    // Filtres OPTIONNELS (plus de verrou par contexte : la liste n'est jamais
+    // vide par défaut — retour user 2026-10).
+    final contexts = {
+      for (final e in all) ...e.action.allContexts,
+    }.toList()
+      ..sort();
+    final active = _state.nowContexts.where(contexts.contains).toSet();
     final domainIds = <String>{
-      for (final g in pGroups)
-        if (g.entries.isNotEmpty && g.project.domainId != null) g.project.domainId!,
-      for (final g in aGroups) g.activity.domainId,
+      for (final e in all)
+        if (_domainOf(e) != null) _domainOf(e)!,
+      for (final p in needingNext)
+        if (p.domainId != null) p.domainId!,
     };
     final domains = _state.activeDomains.where((d) => domainIds.contains(d.id)).toList();
     final activeDomains = _domainFilter.where(domainIds.contains).toSet();
-    bool inDomain(_Entry e) =>
-        activeDomains.isEmpty || activeDomains.contains(_domainOf(e));
-
-    bool visible(_Entry e) =>
-        inDomain(e) &&
-        active.isNotEmpty &&
-        (e.action.allContexts.isEmpty ||
-            e.action.allContexts.any(active.contains));
-
-    // Un projet sans AUCUNE action (« Définir la prochaine ») reste toujours
-    // visible : c'est une alerte système, pas une action à filtrer.
-    final visibleProjectGroups = [
-      for (final g in pGroups)
-        (
-          project: g.project,
-          entries: g.entries.where(visible).toList(),
-          needsNext: g.entries.isEmpty &&
-              (activeDomains.isEmpty || activeDomains.contains(g.project.domainId)),
-        ),
-    ].where((g) => g.entries.isNotEmpty || g.needsNext).toList();
-    final visibleActivityGroups = [
-      for (final g in aGroups)
-        (activity: g.activity, entries: g.entries.where(visible).toList()),
-    ].where((g) => g.entries.isNotEmpty).toList();
-
-    final empty =
-        visibleProjectGroups.isEmpty && visibleActivityGroups.isEmpty;
-    // Des actions existent mais rien n'est affiché faute de contexte choisi.
-    final hasHiddenEntries = pGroups.any((g) => g.entries.isNotEmpty) ||
-        aGroups.any((g) => g.entries.isNotEmpty);
+    bool inDomain(String? domainId) =>
+        activeDomains.isEmpty || activeDomains.contains(domainId);
+    bool passes(_Entry e) =>
+        inDomain(_domainOf(e)) &&
+        passesContexts(e.action, active) &&
+        passesTime(e.action, _time);
+    final shown = all.where(passes).toList();
+    final hiddenByFilters = all.length - shown.length;
+    final needNextShown = needingNext.where((p) => inDomain(p.domainId)).toList();
 
     return SafeArea(
       child: ListView(
@@ -1034,7 +1078,20 @@ class _ActionsViewState extends State<ActionsView> {
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                     color: cs.onSurface)),
+            const SizedBox(width: 10),
+            if (all.isNotEmpty)
+              Text('${shown.length}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: cs.onSurface.withOpacity(.35))),
             const Spacer(),
+            IconButton(
+              tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
+              icon: Icon(_byProject ? Icons.schedule_outlined : Icons.folder_outlined,
+                  color: cs.onSurface.withOpacity(.6), size: 22),
+              onPressed: () => _setByProject(!_byProject),
+            ),
             IconButton(
               tooltip: 'Contextes : je suis… + gestion',
               icon: Icon(Icons.alternate_email, color: cs.primary, size: 24),
@@ -1053,362 +1110,483 @@ class _ActionsViewState extends State<ActionsView> {
               ),
             ),
           ]),
+          const SizedBox(height: 6),
+          _captureField(cs),
+          const SizedBox(height: 10),
+          _filtersBar(cs, contexts, active, domains, activeDomains, hiddenByFilters),
+          const SizedBox(height: 6),
 
-          // ── Domaine de vie : premier filtre, au-dessus du contexte ─────────
-          if (domains.length > 1) ...[
-            Row(children: [
-              Icon(Icons.category_outlined,
-                  size: 14, color: cs.onSurface.withOpacity(.45)),
-              const SizedBox(width: 6),
-              Text('DOMAINE',
-                  style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .8,
-                      color: cs.onSurface.withOpacity(.45))),
-              if (activeDomains.isNotEmpty) ...[
-                const Spacer(),
-                InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () async {
-                    setState(() => _domainFilter.clear());
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove(_kDomainPrefKey);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    child: Text('Tous',
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: cs.primary)),
-                  ),
-                ),
-              ],
-            ]),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final d in domains)
-                  Builder(builder: (_) {
-                    final on = activeDomains.contains(d.id);
-                    final color = domainColor(d.id, _state.activeDomains) ?? cs.primary;
-                    return ChoiceChip(
-                      selected: on,
-                      onSelected: (_) => _toggleDomain(d.id),
-                      showCheckmark: false,
-                      avatar: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                      ),
-                      label: Text(d.name),
-                      labelStyle: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: on ? FontWeight.w600 : FontWeight.w500,
-                        color: on ? color : cs.onSurface.withOpacity(.65),
-                      ),
-                      selectedColor: color.withOpacity(.14),
-                      backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
-                      side: BorderSide(
-                          color: on ? color.withOpacity(.5) : Colors.transparent),
-                      visualDensity: VisualDensity.compact,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    );
-                  }),
-              ],
-            ),
-            const SizedBox(height: 12),
-          ],
+          // ── @courses actif → la liste de courses du menu, cochable ────────
+          if (active.contains('@courses')) _CoursesSection(sync: _sync),
 
-          // ── « Je suis… » : le contexte du moment filtre la liste ───────────
-          if (contexts.isNotEmpty) ...[
-            Row(children: [
-              Icon(Icons.place_outlined,
-                  size: 14, color: cs.onSurface.withOpacity(.45)),
-              const SizedBox(width: 6),
-              Text('JE SUIS…',
-                  style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .8,
-                      color: cs.onSurface.withOpacity(.45))),
-            ]),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final c in contexts)
-                  ChoiceChip(
-                    selected: active.contains(c),
-                    onSelected: (_) {
-                      // Multi : chaque tap ajoute/retire le contexte du set.
-                      active.contains(c)
-                          ? _state.nowContexts.remove(c)
-                          : _state.nowContexts.add(c);
-                      widget.logic.onChange();
-                      setState(() {});
-                    },
-                    showCheckmark: false,
-                    label: Text(c),
-                    labelStyle: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: active.contains(c)
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                      color: active.contains(c)
-                          ? cs.primary
-                          : cs.onSurface.withOpacity(.65),
-                    ),
-                    selectedColor: cs.primary.withOpacity(.14),
-                    backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
-                    side: BorderSide(
-                        color: active.contains(c)
-                            ? cs.primary.withOpacity(.5)
-                            : Colors.transparent),
-                    visualDensity: VisualDensity.compact,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-              ],
-            ),
-            if (active.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Réalisable ${(active.toList()..sort()).join(' ou ')} — le reste est masqué.',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontStyle: FontStyle.italic,
-                      color: cs.onSurface.withOpacity(.5)),
-                ),
-              )
-            else if (hasHiddenEntries && !empty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Aucun contexte choisi — les actions sont masquées.',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontStyle: FontStyle.italic,
-                      color: cs.onSurface.withOpacity(.5)),
-                ),
-              ),
-            const SizedBox(height: 14),
-          ],
-
-          if (empty)
+          if (all.isEmpty && needNextShown.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 40),
               child: Center(
                 child: Text(
-                  active.isNotEmpty
-                      ? 'Rien à faire ${(active.toList()..sort()).join(' ou ')} pour l\'instant.'
-                      : hasHiddenEntries
-                          ? 'Choisis où tu es (JE SUIS…) :\nseules les actions réalisables dans tes contextes s\'affichent.'
-                          : 'Aucune action en attente.\nCapture une idée ou crée une action avec +.',
+                  'Aucune action en attente.\nCapture une idée ci-dessus ou crée une action avec +.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 14, color: cs.onSurface.withOpacity(.45)),
+                  style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45)),
                 ),
               ),
-            ),
-
-          // ── @courses actif → la liste de courses du menu, cochable ────────
-          // Subtilité d'accompagnement : être en courses, c'est avoir sa
-          // liste sous la main — dérivée du menu, sans rien ressaisir.
-          if (active.contains('@courses')) _CoursesSection(sync: _sync),
-
-          // ── Par projet ─────────────────────────────────────────────────────
-          for (final g in visibleProjectGroups) ...[
-            _groupHeader(
-              cs,
-              g.project.title,
-              domainColor(g.project.domainId, _state.activeDomains) ??
-                  cs.primary,
-              onTap: () => _openProject(g.project),
-              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                // + direct : l'action atterrit dans le projet sans passer
-                // par la fiche tâche (couche tâches ignorée côté user).
-                IconButton(
-                  tooltip: 'Ajouter une action',
-                  icon: Icon(Icons.add,
-                      size: 18, color: cs.primary.withOpacity(.75)),
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => _quickAddAction(g.project),
-                ),
-                const SizedBox(width: 6),
-                // Pause GTD : sort les actions du projet des contextes/listes
-                // sans l'archiver (il reste actif, juste « pas maintenant »).
-                IconButton(
-                  tooltip: 'Mettre en pause',
-                  icon: Icon(Icons.pause_circle_outline,
-                      size: 18, color: cs.onSurface.withOpacity(.4)),
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(),
-                  onPressed: () => _togglePause(g.project),
-                ),
-              ]),
-            ),
-            for (final e in g.entries) _entryTile(cs, e),
-            if (g.entries.isEmpty) _defineTile(cs, g.project),
-            const SizedBox(height: 10),
-          ],
-
-          // ── Actions simples (activités) ────────────────────────────────────
-          if (visibleActivityGroups.isNotEmpty) ...[
-            _groupHeader(cs, 'Actions simples', cs.tertiary),
-            for (final g in visibleActivityGroups) ...[
-              Padding(
-                padding: const EdgeInsets.only(left: 2, top: 2, bottom: 4),
-                child: Text(g.activity.name.toUpperCase(),
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: .8,
-                        color: cs.onSurface.withOpacity(.4))),
-              ),
-              for (final e in g.entries) _entryTile(cs, e),
-            ],
-          ],
-
-          // ── Projets en pause : accordéon replié (comme « Terminées »),
-          // juste au-dessus d'elles — réactivation en un tap.
-          ...(() {
-            final paused = widget.logic.currentProjects
-                .where((p) => p.status == 'active' && p.paused)
-                .toList();
-            if (paused.isEmpty) return const <Widget>[];
-            return <Widget>[
-              const SizedBox(height: 10),
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => setState(() => _showPaused = !_showPaused),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(children: [
-                    Icon(Icons.pause_circle_outline,
-                        size: 15, color: cs.onSurface.withOpacity(.4)),
-                    const SizedBox(width: 8),
-                    Text('EN PAUSE (${paused.length})',
-                        style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: .8,
-                            color: cs.onSurface.withOpacity(.4))),
-                    const Spacer(),
-                    Icon(
-                        _showPaused
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        size: 18,
-                        color: cs.onSurface.withOpacity(.35)),
-                  ]),
-                ),
-              ),
-              if (_showPaused)
-                for (final p in paused)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withOpacity(.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(children: [
-                      Icon(Icons.pause, size: 14,
-                          color: cs.onSurface.withOpacity(.35)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(p.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 13,
-                                color: cs.onSurface.withOpacity(.5))),
-                      ),
-                      IconButton(
-                        tooltip: 'Reprendre',
-                        icon: Icon(Icons.play_circle_outline,
-                            size: 20, color: cs.primary),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _togglePause(p),
-                      ),
-                    ]),
+            )
+          else if (shown.isEmpty && needNextShown.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 32),
+              child: Center(
+                child: Column(children: [
+                  Text('Rien ne passe les filtres ($hiddenByFilters masquée${hiddenByFilters > 1 ? 's' : ''}).',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45))),
+                  TextButton(
+                    onPressed: () {
+                      _state.nowContexts.clear();
+                      widget.logic.onChange();
+                      _setTime(null);
+                    },
+                    child: const Text('Tout afficher'),
                   ),
-            ];
-          })(),
-
-          // ── Terminées : retrouver une action validée (et la décocher) ──────
-          ...(() {
-            final doneEntries = _doneEntries();
-            if (doneEntries.isEmpty) return const <Widget>[];
-            return <Widget>[
-              const SizedBox(height: 10),
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => setState(() => _showDone = !_showDone),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(children: [
-                    Icon(Icons.check_circle_outline,
-                        size: 15, color: cs.onSurface.withOpacity(.4)),
-                    const SizedBox(width: 8),
-                    Text('TERMINÉES (${doneEntries.length})',
-                        style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: .8,
-                            color: cs.onSurface.withOpacity(.4))),
-                    const Spacer(),
-                    Icon(
-                        _showDone
-                            ? Icons.expand_less
-                            : Icons.expand_more,
-                        size: 18,
-                        color: cs.onSurface.withOpacity(.35)),
-                  ]),
-                ),
+                ]),
               ),
-              if (_showDone) ...[
-                for (final e in doneEntries.take(_kDoneShown))
-                  _doneTile(cs, e),
-                if (doneEntries.length > _kDoneShown)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2, left: 4),
-                    child: Text(
-                        '… et ${doneEntries.length - _kDoneShown} plus anciennes.',
-                        style: TextStyle(
-                            fontSize: 11.5,
-                            fontStyle: FontStyle.italic,
-                            color: cs.onSurface.withOpacity(.4))),
-                  ),
-              ],
-            ];
-          })(),
+            )
+          else if (_byProject)
+            ..._byProjectSections(cs, shown, needNextShown)
+          else
+            ..._byUrgencySections(cs, shown, all, needNextShown),
+
+          ..._pausedSection(cs),
+          ..._doneSection(cs),
         ],
       ),
     );
   }
 
-  /// Plafond d'affichage de la liste « Terminées » (ListView non lazy).
+  // ── Capture rapide → boîte d'entrée ────────────────────────────────────────
+
+  Widget _captureField(ColorScheme cs) {
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(children: [
+        Icon(Icons.inbox_outlined, size: 18, color: cs.onSurface.withOpacity(.45)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _captureCtrl,
+            focusNode: _captureFocus,
+            textInputAction: TextInputAction.done,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Capturer une idée, un truc à faire…',
+              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurface.withOpacity(.4)),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onSubmitted: (_) => _capture(),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Dans la boîte d\'entrée',
+          icon: Icon(Icons.send_rounded, size: 18, color: cs.primary),
+          visualDensity: VisualDensity.compact,
+          onPressed: _capture,
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _capture() async {
+    final text = _captureCtrl.text.trim();
+    if (text.isEmpty) return;
+    _captureCtrl.clear();
+    unawaited(_sync.saveCaptureItem(CaptureItem(text: text, createdAt: DateTime.now())));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      duration: const Duration(seconds: 2),
+      content: Text('Dans la boîte d\'entrée : $text'),
+    ));
+  }
+
+  // ── Filtres : J'ai… · Je suis… · Domaine ───────────────────────────────────
+
+  Widget _filtersBar(ColorScheme cs, List<String> contexts, Set<String> active,
+      List<Domain> domains, Set<String> activeDomains, int hidden) {
+    Widget chip(String label, bool on, VoidCallback onTap, {Color? color}) => ChoiceChip(
+          selected: on,
+          onSelected: (_) => onTap(),
+          showCheckmark: false,
+          label: Text(label),
+          labelStyle: TextStyle(
+            fontSize: 12.5,
+            fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+            color: on ? (color ?? cs.primary) : cs.onSurface.withOpacity(.65),
+          ),
+          selectedColor: (color ?? cs.primary).withOpacity(.14),
+          backgroundColor: cs.surfaceContainerHighest.withOpacity(.35),
+          side: BorderSide(color: on ? (color ?? cs.primary).withOpacity(.5) : Colors.transparent),
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        );
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Text(t,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                  color: cs.onSurface.withOpacity(.45))),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          label("J'AI"),
+          for (final (b, t) in [
+            (TimeBucket.quarter, '15 min'),
+            (TimeBucket.hour, '1 h'),
+            (TimeBucket.more, 'Plus'),
+          ]) ...[
+            chip(t, _time == b, () => _setTime(_time == b ? null : b)),
+            const SizedBox(width: 6),
+          ],
+          if (contexts.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            label('JE SUIS'),
+            for (final c in contexts) ...[
+              chip(c, active.contains(c), () {
+                active.contains(c)
+                    ? _state.nowContexts.remove(c)
+                    : _state.nowContexts.add(c);
+                widget.logic.onChange();
+                setState(() {});
+              }),
+              const SizedBox(width: 6),
+            ],
+          ],
+        ]),
+      ),
+      if (domains.length > 1) ...[
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            label('DOMAINE'),
+            for (final d in domains) ...[
+              chip(d.name, activeDomains.contains(d.id), () => _toggleDomain(d.id),
+                  color: domainColor(d.id, _state.activeDomains)),
+              const SizedBox(width: 6),
+            ],
+          ]),
+        ),
+      ],
+      if (hidden > 0 && (active.isNotEmpty || _time != null || activeDomains.isNotEmpty))
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '$hidden action${hidden > 1 ? 's' : ''} masquée${hidden > 1 ? 's' : ''} par les filtres.',
+            style: TextStyle(
+                fontSize: 11.5, fontStyle: FontStyle.italic, color: cs.onSurface.withOpacity(.5)),
+          ),
+        ),
+    ]);
+  }
+
+  // ── Sections par urgence ────────────────────────────────────────────────────
+
+  List<Widget> _byUrgencySections(
+      ColorScheme cs, List<_Entry> shown, List<_Entry> all, List<Project> needNext) {
+    final today = _day(DateTime.now());
+    final weekEnd = today.add(const Duration(days: 7));
+    final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;
+    final todayIds = _todayActionIds;
+    final used = <String>{};
+    final out = <Widget>[];
+
+    // Maintenant : chrono en cours → ses actions ; sinon le bloc en cours ou
+    // le prochain bloc du programme.
+    final running = _running;
+    final nowEntries = <_Entry>[];
+    String nowLabel = 'MAINTENANT';
+    if (running != null) {
+      final ids = {
+        for (final x in possibleNow(
+            widget.logic.currentProjects, _state.activeActivities, running.activityId,
+            filter: (_) => true))
+          x.action.id
+      };
+      nowEntries.addAll(shown.where((e) => ids.contains(e.action.id)));
+      final act = _state.activities.firstWhereOrNull((a) => a.id == running.activityId);
+      nowLabel = 'POSSIBLE MAINTENANT${act != null ? ' · ${act.name.toUpperCase()}' : ''}';
+    } else {
+      final fb = focusBlock(_todayBlocks, nowMin);
+      if (fb != null) {
+        final e = _entryForBlock(fb.block, shown);
+        if (e != null) {
+          nowEntries.add(e);
+          nowLabel = fb.current
+              ? 'BLOC EN COURS · ${fb.block.startTime}'
+              : 'PROCHAIN BLOC · ${fb.block.startTime}';
+        }
+      }
+    }
+    if (nowEntries.isNotEmpty) {
+      out.add(_sectionLabel(cs, nowLabel, Icons.bolt_outlined, color: cs.primary));
+      for (final e in nowEntries) {
+        used.add(e.action.id);
+        out.add(_entryTile(cs, e, showHolder: true, planned: todayIds.contains(e.action.id)));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
+    List<_Entry> take(bool Function(_Entry) test) {
+      final list = shown.where((e) => !used.contains(e.action.id) && test(e)).toList();
+      for (final e in list) {
+        used.add(e.action.id);
+      }
+      return list;
+    }
+
+    final todayList = take((e) => todayIds.contains(e.action.id));
+    if (todayList.isNotEmpty) {
+      out.add(_sectionLabel(cs, "AUJOURD'HUI · AU PROGRAMME", Icons.today_outlined));
+      for (final e in todayList) {
+        out.add(_entryTile(cs, e, showHolder: true, planned: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
+    final late = take((e) => _dueOf(e) != null && _dueOf(e)!.isBefore(today))
+      ..sort((a, b) => _dueOf(a)!.compareTo(_dueOf(b)!));
+    if (late.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'EN RETARD', Icons.warning_amber_rounded, color: cs.error));
+      for (final e in late) {
+        out.add(_entryTile(cs, e, showHolder: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
+    final week = take((e) => _dueOf(e) != null && !_dueOf(e)!.isAfter(weekEnd))
+      ..sort((a, b) => _dueOf(a)!.compareTo(_dueOf(b)!));
+    if (week.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'CETTE SEMAINE', Icons.date_range_outlined));
+      for (final e in week) {
+        out.add(_entryTile(cs, e, showHolder: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
+    // Le reste, par projet (ordre d'échéance des projets), puis actions simples.
+    final rest = shown.where((e) => !used.contains(e.action.id)).toList();
+    final restProjects = <String, List<_Entry>>{};
+    final restOwn = <String, List<_Entry>>{};
+    for (final e in rest) {
+      if (e.project != null) {
+        restProjects.putIfAbsent(e.project!.id, () => []).add(e);
+      } else if (e.activity != null) {
+        restOwn.putIfAbsent(e.activity!.id, () => []).add(e);
+      }
+    }
+    if (restProjects.isNotEmpty || needNext.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'PLUS TARD · PAR PROJET', Icons.folder_outlined));
+      for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true)) {
+        final entries = restProjects[g.project.id];
+        final needs = needNext.any((p) => p.id == g.project.id);
+        if ((entries == null || entries.isEmpty) && !needs) continue;
+        out.add(_projectHeader(cs, g.project));
+        for (final e in entries ?? const <_Entry>[]) {
+          out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
+        }
+        if (needs) out.add(_defineTile(cs, g.project));
+        out.add(const SizedBox(height: 6));
+      }
+    }
+    if (restOwn.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'ACTIONS SIMPLES', Icons.flash_on_outlined, color: cs.tertiary));
+      for (final act in _state.activeActivities) {
+        final entries = restOwn[act.id];
+        if (entries == null) continue;
+        out.add(_activityLabel(cs, act));
+        for (final e in entries) {
+          out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
+        }
+      }
+    }
+    return out;
+  }
+
+  // ── Sections par projet (ancien mode, sans verrou) ──────────────────────────
+
+  List<Widget> _byProjectSections(ColorScheme cs, List<_Entry> shown, List<Project> needNext) {
+    final todayIds = _todayActionIds;
+    final out = <Widget>[];
+    for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true)) {
+      final entries = shown.where((e) => e.project?.id == g.project.id).toList();
+      final needs = needNext.any((p) => p.id == g.project.id);
+      if (entries.isEmpty && !needs) continue;
+      out.add(_projectHeader(cs, g.project));
+      for (final e in entries) {
+        out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
+      }
+      if (needs) out.add(_defineTile(cs, g.project));
+      out.add(const SizedBox(height: 10));
+    }
+    final own = shown.where((e) => e.project == null && e.activity != null).toList();
+    if (own.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'ACTIONS SIMPLES', Icons.flash_on_outlined, color: cs.tertiary));
+      for (final act in _state.activeActivities) {
+        final entries = own.where((e) => e.activity!.id == act.id).toList();
+        if (entries.isEmpty) continue;
+        out.add(_activityLabel(cs, act));
+        for (final e in entries) {
+          out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
+        }
+      }
+    }
+    return out;
+  }
+
+  Widget _projectHeader(ColorScheme cs, Project p) => _groupHeader(
+        cs,
+        p.title,
+        domainColor(p.domainId, _state.activeDomains) ?? cs.primary,
+        onTap: () => _openProject(p),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            tooltip: 'Ajouter une action',
+            icon: Icon(Icons.add, size: 18, color: cs.primary.withOpacity(.75)),
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(),
+            onPressed: () => _quickAddAction(p),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: 'Mettre en pause',
+            icon: Icon(Icons.pause_circle_outline, size: 18, color: cs.onSurface.withOpacity(.4)),
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(),
+            onPressed: () => _togglePause(p),
+          ),
+        ]),
+      );
+
+  Widget _activityLabel(ColorScheme cs, Activity act) => Padding(
+        padding: const EdgeInsets.only(left: 2, top: 2, bottom: 4),
+        child: Text(act.name.toUpperCase(),
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: .8,
+                color: cs.onSurface.withOpacity(.4))),
+      );
+
+  Widget _sectionLabel(ColorScheme cs, String text, IconData icon, {Color? color}) {
+    final c = color ?? cs.onSurface.withOpacity(.5);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      child: Row(children: [
+        Icon(icon, size: 14, color: c),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: c)),
+        ),
+      ]),
+    );
+  }
+
+  // ── En pause / Terminées (accordéons) ───────────────────────────────────────
+
+  List<Widget> _pausedSection(ColorScheme cs) {
+    final paused = widget.logic.currentProjects
+        .where((p) => p.status == 'active' && p.paused)
+        .toList();
+    if (paused.isEmpty) return const <Widget>[];
+    return <Widget>[
+      const SizedBox(height: 10),
+      _accordionHeader(cs, Icons.pause_circle_outline, 'EN PAUSE (${paused.length})', _showPaused,
+          () => setState(() => _showPaused = !_showPaused)),
+      if (_showPaused)
+        for (final p in paused)
+          Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withOpacity(.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(children: [
+              Icon(Icons.pause, size: 14, color: cs.onSurface.withOpacity(.35)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(p.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.5))),
+              ),
+              IconButton(
+                tooltip: 'Reprendre',
+                icon: Icon(Icons.play_circle_outline, size: 20, color: cs.primary),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _togglePause(p),
+              ),
+            ]),
+          ),
+    ];
+  }
+
   static const _kDoneShown = 50;
 
-  /// « aujourd'hui » / « hier » / date courte — quand l'action a été validée.
-  String _doneLabel(DateTime? d) {
-    if (d == null) return '';
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final day = DateTime(d.year, d.month, d.day);
-    final diff = today.difference(day).inDays;
-    if (diff <= 0) return 'aujourd\'hui';
-    if (diff == 1) return 'hier';
-    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  List<Widget> _doneSection(ColorScheme cs) {
+    final doneEntries = _doneEntries();
+    if (doneEntries.isEmpty) return const <Widget>[];
+    return <Widget>[
+      const SizedBox(height: 10),
+      _accordionHeader(cs, Icons.check_circle_outline, 'TERMINÉES (${doneEntries.length})',
+          _showDone, () => setState(() => _showDone = !_showDone)),
+      if (_showDone) ...[
+        for (final e in doneEntries.take(_kDoneShown)) _doneTile(cs, e),
+        if (doneEntries.length > _kDoneShown)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, left: 4),
+            child: Text(
+              '… et ${doneEntries.length - _kDoneShown} autre${doneEntries.length - _kDoneShown > 1 ? 's' : ''}',
+              style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.4)),
+            ),
+          ),
+      ],
+    ];
+  }
+
+  Widget _accordionHeader(
+      ColorScheme cs, IconData icon, String title, bool open, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          Icon(icon, size: 15, color: cs.onSurface.withOpacity(.4)),
+          const SizedBox(width: 8),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                  color: cs.onSurface.withOpacity(.4))),
+          const Spacer(),
+          Icon(open ? Icons.expand_less : Icons.expand_more,
+              size: 18, color: cs.onSurface.withOpacity(.35)),
+        ]),
+      ),
+    );
   }
 
   Widget _groupHeader(ColorScheme cs, String title, Color color,
@@ -1422,8 +1600,7 @@ class _ActionsViewState extends State<ActionsView> {
           Container(
             width: 8,
             height: 8,
-            decoration:
-                BoxDecoration(color: color, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1437,8 +1614,7 @@ class _ActionsViewState extends State<ActionsView> {
           ),
           if (trailing != null) trailing,
           if (onTap != null)
-            Icon(Icons.chevron_right,
-                size: 16, color: cs.onSurface.withOpacity(.3)),
+            Icon(Icons.chevron_right, size: 16, color: cs.onSurface.withOpacity(.3)),
         ]),
       ),
     );
@@ -1455,8 +1631,6 @@ class _ActionsViewState extends State<ActionsView> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        // Tap = dialog rapide (titre + contextes) — la fiche projet reste
-        // accessible via l'en-tête de groupe / long press des actions.
         onTap: () => _quickAddAction(p),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1466,9 +1640,7 @@ class _ActionsViewState extends State<ActionsView> {
             const Expanded(
               child: Text('Définir la prochaine action',
                   style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      fontStyle: FontStyle.italic)),
+                      fontSize: 13, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic)),
             ),
           ]),
         ),
@@ -1476,65 +1648,310 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
-  Widget _entryTile(ColorScheme cs, _Entry e) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withOpacity(.35),
-        borderRadius: BorderRadius.circular(12),
+  // ── Tuile d'action : glisser → fait / caser demain, tap → feuille ──────────
+
+  String _dueLabel(DateTime due, DateTime today) {
+    final d = due.difference(today).inDays;
+    if (d < 0) return '−${-d} j';
+    if (d == 0) return "aujourd'hui";
+    if (d == 1) return 'demain';
+    const m = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+               'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+    return 'éch. ${due.day} ${m[due.month - 1]}';
+  }
+
+  Widget _entryTile(ColorScheme cs, _Entry e, {bool showHolder = false, bool planned = false}) {
+    final today = _day(DateTime.now());
+    final due = _dueOf(e);
+    final late = due != null && due.isBefore(today);
+    final a = e.action;
+    final meta = <InlineSpan>[];
+    void sep() {
+      if (meta.isNotEmpty) meta.add(TextSpan(text: ' · ', style: TextStyle(color: cs.onSurface.withOpacity(.3))));
+    }
+    if (showHolder && e.holder.isNotEmpty) {
+      meta.add(TextSpan(text: e.holder, style: TextStyle(color: cs.onSurface.withOpacity(.55))));
+    }
+    if (due != null) {
+      sep();
+      meta.add(TextSpan(
+          text: _dueLabel(due, today),
+          style: TextStyle(
+              color: late ? cs.error : cs.onSurface.withOpacity(.55),
+              fontWeight: late ? FontWeight.w700 : FontWeight.w500)));
+    }
+    if (a.estimatedMin != null) {
+      sep();
+      meta.add(TextSpan(text: '≈ ${fmtMin(a.estimatedMin!)}', style: TextStyle(color: cs.onSurface.withOpacity(.55))));
+    }
+    if (a.checklist.isNotEmpty) {
+      sep();
+      meta.add(TextSpan(
+          text: '${a.checklistDone}/${a.checklistTotal} étape${a.checklistTotal > 1 ? 's' : ''}',
+          style: TextStyle(color: cs.onSurface.withOpacity(.55))));
+    }
+    if (a.allContexts.isNotEmpty) {
+      sep();
+      meta.add(TextSpan(
+          text: (a.allContexts.toList()..sort()).join(' '),
+          style: TextStyle(color: cs.primary.withOpacity(.75), fontWeight: FontWeight.w600)));
+    }
+
+    return Dismissible(
+      key: ValueKey('act_${a.id}'),
+      // Droite = fait, gauche = caser demain. Les deux gestes agissent et
+      // laissent la tuile en place : la liste se recompose d'elle-même.
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 18),
+        decoration: BoxDecoration(
+            color: Colors.green.withOpacity(.18), borderRadius: BorderRadius.circular(12)),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.check_circle, color: Colors.green),
+          SizedBox(width: 8),
+          Text('Fait', style: TextStyle(fontWeight: FontWeight.w700, color: Colors.green)),
+        ]),
       ),
-      child: Row(children: [
-        Checkbox(
-          value: false,
-          shape: const CircleBorder(),
-          onChanged: (v) => _toggleDone(e, v ?? false),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 18),
+        decoration: BoxDecoration(
+            color: cs.primary.withOpacity(.14), borderRadius: BorderRadius.circular(12)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('Caser demain', style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
+          const SizedBox(width: 8),
+          Icon(Icons.event_outlined, color: cs.primary),
+        ]),
+      ),
+      confirmDismiss: (dir) async {
+        if (dir == DismissDirection.startToEnd) {
+          await _toggleDone(e, true);
+          if (mounted) {
+            ScaffoldMessenger.of(context)
+              ..hideCurrentSnackBar()
+              ..showSnackBar(SnackBar(
+                duration: const Duration(seconds: 4),
+                content: Text('Fait : ${a.title}'),
+                action: SnackBarAction(label: 'Annuler', onPressed: () => _toggleDone(e, false)),
+              ));
+          }
+        } else {
+          await _scheduleAction(e, presetDay: today.add(const Duration(days: 1)));
+        }
+        return false;
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest.withOpacity(.35),
+          borderRadius: BorderRadius.circular(12),
+          border: late ? Border.all(color: cs.error.withOpacity(.35)) : null,
         ),
-        Expanded(
-          child: InkWell(
-            // Tap = « Process » GTD : assigner les contextes de l'action.
-            // Long press = fiche tâche (projets).
-            onTap: () => _processAction(e),
-            onLongPress: e.project != null
-                ? () => _openProject(e.project!, targetTaskId: e.task?.id)
-                : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(e.action.title,
+        child: Row(children: [
+          Checkbox(
+            value: false,
+            shape: const CircleBorder(),
+            onChanged: (v) => _toggleDone(e, v ?? false),
+          ),
+          Expanded(
+            child: InkWell(
+              onTap: () => _openActionSheet(e),
+              onLongPress: e.project != null
+                  ? () => _openProject(e.project!, targetTaskId: e.task?.id)
+                  : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(a.title,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  // Couche tâches ignorée côté user : projet → action →
-                  // @contextes, pas de niveau intermédiaire affiché.
-                  if (e.action.allContexts.isNotEmpty)
+                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  if (meta.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                          (e.action.allContexts.toList()..sort()).join(' '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: cs.primary.withOpacity(.75))),
+                      padding: const EdgeInsets.only(top: 3),
+                      child: RichText(
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(style: const TextStyle(fontSize: 11), children: meta),
+                      ),
                     ),
-                ],
+                ]),
               ),
             ),
           ),
-        ),
-        if (e.chronoActivityId != null)
-          IconButton(
-            tooltip: 'Lancer le chrono',
-            icon: Icon(Icons.play_circle_fill, size: 24, color: cs.primary),
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _launch(e),
-          ),
-        const SizedBox(width: 2),
-      ]),
+          if (planned)
+            Tooltip(
+              message: 'Au programme d\'aujourd\'hui',
+              child: Container(
+                width: 8,
+                height: 8,
+                margin: const EdgeInsets.only(right: 6),
+                decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
+              ),
+            ),
+          if (e.chronoActivityId != null)
+            IconButton(
+              tooltip: 'Lancer le chrono',
+              icon: Icon(Icons.play_circle_fill, size: 24, color: cs.primary),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => _launch(e),
+            ),
+          const SizedBox(width: 2),
+        ]),
+      ),
+    );
+  }
+
+  // ── Feuille d'action : étapes + agir ────────────────────────────────────────
+
+  Future<void> _openActionSheet(_Entry e) async {
+    final a = e.action;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        final cs = Theme.of(ctx).colorScheme;
+        void refresh() {
+          setLocal(() {});
+          if (mounted) setState(() {});
+        }
+        Future<void> persist() => _persistEntry(e);
+        final today = _day(DateTime.now());
+        final due = _dueOf(e);
+        final crumbs = [
+          if (e.project != null) e.project!.title,
+          if (e.task != null && e.task!.id != _flowTaskId) e.task!.title,
+          if (e.activity != null) e.activity!.name,
+        ].join(' › ');
+        Widget pill(String t, {Color? color}) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                  color: (color ?? cs.onSurface).withOpacity(.1),
+                  borderRadius: BorderRadius.circular(999)),
+              child: Text(t,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: color ?? cs.onSurface.withOpacity(.7))),
+            );
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (crumbs.isNotEmpty)
+              Text(crumbs,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+            const SizedBox(height: 4),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _toggleDone(e, !a.done);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                      size: 26, color: a.done ? Colors.green : cs.onSurface.withOpacity(.4)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(a.title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              if (due != null)
+                pill(_dueLabel(due, today), color: due.isBefore(today) ? cs.error : null),
+              if (a.estimatedMin != null) pill('≈ ${fmtMin(a.estimatedMin!)}'),
+              for (final c in a.allContexts) pill(c, color: cs.primary),
+              if (_todayActionIds.contains(a.id)) pill("au programme aujourd'hui", color: cs.primary),
+            ]),
+            const SizedBox(height: 14),
+            Text('ÉTAPES',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: cs.onSurface.withOpacity(.45))),
+            StepsSection(
+              key: ValueKey('sheet_steps_${a.id}'),
+              action: a,
+              leftInset: 0,
+              onToggle: (c, v) {
+                final changed = setChecklistItem(a, c.id, v);
+                refresh();
+                persist();
+                if (changed && a.done) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      duration: const Duration(seconds: 2),
+                      content: Text('Action faite : ${a.title}')));
+                }
+              },
+              onAdd: (t) {
+                if (addChecklistItem(a, t) == null) return;
+                refresh();
+                persist();
+              },
+              onRemove: (c) {
+                removeChecklistItem(a, c.id);
+                refresh();
+                persist();
+              },
+              onRename: (c, t) {
+                if (!renameChecklistItem(a, c.id, t)) return;
+                refresh();
+                persist();
+              },
+            ),
+            const SizedBox(height: 14),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              if (e.chronoActivityId != null)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _launch(e);
+                  },
+                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                  label: const Text('Chrono'),
+                ),
+              FilledButton.tonalIcon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _scheduleAction(e);
+                },
+                icon: const Icon(Icons.event_outlined, size: 18),
+                label: const Text('Caser'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _processAction(e);
+                },
+                icon: const Icon(Icons.alternate_email, size: 18),
+                label: Text(e.chronoActivityId == null ? 'Contextes & chrono' : 'Contextes'),
+              ),
+              if (e.project != null)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openProject(e.project!, targetTaskId: e.task?.id);
+                  },
+                  icon: const Icon(Icons.folder_open_outlined, size: 18),
+                  label: const Text('Projet'),
+                ),
+            ]),
+          ]),
+        );
+      }),
     );
   }
 

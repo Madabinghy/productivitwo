@@ -21,6 +21,11 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
 - Onglets mobiles actuels : **Objectifs / Stats / Projets / Actions / Aujourd'hui** (5 ; 4 avec
   `hideProjectsTab` ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
+  **Actions mobile** (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10/README.md`,
+  `lib/widgets/actions_view.dart`) : jamais vide, groupée par urgence (Maintenant · Aujourd'hui · En retard · Cette
+  semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
+  plus), tap = feuille d'action (étapes `StepsSection`, chrono, caser, fait), glisser droite = fait / gauche = caser
+  demain, capture rapide → boîte d'entrée. Même logique pure que le web (`utils/actions_logic.dart`).
   **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
   MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
   `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé ; programme du jour en liste 48 px
