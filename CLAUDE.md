@@ -93,6 +93,10 @@ et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil �
 Dès qu'elle est affichée (chrono ou pas), la frise se **recentre sur le trait « maintenant »** (`scrollToNow`,
 appelé par `_go(WebTab.today)` du shell ; aussi au premier programme chargé, au changement de jour et quand la
 frise revient après la disposition active).
+**Aujourd'hui orienté action** (2026-10, `docs/specs/aujourdhui-web-actions-2026-10/README.md`) : carte « Au
+programme · concrètement » (`_agendaCard` : blocs à venir dépliables, étapes de l'action visée cochables, actions
+possibles d'une activité, +1 de routine, « Définir la prochaine action ») sous MAINTENANT ; ligne concrète dans les
+blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routinesCard`, logique `utils/routines_today.dart`).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du

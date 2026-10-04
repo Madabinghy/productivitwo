@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/focus_context.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
@@ -97,6 +98,11 @@ class TodayViewState extends State<TodayView> {
   List<Session> _sessions = [];
   List<HabitHit> _hits = [];
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
+  // Carte « Au programme » : blocs dépliés (null = défaut : le premier bloc à
+  // contenu est ouvert) et liste complète ou non.
+  Set<String>? _agendaOpen;
+  bool _agendaAll = false;
+  bool _routinesAll = false;
   final Set<String> _hit = {};
   bool _busy = false;
   // Mode « Modifier » de la frise : chaque bloc s'ouvre dans l'éditeur.
@@ -510,9 +516,11 @@ class TodayViewState extends State<TodayView> {
                 return ListView(children: [
                   if (focus != null) _focusBand(focus) else _nowCard(),
                   const SizedBox(height: 18),
+                  _agendaCard(),
+                  const SizedBox(height: 18),
                   SizedBox(height: 640, child: _timelineCard()),
                   const SizedBox(height: 18),
-                  _weekColumn(),
+                  _sideColumn(),
                 ]);
               }
               if (focus != null) {
@@ -528,7 +536,8 @@ class TodayViewState extends State<TodayView> {
                         const SizedBox(width: 24),
                         SizedBox(
                           width: 340,
-                          child: SingleChildScrollView(child: _weekColumn()),
+                          child: SingleChildScrollView(
+                              child: _sideColumn(withAgenda: true)),
                         ),
                       ],
                     ),
@@ -554,7 +563,7 @@ class TodayViewState extends State<TodayView> {
                     const SizedBox(width: 24),
                     SizedBox(
                       width: 340,
-                      child: SingleChildScrollView(child: _weekColumn()),
+                      child: SingleChildScrollView(child: _sideColumn()),
                     ),
                   ],
                 );
@@ -562,13 +571,21 @@ class TodayViewState extends State<TodayView> {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(width: 340, child: _nowCard()),
+                  // MAINTENANT puis le contenu concret des blocs à venir.
+                  SizedBox(
+                    width: 340,
+                    child: ListView(children: [
+                      _nowCard(),
+                      const SizedBox(height: 18),
+                      _agendaCard(),
+                    ]),
+                  ),
                   const SizedBox(width: 24),
                   Expanded(child: _timelineCard()),
                   const SizedBox(width: 24),
                   SizedBox(
                     width: 340,
-                    child: SingleChildScrollView(child: _weekColumn()),
+                    child: SingleChildScrollView(child: _sideColumn()),
                   ),
                 ],
               );
@@ -1726,6 +1743,17 @@ class TodayViewState extends State<TodayView> {
                                   fontSize: 12, color: kBText3, fontFeatures: _tabular),
                             ),
                           ),
+                        // Le concret du bloc : prochaine étape / action visée.
+                        if (h > 84 && !done && !skipped && _blockHint(b) != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              _blockHint(b)!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: kBText2),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -1736,6 +1764,415 @@ class TodayViewState extends State<TodayView> {
       ),
     );
   }
+
+  // ── AU PROGRAMME · CONCRÈTEMENT ─────────────────────────────────────────────
+  // Le contenu de chaque bloc à venir, faisable sur place : étapes de l'action
+  // visée (cochables), actions possibles d'une activité, compteur de routine,
+  // ou « définir la prochaine action » d'un projet.
+
+  /// Actions propres ouvertes d'une activité-temps portée par le bloc (bloc
+  /// d'activité sans action ciblée).
+  List<TaskAction> _ownActionsFor(ScheduleBlock b) {
+    if (b.actionId != null || b.projectId != null) return const [];
+    final act = _activityOf(b.activityId);
+    if (act == null || act.isHabit) return const [];
+    return act.ownActions.where((a) => !a.done).toList();
+  }
+
+  Activity? _routineOf(ScheduleBlock b) {
+    final act = _activityOf(b.activityId);
+    return act != null && act.isHabit ? act : null;
+  }
+
+  /// Une ligne « concrète » pour un bloc (frise et carte repliée), ou null.
+  String? _blockHint(ScheduleBlock b) {
+    final steps = _blockSteps(b);
+    if (steps != null) {
+      final a = steps.action;
+      final next = nextChecklistItem(a);
+      final count = a.checklist.isEmpty ? '' : ' · ${a.checklistDone}/${a.checklistTotal}';
+      return next != null && !a.done ? '→ ${next.title}$count' : '→ ${a.title}$count';
+    }
+    final own = _ownActionsFor(b);
+    if (own.isNotEmpty) {
+      return own.length == 1
+          ? '→ ${own.first.title}'
+          : '${own.length} actions possibles · ${own.first.title}…';
+    }
+    final routine = _routineOf(b);
+    if (routine != null) {
+      final r = routinesForToday([routine], _hits, DateTime.now()).firstOrNull;
+      return r == null ? null : 'Routine · ${r.progressLabel}';
+    }
+    if (_project(b.projectId) != null) return 'Aucune action définie';
+    return null;
+  }
+
+  bool _hasContent(ScheduleBlock b) =>
+      _blockSteps(b) != null ||
+      _ownActionsFor(b).isNotEmpty ||
+      _routineOf(b) != null ||
+      _project(b.projectId) != null;
+
+  Widget _agendaCard() {
+    final now = _nowMin;
+    final upcoming = _blocks
+        .where((b) => b.status == 'pending' && blockStartMin(b) + b.durationMin > now)
+        .toList();
+    final open = _agendaOpen ??
+        {for (final b in upcoming.where(_hasContent).take(1)) b.id};
+    const cap = 6;
+    final shown = _agendaAll ? upcoming : upcoming.take(cap).toList();
+    return _card(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _label('AU PROGRAMME · CONCRÈTEMENT'),
+        const SizedBox(height: 10),
+        if (upcoming.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              _blocks.isEmpty ? 'Pas de programme aujourd\'hui.' : 'Plus rien de prévu aujourd\'hui.',
+              style: const TextStyle(fontSize: 13, color: kBText3),
+            ),
+          )
+        else
+          for (final b in shown) _agendaItem(b, open: open.contains(b.id), openSet: open),
+        if (upcoming.length > cap)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _textLink(
+                _agendaAll ? 'Réduire' : 'Voir les ${upcoming.length - cap} autres blocs',
+                () => setState(() => _agendaAll = !_agendaAll)),
+          ),
+      ]),
+    );
+  }
+
+  Widget _agendaItem(ScheduleBlock b, {required bool open, required Set<String> openSet}) {
+    final color = _kCategoryColor[b.category] ?? const Color(0xFF8E9AAF);
+    final now = _nowMin;
+    final current = blockStartMin(b) <= now && now < blockStartMin(b) + b.durationMin;
+    final hasContent = _hasContent(b);
+    final hint = _blockHint(b);
+    final session = _openSession;
+    final chronoOnIt = session != null && _sessionOnBlock(session, b);
+    final canChrono =
+        (b.activityId ?? _project(b.projectId)?.linkedActivityId) != null && !chronoOnIt;
+    void toggleOpen() => setState(() {
+          final next = Set<String>.of(openSet);
+          next.contains(b.id) ? next.remove(b.id) : next.add(b.id);
+          _agendaOpen = next;
+        });
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: current ? kBActive : color.withOpacity(.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: current ? kBPrimary.withOpacity(.4) : kBLine),
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          onTap: hasContent ? toggleOpen : () => _editBlock(b),
+          borderRadius: BorderRadius.circular(8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _toggleDone(b),
+              child: Tooltip(
+                message: 'Marquer le bloc comme fait',
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(Icons.radio_button_unchecked, size: 17, color: color.withOpacity(.85)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Text(b.startTime,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: current ? kBPrimary : kBText3,
+                            fontFeatures: _tabular)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(b.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+                              color: kBText)),
+                    ),
+                  ]),
+                  if (!open && hint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: kBText3)),
+                    ),
+                ]),
+              ),
+            ),
+            if (canChrono)
+              IconButton(
+                tooltip: 'Lancer le chrono sur ce bloc',
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                color: kBPrimary,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                onPressed: () => _startChrono(b),
+              ),
+            if (hasContent)
+              Padding(
+                padding: const EdgeInsets.only(top: 5, left: 2),
+                child: Icon(open ? Icons.expand_less : Icons.expand_more, size: 18, color: kBText4),
+              ),
+          ]),
+        ),
+        if (open && hasContent)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(30, 6, 4, 4),
+            child: _agendaContent(b),
+          ),
+      ]),
+    );
+  }
+
+  Widget _agendaContent(ScheduleBlock b) {
+    final steps = _blockSteps(b);
+    if (steps != null) {
+      final a = steps.action;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () async {
+            setState(() => setActionDone(a, !a.done));
+            await steps.save();
+          },
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 16, color: a.done ? kBPrimaryDark : kBText3),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(a.title,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: a.done ? kBText3 : kBText,
+                      decoration: a.done ? TextDecoration.lineThrough : null,
+                      decorationColor: kBText3)),
+            ),
+            if (checklistBadge(a) != null) checklistBadge(a)!,
+          ]),
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: ChecklistEditor(
+            items: a.checklist,
+            dense: true,
+            onToggle: (c, v) => _toggleStep(steps, c, v),
+            onAdd: (title) => _addStep(steps, title),
+          ),
+        ),
+      ]);
+    }
+    final own = _ownActionsFor(b);
+    if (own.isNotEmpty) {
+      final act = _activityOf(b.activityId)!;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Possible dans ce bloc',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kBText4, letterSpacing: .4)),
+        const SizedBox(height: 4),
+        for (final a in own.take(5))
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () async {
+              setState(() => setActionDone(a, true));
+              await widget.sync.updateOwnActions(act.id, act.ownActions);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Action faite : ${a.title}'),
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'Annuler',
+                  onPressed: () async {
+                    setState(() => setActionDone(a, false));
+                    await widget.sync.updateOwnActions(act.id, act.ownActions);
+                  },
+                ),
+              ));
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                const Icon(Icons.radio_button_unchecked, size: 15, color: kBText3),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(a.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, color: kBText)),
+                ),
+                if (a.checklist.isNotEmpty) checklistBadge(a)!,
+              ]),
+            ),
+          ),
+        if (own.length > 5)
+          Text('+ ${own.length - 5} autres', style: const TextStyle(fontSize: 12, color: kBText4)),
+      ]);
+    }
+    final routine = _routineOf(b);
+    if (routine != null) {
+      final r = routinesForToday([routine], _hits, DateTime.now()).firstOrNull;
+      return Row(children: [
+        Expanded(
+          child: Text(r?.progressLabel ?? routine.name,
+              style: const TextStyle(fontSize: 13, color: kBText2, fontFeatures: _tabular)),
+        ),
+        _pillButton('+1', height: 32, onTap: () => _incRoutine(routine)),
+      ]);
+    }
+    final project = _project(b.projectId);
+    if (project != null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: _textLink('Définir la prochaine action',
+            () => widget.onOpenProject(project, taskId: b.taskId)),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // ── ROUTINES DU JOUR ────────────────────────────────────────────────────────
+
+  /// +1 sur une routine, persisté comme `_completeLinkedRoutine` ; annulable.
+  void _incRoutine(Activity act) {
+    final logic = _logic;
+    if (logic == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Chargement en cours, réessaie dans un instant.'),
+        duration: Duration(seconds: 2),
+      ));
+      return;
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    void persist() {
+      final key = yyyymmdd(today);
+      for (final h in logic.state.habitProgress) {
+        if (h.activityId == act.id && h.yyyymmdd == key) widget.sync.saveHabitProgress(h);
+      }
+    }
+    logic.incHabit(act.id, 1, today);
+    persist();
+    if (logic.state.habitHits.isNotEmpty) widget.sync.saveHabitHit(logic.state.habitHits.last);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('+1 : ${act.name}'),
+      duration: const Duration(seconds: 4),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          logic.incHabit(act.id, -1, today);
+          persist();
+        },
+      ),
+    ));
+  }
+
+  Widget _routinesCard() {
+    final list = routinesForToday(widget.activities, _hits, DateTime.now());
+    if (list.isEmpty) return const SizedBox.shrink();
+    final reached = list.where((r) => r.reached).length;
+    const cap = 5;
+    final todo = list.where((r) => !r.reached).toList();
+    final shown = _routinesAll ? list : todo.take(cap).toList();
+    final hidden = list.length - shown.length;
+    return _card(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: _label('ROUTINES DU JOUR')),
+          Text('$reached / ${list.length} atteinte${reached > 1 ? 's' : ''}',
+              style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+        ]),
+        const SizedBox(height: 10),
+        if (shown.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text('Toutes les routines sont atteintes. Bravo.',
+                style: TextStyle(fontSize: 13, color: kBText3)),
+          ),
+        for (final r in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: domainColor(r.activity.domainId, widget.domains) ?? kBPrimary,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(r.activity.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 13.5,
+                          color: r.reached ? kBText3 : kBText,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 2),
+                  Text(r.progressLabel,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          color: r.reached ? kBPrimaryDark : kBText3,
+                          fontFeatures: _tabular)),
+                ]),
+              ),
+              if (r.reached)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(Icons.check_circle, size: 16, color: kBPrimaryDark),
+                ),
+              _pillButton('+1', height: 32, onTap: () => _incRoutine(r.activity)),
+            ]),
+          ),
+        if (hidden > 0 || _routinesAll)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _textLink(_routinesAll ? 'Réduire' : 'Voir toutes ($hidden de plus)',
+                () => setState(() => _routinesAll = !_routinesAll)),
+          ),
+      ]),
+    );
+  }
+
+  /// Colonne de droite : (contenu des blocs) + routines + semaine.
+  Widget _sideColumn({bool withAgenda = false}) =>
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (withAgenda) ...[_agendaCard(), const SizedBox(height: 18)],
+        _routinesCard(),
+        const SizedBox(height: 18),
+        _weekColumn(),
+      ]);
 
   // ── CETTE SEMAINE ───────────────────────────────────────────────────────────
 
