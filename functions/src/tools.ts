@@ -847,6 +847,36 @@ const MARK_CHECKLIST_ITEM_TOOL = {
   },
 };
 
+const UPDATE_ACTION_TOOL = {
+  name: "update_action",
+  description:
+    "Modifie UNE action existante sans toucher au reste : action propre d'une activité (activityId + actionId, " +
+    "ids via get_user_context) ou sous-action d'une tâche de projet (projectId + taskId + actionId, ids via get_project). " +
+    "Champs modifiables : title, contexts (remplace tout ; [] = aucun), addContexts / removeContexts (ajuste sans " +
+    "tout réécrire), estimatedMin (clearEstimate=true pour effacer), linkedActivityId (sous-action de projet ; '' pour " +
+    "délier), done (true coche aussi toutes les étapes de la checklist), delete=true pour supprimer l'action. " +
+    "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions).",
+  inputSchema: {
+    type: "object",
+    required: ["actionId"],
+    properties: {
+      activityId:       { type: "string", description: "Action propre d'une activité : id de l'activité" },
+      projectId:        { type: "string", description: "Sous-action de projet : id du projet" },
+      taskId:           { type: "string", description: "Sous-action de projet : id de la tâche" },
+      actionId:         { type: "string", description: "id de l'action" },
+      title:            { type: "string" },
+      contexts:         { type: "array", items: { type: "string" }, description: "Remplace tous les contextes ([] = aucun)" },
+      addContexts:      { type: "array", items: { type: "string" } },
+      removeContexts:   { type: "array", items: { type: "string" } },
+      estimatedMin:     { type: "integer", description: "Durée estimée en minutes" },
+      clearEstimate:    { type: "boolean", description: "Efface l'estimation" },
+      linkedActivityId: { type: "string", description: "Activité-temps liée (chrono ciblé) ; '' pour délier. Sous-actions de projet uniquement" },
+      done:             { type: "boolean" },
+      delete:           { type: "boolean", description: "Supprime l'action" },
+    },
+  },
+};
+
 const MANAGE_CONTEXTS_TOOL = {
   name: "manage_contexts",
   description:
@@ -1044,6 +1074,7 @@ MARK_CHECKLIST_ITEM_TOOL,
 LINK_ACTION_TO_ACTIVITY_TOOL,
 ADD_ACTIVITY_ACTION_TOOL,
 MANAGE_CONTEXTS_TOOL,
+UPDATE_ACTION_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,

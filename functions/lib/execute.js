@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
 exports.withBothContexts = withBothContexts;
 exports.executeManageContexts = executeManageContexts;
+exports.executeUpdateAction = executeUpdateAction;
 exports.executePushAssistantMessage = executePushAssistantMessage;
 exports.validateToken = validateToken;
 exports.executeGetUserContext = executeGetUserContext;
@@ -71,6 +72,7 @@ exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const contexts_1 = require("./contexts");
+const action_patch_1 = require("./action_patch");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
@@ -1475,6 +1477,101 @@ async function executeLinkActionToActivity(uid, projectId, taskId, actionId, act
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     const actionTitle = (_c = actions[actionIdx].title) !== null && _c !== void 0 ? _c : actionId;
     return `🔗 Action "${actionTitle}" liée à l'activité "${(_d = actData.name) !== null && _d !== void 0 ? _d : activityId}" — le chrono lancé dessus sera ciblé.`;
+}
+async function executeUpdateAction(uid, args) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    if (!args.actionId)
+        return "actionId requis.";
+    const own = !!args.activityId;
+    if (!own && !(args.projectId && args.taskId)) {
+        return "Cible requise : activityId (action propre) OU projectId + taskId (sous-action de projet).";
+    }
+    const patch = {};
+    if (args.title !== undefined)
+        patch.title = args.title;
+    if (args.contexts !== undefined)
+        patch.contexts = args.contexts;
+    if (args.addContexts !== undefined)
+        patch.addContexts = args.addContexts;
+    if (args.removeContexts !== undefined)
+        patch.removeContexts = args.removeContexts;
+    if (args.clearEstimate === true)
+        patch.estimatedMin = null;
+    else if (args.estimatedMin !== undefined)
+        patch.estimatedMin = args.estimatedMin;
+    if (args.done !== undefined)
+        patch.done = args.done;
+    if (args.linkedActivityId !== undefined) {
+        if (own)
+            return "linkedActivityId ne s'applique qu'aux sous-actions de projet (une action propre est déjà portée par son activité).";
+        patch.linkedActivityId = args.linkedActivityId;
+    }
+    if (patch.linkedActivityId) {
+        const actSnap = await db_1.db.collection(`users/${uid}/activities`).doc(patch.linkedActivityId).get();
+        const actData = actSnap.exists ? actSnap.data() : null;
+        if (!actData || actData.deleted === true)
+            return `Activité introuvable : ${patch.linkedActivityId}`;
+        if (actData.type !== "time")
+            return `L'activité "${(_a = actData.name) !== null && _a !== void 0 ? _a : patch.linkedActivityId}" n'est pas une activité-temps.`;
+    }
+    const sanitize = (v) => JSON.parse(JSON.stringify(v, (_k, x) => x && typeof x === "object" && typeof x.toDate === "function" ? x.toDate().toISOString() : x));
+    const summary = (title, changes, holder) => changes.length
+        ? `✏️ « ${title} » (${holder}) : ${changes.join(" · ")}.`
+        : `« ${title} » (${holder}) : rien à changer.`;
+    if (own) {
+        const ref = db_1.db.collection(`users/${uid}/activities`).doc(args.activityId);
+        const snap = await ref.get();
+        if (!snap.exists)
+            return `Activité introuvable : ${args.activityId}`;
+        const data = snap.data();
+        if (data.deleted === true)
+            return `Activité supprimée : ${args.activityId}`;
+        const list = sanitize(Array.isArray(data.ownActions) ? data.ownActions : []);
+        const idx = list.findIndex((a) => a.id === args.actionId);
+        if (idx === -1)
+            return `Action propre introuvable : ${args.actionId}`;
+        const title = (_b = list[idx].title) !== null && _b !== void 0 ? _b : args.actionId;
+        const holder = `activité ${(_c = data.name) !== null && _c !== void 0 ? _c : args.activityId}`;
+        if (args.delete === true) {
+            list.splice(idx, 1);
+            await ref.update({ ownActions: list });
+            return `🗑️ Action propre « ${title} » supprimée (${holder}).`;
+        }
+        const r = (0, action_patch_1.applyActionPatch)(list[idx], patch);
+        if (r.changes.length === 0)
+            return summary(title, [], holder);
+        list[idx] = r.action;
+        await ref.update({ ownActions: list });
+        return summary(title, r.changes, holder);
+    }
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(args.projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${args.projectId}`;
+    const data = snap.data();
+    const tasks = sanitize(Array.isArray(data.tasks) ? data.tasks : []);
+    const taskIdx = tasks.findIndex((t) => t.id === args.taskId);
+    if (taskIdx === -1)
+        return `Tâche introuvable : ${args.taskId}`;
+    const actions = ((_d = tasks[taskIdx].actions) !== null && _d !== void 0 ? _d : []).slice();
+    const actionIdx = actions.findIndex((a) => a.id === args.actionId);
+    if (actionIdx === -1)
+        return `Sous-action introuvable : ${args.actionId}`;
+    const title = (_e = actions[actionIdx].title) !== null && _e !== void 0 ? _e : args.actionId;
+    const holder = `${(_f = data.title) !== null && _f !== void 0 ? _f : args.projectId} › ${(_g = tasks[taskIdx].title) !== null && _g !== void 0 ? _g : args.taskId}`;
+    if (args.delete === true) {
+        actions.splice(actionIdx, 1);
+        tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
+        await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+        return `🗑️ Sous-action « ${title} » supprimée (${holder}).`;
+    }
+    const r = (0, action_patch_1.applyActionPatch)(actions[actionIdx], patch);
+    if (r.changes.length === 0)
+        return summary(title, [], holder);
+    actions[actionIdx] = r.action;
+    tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
+    await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    return summary(title, r.changes, holder);
 }
 // ── Contextes GTD : list / add / rename / delete ─────────────────────────────
 async function executeManageContexts(uid, args) {

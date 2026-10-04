@@ -35,7 +35,7 @@ import {
   LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
-  LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL,
+  LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -55,7 +55,7 @@ import {
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
-  executeLinkActionToActivity, executeAddActivityAction, executeManageContexts,
+  executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
@@ -1662,7 +1662,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
-            LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL,
+            LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
             LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -1831,6 +1831,22 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.context as string | undefined,
             args.contexts as string[] | undefined,
           );
+        } else if (toolName === "update_action") {
+          text = await executeUpdateAction(uid, {
+            activityId: args.activityId as string | undefined,
+            projectId: args.projectId as string | undefined,
+            taskId: args.taskId as string | undefined,
+            actionId: args.actionId as string,
+            title: args.title as string | undefined,
+            contexts: args.contexts as string[] | undefined,
+            addContexts: args.addContexts as string[] | undefined,
+            removeContexts: args.removeContexts as string[] | undefined,
+            estimatedMin: args.estimatedMin as number | undefined,
+            clearEstimate: args.clearEstimate as boolean | undefined,
+            linkedActivityId: args.linkedActivityId as string | undefined,
+            done: args.done as boolean | undefined,
+            delete: args.delete as boolean | undefined,
+          });
         } else if (toolName === "manage_contexts") {
           text = await executeManageContexts(uid, {
             action: args.action as string,
