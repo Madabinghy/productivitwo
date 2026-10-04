@@ -1,0 +1,83 @@
+/** Contextes GTD (@maison, @bureau…) — logique pure, testée.
+ *  Les défauts sont ceux de l'app (`kDefaultGtdContexts`) ; les personnalisés
+ *  vivent dans `users/{uid}/data/meta.customContexts`. Une action porte
+ *  `contexts` (multi, référence) et `context` (mono legacy = contexts[0]). */
+
+export const DEFAULT_GTD_CONTEXTS = [
+  "@maison", "@bureau", "@ordinateur", "@courses", "@extérieur", "@téléphone",
+];
+
+/** « atelier » → « @atelier » ; vide ou « @ » seul → null. */
+export function normalizeContext(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const t = raw.trim().replace(/\s+/g, " ");
+  if (!t) return null;
+  const c = t.startsWith("@") ? t : `@${t}`;
+  return c.length > 1 ? c : null;
+}
+
+type ActionLike = Record<string, unknown>;
+
+/** Contextes portés par une action : `contexts` ∪ `context` (legacy), ordre conservé. */
+export function contextsOf(a: ActionLike): string[] {
+  const out: string[] = [];
+  const multi = Array.isArray(a.contexts) ? a.contexts : [];
+  for (const c of multi) if (typeof c === "string" && c && !out.includes(c)) out.push(c);
+  const legacy = typeof a.context === "string" ? a.context : "";
+  if (legacy && !out.includes(legacy)) out.push(legacy);
+  return out;
+}
+
+function withContexts(a: ActionLike, contexts: string[]): ActionLike {
+  return { ...a, contexts, context: contexts.length > 0 ? contexts[0] : null };
+}
+
+/** Remplace [from] par [to] sur chaque action qui le porte. `changed` = nb d'actions touchées. */
+export function renameContextInActions(
+  actions: ActionLike[], from: string, to: string,
+): { actions: ActionLike[]; changed: number } {
+  let changed = 0;
+  const out = actions.map((a) => {
+    const cur = contextsOf(a);
+    if (!cur.includes(from)) return a;
+    changed++;
+    const next: string[] = [];
+    for (const c of cur) {
+      const v = c === from ? to : c;
+      if (!next.includes(v)) next.push(v);
+    }
+    return withContexts(a, next);
+  });
+  return { actions: out, changed };
+}
+
+/** Retire [ctx] de chaque action qui le porte. */
+export function removeContextFromActions(
+  actions: ActionLike[], ctx: string,
+): { actions: ActionLike[]; changed: number } {
+  let changed = 0;
+  const out = actions.map((a) => {
+    const cur = contextsOf(a);
+    if (!cur.includes(ctx)) return a;
+    changed++;
+    return withContexts(a, cur.filter((c) => c !== ctx));
+  });
+  return { actions: out, changed };
+}
+
+export type ContextUsage = { open: number; done: number };
+
+/** Usage de chaque contexte sur un lot d'actions (ouvertes / faites). */
+export function countContextUsage(
+  actions: ActionLike[], into: Map<string, ContextUsage> = new Map(),
+): Map<string, ContextUsage> {
+  for (const a of actions) {
+    const done = a.done === true;
+    for (const c of contextsOf(a)) {
+      const u = into.get(c) ?? { open: 0, done: 0 };
+      if (done) u.done++; else u.open++;
+      into.set(c, u);
+    }
+  }
+  return into;
+}

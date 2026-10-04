@@ -1620,7 +1620,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.LIST_OBJECTIVES_TOOL, tools_1.SAVE_OBJECTIVE_TOOL,
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
                         tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL, tools_1.MARK_ACTION_DONE_TOOL, tools_1.MARK_CHECKLIST_ITEM_TOOL,
-                        tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL,
+                        tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL, tools_1.MANAGE_CONTEXTS_TOOL,
                         tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
                         tools_1.LIST_SESSION_TEMPLATES_TOOL, tools_1.CREATE_SESSION_TEMPLATE_TOOL,
@@ -1810,6 +1810,14 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "add_activity_action") {
                     text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts);
+                }
+                else if (toolName === "manage_contexts") {
+                    text = await (0, execute_1.executeManageContexts)(uid, {
+                        action: args.action,
+                        context: args.context,
+                        newContext: args.newContext,
+                        detach: args.detach,
+                    });
                 }
                 else if (toolName === "log_routine_hit") {
                     text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId, args.delta === undefined ? 1 : args.delta);

@@ -847,6 +847,29 @@ const MARK_CHECKLIST_ITEM_TOOL = {
   },
 };
 
+const MANAGE_CONTEXTS_TOOL = {
+  name: "manage_contexts",
+  description:
+    "Contextes GTD (@maison, @bureau, @ordinateur, @courses, @extérieur, @téléphone + personnalisés) : " +
+    "action 'list' (défauts + personnalisés, avec le nombre d'actions ouvertes / faites qui portent chacun), " +
+    "'add' (crée un contexte personnalisé ; le @ est ajouté si absent), " +
+    "'rename' (renomme un contexte personnalisé ET le remplace sur toutes les actions des projets et des activités ; " +
+    "renommer vers un contexte existant fusionne), " +
+    "'delete' (retire un contexte personnalisé de la liste ; par défaut les actions qui le portaient le gardent comme " +
+    "simple tag, detach=true le retire aussi des actions). Les six contextes par défaut ne se renomment ni ne se suppriment. " +
+    "Le contexte du moment (« Je suis @… ») est un réglage local de l'app, hors de portée de cet outil.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      action:     { type: "string", enum: ["list", "add", "rename", "delete"], description: "Opération" },
+      context:    { type: "string", description: "Contexte visé (add / rename / delete), ex. @atelier ou atelier" },
+      newContext: { type: "string", description: "Nouveau nom (rename)" },
+      detach:     { type: "boolean", description: "delete : retirer aussi le contexte des actions qui le portent (défaut false)" },
+    },
+    required: ["action"],
+  },
+};
+
 const LINK_ACTION_TO_ACTIVITY_TOOL = {
   name: "link_action_to_activity",
   description:
@@ -1020,6 +1043,7 @@ MARK_ACTION_DONE_TOOL,
 MARK_CHECKLIST_ITEM_TOOL,
 LINK_ACTION_TO_ACTIVITY_TOOL,
 ADD_ACTIVITY_ACTION_TOOL,
+MANAGE_CONTEXTS_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,

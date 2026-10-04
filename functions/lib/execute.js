@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
 exports.withBothContexts = withBothContexts;
+exports.executeManageContexts = executeManageContexts;
 exports.executePushAssistantMessage = executePushAssistantMessage;
 exports.validateToken = validateToken;
 exports.executeGetUserContext = executeGetUserContext;
@@ -69,6 +70,7 @@ exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
+const contexts_1 = require("./contexts");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
@@ -1473,6 +1475,137 @@ async function executeLinkActionToActivity(uid, projectId, taskId, actionId, act
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
     const actionTitle = (_c = actions[actionIdx].title) !== null && _c !== void 0 ? _c : actionId;
     return `🔗 Action "${actionTitle}" liée à l'activité "${(_d = actData.name) !== null && _d !== void 0 ? _d : activityId}" — le chrono lancé dessus sera ciblé.`;
+}
+// ── Contextes GTD : list / add / rename / delete ─────────────────────────────
+async function executeManageContexts(uid, args) {
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const metaSnap = await metaRef.get();
+    const meta = (metaSnap.exists ? metaSnap.data() : {});
+    const customs = (Array.isArray(meta.customContexts) ? meta.customContexts : [])
+        .filter((c) => typeof c === "string" && c.trim() !== "")
+        .filter((c) => !contexts_1.DEFAULT_GTD_CONTEXTS.includes(c));
+    const known = [...contexts_1.DEFAULT_GTD_CONTEXTS, ...customs];
+    // Toutes les actions : projets (tâches) + activités (actions propres).
+    const [projSnap, actSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/projects`).get(),
+        db_1.db.collection(`users/${uid}/activities`).get(),
+    ]);
+    const projectDocs = projSnap.docs.map((d) => ({ ref: d.ref, data: d.data() }));
+    const activityDocs = actSnap.docs
+        .map((d) => ({ ref: d.ref, data: d.data() }))
+        .filter((d) => d.data.deleted !== true);
+    const tasksOf = (p) => (Array.isArray(p.tasks) ? p.tasks : []);
+    const actionsOf = (t) => (Array.isArray(t.actions) ? t.actions : []);
+    const ownOf = (a) => (Array.isArray(a.ownActions) ? a.ownActions : []);
+    const plural = (n, s) => `${n} ${s}${n > 1 ? "s" : ""}`;
+    if (args.action === "list") {
+        const usage = new Map();
+        for (const p of projectDocs) {
+            if (p.data.status === "archived" || p.data.status === "deleted")
+                continue;
+            for (const t of tasksOf(p.data))
+                (0, contexts_1.countContextUsage)(actionsOf(t), usage);
+        }
+        for (const a of activityDocs)
+            (0, contexts_1.countContextUsage)(ownOf(a.data), usage);
+        const line = (c) => {
+            var _a;
+            const u = (_a = usage.get(c)) !== null && _a !== void 0 ? _a : { open: 0, done: 0 };
+            return `- ${c} — ${plural(u.open, "ouverte")}, ${plural(u.done, "faite")}`;
+        };
+        const orphans = [...usage.keys()].filter((c) => !known.includes(c)).sort();
+        return [
+            `🏷️ CONTEXTES GTD (${known.length})`,
+            ``,
+            `Par défaut (fixes) :`,
+            ...contexts_1.DEFAULT_GTD_CONTEXTS.map(line),
+            ``,
+            `Personnalisés (${customs.length}) :`,
+            ...(customs.length ? customs.map(line) : ["- (aucun)"]),
+            ...(orphans.length
+                ? [``, `Orphelins (portés par des actions mais absents de la liste — add pour les réintégrer, rename pour les fusionner) :`, ...orphans.map(line)]
+                : []),
+        ].join("\n");
+    }
+    const ctx = (0, contexts_1.normalizeContext)(args.context);
+    if (!ctx)
+        return "Contexte requis (ex. @atelier).";
+    if (args.action === "add") {
+        if (known.includes(ctx))
+            return `Le contexte ${ctx} existe déjà.`;
+        await metaRef.set({ customContexts: db_1.FieldValue.arrayUnion(ctx) }, { merge: true });
+        return `✅ Contexte ${ctx} créé. Il apparaît dans « Je suis… » et sur les actions dès la prochaine synchro.`;
+    }
+    if (contexts_1.DEFAULT_GTD_CONTEXTS.includes(ctx)) {
+        return `${ctx} est un contexte par défaut : il ne se renomme ni ne se supprime.`;
+    }
+    // Propagation sur toutes les actions (projets + activités), un write par doc touché.
+    const propagate = async (fn) => {
+        let changedActions = 0;
+        let changedDocs = 0;
+        const batch = db_1.db.batch();
+        for (const p of projectDocs) {
+            let touched = 0;
+            const tasks = tasksOf(p.data).map((t) => {
+                const r = fn(actionsOf(t));
+                if (r.changed === 0)
+                    return t;
+                touched += r.changed;
+                return Object.assign(Object.assign({}, t), { actions: r.actions });
+            });
+            if (touched > 0) {
+                batch.update(p.ref, { tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+                changedActions += touched;
+                changedDocs++;
+            }
+        }
+        for (const a of activityDocs) {
+            const r = fn(ownOf(a.data));
+            if (r.changed === 0)
+                continue;
+            batch.update(a.ref, { ownActions: r.actions });
+            changedActions += r.changed;
+            changedDocs++;
+        }
+        if (changedDocs > 0)
+            await batch.commit();
+        return { changedActions, changedDocs };
+    };
+    if (args.action === "rename") {
+        const to = (0, contexts_1.normalizeContext)(args.newContext);
+        if (!to)
+            return "Nouveau nom requis (newContext).";
+        if (to === ctx)
+            return "Même nom : rien à faire.";
+        const isCustom = customs.includes(ctx);
+        const nextCustoms = [...new Set(customs.map((c) => (c === ctx ? to : c)))]
+            .filter((c) => !contexts_1.DEFAULT_GTD_CONTEXTS.includes(c));
+        if (!isCustom && !known.includes(to) && !nextCustoms.includes(to))
+            nextCustoms.push(to); // orphelin réintégré
+        await metaRef.set({ customContexts: nextCustoms }, { merge: true });
+        const r = await propagate((actions) => (0, contexts_1.renameContextInActions)(actions, ctx, to));
+        const merged = known.includes(to) ? " (fusionné avec le contexte existant)" : "";
+        return `✏️ ${ctx} → ${to}${merged} · ${plural(r.changedActions, "action")} mise(s) à jour dans ${r.changedDocs} projet(s)/activité(s).`;
+    }
+    if (args.action === "delete") {
+        if (!customs.includes(ctx))
+            return `Contexte personnalisé introuvable : ${ctx} (action list pour voir la liste).`;
+        await metaRef.set({ customContexts: db_1.FieldValue.arrayRemove(ctx) }, { merge: true });
+        if (args.detach === true) {
+            const r = await propagate((actions) => (0, contexts_1.removeContextFromActions)(actions, ctx));
+            return `🗑️ ${ctx} supprimé et retiré de ${plural(r.changedActions, "action")}.`;
+        }
+        const usage = new Map();
+        for (const p of projectDocs)
+            for (const t of tasksOf(p.data))
+                (0, contexts_1.countContextUsage)(actionsOf(t), usage);
+        for (const a of activityDocs)
+            (0, contexts_1.countContextUsage)(ownOf(a.data), usage);
+        const u = usage.get(ctx);
+        const left = u ? u.open + u.done : 0;
+        return `🗑️ ${ctx} retiré de la liste.${left > 0 ? ` ${plural(left, "action")} le garde(nt) comme simple tag (delete avec detach=true pour l'enlever aussi).` : ""}`;
+    }
+    return `Action inconnue : ${args.action} (list | add | rename | delete).`;
 }
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite

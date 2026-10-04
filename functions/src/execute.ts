@@ -1,4 +1,8 @@
 import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
+import {
+  DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
+} from "./contexts";
+import type { ContextUsage } from "./contexts";
 import { db, FieldValue } from "./db";
 import { v4 as uuidv4 } from "uuid";
 import * as admin from "firebase-admin";
@@ -1675,6 +1679,140 @@ async function executeLinkActionToActivity(
   return `🔗 Action "${actionTitle}" liée à l'activité "${actData.name ?? activityId}" — le chrono lancé dessus sera ciblé.`;
 }
 
+// ── Contextes GTD : list / add / rename / delete ─────────────────────────────
+
+async function executeManageContexts(
+  uid: string,
+  args: { action: string; context?: string; newContext?: string; detach?: boolean }
+): Promise<string> {
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  const metaSnap = await metaRef.get();
+  const meta = (metaSnap.exists ? metaSnap.data() : {}) as Record<string, unknown>;
+  const customs = (Array.isArray(meta.customContexts) ? meta.customContexts : [])
+    .filter((c): c is string => typeof c === "string" && c.trim() !== "")
+    .filter((c) => !DEFAULT_GTD_CONTEXTS.includes(c));
+  const known = [...DEFAULT_GTD_CONTEXTS, ...customs];
+
+  // Toutes les actions : projets (tâches) + activités (actions propres).
+  const [projSnap, actSnap] = await Promise.all([
+    db.collection(`users/${uid}/projects`).get(),
+    db.collection(`users/${uid}/activities`).get(),
+  ]);
+  const projectDocs = projSnap.docs.map((d) => ({ ref: d.ref, data: d.data() as Record<string, unknown> }));
+  const activityDocs = actSnap.docs
+    .map((d) => ({ ref: d.ref, data: d.data() as Record<string, unknown> }))
+    .filter((d) => d.data.deleted !== true);
+  const tasksOf = (p: Record<string, unknown>) =>
+    (Array.isArray(p.tasks) ? p.tasks : []) as Array<Record<string, unknown>>;
+  const actionsOf = (t: Record<string, unknown>) =>
+    (Array.isArray(t.actions) ? t.actions : []) as Array<Record<string, unknown>>;
+  const ownOf = (a: Record<string, unknown>) =>
+    (Array.isArray(a.ownActions) ? a.ownActions : []) as Array<Record<string, unknown>>;
+  const plural = (n: number, s: string) => `${n} ${s}${n > 1 ? "s" : ""}`;
+
+  if (args.action === "list") {
+    const usage = new Map<string, ContextUsage>();
+    for (const p of projectDocs) {
+      if (p.data.status === "archived" || p.data.status === "deleted") continue;
+      for (const t of tasksOf(p.data)) countContextUsage(actionsOf(t), usage);
+    }
+    for (const a of activityDocs) countContextUsage(ownOf(a.data), usage);
+    const line = (c: string) => {
+      const u = usage.get(c) ?? { open: 0, done: 0 };
+      return `- ${c} — ${plural(u.open, "ouverte")}, ${plural(u.done, "faite")}`;
+    };
+    const orphans = [...usage.keys()].filter((c) => !known.includes(c)).sort();
+    return [
+      `🏷️ CONTEXTES GTD (${known.length})`,
+      ``,
+      `Par défaut (fixes) :`,
+      ...DEFAULT_GTD_CONTEXTS.map(line),
+      ``,
+      `Personnalisés (${customs.length}) :`,
+      ...(customs.length ? customs.map(line) : ["- (aucun)"]),
+      ...(orphans.length
+        ? [``, `Orphelins (portés par des actions mais absents de la liste — add pour les réintégrer, rename pour les fusionner) :`, ...orphans.map(line)]
+        : []),
+    ].join("\n");
+  }
+
+  const ctx = normalizeContext(args.context);
+  if (!ctx) return "Contexte requis (ex. @atelier).";
+
+  if (args.action === "add") {
+    if (known.includes(ctx)) return `Le contexte ${ctx} existe déjà.`;
+    await metaRef.set({ customContexts: FieldValue.arrayUnion(ctx) }, { merge: true });
+    return `✅ Contexte ${ctx} créé. Il apparaît dans « Je suis… » et sur les actions dès la prochaine synchro.`;
+  }
+
+  if (DEFAULT_GTD_CONTEXTS.includes(ctx)) {
+    return `${ctx} est un contexte par défaut : il ne se renomme ni ne se supprime.`;
+  }
+
+  // Propagation sur toutes les actions (projets + activités), un write par doc touché.
+  const propagate = async (
+    fn: (actions: Array<Record<string, unknown>>) => { actions: Array<Record<string, unknown>>; changed: number },
+  ) => {
+    let changedActions = 0;
+    let changedDocs = 0;
+    const batch = db.batch();
+    for (const p of projectDocs) {
+      let touched = 0;
+      const tasks = tasksOf(p.data).map((t) => {
+        const r = fn(actionsOf(t));
+        if (r.changed === 0) return t;
+        touched += r.changed;
+        return { ...t, actions: r.actions };
+      });
+      if (touched > 0) {
+        batch.update(p.ref, { tasks, updatedAt: FieldValue.serverTimestamp() });
+        changedActions += touched;
+        changedDocs++;
+      }
+    }
+    for (const a of activityDocs) {
+      const r = fn(ownOf(a.data));
+      if (r.changed === 0) continue;
+      batch.update(a.ref, { ownActions: r.actions });
+      changedActions += r.changed;
+      changedDocs++;
+    }
+    if (changedDocs > 0) await batch.commit();
+    return { changedActions, changedDocs };
+  };
+
+  if (args.action === "rename") {
+    const to = normalizeContext(args.newContext);
+    if (!to) return "Nouveau nom requis (newContext).";
+    if (to === ctx) return "Même nom : rien à faire.";
+    const isCustom = customs.includes(ctx);
+    const nextCustoms = [...new Set(customs.map((c) => (c === ctx ? to : c)))]
+      .filter((c) => !DEFAULT_GTD_CONTEXTS.includes(c));
+    if (!isCustom && !known.includes(to) && !nextCustoms.includes(to)) nextCustoms.push(to); // orphelin réintégré
+    await metaRef.set({ customContexts: nextCustoms }, { merge: true });
+    const r = await propagate((actions) => renameContextInActions(actions, ctx, to));
+    const merged = known.includes(to) ? " (fusionné avec le contexte existant)" : "";
+    return `✏️ ${ctx} → ${to}${merged} · ${plural(r.changedActions, "action")} mise(s) à jour dans ${r.changedDocs} projet(s)/activité(s).`;
+  }
+
+  if (args.action === "delete") {
+    if (!customs.includes(ctx)) return `Contexte personnalisé introuvable : ${ctx} (action list pour voir la liste).`;
+    await metaRef.set({ customContexts: FieldValue.arrayRemove(ctx) }, { merge: true });
+    if (args.detach === true) {
+      const r = await propagate((actions) => removeContextFromActions(actions, ctx));
+      return `🗑️ ${ctx} supprimé et retiré de ${plural(r.changedActions, "action")}.`;
+    }
+    const usage = new Map<string, ContextUsage>();
+    for (const p of projectDocs) for (const t of tasksOf(p.data)) countContextUsage(actionsOf(t), usage);
+    for (const a of activityDocs) countContextUsage(ownOf(a.data), usage);
+    const u = usage.get(ctx);
+    const left = u ? u.open + u.done : 0;
+    return `🗑️ ${ctx} retiré de la liste.${left > 0 ? ` ${plural(left, "action")} le garde(nt) comme simple tag (delete avec detach=true pour l'enlever aussi).` : ""}`;
+  }
+
+  return `Action inconnue : ${args.action} (list | add | rename | delete).`;
+}
+
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
@@ -3054,6 +3192,7 @@ async function executeGenerateWeeklyReport(
 
 export {
   withBothContexts,
+  executeManageContexts,
   executePushAssistantMessage,
   validateToken,
   executeGetUserContext,
