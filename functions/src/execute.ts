@@ -3,6 +3,8 @@ import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
 } from "./contexts";
 import type { ContextUsage } from "./contexts";
+import { applyActionPatch } from "./action_patch";
+import type { ActionPatch } from "./action_patch";
 import { db, FieldValue } from "./db";
 import { v4 as uuidv4 } from "uuid";
 import * as admin from "firebase-admin";
@@ -1679,6 +1681,95 @@ async function executeLinkActionToActivity(
   return `🔗 Action "${actionTitle}" liée à l'activité "${actData.name ?? activityId}" — le chrono lancé dessus sera ciblé.`;
 }
 
+// ── Modifier / supprimer UNE action (projet ou activité) ─────────────────────
+
+type UpdateActionArgs = {
+  activityId?: string; projectId?: string; taskId?: string; actionId: string;
+  title?: string; contexts?: string[]; addContexts?: string[]; removeContexts?: string[];
+  estimatedMin?: number; clearEstimate?: boolean; linkedActivityId?: string;
+  done?: boolean; delete?: boolean;
+};
+
+async function executeUpdateAction(uid: string, args: UpdateActionArgs): Promise<string> {
+  if (!args.actionId) return "actionId requis.";
+  const own = !!args.activityId;
+  if (!own && !(args.projectId && args.taskId)) {
+    return "Cible requise : activityId (action propre) OU projectId + taskId (sous-action de projet).";
+  }
+  const patch: ActionPatch = {};
+  if (args.title !== undefined) patch.title = args.title;
+  if (args.contexts !== undefined) patch.contexts = args.contexts;
+  if (args.addContexts !== undefined) patch.addContexts = args.addContexts;
+  if (args.removeContexts !== undefined) patch.removeContexts = args.removeContexts;
+  if (args.clearEstimate === true) patch.estimatedMin = null;
+  else if (args.estimatedMin !== undefined) patch.estimatedMin = args.estimatedMin;
+  if (args.done !== undefined) patch.done = args.done;
+  if (args.linkedActivityId !== undefined) {
+    if (own) return "linkedActivityId ne s'applique qu'aux sous-actions de projet (une action propre est déjà portée par son activité).";
+    patch.linkedActivityId = args.linkedActivityId;
+  }
+  if (patch.linkedActivityId) {
+    const actSnap = await db.collection(`users/${uid}/activities`).doc(patch.linkedActivityId).get();
+    const actData = actSnap.exists ? (actSnap.data() as Record<string, unknown>) : null;
+    if (!actData || actData.deleted === true) return `Activité introuvable : ${patch.linkedActivityId}`;
+    if (actData.type !== "time") return `L'activité "${actData.name ?? patch.linkedActivityId}" n'est pas une activité-temps.`;
+  }
+  const sanitize = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) =>
+    x && typeof x === "object" && typeof x.toDate === "function" ? x.toDate().toISOString() : x));
+  const summary = (title: string, changes: string[], holder: string) =>
+    changes.length
+      ? `✏️ « ${title} » (${holder}) : ${changes.join(" · ")}.`
+      : `« ${title} » (${holder}) : rien à changer.`;
+
+  if (own) {
+    const ref = db.collection(`users/${uid}/activities`).doc(args.activityId as string);
+    const snap = await ref.get();
+    if (!snap.exists) return `Activité introuvable : ${args.activityId}`;
+    const data = snap.data() as Record<string, unknown>;
+    if (data.deleted === true) return `Activité supprimée : ${args.activityId}`;
+    const list = sanitize(Array.isArray(data.ownActions) ? data.ownActions : []) as Array<Record<string, unknown>>;
+    const idx = list.findIndex((a) => a.id === args.actionId);
+    if (idx === -1) return `Action propre introuvable : ${args.actionId}`;
+    const title = (list[idx].title as string) ?? args.actionId;
+    const holder = `activité ${data.name ?? args.activityId}`;
+    if (args.delete === true) {
+      list.splice(idx, 1);
+      await ref.update({ ownActions: list });
+      return `🗑️ Action propre « ${title} » supprimée (${holder}).`;
+    }
+    const r = applyActionPatch(list[idx], patch);
+    if (r.changes.length === 0) return summary(title, [], holder);
+    list[idx] = r.action;
+    await ref.update({ ownActions: list });
+    return summary(title, r.changes, holder);
+  }
+
+  const ref = db.collection(`users/${uid}/projects`).doc(args.projectId as string);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
+  const data = snap.data() as Record<string, unknown>;
+  const tasks = sanitize(Array.isArray(data.tasks) ? data.tasks : []) as Array<Record<string, unknown>>;
+  const taskIdx = tasks.findIndex((t) => t.id === args.taskId);
+  if (taskIdx === -1) return `Tâche introuvable : ${args.taskId}`;
+  const actions = ((tasks[taskIdx].actions as Array<Record<string, unknown>>) ?? []).slice();
+  const actionIdx = actions.findIndex((a) => a.id === args.actionId);
+  if (actionIdx === -1) return `Sous-action introuvable : ${args.actionId}`;
+  const title = (actions[actionIdx].title as string) ?? args.actionId;
+  const holder = `${data.title ?? args.projectId} › ${tasks[taskIdx].title ?? args.taskId}`;
+  if (args.delete === true) {
+    actions.splice(actionIdx, 1);
+    tasks[taskIdx] = { ...tasks[taskIdx], actions };
+    await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+    return `🗑️ Sous-action « ${title} » supprimée (${holder}).`;
+  }
+  const r = applyActionPatch(actions[actionIdx], patch);
+  if (r.changes.length === 0) return summary(title, [], holder);
+  actions[actionIdx] = r.action;
+  tasks[taskIdx] = { ...tasks[taskIdx], actions };
+  await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
+  return summary(title, r.changes, holder);
+}
+
 // ── Contextes GTD : list / add / rename / delete ─────────────────────────────
 
 async function executeManageContexts(
@@ -3193,6 +3284,7 @@ async function executeGenerateWeeklyReport(
 export {
   withBothContexts,
   executeManageContexts,
+  executeUpdateAction,
   executePushAssistantMessage,
   validateToken,
   executeGetUserContext,
