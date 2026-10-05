@@ -103,6 +103,17 @@ List<ProjectActions> projectActionGroups(
   return out;
 }
 
+/// Filtre actif (contexte ou temps) : on ne montre que les projets qui ont au
+/// moins une action qui passe — « que puis-je faire @maison ? » va droit à
+/// l'essentiel. Les autres sont comptés (lien « Afficher ») au lieu d'être
+/// listés vides. Sans filtre, tout reste visible (« Définir la prochaine »).
+({List<ProjectActions> shown, int hidden}) visibleProjectGroups(
+    List<ProjectActions> groups, {required bool filtering}) {
+  if (!filtering) return (shown: groups, hidden: 0);
+  final shown = groups.where((g) => g.entries.isNotEmpty).toList();
+  return (shown: shown, hidden: groups.length - shown.length);
+}
+
 /// « Possible maintenant » : actions ouvertes dont l'activité-temps liée est
 /// celle du chrono en cours — lien propre (`TaskAction.linkedActivityId`),
 /// lien du projet, ou action simple de cette activité.

@@ -76,6 +76,15 @@ void main() {
               .toList(),
           ['b', 'a']);
     });
+    test('filtre actif : seuls les projets avec une action qui passe ; les autres comptés', () {
+      final g = projectActionGroups(projects, filter: (a) => a.title == 'b-second');
+      final v = visibleProjectGroups(g, filtering: true);
+      expect(v.shown.map((x) => x.project.id).toList(), ['b']);
+      expect(v.hidden, g.length - 1);
+      final all = visibleProjectGroups(g, filtering: false);
+      expect(all.shown.length, g.length);
+      expect(all.hidden, 0);
+    });
     test('le filtre s\'applique aux actions, le projet reste listé (vide)', () {
       final g = projectActionGroups(projects, filter: (a) => a.title == 'b-second');
       expect(g.firstWhere((x) => x.project.id == 'b').entries.single.action.title, 'b-second');
