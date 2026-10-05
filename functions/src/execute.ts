@@ -461,6 +461,18 @@ function autoPlanBanner(enabled: boolean, date: string): string[] {
       ];
 }
 
+/** Agenda Google connecté nativement (OAuth serveur, sync auto active) : l'app
+ *  écrit elle-même chaque bloc dans l'agenda — Claude ne doit jamais le faire
+ *  via son connecteur (sinon doublons, jusqu'à ×4 constatés le 2026-10-04). */
+async function nativeGcalSync(uid: string): Promise<boolean> {
+  try {
+    const d = (await db.doc(`gcal_tokens/${uid}`).get()).data();
+    return !!d?.refreshToken && d.autoSync !== false;
+  } catch {
+    return false;
+  }
+}
+
 async function executeGetUserContext(uid: string): Promise<string> {
   // Fenêtre glissante : 7 derniers jours
   const now = new Date();
@@ -661,10 +673,22 @@ async function executeGetUserContext(uid: string): Promise<string> {
       )
     : null;
 
+  // Règles calendrier selon le mode : agenda natif connecté → Claude n'écrit
+  // JAMAIS dans Google Agenda (l'app s'en charge) ; sinon l'ancien parcours
+  // connecteur (proposer puis create_event après accord) reste valable.
+  const nativeGcal = await nativeGcalSync(uid);
+  const calendarRules = nativeGcal
+    ? [
+        "GOOGLE AGENDA CONNECTÉ DANS L'APP : chaque bloc posé via schedule_day / add_event / add_prep_block apparaît TOUT SEUL dans l'agenda, et les rendez-vous de l'agenda arrivent dans le programme (blocs 📅). Tu ne dois JAMAIS appeler create_event, update_event ni delete_event pour un bloc ou un programme Productivitwo — même si l'utilisateur demande « mets-le dans mon agenda » : pose-le dans le programme et dis que l'agenda suit automatiquement. list_events reste permis pour LIRE (trouver un créneau libre).",
+      ]
+    : [
+        "QUAND l'utilisateur demande un programme (musculation, nutrition, formation, journée…) : demande-lui d'abord s'il veut que tu vérifies son agenda pour intégrer des créneaux concrets. Si oui : list_events → propose des créneaux → create_event après accord (UN seul appel par événement — vérifie avec list_events qu'il n'existe pas déjà avant de le créer).",
+        ];
+
   const coachingRules = {
     _instructions: [
+      ...calendarRules,
       "AVANT de commencer tout travail long (programme, bilan, alignement Gantt) : annonce à l'utilisateur que ça prend ~1-2 min et que tu envoies une notification quand c'est prêt.",
-      "QUAND l'utilisateur demande un programme (musculation, nutrition, formation, journée…) : demande-lui d'abord s'il veut que tu vérifies son agenda pour intégrer des créneaux concrets. Si oui : list_events → propose des créneaux → create_event après accord.",
       "APRÈS chaque save_document : envoie une push_notification pour informer l'utilisateur.",
       "QUAND tu modifies un projet Gantt (push_gantt, update_project, update_task_status) : appelle get_documents(projectId) et mets à jour le programme HTML associé via save_document en passant le documentId existant (évite les doublons).",
       "POUR créer un programme : appelle toujours get_document_template d'abord, génère le HTML, montre-le à l'utilisateur et attends sa validation avant de créer quoi que ce soit dans Productivitwo.",
@@ -682,7 +706,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       "• 'Faire le bilan de la semaine' (si c'est vendredi ou fin de sprint) " +
       "• 'Programmer des messages ORION pour la semaine' (si pas encore fait) " +
       "• 'Créer les routines liées à ce programme' (si un programme vient d'être créé) " +
-      "• 'Aligner ton agenda Google Calendar' (si des créneaux sont à bloquer) " +
+      (nativeGcal ? "" : "• 'Aligner ton agenda Google Calendar' (si des créneaux sont à bloquer) ") +
       "• 'Voir les projets en veille' (si tu as archivé quelque chose) " +
       "Formule-les en une ligne, sans description. Ne propose pas une option déjà réalisée dans la session.",
       "MESSAGES PROACTIFS (optionnel, après la réponse) : si la demande est un bilan, une analyse ou une planification, tu peux programmer 1 à 2 messages ORION pertinents via push_assistant_message — uniquement si ça apporte une vraie valeur. Vérifie d'abord get_assistant_messages pour éviter les doublons. Ne programme jamais de messages pour une demande simple (action ponctuelle, question, suppression). " +
@@ -2361,7 +2385,7 @@ async function executePlanDay(
   // Défaut SANS écriture dans Google Calendar : l'app synchronise déjà le
   // programme (sync native) et les rendez-vous arrivent en miroirs ; une
   // 2ᵉ écriture par le connecteur Claude créait des doublons des deux côtés.
-  const syncToCalendar = args.syncToCalendar === true;
+  const syncToCalendar = args.syncToCalendar === true && !(await nativeGcalSync(uid));
 
   // Planifier AUJOURD'HUI ne doit jamais créer de blocs déjà passés : le
   // départ effectif est calé sur le prochain quart d'heure (s'il est 15h12 et
@@ -2505,7 +2529,7 @@ async function executePlanWeek(
     schedules.push(`${d} : ${s}`);
   }
 
-  const syncNote = args.syncToCalendar === true
+  const syncNote = args.syncToCalendar === true && !(await nativeGcalSync(uid))
     ? `\n📅 SYNC GOOGLE CALENDAR : après chaque schedule_day(), créer les events dans le calendrier "Productivitwo" (colorId: routine=2, project=7, break=5, personal=4) — jamais les miroirs 📅.`
     : `\n📅 Les rendez-vous Google Agenda (blocs 📅) sont déjà dans les programmes : planifie autour, ne les recrée pas.`;
 
@@ -2547,6 +2571,10 @@ async function executeSyncCalendar(uid: string, date?: string): Promise<string> 
   const today = todayInParis();
   const targetDate = date ?? today;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) return `Date invalide : ${targetDate}`;
+  if (await nativeGcalSync(uid)) {
+    return `🗓️ Google Agenda est connecté dans l'app : le programme du ${targetDate} y est synchronisé automatiquement. ` +
+      `N'appelle PAS create_event / delete_event — rien d'autre à faire.`;
+  }
 
   const snap = await db.doc(`users/${uid}/daily_schedules/${targetDate}`).get();
   if (!snap.exists) {
@@ -3005,8 +3033,7 @@ async function executeAddEvent(
   if (args.syncToCalendar !== false) {
     // Agenda natif connecté : le trigger Firestore synchronise ce bloc tout
     // seul — aucune instruction connecteur à donner.
-    const gcalSnap = await db.doc(`gcal_tokens/${uid}`).get();
-    if (gcalSnap.exists && gcalSnap.data()?.refreshToken) {
+    if (await nativeGcalSync(uid)) {
       out += `\n\n🗓️ Google Agenda : synchronisé automatiquement (agenda connecté dans l'app) — rien d'autre à faire.`;
     } else {
       out +=
