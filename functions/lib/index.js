@@ -1621,6 +1621,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
                         tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL, tools_1.MARK_ACTION_DONE_TOOL, tools_1.MARK_CHECKLIST_ITEM_TOOL,
                         tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL, tools_1.MANAGE_CONTEXTS_TOOL, tools_1.UPDATE_ACTION_TOOL,
+                        tools_1.ESTIMATE_ACCURACY_TOOL,
                         tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
                         tools_1.LIST_SESSION_TEMPLATES_TOOL, tools_1.CREATE_SESSION_TEMPLATE_TOOL,
@@ -1809,7 +1810,13 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeLinkActionToActivity)(uid, args.projectId, args.taskId, args.actionId, args.activityId);
                 }
                 else if (toolName === "add_activity_action") {
-                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts);
+                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin);
+                }
+                else if (toolName === "estimate_accuracy") {
+                    text = await (0, execute_1.executeEstimateAccuracy)(uid, {
+                        days: args.days,
+                        limit: args.limit,
+                    });
                 }
                 else if (toolName === "update_action") {
                     text = await (0, execute_1.executeUpdateAction)(uid, {

@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -44,8 +45,18 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
   bool _hideDoneItems = false;
   // Mode étroit : l'espace de travail remplace la liste.
   bool _narrowDetail = false;
+  // Minutes réellement passées par action (chrono ciblé, 365 j).
+  Map<String, int> _spent = const {};
 
   Project get _p => widget.project;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.sync.fetchRecentSessions(365).then((sessions) {
+      if (mounted) setState(() => _spent = spentByAction(sessions));
+    });
+  }
 
   /// Actions dans l'ordre du plan (phases → tâches en ordre Gantt → actions).
   List<_Entry> get _entries {
@@ -488,6 +499,8 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
           Wrap(spacing: 6, runSpacing: 6, children: [
             for (final c in a.allContexts) _pill(c, kBText3),
             if (a.estimatedMin != null) _pill('≈ ${fmtMin(a.estimatedMin!)}', kBText3),
+            if (spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin) case final sp?)
+              _pill(sp.label, sp.over ? kBAlert : kBText3),
             if (linked != null) _pill('⏱ ${linked.name}', kBPrimary),
             if (a.done && a.doneAt != null) _pill('Faite le ${_dmy(a.doneAt!)}', kBPrimaryDark),
           ]),

@@ -35,7 +35,7 @@ import {
   LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
-  LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
+  LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -55,7 +55,7 @@ import {
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
-  executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction,
+  executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction, executeEstimateAccuracy,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
@@ -1663,6 +1663,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
+            ESTIMATE_ACCURACY_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
             LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -1830,7 +1831,13 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.title as string,
             args.context as string | undefined,
             args.contexts as string[] | undefined,
+            args.estimatedMin as number | undefined,
           );
+        } else if (toolName === "estimate_accuracy") {
+          text = await executeEstimateAccuracy(uid, {
+            days: args.days as number | undefined,
+            limit: args.limit as number | undefined,
+          });
         } else if (toolName === "update_action") {
           text = await executeUpdateAction(uid, {
             activityId: args.activityId as string | undefined,

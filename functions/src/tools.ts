@@ -688,7 +688,7 @@ const PUSH_GANTT_MCP_TOOL = {
                   items: TASK_ACTION_ITEM_SCHEMA,
                   description:
                     "Sous-actions opérationnelles — string simple, OU objet " +
-                    "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+                    "{ title, linkedActivityId?, contexts?, estimatedMin? } pour lier l'action à une " +
                     "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -764,7 +764,7 @@ const ADD_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Sous-actions opérationnelles — string simple, OU objet " +
-          "{ title, linkedActivityId?, contexts? } pour lier l'action à une " +
+          "{ title, linkedActivityId?, contexts?, estimatedMin? } pour lier l'action à une " +
           "activité-temps (chrono ciblé) dès la création. " +
           "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
           "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -804,7 +804,7 @@ const UPDATE_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
-          "Un item peut être un objet { title, linkedActivityId?, contexts? } pour poser le lien chrono.",
+          "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin? } pour poser le lien chrono.",
       },
     },
   },
@@ -843,6 +843,24 @@ const MARK_CHECKLIST_ITEM_TOOL = {
       actionId:  { type: "string", description: "id de la sous-action (get_project)" },
       itemId:    { type: "string", description: "id de l'item de checklist (get_project)" },
       done:      { type: "boolean", description: "true pour cocher, false pour décocher" },
+    },
+  },
+};
+
+const ESTIMATE_ACCURACY_TOOL = {
+  name: "estimate_accuracy",
+  description:
+    "Estimé vs réel : compare l'estimation (estimatedMin) au temps RÉELLEMENT passé, mesuré par le chrono " +
+    "ciblé sur l'action (sessions avec actionId ; les tâches via taskId). Renvoie le facteur médian réel/estimé " +
+    "(ex. ×1,4 = tu sous-estimes de 40 %), le détail par contexte et par projet/activité, les mesures récentes, " +
+    "les actions en cours déjà au-delà de leur estimation et celles travaillées sans estimation (avec leurs ids " +
+    "pour update_action). À utiliser AVANT d'estimer des durées : applique le facteur à ta première intuition. " +
+    "plan_day en inclut déjà un résumé.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      days:  { type: "integer", description: "Période analysée en jours (défaut 90, 7 à 365)" },
+      limit: { type: "integer", description: "Nombre max de lignes par liste (défaut 15)" },
     },
   },
 };
@@ -934,6 +952,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
       title:      { type: "string", description: "intitulé court et actionnable de l'action" },
       context:    { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
       contexts:   { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
+      estimatedMin: { type: "integer", description: "Durée estimée en minutes (voir estimate_accuracy pour calibrer)" },
     },
   },
 };
@@ -1075,6 +1094,7 @@ LINK_ACTION_TO_ACTIVITY_TOOL,
 ADD_ACTIVITY_ACTION_TOOL,
 MANAGE_CONTEXTS_TOOL,
 UPDATE_ACTION_TOOL,
+ESTIMATE_ACCURACY_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,

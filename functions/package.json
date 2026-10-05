@@ -4,7 +4,7 @@
     "build": "tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
-    "test": "npm run build && node --test test/entitlements.test.mjs test/gcal_our_event.test.mjs test/schedule_dedupe.test.mjs test/contexts.test.mjs test/action_patch.test.mjs"
+    "test": "npm run build && node --test test/entitlements.test.mjs test/gcal_our_event.test.mjs test/schedule_dedupe.test.mjs test/contexts.test.mjs test/action_patch.test.mjs test/estimates.test.mjs"
   },
   "engines": {
     "node": "20"

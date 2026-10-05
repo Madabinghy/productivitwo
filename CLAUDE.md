@@ -93,6 +93,10 @@ et le programme passe en liste compacte de 340 px (`_scheduleListCard`). Seuil �
 Dès qu'elle est affichée (chrono ou pas), la frise se **recentre sur le trait « maintenant »** (`scrollToNow`,
 appelé par `_go(WebTab.today)` du shell ; aussi au premier programme chargé, au changement de jour et quand la
 frise revient après la disposition active).
+**Aujourd'hui orienté action** (2026-10, `docs/specs/aujourdhui-web-actions-2026-10/README.md`) : carte « Au
+programme · concrètement » (`_agendaCard` : blocs à venir dépliables, étapes de l'action visée cochables, actions
+possibles d'une activité, +1 de routine, « Définir la prochaine action ») sous MAINTENANT ; ligne concrète dans les
+blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routinesCard`, logique `utils/routines_today.dart`).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
@@ -257,6 +261,12 @@ Claude ne les recrée pas lors d'une régénération.
   clearEstimate?, linkedActivityId?, done?, delete?)` — retouche UNE action existante (propre d'une activité ou sous-action de
   projet) sans réécrire les autres ; `done:true` coche aussi la checklist. Logique pure `functions/src/action_patch.ts`.
   Préférer à `update_task` (qui remplace toutes les sous-actions) pour une modification ponctuelle
+- `estimate_accuracy(days?, limit?)` — **estimé vs réel** : temps réel = sessions de chrono ciblées (`actionId`,
+  tâches via `taskId`), facteur médian réel/estimé sur les actions terminées + par contexte / porteur, actions en cours
+  au-delà de l'estimation, actions travaillées sans estimation. `plan_day` en inclut un résumé et demande d'estimer
+  (avec ce facteur) puis de poser `estimatedMin` sur toute action programmée sans estimation. Logique pure
+  `functions/src/estimates.ts` ; côté app `lib/utils/time_spent.dart` (« ⏱ … passées » : Actions mobile, Réalisation web).
+  Handoff `docs/specs/estime-vs-reel-2026-10/README.md`
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

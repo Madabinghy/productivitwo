@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
 exports.withBothContexts = withBothContexts;
 exports.executeManageContexts = executeManageContexts;
+exports.executeEstimateAccuracy = executeEstimateAccuracy;
 exports.executeUpdateAction = executeUpdateAction;
 exports.executePushAssistantMessage = executePushAssistantMessage;
 exports.validateToken = validateToken;
@@ -73,6 +74,7 @@ exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
+const estimates_1 = require("./estimates");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
 const admin = require("firebase-admin");
@@ -486,7 +488,8 @@ async function executeGetUserContext(uid) {
         const ownActions = Array.isArray(v.ownActions)
             ? v.ownActions
                 .filter((a) => !(a === null || a === void 0 ? void 0 : a.done))
-                .map((a) => ({ id: a.id, title: a.title }))
+                .map((a) => (Object.assign(Object.assign({ id: a.id, title: a.title }, (estimatedMinOrUndefined(a.estimatedMin) !== undefined
+                ? { estimatedMin: estimatedMinOrUndefined(a.estimatedMin) } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {}))))
             : [];
         return Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {}));
     });
@@ -1478,6 +1481,87 @@ async function executeLinkActionToActivity(uid, projectId, taskId, actionId, act
     const actionTitle = (_c = actions[actionIdx].title) !== null && _c !== void 0 ? _c : actionId;
     return `🔗 Action "${actionTitle}" liée à l'activité "${(_d = actData.name) !== null && _d !== void 0 ? _d : activityId}" — le chrono lancé dessus sera ciblé.`;
 }
+async function loadTimeInsights(uid, days) {
+    const sinceMs = Date.now() - days * 86400000;
+    // Les sessions remontent 60 j avant la fenêtre : une action terminée dans la
+    // période a pu être commencée avant.
+    const sessionsSince = new Date(sinceMs - 60 * 86400000).toISOString();
+    const [projSnap, actSnap, sessSnap] = await Promise.all([
+        db_1.db.collection(`users/${uid}/projects`).get(),
+        db_1.db.collection(`users/${uid}/activities`).get(),
+        db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", sessionsSince).get(),
+    ]);
+    const entries = (0, estimates_1.timeEntries)(projSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), actSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), sessSnap.docs.map((d) => d.data()));
+    const measuredEntries = (0, estimates_1.measured)(entries, sinceMs);
+    return { days, entries, measuredEntries, calibration: (0, estimates_1.calibrate)(measuredEntries) };
+}
+function entryLine(e, withRef) {
+    const est = e.estimatedMin === null ? "sans estimation" : `estimé ${(0, estimates_1.fmtMin)(e.estimatedMin)}`;
+    const ratio = e.estimatedMin ? ` (${(0, estimates_1.fmtFactor)(Math.round((e.spentMin / e.estimatedMin) * 100) / 100)})` : "";
+    const ctx = e.contexts.length ? ` · ${e.contexts.join(" ")}` : "";
+    return `- « ${e.title} » (${e.holder}) : ${est} · réel ${(0, estimates_1.fmtMin)(e.spentMin)}${ratio}${ctx}` +
+        (withRef ? ` [${(0, estimates_1.refLabel)(e.ref)}]` : "");
+}
+async function executeEstimateAccuracy(uid, args) {
+    var _a, _b;
+    const days = Math.min(365, Math.max(7, Math.round((_a = args.days) !== null && _a !== void 0 ? _a : 90)));
+    const limit = Math.min(50, Math.max(1, Math.round((_b = args.limit) !== null && _b !== void 0 ? _b : 15)));
+    const ti = await loadTimeInsights(uid, days);
+    const c = ti.calibration;
+    const recent = [...ti.measuredEntries]
+        .sort((a, b) => { var _a, _b; return ((_a = b.doneAt) !== null && _a !== void 0 ? _a : "").localeCompare((_b = a.doneAt) !== null && _b !== void 0 ? _b : ""); })
+        .slice(0, limit);
+    const over = (0, estimates_1.overBudget)(ti.entries).slice(0, limit);
+    const unest = (0, estimates_1.workedUnestimated)(ti.entries).slice(0, limit);
+    const doneTasks = ti.entries.filter((e) => e.ref.kind === "task" && e.done && e.estimatedMin !== null && e.spentMin > 0);
+    const lines = [
+        `⏱️ ESTIMÉ vs RÉEL — ${days} derniers jours`,
+        `Temps réel = chrono ciblé sur l'action (sessions). Les blocs cochés sans chrono ne comptent pas.`,
+        ``,
+        (0, estimates_1.calibrationHeadline)(c),
+        `→ ${(0, estimates_1.adviceLine)(c)}`,
+    ];
+    if (c.byContext.length) {
+        lines.push(`Par contexte (≥ 3 mesures) : ${c.byContext.map((x) => `${x.context} ${(0, estimates_1.fmtFactor)(x.factor)} (${x.n})`).join(" · ")}`);
+    }
+    if (c.byHolder.length) {
+        lines.push(`Par projet/activité (≥ 3 mesures) : ${c.byHolder.map((x) => `${x.holder} ${(0, estimates_1.fmtFactor)(x.factor)} (${x.n})`).join(" · ")}`);
+    }
+    if (doneTasks.length) {
+        lines.push(``, `Tâches terminées (estimation de tâche vs temps chronométré sur la tâche) :`, ...doneTasks.slice(0, limit).map((e) => entryLine(e, false)));
+    }
+    lines.push(``, `Mesures récentes :`, ...(recent.length ? recent.map((e) => entryLine(e, false)) : ["- (aucune)"]));
+    if (over.length) {
+        lines.push(``, `En cours, déjà au-delà de l'estimation (réestimer le reste via update_action) :`, ...over.map((e) => entryLine(e, true)));
+    }
+    if (unest.length) {
+        lines.push(``, `Travaillées sans estimation (poser estimatedMin via update_action) :`, ...unest.map((e) => entryLine(e, true)));
+    }
+    return lines.join("\n");
+}
+/** Bloc compact pour plan_day : facteur + consignes d'estimation. */
+async function planDayTimeBlock(uid) {
+    try {
+        const ti = await loadTimeInsights(uid, 90);
+        const c = ti.calibration;
+        const over = (0, estimates_1.overBudget)(ti.entries).slice(0, 5);
+        const unest = (0, estimates_1.workedUnestimated)(ti.entries).slice(0, 5);
+        return [
+            ``,
+            `── ESTIMÉ vs RÉEL (90 j, chrono ciblé) ──`,
+            (0, estimates_1.calibrationHeadline)(c),
+            `→ ${(0, estimates_1.adviceLine)(c)}`,
+            ...(c.byContext.length
+                ? [`Par contexte : ${c.byContext.map((x) => `${x.context} ${(0, estimates_1.fmtFactor)(x.factor)}`).join(" · ")}`]
+                : []),
+            ...(over.length ? [`Déjà au-delà de l'estimation :`, ...over.map((e) => entryLine(e, true))] : []),
+            ...(unest.length ? [`Travaillées sans estimation :`, ...unest.map((e) => entryLine(e, true))] : []),
+        ];
+    }
+    catch (_a) {
+        return [];
+    }
+}
 async function executeUpdateAction(uid, args) {
     var _a, _b, _c, _d, _e, _f, _g;
     if (!args.actionId)
@@ -1707,7 +1791,7 @@ async function executeManageContexts(uid, args) {
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title, context, contexts) {
+async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
@@ -1721,16 +1805,8 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts({
-        id: (0, uuid_1.v4)(),
-        title: title.trim(),
-        done: false,
-        doneAt: null,
-        createdAt: new Date().toISOString(),
-        linkedActivityId: activityId,
-        context: (context === null || context === void 0 ? void 0 : context.trim()) || null, // contexte GTD (@maison…)
-        contexts: Array.isArray(contexts) ? contexts : [],
-    });
+    const action = withBothContexts(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (estimatedMinOrUndefined(estimatedMin) !== undefined
+        ? { estimatedMin: estimatedMinOrUndefined(estimatedMin) } : {})));
     own.push(action);
     await ref.update({ ownActions: own });
     return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
@@ -2024,10 +2100,11 @@ async function executePlanDay(uid, args) {
     const startLabel = floorHm && floorHm > `${String(startHour).padStart(2, "0")}:00`
         ? floorHm
         : `${String(startHour).padStart(2, "0")}h`;
-    const [userContext, existingSchedule, autoPlanEnabled] = await Promise.all([
+    const [userContext, existingSchedule, autoPlanEnabled, timeBlock] = await Promise.all([
         executeGetUserContext(uid),
         executeGetDaySchedule(uid, date),
         readAutoPlan(uid),
+        planDayTimeBlock(uid),
     ]);
     const projectsSnap = await db_1.db.collection(`users/${uid}/projects`)
         .where("status", "==", "active").get();
@@ -2083,6 +2160,7 @@ async function executePlanDay(uid, args) {
         `Un bloc peut porter UNIQUEMENT activityId (sans projet/tâche) → ▶ lance un`,
         `chrono ciblé sur l'activité. Utilise-les pour bloquer du temps dessus :`,
         timeActivities.length > 0 ? timeActivities.join("\n") : "  Aucune.",
+        ...timeBlock,
         ``,
         `══════════════════════════════════════════`,
         `WORKFLOW :`,
@@ -2096,6 +2174,10 @@ async function executePlanDay(uid, args) {
         `     regroupe en séquences ADJACENTES les blocs dont les actions partagent le même contexte`,
         `     (toutes les courses ensemble, tout l'@ordinateur d'affilée…) pour éviter les allers-retours`,
         `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
+        `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
+        `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
+        `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
+        `     au-delà de son estimation : prévois le reste, pas l'estimation entière.`,
         `3. schedule_day("${date}", blocks[])`,
         `4. PRÉPARATION LA VEILLE : pour tout bloc matinal (avant 9h30) qui exige du`,
         `   matériel ou de la logistique (sport, déplacement, cuisine), ajoute via`,
