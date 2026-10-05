@@ -50,6 +50,9 @@ class ActionsView extends StatefulWidget {
 class _ActionsViewState extends State<ActionsView> {
   final Set<String> _contexts = {};
   TimeBucket? _time;
+  // Filtre actif : projets sans action correspondante masqués, sauf demande.
+  bool _showUnmatched = false;
+  bool get _filtering => _contexts.isNotEmpty || _time != null;
   String? _domainId;
   ActionsSort _sort = ActionsSort.dueDate;
   bool _showPaused = false;
@@ -290,7 +293,10 @@ class _ActionsViewState extends State<ActionsView> {
       Wrap(spacing: 6, runSpacing: 6, children: [
         for (final c in contexts)
           _chip(c, selected: _contexts.contains(c), onTap: () {
-            setState(() => _contexts.contains(c) ? _contexts.remove(c) : _contexts.add(c));
+            setState(() {
+              _contexts.contains(c) ? _contexts.remove(c) : _contexts.add(c);
+              _showUnmatched = false;
+            });
             _savePrefs();
           }),
       ]),
@@ -391,10 +397,21 @@ class _ActionsViewState extends State<ActionsView> {
     final now = open == null
         ? const <({TaskAction action, Project? project, ProjectTask? task, Activity? activity})>[]
         : possibleNow(_domainProjects, _domainActivities, open.activityId, filter: _filter);
-    final groups = projectActionGroups(_domainProjects,
+    final allGroups = projectActionGroups(_domainProjects,
         filter: _filter,
         sort: _sort,
         domainOrder: [for (final d in widget.domains) d.id]);
+    final vis = visibleProjectGroups(allGroups, filtering: _filtering && !_showUnmatched);
+    final groups = vis.shown;
+    final filterLabel = [
+      ...(_contexts.toList()..sort()),
+      if (_time != null)
+        switch (_time!) {
+          TimeBucket.quarter => '15 min',
+          TimeBucket.hour => '1 h',
+          TimeBucket.more => 'plus d\'1 h',
+        },
+    ].join(' · ');
     final own = ownActionGroups(_domainActivities, filter: _filter);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -437,14 +454,36 @@ class _ActionsViewState extends State<ActionsView> {
           ]),
           const SizedBox(height: 6),
           if (groups.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Text('Aucun projet actif.',
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                  allGroups.isEmpty
+                      ? 'Aucun projet actif.'
+                      : 'Aucune action de projet pour « $filterLabel » pour l\'instant.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, color: kBText3)),
+                  style: const TextStyle(fontSize: 13, color: kBText3)),
             )
           else
             for (final g in groups) _projectGroup(g),
+          if (_filtering && (vis.hidden > 0 || _showUnmatched))
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 6),
+              child: Row(children: [
+                Expanded(
+                  child: Text(
+                      _showUnmatched
+                          ? 'Tous les projets sont affichés.'
+                          : '${vis.hidden} projet${vis.hidden > 1 ? 's' : ''} sans action pour « $filterLabel »',
+                      style: const TextStyle(fontSize: 12, color: kBText4)),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _showUnmatched = !_showUnmatched),
+                  style: TextButton.styleFrom(
+                      foregroundColor: kBPrimary, visualDensity: VisualDensity.compact),
+                  child: Text(_showUnmatched ? 'Masquer' : 'Afficher'),
+                ),
+              ]),
+            ),
         ]),
       ),
       if (own.isNotEmpty) ...[
