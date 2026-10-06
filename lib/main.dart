@@ -7108,15 +7108,18 @@ class _AppRootState extends State<AppRoot>
                               value: bigProgressTime.clamp(0.0, 1.0),
                               minHeight: 16,
                               backgroundColor: dColor.withOpacity(.14),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                bigProgressTime >= 1.0
-                                    ? Colors.green
-                                    : dColor,
-                              ),
+                              valueColor: AlwaysStoppedAnimation<Color>(dColor),
                             ),
                           ),
                         ),
                         const SizedBox(width: 10),
+                        // Objectif atteint : coche, mais la couleur reste
+                        // celle du domaine (repère visuel constant).
+                        if (bigProgressTime >= 1.0) ...[
+                          Icon(Icons.check_circle_rounded,
+                              size: 16, color: dColor),
+                          const SizedBox(width: 4),
+                        ],
                         Text(
                           pct7!,
                           style: TextStyle(
@@ -7125,9 +7128,7 @@ class _AppRootState extends State<AppRoot>
                             fontFeatures: const [
                               FontFeature.tabularFigures()
                             ],
-                            color: bigProgressTime >= 1.0
-                                ? Colors.green
-                                : dColor,
+                            color: dColor,
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -7172,7 +7173,7 @@ class _AppRootState extends State<AppRoot>
                                     : Icons.radio_button_unchecked,
                                 size: 12,
                                 color: routinesReached == routinesTotal
-                                    ? Colors.green
+                                    ? dColor
                                     : cs.onSurface.withOpacity(.35),
                               ),
                               const SizedBox(width: 4),
@@ -7181,7 +7182,7 @@ class _AppRootState extends State<AppRoot>
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: routinesReached == routinesTotal
-                                      ? Colors.green.withOpacity(.75)
+                                      ? dColor
                                       : cs.onSurface.withOpacity(.5),
                                 ),
                               ),
