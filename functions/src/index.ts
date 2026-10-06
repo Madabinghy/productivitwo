@@ -21,6 +21,7 @@ import {
   LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
   ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
   SET_ACTIVITY_TARGETS_TOOL, COMPUTE_TIME_BUDGET_TOOL, SWEEP_INBOX_TOOL,
+  LIST_SESSIONS_TOOL, DELETE_SESSIONS_TOOL, UPDATE_SESSION_TOOL,
   PROPOSE_CHANGE_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
   CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
@@ -56,6 +57,7 @@ import {
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
   executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction, executeEstimateAccuracy,
+  executeListSessions, executeDeleteSessions, executeUpdateSession,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
@@ -1648,6 +1650,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             LIST_PROJECTS_TOOL, GET_PROJECT_TOOL, PUSH_GANTT_MCP_TOOL,
             ARCHIVE_PROJECT_TOOL, DELETE_PROJECT_TOOL, UPDATE_ACTIVITY_GOAL_TOOL,
             SET_ACTIVITY_TARGETS_TOOL, COMPUTE_TIME_BUDGET_TOOL, SWEEP_INBOX_TOOL,
+            LIST_SESSIONS_TOOL, DELETE_SESSIONS_TOOL, UPDATE_SESSION_TOOL,
             PROPOSE_CHANGE_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
             CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
@@ -1833,6 +1836,22 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.contexts as string[] | undefined,
             args.estimatedMin as number | undefined,
           );
+        } else if (toolName === "list_sessions") {
+          text = await executeListSessions(uid, {
+            from: args.from as string,
+            to: args.to as string | undefined,
+            activityId: args.activityId as string | undefined,
+            anomaliesOnly: args.anomaliesOnly as boolean | undefined,
+          });
+        } else if (toolName === "delete_sessions") {
+          text = await executeDeleteSessions(uid, { sessionIds: args.sessionIds as string[] });
+        } else if (toolName === "update_session") {
+          text = await executeUpdateSession(uid, {
+            sessionId: args.sessionId as string,
+            startAt: args.startAt as string | undefined,
+            endAt: args.endAt as string | undefined,
+            activityId: args.activityId as string | undefined,
+          });
         } else if (toolName === "estimate_accuracy") {
           text = await executeEstimateAccuracy(uid, {
             days: args.days as number | undefined,

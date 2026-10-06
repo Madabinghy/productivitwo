@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildDomainDossier = buildDomainDossier;
 const db_1 = require("./db");
+const sessions_audit_1 = require("./sessions_audit");
 const DAY_MS = 86400000;
 async function buildDomainDossier(uid, domainName) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
@@ -40,7 +41,7 @@ async function buildDomainDossier(uid, domainName) {
         }
     }
     const minutesByAct = new Map();
-    for (const s of sessionsSnap.docs) {
+    for (const s of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const actId = String((_c = s.get("activityId")) !== null && _c !== void 0 ? _c : "");
         if (!domainActs.has(actId))
             continue;
@@ -148,7 +149,7 @@ async function buildDomainDossier(uid, domainName) {
     const sundays = new Set();
     const workedSundays = new Set();
     const since28 = new Date(now.getTime() - 28 * DAY_MS).toISOString();
-    for (const s of sessionsSnap.docs) {
+    for (const s of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const startAt = String((_r = s.get("startAt")) !== null && _r !== void 0 ? _r : "");
         if (startAt < since28)
             continue;

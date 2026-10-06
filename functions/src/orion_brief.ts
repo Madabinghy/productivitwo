@@ -3,6 +3,7 @@ import { db, FieldValue } from "./db";
 import { MODELS, logTokenUsage } from "./models";
 import { processInboxToProjects } from "./orion_inbox";
 import { evaluateProjectRestructures } from "./orion_restructure";
+import { liveSessionDocs } from "./sessions_audit";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,7 +106,7 @@ async function buildBriefContext(
     .get();
 
   const minByActivity: Record<string, number> = {};
-  for (const doc of sessionsSnap.docs) {
+  for (const doc of liveSessionDocs(sessionsSnap)) {
     const v = doc.data();
     const name = (v.activityName as string) ?? "?";
     minByActivity[name] = (minByActivity[name] ?? 0) + ((v.durationMin as number) ?? 0);

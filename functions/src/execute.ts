@@ -13,6 +13,7 @@ import type { TimeEntry, Calibration } from "./estimates";
 import type { ActionPatch } from "./action_patch";
 import { db, FieldValue } from "./db";
 import { v4 as uuidv4 } from "uuid";
+import { auditSessions, formatAudit, wallMs, toWallIso, RawSession, liveSessionDocs } from "./sessions_audit";
 import * as admin from "firebase-admin";
 import { createHash } from "crypto";
 import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayload } from "./types";
@@ -567,7 +568,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   // Temps loggué par activité (sessions)
   const minByActivity = new Map<string, number>();
-  for (const doc of sessionsSnap.docs) {
+  for (const doc of liveSessionDocs(sessionsSnap)) {
     const v = doc.data();
     if (!v.endAt) continue;
     const start = new Date(v.startAt);
@@ -667,7 +668,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
     ? summarizeObjectives(
         objectivesRaw,
         activitiesSnap.docs.map((d) => d.data()),
-        sessionsSnap.docs.map((d) => d.data()),
+        liveSessionDocs(sessionsSnap).map((d) => d.data()),
         habitHitsSnap.docs.map((d) => d.data()),
         todayStr
       )
@@ -1739,7 +1740,7 @@ async function loadTimeInsights(uid: string, days: number): Promise<TimeInsights
   const entries = timeEntries(
     projSnap.docs.map((d) => ({ ...d.data(), id: d.data().id ?? d.id })),
     actSnap.docs.map((d) => ({ ...d.data(), id: d.data().id ?? d.id })),
-    sessSnap.docs.map((d) => d.data()),
+    liveSessionDocs(sessSnap).map((d) => d.data()),
   );
   const measuredEntries = measured(entries, sinceMs);
   return { days, entries, measuredEntries, calibration: calibrate(measuredEntries) };
@@ -2235,7 +2236,7 @@ async function executeGetOrionContext(uid: string): Promise<string> {
 
   // Sessions : temps 7j par activité
   const minByActivity = new Map<string, number>();
-  sessionsSnap.docs.forEach((d) => {
+  liveSessionDocs(sessionsSnap).forEach((d) => {
     const v = d.data();
     if (!v.endAt) return;
     const mins = Math.round((new Date(v.endAt).getTime() - new Date(v.startAt).getTime()) / 60000);
@@ -2271,7 +2272,7 @@ async function executeGetOrionContext(uid: string): Promise<string> {
     ? summarizeObjectives(
         objectivesRaw,
         activitiesSnap.docs.map((d) => d.data()),
-        sessionsSnap.docs.map((d) => d.data()),
+        liveSessionDocs(sessionsSnap).map((d) => d.data()),
         habitHitsSnap.docs.map((d) => d.data()),
         today
       )
@@ -3162,7 +3163,7 @@ async function executeListObjectives(uid: string): Promise<string> {
   const summaries = summarizeObjectives(
     active,
     activitiesSnap.docs.map((d) => d.data()),
-    sessionsSnap.docs.map((d) => d.data()),
+    liveSessionDocs(sessionsSnap).map((d) => d.data()),
     habitHitsSnap.docs.map((d) => d.data()),
     todayStr
   );
@@ -3292,7 +3293,7 @@ async function executeComputeTimeBudget(uid: string): Promise<string> {
   // La cible = p90 des minutes des JOURS ACTIFS — pas une moyenne diluée sur 84 jours (qui écrase
   // les activités faites par à-coups à ~1 min). Cohérent avec la réf p90 du score de productivité.
   const dailyMinByActivity = new Map<string, Map<string, number>>();
-  for (const doc of sessionsSnap.docs) {
+  for (const doc of liveSessionDocs(sessionsSnap)) {
     const v = doc.data();
     if (!v.endAt) continue;
     const mins = Math.round(
@@ -3426,8 +3427,122 @@ async function executeGenerateWeeklyReport(
     "Il remplace le doc existant et est visible immédiatement dans l'app (écran Rapport / carte du dimanche).";
 }
 
+// ── Sessions de temps : audit et correction (list_sessions / delete_sessions / update_session) ──
+// Suppression DOUCE (deleted:true + deletedAt) : l'app retire la session de son état local au
+// prochain pull puis hard-delete le doc (réconciliation de FirestoreSync). Une correction
+// d'heures = tombstone de l'ancienne + nouvelle session (nouvel id), pour que la copie locale
+// de l'app ne réécrive pas l'ancienne version (merge « local gagne » sur les sessions).
+
+async function userNowWallMs(uid: string): Promise<number> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const v = snap.data()?.tzOffsetMin;
+  const off = typeof v === "number" && isFinite(v) ? v : 0;
+  return Date.now() + off * 60000;
+}
+
+async function executeListSessions(
+  uid: string,
+  args: { from: string; to?: string; activityId?: string; anomaliesOnly?: boolean },
+): Promise<string> {
+  const ymd = /^\d{4}-\d{2}-\d{2}$/;
+  if (!args.from || !ymd.test(args.from)) return "❌ from requis au format YYYY-MM-DD.";
+  const to = args.to ?? args.from;
+  if (!ymd.test(to) || to < args.from) return "❌ to invalide (YYYY-MM-DD, ≥ from).";
+  const spanDays = (wallMs(`${to}T00:00:00`) - wallMs(`${args.from}T00:00:00`)) / 86400000 + 1;
+  if (spanDays > 62) return "❌ Période limitée à 62 jours.";
+
+  // Les sessions démarrées jusqu'à 3 j avant la période peuvent encore la toucher.
+  const since = toWallIso(wallMs(`${args.from}T00:00:00`) - 3 * 86400000).slice(0, 10);
+  const [sessionsSnap, activitiesSnap, nowMs] = await Promise.all([
+    db.collection(`users/${uid}/sessions`).where("startAt", ">=", since).get(),
+    db.collection(`users/${uid}/activities`).get(),
+    userNowWallMs(uid),
+  ]);
+  const names: Record<string, string> = {};
+  activitiesSnap.docs.forEach((d) => { names[d.id] = (d.data().name as string) ?? d.id; });
+
+  let sessions = liveSessionDocs(sessionsSnap).map((d) => ({ ...(d.data() as RawSession), id: d.id }));
+  if (args.activityId) sessions = sessions.filter((s) => s.activityId === args.activityId);
+
+  const res = auditSessions(sessions, names, args.from, to, nowMs);
+  return formatAudit(res, args.from, to, args.anomaliesOnly ?? false);
+}
+
+async function executeDeleteSessions(uid: string, args: { sessionIds: string[] }): Promise<string> {
+  const ids = Array.from(new Set((args.sessionIds ?? []).filter((x) => typeof x === "string" && x)));
+  if (ids.length === 0) return "❌ sessionIds requis (liste non vide).";
+  if (ids.length > 200) return "❌ 200 sessions maximum par appel.";
+  const col = db.collection(`users/${uid}/sessions`);
+  const snaps = await Promise.all(ids.map((id) => col.doc(id).get()));
+  const missing: string[] = [];
+  const batch = db.batch();
+  const deletedAt = new Date().toISOString();
+  let n = 0;
+  snaps.forEach((snap, i) => {
+    if (!snap.exists || snap.data()?.deleted === true) { missing.push(ids[i]); return; }
+    batch.set(snap.ref, { deleted: true, deletedAt }, { merge: true });
+    n++;
+  });
+  if (n > 0) await batch.commit();
+  const lines = [`✅ ${n} session(s) supprimée(s) (suppression douce, retirées des stats).`];
+  if (missing.length) lines.push(`Introuvables ou déjà supprimées : ${missing.join(", ")}`);
+  lines.push("L'app les retire de son état local à sa prochaine synchro.");
+  return lines.join("\n");
+}
+
+async function executeUpdateSession(
+  uid: string,
+  args: { sessionId: string; startAt?: string; endAt?: string; activityId?: string },
+): Promise<string> {
+  if (!args.sessionId) return "❌ sessionId requis.";
+  if (!args.startAt && !args.endAt && !args.activityId) return "❌ Rien à modifier (startAt, endAt ou activityId).";
+  const col = db.collection(`users/${uid}/sessions`);
+  const snap = await col.doc(args.sessionId).get();
+  if (!snap.exists || snap.data()?.deleted === true) return `❌ Session ${args.sessionId} introuvable.`;
+  const old = snap.data() as RawSession;
+
+  const norm = (v: string | undefined, fallback: string | null | undefined): string | null => {
+    if (v === undefined) return fallback ?? null;
+    const ms = wallMs(v.length === 16 ? `${v}:00` : v);
+    if (Number.isNaN(ms)) throw new Error(`Date invalide : ${v}`);
+    return toWallIso(ms);
+  };
+  let startAt: string | null;
+  let endAt: string | null;
+  try {
+    startAt = norm(args.startAt, old.startAt);
+    endAt = norm(args.endAt, old.endAt);
+  } catch (e) {
+    return `❌ ${(e as Error).message} (format attendu YYYY-MM-DDTHH:mm, heure locale de l'utilisateur).`;
+  }
+  if (!startAt) return "❌ startAt manquant.";
+  if (endAt && wallMs(endAt) <= wallMs(startAt)) return "❌ La fin doit être après le début.";
+
+  let activityId = old.activityId;
+  if (args.activityId) {
+    const act = await db.doc(`users/${uid}/activities/${args.activityId}`).get();
+    if (!act.exists || act.data()?.deleted) return `❌ Activité ${args.activityId} introuvable.`;
+    activityId = args.activityId;
+  }
+
+  const newId = uuidv4();
+  const batch = db.batch();
+  batch.set(col.doc(newId), {
+    id: newId, activityId, startAt, endAt,
+    taskId: old.taskId ?? null, actionId: old.actionId ?? null,
+  });
+  batch.set(snap.ref, { deleted: true, deletedAt: new Date().toISOString(), replacedBy: newId }, { merge: true });
+  await batch.commit();
+  const dur = endAt ? Math.round((wallMs(endAt) - wallMs(startAt)) / 60000) : null;
+  return `✅ Session corrigée : ${startAt.slice(0, 16)} → ${endAt ? endAt.slice(0, 16) : "en cours"}` +
+    (dur !== null ? ` (${dur} min)` : "") + `. Nouvel id ${newId} (l'ancienne ${args.sessionId} est supprimée).`;
+}
+
 export {
   withBothContexts,
+  executeListSessions,
+  executeDeleteSessions,
+  executeUpdateSession,
   executeManageContexts,
   executeEstimateAccuracy,
   executeUpdateAction,

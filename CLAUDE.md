@@ -267,6 +267,12 @@ Claude ne les recrée pas lors d'une régénération.
   (avec ce facteur) puis de poser `estimatedMin` sur toute action programmée sans estimation. Logique pure
   `functions/src/estimates.ts` ; côté app `lib/utils/time_spent.dart` (« ⏱ … passées » : Actions mobile, Réalisation web).
   Handoff `docs/specs/estime-vs-reel-2026-10/README.md`
+- `list_sessions(from, to?, activityId?, anomaliesOnly?)` / `delete_sessions(sessionIds)` / `update_session(sessionId, startAt?, endAt?, activityId?)`
+  — audit des sessions de chrono (total compté vs temps réel sans chevauchement, doublons, chevauchements, sessions
+  longues, chronos ouverts) et correction en **suppression douce** (`deleted:true` ; `update_session` = tombstone +
+  nouvelle session). Logique pure `functions/src/sessions_audit.ts` ; toute lecture serveur de stats passe par
+  `liveSessionDocs()`. Côté app, `FirestoreSync.mergeSessions` : un remote supprimé ou fermé gagne sur une copie
+  locale ouverte (fin des chronos « ressuscités » → semaines > 168 h)
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

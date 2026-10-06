@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { liveSessionDocs } from "./sessions_audit";
 
 // ─── DOSSIER DE FAITS D'UN DOMAINE (sessions de définition 19/20) ─────────────
 //
@@ -59,7 +60,7 @@ export async function buildDomainDossier(
   }
 
   const minutesByAct = new Map<string, number>();
-  for (const s of sessionsSnap.docs) {
+  for (const s of liveSessionDocs(sessionsSnap)) {
     const actId = String(s.get("activityId") ?? "");
     if (!domainActs.has(actId)) continue;
     const start = new Date(String(s.get("startAt"))).getTime();
@@ -168,7 +169,7 @@ export async function buildDomainDossier(
   const sundays = new Set<string>();
   const workedSundays = new Set<string>();
   const since28 = new Date(now.getTime() - 28 * DAY_MS).toISOString();
-  for (const s of sessionsSnap.docs) {
+  for (const s of liveSessionDocs(sessionsSnap)) {
     const startAt = String(s.get("startAt") ?? "");
     if (startAt < since28) continue;
     const d = new Date(startAt);
