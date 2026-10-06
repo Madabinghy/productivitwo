@@ -46,8 +46,16 @@ class _ChronoLauncherState extends State<ChronoLauncher> {
     _sessionsSub = sync.streamSessions().listen((sessions) {
       final l = _logic;
       if (l == null) return;
-      // Préserve une session ouverte localement pas encore remontée par le flux.
-      final localOpen = l.state.sessions.where((s) => s.endAt == null).toList();
+      // Préserve une session ouverte localement pas encore remontée par le flux —
+      // seulement si elle vient d'être lancée : une session absente du flux depuis
+      // plus longtemps a été arrêtée/supprimée ailleurs, la garder la ressusciterait
+      // (fermée au prochain ▶ avec des heures fantômes).
+      final now = DateTime.now();
+      final localOpen = l.state.sessions
+          .where((s) =>
+              s.endAt == null &&
+              now.difference(s.startAt) < const Duration(minutes: 2))
+          .toList();
       l.state.sessions = sessions;
       for (final s in localOpen) {
         if (!sessions.any((x) => x.id == s.id)) l.state.sessions.add(s);

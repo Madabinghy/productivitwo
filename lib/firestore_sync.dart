@@ -485,6 +485,37 @@ class FirestoreSync {
     }
   }
 
+  // ── Merge des sessions de temps ────────────────────────────────────────────
+  // Avant : « local gagne » par id. Un chrono arrêté sur le web (ou supprimé /
+  // corrigé via le MCP) revenait ouvert depuis la copie locale du mobile, était
+  // re-poussé tel quel, puis compté jusqu'à « maintenant » → sessions de
+  // dizaines d'heures et semaines > 168 h. Règles :
+  //  - remote `deleted` → la session disparaît (jamais ressuscitée par le local) ;
+  //  - remote fermé, local encore ouvert → le remote gagne (arrêté ailleurs) ;
+  //  - absente du remote ET ouverte depuis plus de [staleOpen] → chrono fantôme
+  //    (hard-deleté ailleurs), on ne le re-pousse pas ;
+  //  - sinon le local gagne (édition hors ligne).
+  static const staleOpen = Duration(hours: 12);
+
+  @visibleForTesting
+  static List<Session> mergeSessions(
+      List<Session> local, List<Session> remote, DateTime now) {
+    final merged = {for (final r in remote) r.id: r};
+    for (final l in local) {
+      final r = merged[l.id];
+      if (r == null) {
+        if (l.endAt == null && now.difference(l.startAt) > staleOpen) continue;
+        merged[l.id] = l;
+        continue;
+      }
+      if (r.deleted) continue;
+      if (r.endAt != null && l.endAt == null) continue;
+      merged[l.id] = l;
+    }
+    merged.removeWhere((_, s) => s.deleted);
+    return merged.values.toList();
+  }
+
   // ── Merge local + remote ───────────────────────────────────────────────────
   // Stratégie : union par ID pour toutes les collections.
   // En cas de conflit sur le même (activité, jour) habitProgress, on garde la valeur max.
@@ -538,7 +569,7 @@ class FirestoreSync {
         merged.removeWhere((_, a) => a.deleted);
         return merged.values.toList();
       }(),
-      sessions:      union(local.sessions,      remote.sessions,      (s) => s.id),
+      sessions:      mergeSessions(local.sessions, remote.sessions, DateTime.now()),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
       redemptions:   union(local.redemptions,   remote.redemptions,   (r) => r.id),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
@@ -877,8 +908,10 @@ class FirestoreSync {
   // déclencher la cinématique d'assaut sur l'activité correspondante.
   Stream<List<Session>> streamSessions() {
     if (uid == null) return const Stream.empty();
-    return _col('sessions').snapshots().map(
-        (snap) => snap.docs.map((d) => Session.from(d.data() as Map)).toList());
+    return _col('sessions').snapshots().map((snap) => snap.docs
+        .map((d) => Session.from(d.data() as Map))
+        .where((s) => !s.deleted)
+        .toList());
   }
 
   Stream<List<Domain>> streamDomains() {
@@ -1080,9 +1113,15 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Suppression douce : les autres appareils retirent la session au merge au
+  /// lieu de la re-pousser depuis leur copie locale ; la réconciliation du
+  /// premier push hard-delete ensuite le doc.
   Future<void> deleteSession(String sessionId) async {
     if (uid == null) return;
-    await _col('sessions').doc(sessionId).delete();
+    await _col('sessions').doc(sessionId).set({
+      'deleted': true,
+      'deletedAt': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true));
   }
 
   Future<void> saveSession(Session s) async {
@@ -2819,7 +2858,10 @@ class FirestoreSync {
       final snap = await _col('sessions')
           .where('startAt', isGreaterThanOrEqualTo: since)
           .get();
-      return snap.docs.map((d) => Session.from(d.data() as Map)).toList();
+      return snap.docs
+          .map((d) => Session.from(d.data() as Map))
+          .where((s) => !s.deleted)
+          .toList();
     } catch (_) {
       return [];
     }

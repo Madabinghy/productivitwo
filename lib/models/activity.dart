@@ -295,13 +295,17 @@ class Session {
   DateTime? endAt;
   String? taskId; // tâche Gantt travaillée pendant cette session (lien optionnel)
   String? actionId; // action précise (TaskAction) travaillée — chrono ciblé
+  // Suppression douce (MCP delete_sessions / update_session, ou autre appareil) :
+  // la session sort de l'état local au merge, puis le doc est hard-deleté.
+  bool deleted;
   Session(
       {String? id,
       required this.activityId,
       required this.startAt,
       this.endAt,
       this.taskId,
-      this.actionId})
+      this.actionId,
+      this.deleted = false})
       : id = id ?? _uuid.v4();
   Duration get duration => (endAt ?? DateTime.now()).difference(startAt);
   Map<String, dynamic> toJson() => {
@@ -311,6 +315,7 @@ class Session {
         'endAt': endAt?.toIso8601String(),
         'taskId': taskId,
         'actionId': actionId,
+        if (deleted) 'deleted': true,
       };
   static Session from(Map j) => Session(
       id: j['id'],
@@ -318,7 +323,8 @@ class Session {
       startAt: _parseDate(j['startAt']),
       endAt: _parseDateOrNull(j['endAt']),
       taskId: j['taskId'] as String?,
-      actionId: j['actionId'] as String?);
+      actionId: j['actionId'] as String?,
+      deleted: j['deleted'] == true);
 }
 
 class HabitHit {
