@@ -7,6 +7,7 @@ exports.generateWeeklyReport = generateWeeklyReport;
 const sdk_1 = require("@anthropic-ai/sdk");
 const db_1 = require("./db");
 const models_1 = require("./models");
+const sessions_audit_1 = require("./sessions_audit");
 const WEEKDAY_FR = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
 function ymd(d) {
     return d.toISOString().slice(0, 10);
@@ -114,7 +115,7 @@ async function buildWeeklyFacts(uid, weekStart) {
     const sessionsByDomain = new Map();
     const minutesByDomain = new Map();
     let minutesLogged = 0;
-    for (const s of sessionsSnap.docs) {
+    for (const s of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const startAt = String((_d = s.get("startAt")) !== null && _d !== void 0 ? _d : "");
         if (startAt.slice(0, 10) > weekEnd)
             continue;

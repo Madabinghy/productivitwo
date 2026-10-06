@@ -1606,6 +1606,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.LIST_PROJECTS_TOOL, tools_1.GET_PROJECT_TOOL, tools_1.PUSH_GANTT_MCP_TOOL,
                         tools_1.ARCHIVE_PROJECT_TOOL, tools_1.DELETE_PROJECT_TOOL, tools_1.UPDATE_ACTIVITY_GOAL_TOOL,
                         tools_1.SET_ACTIVITY_TARGETS_TOOL, tools_1.COMPUTE_TIME_BUDGET_TOOL, tools_1.SWEEP_INBOX_TOOL,
+                        tools_1.LIST_SESSIONS_TOOL, tools_1.DELETE_SESSIONS_TOOL, tools_1.UPDATE_SESSION_TOOL,
                         tools_1.PROPOSE_CHANGE_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
                         tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
@@ -1811,6 +1812,25 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "add_activity_action") {
                     text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin);
+                }
+                else if (toolName === "list_sessions") {
+                    text = await (0, execute_1.executeListSessions)(uid, {
+                        from: args.from,
+                        to: args.to,
+                        activityId: args.activityId,
+                        anomaliesOnly: args.anomaliesOnly,
+                    });
+                }
+                else if (toolName === "delete_sessions") {
+                    text = await (0, execute_1.executeDeleteSessions)(uid, { sessionIds: args.sessionIds });
+                }
+                else if (toolName === "update_session") {
+                    text = await (0, execute_1.executeUpdateSession)(uid, {
+                        sessionId: args.sessionId,
+                        startAt: args.startAt,
+                        endAt: args.endAt,
+                        activityId: args.activityId,
+                    });
                 }
                 else if (toolName === "estimate_accuracy") {
                     text = await (0, execute_1.executeEstimateAccuracy)(uid, {

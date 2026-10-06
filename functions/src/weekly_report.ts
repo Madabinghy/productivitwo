@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import { getModel, logTokenUsage } from "./models";
+import { liveSessionDocs } from "./sessions_audit";
 
 // ─── RAPPORT HEBDO (phase 2, maquettes 16a/16b/16c) ──────────────────────────
 //
@@ -158,7 +159,7 @@ export async function buildWeeklyFacts(uid: string, weekStart: string): Promise<
   const sessionsByDomain = new Map<string, number>();
   const minutesByDomain = new Map<string, number>();
   let minutesLogged = 0;
-  for (const s of sessionsSnap.docs) {
+  for (const s of liveSessionDocs(sessionsSnap)) {
     const startAt = String(s.get("startAt") ?? "");
     if (startAt.slice(0, 10) > weekEnd) continue;
     const endAt = s.get("endAt");

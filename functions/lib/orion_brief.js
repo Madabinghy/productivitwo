@@ -10,6 +10,7 @@ const db_1 = require("./db");
 const models_1 = require("./models");
 const orion_inbox_1 = require("./orion_inbox");
 const orion_restructure_1 = require("./orion_restructure");
+const sessions_audit_1 = require("./sessions_audit");
 function todayInParis(d = new Date()) {
     return d.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" });
 }
@@ -86,7 +87,7 @@ async function buildBriefContext(uid) {
         .where("date", ">=", threeDaysAgo)
         .get();
     const minByActivity = {};
-    for (const doc of sessionsSnap.docs) {
+    for (const doc of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const v = doc.data();
         const name = (_a = v.activityName) !== null && _a !== void 0 ? _a : "?";
         minByActivity[name] = ((_b = minByActivity[name]) !== null && _b !== void 0 ? _b : 0) + ((_c = v.durationMin) !== null && _c !== void 0 ? _c : 0);

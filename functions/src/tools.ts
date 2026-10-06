@@ -143,6 +143,59 @@ const COMPUTE_TIME_BUDGET_TOOL = {
   inputSchema: { type: "object", properties: {}, required: [] },
 };
 
+const LIST_SESSIONS_TOOL = {
+  name: "list_sessions",
+  description:
+    "Audite les sessions de temps loggées (chrono) sur une période : liste chaque session (id, activité, début → fin, durée), " +
+    "le total par jour compté par les stats vs le temps réel sans chevauchement, et signale les anomalies : doublons " +
+    "(même activité, mêmes heures), chevauchements, sessions anormalement longues, chronos restés ouverts. " +
+    "À utiliser quand les stats dépassent 24 h/jour ou 168 h/semaine, ou pour vérifier une saisie. " +
+    "Corriger ensuite avec delete_sessions / update_session APRÈS accord de l'utilisateur.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      from: { type: "string", description: "Premier jour YYYY-MM-DD (inclus)" },
+      to: { type: "string", description: "Dernier jour YYYY-MM-DD (inclus, défaut = from, période ≤ 62 jours)" },
+      activityId: { type: "string", description: "Optionnel : limiter à une activité" },
+      anomaliesOnly: { type: "boolean", description: "true = ne lister que les sessions suspectes (défaut false)" },
+    },
+    required: ["from"],
+  },
+};
+
+const DELETE_SESSIONS_TOOL = {
+  name: "delete_sessions",
+  description:
+    "Supprime des sessions de temps (suppression douce : retirées des stats, l'app les efface à sa prochaine synchro). " +
+    "ids via list_sessions. Pour un groupe de doublons, garder une session et supprimer les autres. " +
+    "Montre toujours la liste à l'utilisateur et attends son accord avant d'appeler.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sessionIds: { type: "array", items: { type: "string" }, description: "ids des sessions à supprimer (≤ 200)" },
+    },
+    required: ["sessionIds"],
+  },
+};
+
+const UPDATE_SESSION_TOOL = {
+  name: "update_session",
+  description:
+    "Corrige une session de temps : début, fin (ex : chrono oublié → remettre la vraie heure de fin) ou activité. " +
+    "Heures au format YYYY-MM-DDTHH:mm, heure locale de l'utilisateur (comme affiché par list_sessions). " +
+    "La session est remplacée par une nouvelle (nouvel id). Demande l'accord de l'utilisateur avant d'appeler.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      sessionId: { type: "string", description: "id de la session (list_sessions)" },
+      startAt: { type: "string", description: "Nouveau début YYYY-MM-DDTHH:mm" },
+      endAt: { type: "string", description: "Nouvelle fin YYYY-MM-DDTHH:mm" },
+      activityId: { type: "string", description: "Nouvelle activité (id via get_user_context)" },
+    },
+    required: ["sessionId"],
+  },
+};
+
 const SWEEP_INBOX_TOOL = {
   name: "sweep_inbox",
   description:
@@ -1062,6 +1115,9 @@ GET_USER_CONTEXT_TOOL,
 UPDATE_ACTIVITY_GOAL_TOOL,
 SET_ACTIVITY_TARGETS_TOOL,
 COMPUTE_TIME_BUDGET_TOOL,
+LIST_SESSIONS_TOOL,
+DELETE_SESSIONS_TOOL,
+UPDATE_SESSION_TOOL,
 SWEEP_INBOX_TOOL,
 PROPOSE_CHANGE_TOOL,
 CREATE_ROUTINE_TOOL,

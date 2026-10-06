@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
 exports.withBothContexts = withBothContexts;
+exports.executeListSessions = executeListSessions;
+exports.executeDeleteSessions = executeDeleteSessions;
+exports.executeUpdateSession = executeUpdateSession;
 exports.executeManageContexts = executeManageContexts;
 exports.executeEstimateAccuracy = executeEstimateAccuracy;
 exports.executeUpdateAction = executeUpdateAction;
@@ -77,6 +80,7 @@ const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
+const sessions_audit_1 = require("./sessions_audit");
 const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const weekly_report_1 = require("./weekly_report");
@@ -522,7 +526,7 @@ async function executeGetUserContext(uid) {
     }));
     // Temps loggué par activité (sessions)
     const minByActivity = new Map();
-    for (const doc of sessionsSnap.docs) {
+    for (const doc of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const v = doc.data();
         if (!v.endAt)
             continue;
@@ -608,7 +612,7 @@ async function executeGetUserContext(uid) {
         .filter((v) => { var _a; return String((_a = v.status) !== null && _a !== void 0 ? _a : "active") === "active"; })
         .slice(0, 10);
     const objectives = objectivesRaw.length > 0
-        ? (0, objectives_1.summarizeObjectives)(objectivesRaw, activitiesSnap.docs.map((d) => d.data()), sessionsSnap.docs.map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr)
+        ? (0, objectives_1.summarizeObjectives)(objectivesRaw, activitiesSnap.docs.map((d) => d.data()), (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr)
         : null;
     // Règles calendrier selon le mode : agenda natif connecté → Claude n'écrit
     // JAMAIS dans Google Agenda (l'app s'en charge) ; sinon l'ancien parcours
@@ -1514,7 +1518,7 @@ async function loadTimeInsights(uid, days) {
         db_1.db.collection(`users/${uid}/activities`).get(),
         db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", sessionsSince).get(),
     ]);
-    const entries = (0, estimates_1.timeEntries)(projSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), actSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), sessSnap.docs.map((d) => d.data()));
+    const entries = (0, estimates_1.timeEntries)(projSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), actSnap.docs.map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); }), (0, sessions_audit_1.liveSessionDocs)(sessSnap).map((d) => d.data()));
     const measuredEntries = (0, estimates_1.measured)(entries, sinceMs);
     return { days, entries, measuredEntries, calibration: (0, estimates_1.calibrate)(measuredEntries) };
 }
@@ -1978,7 +1982,7 @@ async function executeGetOrionContext(uid) {
         .map(([id, count]) => { var _a; return ({ name: (_a = activityMap.get(id)) !== null && _a !== void 0 ? _a : id, hits7d: count }); });
     // Sessions : temps 7j par activité
     const minByActivity = new Map();
-    sessionsSnap.docs.forEach((d) => {
+    (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).forEach((d) => {
         const v = d.data();
         if (!v.endAt)
             return;
@@ -2012,7 +2016,7 @@ async function executeGetOrionContext(uid) {
         .filter((v) => { var _a; return String((_a = v.status) !== null && _a !== void 0 ? _a : "active") === "active"; })
         .slice(0, 10);
     const objectives = objectivesRaw.length > 0
-        ? (0, objectives_1.summarizeObjectives)(objectivesRaw, activitiesSnap.docs.map((d) => d.data()), sessionsSnap.docs.map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), today)
+        ? (0, objectives_1.summarizeObjectives)(objectivesRaw, activitiesSnap.docs.map((d) => d.data()), (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), today)
         : null;
     return JSON.stringify({ today, domains, activities, objectives, habitStats, timeStats, projects }, null, 2);
 }
@@ -2810,7 +2814,7 @@ async function executeListObjectives(uid) {
     if (active.length === 0) {
         return "Aucun objectif stratégique actif. Propose une session de définition (prompt definir-objectif) ou save_objective directement.";
     }
-    const summaries = (0, objectives_1.summarizeObjectives)(active, activitiesSnap.docs.map((d) => d.data()), sessionsSnap.docs.map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr);
+    const summaries = (0, objectives_1.summarizeObjectives)(active, activitiesSnap.docs.map((d) => d.data()), (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr);
     // Détail complet (description, dates, projets) + progression compacte
     const byId = new Map(active.map((o) => [String(o.id), o]));
     const result = summaries.map((s) => {
@@ -2934,7 +2938,7 @@ async function executeComputeTimeBudget(uid) {
     // La cible = p90 des minutes des JOURS ACTIFS — pas une moyenne diluée sur 84 jours (qui écrase
     // les activités faites par à-coups à ~1 min). Cohérent avec la réf p90 du score de productivité.
     const dailyMinByActivity = new Map();
-    for (const doc of sessionsSnap.docs) {
+    for (const doc of (0, sessions_audit_1.liveSessionDocs)(sessionsSnap)) {
         const v = doc.data();
         if (!v.endAt)
             continue;
@@ -3055,5 +3059,124 @@ async function executeGenerateWeeklyReport(uid, apiKey, weekStart) {
     const id = await (0, weekly_report_1.generateWeeklyReport)(uid, apiKey, start);
     return `✅ Rapport hebdo régénéré pour la semaine du ${id} (lundi → dimanche). ` +
         "Il remplace le doc existant et est visible immédiatement dans l'app (écran Rapport / carte du dimanche).";
+}
+// ── Sessions de temps : audit et correction (list_sessions / delete_sessions / update_session) ──
+// Suppression DOUCE (deleted:true + deletedAt) : l'app retire la session de son état local au
+// prochain pull puis hard-delete le doc (réconciliation de FirestoreSync). Une correction
+// d'heures = tombstone de l'ancienne + nouvelle session (nouvel id), pour que la copie locale
+// de l'app ne réécrive pas l'ancienne version (merge « local gagne » sur les sessions).
+async function userNowWallMs(uid) {
+    var _a;
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const v = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.tzOffsetMin;
+    const off = typeof v === "number" && isFinite(v) ? v : 0;
+    return Date.now() + off * 60000;
+}
+async function executeListSessions(uid, args) {
+    var _a, _b;
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    if (!args.from || !ymd.test(args.from))
+        return "❌ from requis au format YYYY-MM-DD.";
+    const to = (_a = args.to) !== null && _a !== void 0 ? _a : args.from;
+    if (!ymd.test(to) || to < args.from)
+        return "❌ to invalide (YYYY-MM-DD, ≥ from).";
+    const spanDays = ((0, sessions_audit_1.wallMs)(`${to}T00:00:00`) - (0, sessions_audit_1.wallMs)(`${args.from}T00:00:00`)) / 86400000 + 1;
+    if (spanDays > 62)
+        return "❌ Période limitée à 62 jours.";
+    // Les sessions démarrées jusqu'à 3 j avant la période peuvent encore la toucher.
+    const since = (0, sessions_audit_1.toWallIso)((0, sessions_audit_1.wallMs)(`${args.from}T00:00:00`) - 3 * 86400000).slice(0, 10);
+    const [sessionsSnap, activitiesSnap, nowMs] = await Promise.all([
+        db_1.db.collection(`users/${uid}/sessions`).where("startAt", ">=", since).get(),
+        db_1.db.collection(`users/${uid}/activities`).get(),
+        userNowWallMs(uid),
+    ]);
+    const names = {};
+    activitiesSnap.docs.forEach((d) => { var _a; names[d.id] = (_a = d.data().name) !== null && _a !== void 0 ? _a : d.id; });
+    let sessions = (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => (Object.assign(Object.assign({}, d.data()), { id: d.id })));
+    if (args.activityId)
+        sessions = sessions.filter((s) => s.activityId === args.activityId);
+    const res = (0, sessions_audit_1.auditSessions)(sessions, names, args.from, to, nowMs);
+    return (0, sessions_audit_1.formatAudit)(res, args.from, to, (_b = args.anomaliesOnly) !== null && _b !== void 0 ? _b : false);
+}
+async function executeDeleteSessions(uid, args) {
+    var _a;
+    const ids = Array.from(new Set(((_a = args.sessionIds) !== null && _a !== void 0 ? _a : []).filter((x) => typeof x === "string" && x)));
+    if (ids.length === 0)
+        return "❌ sessionIds requis (liste non vide).";
+    if (ids.length > 200)
+        return "❌ 200 sessions maximum par appel.";
+    const col = db_1.db.collection(`users/${uid}/sessions`);
+    const snaps = await Promise.all(ids.map((id) => col.doc(id).get()));
+    const missing = [];
+    const batch = db_1.db.batch();
+    const deletedAt = new Date().toISOString();
+    let n = 0;
+    snaps.forEach((snap, i) => {
+        var _a;
+        if (!snap.exists || ((_a = snap.data()) === null || _a === void 0 ? void 0 : _a.deleted) === true) {
+            missing.push(ids[i]);
+            return;
+        }
+        batch.set(snap.ref, { deleted: true, deletedAt }, { merge: true });
+        n++;
+    });
+    if (n > 0)
+        await batch.commit();
+    const lines = [`✅ ${n} session(s) supprimée(s) (suppression douce, retirées des stats).`];
+    if (missing.length)
+        lines.push(`Introuvables ou déjà supprimées : ${missing.join(", ")}`);
+    lines.push("L'app les retire de son état local à sa prochaine synchro.");
+    return lines.join("\n");
+}
+async function executeUpdateSession(uid, args) {
+    var _a, _b, _c, _d;
+    if (!args.sessionId)
+        return "❌ sessionId requis.";
+    if (!args.startAt && !args.endAt && !args.activityId)
+        return "❌ Rien à modifier (startAt, endAt ou activityId).";
+    const col = db_1.db.collection(`users/${uid}/sessions`);
+    const snap = await col.doc(args.sessionId).get();
+    if (!snap.exists || ((_a = snap.data()) === null || _a === void 0 ? void 0 : _a.deleted) === true)
+        return `❌ Session ${args.sessionId} introuvable.`;
+    const old = snap.data();
+    const norm = (v, fallback) => {
+        if (v === undefined)
+            return fallback !== null && fallback !== void 0 ? fallback : null;
+        const ms = (0, sessions_audit_1.wallMs)(v.length === 16 ? `${v}:00` : v);
+        if (Number.isNaN(ms))
+            throw new Error(`Date invalide : ${v}`);
+        return (0, sessions_audit_1.toWallIso)(ms);
+    };
+    let startAt;
+    let endAt;
+    try {
+        startAt = norm(args.startAt, old.startAt);
+        endAt = norm(args.endAt, old.endAt);
+    }
+    catch (e) {
+        return `❌ ${e.message} (format attendu YYYY-MM-DDTHH:mm, heure locale de l'utilisateur).`;
+    }
+    if (!startAt)
+        return "❌ startAt manquant.";
+    if (endAt && (0, sessions_audit_1.wallMs)(endAt) <= (0, sessions_audit_1.wallMs)(startAt))
+        return "❌ La fin doit être après le début.";
+    let activityId = old.activityId;
+    if (args.activityId) {
+        const act = await db_1.db.doc(`users/${uid}/activities/${args.activityId}`).get();
+        if (!act.exists || ((_b = act.data()) === null || _b === void 0 ? void 0 : _b.deleted))
+            return `❌ Activité ${args.activityId} introuvable.`;
+        activityId = args.activityId;
+    }
+    const newId = (0, uuid_1.v4)();
+    const batch = db_1.db.batch();
+    batch.set(col.doc(newId), {
+        id: newId, activityId, startAt, endAt,
+        taskId: (_c = old.taskId) !== null && _c !== void 0 ? _c : null, actionId: (_d = old.actionId) !== null && _d !== void 0 ? _d : null,
+    });
+    batch.set(snap.ref, { deleted: true, deletedAt: new Date().toISOString(), replacedBy: newId }, { merge: true });
+    await batch.commit();
+    const dur = endAt ? Math.round(((0, sessions_audit_1.wallMs)(endAt) - (0, sessions_audit_1.wallMs)(startAt)) / 60000) : null;
+    return `✅ Session corrigée : ${startAt.slice(0, 16)} → ${endAt ? endAt.slice(0, 16) : "en cours"}` +
+        (dur !== null ? ` (${dur} min)` : "") + `. Nouvel id ${newId} (l'ancienne ${args.sessionId} est supprimée).`;
 }
 //# sourceMappingURL=execute.js.map

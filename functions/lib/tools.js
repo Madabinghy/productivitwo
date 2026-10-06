@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = void 0;
+exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = void 0;
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -139,6 +139,56 @@ const COMPUTE_TIME_BUDGET_TOOL = {
     inputSchema: { type: "object", properties: {}, required: [] },
 };
 exports.COMPUTE_TIME_BUDGET_TOOL = COMPUTE_TIME_BUDGET_TOOL;
+const LIST_SESSIONS_TOOL = {
+    name: "list_sessions",
+    description: "Audite les sessions de temps loggées (chrono) sur une période : liste chaque session (id, activité, début → fin, durée), " +
+        "le total par jour compté par les stats vs le temps réel sans chevauchement, et signale les anomalies : doublons " +
+        "(même activité, mêmes heures), chevauchements, sessions anormalement longues, chronos restés ouverts. " +
+        "À utiliser quand les stats dépassent 24 h/jour ou 168 h/semaine, ou pour vérifier une saisie. " +
+        "Corriger ensuite avec delete_sessions / update_session APRÈS accord de l'utilisateur.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            from: { type: "string", description: "Premier jour YYYY-MM-DD (inclus)" },
+            to: { type: "string", description: "Dernier jour YYYY-MM-DD (inclus, défaut = from, période ≤ 62 jours)" },
+            activityId: { type: "string", description: "Optionnel : limiter à une activité" },
+            anomaliesOnly: { type: "boolean", description: "true = ne lister que les sessions suspectes (défaut false)" },
+        },
+        required: ["from"],
+    },
+};
+exports.LIST_SESSIONS_TOOL = LIST_SESSIONS_TOOL;
+const DELETE_SESSIONS_TOOL = {
+    name: "delete_sessions",
+    description: "Supprime des sessions de temps (suppression douce : retirées des stats, l'app les efface à sa prochaine synchro). " +
+        "ids via list_sessions. Pour un groupe de doublons, garder une session et supprimer les autres. " +
+        "Montre toujours la liste à l'utilisateur et attends son accord avant d'appeler.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            sessionIds: { type: "array", items: { type: "string" }, description: "ids des sessions à supprimer (≤ 200)" },
+        },
+        required: ["sessionIds"],
+    },
+};
+exports.DELETE_SESSIONS_TOOL = DELETE_SESSIONS_TOOL;
+const UPDATE_SESSION_TOOL = {
+    name: "update_session",
+    description: "Corrige une session de temps : début, fin (ex : chrono oublié → remettre la vraie heure de fin) ou activité. " +
+        "Heures au format YYYY-MM-DDTHH:mm, heure locale de l'utilisateur (comme affiché par list_sessions). " +
+        "La session est remplacée par une nouvelle (nouvel id). Demande l'accord de l'utilisateur avant d'appeler.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            sessionId: { type: "string", description: "id de la session (list_sessions)" },
+            startAt: { type: "string", description: "Nouveau début YYYY-MM-DDTHH:mm" },
+            endAt: { type: "string", description: "Nouvelle fin YYYY-MM-DDTHH:mm" },
+            activityId: { type: "string", description: "Nouvelle activité (id via get_user_context)" },
+        },
+        required: ["sessionId"],
+    },
+};
+exports.UPDATE_SESSION_TOOL = UPDATE_SESSION_TOOL;
 const SWEEP_INBOX_TOOL = {
     name: "sweep_inbox",
     description: "Balaie la boîte à idées (inbox) : les idées stratégiques deviennent des PROPOSITIONS de projets Gantt / de tâches sur un projet actif (file « À valider »), les idées ACTIONNABLES en un coup (corvée, course, appel) deviennent des DÉFIS 🔥 datés posés directement dans le programme des prochains jours (refusables d'un swipe), et les notes vagues sont laissées. " +
