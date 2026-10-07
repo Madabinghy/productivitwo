@@ -13,6 +13,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/claude_automation_sheet.dart';
@@ -2942,6 +2943,13 @@ class _AppRootState extends State<AppRoot>
       _focusActivityId = focusActId;
       if (goToNow) _tab = _goNowTab();
     });
+    // Jalon d'une intervention : le téléphone passe en « séance en cours ».
+    if (task != null && task.interventionRole == 'session' && task.interventionId != null) {
+      final i = project.interventions.where((x) => x.id == task.interventionId).firstOrNull;
+      if (i != null && mounted) {
+        await showSessionPlayer(context, project: project, intervention: i, sessionTask: task, sync: _sync);
+      }
+    }
   }
 
   /// Chrono lancé pendant un bloc en cours d'une autre source : une question

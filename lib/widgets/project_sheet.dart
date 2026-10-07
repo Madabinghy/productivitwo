@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
+import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -654,6 +655,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                               context, _sync, _project, task);
                           if (mounted) setState(() {});
                         },
+                        onLaunchSession: _sessionLauncher(task),
                       ),
                   ],
                   // Tâches sans phase
@@ -685,6 +687,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                               context, _sync, _project, task);
                           if (mounted) setState(() {});
                         },
+                        onLaunchSession: _sessionLauncher(task),
                       ),
                   ],
 
@@ -845,6 +848,18 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     if (selected == null) return;
     setState(() => _project.domainId = selected.isEmpty ? null : selected);
     await _sync.saveProject(_project);
+  }
+
+  /// Tâche jalon d'une intervention native → écran « séance en cours ».
+  VoidCallback? _sessionLauncher(ProjectTask task) {
+    if (task.interventionRole != 'session' || task.interventionId == null) return null;
+    final i = _project.interventions.where((x) => x.id == task.interventionId).firstOrNull;
+    if (i == null) return null;
+    return () => showSessionPlayer(context,
+        project: _project, intervention: i, sessionTask: task, sync: _sync)
+        .then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _openTaskDetail(ProjectTask task) async {
@@ -2244,6 +2259,8 @@ class _TaskTile extends StatelessWidget {
   final VoidCallback onToggle;
   final Future<void> Function(ProjectTask)? onOpenDetail;
   final VoidCallback? onToggleTodayFlag;
+  /// Jalon d'une intervention : ouvre l'écran « séance en cours ».
+  final VoidCallback? onLaunchSession;
 
   const _TaskTile({
     super.key,
@@ -2254,6 +2271,7 @@ class _TaskTile extends StatelessWidget {
     required this.onToggle,
     this.onOpenDetail,
     this.onToggleTodayFlag,
+    this.onLaunchSession,
   });
 
   @override
@@ -2390,6 +2408,19 @@ class _TaskTile extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 11,
                           color: cs.onSurface.withOpacity(.35),
+                        ),
+                      ),
+                    ],
+                    if (onLaunchSession != null && !isDone && !isSkipped) ...[
+                      const SizedBox(height: 6),
+                      FilledButton.tonalIcon(
+                        onPressed: onLaunchSession,
+                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                        label: const Text('Séance en cours'),
+                        style: FilledButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
                         ),
                       ),
                     ],

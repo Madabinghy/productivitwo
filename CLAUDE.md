@@ -369,7 +369,7 @@ Après modification : `npm run build` dans `functions/`, puis `firebase deploy -
 `update_intervention` (date → décalage des tâches ; bilan `debriefText` + `carryOver` → checklist « Adapter au bilan
 précédent » de la séance suivante), `manage_intervention_templates` (`data/meta.interventionTemplates`),
 `migrate_interventions` (triplets existants → natif, appariement temporel par jalon, dryRun), `delete_intervention` (détache par défaut), `update_task {interventionId, interventionRole}` (rattacher / détacher ; rôle principal unique, `extra` = secondaire), `update_intervention {mergeFrom}` (fusion). Logique pure `functions/src/interventions.ts` ; côté app
-`lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine ».
+`lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine » (web `projects_view.dart`, mobile `widgets/week_radar_card.dart` en tête de Projets). Mobile : écran « séance en cours » `widgets/session_player_screen.dart` (étape en cours, heure prévue, bilan → prépa suivante), ouvert depuis le jalon (fiche projet), le ▶ du radar ou un bloc du programme visant un jalon de séance.
 
 **Phases par libellé** (B1, 2026-10, `functions/src/phase_resolve.ts`) : `push_gantt` / `add_task` / `update_task` résolvent
 `groupLabel` ou un `phaseId` égal au libellé d'une phase → vrai `phaseId` (mono-phase : tâche sans indication → la phase

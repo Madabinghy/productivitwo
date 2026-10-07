@@ -7,6 +7,8 @@ import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/session_player_screen.dart';
+import 'package:productivitwo_v1/widgets/week_radar_card.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -201,6 +203,42 @@ class _GoalsViewState extends State<GoalsView> {
               slivers: [
                 if (widget.header != null)
                   SliverToBoxAdapter(child: widget.header!),
+                // Radar « Cette semaine » (brief 2.1, même logique que le web).
+                SliverToBoxAdapter(
+                  child: WeekRadarCard(
+                    projects: _projects,
+                    domains: domains,
+                    onOpen: (p, {taskId}) => showProjectSheet(context,
+                        project: p,
+                        domains: domains,
+                        targetTaskId: taskId,
+                        activities: widget.activities),
+                    onPlay: (p, i) {
+                      final native = i.native;
+                      if (native == null) {
+                        showProjectSheet(context,
+                            project: p,
+                            domains: domains,
+                            targetTaskId: i.milestone.id,
+                            activities: widget.activities);
+                        return;
+                      }
+                      showSessionPlayer(context,
+                          project: p,
+                          intervention: native,
+                          sessionTask: i.milestone,
+                          sync: _sync,
+                          onStartTimer: widget.onStartTimer == null
+                              ? null
+                              : () {
+                                  final act = widget.activities
+                                      .where((a) => a.id == p.linkedActivityId)
+                                      .firstOrNull;
+                                  if (act != null) widget.onStartTimer!(act, p, i.milestone);
+                                });
+                    },
+                  ),
+                ),
                 if (activeProjects.isEmpty && archivedProjects.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
