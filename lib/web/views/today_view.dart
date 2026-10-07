@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
+import 'package:productivitwo_v1/web/sessions_card.dart';
 import 'package:productivitwo_v1/web/assistant_history_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
@@ -2170,6 +2171,21 @@ class TodayViewState extends State<TodayView> {
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (withAgenda) ...[_agendaCard(), const SizedBox(height: 18)],
         _routinesCard(),
+        const SizedBox(height: 18),
+        // Chronos du jour : voir, corriger, supprimer, rattacher à un bloc
+        // après coup — l'équivalent de la feuille « Dernières 24 h » du mobile.
+        SessionsCard(
+          date: _today,
+          sessions: _sessions,
+          blocks: _blocks,
+          activities: widget.activities,
+          projects: widget.projects,
+          domains: widget.domains,
+          sync: widget.sync,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        ),
         const SizedBox(height: 18),
         _weekColumn(),
       ]);

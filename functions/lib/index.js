@@ -1838,6 +1838,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         startAt: args.startAt,
                         endAt: args.endAt,
                         activityId: args.activityId,
+                        taskId: args.taskId,
+                        actionId: args.actionId,
                     });
                 }
                 else if (toolName === "estimate_accuracy") {

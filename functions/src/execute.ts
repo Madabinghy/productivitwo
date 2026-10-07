@@ -4078,10 +4078,12 @@ async function executeDeleteSessions(uid: string, args: { sessionIds: string[] }
 
 async function executeUpdateSession(
   uid: string,
-  args: { sessionId: string; startAt?: string; endAt?: string; activityId?: string },
+  args: { sessionId: string; startAt?: string; endAt?: string; activityId?: string; taskId?: string; actionId?: string },
 ): Promise<string> {
   if (!args.sessionId) return "❌ sessionId requis.";
-  if (!args.startAt && !args.endAt && !args.activityId) return "❌ Rien à modifier (startAt, endAt ou activityId).";
+  if (!args.startAt && !args.endAt && !args.activityId && args.taskId === undefined && args.actionId === undefined) {
+    return "❌ Rien à modifier (startAt, endAt, activityId, taskId ou actionId).";
+  }
   const col = db.collection(`users/${uid}/sessions`);
   const snap = await col.doc(args.sessionId).get();
   if (!snap.exists || snap.data()?.deleted === true) return `❌ Session ${args.sessionId} introuvable.`;
@@ -4111,11 +4113,17 @@ async function executeUpdateSession(
     activityId = args.activityId;
   }
 
+  // Rattachement après coup à une tâche / action ("" = détacher) : le temps
+  // de la session compte alors pour le bloc qui vise cette tâche.
+  const taskId = args.taskId === undefined ? old.taskId ?? null : (args.taskId || null);
+  const actionId = args.actionId === undefined
+    ? (args.taskId !== undefined && !args.taskId ? null : old.actionId ?? null)
+    : (args.actionId || null);
   const newId = uuidv4();
   const batch = db.batch();
   batch.set(col.doc(newId), {
     id: newId, activityId, startAt, endAt,
-    taskId: old.taskId ?? null, actionId: old.actionId ?? null,
+    taskId, actionId,
   });
   batch.set(snap.ref, { deleted: true, deletedAt: new Date().toISOString(), replacedBy: newId }, { merge: true });
   await batch.commit();

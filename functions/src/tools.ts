@@ -191,6 +191,8 @@ const UPDATE_SESSION_TOOL = {
       startAt: { type: "string", description: "Nouveau début YYYY-MM-DDTHH:mm" },
       endAt: { type: "string", description: "Nouvelle fin YYYY-MM-DDTHH:mm" },
       activityId: { type: "string", description: "Nouvelle activité (id via get_user_context)" },
+      taskId: { type: "string", description: "Rattache la session à une tâche de projet après coup (son temps compte pour le bloc qui vise cette tâche) ; \"\" = détacher" },
+      actionId: { type: "string", description: "Action précise de la tâche (chrono ciblé) ; \"\" = aucune" },
     },
     required: ["sessionId"],
   },

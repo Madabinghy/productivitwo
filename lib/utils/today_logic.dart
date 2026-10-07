@@ -210,6 +210,43 @@ bool attachSessionToBlock(Session s, ScheduleBlock b,
   return true;
 }
 
+/// Blocs d'une journée auxquels une session (en cours ou TERMINÉE) peut être
+/// rattachée après coup, les plus pertinents d'abord : chevauchement avec la
+/// session (minutes) décroissant, puis proximité du début. Les blocs supprimés
+/// et les blocs libres non rattachables sont exclus. [day] = minuit du jour
+/// des blocs ; `overlapMin` = 0 si la session est hors du créneau.
+List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
+  Session s,
+  List<ScheduleBlock> blocks,
+  DateTime day, {
+  Activity? Function(String? id)? activityOf,
+  Project? Function(String? id)? projectOf,
+}) {
+  final sStart = s.startAt;
+  final sEnd = s.endAt ?? DateTime.now();
+  final out = <({ScheduleBlock block, int overlapMin})>[];
+  for (final b in blocks) {
+    if (b.status == 'deleted') continue;
+    if (!canAttachSessionToBlock(b,
+        blockActivity: activityOf?.call(b.activityId), project: projectOf?.call(b.projectId))) {
+      continue;
+    }
+    final bStart = day.add(Duration(minutes: blockStartMin(b)));
+    final bEnd = day.add(Duration(minutes: blockEndMin(b)));
+    final st = sStart.isAfter(bStart) ? sStart : bStart;
+    final en = sEnd.isBefore(bEnd) ? sEnd : bEnd;
+    final overlap = en.isAfter(st) ? en.difference(st).inMinutes : 0;
+    out.add((block: b, overlapMin: overlap));
+  }
+  out.sort((x, y) {
+    if (x.overlapMin != y.overlapMin) return y.overlapMin.compareTo(x.overlapMin);
+    final dx = (blockStartMin(x.block) - (sStart.hour * 60 + sStart.minute)).abs();
+    final dy = (blockStartMin(y.block) - (sStart.hour * 60 + sStart.minute)).abs();
+    return dx.compareTo(dy);
+  });
+  return out;
+}
+
 /// « Décaler après ma parenthèse » : prochain quart d'heure ≥ maintenant, en
 /// "HH:mm" ; null si le bloc ne tiendrait plus dans la journée.
 String? shiftedStartAfter(int nowMin, int durationMin) {

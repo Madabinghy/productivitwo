@@ -3725,8 +3725,9 @@ async function executeUpdateSession(uid, args) {
     var _a, _b, _c, _d;
     if (!args.sessionId)
         return "❌ sessionId requis.";
-    if (!args.startAt && !args.endAt && !args.activityId)
-        return "❌ Rien à modifier (startAt, endAt ou activityId).";
+    if (!args.startAt && !args.endAt && !args.activityId && args.taskId === undefined && args.actionId === undefined) {
+        return "❌ Rien à modifier (startAt, endAt, activityId, taskId ou actionId).";
+    }
     const col = db_1.db.collection(`users/${uid}/sessions`);
     const snap = await col.doc(args.sessionId).get();
     if (!snap.exists || ((_a = snap.data()) === null || _a === void 0 ? void 0 : _a.deleted) === true)
@@ -3760,11 +3761,17 @@ async function executeUpdateSession(uid, args) {
             return `❌ Activité ${args.activityId} introuvable.`;
         activityId = args.activityId;
     }
+    // Rattachement après coup à une tâche / action ("" = détacher) : le temps
+    // de la session compte alors pour le bloc qui vise cette tâche.
+    const taskId = args.taskId === undefined ? (_c = old.taskId) !== null && _c !== void 0 ? _c : null : (args.taskId || null);
+    const actionId = args.actionId === undefined
+        ? (args.taskId !== undefined && !args.taskId ? null : (_d = old.actionId) !== null && _d !== void 0 ? _d : null)
+        : (args.actionId || null);
     const newId = (0, uuid_1.v4)();
     const batch = db_1.db.batch();
     batch.set(col.doc(newId), {
         id: newId, activityId, startAt, endAt,
-        taskId: (_c = old.taskId) !== null && _c !== void 0 ? _c : null, actionId: (_d = old.actionId) !== null && _d !== void 0 ? _d : null,
+        taskId, actionId,
     });
     batch.set(snap.ref, { deleted: true, deletedAt: new Date().toISOString(), replacedBy: newId }, { merge: true });
     await batch.commit();

@@ -1863,6 +1863,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             startAt: args.startAt as string | undefined,
             endAt: args.endAt as string | undefined,
             activityId: args.activityId as string | undefined,
+            taskId: args.taskId as string | undefined,
+            actionId: args.actionId as string | undefined,
           });
         } else if (toolName === "estimate_accuracy") {
           text = await executeEstimateAccuracy(uid, {

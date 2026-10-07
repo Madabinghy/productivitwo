@@ -901,12 +901,18 @@ class _EditSessionResult {
   final DateTime? startAt;
   final DateTime? endAt;
   final String? activityId;
+  /// Bloc du programme à rattacher après coup (null = inchangé) ;
+  /// [detachBlock] = retirer la tâche / l'action de la session.
+  final ScheduleBlock? block;
+  final bool detachBlock;
 
   const _EditSessionResult._({
     required this.delete,
     this.startAt,
     this.endAt,
     this.activityId,
+    this.block,
+    this.detachBlock = false,
   });
 
   factory _EditSessionResult.delete() =>
@@ -916,12 +922,16 @@ class _EditSessionResult {
     DateTime? startAt,
     DateTime? endAt,
     String? activityId,
+    ScheduleBlock? block,
+    bool detachBlock = false,
   }) =>
       _EditSessionResult._(
         delete: false,
         startAt: startAt,
         endAt: endAt,
         activityId: activityId,
+        block: block,
+        detachBlock: detachBlock,
       );
 }
 
@@ -942,6 +952,11 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
   late DateTime _start;
   DateTime? _end;
   late String _activityId;
+  // Rattachement après coup : blocs du jour de la session (chargés une fois).
+  List<ScheduleBlock> _dayBlocks = const [];
+  bool _blocksLoaded = false;
+  ScheduleBlock? _block;
+  bool _detachBlock = false;
 
   @override
   void initState() {
@@ -949,6 +964,79 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
     _start = widget.session.startAt;
     _end = widget.session.endAt;
     _activityId = widget.session.activityId;
+    _loadDayBlocks();
+  }
+
+  DateTime get _day => DateTime(_start.year, _start.month, _start.day);
+  String get _dayKey =>
+      '${_day.year}-${_day.month.toString().padLeft(2, '0')}-${_day.day.toString().padLeft(2, '0')}';
+
+  Future<void> _loadDayBlocks() async {
+    final sched = await FirestoreSync().fetchDailySchedule(_dayKey);
+    if (!mounted) return;
+    setState(() {
+      _dayBlocks = sched?.blocks.where((b) => b.status != 'deleted').toList() ?? const [];
+      _blocksLoaded = true;
+      _block = _dayBlocks.where(_sessionOn).firstOrNull;
+    });
+  }
+
+  Activity? _actOf(String? id) =>
+      id == null ? null : widget.logic.state.activities.firstWhereOrNull((a) => a.id == id);
+  Project? _projOf(String? id) =>
+      id == null ? null : widget.logic.currentProjects.firstWhereOrNull((p) => p.id == id);
+
+  bool _sessionOn(ScheduleBlock b) => sessionMatchesBlock(widget.session, b,
+      projectLinkedActivityId: _projOf(b.projectId)?.linkedActivityId,
+      activityLinkedActivityId: _actOf(b.activityId)?.linkedActivityId);
+
+  Future<void> _pickBlock(BuildContext context) async {
+    final candidates = blockCandidatesForSession(widget.session, _dayBlocks, _day,
+        activityOf: _actOf, projectOf: _projOf);
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Text('Pour quel bloc compte ce temps ?',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.block_outlined),
+            title: const Text('Aucun — hors bloc'),
+            onTap: () => Navigator.pop(context, ''),
+          ),
+          if (candidates.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 16),
+              child: Text('Aucun bloc rattachable ce jour-là (il faut un bloc de tâche ou d\'activité).',
+                  style: TextStyle(fontSize: 13)),
+            ),
+          for (final c in candidates)
+            ListTile(
+              leading: const Icon(Icons.event_note_outlined),
+              title: Text(c.block.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                  '${c.block.startTime} · ${c.block.durationMin} min'
+                  '${c.overlapMin > 0 ? ' · ${c.overlapMin} min en commun' : ''}'),
+              onTap: () => Navigator.pop(context, c.block.id),
+            ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (picked.isEmpty) {
+        _block = null;
+        _detachBlock = true;
+      } else {
+        _block = _dayBlocks.firstWhereOrNull((b) => b.id == picked);
+        _detachBlock = false;
+      }
+    });
   }
 
   Future<String?> _pickActivity(BuildContext context) async {
@@ -1042,6 +1130,21 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
                 if (dt != null) setState(() => _end = dt);
               },
             ),
+            // Rattachement après coup : le temps de la session compte pour ce
+            // bloc (elle prend sa tâche / son action, même règle que « Pour ce bloc »).
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text("Bloc du programme"),
+              subtitle: Text(!_blocksLoaded
+                  ? "Chargement…"
+                  : _detachBlock
+                      ? "Aucun — hors bloc"
+                      : _block == null
+                          ? "Aucun — hors bloc"
+                          : "${_block!.startTime} · ${_block!.title}"),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _blocksLoaded ? () => _pickBlock(context) : null,
+            ),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
@@ -1073,6 +1176,9 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
                         startAt: _start,
                         endAt: _end,
                         activityId: _activityId,
+                        // Inchangé si l'utilisateur n'a pas touché au bloc.
+                        block: _detachBlock || _block == null || _sessionOn(_block!) ? null : _block,
+                        detachBlock: _detachBlock,
                       ),
                     );
                   },
@@ -1685,6 +1791,25 @@ class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
       endAt: res.endAt,
       activityId: res.activityId,
     );
+    // Rattachement après coup à un bloc (ou détachement) : la session prend
+    // la tâche / l'action du bloc et son activité-temps.
+    if (res.detachBlock) {
+      s.taskId = null;
+      s.actionId = null;
+      logic.onChange();
+      sync?.saveSession(s);
+    } else if (res.block != null) {
+      final b = res.block!;
+      final acts = (logic.state.activities as List).cast<Activity>();
+      final projs = (logic.currentProjects as List).cast<Project>();
+      final ok = attachSessionToBlock(s, b,
+          blockActivity: acts.firstWhereOrNull((a) => a.id == b.activityId),
+          project: projs.firstWhereOrNull((p) => p.id == b.projectId));
+      if (ok) {
+        logic.onChange();
+        sync?.saveSession(s);
+      }
+    }
     if (mounted) setState(() {}); // refresh immédiat (pas besoin de quitter)
   }
 
