@@ -2,6 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
 exports.withBothContexts = withBothContexts;
+exports.executeAddIntervention = executeAddIntervention;
+exports.executeUpdateIntervention = executeUpdateIntervention;
+exports.executeManageInterventionTemplates = executeManageInterventionTemplates;
+exports.executeMigrateInterventions = executeMigrateInterventions;
 exports.executeListSessions = executeListSessions;
 exports.executeDeleteSessions = executeDeleteSessions;
 exports.executeUpdateSession = executeUpdateSession;
@@ -76,6 +80,8 @@ exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const phase_resolve_1 = require("./phase_resolve");
+const schedule_dedupe_2 = require("./schedule_dedupe");
+const interventions_1 = require("./interventions");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
@@ -196,7 +202,8 @@ function pickTask(t) {
             ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
-    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions }), (estimatedMin !== undefined ? { estimatedMin } : {}));
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
+        ? { interventionRole: t.interventionRole } : {})), { isMilestone: t.isMilestone === true, status: rawStatus, actions }), (estimatedMin !== undefined ? { estimatedMin } : {}));
 }
 // Checklist d'une action : string (item neuf) ou objet — id/done/doneAt
 // préservés quand fournis (round-trip get_project → push_gantt).
@@ -502,14 +509,18 @@ async function executeGetUserContext(uid) {
         .map((d) => d.data())
         .filter((v) => !v.deleted)
         .map((v) => {
-        // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — non faites.
-        const ownActions = Array.isArray(v.ownActions)
-            ? v.ownActions
-                .filter((a) => !(a === null || a === void 0 ? void 0 : a.done))
-                .map((a) => (Object.assign(Object.assign({ id: a.id, title: a.title }, (estimatedMinOrUndefined(a.estimatedMin) !== undefined
-                ? { estimatedMin: estimatedMinOrUndefined(a.estimatedMin) } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {}))))
-            : [];
-        return Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {}));
+        // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — les
+        // ouvertes, avec `done:false` et `estimatedMin` (null = pas d'estimation)
+        // explicites (B8, brief 2026-10) ; les faites sont juste comptées.
+        const allOwn = Array.isArray(v.ownActions) ? v.ownActions : [];
+        const ownDone = allOwn.filter((a) => (a === null || a === void 0 ? void 0 : a.done) === true).length;
+        const ownActions = allOwn
+            .filter((a) => (a === null || a === void 0 ? void 0 : a.done) !== true)
+            .map((a) => {
+            var _a;
+            return (Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
+        });
+        return Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
@@ -2612,13 +2623,289 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     const skipped = dropped.length
         ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
         : "";
-    const clashed = overlapping.length
-        ? `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé dans le programme existant : ${overlapping.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
-        : "";
+    // B9 : un bloc écarté n'est pas perdu en silence — on indique le créneau
+    // libre le plus proche (dans la journée active) pour le reposer.
+    let clashed = "";
+    if (overlapping.length) {
+        const win = await readDayWindowHours(uid);
+        const busy = [...preserved, ...newBlocks];
+        const hints = overlapping.map((b) => {
+            var _a, _b;
+            const slot = (0, schedule_dedupe_2.nearestFreeSlot)(b, busy, { startMin: ((_a = win === null || win === void 0 ? void 0 : win.startHour) !== null && _a !== void 0 ? _a : 7) * 60, endMin: ((_b = win === null || win === void 0 ? void 0 : win.endHour) !== null && _b !== void 0 ? _b : 22) * 60 });
+            return `${b.startTime} ${b.title}` + (slot ? ` → libre à ${slot}` : " → aucun créneau libre de cette durée");
+        });
+        clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
+            `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
+    }
     const head = fill
         ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
         : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;
     return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
+}
+const sanitizeTasks = (raw) => {
+    var _a;
+    return ((_a = raw) !== null && _a !== void 0 ? _a : []).map((t) => JSON.parse(JSON.stringify(t, (_k, v) => v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+};
+function pickTemplateAction(raw) {
+    if (typeof raw === "string")
+        return { title: clampStr(raw, 200, "action") };
+    const o = (raw !== null && raw !== void 0 ? raw : {});
+    return Object.assign(Object.assign({ title: clampStr(o.title, 200, "action.title") }, (Array.isArray(o.contexts) ? { contexts: o.contexts.filter((c) => typeof c === "string") }
+        : typeof o.context === "string" ? { contexts: [o.context] } : {})), (typeof o.estimatedMin === "number" ? { estimatedMin: o.estimatedMin } : {}));
+}
+/** Normalise un modèle (stocké ou reçu) ; les parties absentes prennent le défaut. */
+function pickTemplate(raw, fallbackId) {
+    var _a, _b, _c;
+    const prep = ((_a = raw.prep) !== null && _a !== void 0 ? _a : {});
+    const closure = ((_b = raw.closure) !== null && _b !== void 0 ? _b : {});
+    const num = (v, d) => (typeof v === "number" && v >= 0 ? Math.round(v) : d);
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof raw.id === "string" && raw.id ? raw.id : fallbackId !== null && fallbackId !== void 0 ? fallbackId : (0, uuid_1.v4)(), name: clampStr((_c = raw.name) !== null && _c !== void 0 ? _c : "Modèle", 100, "template.name") }, (typeof raw.startTime === "string" ? { startTime: raw.startTime } : {})), (typeof raw.endTime === "string" ? { endTime: raw.endTime } : {})), (typeof raw.place === "string" ? { place: raw.place } : {})), (typeof raw.sessionContext === "string" ? { sessionContext: raw.sessionContext } : {})), { prep: {
+            daysBefore: num(prep.daysBefore, interventions_1.DEFAULT_TEMPLATE.prep.daysBefore),
+            endDaysBefore: num(prep.endDaysBefore, interventions_1.DEFAULT_TEMPLATE.prep.endDaysBefore),
+            actions: Array.isArray(prep.actions) ? prep.actions.map(pickTemplateAction) : interventions_1.DEFAULT_TEMPLATE.prep.actions,
+        }, closure: {
+            daysAfter: num(closure.daysAfter, interventions_1.DEFAULT_TEMPLATE.closure.daysAfter),
+            actions: Array.isArray(closure.actions) ? closure.actions.map(pickTemplateAction) : interventions_1.DEFAULT_TEMPLATE.closure.actions,
+        } });
+}
+async function loadTemplates(uid) {
+    const snap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const raw = snap.exists ? snap.data().interventionTemplates : null;
+    return Array.isArray(raw) ? raw.map((r) => pickTemplate(r)) : [];
+}
+function fmtTemplate(t) {
+    const acts = (as) => as.map((a) => `${a.title}${a.estimatedMin ? ` (${a.estimatedMin} min)` : ""}`).join(" · ");
+    return `• [${t.id}] ${t.name}` +
+        (t.startTime && t.endTime ? ` · ${(0, interventions_1.hmFr)(t.startTime)}–${(0, interventions_1.hmFr)(t.endTime)}` : "") +
+        (t.place ? ` · ${t.place}` : "") + (t.sessionContext ? ` · ${t.sessionContext}` : "") +
+        `\n    prépa J-${t.prep.daysBefore} → J-${t.prep.endDaysBefore} : ${acts(t.prep.actions)}` +
+        `\n    clôture J → J+${t.closure.daysAfter} : ${acts(t.closure.actions)}`;
+}
+async function executeManageInterventionTemplates(uid, args) {
+    var _a;
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const templates = await loadTemplates(uid);
+    const list = () => [
+        `Modèles d'intervention (${templates.length}) — « default » = modèle intégré, toujours disponible :`,
+        fmtTemplate(interventions_1.DEFAULT_TEMPLATE),
+        ...templates.map(fmtTemplate),
+    ].join("\n");
+    switch (args.action) {
+        case "list":
+            return list();
+        case "add": {
+            if (!args.template)
+                return "❌ template requis.";
+            let t;
+            try {
+                t = pickTemplate(args.template);
+            }
+            catch (e) {
+                return `❌ ${e instanceof Error ? e.message : e}`;
+            }
+            if (templates.some((x) => x.id === t.id))
+                return `❌ Un modèle porte déjà l'id ${t.id}.`;
+            await metaRef.set({ interventionTemplates: [...templates, t] }, { merge: true });
+            return `✅ Modèle créé.\n${fmtTemplate(t)}\n→ add_intervention(projectId, title, date, templateId: "${t.id}")`;
+        }
+        case "update": {
+            const idx = templates.findIndex((x) => x.id === args.templateId);
+            if (idx < 0)
+                return `❌ Modèle introuvable : ${args.templateId}`;
+            let t;
+            try {
+                t = pickTemplate(Object.assign(Object.assign(Object.assign({}, templates[idx]), ((_a = args.template) !== null && _a !== void 0 ? _a : {})), { id: templates[idx].id }));
+            }
+            catch (e) {
+                return `❌ ${e instanceof Error ? e.message : e}`;
+            }
+            const next = templates.slice();
+            next[idx] = t;
+            await metaRef.set({ interventionTemplates: next }, { merge: true });
+            return `✅ Modèle mis à jour.\n${fmtTemplate(t)}`;
+        }
+        case "delete": {
+            if (!templates.some((x) => x.id === args.templateId))
+                return `❌ Modèle introuvable : ${args.templateId}`;
+            await metaRef.set({ interventionTemplates: templates.filter((x) => x.id !== args.templateId) }, { merge: true });
+            return `✅ Modèle ${args.templateId} supprimé (les interventions créées avec restent intactes).`;
+        }
+        default:
+            return `❌ action inconnue : ${args.action} (list | add | update | delete)`;
+    }
+}
+async function executeAddIntervention(uid, args) {
+    var _a, _b, _c, _d, _e, _f;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(args.projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${args.projectId}`;
+    const data = snap.data();
+    const templates = await loadTemplates(uid);
+    const tpl = args.templateId && args.templateId !== "default"
+        ? templates.find((t) => t.id === args.templateId) : interventions_1.DEFAULT_TEMPLATE;
+    if (!tpl)
+        return `❌ Modèle introuvable : ${args.templateId} (manage_intervention_templates list)`;
+    const input = {
+        title: args.title, date: args.date,
+        startTime: (_b = (_a = args.startTime) !== null && _a !== void 0 ? _a : tpl.startTime) !== null && _b !== void 0 ? _b : "", endTime: (_d = (_c = args.endTime) !== null && _c !== void 0 ? _c : tpl.endTime) !== null && _d !== void 0 ? _d : "",
+        place: (_e = args.place) !== null && _e !== void 0 ? _e : tpl.place, templateId: tpl.id === "default" ? undefined : tpl.id, docUrl: args.docUrl,
+    };
+    const err = (0, interventions_1.validateInput)(input);
+    if (err)
+        return `❌ ${err}${!input.startTime ? " — passe startTime/endTime ou un modèle qui les fixe" : ""}.`;
+    let prepActions, closureActions;
+    try {
+        prepActions = Array.isArray(args.prepActions) ? args.prepActions.map(pickTemplateAction) : undefined;
+        closureActions = Array.isArray(args.closureActions) ? args.closureActions.map(pickTemplateAction) : undefined;
+    }
+    catch (e) {
+        return `❌ ${e instanceof Error ? e.message : e}`;
+    }
+    const intervention = (0, interventions_1.buildIntervention)(input);
+    const { prep, session, closure } = (0, interventions_1.buildInterventionTasks)(intervention, tpl, {
+        phases: (_f = data.phases) !== null && _f !== void 0 ? _f : [],
+        steps: Array.isArray(args.steps) ? args.steps.map(String) : [],
+        prepActions, closureActions,
+    });
+    await ref.update({
+        interventions: db_1.FieldValue.arrayUnion(intervention),
+        tasks: db_1.FieldValue.arrayUnion(prep, session, closure),
+        updatedAt: db_1.FieldValue.serverTimestamp(),
+    });
+    return [
+        `✅ Intervention « ${intervention.title} » créée — ${(0, interventions_1.dayLabelFr)(args.date)} ${(0, interventions_1.hmFr)(input.startTime)}–${(0, interventions_1.hmFr)(input.endTime)}` +
+            (input.place ? ` · ${input.place}` : "") + ` (modèle : ${tpl.name})`,
+        `• interventionId : ${intervention.id}`,
+        `• 📝 Préparer (${prep.startDate} → ${prep.endDate}, ${prep.actions.length} actions) : ${prep.id}`,
+        `• 🎯 Séance (jalon, ${session.actions[0] && session.actions[0].checklist.length} étapes) : ${session.id}`,
+        `• ✅ Clôturer (${closure.startDate} → ${closure.endDate}, ${closure.actions.length} actions) : ${closure.id}`,
+        prep.phaseId ? `• phase : ${prep.phaseId}` : `⚠️ aucune phase ne couvre le ${args.date} — tâches sans phase (update_task {phaseId} si besoin)`,
+    ].join("\n");
+}
+async function executeUpdateIntervention(uid, args) {
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(args.projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${args.projectId}`;
+    const data = snap.data();
+    const interventions = sanitizeTasks(data.interventions);
+    const idx = interventions.findIndex((i) => i.id === args.interventionId);
+    if (idx < 0)
+        return `Intervention introuvable : ${args.interventionId} (voir get_project → interventions)`;
+    let tasks = sanitizeTasks(data.tasks);
+    const before = interventions[idx];
+    const after = Object.assign({}, before);
+    const notes = [];
+    if (args.title !== undefined)
+        after.title = clampStr(args.title, 200, "title");
+    if (args.date !== undefined) {
+        assertDate(args.date, "date");
+        after.date = args.date;
+    }
+    if (args.startTime !== undefined)
+        after.startTime = args.startTime;
+    if (args.endTime !== undefined)
+        after.endTime = args.endTime;
+    if (args.place !== undefined)
+        after.place = args.place;
+    if (args.docUrl !== undefined)
+        after.docUrl = args.docUrl;
+    const err = (0, interventions_1.validateInput)(after);
+    if (err)
+        return `❌ ${err}`;
+    if (after.date !== before.date) {
+        tasks = (0, interventions_1.shiftTasks)(tasks, String(after.id), String(before.date), String(after.date));
+        notes.push(`tâches décalées du ${before.date} au ${after.date}`);
+    }
+    if (after.title !== before.title || after.date !== before.date)
+        tasks = (0, interventions_1.retitleTasks)(tasks, after);
+    if (after.startTime !== before.startTime || after.endTime !== before.endTime) {
+        tasks = tasks.map((t) => {
+            var _a;
+            if (t.interventionId !== after.id || t.interventionRole !== "session")
+                return t;
+            const acts = ((_a = t.actions) !== null && _a !== void 0 ? _a : []).map((a, i) => i === 0
+                ? Object.assign(Object.assign({}, a), { title: `Dérouler la séance (${(0, interventions_1.hmFr)(String(after.startTime))}–${(0, interventions_1.hmFr)(String(after.endTime))})`, estimatedMin: (() => { const [h1, m1] = String(after.startTime).split(":").map(Number); const [h2, m2] = String(after.endTime).split(":").map(Number); return (h2 * 60 + m2) - (h1 * 60 + m1); })() }) : a);
+            return Object.assign(Object.assign({}, t), { actions: acts });
+        });
+        notes.push("créneau mis à jour");
+    }
+    if (args.status !== undefined) {
+        if (!["planned", "done", "cancelled"].includes(args.status))
+            return `❌ status invalide : ${args.status}`;
+        after.status = args.status;
+        if (args.status === "cancelled") {
+            tasks = tasks.map((t) => t.interventionId === after.id && t.status !== "done" ? Object.assign(Object.assign({}, t), { status: "skipped" }) : t);
+            notes.push("séance annulée : tâches restantes passées en skipped");
+        }
+        if (args.status === "done") {
+            tasks = tasks.map((t) => t.interventionId === after.id && t.interventionRole === "session" ? Object.assign(Object.assign({}, t), { status: "done" }) : t);
+        }
+    }
+    if (args.debriefText !== undefined)
+        after.debriefText = clampStr(args.debriefText, 5000, "debriefText");
+    if (args.carryOver !== undefined) {
+        const items = args.carryOver.map((s) => String(s).trim()).filter(Boolean);
+        after.carryOver = items.map((title) => ({ id: (0, uuid_1.v4)(), title, done: false, doneAt: null }));
+        const r = (0, interventions_1.applyCarryOver)(tasks, interventions.map((i, k) => (k === idx ? after : i)), String(after.id), items);
+        tasks = r.tasks;
+        notes.push(r.nextId
+            ? `${items.length} point(s) à reprendre poussés dans la prépa de la séance suivante`
+            : `${items.length} point(s) à reprendre notés (pas de séance suivante planifiée : ils seront repris à la création de la prochaine)`);
+    }
+    if (args.debriefText !== undefined || args.carryOver !== undefined)
+        after.debriefAt = new Date().toISOString();
+    const next = interventions.slice();
+    next[idx] = after;
+    await ref.update({ interventions: next, tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    return `✅ Intervention « ${after.title} » mise à jour — ${(0, interventions_1.dayLabelFr)(String(after.date))} ${(0, interventions_1.hmFr)(String(after.startTime))}–${(0, interventions_1.hmFr)(String(after.endTime))}` +
+        (notes.length ? `\n• ${notes.join("\n• ")}` : "");
+}
+async function executeMigrateInterventions(uid, args) {
+    const dryRun = args.dryRun !== false;
+    const col = db_1.db.collection(`users/${uid}/projects`);
+    const docs = args.projectId
+        ? [await col.doc(args.projectId).get()].filter((d) => d.exists)
+        : (await col.where("status", "==", "active").get()).docs;
+    if (!docs.length)
+        return args.projectId ? `Projet introuvable : ${args.projectId}` : "Aucun projet actif.";
+    const out = [dryRun
+            ? "🔎 Simulation (dryRun) — rien n'est écrit. Relance avec dryRun:false pour appliquer."
+            : "✅ Migration appliquée."];
+    let total = 0;
+    for (const d of docs) {
+        const data = d.data();
+        let tasks = sanitizeTasks(data.tasks);
+        const found = (0, interventions_1.detectTriplets)(tasks, {
+            description: typeof data.description === "string" ? data.description : "",
+            defaultStart: args.defaultStart, defaultEnd: args.defaultEnd,
+        });
+        if (!found.length)
+            continue;
+        total += found.length;
+        out.push(`\n${data.title} (${d.id}) — ${found.length} intervention(s) :`);
+        const created = [];
+        for (const t of found) {
+            const flag = t.timeSource === "default" ? " ⚠️ créneau par défaut (passe defaultStart/defaultEnd ou corrige après avec update_intervention)" : "";
+            out.push(`• ${t.date} ${(0, interventions_1.hmFr)(t.startTime)}–${(0, interventions_1.hmFr)(t.endTime)} « ${t.groupLabel} » — 📝 ${t.prep ? "oui" : "—"} · ✅ ${t.closure ? "oui" : "—"}${flag}`);
+            if (!dryRun) {
+                const r = (0, interventions_1.applyTriplet)(tasks, t);
+                tasks = r.tasks;
+                created.push(r.intervention);
+            }
+        }
+        if (!dryRun) {
+            await col.doc(d.id).update({
+                interventions: db_1.FieldValue.arrayUnion(...created),
+                tasks,
+                updatedAt: db_1.FieldValue.serverTimestamp(),
+            });
+        }
+    }
+    if (!total)
+        out.push("Aucun triplet 📝 / 🎯 / ✅ non migré trouvé.");
+    return out.join("\n");
 }
 // Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
 // SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).

@@ -96,3 +96,34 @@ export function fillAgainstExisting<T extends AnyBlock>(
   }
   return { kept, dropped };
 }
+
+const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/**
+ * Créneau libre le plus proche de l'heure demandée (B9) : on cherche, par pas
+ * de 15 min, le début le plus proche (avant ou après) dans la fenêtre
+ * [startMin, endMin[ où le bloc tient sans chevaucher un bloc occupant.
+ * Null si aucun. Retourne "HH:mm".
+ */
+export function nearestFreeSlot(
+  block: AnyBlock,
+  existing: AnyBlock[],
+  window: { startMin: number; endMin: number },
+  step = 15
+): string | null {
+  const dur = Number(block.durationMin ?? 0);
+  if (dur <= 0) return null;
+  const busy = existing.filter(isOccupying);
+  const want = toMin(block.startTime);
+  const fits = (start: number) =>
+    start >= window.startMin &&
+    start + dur <= window.endMin &&
+    !busy.some((e) => overlaps({ startTime: fromMin(start), durationMin: dur }, e));
+  const base = Math.round(want / step) * step;
+  for (let delta = 0; delta <= 24 * 60; delta += step) {
+    for (const start of delta === 0 ? [base] : [base + delta, base - delta]) {
+      if (fits(start)) return fromMin(start);
+    }
+  }
+  return null;
+}

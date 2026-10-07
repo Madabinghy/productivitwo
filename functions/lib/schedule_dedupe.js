@@ -10,6 +10,7 @@ exports.sameSlot = sameSlot;
 exports.splitAgainstMirrors = splitAgainstMirrors;
 exports.dropPlainDuplicates = dropPlainDuplicates;
 exports.fillAgainstExisting = fillAgainstExisting;
+exports.nearestFreeSlot = nearestFreeSlot;
 const norm = (s) => String(s !== null && s !== void 0 ? s : "")
     .toLowerCase()
     .normalize("NFD")
@@ -91,5 +92,31 @@ function fillAgainstExisting(incoming, existing) {
         }
     }
     return { kept, dropped };
+}
+const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+/**
+ * Créneau libre le plus proche de l'heure demandée (B9) : on cherche, par pas
+ * de 15 min, le début le plus proche (avant ou après) dans la fenêtre
+ * [startMin, endMin[ où le bloc tient sans chevaucher un bloc occupant.
+ * Null si aucun. Retourne "HH:mm".
+ */
+function nearestFreeSlot(block, existing, window, step = 15) {
+    var _a;
+    const dur = Number((_a = block.durationMin) !== null && _a !== void 0 ? _a : 0);
+    if (dur <= 0)
+        return null;
+    const busy = existing.filter(exports.isOccupying);
+    const want = (0, exports.toMin)(block.startTime);
+    const fits = (start) => start >= window.startMin &&
+        start + dur <= window.endMin &&
+        !busy.some((e) => overlaps({ startTime: fromMin(start), durationMin: dur }, e));
+    const base = Math.round(want / step) * step;
+    for (let delta = 0; delta <= 24 * 60; delta += step) {
+        for (const start of delta === 0 ? [base] : [base + delta, base - delta]) {
+            if (fits(start))
+                return fromMin(start);
+        }
+    }
+    return null;
 }
 //# sourceMappingURL=schedule_dedupe.js.map

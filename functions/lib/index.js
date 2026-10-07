@@ -1622,6 +1622,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.PLAN_DAY_TOOL, tools_1.PLAN_WEEK_TOOL, tools_1.SYNC_CALENDAR_TOOL,
                         tools_1.ADD_TASK_TOOL, tools_1.UPDATE_TASK_TOOL, tools_1.MARK_ACTION_DONE_TOOL, tools_1.MARK_CHECKLIST_ITEM_TOOL,
                         tools_1.LINK_ACTION_TO_ACTIVITY_TOOL, tools_1.ADD_ACTIVITY_ACTION_TOOL, tools_1.MANAGE_CONTEXTS_TOOL, tools_1.UPDATE_ACTION_TOOL,
+                        tools_1.ADD_INTERVENTION_TOOL, tools_1.UPDATE_INTERVENTION_TOOL, tools_1.MANAGE_INTERVENTION_TEMPLATES_TOOL, tools_1.MIGRATE_INTERVENTIONS_TOOL,
                         tools_1.ESTIMATE_ACCURACY_TOOL,
                         tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
@@ -1858,6 +1859,18 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         done: args.done,
                         delete: args.delete,
                     });
+                }
+                else if (toolName === "add_intervention") {
+                    text = await (0, execute_1.executeAddIntervention)(uid, args);
+                }
+                else if (toolName === "update_intervention") {
+                    text = await (0, execute_1.executeUpdateIntervention)(uid, args);
+                }
+                else if (toolName === "manage_intervention_templates") {
+                    text = await (0, execute_1.executeManageInterventionTemplates)(uid, args);
+                }
+                else if (toolName === "migrate_interventions") {
+                    text = await (0, execute_1.executeMigrateInterventions)(uid, args);
                 }
                 else if (toolName === "manage_contexts") {
                     text = await (0, execute_1.executeManageContexts)(uid, {

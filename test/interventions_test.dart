@@ -96,6 +96,52 @@ void main() {
     expect(r.isQuiet(today), isFalse);
   });
 
+  test('natif d\'abord : date, créneau et titre de l\'objet ; tâches par rôle ; annulée ignorée', () {
+    final p = _p('N', [
+      _t('prep', '📝 Préparer — S', '2026-10-05', end: '2026-10-11', group: 'S')
+        ..interventionId = 'i1'
+        ..interventionRole = 'prep',
+      _t('sess', '🎯 Lun 12 oct. — S', '2026-10-12', end: '2026-10-12', group: 'S', milestone: true)
+        ..interventionId = 'i1'
+        ..interventionRole = 'session',
+      _t('close', '✅ Clôturer — S', '2026-10-12', end: '2026-10-14', group: 'S')
+        ..interventionId = 'i1'
+        ..interventionRole = 'closure',
+      _t('old', '🎯 Ancien', '2026-10-02', end: '2026-10-02', group: 'Ancien', milestone: true, status: 'done'),
+      _t('cancelled', '🎯 Annulée', '2026-10-30', group: 'A', milestone: true)
+        ..interventionId = 'i2'
+        ..interventionRole = 'session',
+    ]);
+    p.interventions.addAll([
+      ProjectIntervention(
+          id: 'i1', title: 'Séance 12', date: DateTime(2026, 10, 13), startTime: '08:00', endTime: '12:00'),
+      ProjectIntervention(
+          id: 'i2', title: 'Annulée', date: DateTime(2026, 10, 30), startTime: '08:00', endTime: '09:00',
+          status: 'cancelled'),
+    ]);
+    final list = interventionsOf(p);
+    expect(list.map((i) => i.milestone.id).toList(), ['old', 'sess']);
+    final n = list[1];
+    expect(n.title, 'Séance 12');
+    expect(n.date, DateTime(2026, 10, 13));
+    expect(n.timeRange, '8h00–12h00');
+    expect(n.prep?.id, 'prep');
+    expect(n.closure?.id, 'close');
+    expect(n.native?.slotMin, 240);
+  });
+
+  test('modèle : interventions et tags survivent au round-trip toJson / from', () {
+    final p = _p('R', [_t('t', 'x', '2026-10-01')..interventionId = 'i'..interventionRole = 'prep']);
+    p.interventions.add(ProjectIntervention(
+        id: 'i', title: 'S', date: DateTime(2026, 10, 12), startTime: '13:15', endTime: '15:00',
+        place: 'École', debriefText: 'ok', carryOver: [ChecklistItem(title: 'Reprendre')]));
+    final back = Project.from(p.toJson());
+    expect(back.interventions.single.ymd, '2026-10-12');
+    expect(back.interventions.single.place, 'École');
+    expect(back.interventions.single.carryOver.single.title, 'Reprendre');
+    expect(back.tasks.single.interventionRole, 'prep');
+  });
+
   test('weekRadar : dossiers et projets en pause exclus, tri par date, calme > 14 j', () {
     final folder = _p('Dossier', []);
     final child = _p('Enfant', parent: 'Dossier', [

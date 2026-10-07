@@ -200,6 +200,12 @@ class ProjectTask {
   List<TaskAction> actions; // détail opérationnel
   bool todayFlag; // priorité du jour
   int? estimatedMin; // durée estimée ; null = kDefaultTaskEstimatedMin
+  /// Intervention (séance datée) dont cette tâche fait partie, et son rôle :
+  /// `prep` (📝 Préparer) · `session` (🎯 jalon) · `closure` (✅ Clôturer).
+  /// Posés par le serveur (add_intervention / migrate_interventions) ; null =
+  /// tâche ordinaire. Toujours ré-écrits tels quels (round-trip).
+  String? interventionId;
+  String? interventionRole;
 
   ProjectTask({
     String? id,
@@ -216,6 +222,8 @@ class ProjectTask {
     List<TaskAction>? actions,
     this.todayFlag = false,
     this.estimatedMin,
+    this.interventionId,
+    this.interventionRole,
   })  : id = id ?? _uuid.v4(),
         actions = actions ?? [];
 
@@ -240,6 +248,8 @@ class ProjectTask {
         'actions': actions.map((a) => a.toJson()).toList(),
         'todayFlag': todayFlag,
         'estimatedMin': estimatedMin,
+        if (interventionId != null) 'interventionId': interventionId,
+        if (interventionRole != null) 'interventionRole': interventionRole,
       };
 
   static ProjectTask from(Map j) => ProjectTask(
@@ -262,6 +272,95 @@ class ProjectTask {
             [],
         todayFlag: j['todayFlag'] as bool? ?? false,
         estimatedMin: _parseEstimatedMin(j['estimatedMin']),
+        interventionId: j['interventionId'] as String?,
+        interventionRole: j['interventionRole'] as String?,
+      );
+}
+
+/// Intervention : séance datée (cours, journée client, module) portée par le
+/// projet — date + créneau + lieu + bilan. Ses trois tâches sont des
+/// `ProjectTask` ordinaires taguées `interventionId` / `interventionRole`.
+/// Créée par le serveur (`add_intervention`), lue ici ; l'app ré-écrit la
+/// liste telle quelle dans `Project.toJson` (ne jamais la perdre).
+class ProjectIntervention {
+  String id;
+  String title;
+  DateTime date;
+  String startTime; // HH:mm
+  String endTime; // HH:mm
+  String? place;
+  String? templateId;
+  String? docUrl;
+  String status; // planned | done | cancelled
+  String? debriefText;
+  List<ChecklistItem> carryOver;
+  DateTime? debriefAt;
+  final Map<String, dynamic> _raw;
+
+  ProjectIntervention({
+    String? id,
+    required this.title,
+    required this.date,
+    required this.startTime,
+    required this.endTime,
+    this.place,
+    this.templateId,
+    this.docUrl,
+    this.status = 'planned',
+    this.debriefText,
+    List<ChecklistItem>? carryOver,
+    this.debriefAt,
+    Map<String, dynamic>? raw,
+  })  : id = id ?? _uuid.v4(),
+        carryOver = carryOver ?? [],
+        _raw = raw ?? {};
+
+  String get ymd =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  int get slotMin {
+    int m(String hm) {
+      final p = hm.split(':');
+      return p.length == 2 ? (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0) : 0;
+    }
+    final d = m(endTime) - m(startTime);
+    return d > 0 ? d : 0;
+  }
+
+  Map<String, dynamic> toJson() => {
+        ..._raw,
+        'id': id,
+        'title': title,
+        'date': ymd,
+        'startTime': startTime,
+        'endTime': endTime,
+        'place': place,
+        'templateId': templateId,
+        'docUrl': docUrl,
+        'status': status,
+        'debriefText': debriefText,
+        'carryOver': carryOver.map((c) => c.toJson()).toList(),
+        'debriefAt': debriefAt?.toIso8601String(),
+      };
+
+  static ProjectIntervention from(Map j) => ProjectIntervention(
+        id: j['id'],
+        title: j['title'] ?? '',
+        date: _parseDate(j['date']),
+        startTime: j['startTime'] ?? '',
+        endTime: j['endTime'] ?? '',
+        place: j['place'],
+        templateId: j['templateId'],
+        docUrl: j['docUrl'],
+        status: j['status'] ?? 'planned',
+        debriefText: j['debriefText'],
+        carryOver: (j['carryOver'] as List?)
+                ?.whereType<Map>()
+                .map((c) => ChecklistItem.from(c))
+                .toList() ??
+            [],
+        debriefAt: _parseDateOrNull(j['debriefAt']),
+        raw: Map<String, dynamic>.from(j),
       );
 }
 
@@ -297,6 +396,8 @@ class Project {
   String? linkedActivityId;
   List<ProjectPhase> phases;
   List<ProjectTask> tasks;
+  /// Séances datées du projet (voir [ProjectIntervention]).
+  List<ProjectIntervention> interventions;
   String createdBy; // uid Firebase
   String sourceType; // manual | claude_api | coach
   /// Origine fonctionnelle : "user" (manuel/MCP) ou "orion" (auto-créé depuis
@@ -321,6 +422,7 @@ class Project {
     this.linkedActivityId,
     List<ProjectPhase>? phases,
     List<ProjectTask>? tasks,
+    List<ProjectIntervention>? interventions,
     required this.createdBy,
     this.sourceType = 'manual',
     this.source = 'user',
@@ -331,7 +433,8 @@ class Project {
         originIdeas = originIdeas ?? [],
         createdAt = createdAt ?? DateTime.now(),
         phases = phases ?? [],
-        tasks = tasks ?? [];
+        tasks = tasks ?? [],
+        interventions = interventions ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -347,6 +450,7 @@ class Project {
         'linkedActivityId': linkedActivityId,
         'phases': phases.map((p) => p.toJson()).toList(),
         'tasks': tasks.map((t) => t.toJson()).toList(),
+        'interventions': interventions.map((i) => i.toJson()).toList(),
         'createdBy': createdBy,
         'sourceType': sourceType,
         'source': source,
@@ -369,6 +473,11 @@ class Project {
         linkedActivityId: j['linkedActivityId'] as String?,
         phases: (j['phases'] as List?)?.map((p) => ProjectPhase.from(p)).toList() ?? [],
         tasks: (j['tasks'] as List?)?.map((t) => ProjectTask.from(t)).toList() ?? [],
+        interventions: (j['interventions'] as List?)
+                ?.whereType<Map>()
+                .map((i) => ProjectIntervention.from(i))
+                .toList() ??
+            [],
         createdBy: j['createdBy'] ?? '',
         sourceType: j['sourceType'] ?? 'manual',
         source: j['source'] ?? 'user',
