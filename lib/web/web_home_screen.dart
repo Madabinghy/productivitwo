@@ -399,6 +399,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               key:
                   ValueKey('${_shellProject!.project.id}/${_shellProject!.taskId}'),
               project: _shellProject!.project,
+              projects: _projects,
               targetTaskId: _shellProject!.taskId,
               domains: _domains,
               activities: _activities,

@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -67,6 +68,8 @@ class _ProjectsViewState extends State<ProjectsView> {
   String? _domainId;
   _Mode _mode = _Mode.active;
   bool _creating = false;
+  // Dossiers (clients) dépliés dans le tableau ; repliés par défaut.
+  final Set<String> _openFolders = {};
   // Blocs de la semaine courante, pour « planifiée demain 9 h ».
   final Map<String, List<ScheduleBlock>> _byDay = {};
   final List<StreamSubscription<DailySchedule?>> _subs = [];
@@ -103,6 +106,14 @@ class _ProjectsViewState extends State<ProjectsView> {
   List<Project> get _archived =>
       widget.projects.where((p) => p.status == 'archived').toList();
 
+  /// Projet tel qu'il est jugé et affiché : la vue fusionnée pour un dossier
+  /// (avancement, prochaine action, 7 jours cumulés), lui-même sinon.
+  Project _display(Project p) => isFolder(p, widget.projects) ? mergeFolder(p, widget.projects).view : p;
+
+  /// Sous-projets d'un dossier présents dans la liste courante.
+  List<Project> _childrenOf(Project folder, List<Project> listed) =>
+      folderChildren(folder, widget.projects).where((c) => listed.any((p) => p.id == c.id)).toList();
+
   List<Project> get _listed {
     final base = switch (_mode) {
       _Mode.active => _active,
@@ -117,7 +128,7 @@ class _ProjectsViewState extends State<ProjectsView> {
       final now = DateTime.now();
       final rank = {
         for (final p in filtered)
-          p.id: switch (projectHealth(p, widget.recentSessions, now).kind) {
+          p.id: switch (projectHealth(_display(p), widget.recentSessions, now).kind) {
             HealthKind.stalled => 0,
             HealthKind.atRisk => 1,
             HealthKind.onTrack => 2,
@@ -447,7 +458,15 @@ class _ProjectsViewState extends State<ProjectsView> {
             ),
           )
         else
-          for (final p in rows) _row(p, now),
+          for (final p in rows)
+            if (p.parentProjectId == null || !rows.any((r) => r.id == p.parentProjectId)) ...[
+              if (isFolder(p, widget.projects)) ...[
+                _row(p, now, view: _display(p), childCount: _childrenOf(p, rows).length),
+                if (_openFolders.contains(p.id))
+                  for (final c in _childrenOf(p, rows)) _row(c, now, indent: 28),
+              ] else
+                _row(p, now),
+            ],
       ]),
     );
   }
@@ -460,13 +479,18 @@ class _ProjectsViewState extends State<ProjectsView> {
     return width == null ? t : SizedBox(width: width, child: t);
   }
 
-  Widget _row(Project p, DateTime now) {
+  Widget _row(Project p, DateTime now, {Project? view, int indent = 0, int? childCount}) {
+    // `view` = vue fusionnée d'un dossier (chiffres cumulés) ; `p` reste le
+    // projet réel (ouverture, menu).
+    final v = view ?? p;
+    final folder = childCount != null;
+    final open = _openFolders.contains(p.id);
     final domain = widget.domains.where((d) => d.id == p.domainId).firstOrNull;
     final dColor = domainColor(p.domainId, widget.domains) ?? kBText4;
-    final phase = currentPhase(p, now);
-    final prog = taskProgress(p);
-    final health = projectHealth(p, widget.recentSessions, now);
-    final minutes = minutesLast7Days(p, widget.recentSessions, now);
+    final phase = currentPhase(v, now);
+    final prog = taskProgress(v);
+    final health = projectHealth(v, widget.recentSessions, now);
+    final minutes = minutesLast7Days(v, widget.recentSessions, now);
     final daysLeft = p.endDate == null ? null : dateOnly(p.endDate!).difference(_today).inDays;
     final dueColor = daysLeft == null
         ? kBText4
@@ -482,16 +506,28 @@ class _ProjectsViewState extends State<ProjectsView> {
         onTap: () => widget.onOpenProject(p),
         child: Container(
           height: 76,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          padding: EdgeInsets.fromLTRB(20.0 + indent, 0, 20, 0),
+          decoration: BoxDecoration(
+              color: folder ? const Color(0x08FFFFFF) : null,
+              border: const Border(bottom: BorderSide(color: kBLine))),
           child: Row(children: [
             SizedBox(
-              width: 290,
+              width: 290.0 - indent,
               child: Row(children: [
-                Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(color: dColor, shape: BoxShape.circle)),
+                if (folder)
+                  InkWell(
+                    onTap: () => setState(() => open ? _openFolders.remove(p.id) : _openFolders.add(p.id)),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(open ? Icons.expand_more : Icons.chevron_right, size: 18, color: kBText3),
+                    ),
+                  )
+                else
+                  Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: dColor, shape: BoxShape.circle)),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -505,8 +541,10 @@ class _ProjectsViewState extends State<ProjectsView> {
                                 fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
                         const SizedBox(height: 3),
                         Text(
-                          '${domain?.name ?? 'Sans domaine'} · '
-                          '${phase != null ? 'phase ${phase.label}' : 'sans phase'}',
+                          folder
+                              ? '${domain?.name ?? 'Sans domaine'} · dossier · $childCount sous-projet${childCount > 1 ? 's' : ''}'
+                              : '${domain?.name ?? 'Sans domaine'} · '
+                                  '${phase != null ? 'phase ${phase.label}' : 'sans phase'}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, color: kBText3),
@@ -532,7 +570,7 @@ class _ProjectsViewState extends State<ProjectsView> {
                     ]),
               ),
             ),
-            Expanded(child: _nextActionCell(p)),
+            Expanded(child: _nextActionCell(v, folder: folder)),
             SizedBox(
               width: 110,
               child: Column(
@@ -571,9 +609,17 @@ class _ProjectsViewState extends State<ProjectsView> {
     );
   }
 
-  Widget _nextActionCell(Project p) {
+  Widget _nextActionCell(Project p, {bool folder = false}) {
     final next = nextAction(p);
     if (next == null) {
+      // Dossier : les tâches vivent dans les sous-projets, on n'en crée pas ici.
+      if (folder) {
+        return const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Rien d\'ouvert dans les sous-projets',
+              style: TextStyle(fontSize: 12.5, color: kBText4)),
+        );
+      }
       return Align(
         alignment: Alignment.centerLeft,
         child: OutlinedButton.icon(

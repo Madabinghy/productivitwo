@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -49,6 +50,9 @@ enum ProjectPlanTab { vision, plan, realisation }
 
 class ProjectPlanView extends StatefulWidget {
   final Project project;
+  /// Tous les projets (pour résoudre la fiche à jour et composer la vue
+  /// fusionnée d'un dossier client) ; vide = fiche simple.
+  final List<Project> projects;
   final String? targetTaskId;
   final List<Domain> domains;
   final List<Activity> activities;
@@ -62,6 +66,7 @@ class ProjectPlanView extends StatefulWidget {
   const ProjectPlanView({
     super.key,
     required this.project,
+    this.projects = const [],
     this.targetTaskId,
     required this.domains,
     required this.activities,
@@ -87,8 +92,32 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   Map<String, int> _capacity = defaultWeekCapacity();
   DayWindow _window = kDefaultDayWindow;
 
-  Project get _p => widget.project;
+  // Dossier (client) : vue fusionnée de ses sous-projets, recomposée à chaque
+  // rafraîchissement des projets ; enregistrée pour que FirestoreSync
+  // répartisse les écritures. Projet simple : la version à jour de la liste.
+  MergedFolder? _merged;
+  Project get _base =>
+      widget.projects.where((p) => p.id == widget.project.id).firstOrNull ?? widget.project;
+  Project get _p => _merged?.view ?? _base;
+  bool get _isFolder => _merged != null;
   DateTime get _today => dateOnly(DateTime.now());
+
+  void _syncMerged() {
+    final base = _base;
+    if (widget.projects.isNotEmpty && isFolder(base, widget.projects)) {
+      _merged = mergeFolder(base, widget.projects);
+      openMergedFolders[base.id] = _merged!;
+    } else {
+      openMergedFolders.remove(base.id);
+      _merged = null;
+    }
+  }
+
+  @override
+  void didUpdateWidget(ProjectPlanView old) {
+    super.didUpdateWidget(old);
+    if (old.projects != widget.projects || old.project != widget.project) _syncMerged();
+  }
   List<DateTime> get _weekDays => weekDates(weekStart(DateTime.now()));
 
   @override
@@ -98,6 +127,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     // (depuis Aujourd'hui, Cette semaine…) : sa phase est dépliée par
     // `_initExpanded`. Le Gantt reste à un clic (décision 2026-10).
     _tab = ProjectPlanTab.plan;
+    _syncMerged();
     for (final d in _weekDays) {
       final key = ymdOf(d);
       _subs.add(widget.sync.streamDailySchedule(key).listen((s) {
@@ -120,6 +150,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     for (final s in _subs) {
       s.cancel();
     }
+    openMergedFolders.remove(widget.project.id);
     super.dispose();
   }
 
@@ -486,13 +517,23 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
               ),
             ]),
             const SizedBox(height: 3),
-            Text('${_domain?.name ?? 'Sans domaine'} · $range',
+            Text(
+                _isFolder
+                    ? '${_domain?.name ?? 'Sans domaine'} · dossier · ${_merged!.children.length} sous-projet${_merged!.children.length > 1 ? 's' : ''} · $range'
+                    : '${_domain?.name ?? 'Sans domaine'} · $range',
                 style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
           ]),
         ),
         const SizedBox(width: 20),
         _segmented(),
         const SizedBox(width: 12),
+        if (_isFolder)
+          const Tooltip(
+            message: 'Les tâches vivent dans les sous-projets : ouvre une section pour y ajouter une tâche.',
+            child: Text('Vue d\'ensemble des sous-projets',
+                style: TextStyle(fontSize: 12.5, color: kBText3)),
+          )
+        else
         SizedBox(
           height: 40,
           child: FilledButton.icon(
