@@ -304,7 +304,11 @@ rattachement à refaire (mémoire « titre → activité » = piste ultérieure)
 « Pour ce bloc ») signale un bloc qui VIENT de devenir courant pendant un chrono hors source, une fois par
 couple session × bloc, jamais à l'ouverture de l'app. Le web n'affiche jamais « Terminer le bloc » pour un chrono
 hors bloc (état `aside`, comme le mobile). Passage auto en « fait » = mobile mode liste uniquement
-(`_maybeAutoWin`), blocs avec `activityId` ; rien côté serveur.
+(`_maybeAutoWin`), blocs avec `activityId` ; rien côté serveur. **Rattachement après coup** (2026-10) : une session
+TERMINÉE se rattache à un bloc depuis la feuille « Modifier la session » du mobile (ligne « Bloc du programme », feuille
+« Dernières 24 h ») et depuis la carte « Chronos du jour » du web (`web/sessions_card.dart` : voir / corriger début, fin,
+activité / supprimer / rattacher) — candidats triés par chevauchement (`blockCandidatesForSession`, `today_logic.dart`),
+même mutation `attachSessionToBlock` ; côté MCP `update_session {taskId, actionId}` (`""` = détacher).
 
 ---
 
