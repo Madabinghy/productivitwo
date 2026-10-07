@@ -293,11 +293,14 @@ Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, lo
 est recalculé à l'affichage par `sessionMatchesBlock` (tâche du bloc, sinon activité-temps ou activité liée
 de la routine, sinon activité liée du projet ; l'action n'est pas regardée). Au `start()` d'un chrono, si le
 bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
-est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` (la session prend la
-tâche/action du bloc et bascule sur son activité-temps). Même action après coup : menu « Bloc ▾ » de la carte
-mobile, pilule « Pour ce bloc » de la carte web. **Bloc libre** (miroir Google Agenda, bloc perso, projet sans
-activité liée) : c'est le BLOC qui prend l'activité du chrono (`attachTargetFor` → `attachBlockToSession`,
-persisté par `upsertScheduleBlock`, qui fusionne pour garder `subtitle` des miroirs) ; la resync Google ne
+est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` → `AttachResult`. **Le chrono
+fait foi** (2026-10) : la session GARDE son activité (c'est elle qui alimente les stats, l'utilisateur l'a choisie)
+et prend la tâche/action du bloc ; un bloc **sans tâche** sur une autre activité ou **libre** (miroir Google Agenda,
+bloc perso, projet sans activité liée) prend l'activité du chrono (`AttachResult.sessionAndBlock`, persisté par
+`upsertScheduleBlock`, qui fusionne pour garder `subtitle` des miroirs) ; seule exception, un bloc de ROUTINE fait
+basculer la session sur l'activité liée de la routine. Plusieurs sessions peuvent viser un même bloc (le lien vit
+sur chaque session) ; limite : un bloc sans tâche ne reconnaît que la dernière activité rattachée. Même action
+après coup : menu « Bloc ▾ » de la carte mobile, pilule « Pour ce bloc » de la carte web. La resync Google ne
 touche qu'heure/durée/titre, le lien survit. Un miroir d'événement récurrent change d'id chaque occurrence :
 rattachement à refaire (mémoire « titre → activité » = piste ultérieure). **Réveil au changement de bloc** : `BlockTransitionWatcher`
 (tick minute `AppLogic.tickBlockTransition` côté mobile → même feuille ; ticker de `TodayView` web → SnackBar
