@@ -115,6 +115,23 @@ void main() {
     expect(g.single.actions.single.title, 'y');
   });
 
+  test('overdueActionCount : actions ouvertes des tâches échues, projets vivants seulement', () {
+    final today = DateTime(2026, 10, 7);
+    ProjectTask task(String id, String end, List<TaskAction> actions, {String status = 'pending'}) =>
+        ProjectTask(id: id, title: id, startDate: DateTime(2026, 10, 1), endDate: DateTime.parse(end),
+            actions: actions, status: status);
+    final live = _p('live', [
+      task('late', '2026-10-05', [_a('a'), _a('b', done: true)]),
+      task('today', '2026-10-07', [_a('c')]),
+      task('future', '2026-10-20', [_a('d')]),
+      task('doneLate', '2026-10-01', [_a('e')], status: 'done'),
+    ]);
+    final paused = _p('paused', [task('late', '2026-10-05', [_a('x')])], paused: true);
+    final noDue = _p('noDue', [_t('t', '2026-09-01', [_a('y')])]);
+    expect(overdueActionCount([live, paused, noDue], today), 1);
+    expect(overdueActionCount([], today), 0);
+  });
+
   group('clients (projets racines)', () {
     Project proj(String id, {String? parent, List<ProjectTask>? tasks, bool paused = false}) => Project(
         id: id,

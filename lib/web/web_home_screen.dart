@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount;
 import 'package:productivitwo_v1/web/help_sheet.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/assistant_widget.dart';
@@ -309,6 +310,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
             isDemo: widget.isDemo,
             hasAssistantMessages: _assistantMessages.isNotEmpty,
             autoPlan: _autoPlan,
+            overdueCount: overdueActionCount(_projects, DateTime.now()),
             onMyCoach: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSpaceScreen())),
             onMenu: _onMenu,
