@@ -1010,6 +1010,22 @@ const PLAN_PREP_TOOL = {
   },
 };
 
+const WEEKLY_REVIEW_TOOL = {
+  name: "weekly_review",
+  description:
+    "Revue hebdo des orphelins (à lancer le dimanche, avant plan_week) : tâches sans phase ou hors des dates de leur " +
+    "phase, jalons passés non cochés, clôtures non faites, projets en veille / archivés qui portent encore des séances à " +
+    "venir, projets actifs sans séance à 14 jours (mise en veille à proposer), doublons de projets (titre proche + même " +
+    "période), triplets 📝 / 🎯 / ✅ non migrés. Ne modifie RIEN : chaque point vient avec l'appel qui le corrige, à " +
+    "soumettre à l'utilisateur.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      horizonDays: { type: "number", description: "horizon « sans séance » (défaut 14)" },
+    },
+  },
+};
+
 const DELETE_INTERVENTION_TOOL = {
   name: "delete_intervention",
   description:
@@ -1325,6 +1341,7 @@ ADD_INTERVENTION_TOOL,
 UPDATE_INTERVENTION_TOOL,
 DELETE_INTERVENTION_TOOL,
 PLAN_PREP_TOOL,
+WEEKLY_REVIEW_TOOL,
 MANAGE_INTERVENTION_TEMPLATES_TOOL,
 MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,

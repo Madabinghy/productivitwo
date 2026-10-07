@@ -95,3 +95,12 @@ Logique pure serveur : `functions/src/interventions.ts` (tests `functions/test/i
    (`projectId` + `taskId` de la 📝 + `actionId`). Une action sans trou est signalée avec deux créneaux de repli.
    Web : bouton « Planifier la prépa avec Claude » sur la tâche 📝 dans Réalisation (`planPrepPrompt`,
    `claude_link.dart`) — Claude propose, l'utilisateur valide, Claude relance avec `apply:true`.
+5. **Revue hebdo des orphelins** (§ 2.5 + B5 + B7, livré) : outil MCP `weekly_review(horizonDays?)`, logique pure
+   `functions/src/project_audit.ts` (tests `project_audit.test.mjs`). Ne modifie rien : chaque constat vient avec
+   l'appel qui le corrige. Constats : tâches sans phase · tâches hors des dates de leur phase · jalons passés non
+   cochés · clôtures non faites · projets en veille / archivés avec des séances à venir (B5) · projets actifs sans
+   séance à 14 jours (mise en veille à proposer, règle d'usage § 5 du brief ; dossiers et projets sans jalon
+   ignorés) · doublons de projets (B7 : ≥ 60 % de mots utiles communs, « 6e » / « cm1 » comptent, périodes qui se
+   chevauchent) · triplets non migrés. `plan_week` demande la revue en étape 0 (la tâche programmée « Préparer la
+   semaine » l'exécute donc chaque dimanche). `archive_project` avertit des séances à venir (B5) ; `push_gantt`
+   signale un doublon probable à la création (B7).

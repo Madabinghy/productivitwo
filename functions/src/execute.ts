@@ -7,6 +7,7 @@ import {
   attachTask, detachAll, mergeInterventions, netSlotMin,
 } from "./interventions";
 import { planPrep, addDays as addDaysYmd } from "./prep_planner";
+import { auditProjects, formatFindings, similarProjects, upcomingSessions, AuditProject } from "./project_audit";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
   contextsOf,
@@ -1343,9 +1344,10 @@ async function executeArchiveProject(uid: string, projectId: string, restore: bo
   const title = snap.data()?.title ?? projectId;
   const newStatus = restore ? "active" : "archived";
   await ref.update({ status: newStatus, updatedAt: FieldValue.serverTimestamp() });
-  return restore
-    ? `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`
-    : `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.`;
+  if (restore) return `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`;
+  // B5 : archiver un projet qui porte encore des séances à venir n'est pas silencieux.
+  const warn = await upcomingWarning(uid, projectId, snap.data() as AnyRec);
+  return `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.${warn}`;
 }
 
 async function executeDeleteProject(
@@ -1473,6 +1475,19 @@ async function executePushGantt(
   }
 
   const isUpdate = !!project.id;
+  // B7 : à la création, signaler un projet actif au titre proche sur la même période.
+  let dupWarning = "";
+  if (!isUpdate) {
+    try {
+      const all = (await loadAuditProjects(uid)).filter((p) => p.status === "active" && !p.paused && p.id !== projectId);
+      const me = toAuditProject(projectId, { ...pickedProject, status: "active" });
+      const twins = similarProjects(me, all);
+      if (twins.length) {
+        dupWarning = `⚠️ Doublon possible : ${twins.map((t) => `« ${t.title} » (${t.id})`).join(", ")} couvre la même période avec un titre proche. ` +
+          `Si c'est le même projet, fusionne (déplace les tâches puis archive_project) ou rattache l'un à l'autre (update_project parentProjectId).\n`;
+      }
+    } catch { /* la détection ne doit jamais bloquer la création */ }
+  }
   const pickedPhaseIds = new Set(
     ((pickedProject.phases as Array<Record<string, unknown>>) ?? []).map((p) => String(p.id)));
   const unphased = ((pickedProject.tasks as Array<Record<string, unknown>>) ?? [])
@@ -1493,7 +1508,7 @@ async function executePushGantt(
         ? "brouillon (à valider dans l'app)" : "actif"}\n`;
   return (
     `✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
-    verboseWarning + phaseWarning +
+    verboseWarning + phaseWarning + dupWarning +
     `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
     statusLine +
     `• Voir sur : https://app.productivitwo.com\n` +
@@ -2634,6 +2649,8 @@ async function executePlanWeek(
     ``,
     `══════════════════════════════════════════`,
     `WORKFLOW :`,
+    `0. Revue des orphelins : appelle weekly_review() et soumets ses points à l'utilisateur AVANT de planifier`,
+    `   (jalons passés non cochés, clôtures en retard, projets à mettre en veille, doublons) — rien n'est modifié sans son accord.`,
     `1. Répartir les tâches Gantt sur les 5 jours (deadline proche = premier)`,
     `2. Max ~6h de travail projet par jour · inclure routines matin/soir`,
     `   → BATCHING GTD : regroupe en séquences adjacentes les blocs dont les actions partagent le même "context" (@maison, @courses…)`,
@@ -3327,6 +3344,46 @@ async function executePlanPrep(
 }
 
 const fromMinHm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+// ── Revue hebdo des orphelins (§ 2.5 + B5 + B7) ──────────────────────────────
+
+function toAuditProject(id: string, d: AnyRec): AuditProject {
+  return {
+    id,
+    title: String(d.title ?? id),
+    status: String(d.status ?? "active"),
+    paused: d.paused === true,
+    startDate: typeof d.startDate === "string" ? d.startDate : undefined,
+    endDate: typeof d.endDate === "string" ? d.endDate : undefined,
+    parentProjectId: typeof d.parentProjectId === "string" ? d.parentProjectId : null,
+    phases: sanitizeTasks(d.phases),
+    tasks: sanitizeTasks(d.tasks),
+    interventions: sanitizeTasks(d.interventions),
+  };
+}
+
+async function loadAuditProjects(uid: string): Promise<AuditProject[]> {
+  const snap = await db.collection(`users/${uid}/projects`).get();
+  return snap.docs.map((doc) => toAuditProject(doc.id, doc.data() as AnyRec));
+}
+
+/** Revue à valider : tâches sans phase / hors phase, jalons passés, clôtures
+ *  non faites, projets inactifs avec séances à venir, projets sans séance à
+ *  14 jours, doublons, triplets non migrés. Ne modifie rien. */
+async function executeWeeklyReview(uid: string, args: { horizonDays?: number } = {}): Promise<string> {
+  const projects = await loadAuditProjects(uid);
+  const today = todayInParis();
+  const findings = auditProjects(projects, today, { horizonDays: args.horizonDays });
+  return formatFindings(findings, today);
+}
+
+/** B5 : séances à venir d'un projet qu'on archive — à signaler, pas à taire. */
+async function upcomingWarning(uid: string, projectId: string, data: AnyRec): Promise<string> {
+  const up = upcomingSessions(toAuditProject(projectId, data), todayInParis());
+  if (!up.length) return "";
+  return `\n⚠️ ${up.length} séance(s) à venir dans ce projet : ${up.slice(0, 4).map((u) => `${u.date} « ${u.title} »`).join(" · ")}${up.length > 4 ? "…" : ""}. ` +
+    `Annule-les (update_intervention status:"cancelled" / update_task_status skipped) ou réactive le projet si elles ont lieu — la revue hebdo (weekly_review) le rappellera.`;
+}
 
 async function executeMigrateInterventions(
   uid: string,
@@ -4039,6 +4096,7 @@ export {
   executeUpdateIntervention,
   executeDeleteIntervention,
   executePlanPrep,
+  executeWeeklyReview,
   executeManageInterventionTemplates,
   executeMigrateInterventions,
   executeListSessions,

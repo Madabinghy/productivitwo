@@ -6,6 +6,7 @@ exports.executeAddIntervention = executeAddIntervention;
 exports.executeUpdateIntervention = executeUpdateIntervention;
 exports.executeDeleteIntervention = executeDeleteIntervention;
 exports.executePlanPrep = executePlanPrep;
+exports.executeWeeklyReview = executeWeeklyReview;
 exports.executeManageInterventionTemplates = executeManageInterventionTemplates;
 exports.executeMigrateInterventions = executeMigrateInterventions;
 exports.executeListSessions = executeListSessions;
@@ -85,6 +86,7 @@ const phase_resolve_1 = require("./phase_resolve");
 const schedule_dedupe_2 = require("./schedule_dedupe");
 const interventions_1 = require("./interventions");
 const prep_planner_1 = require("./prep_planner");
+const project_audit_1 = require("./project_audit");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
@@ -1206,9 +1208,11 @@ async function executeArchiveProject(uid, projectId, restore) {
     const title = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.title) !== null && _b !== void 0 ? _b : projectId;
     const newStatus = restore ? "active" : "archived";
     await ref.update({ status: newStatus, updatedAt: db_1.FieldValue.serverTimestamp() });
-    return restore
-        ? `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`
-        : `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.`;
+    if (restore)
+        return `✅ Projet "${title}" réactivé — il apparaît à nouveau dans le focus.`;
+    // B5 : archiver un projet qui porte encore des séances à venir n'est pas silencieux.
+    const warn = await upcomingWarning(uid, projectId, snap.data());
+    return `✅ Projet "${title}" mis en veille — visible dans la section Archives du web app.${warn}`;
 }
 async function executeDeleteProject(uid, projectId, deleteObjective) {
     var _a;
@@ -1300,6 +1304,20 @@ opts) {
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
     }
     const isUpdate = !!project.id;
+    // B7 : à la création, signaler un projet actif au titre proche sur la même période.
+    let dupWarning = "";
+    if (!isUpdate) {
+        try {
+            const all = (await loadAuditProjects(uid)).filter((p) => p.status === "active" && !p.paused && p.id !== projectId);
+            const me = toAuditProject(projectId, Object.assign(Object.assign({}, pickedProject), { status: "active" }));
+            const twins = (0, project_audit_1.similarProjects)(me, all);
+            if (twins.length) {
+                dupWarning = `⚠️ Doublon possible : ${twins.map((t) => `« ${t.title} » (${t.id})`).join(", ")} couvre la même période avec un titre proche. ` +
+                    `Si c'est le même projet, fusionne (déplace les tâches puis archive_project) ou rattache l'un à l'autre (update_project parentProjectId).\n`;
+            }
+        }
+        catch ( /* la détection ne doit jamais bloquer la création */_d) { /* la détection ne doit jamais bloquer la création */ }
+    }
     const pickedPhaseIds = new Set(((_a = pickedProject.phases) !== null && _a !== void 0 ? _a : []).map((p) => String(p.id)));
     const unphased = ((_b = pickedProject.tasks) !== null && _b !== void 0 ? _b : [])
         .filter((t) => { var _a; return pickedPhaseIds.size > 0 && !pickedPhaseIds.has(String((_a = t.phaseId) !== null && _a !== void 0 ? _a : "")); });
@@ -1318,7 +1336,7 @@ opts) {
         : `• statut : ${(opts === null || opts === void 0 ? void 0 : opts.draftOnCreate)
             ? "brouillon (à valider dans l'app)" : "actif"}\n`;
     return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
-        verboseWarning + phaseWarning +
+        verboseWarning + phaseWarning + dupWarning +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         statusLine +
         `• Voir sur : https://app.productivitwo.com\n` +
@@ -2356,6 +2374,8 @@ async function executePlanWeek(uid, args) {
         ``,
         `══════════════════════════════════════════`,
         `WORKFLOW :`,
+        `0. Revue des orphelins : appelle weekly_review() et soumets ses points à l'utilisateur AVANT de planifier`,
+        `   (jalons passés non cochés, clôtures en retard, projets à mettre en veille, doublons) — rien n'est modifié sans son accord.`,
         `1. Répartir les tâches Gantt sur les 5 jours (deadline proche = premier)`,
         `2. Max ~6h de travail projet par jour · inclure routines matin/soir`,
         `   → BATCHING GTD : regroupe en séquences adjacentes les blocs dont les actions partagent le même "context" (@maison, @courses…)`,
@@ -3020,6 +3040,43 @@ async function executePlanPrep(uid, args) {
     return out.join("\n");
 }
 const fromMinHm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+// ── Revue hebdo des orphelins (§ 2.5 + B5 + B7) ──────────────────────────────
+function toAuditProject(id, d) {
+    var _a, _b;
+    return {
+        id,
+        title: String((_a = d.title) !== null && _a !== void 0 ? _a : id),
+        status: String((_b = d.status) !== null && _b !== void 0 ? _b : "active"),
+        paused: d.paused === true,
+        startDate: typeof d.startDate === "string" ? d.startDate : undefined,
+        endDate: typeof d.endDate === "string" ? d.endDate : undefined,
+        parentProjectId: typeof d.parentProjectId === "string" ? d.parentProjectId : null,
+        phases: sanitizeTasks(d.phases),
+        tasks: sanitizeTasks(d.tasks),
+        interventions: sanitizeTasks(d.interventions),
+    };
+}
+async function loadAuditProjects(uid) {
+    const snap = await db_1.db.collection(`users/${uid}/projects`).get();
+    return snap.docs.map((doc) => toAuditProject(doc.id, doc.data()));
+}
+/** Revue à valider : tâches sans phase / hors phase, jalons passés, clôtures
+ *  non faites, projets inactifs avec séances à venir, projets sans séance à
+ *  14 jours, doublons, triplets non migrés. Ne modifie rien. */
+async function executeWeeklyReview(uid, args = {}) {
+    const projects = await loadAuditProjects(uid);
+    const today = todayInParis();
+    const findings = (0, project_audit_1.auditProjects)(projects, today, { horizonDays: args.horizonDays });
+    return (0, project_audit_1.formatFindings)(findings, today);
+}
+/** B5 : séances à venir d'un projet qu'on archive — à signaler, pas à taire. */
+async function upcomingWarning(uid, projectId, data) {
+    const up = (0, project_audit_1.upcomingSessions)(toAuditProject(projectId, data), todayInParis());
+    if (!up.length)
+        return "";
+    return `\n⚠️ ${up.length} séance(s) à venir dans ce projet : ${up.slice(0, 4).map((u) => `${u.date} « ${u.title} »`).join(" · ")}${up.length > 4 ? "…" : ""}. ` +
+        `Annule-les (update_intervention status:"cancelled" / update_task_status skipped) ou réactive le projet si elles ont lieu — la revue hebdo (weekly_review) le rappellera.`;
+}
 async function executeMigrateInterventions(uid, args) {
     const dryRun = args.dryRun !== false;
     const col = db_1.db.collection(`users/${uid}/projects`);
