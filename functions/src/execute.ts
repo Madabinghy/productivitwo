@@ -4,6 +4,7 @@ import { nearestFreeSlot } from "./schedule_dedupe";
 import {
   DEFAULT_TEMPLATE, InterventionTemplate, TemplateAction, buildIntervention, buildInterventionTasks,
   shiftTasks, retitleTasks, applyCarryOver, detectTriplets, applyTriplet, validateInput, dayLabelFr, hmFr,
+  attachTask, detachAll, mergeInterventions, netSlotMin,
 } from "./interventions";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
@@ -1544,7 +1545,8 @@ async function executeUpdateTask(
   const data = snap.data() as Record<string, unknown>;
   // Sanitize Timestamps → ISO strings pour éviter les erreurs de re-sérialisation
   const rawTasks = (data.tasks || []) as Array<Record<string, unknown>>;
-  const tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) =>
+  let interventionNote = "";
+  let tasks = rawTasks.map((t) => JSON.parse(JSON.stringify(t, (_k, v) =>
     v && typeof v === "object" && typeof v.toDate === "function"
       ? v.toDate().toISOString()
       : v
@@ -1636,12 +1638,26 @@ async function executeUpdateTask(
       });
     }
     tasks[idx] = { ...tasks[idx], ...patch };
+    // Rattachement à une intervention (spec 2026-10) : "" = détacher ; un rôle
+    // principal déjà tenu = refus nommant la tâche en place ; dates intactes.
+    const u = updates as Record<string, unknown>;
+    if (u.interventionId !== undefined) {
+      const r = attachTask(tasks, sanitizeTasks(data.interventions), taskId,
+        String(u.interventionId ?? ""), u.interventionRole as string | undefined);
+      tasks = r.tasks;
+      interventionNote = ` · ${r.note}`;
+    } else if (u.interventionRole !== undefined && tasks[idx].interventionId) {
+      const r = attachTask(tasks, sanitizeTasks(data.interventions), taskId,
+        String(tasks[idx].interventionId), u.interventionRole as string);
+      tasks = r.tasks;
+      interventionNote = ` · rôle ${u.interventionRole}`;
+    }
   } catch (e) {
     return `❌ Mise à jour invalide : ${e instanceof Error ? e.message : String(e)}`;
   }
 
   await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
-  return `✅ Tâche "${tasks[idx].title}" mise à jour.`;
+  return `✅ Tâche "${tasks[idx].title}" mise à jour.${interventionNote}`;
 }
 
 async function executeMarkActionDone(
@@ -3109,19 +3125,30 @@ async function executeUpdateIntervention(
   args: {
     projectId: string; interventionId: string; title?: string; date?: string; startTime?: string; endTime?: string;
     place?: string | null; docUrl?: string | null; status?: string; debriefText?: string; carryOver?: string[];
+    mergeFrom?: string;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/projects`).doc(args.projectId);
   const snap = await ref.get();
   if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
   const data = snap.data() as AnyRec;
-  const interventions = sanitizeTasks(data.interventions);
+  let interventions = sanitizeTasks(data.interventions);
+  let tasks = sanitizeTasks(data.tasks);
+  const notes: string[] = [];
+  if (args.mergeFrom) {
+    try {
+      const r = mergeInterventions(tasks, interventions, args.interventionId, args.mergeFrom);
+      tasks = r.tasks; interventions = r.interventions;
+      for (const m of r.moved) {
+        notes.push(`fusion : « ${m.task.title} » → ${m.role}${m.demoted ? " (rôle principal déjà tenu → extra)" : ""}`);
+      }
+      notes.push(`intervention ${args.mergeFrom} retirée`);
+    } catch (e) { return `❌ ${e instanceof Error ? e.message : e}`; }
+  }
   const idx = interventions.findIndex((i) => i.id === args.interventionId);
   if (idx < 0) return `Intervention introuvable : ${args.interventionId} (voir get_project → interventions)`;
-  let tasks = sanitizeTasks(data.tasks);
   const before = interventions[idx];
   const after: AnyRec = { ...before };
-  const notes: string[] = [];
 
   if (args.title !== undefined) after.title = clampStr(args.title, 200, "title");
   if (args.date !== undefined) { assertDate(args.date, "date"); after.date = args.date; }
@@ -3142,7 +3169,7 @@ async function executeUpdateIntervention(
       if (t.interventionId !== after.id || t.interventionRole !== "session") return t;
       const acts = ((t.actions as AnyRec[]) ?? []).map((a, i) => i === 0
         ? { ...a, title: `Dérouler la séance (${hmFr(String(after.startTime))}–${hmFr(String(after.endTime))})`,
-            estimatedMin: (() => { const [h1, m1] = String(after.startTime).split(":").map(Number); const [h2, m2] = String(after.endTime).split(":").map(Number); return (h2 * 60 + m2) - (h1 * 60 + m1); })() }
+            estimatedMin: netSlotMin({ startTime: String(after.startTime), endTime: String(after.endTime), breaks: (after.breaks as Array<{ start: string; end: string }> | undefined) ?? [] }) }
         : a);
       return { ...t, actions: acts };
     });
@@ -3177,9 +3204,44 @@ async function executeUpdateIntervention(
     (notes.length ? `\n• ${notes.join("\n• ")}` : "");
 }
 
+async function executeDeleteIntervention(
+  uid: string,
+  args: { projectId: string; interventionId: string; tasks?: string }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(args.projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
+  const data = snap.data() as AnyRec;
+  const interventions = sanitizeTasks(data.interventions);
+  const target = interventions.find((i) => i.id === args.interventionId);
+  if (!target) return `Intervention introuvable : ${args.interventionId}`;
+  const mode = args.tasks ?? "detach";
+  if (!["detach", "cancel", "delete"].includes(mode)) return `❌ tasks invalide : ${mode} (detach | cancel | delete)`;
+  let tasks = sanitizeTasks(data.tasks);
+  const lines: string[] = [];
+  if (mode === "detach") {
+    const r = detachAll(tasks, String(target.id));
+    tasks = r.tasks;
+    for (const t of r.touched) lines.push(`• « ${t.title} » (${t.id}) : détachée, inchangée${t.isMilestone ? " (redevient un jalon simple)" : ""}`);
+  } else if (mode === "cancel") {
+    for (const t of tasks) if (t.interventionId === target.id) lines.push(`• « ${t.title} » (${t.id}) : ${t.status === "done" ? "déjà faite, conservée" : "passée en skipped"}`);
+    tasks = tasks.map((t) => t.interventionId === target.id && t.status !== "done" ? { ...t, status: "skipped" } : t);
+  } else {
+    for (const t of tasks) if (t.interventionId === target.id) lines.push(`• « ${t.title} » (${t.id}) : supprimée`);
+    tasks = tasks.filter((t) => t.interventionId !== target.id);
+  }
+  await ref.update({
+    interventions: interventions.filter((i) => i.id !== target.id),
+    tasks,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return `✅ Intervention « ${target.title} » (${dayLabelFr(String(target.date))}) supprimée — tâches : ${mode}\n` +
+    (lines.length ? lines.join("\n") : "• aucune tâche liée");
+}
+
 async function executeMigrateInterventions(
   uid: string,
-  args: { projectId?: string; dryRun?: boolean; defaultStart?: string; defaultEnd?: string }
+  args: { projectId?: string; dryRun?: boolean; defaultStart?: string; defaultEnd?: string; includeOrphans?: boolean }
 ): Promise<string> {
   const dryRun = args.dryRun !== false;
   const col = db.collection(`users/${uid}/projects`);
@@ -3194,24 +3256,28 @@ async function executeMigrateInterventions(
   for (const d of docs) {
     const data = d.data() as AnyRec;
     let tasks = sanitizeTasks(data.tasks);
-    const found = detectTriplets(tasks, {
+    const { triplets: found, warnings } = detectTriplets(tasks, {
       description: typeof data.description === "string" ? data.description : "",
-      defaultStart: args.defaultStart, defaultEnd: args.defaultEnd,
+      defaultStart: args.defaultStart, defaultEnd: args.defaultEnd, includeOrphans: args.includeOrphans === true,
     });
-    if (!found.length) continue;
+    if (!found.length && !warnings.length) continue;
     total += found.length;
     out.push(`\n${data.title} (${d.id}) — ${found.length} intervention(s) :`);
     const created: AnyRec[] = [];
     for (const t of found) {
       const flag = t.timeSource === "default" ? " ⚠️ créneau par défaut (passe defaultStart/defaultEnd ou corrige après avec update_intervention)" : "";
-      out.push(`• ${t.date} ${hmFr(t.startTime)}–${hmFr(t.endTime)} « ${t.groupLabel} » — 📝 ${t.prep ? "oui" : "—"} · ✅ ${t.closure ? "oui" : "—"}${flag}`);
+      const pauses = t.breaks.length ? ` (pause ${t.breaks.map((b) => `${hmFr(b.start)}–${hmFr(b.end)}`).join(", ")})` : "";
+      const extras = t.extras.length ? ` · +${t.extras.length} 🏁 le même jour (extra)` : "";
+      const orphan = t.orphan ? " · orphelin (ni 📝 ni ✅)" : "";
+      out.push(`• ${t.date} ${hmFr(t.startTime)}–${hmFr(t.endTime)}${pauses} « ${t.groupLabel} » — 📝 ${t.prep ? "oui" : "—"} · ✅ ${t.closure ? "oui" : "—"}${extras}${orphan}${flag}`);
       if (!dryRun) {
         const r = applyTriplet(tasks, t);
         tasks = r.tasks;
         created.push(r.intervention);
       }
     }
-    if (!dryRun) {
+    for (const w of warnings) out.push(`⚠️ ${w.text}`);
+    if (!dryRun && created.length) {
       await col.doc(d.id).update({
         interventions: FieldValue.arrayUnion(...created),
         tasks,
@@ -3219,7 +3285,7 @@ async function executeMigrateInterventions(
       });
     }
   }
-  if (!total) out.push("Aucun triplet 📝 / 🎯 / ✅ non migré trouvé.");
+  if (!total) out.push("Aucun triplet 📝 / 🎯 / ✅ non migré trouvé (jalons seuls ignorés : includeOrphans:true pour les migrer).");
   return out.join("\n");
 }
 
@@ -3882,6 +3948,7 @@ export {
   withBothContexts,
   executeAddIntervention,
   executeUpdateIntervention,
+  executeDeleteIntervention,
   executeManageInterventionTemplates,
   executeMigrateInterventions,
   executeListSessions,

@@ -10,7 +10,11 @@ import { v4 as uuidv4 } from "uuid";
 
 type AnyRec = Record<string, unknown>;
 
-export type Role = "prep" | "session" | "closure";
+export type Role = "prep" | "session" | "closure" | "extra";
+/** Rôles PRINCIPAUX (un seul par intervention) ; `extra` = tâche secondaire
+ *  rattachée (évaluation 🏁 le jour de la séance, tâche fusionnée en conflit…). */
+export const PRIMARY_ROLES: Role[] = ["prep", "session", "closure"];
+export const ROLES: Role[] = [...PRIMARY_ROLES, "extra"];
 
 export interface TemplateAction {
   title: string;
@@ -295,12 +299,45 @@ export const isClosureTask = (t: AnyRec) => lead(t, /^✅/);
 
 const TIME_RE = /(\d{1,2})\s?h\s?(\d{0,2})\s*(?:–|-|—|à)\s*(\d{1,2})\s?h\s?(\d{0,2})/;
 
-/** « 13h15–15h00 » → { "13:15", "15:00" } depuis un texte libre. */
+const padHm = (h: string, mm: string) => `${h.padStart(2, "0")}:${(mm || "00").padStart(2, "0")}`;
+
+/** Toutes les plages « 8h30–12h30 + 13h30–16h30 » d'un texte, dans l'ordre. */
+export function parseTimeRanges(text: string): Array<{ startTime: string; endTime: string }> {
+  const out: Array<{ startTime: string; endTime: string }> = [];
+  const re = new RegExp(TIME_RE.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    out.push({ startTime: padHm(m[1], m[2]), endTime: padHm(m[3], m[4]) });
+  }
+  return out;
+}
+
+export interface Slot { startTime: string; endTime: string; breaks: Array<{ start: string; end: string }> }
+
+/** Créneau global d'une liste de plages : début de la première, fin de la
+ *  dernière, pauses entre deux plages (ex. midi). Null sans plage. */
+export function slotFromRanges(ranges: Array<{ startTime: string; endTime: string }>): Slot | null {
+  if (!ranges.length) return null;
+  const sorted = [...ranges].sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
+  const breaks: Array<{ start: string; end: string }> = [];
+  for (let i = 1; i < sorted.length; i++) {
+    if (toMin(sorted[i].startTime) > toMin(sorted[i - 1].endTime)) {
+      breaks.push({ start: sorted[i - 1].endTime, end: sorted[i].startTime });
+    }
+  }
+  return { startTime: sorted[0].startTime, endTime: sorted[sorted.length - 1].endTime, breaks };
+}
+
+/** « 13h15–15h00 » → { "13:15", "15:00" } (première plage) depuis un texte libre. */
 export function parseTimeRange(text: string): { startTime: string; endTime: string } | null {
-  const m = TIME_RE.exec(text);
-  if (!m) return null;
-  const pad = (h: string, mm: string) => `${h.padStart(2, "0")}:${(mm || "00").padStart(2, "0")}`;
-  return { startTime: pad(m[1], m[2]), endTime: pad(m[3], m[4]) };
+  return parseTimeRanges(text)[0] ?? null;
+}
+
+/** Durée nette (minutes) hors pauses. */
+export function netSlotMin(slot: { startTime: string; endTime: string; breaks?: Array<{ start: string; end: string }> }): number {
+  const total = slotMin(slot.startTime, slot.endTime);
+  const pauses = (slot.breaks ?? []).reduce((n, b) => n + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
+  return Math.max(0, total - pauses);
 }
 
 export interface DetectedTriplet {
@@ -308,50 +345,141 @@ export interface DetectedTriplet {
   session: AnyRec;
   prep?: AnyRec;
   closure?: AnyRec;
+  /** Tâches secondaires rattachées (🏁 du même jour). */
+  extras: AnyRec[];
   date: string;
   startTime: string;
   endTime: string;
+  breaks: Array<{ start: string; end: string }>;
   timeSource: "task" | "description" | "default";
+  /** Jalon sans 📝 ni ✅ (migré seulement avec includeOrphans). */
+  orphan: boolean;
 }
 
-/** Repère les interventions implicites : un jalon (non annulé, non déjà tagué)
- *  + sa 📝 et sa ✅ de même groupLabel. Le créneau vient de l'action du jalon,
- *  sinon de la description du projet, sinon du défaut donné. */
+export interface DetectionWarning { kind: "unpaired_prep" | "unpaired_closure" | "same_day"; text: string }
+
+const MONTHS_FR: Record<string, number> = {
+  janv: 1, jan: 1, janvier: 1, fev: 2, fevr: 2, fevrier: 2, mars: 3, mar: 3, avr: 4, avril: 4, mai: 5, juin: 6,
+  juil: 7, juillet: 7, aout: 8, sept: 9, sep: 9, septembre: 9, oct: 10, octobre: 10, nov: 11, novembre: 11,
+  dec: 12, decembre: 12,
+};
+
+/** Repères d'un titre : « J3 » → j3 ; « 23/11 », « 15 oct » → d-m. */
+export function titleHints(title: string): Set<string> {
+  const t = String(title ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const out = new Set<string>();
+  for (const m of t.matchAll(/\bj\s?(\d{1,2})\b/g)) out.add(`j${Number(m[1])}`);
+  for (const m of t.matchAll(/\b(\d{1,2})\s*\/\s*(\d{1,2})\b/g)) out.add(`${Number(m[1])}-${Number(m[2])}`);
+  for (const m of t.matchAll(/\b(\d{1,2})(?:er)?\s+([a-z]{3,9})\.?\b/g)) {
+    const mo = MONTHS_FR[m[2]];
+    if (mo) out.add(`${Number(m[1])}-${mo}`);
+  }
+  return out;
+}
+
+/** Repères d'un jalon : ceux de son titre + sa date. */
+function sessionHints(m: AnyRec, date: string): Set<string> {
+  const h = titleHints(String(m.title ?? ""));
+  const [, mo, d] = date.split("-").map(Number);
+  h.add(`${d}-${mo}`);
+  return h;
+}
+
+const sharesHint = (a: Set<string>, b: Set<string>) => [...a].some((k) => b.has(k));
+const ymd = (v: unknown) => String(v ?? "").slice(0, 10);
+
+/**
+ * Repère les interventions implicites. Par `groupLabel` : chaque jalon 🎯 est
+ * apparié à la 📝 et à la ✅ qui l'encadrent dans le temps (📝 : endDate la
+ * plus proche avant ; ✅ : startDate la plus proche à partir du jalon), un
+ * repère de titre commun (« J3 », « 15 oct ») primant sur la proximité ;
+ * chaque tâche ne sert qu'une fois. Un 🏁 le jour d'un 🎯 du même groupe
+ * devient une tâche secondaire (`extra`) ; un 🏁 seul n'est pas une séance.
+ * Un jalon sans 📝 ni ✅ est un orphelin (ignoré sauf includeOrphans).
+ */
 export function detectTriplets(
   tasks: AnyRec[],
-  opts: { description?: string; defaultStart?: string; defaultEnd?: string } = {}
-): DetectedTriplet[] {
-  const out: DetectedTriplet[] = [];
-  for (const m of tasks) {
-    if (m.status === "skipped" || m.interventionId || !isSessionTask(m)) continue;
-    const g = String(m.groupLabel ?? "").trim();
-    const siblings = g ? tasks.filter((t) => t !== m && !t.interventionId && String(t.groupLabel ?? "").trim() === g) : [];
-    const fromTask = parseTimeRange([...((m.actions as AnyRec[]) ?? []).map((a) => String(a.title ?? "")), String(m.title ?? "")].join(" "));
-    const fromDesc = fromTask ? null : parseTimeRange(opts.description ?? "");
-    const slot = fromTask ?? fromDesc ?? { startTime: opts.defaultStart ?? "09:00", endTime: opts.defaultEnd ?? "12:00" };
-    out.push({
-      groupLabel: g || String(m.title).replace(/^(🎯|🏁)\s*/, ""),
-      session: m,
-      prep: siblings.find((t) => t.status !== "skipped" && isPrepTask(t)),
-      closure: siblings.find((t) => t.status !== "skipped" && isClosureTask(t)),
-      date: String(m.endDate ?? m.startDate).slice(0, 10),
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      timeSource: fromTask ? "task" : fromDesc ? "description" : "default",
-    });
+  opts: { description?: string; defaultStart?: string; defaultEnd?: string; includeOrphans?: boolean } = {}
+): { triplets: DetectedTriplet[]; warnings: DetectionWarning[] } {
+  const live = tasks.filter((t) => t.status !== "skipped" && !t.interventionId);
+  const groups = new Map<string, AnyRec[]>();
+  for (const t of live) {
+    const g = String(t.groupLabel ?? "").trim() || `__${t.id}`;
+    groups.set(g, [...(groups.get(g) ?? []), t]);
   }
-  return out.sort((a, b) => a.date.localeCompare(b.date));
+  const triplets: DetectedTriplet[] = [];
+  const warnings: DetectionWarning[] = [];
+  const isFlag = (t: AnyRec) => lead(t, /^🏁/);
+  const isTarget = (t: AnyRec) => isSessionTask(t) && !isFlag(t);
+
+  for (const [g, members] of groups) {
+    const sessions = members.filter(isTarget).sort((a, b) => ymd(a.endDate ?? a.startDate).localeCompare(ymd(b.endDate ?? b.startDate)));
+    const flags = members.filter(isFlag);
+    const preps = members.filter(isPrepTask);
+    const closures = members.filter(isClosureTask);
+    const usedPrep = new Set<unknown>(), usedClosure = new Set<unknown>();
+    const label = g.startsWith("__") ? "" : g;
+
+    const picks = sessions.map((m) => ({ m, date: ymd(m.endDate ?? m.startDate), hints: sessionHints(m, ymd(m.endDate ?? m.startDate)), prep: undefined as AnyRec | undefined, closure: undefined as AnyRec | undefined }));
+    // Passe 1 : repères de titre.
+    for (const p of picks) {
+      p.prep = preps.find((t) => !usedPrep.has(t.id) && sharesHint(titleHints(String(t.title)), p.hints));
+      if (p.prep) usedPrep.add(p.prep.id);
+      p.closure = closures.find((t) => !usedClosure.has(t.id) && sharesHint(titleHints(String(t.title)), p.hints));
+      if (p.closure) usedClosure.add(p.closure.id);
+    }
+    // Passe 2 : proximité temporelle (📝 avant, ✅ à partir du jalon).
+    for (const p of picks) {
+      if (!p.prep) {
+        const c = preps
+          .filter((t) => !usedPrep.has(t.id) && ymd(t.endDate ?? t.startDate) <= p.date)
+          .sort((a, b) => ymd(b.endDate ?? b.startDate).localeCompare(ymd(a.endDate ?? a.startDate)))[0];
+        if (c) { p.prep = c; usedPrep.add(c.id); }
+      }
+      if (!p.closure) {
+        const c = closures
+          .filter((t) => !usedClosure.has(t.id) && ymd(t.startDate) >= p.date)
+          .sort((a, b) => ymd(a.startDate).localeCompare(ymd(b.startDate)))[0];
+        if (c) { p.closure = c; usedClosure.add(c.id); }
+      }
+    }
+    for (const p of picks) {
+      const orphan = !p.prep && !p.closure;
+      if (orphan && !opts.includeOrphans) continue;
+      const extras = flags.filter((f) => ymd(f.endDate ?? f.startDate) === p.date);
+      const text = [...((p.m.actions as AnyRec[]) ?? []).map((a) => String(a.title ?? "")), String(p.m.title ?? "")].join(" ");
+      const fromTask = slotFromRanges(parseTimeRanges(text));
+      const fromDesc = fromTask ? null : slotFromRanges(parseTimeRanges(opts.description ?? ""));
+      const slot = fromTask ?? fromDesc ?? { startTime: opts.defaultStart ?? "09:00", endTime: opts.defaultEnd ?? "12:00", breaks: [] };
+      triplets.push({
+        groupLabel: label || String(p.m.title).replace(/^(🎯|🏁)\s*/, ""),
+        session: p.m, prep: p.prep, closure: p.closure, extras,
+        date: p.date, startTime: slot.startTime, endTime: slot.endTime, breaks: slot.breaks,
+        timeSource: fromTask ? "task" : fromDesc ? "description" : "default",
+        orphan,
+      });
+    }
+    for (const t of preps) if (!usedPrep.has(t.id)) warnings.push({ kind: "unpaired_prep", text: `📝 sans jalon apparié : « ${t.title} » (${ymd(t.startDate)} → ${ymd(t.endDate ?? t.startDate)}, groupe « ${label || "—"} »)` });
+    for (const t of closures) if (!usedClosure.has(t.id)) warnings.push({ kind: "unpaired_closure", text: `✅ sans jalon apparié : « ${t.title} » (${ymd(t.startDate)}, groupe « ${label || "—"} »)` });
+  }
+  triplets.sort((a, b) => a.date.localeCompare(b.date));
+  const byDay = new Map<string, number>();
+  for (const t of triplets) byDay.set(t.date, (byDay.get(t.date) ?? 0) + 1);
+  for (const [d, n] of byDay) if (n > 1) warnings.push({ kind: "same_day", text: `${n} interventions le ${d} dans ce projet — vérifie (update_intervention mergeFrom pour fusionner)` });
+  return { triplets, warnings };
 }
 
-/** Applique une détection : crée l'intervention et tague les trois tâches. */
+/** Applique une détection : crée l'intervention et tague ses tâches. */
 export function applyTriplet(tasks: AnyRec[], t: DetectedTriplet): { tasks: AnyRec[]; intervention: AnyRec } {
   const intervention = buildIntervention({
     title: t.groupLabel, date: t.date, startTime: t.startTime, endTime: t.endTime,
   });
+  if (t.breaks.length) intervention.breaks = t.breaks;
   const tag = (task: AnyRec | undefined, role: Role) =>
     task ? { ...task, interventionId: intervention.id, interventionRole: role } : undefined;
   const map = new Map<unknown, AnyRec>();
-  for (const [task, role] of [[t.session, "session"], [t.prep, "prep"], [t.closure, "closure"]] as const) {
+  const pairs: Array<[AnyRec | undefined, Role]> = [[t.session, "session"], [t.prep, "prep"], [t.closure, "closure"], ...t.extras.map((e): [AnyRec, Role] => [e, "extra"])];
+  for (const [task, role] of pairs) {
     const tagged = tag(task, role);
     if (task && tagged) map.set(task.id, tagged);
   }
@@ -359,4 +487,94 @@ export function applyTriplet(tasks: AnyRec[], t: DetectedTriplet): { tasks: AnyR
     (((t.session.actions as AnyRec[]) ?? []).length > 0 && ((t.session.actions as AnyRec[]) ?? []).every((a) => a.done === true));
   if (done) intervention.status = "done";
   return { tasks: tasks.map((x) => map.get(x.id) ?? x), intervention };
+}
+
+// ── Rattachement manuel, suppression, fusion ─────────────────────────────────
+
+/**
+ * Rattache une tâche à une intervention (ou la détache : interventionId "").
+ * Un rôle principal n'est porté que par une tâche : conflit = erreur nommant
+ * la tâche en place. Ne touche ni statut, ni dates, ni actions.
+ */
+export function attachTask(
+  tasks: AnyRec[],
+  interventions: AnyRec[],
+  taskId: string,
+  interventionId: string,
+  role?: string
+): { tasks: AnyRec[]; note: string } {
+  const idx = tasks.findIndex((t) => t.id === taskId);
+  if (idx < 0) throw new Error(`Tâche introuvable : ${taskId}`);
+  if (!interventionId) {
+    const out = tasks.slice();
+    const { interventionId: _i, interventionRole: _r, ...rest } = out[idx];
+    out[idx] = rest;
+    return { tasks: out, note: "détachée de son intervention" };
+  }
+  const target = interventions.find((i) => i.id === interventionId);
+  if (!target) throw new Error(`Intervention introuvable dans ce projet : ${interventionId}`);
+  if (!role || !ROLES.includes(role as Role)) {
+    throw new Error(`interventionRole requis : ${ROLES.join(" | ")}`);
+  }
+  if (PRIMARY_ROLES.includes(role as Role)) {
+    const holder = tasks.find((t) => t.id !== taskId && t.interventionId === interventionId && t.interventionRole === role);
+    if (holder) {
+      throw new Error(`Le rôle ${role} de « ${target.title} » est déjà tenu par « ${holder.title} » (${holder.id}) — détache-la d'abord ou utilise le rôle extra.`);
+    }
+  }
+  const out = tasks.slice();
+  out[idx] = { ...out[idx], interventionId, interventionRole: role };
+  return { tasks: out, note: `rattachée à « ${target.title} » (${role})` };
+}
+
+/** Détache toutes les tâches d'une intervention (statut, dates, actions intacts). */
+export function detachAll(tasks: AnyRec[], interventionId: string): { tasks: AnyRec[]; touched: AnyRec[] } {
+  const touched: AnyRec[] = [];
+  const out = tasks.map((t) => {
+    if (t.interventionId !== interventionId) return t;
+    touched.push(t);
+    const { interventionId: _i, interventionRole: _r, ...rest } = t;
+    return rest;
+  });
+  return { tasks: out, touched };
+}
+
+/**
+ * Fusion : les tâches de `from` passent sur `target` ; un rôle principal déjà
+ * tenu → la tâche entrante devient `extra` ; bilans concaténés ; `from`
+ * retirée. Retourne l'état et le détail des rôles attribués.
+ */
+export function mergeInterventions(
+  tasks: AnyRec[],
+  interventions: AnyRec[],
+  targetId: string,
+  fromId: string
+): { tasks: AnyRec[]; interventions: AnyRec[]; moved: Array<{ task: AnyRec; role: Role; demoted: boolean }> } {
+  if (targetId === fromId) throw new Error("mergeFrom doit désigner une autre intervention");
+  const target = interventions.find((i) => i.id === targetId);
+  const from = interventions.find((i) => i.id === fromId);
+  if (!target) throw new Error(`Intervention introuvable : ${targetId}`);
+  if (!from) throw new Error(`Intervention à fusionner introuvable : ${fromId}`);
+  const held = new Set(tasks.filter((t) => t.interventionId === targetId).map((t) => String(t.interventionRole)));
+  const moved: Array<{ task: AnyRec; role: Role; demoted: boolean }> = [];
+  const out = tasks.map((t) => {
+    if (t.interventionId !== fromId) return t;
+    const wanted = String(t.interventionRole ?? "extra") as Role;
+    const demoted = PRIMARY_ROLES.includes(wanted) && held.has(wanted);
+    const role: Role = demoted ? "extra" : wanted;
+    if (PRIMARY_ROLES.includes(role)) held.add(role);
+    const nt = { ...t, interventionId: targetId, interventionRole: role };
+    moved.push({ task: nt, role, demoted });
+    return nt;
+  });
+  const text = [target.debriefText, from.debriefText].filter((x) => typeof x === "string" && x.trim()).join("\n\n");
+  const carry = [...((target.carryOver as AnyRec[]) ?? []), ...((from.carryOver as AnyRec[]) ?? [])];
+  const mergedTarget: AnyRec = {
+    ...target,
+    debriefText: text || null,
+    carryOver: carry,
+    ...(target.debriefAt || from.debriefAt ? { debriefAt: target.debriefAt ?? from.debriefAt } : {}),
+  };
+  const nextInterventions = interventions.filter((i) => i.id !== fromId).map((i) => (i.id === targetId ? mergedTarget : i));
+  return { tasks: out, interventions: nextInterventions, moved };
 }
