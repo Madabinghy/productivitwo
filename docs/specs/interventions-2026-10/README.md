@@ -104,3 +104,18 @@ Logique pure serveur : `functions/src/interventions.ts` (tests `functions/test/i
    chevauchent) · triplets non migrés. `plan_week` demande la revue en étape 0 (la tâche programmée « Préparer la
    semaine » l'exécute donc chaque dimanche). `archive_project` avertit des séances à venir (B5) ; `push_gantt`
    signale un doublon probable à la création (B7).
+6. **Temps disponible** (§ 2.4 + B4, livré) :
+   - **Estimations par défaut** à la création d'une action sans `estimatedMin` : règles par verbe / objet
+     (imprimer ou @impression 10 · fiche de séquence 15 · adapter au bilan 15 · corriger 45 · saisir les notes 10 ·
+     déposer / envoyer 5 · relire 10 · Kahoot 20 · contact 10 · rédiger / créer / préparer 45 · ranger 15 ;
+     « Dérouler » = pas de défaut, durée du créneau). Serveur `functions/src/default_estimates.ts` (push_gantt,
+     add_task, update_task, add_activity_action) et miroir Dart `lib/utils/default_estimate.dart` (saisie rapide
+     web et mobile, fiche de tâche, Gantt, actions simples). **Garder les deux listes alignées.**
+   - **Tri par urgence du jalon** : `ActionsSort.milestone` (« Prochaine séance ») dans `projectActionGroups`
+     via `urgencyOf` = `nextInterventionOf(p).date` ; automatique quand un filtre « J'ai … » est actif avec le tri
+     par échéance (web) et dans les sections par projet du mobile.
+   - **Facteur réel / estimé dans l'app** : `estimateFactor` (`lib/utils/time_spent.dart`, médiane réel/estimé des
+     actions faites chronométrées, 3 minimum) affiché « Réel ≈ 1,3× l'estimé » dans l'en-tête d'Actions (web et
+     mobile), infobulle qui renvoie à `estimate_accuracy`.
+   - **B4** : outil `update_actions(updates[])` (1 à 50 retouches en un appel, mêmes champs qu'`update_action`,
+     une erreur n'arrête pas le lot) et rate limit MCP relevé de 100 à 300 appels / heure.

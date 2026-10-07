@@ -7,6 +7,7 @@ import {
   attachTask, detachAll, mergeInterventions, netSlotMin,
 } from "./interventions";
 import { planPrep, addDays as addDaysYmd } from "./prep_planner";
+import { defaultEstimateFor, defaultEstimateLabel } from "./default_estimates";
 import { auditProjects, formatFindings, similarProjects, upcomingSessions, AuditProject } from "./project_audit";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
@@ -149,13 +150,20 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
   // linkedActivityId/contexts posés directement — même effet que
   // link_action_to_activity). id/done/doneAt/createdAt sont préservés quand
   // fournis pour ne jamais perdre la progression au re-push.
+  // Estimation par défaut (§ 2.4) quand aucune n'est fournie : déduite du
+  // verbe / de l'objet (imprimer 10, fiche de séquence 15, corriger 45…).
   const actions = rawActions.map((a: unknown) => {
     if (typeof a === "string") {
+      const def = defaultEstimateFor(a);
       return { id: uuidv4(), title: a, done: false, doneAt: null,
-               createdAt: new Date().toISOString() };
+               createdAt: new Date().toISOString(),
+               ...(def !== null ? { estimatedMin: def } : {}) };
     }
     const o = typeof a === "object" && a !== null
       ? a as Record<string, unknown> : {};
+    const ctxs = Array.isArray(o.contexts) ? o.contexts.filter((c) => typeof c === "string")
+      : typeof o.context === "string" ? [o.context] : [];
+    const est = estimatedMinOrUndefined(o.estimatedMin) ?? defaultEstimateFor(o.title, ctxs) ?? undefined;
     return withBothContexts({
       id: typeof o.id === "string" ? o.id : uuidv4(),
       title: typeof o.title === "string" ? o.title : String(o.title ?? ""),
@@ -168,8 +176,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
       ...(typeof o.context === "string" ? { context: o.context } : {}),
       ...(Array.isArray(o.contexts)
         ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
-      ...(estimatedMinOrUndefined(o.estimatedMin) !== undefined
-        ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {}),
+      ...(est !== undefined ? { estimatedMin: est } : {}),
       ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
     });
   });
@@ -1645,7 +1652,8 @@ async function executeUpdateTask(
             ? (obj?.contexts as string[])
             : previous?.contexts ?? [],
           estimatedMin: estimatedMinOrUndefined(obj?.estimatedMin)
-            ?? previous?.estimatedMin ?? null,
+            ?? previous?.estimatedMin
+            ?? defaultEstimateFor(title, Array.isArray(obj?.contexts) ? (obj!.contexts as unknown[]) : []),
           // Checklist fournie → normalisée ; sinon celle de l'action conservée.
           checklist: Array.isArray(obj?.checklist)
             ? normalizeChecklist(obj!.checklist as unknown[])
@@ -1915,6 +1923,26 @@ type UpdateActionArgs = {
   done?: boolean; delete?: boolean;
 };
 
+/** B4 : plusieurs retouches d'actions en UN appel (un seul tick de rate limit).
+ *  Chaque entrée = les arguments d'update_action ; les erreurs n'arrêtent pas le lot. */
+async function executeUpdateActions(uid: string, args: { updates?: UpdateActionArgs[] }): Promise<string> {
+  const list = Array.isArray(args.updates) ? args.updates : [];
+  if (!list.length) return "❌ updates[] requis (1 à 50 entrées, mêmes champs qu'update_action).";
+  if (list.length > 50) return `❌ 50 entrées max par appel (${list.length} reçues) — découpe en plusieurs lots.`;
+  const out: string[] = [];
+  let ok = 0;
+  for (const [i, u] of list.entries()) {
+    try {
+      const r = await executeUpdateAction(uid, u);
+      if (r.startsWith("✏️") || r.startsWith("🗑") || r.includes("rien à changer")) ok++;
+      out.push(`${i + 1}. ${r}`);
+    } catch (e) {
+      out.push(`${i + 1}. ❌ ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  return `📦 Lot de ${list.length} retouche(s) — ${ok} appliquée(s) :\n${out.join("\n")}`;
+}
+
 async function executeUpdateAction(uid: string, args: UpdateActionArgs): Promise<string> {
   if (!args.actionId) return "actionId requis.";
   const own = !!args.activityId;
@@ -2159,13 +2187,19 @@ async function executeAddActivityAction(
     linkedActivityId: activityId,
     context: context?.trim() || null, // contexte GTD (@maison…)
     contexts: Array.isArray(contexts) ? contexts : [],
-    ...(estimatedMinOrUndefined(estimatedMin) !== undefined
-      ? { estimatedMin: estimatedMinOrUndefined(estimatedMin) } : {}),
+    ...(() => {
+      const est = estimatedMinOrUndefined(estimatedMin)
+        ?? defaultEstimateFor(title, [...(Array.isArray(contexts) ? contexts : []), context ?? ""]);
+      return est !== undefined && est !== null ? { estimatedMin: est } : {};
+    })(),
   });
   own.push(action);
   await ref.update({ ownActions: own });
 
-  return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+  const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
+    ? ` Estimation par défaut : ${action.estimatedMin} min (${defaultEstimateLabel(title, Array.isArray(contexts) ? contexts : [])}).`
+    : "";
+  return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
 }
 
 async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {
@@ -4097,6 +4131,7 @@ export {
   executeDeleteIntervention,
   executePlanPrep,
   executeWeeklyReview,
+  executeUpdateActions,
   executeManageInterventionTemplates,
   executeMigrateInterventions,
   executeListSessions,

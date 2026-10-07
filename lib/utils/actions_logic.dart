@@ -49,7 +49,9 @@ List<String> knownContexts(List<Project> projects, List<Activity> activities) {
   return [...kDefaultGtdContexts, ...extra];
 }
 
-enum ActionsSort { dueDate, domain, alpha }
+/// `milestone` = par urgence du prochain jalon / séance du projet (brief 2.4 :
+/// « j'ai 20 min » → d'abord ce qui sert la séance la plus proche).
+enum ActionsSort { dueDate, domain, alpha, milestone }
 
 class ProjectActions {
   final Project project;
@@ -64,6 +66,8 @@ List<ProjectActions> projectActionGroups(
   required bool Function(TaskAction) filter,
   ActionsSort sort = ActionsSort.dueDate,
   List<String> domainOrder = const [],
+  /// Date du prochain jalon / séance d'un projet (tri `milestone`) ; null = aucun.
+  DateTime? Function(Project)? urgencyOf,
 }) {
   final out = <ProjectActions>[];
   for (final p in projects) {
@@ -91,6 +95,13 @@ List<ProjectActions> projectActionGroups(
     switch (sort) {
       case ActionsSort.dueDate:
         return byDue(a, b);
+      case ActionsSort.milestone:
+        final ua = urgencyOf?.call(a), ub = urgencyOf?.call(b);
+        if (ua == null && ub == null) return byDue(a, b);
+        if (ua == null) return 1;
+        if (ub == null) return -1;
+        final c = ua.compareTo(ub);
+        return c != 0 ? c : byDue(a, b);
       case ActionsSort.alpha:
         return a.title.toLowerCase().compareTo(b.title.toLowerCase());
       case ActionsSort.domain:

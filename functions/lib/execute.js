@@ -7,6 +7,7 @@ exports.executeUpdateIntervention = executeUpdateIntervention;
 exports.executeDeleteIntervention = executeDeleteIntervention;
 exports.executePlanPrep = executePlanPrep;
 exports.executeWeeklyReview = executeWeeklyReview;
+exports.executeUpdateActions = executeUpdateActions;
 exports.executeManageInterventionTemplates = executeManageInterventionTemplates;
 exports.executeMigrateInterventions = executeMigrateInterventions;
 exports.executeListSessions = executeListSessions;
@@ -86,6 +87,7 @@ const phase_resolve_1 = require("./phase_resolve");
 const schedule_dedupe_2 = require("./schedule_dedupe");
 const interventions_1 = require("./interventions");
 const prep_planner_1 = require("./prep_planner");
+const default_estimates_1 = require("./default_estimates");
 const project_audit_1 = require("./project_audit");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
@@ -192,19 +194,23 @@ function pickTask(t) {
     // linkedActivityId/contexts posés directement — même effet que
     // link_action_to_activity). id/done/doneAt/createdAt sont préservés quand
     // fournis pour ne jamais perdre la progression au re-push.
+    // Estimation par défaut (§ 2.4) quand aucune n'est fournie : déduite du
+    // verbe / de l'objet (imprimer 10, fiche de séquence 15, corriger 45…).
     const actions = rawActions.map((a) => {
-        var _a;
+        var _a, _b, _c;
         if (typeof a === "string") {
-            return { id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null,
-                createdAt: new Date().toISOString() };
+            const def = (0, default_estimates_1.defaultEstimateFor)(a);
+            return Object.assign({ id: (0, uuid_1.v4)(), title: a, done: false, doneAt: null, createdAt: new Date().toISOString() }, (def !== null ? { estimatedMin: def } : {}));
         }
         const o = typeof a === "object" && a !== null
             ? a : {};
-        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_a = o.title) !== null && _a !== void 0 ? _a : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        const ctxs = Array.isArray(o.contexts) ? o.contexts.filter((c) => typeof c === "string")
+            : typeof o.context === "string" ? [o.context] : [];
+        const est = (_b = (_a = estimatedMinOrUndefined(o.estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(o.title, ctxs)) !== null && _b !== void 0 ? _b : undefined;
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (estimatedMinOrUndefined(o.estimatedMin) !== undefined
-            ? { estimatedMin: estimatedMinOrUndefined(o.estimatedMin) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
@@ -1465,7 +1471,7 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     contexts: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts)
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
                         : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
-                    estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : null,
+                    estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : (0, default_estimates_1.defaultEstimateFor)(title, Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts) ? obj.contexts : []),
                     // Checklist fournie → normalisée ; sinon celle de l'action conservée.
                     checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
                         ? normalizeChecklist(obj.checklist)
@@ -1685,6 +1691,29 @@ async function planDayTimeBlock(uid) {
     catch (_a) {
         return [];
     }
+}
+/** B4 : plusieurs retouches d'actions en UN appel (un seul tick de rate limit).
+ *  Chaque entrée = les arguments d'update_action ; les erreurs n'arrêtent pas le lot. */
+async function executeUpdateActions(uid, args) {
+    const list = Array.isArray(args.updates) ? args.updates : [];
+    if (!list.length)
+        return "❌ updates[] requis (1 à 50 entrées, mêmes champs qu'update_action).";
+    if (list.length > 50)
+        return `❌ 50 entrées max par appel (${list.length} reçues) — découpe en plusieurs lots.`;
+    const out = [];
+    let ok = 0;
+    for (const [i, u] of list.entries()) {
+        try {
+            const r = await executeUpdateAction(uid, u);
+            if (r.startsWith("✏️") || r.startsWith("🗑") || r.includes("rien à changer"))
+                ok++;
+            out.push(`${i + 1}. ${r}`);
+        }
+        catch (e) {
+            out.push(`${i + 1}. ❌ ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+    return `📦 Lot de ${list.length} retouche(s) — ${ok} appliquée(s) :\n${out.join("\n")}`;
 }
 async function executeUpdateAction(uid, args) {
     var _a, _b, _c, _d, _e, _f, _g;
@@ -1929,11 +1958,17 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (estimatedMinOrUndefined(estimatedMin) !== undefined
-        ? { estimatedMin: estimatedMinOrUndefined(estimatedMin) } : {})));
+    const action = withBothContexts(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
+        var _a;
+        const est = (_a = estimatedMinOrUndefined(estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(title, [...(Array.isArray(contexts) ? contexts : []), context !== null && context !== void 0 ? context : ""]);
+        return est !== undefined && est !== null ? { estimatedMin: est } : {};
+    })()));
     own.push(action);
     await ref.update({ ownActions: own });
-    return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}). Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+    const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
+        ? ` Estimation par défaut : ${action.estimatedMin} min (${(0, default_estimates_1.defaultEstimateLabel)(title, Array.isArray(contexts) ? contexts : [])}).`
+        : "";
+    return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
 }
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;

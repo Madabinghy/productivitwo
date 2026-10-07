@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/gantt_axis.dart';
@@ -2351,7 +2352,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
       ),
     );
     if (result == null) return;
-    setState(() => _task.actions.add(TaskAction(title: result)));
+    setState(() => _task.actions.add(TaskAction(title: result, estimatedMin: defaultEstimateFor(result))));
     _save();
   }
 

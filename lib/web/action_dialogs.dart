@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 
@@ -347,6 +348,7 @@ Future<bool> showAddOwnActionDialog(
     linkedActivityId: activityId,
     context: picked.isEmpty ? null : picked.first,
     contexts: List.of(picked),
+    estimatedMin: defaultEstimateFor(title, contexts: picked),
   ));
   return true;
 }

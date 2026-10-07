@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
@@ -2685,6 +2686,7 @@ class FirestoreSync {
           linkedActivityId: activityId,
           context: multi.isNotEmpty ? multi.first : context,
           contexts: multi,
+          estimatedMin: defaultEstimateFor(t, contexts: multi),
         ).toJson()
       ]),
     });

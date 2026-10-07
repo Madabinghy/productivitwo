@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -362,6 +364,7 @@ class _ActionsViewState extends State<ActionsView> {
             title: v,
             context: pickedContexts.isEmpty ? null : pickedContexts.first,
             contexts: List.of(pickedContexts),
+            estimatedMin: defaultEstimateFor(v, contexts: pickedContexts),
           ));
           setLocal(() {
             added++;
@@ -1123,6 +1126,20 @@ class _ActionsViewState extends State<ActionsView> {
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface.withOpacity(.35))),
+            // Facteur réel / estimé (médiane des actions faites chronométrées).
+            if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
+                case final fl?) ...[
+              const SizedBox(width: 10),
+              Tooltip(
+                message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
+                    'Sert à corriger vos estimations.',
+                child: Text(fl,
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurface.withOpacity(.45))),
+              ),
+            ],
             const Spacer(),
             IconButton(
               tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
@@ -1447,7 +1464,7 @@ class _ActionsViewState extends State<ActionsView> {
     }
     if (restProjects.isNotEmpty || needNext.isNotEmpty) {
       out.add(_sectionLabel(cs, 'PLUS TARD · PAR PROJET', Icons.folder_outlined));
-      for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true)) {
+      for (final g in _projectGroups()) {
         final entries = restProjects[g.project.id];
         final needs = needNext.any((p) => p.id == g.project.id);
         if ((entries == null || entries.isEmpty) && !needs) continue;
@@ -1475,10 +1492,22 @@ class _ActionsViewState extends State<ActionsView> {
 
   // ── Sections par projet (ancien mode, sans verrou) ──────────────────────────
 
+  /// Groupes par projet ; avec le filtre « J'ai … », les projets dont la
+  /// séance est la plus proche passent en tête (brief 2.4).
+  List<ProjectActions> _projectGroups() {
+    final today = DateTime.now();
+    return projectActionGroups(
+      widget.logic.currentProjects,
+      filter: (_) => true,
+      sort: _time != null ? ActionsSort.milestone : ActionsSort.dueDate,
+      urgencyOf: (p) => nextInterventionOf(p, today)?.date,
+    );
+  }
+
   List<Widget> _byProjectSections(ColorScheme cs, List<_Entry> shown, List<Project> needNext) {
     final todayIds = _todayActionIds;
     final out = <Widget>[];
-    for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true)) {
+    for (final g in _projectGroups()) {
       final entries = shown.where((e) => e.project?.id == g.project.id).toList();
       final needs = needNext.any((p) => p.id == g.project.id);
       if (entries.isEmpty && !needs) continue;

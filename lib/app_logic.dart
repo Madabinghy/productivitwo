@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
@@ -1099,7 +1100,8 @@ class AppLogic {
   TaskAction? addOwnAction(String activityId, String title) {
     final a = _activityById(activityId);
     if (a == null) return null;
-    final action = TaskAction(title: title, linkedActivityId: activityId);
+    final action = TaskAction(
+        title: title, linkedActivityId: activityId, estimatedMin: defaultEstimateFor(title));
     a.ownActions.add(action);
     onChange();
     return action;

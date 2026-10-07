@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
@@ -1184,7 +1185,8 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
     setState(() => _task.actions.add(TaskAction(
         title: result,
         context: pickedContexts.isEmpty ? null : pickedContexts.first,
-        contexts: List.of(pickedContexts))));
+        contexts: List.of(pickedContexts),
+        estimatedMin: defaultEstimateFor(result, contexts: pickedContexts))));
     _save();
   }
 
