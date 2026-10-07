@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
@@ -47,6 +48,20 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
   bool _narrowDetail = false;
   // Minutes réellement passées par action (chrono ciblé, 365 j).
   Map<String, int> _spent = const {};
+  // Bilan de séance (clôture d'une intervention) : brouillons par intervention.
+  final Map<String, TextEditingController> _debriefCtrls = {};
+  final Map<String, List<String>> _carryDrafts = {};
+  final TextEditingController _carryAddCtrl = TextEditingController();
+  bool _savingDebrief = false;
+
+  @override
+  void dispose() {
+    for (final c in _debriefCtrls.values) {
+      c.dispose();
+    }
+    _carryAddCtrl.dispose();
+    super.dispose();
+  }
 
   Project get _p => widget.project;
 
@@ -505,6 +520,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
             if (a.done && a.doneAt != null) _pill('Faite le ${_dmy(a.doneAt!)}', kBPrimaryDark),
           ]),
           const SizedBox(height: 18),
+          ..._interventionCards(e),
           // Progression
           Row(children: [
             Expanded(
@@ -605,6 +621,231 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
         ]),
       ),
     );
+  }
+
+  // ── Séances : bilan de clôture, rappel du bilan précédent ──────────────────
+
+  ProjectIntervention? _interventionOf(ProjectTask t) =>
+      t.interventionId == null ? null : _p.interventions.where((i) => i.id == t.interventionId).firstOrNull;
+
+  /// Dernière séance datée avant [i] qui porte un bilan.
+  ProjectIntervention? _previousWithDebrief(ProjectIntervention i) {
+    final before = _p.interventions
+        .where((x) =>
+            x.id != i.id &&
+            x.date.isBefore(i.date) &&
+            ((x.debriefText ?? '').trim().isNotEmpty || x.carryOver.isNotEmpty))
+        .toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
+    return before.lastOrNull;
+  }
+
+  List<Widget> _interventionCards(_Entry e) {
+    final i = _interventionOf(e.task);
+    if (i == null) return const [];
+    final out = <Widget>[];
+    if (e.task.interventionRole == 'closure') {
+      out.add(_debriefCard(i));
+    } else if (e.task.interventionRole == 'prep') {
+      final prev = _previousWithDebrief(i);
+      if (prev != null) out.add(_previousDebriefCard(prev));
+    } else if (e.task.interventionRole == 'session') {
+      out.add(_sessionInfoCard(i));
+    }
+    if (out.isNotEmpty) out.add(const SizedBox(height: 18));
+    return out;
+  }
+
+  Widget _interventionBox({required Widget child}) => Container(
+        decoration: BoxDecoration(
+          color: kBSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBLine),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        child: child,
+      );
+
+  Widget _sessionInfoCard(ProjectIntervention i) => _interventionBox(
+        child: Row(children: [
+          const Icon(Icons.school_outlined, size: 16, color: kBPrimary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${interventionDayLabel(i.date)} · ${hmFr(i.startTime)}–${hmFr(i.endTime)}'
+              '${i.place != null && i.place!.isNotEmpty ? ' · ${i.place}' : ''}',
+              style: const TextStyle(fontSize: 13, color: kBText2, fontFeatures: _tabular),
+            ),
+          ),
+        ]),
+      );
+
+  Widget _previousDebriefCard(ProjectIntervention prev) => _interventionBox(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('BILAN DE LA SÉANCE PRÉCÉDENTE · ${interventionDayLabel(prev.date)}',
+              style: const TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+          if ((prev.debriefText ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(prev.debriefText!.trim(),
+                style: const TextStyle(fontSize: 13, color: kBText2, height: 1.4)),
+          ],
+          if (prev.carryOver.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final c in prev.carryOver)
+              Padding(
+                padding: const EdgeInsets.only(top: 3),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('↳ ', style: TextStyle(fontSize: 13, color: kBText3)),
+                  Expanded(child: Text(c.title, style: const TextStyle(fontSize: 13, color: kBText))),
+                ]),
+              ),
+            const SizedBox(height: 6),
+            const Text('Ces points sont dans la checklist de « Adapter au bilan précédent ».',
+                style: TextStyle(fontSize: 11.5, color: kBText4)),
+          ],
+        ]),
+      );
+
+  Widget _debriefCard(ProjectIntervention i) {
+    final ctrl = _debriefCtrls.putIfAbsent(i.id, () => TextEditingController(text: i.debriefText ?? ''));
+    final draft = _carryDrafts.putIfAbsent(i.id, () => i.carryOver.map((c) => c.title).toList());
+    final next = nextInterventionAfter(_p, i);
+    void addPoint() {
+      final v = _carryAddCtrl.text.trim();
+      if (v.isEmpty) return;
+      setState(() {
+        draft.add(v);
+        _carryAddCtrl.clear();
+      });
+    }
+
+    return _interventionBox(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.rate_review_outlined, size: 16, color: kBPrimary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('BILAN DE LA SÉANCE · ${interventionDayLabel(i.date)}',
+                style: const TextStyle(
+                    fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+          ),
+          if (i.debriefAt != null)
+            Text('enregistré le ${_dmy(i.debriefAt!)}',
+                style: const TextStyle(fontSize: 11.5, color: kBText4)),
+        ]),
+        const SizedBox(height: 10),
+        TextField(
+          controller: ctrl,
+          minLines: 2,
+          maxLines: 6,
+          style: const TextStyle(fontSize: 13.5, color: kBText, height: 1.4),
+          decoration: InputDecoration(
+            hintText: 'Comment ça s\'est passé ? Ce qui a marché, ce qui a coincé, où vous en êtes…',
+            hintStyle: const TextStyle(fontSize: 13, color: kBText4),
+            filled: true,
+            fillColor: const Color(0x0FFFFFFF),
+            contentPadding: const EdgeInsets.all(12),
+            border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: kBLine)),
+            enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: kBLine)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text('À REPRENDRE LA PROCHAINE FOIS',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+        const SizedBox(height: 6),
+        for (var k = 0; k < draft.length; k++)
+          Row(children: [
+            const Icon(Icons.subdirectory_arrow_right, size: 14, color: kBText3),
+            const SizedBox(width: 6),
+            Expanded(child: Text(draft[k], style: const TextStyle(fontSize: 13, color: kBText))),
+            IconButton(
+              tooltip: 'Retirer',
+              icon: const Icon(Icons.close, size: 14, color: kBText4),
+              visualDensity: VisualDensity.compact,
+              onPressed: () => setState(() => draft.removeAt(k)),
+            ),
+          ]),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _carryAddCtrl,
+              style: const TextStyle(fontSize: 13, color: kBText),
+              decoration: const InputDecoration(
+                hintText: 'Ajouter un point (Entrée)',
+                hintStyle: TextStyle(fontSize: 12.5, color: kBText4),
+                isDense: true,
+                border: InputBorder.none,
+              ),
+              onSubmitted: (_) => addPoint(),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Ajouter',
+            icon: const Icon(Icons.add, size: 16, color: kBPrimary),
+            visualDensity: VisualDensity.compact,
+            onPressed: addPoint,
+          ),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: Text(
+              next == null
+                  ? 'Pas de séance suivante planifiée : les points seront repris à la création de la prochaine.'
+                  : 'Les points iront dans la prépa de « ${next.title} » (${interventionDayLabel(next.date)}).',
+              style: const TextStyle(fontSize: 11.5, color: kBText4),
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton(
+            onPressed: _savingDebrief ? null : () => _saveDebrief(i, ctrl.text, draft),
+            style: FilledButton.styleFrom(
+              backgroundColor: kBPrimary,
+              foregroundColor: kBBg,
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+            ),
+            child: const Text('Enregistrer le bilan'),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _saveDebrief(ProjectIntervention i, String text, List<String> points) async {
+    setState(() => _savingDebrief = true);
+    addPointIfPending() {
+      final v = _carryAddCtrl.text.trim();
+      if (v.isNotEmpty && !points.contains(v)) points.add(v);
+      _carryAddCtrl.clear();
+    }
+
+    addPointIfPending();
+    i.debriefText = text.trim().isEmpty ? null : text.trim();
+    final kept = <ChecklistItem>[];
+    for (final t in points) {
+      kept.add(i.carryOver.where((c) => c.title == t).firstOrNull ?? ChecklistItem(title: t));
+    }
+    i.carryOver = kept;
+    i.debriefAt = DateTime.now();
+    final fed = applyCarryOver(_p, i, points);
+    try {
+      await widget.sync.saveProject(_p);
+      widget.onChanged();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(fed == null
+            ? 'Bilan enregistré.'
+            : 'Bilan enregistré · ${points.length} point${points.length > 1 ? 's' : ''} poussé'
+                '${points.length > 1 ? 's' : ''} dans la prépa de « ${fed.title} ».'),
+        duration: const Duration(seconds: 4),
+      ));
+    } finally {
+      if (mounted) setState(() => _savingDebrief = false);
+    }
   }
 
   Widget _pill(String text, Color color) => Container(

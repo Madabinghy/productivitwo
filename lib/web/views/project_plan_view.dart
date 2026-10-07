@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
+import 'package:productivitwo_v1/web/add_intervention_dialog.dart';
 import 'package:productivitwo_v1/web/add_task_dialog.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
@@ -340,6 +341,19 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     widget.onChanged();
   }
 
+  /// « Nouvelle séance » : intervention + ses trois tâches (📝 / 🎯 / ✅).
+  Future<void> _addIntervention() async {
+    final i = await showAddInterventionDialog(context, project: _p, sync: widget.sync);
+    if (i == null || !mounted) return;
+    final prep = _p.tasks.where((t) => t.interventionId == i.id && t.interventionRole == 'prep').firstOrNull;
+    setState(() => _expanded.add(prep?.phaseId ?? '_none'));
+    widget.onChanged();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Séance « ${i.title} » créée : Préparer, Séance et Clôturer ajoutées au plan.'),
+      duration: const Duration(seconds: 4),
+    ));
+  }
+
   /// « Planifier » : le popover « Caser » avec le choix du jour parmi les 14
   /// prochains (charge affichée) ; présélection = premier jour où la tâche
   /// tient (même règle qu'`autoPlace`, mais on montre au lieu de poser).
@@ -533,7 +547,22 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
             child: Text('Vue d\'ensemble des sous-projets',
                 style: TextStyle(fontSize: 12.5, color: kBText3)),
           )
-        else
+        else ...[
+        SizedBox(
+          height: 40,
+          child: OutlinedButton.icon(
+            onPressed: _addIntervention,
+            icon: const Icon(Icons.school_outlined, size: 17),
+            label: const Text('Nouvelle séance'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: kBText2,
+              side: const BorderSide(color: kBLine),
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
         SizedBox(
           height: 40,
           child: FilledButton.icon(
@@ -548,6 +577,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
             ),
           ),
         ),
+        ],
       ]),
     );
   }

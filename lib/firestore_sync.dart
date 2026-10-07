@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -2769,6 +2770,18 @@ class FirestoreSync {
       String col, String id, Map<String, dynamic> data) async {
     if (uid == null) return;
     await _col(col).doc(id).set(data);
+  }
+
+  /// Modèles d'intervention (`data/meta.interventionTemplates`), le défaut en tête.
+  Future<List<InterventionTemplate>> fetchInterventionTemplates() async {
+    if (uid == null) return parseInterventionTemplates(null);
+    try {
+      final snap = await _meta().get();
+      final data = snap.data() as Map<String, dynamic>?;
+      return parseInterventionTemplates(data?['interventionTemplates']);
+    } catch (_) {
+      return parseInterventionTemplates(null);
+    }
   }
 
   /// Capacité de planification par jour (`data/meta.weekCapacityMin`),
