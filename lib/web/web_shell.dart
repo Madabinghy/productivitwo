@@ -37,6 +37,8 @@ class WebTopBar extends StatelessWidget {
   final ValueChanged<WebMenuItem> onMenu;
   /// Zone chrono (pastille Focus + lanceur) ; null = lanceur seul.
   final Widget? chrono;
+  /// Actions en retard (pastille sur l'onglet Actions) ; 0 = pas de pastille.
+  final int overdueCount;
 
   const WebTopBar({
     super.key,
@@ -52,6 +54,7 @@ class WebTopBar extends StatelessWidget {
     required this.onMyCoach,
     required this.onMenu,
     this.chrono,
+    this.overdueCount = 0,
   });
 
   @override
@@ -84,7 +87,10 @@ class WebTopBar extends StatelessWidget {
                 letterSpacing: -.2)),
         const SizedBox(width: 36),
         for (final t in WebTab.values)
-          _Tab(t.label, selected: t == selected, onTap: () => onSelect(t)),
+          _Tab(t.label,
+              selected: t == selected,
+              onTap: () => onSelect(t),
+              badge: t == WebTab.actions ? overdueCount : 0),
         const Spacer(),
         if (signedIn) chrono ?? ChronoLauncher(sync: sync),
         const SizedBox(width: 6),
@@ -174,7 +180,9 @@ class _Tab extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _Tab(this.label, {required this.selected, required this.onTap});
+  /// Pastille numérique (actions en retard) ; 0 = rien.
+  final int badge;
+  const _Tab(this.label, {required this.selected, required this.onTap, this.badge = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -190,11 +198,32 @@ class _Tab extends StatelessWidget {
                 color: selected ? kBPrimary : Colors.transparent, width: 2),
           ),
         ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? kBText : kBText2)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? kBText : kBText2)),
+          if (badge > 0) ...[
+            const SizedBox(width: 6),
+            Tooltip(
+              message: '$badge action${badge > 1 ? 's' : ''} en retard',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: kBAlert,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(badge > 99 ? '99+' : '$badge',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        fontFeatures: [FontFeature.tabularFigures()])),
+              ),
+            ),
+          ],
+        ]),
       ),
     );
   }

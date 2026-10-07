@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount;
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
@@ -4151,6 +4152,17 @@ class _AppRootState extends State<AppRoot>
     return (mins, goal, sleepDomain);
   }
 
+  /// Pastille rouge « actions en retard » sur l'icône de l'onglet Actions.
+  Widget _overdueBadge(Widget icon) {
+    final n = overdueActionCount(logic.currentProjects, DateTime.now());
+    if (n == 0) return icon;
+    return Badge.count(
+      count: n,
+      backgroundColor: Theme.of(context).colorScheme.error,
+      child: icon,
+    );
+  }
+
   bool _shouldShowFab() {
     return _tab == _Tab.dashboard || _tab == _Tab.aujourdhui;
   }
@@ -5169,9 +5181,11 @@ class _AppRootState extends State<AppRoot>
                   icon: Icon(Icons.wb_sunny_outlined),
                   activeIcon: Icon(Icons.wb_sunny),
                   label: 'Aujourd\'hui'),
-              _Tab.actions => const BottomNavigationBarItem(
-                  icon: Icon(Icons.checklist_rtl_outlined),
-                  activeIcon: Icon(Icons.checklist_rtl),
+              // Pastille = actions en retard (même règle que le groupe
+              // « En retard » de l'onglet).
+              _Tab.actions => BottomNavigationBarItem(
+                  icon: _overdueBadge(const Icon(Icons.checklist_rtl_outlined)),
+                  activeIcon: _overdueBadge(const Icon(Icons.checklist_rtl)),
                   label: 'Actions'),
             },
         ],

@@ -138,6 +138,25 @@ List<Project> clientRoots(List<Project> all) {
 bool isFolderProject(Project p, List<Project> all) =>
     p.tasks.isEmpty && all.any((x) => x.parentProjectId == p.id);
 
+/// Actions EN RETARD : ouvertes, dans une tâche ouverte (ni faite ni annulée)
+/// d'un projet vivant, dont l'échéance de la tâche est avant [today]. Même
+/// règle que le groupe « En retard » d'Actions (mobile et web) — alimente la
+/// pastille de l'onglet Actions.
+int overdueActionCount(List<Project> projects, DateTime today) {
+  final d = DateTime(today.year, today.month, today.day);
+  var n = 0;
+  for (final p in projects) {
+    if (p.status != 'active' || p.paused) continue;
+    for (final t in p.tasks) {
+      if (t.status == 'done' || t.status == 'skipped' || t.endDate == null) continue;
+      final due = DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day);
+      if (!due.isBefore(d)) continue;
+      n += t.actions.where((a) => !a.done).length;
+    }
+  }
+  return n;
+}
+
 /// Groupe de projets sous un dossier (racine sans tâche) : [folder] null =
 /// projet hors dossier, seul dans son groupe.
 class FolderGroup {
