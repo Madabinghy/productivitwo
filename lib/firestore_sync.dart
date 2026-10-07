@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
@@ -1172,6 +1173,18 @@ class FirestoreSync {
 
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
+    // Dossier affiché en vue fusionnée : ses « phases » sont les sous-projets
+    // et ses tâches leur appartiennent — on enregistre la fiche sans eux et on
+    // répartit les tâches.
+    final merged = mergedFolderFor(project.id);
+    if (merged != null) {
+      final json = project.toJson()
+        ..['phases'] = const []
+        ..['tasks'] = const [];
+      await _col('projects').doc(project.id).set(json);
+      await saveProjectTasks(project.id, project.tasks);
+      return;
+    }
     await _col('projects').doc(project.id).set(project.toJson());
   }
 
@@ -1183,6 +1196,17 @@ class FirestoreSync {
   /// Met à jour uniquement le tableau de tâches d'un projet.
   Future<void> saveProjectTasks(String projectId, List<ProjectTask> tasks) async {
     if (uid == null) return;
+    final merged = mergedFolderFor(projectId);
+    if (merged != null) {
+      // Vue fusionnée d'un dossier : chaque sous-projet reçoit ses tâches.
+      final split = splitMergedTasks(merged, tasks);
+      for (final e in split.entries) {
+        await _col('projects').doc(e.key).update({
+          'tasks': e.value.map((t) => t.toJson()).toList(),
+        });
+      }
+      return;
+    }
     await _col('projects').doc(projectId).update({
       'tasks': tasks.map((t) => t.toJson()).toList(),
     });
