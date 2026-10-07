@@ -1,4 +1,5 @@
 import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
+import { resolvePhaseIds } from "./phase_resolve";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
   contextsOf,
@@ -232,14 +233,15 @@ function pickProject(p: ProjectPayload): Record<string, unknown> {
   const tasks  = p.tasks  ?? [];
   if (phases.length > 20)  throw new Error(`Trop de phases : ${phases.length} (max 20)`);
   if (tasks.length  > 200) throw new Error(`Trop de tâches : ${tasks.length} (max 200)`);
+  const pickedPhases = phases.map((ph) => pickPhase(ph as unknown as Record<string, unknown>));
   return {
     title,
     startDate: p.startDate,
     ...(description !== undefined ? { description }      : {}),
     ...(p.endDate   !== undefined ? { endDate: p.endDate } : {}),
     ...(p.domainId  !== undefined ? { domainId: p.domainId } : {}),
-    phases: phases.map((ph) => pickPhase(ph as unknown as Record<string, unknown>)),
-    tasks:  tasks.map((t)  => pickTask(t  as unknown as Record<string, unknown>)),
+    phases: pickedPhases,
+    tasks:  resolvePhaseIds(pickedPhases, tasks.map((t) => pickTask(t as unknown as Record<string, unknown>))).tasks,
   };
 }
 
@@ -1458,6 +1460,15 @@ async function executePushGantt(
   }
 
   const isUpdate = !!project.id;
+  const pickedPhaseIds = new Set(
+    ((pickedProject.phases as Array<Record<string, unknown>>) ?? []).map((p) => String(p.id)));
+  const unphased = ((pickedProject.tasks as Array<Record<string, unknown>>) ?? [])
+    .filter((t) => pickedPhaseIds.size > 0 && !pickedPhaseIds.has(String(t.phaseId ?? "")));
+  const phaseWarning = unphased.length
+    ? `⚠️ ${unphased.length} tâche(s) sans phase (groupLabel ≠ libellé d'une phase) : ` +
+      `${unphased.slice(0, 5).map((t) => `« ${t.title} »`).join(", ")}${unphased.length > 5 ? "…" : ""}. ` +
+      `Reprends-les avec update_task {phaseId: <libellé ou id de phase>}.\n`
+    : "";
   const descLen = (project.description ?? "").length;
   const verboseWarning = descLen > 600
     ? `⚠️ Description longue (${descLen} caractères) — la fiche la tronque à 4 lignes. ` +
@@ -1469,7 +1480,7 @@ async function executePushGantt(
         ? "brouillon (à valider dans l'app)" : "actif"}\n`;
   return (
     `✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
-    verboseWarning +
+    verboseWarning + phaseWarning +
     `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
     statusLine +
     `• Voir sur : https://app.productivitwo.com\n` +
@@ -1493,13 +1504,20 @@ async function executeAddTask(
   } catch (e) {
     return `❌ Tâche invalide : ${e instanceof Error ? e.message : String(e)}`;
   }
+  // phaseId par libellé (ou groupLabel) : voir phase_resolve.ts.
+  const phases = ((snap.data() as Record<string, unknown>).phases as Array<Record<string, unknown>>) ?? [];
+  const res = resolvePhaseIds(phases, [newTask]);
+  newTask = res.tasks[0];
+  const phaseNote = res.unknown.length
+    ? ` ⚠️ phaseId « ${res.unknown[0]} » inconnu — tâche sans phase (libellés : ${phases.map((p) => p.label).join(", ")}).`
+    : phases.length > 0 && !newTask.phaseId ? " ⚠️ sans phase (passe phaseId = libellé ou id d'une phase)." : "";
 
   // arrayUnion est atomique et ne nécessite pas de lire/réécrire le tableau entier
   await ref.update({
     tasks: FieldValue.arrayUnion(newTask),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).`;
+  return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}`;
 }
 
 async function executeUpdateTask(
@@ -1532,7 +1550,14 @@ async function executeUpdateTask(
       if (!TASK_STATUSES.has(updates.status)) throw new Error(`status invalide : "${updates.status}"`);
       patch.status = updates.status;
     }
-    if (updates.phaseId     !== undefined) patch.phaseId    = updates.phaseId;
+    if (updates.phaseId     !== undefined) {
+      const phases = (data.phases as Array<Record<string, unknown>>) ?? [];
+      const r = resolvePhaseIds(phases, [{ phaseId: updates.phaseId }]);
+      if (r.unknown.length) {
+        throw new Error(`phaseId inconnu : "${updates.phaseId}" (phases : ${phases.map((p) => `${p.label} = ${p.id}`).join(" · ") || "aucune"})`);
+      }
+      patch.phaseId = r.tasks[0].phaseId;
+    }
     if (updates.groupLabel  !== undefined) patch.groupLabel = updates.groupLabel;
     if (updates.isMilestone !== undefined) patch.isMilestone = updates.isMilestone;
     if (updates.color       !== undefined) patch.color      = updates.color;
@@ -1636,6 +1661,10 @@ async function executeMarkActionDone(
   if (actionIdx === -1) return `Sous-action introuvable : ${actionId}`;
 
   const actionTitle = (actions[actionIdx].title as string) ?? actionId;
+  const wasDone = actions[actionIdx].done === true;
+  if (wasDone === done) {
+    return `✅ Sous-action "${actionTitle}" déjà ${done ? "faite" : "ouverte"} — inchangée.`;
+  }
   actions[actionIdx] = {
     ...actions[actionIdx],
     done,
@@ -1644,7 +1673,7 @@ async function executeMarkActionDone(
   tasks[taskIdx] = { ...tasks[taskIdx], actions };
 
   await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
-  return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
+  return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "rouverte"}.`;
 }
 
 // Coche/décoche un item de checklist. Règle d'achèvement : tous les items

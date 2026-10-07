@@ -694,7 +694,8 @@ const PUSH_GANTT_MCP_TOOL = {
                             required: ["title", "startDate"],
                             properties: {
                                 title: { type: "string" },
-                                groupLabel: { type: "string" },
+                                groupLabel: { type: "string", description: "Libellé de la phase (= phases[].label) : la tâche y est rattachée automatiquement (phaseId posé par le serveur)" },
+                                phaseId: { type: "string", description: "id de phase (re-push d'un projet existant) — ou libellé, résolu comme groupLabel" },
                                 startDate: { type: "string" },
                                 endDate: { type: "string" },
                                 isMilestone: { type: "boolean" },
@@ -763,7 +764,7 @@ const ADD_TASK_TOOL = {
         properties: {
             projectId: { type: "string", description: "id du projet (list_projects)" },
             title: { type: "string" },
-            phaseId: { type: "string", description: "id de la phase (get_project)" },
+            phaseId: { type: "string", description: "id de la phase (get_project) — ou son libellé exact, résolu par le serveur" },
             groupLabel: { type: "string" },
             startDate: { type: "string", description: "YYYY-MM-DD" },
             endDate: { type: "string", description: "YYYY-MM-DD" },
@@ -823,6 +824,7 @@ exports.UPDATE_TASK_TOOL = UPDATE_TASK_TOOL;
 const MARK_ACTION_DONE_TOOL = {
     name: "mark_action_done",
     description: "Coche/décoche une sous-action individuelle d'une tâche Gantt sans toucher au reste. " +
+        "Idempotent : done:true ⇒ faite (déjà faite = inchangée), done:false ⇒ rouverte ; jamais de bascule. " +
         "Préfère cet outil à update_task quand l'utilisateur progresse sur une action précise. " +
         "Récupère projectId, taskId et actionId via get_project.",
     inputSchema: {
@@ -832,7 +834,7 @@ const MARK_ACTION_DONE_TOOL = {
             projectId: { type: "string", description: "id du projet (list_projects)" },
             taskId: { type: "string", description: "id de la tâche (get_project)" },
             actionId: { type: "string", description: "id de la sous-action (get_project)" },
-            done: { type: "boolean", description: "true pour marquer faite, false pour démarquer" },
+            done: { type: "boolean", description: "true pour marquer faite, false pour rouvrir (omis = true)" },
         },
     },
 };

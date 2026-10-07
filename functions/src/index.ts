@@ -1803,12 +1803,16 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
         } else if (toolName === "update_task") {
           text = await executeUpdateTask(uid, args.projectId as string, args.taskId as string, args);
         } else if (toolName === "mark_action_done") {
+          // Idempotent (B3) : `done` omis ou "true" ⇒ faite ; jamais de bascule
+          // (un done undefined tombait en false → « démarquée »).
+          const done = args.done === undefined || args.done === null
+            ? true : args.done === true || String(args.done).toLowerCase() === "true";
           text = await executeMarkActionDone(
             uid,
             args.projectId as string,
             args.taskId as string,
             args.actionId as string,
-            args.done as boolean,
+            done,
           );
         } else if (toolName === "mark_checklist_item") {
           text = await executeMarkChecklistItem(

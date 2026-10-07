@@ -75,6 +75,7 @@ exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
+const phase_resolve_1 = require("./phase_resolve");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
@@ -254,7 +255,8 @@ function pickProject(p) {
         throw new Error(`Trop de phases : ${phases.length} (max 20)`);
     if (tasks.length > 200)
         throw new Error(`Trop de tâches : ${tasks.length} (max 200)`);
-    return Object.assign(Object.assign(Object.assign(Object.assign({ title, startDate: p.startDate }, (description !== undefined ? { description } : {})), (p.endDate !== undefined ? { endDate: p.endDate } : {})), (p.domainId !== undefined ? { domainId: p.domainId } : {})), { phases: phases.map((ph) => pickPhase(ph)), tasks: tasks.map((t) => pickTask(t)) });
+    const pickedPhases = phases.map((ph) => pickPhase(ph));
+    return Object.assign(Object.assign(Object.assign(Object.assign({ title, startDate: p.startDate }, (description !== undefined ? { description } : {})), (p.endDate !== undefined ? { endDate: p.endDate } : {})), (p.domainId !== undefined ? { domainId: p.domainId } : {})), { phases: pickedPhases, tasks: (0, phase_resolve_1.resolvePhaseIds)(pickedPhases, tasks.map((t) => pickTask(t))).tasks });
 }
 function pickStrategicObjective(so) {
     const title = clampStr(so.title, 200, "strategicObjective.title");
@@ -1257,7 +1259,7 @@ async function executePushGantt(uid, input,
 // user vient de le demander, un draft invisible dans activeProjects avait
 // été pris pour un bug (test connecteur 2026-09).
 opts) {
-    var _a;
+    var _a, _b, _c;
     const { project, strategicObjective } = input;
     let pickedProject;
     let pickedSO;
@@ -1284,7 +1286,15 @@ opts) {
             .update({ projectIds: db_1.FieldValue.arrayUnion(projectId) });
     }
     const isUpdate = !!project.id;
-    const descLen = ((_a = project.description) !== null && _a !== void 0 ? _a : "").length;
+    const pickedPhaseIds = new Set(((_a = pickedProject.phases) !== null && _a !== void 0 ? _a : []).map((p) => String(p.id)));
+    const unphased = ((_b = pickedProject.tasks) !== null && _b !== void 0 ? _b : [])
+        .filter((t) => { var _a; return pickedPhaseIds.size > 0 && !pickedPhaseIds.has(String((_a = t.phaseId) !== null && _a !== void 0 ? _a : "")); });
+    const phaseWarning = unphased.length
+        ? `⚠️ ${unphased.length} tâche(s) sans phase (groupLabel ≠ libellé d'une phase) : ` +
+            `${unphased.slice(0, 5).map((t) => `« ${t.title} »`).join(", ")}${unphased.length > 5 ? "…" : ""}. ` +
+            `Reprends-les avec update_task {phaseId: <libellé ou id de phase>}.\n`
+        : "";
+    const descLen = ((_c = project.description) !== null && _c !== void 0 ? _c : "").length;
     const verboseWarning = descLen > 600
         ? `⚠️ Description longue (${descLen} caractères) — la fiche la tronque à 4 lignes. ` +
             `Déplace le détail dans un document du projet (save_document, category 'notes').\n`
@@ -1294,13 +1304,14 @@ opts) {
         : `• statut : ${(opts === null || opts === void 0 ? void 0 : opts.draftOnCreate)
             ? "brouillon (à valider dans l'app)" : "actif"}\n`;
     return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
-        verboseWarning +
+        verboseWarning + phaseWarning +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         statusLine +
         `• Voir sur : https://app.productivitwo.com\n` +
         `• projectId : ${projectId}`);
 }
 async function executeAddTask(uid, projectId, task) {
+    var _a;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1312,15 +1323,22 @@ async function executeAddTask(uid, projectId, task) {
     catch (e) {
         return `❌ Tâche invalide : ${e instanceof Error ? e.message : String(e)}`;
     }
+    // phaseId par libellé (ou groupLabel) : voir phase_resolve.ts.
+    const phases = (_a = snap.data().phases) !== null && _a !== void 0 ? _a : [];
+    const res = (0, phase_resolve_1.resolvePhaseIds)(phases, [newTask]);
+    newTask = res.tasks[0];
+    const phaseNote = res.unknown.length
+        ? ` ⚠️ phaseId « ${res.unknown[0]} » inconnu — tâche sans phase (libellés : ${phases.map((p) => p.label).join(", ")}).`
+        : phases.length > 0 && !newTask.phaseId ? " ⚠️ sans phase (passe phaseId = libellé ou id d'une phase)." : "";
     // arrayUnion est atomique et ne nécessite pas de lire/réécrire le tableau entier
     await ref.update({
         tasks: db_1.FieldValue.arrayUnion(newTask),
         updatedAt: db_1.FieldValue.serverTimestamp(),
     });
-    return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).`;
+    return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}`;
 }
 async function executeUpdateTask(uid, projectId, taskId, updates) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1351,8 +1369,14 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                 throw new Error(`status invalide : "${updates.status}"`);
             patch.status = updates.status;
         }
-        if (updates.phaseId !== undefined)
-            patch.phaseId = updates.phaseId;
+        if (updates.phaseId !== undefined) {
+            const phases = (_a = data.phases) !== null && _a !== void 0 ? _a : [];
+            const r = (0, phase_resolve_1.resolvePhaseIds)(phases, [{ phaseId: updates.phaseId }]);
+            if (r.unknown.length) {
+                throw new Error(`phaseId inconnu : "${updates.phaseId}" (phases : ${phases.map((p) => `${p.label} = ${p.id}`).join(" · ") || "aucune"})`);
+            }
+            patch.phaseId = r.tasks[0].phaseId;
+        }
         if (updates.groupLabel !== undefined)
             patch.groupLabel = updates.groupLabel;
         if (updates.isMilestone !== undefined)
@@ -1363,26 +1387,26 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
             patch.barLabel = updates.barLabel;
         // null = effacer l'estimation (retour au défaut de l'app).
         if (updates.estimatedMin !== undefined) {
-            patch.estimatedMin = (_a = estimatedMinOrUndefined(updates.estimatedMin)) !== null && _a !== void 0 ? _a : null;
+            patch.estimatedMin = (_b = estimatedMinOrUndefined(updates.estimatedMin)) !== null && _b !== void 0 ? _b : null;
         }
         if (updates.actions !== undefined) {
             // Remplace les sous-actions, mais préserve l'état done par match de titre
             // pour ne pas perdre la progression de l'utilisateur en cas de simple
             // renommage ou réordonnancement.
             const rawActions = Array.isArray(updates.actions) ? updates.actions : [];
-            const oldActions = (_b = tasks[idx].actions) !== null && _b !== void 0 ? _b : [];
+            const oldActions = (_c = tasks[idx].actions) !== null && _c !== void 0 ? _c : [];
             const oldByTitle = {};
             for (const a of oldActions) {
-                const t = (_c = a.title) !== null && _c !== void 0 ? _c : "";
+                const t = (_d = a.title) !== null && _d !== void 0 ? _d : "";
                 if (t) {
                     oldByTitle[t] = {
-                        done: (_d = a.done) !== null && _d !== void 0 ? _d : false,
-                        doneAt: (_e = a.doneAt) !== null && _e !== void 0 ? _e : null,
+                        done: (_e = a.done) !== null && _e !== void 0 ? _e : false,
+                        doneAt: (_f = a.doneAt) !== null && _f !== void 0 ? _f : null,
                         id: a.id,
-                        linkedActivityId: (_f = a.linkedActivityId) !== null && _f !== void 0 ? _f : null,
-                        context: (_g = a.context) !== null && _g !== void 0 ? _g : null,
+                        linkedActivityId: (_g = a.linkedActivityId) !== null && _g !== void 0 ? _g : null,
+                        context: (_h = a.context) !== null && _h !== void 0 ? _h : null,
                         contexts: Array.isArray(a.contexts) ? a.contexts : [],
-                        estimatedMin: (_h = estimatedMinOrUndefined(a.estimatedMin)) !== null && _h !== void 0 ? _h : null,
+                        estimatedMin: (_j = estimatedMinOrUndefined(a.estimatedMin)) !== null && _j !== void 0 ? _j : null,
                         checklist: Array.isArray(a.checklist)
                             ? a.checklist : [],
                     };
@@ -1444,10 +1468,14 @@ async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     if (actionIdx === -1)
         return `Sous-action introuvable : ${actionId}`;
     const actionTitle = (_b = actions[actionIdx].title) !== null && _b !== void 0 ? _b : actionId;
+    const wasDone = actions[actionIdx].done === true;
+    if (wasDone === done) {
+        return `✅ Sous-action "${actionTitle}" déjà ${done ? "faite" : "ouverte"} — inchangée.`;
+    }
     actions[actionIdx] = Object.assign(Object.assign({}, actions[actionIdx]), { done, doneAt: done ? new Date().toISOString() : null });
     tasks[taskIdx] = Object.assign(Object.assign({}, tasks[taskIdx]), { actions });
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
-    return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "démarquée"}.`;
+    return `✅ Sous-action "${actionTitle}" ${done ? "marquée faite" : "rouverte"}.`;
 }
 // Coche/décoche un item de checklist. Règle d'achèvement : tous les items
 // cochés → l'action passe faite ; décocher un item d'une action faite la rouvre.
