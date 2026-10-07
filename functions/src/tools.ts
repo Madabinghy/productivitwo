@@ -1135,6 +1135,45 @@ const UPDATE_ACTION_TOOL = {
   },
 };
 
+const UPDATE_ACTIONS_TOOL = {
+  name: "update_actions",
+  description:
+    "Lot de retouches d'actions en UN appel (B4 : ne compte qu'une fois dans le rate limit). updates[] = 1 à 50 " +
+    "entrées avec les mêmes champs qu'update_action (activityId | projectId + taskId, actionId, title, contexts, " +
+    "addContexts, removeContexts, estimatedMin, clearEstimate, linkedActivityId, done, delete). Les entrées sont " +
+    "appliquées dans l'ordre ; une erreur n'arrête pas le lot. Idéal pour poser des estimations ou des contextes en série.",
+  inputSchema: {
+    type: "object",
+    required: ["updates"],
+    properties: {
+      updates: {
+        type: "array",
+        minItems: 1,
+        maxItems: 50,
+        items: {
+          type: "object",
+          required: ["actionId"],
+          properties: {
+            activityId: { type: "string" },
+            projectId: { type: "string" },
+            taskId: { type: "string" },
+            actionId: { type: "string" },
+            title: { type: "string" },
+            contexts: { type: "array", items: { type: "string" } },
+            addContexts: { type: "array", items: { type: "string" } },
+            removeContexts: { type: "array", items: { type: "string" } },
+            estimatedMin: { type: "integer" },
+            clearEstimate: { type: "boolean" },
+            linkedActivityId: { type: "string" },
+            done: { type: "boolean" },
+            delete: { type: "boolean" },
+          },
+        },
+      },
+    },
+  },
+};
+
 const MANAGE_CONTEXTS_TOOL = {
   name: "manage_contexts",
   description:
@@ -1342,6 +1381,7 @@ UPDATE_INTERVENTION_TOOL,
 DELETE_INTERVENTION_TOOL,
 PLAN_PREP_TOOL,
 WEEKLY_REVIEW_TOOL,
+UPDATE_ACTIONS_TOOL,
 MANAGE_INTERVENTION_TEMPLATES_TOOL,
 MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
@@ -614,7 +615,7 @@ class _GoalsViewState extends State<GoalsView> {
             }
           },
           onAddAction: (title) async {
-            task.actions.add(TaskAction(title: title));
+            task.actions.add(TaskAction(title: title, estimatedMin: defaultEstimateFor(title)));
             await _sync.saveProjectTasks(project.id, project.tasks);
             setState(() {});
           },

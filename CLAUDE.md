@@ -371,6 +371,12 @@ précédent » de la séance suivante), `manage_intervention_templates` (`data/m
 `migrate_interventions` (triplets existants → natif, appariement temporel par jalon, dryRun), `delete_intervention` (détache par défaut), `update_task {interventionId, interventionRole}` (rattacher / détacher ; rôle principal unique, `extra` = secondaire), `update_intervention {mergeFrom}` (fusion), `plan_prep` (prépa dans les trous : veille au soir d'abord, impression sur place collée à la séance ; `apply:false` = proposition ; logique pure `functions/src/prep_planner.ts` ; bouton web « Planifier la prépa avec Claude » sur la 📝 dans Réalisation), `weekly_review` (revue des orphelins, ne modifie rien ; logique pure `functions/src/project_audit.ts` ; étape 0 de `plan_week` ; `archive_project` avertit des séances à venir, `push_gantt` signale un doublon probable). Logique pure `functions/src/interventions.ts` ; côté app
 `lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine » (web `projects_view.dart`, mobile `widgets/week_radar_card.dart` en tête de Projets). Mobile : écran « séance en cours » `widgets/session_player_screen.dart` (étape en cours, heure prévue, bilan → prépa suivante), ouvert depuis le jalon (fiche projet), le ▶ du radar ou un bloc du programme visant un jalon de séance.
 
+**Estimations par défaut** (2.4, 2026-10) : une action créée sans `estimatedMin` en reçoit une d'après son verbe / objet
+(`functions/src/default_estimates.ts` côté MCP, `lib/utils/default_estimate.dart` côté app — **garder alignés**).
+`ActionsSort.milestone` trie les projets par prochaine séance (`urgencyOf`), automatique avec un filtre « J'ai … ».
+`estimateFactor` (`utils/time_spent.dart`) affiche « Réel ≈ n× l'estimé » dans Actions. B4 : `update_actions(updates[])`
+(lot de 50) et rate limit MCP à 300 appels / h.
+
 **Phases par libellé** (B1, 2026-10, `functions/src/phase_resolve.ts`) : `push_gantt` / `add_task` / `update_task` résolvent
 `groupLabel` ou un `phaseId` égal au libellé d'une phase → vrai `phaseId` (mono-phase : tâche sans indication → la phase
 unique). `mark_action_done` est idempotent (`done` omis = true, jamais de bascule).

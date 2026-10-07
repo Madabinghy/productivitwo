@@ -38,7 +38,7 @@ import {
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
-  PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL,
+  PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -60,7 +60,7 @@ import {
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
   executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction, executeEstimateAccuracy,
   executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
-  executePlanPrep, executeWeeklyReview,
+  executePlanPrep, executeWeeklyReview, executeUpdateActions,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
@@ -1671,7 +1671,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
-            PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL,
+            PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
             ESTIMATE_ACCURACY_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
@@ -1682,7 +1682,9 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
       });
 
     } else if (method === "tools/call") {
-      const rl = await checkRateLimit(uid, "mcpToolCall", 100);
+      // 300/h (B4) : une session de travail intensive via le connecteur
+      // dépassait les 100 ; les écritures en série passent par update_actions.
+      const rl = await checkRateLimit(uid, "mcpToolCall", 300);
       if (rl.limited) {
         responses.push({ jsonrpc: "2.0", id, error: { code: -32000, message: `Rate limit dépassé — réessaie dans ${rl.retryAfterSecs}s` } });
         continue;
@@ -1887,6 +1889,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddIntervention(uid, args as unknown as Parameters<typeof executeAddIntervention>[1]);
         } else if (toolName === "update_intervention") {
           text = await executeUpdateIntervention(uid, args as unknown as Parameters<typeof executeUpdateIntervention>[1]);
+        } else if (toolName === "update_actions") {
+          text = await executeUpdateActions(uid, args as unknown as Parameters<typeof executeUpdateActions>[1]);
         } else if (toolName === "weekly_review") {
           text = await executeWeeklyReview(uid, args as unknown as Parameters<typeof executeWeeklyReview>[1]);
         } else if (toolName === "plan_prep") {

@@ -13,6 +13,21 @@ Session _s(String start, int? min, {String? actionId}) {
 }
 
 void main() {
+  test('estimateFactor : médiane réel/estimé sur les actions faites, 3 échantillons minimum', () {
+    TaskAction a(String id, int? est, {bool done = true}) =>
+        TaskAction(id: id, title: id, estimatedMin: est, done: done);
+    final p = Project(id: 'p', title: 'p', startDate: DateTime(2026, 1, 1), createdBy: 'u', tasks: [
+      ProjectTask(id: 't', title: 't', startDate: DateTime(2026, 1, 1), actions: [
+        a('x', 30), a('y', 20), a('z', 60), a('open', 30, done: false), a('noest', null),
+      ]),
+    ]);
+    final spent = {'x': 45, 'y': 20, 'z': 120, 'open': 90, 'noest': 50};
+    expect(estimateFactor([p], spent), 1.5); // ratios 1,5 · 1 · 2 → médiane 1,5
+    expect(estimateFactor([p], {'x': 45}), isNull);
+    expect(estimateFactorLabel(1.5), 'Réel ≈ 1,5× l\'estimé');
+    expect(estimateFactorLabel(null), isNull);
+  });
+
   test('closedSessionMin : fermée, ouverte, chrono oublié', () {
     expect(closedSessionMin(_s('2026-10-01T09:00:00', 45)), 45);
     expect(closedSessionMin(_s('2026-10-01T09:00:00', null)), 0);

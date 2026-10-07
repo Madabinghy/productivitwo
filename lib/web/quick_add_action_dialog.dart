@@ -2,6 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 
 /// Tâche réceptacle des actions « au fil de l'eau » (même id que le mobile).
@@ -79,6 +80,7 @@ Future<bool> showQuickAddActionDialog(
     title: title,
     context: picked.isEmpty ? null : picked.first,
     contexts: List.of(picked),
+    estimatedMin: defaultEstimateFor(title, contexts: picked),
   ));
   await sync.saveProjectTasks(project.id, project.tasks);
   return true;

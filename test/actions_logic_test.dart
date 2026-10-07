@@ -115,6 +115,16 @@ void main() {
     expect(g.single.actions.single.title, 'y');
   });
 
+  test('tri milestone : prochaine séance la plus proche d\'abord, sans séance en dernier', () {
+    final a = _p('A', [_t('ta', '2026-10-01', [_a('x')])], end: DateTime(2026, 12, 1));
+    final b = _p('B', [_t('tb', '2026-10-01', [_a('y')])], end: DateTime(2026, 10, 20));
+    final c = _p('C', [_t('tc', '2026-10-01', [_a('z')])]);
+    final urgency = {'A': DateTime(2026, 10, 12), 'B': DateTime(2026, 10, 30)};
+    final groups = projectActionGroups([c, b, a],
+        filter: _all, sort: ActionsSort.milestone, urgencyOf: (p) => urgency[p.id]);
+    expect(groups.map((g) => g.project.id).toList(), ['A', 'B', 'C']);
+  });
+
   test('overdueActionCount : actions ouvertes des tâches échues, projets vivants seulement', () {
     final today = DateTime(2026, 10, 7);
     ProjectTask task(String id, String end, List<TaskAction> actions, {String status = 'pending'}) =>

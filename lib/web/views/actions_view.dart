@@ -7,6 +7,8 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
+import 'package:productivitwo_v1/utils/time_spent.dart' show estimateFactor, estimateFactorLabel, spentByAction;
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
@@ -470,10 +472,17 @@ class _ActionsViewState extends State<ActionsView> {
     final now = open == null
         ? const <({TaskAction action, Project? project, ProjectTask? task, Activity? activity})>[]
         : possibleNow(_domainProjects, _domainActivities, open.activityId, filter: _filter);
+    // « J'ai 20 min » + tri par échéance → d'abord ce qui sert la séance la
+    // plus proche (brief 2.4) ; le tri explicite « Prochaine séance » fait pareil.
+    final today = DateTime.now();
+    final effectiveSort =
+        _time != null && _sort == ActionsSort.dueDate ? ActionsSort.milestone : _sort;
     final allGroups = projectActionGroups(_domainProjects,
         filter: _filter,
-        sort: _sort,
-        domainOrder: [for (final d in widget.domains) d.id]);
+        sort: effectiveSort,
+        domainOrder: [for (final d in widget.domains) d.id],
+        urgencyOf: (p) => nextInterventionOf(p, today)?.date);
+    final factorLabel = estimateFactorLabel(estimateFactor(widget.projects, spentByAction(_sessions)));
     final vis = visibleProjectGroups(allGroups, filtering: _filtering && !_showUnmatched);
     final groups = vis.shown;
     final filterLabel = [
@@ -497,6 +506,15 @@ class _ActionsViewState extends State<ActionsView> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: _label('PAR PROJET · PROCHAINE ACTION EN TÊTE')),
+            if (factorLabel != null) ...[
+              Tooltip(
+                message: 'Médiane du temps réel sur le temps estimé (actions faites avec chrono ciblé). '
+                    'Sert à corriger vos estimations ; détail : estimate_accuracy via Claude.',
+                child: Text(factorLabel,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kBText3)),
+              ),
+              const SizedBox(width: 14),
+            ],
             PopupMenuButton<ActionsSort>(
               tooltip: 'Trier',
               onSelected: (s) {
@@ -505,6 +523,7 @@ class _ActionsViewState extends State<ActionsView> {
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: ActionsSort.dueDate, child: Text('Échéance')),
+                PopupMenuItem(value: ActionsSort.milestone, child: Text('Prochaine séance')),
                 PopupMenuItem(value: ActionsSort.domain, child: Text('Domaine')),
                 PopupMenuItem(value: ActionsSort.alpha, child: Text('Alphabétique')),
               ],
@@ -514,8 +533,9 @@ class _ActionsViewState extends State<ActionsView> {
                   const Icon(Icons.swap_vert, size: 15, color: kBText3),
                   const SizedBox(width: 4),
                   Text(
-                      'Trier · ${switch (_sort) {
+                      'Trier · ${switch (effectiveSort) {
                         ActionsSort.dueDate => 'échéance',
+                        ActionsSort.milestone => 'prochaine séance',
                         ActionsSort.domain => 'domaine',
                         ActionsSort.alpha => 'A → Z',
                       }}',
