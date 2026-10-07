@@ -44,7 +44,14 @@ Logique pure serveur : `functions/src/interventions.ts` (tests `functions/test/i
 ## Lots
 
 1. **Modèle + MCP** (ce lot) : objet, quatre outils, migration, modèle Dart, lecture native dans le radar.
-2. **Web** : « Nouvelle séance » dans la fiche projet, bilan de clôture (texte + points), modèles.
+2. **Web** (livré) : bouton « Nouvelle séance » dans l'en-tête de la fiche projet
+   (`web/add_intervention_dialog.dart` : titre, modèle, date, créneau, lieu, déroulé une étape par ligne) —
+   port Dart de la génération dans `lib/utils/intervention_builder.dart` (`buildInterventionTasks`,
+   `parseInterventionTemplates`, `applyCarryOver`, tests `test/intervention_builder_test.dart`), modèles lus par
+   `FirestoreSync.fetchInterventionTemplates`. Dans **Réalisation**, l'action d'une tâche ✅ Clôturer affiche la
+   carte « Bilan de la séance » (texte libre + points « à reprendre », bouton Enregistrer → `saveProject` + report
+   dans la prépa suivante) ; une tâche 📝 Préparer rappelle le bilan de la séance précédente ; le jalon affiche
+   date · créneau · lieu. Les modèles se créent toujours via le MCP (pas d'éditeur web pour l'instant).
 3. **Mobile** : écran « séance en cours » plein écran type player (étape en cours, heure prévue, temps
    restant, étape suivante), bilan à la fin.
 4. (§ 2.3) « Planifier la prépa » : pousse les actions de prépa dans les trous de la semaine.
