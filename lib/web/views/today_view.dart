@@ -161,7 +161,7 @@ class TodayViewState extends State<TodayView> {
       matches: _sessionOnBlock,
     );
     if (b == null || open == null) return;
-    final attachable = _attachTarget(b) != null;
+    final attachable = _canAttach(b);
     final who = _activityName(open.activityId) ?? 'ton chrono';
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('« ${b.title} » commence — $who, c\'est pour ce bloc ?'),
@@ -308,25 +308,21 @@ class TodayViewState extends State<TodayView> {
     return _sessionOnBlock(open, f.block) ? (block: f.block, open: open) : null;
   }
 
-  AttachTarget? _attachTarget(ScheduleBlock b) => attachTargetFor(b,
+  bool _canAttach(ScheduleBlock b) => canAttachSessionToBlock(b,
       blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
 
   /// « Pour ce bloc » : le chrono en cours (lancé sur autre chose, ou avant
-  /// l'heure du bloc) est ré-attribué au bloc ; un bloc LIBRE (agenda Google,
-  /// perso) prend lui l'activité du chrono — même règle que le mobile.
+  /// l'heure du bloc) est ré-attribué au bloc. Le chrono fait foi : la session
+  /// garde son activité ; un bloc sans tâche sur une autre activité (ou libre :
+  /// agenda Google, perso) prend celle du chrono — même règle que le mobile.
   Future<void> _attachToBlock(Session s, ScheduleBlock b) async {
-    switch (_attachTarget(b)) {
-      case AttachTarget.session:
-        if (!attachSessionToBlock(s, b,
-            blockActivity: _activityOf(b.activityId), project: _project(b.projectId))) return;
-        setState(() {});
-        await widget.sync.saveSession(s);
-      case AttachTarget.block:
-        if (!attachBlockToSession(b, s)) return;
-        setState(() {});
-        await widget.sync.upsertScheduleBlock(_today, b);
-      case null:
-        return;
+    final r = attachSessionToBlock(s, b,
+        blockActivity: _activityOf(b.activityId), project: _project(b.projectId));
+    if (r == AttachResult.none) return;
+    setState(() {});
+    await widget.sync.saveSession(s);
+    if (r == AttachResult.sessionAndBlock) {
+      await widget.sync.upsertScheduleBlock(_today, b);
     }
   }
 
@@ -711,7 +707,7 @@ class TodayViewState extends State<TodayView> {
           b != null &&
           !onBlock &&
           (isCurrent || soon) &&
-          _attachTarget(b) != null;
+          _canAttach(b);
       // Le chrono en cours prime ; sinon le temps écoulé dans le créneau.
       final Duration elapsed;
       final int totalMin;

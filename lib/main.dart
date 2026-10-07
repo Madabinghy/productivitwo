@@ -1791,8 +1791,9 @@ class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
       endAt: res.endAt,
       activityId: res.activityId,
     );
-    // Rattachement après coup à un bloc (ou détachement) : la session prend
-    // la tâche / l'action du bloc et son activité-temps.
+    // Rattachement après coup à un bloc (ou détachement) : la session garde
+    // son activité et prend la tâche / l'action du bloc ; un bloc sans tâche
+    // sur une autre activité prend celle du chrono (le chrono fait foi).
     if (res.detachBlock) {
       s.taskId = null;
       s.actionId = null;
@@ -1802,12 +1803,18 @@ class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
       final b = res.block!;
       final acts = (logic.state.activities as List).cast<Activity>();
       final projs = (logic.currentProjects as List).cast<Project>();
-      final ok = attachSessionToBlock(s, b,
+      final r = attachSessionToBlock(s, b,
           blockActivity: acts.firstWhereOrNull((a) => a.id == b.activityId),
           project: projs.firstWhereOrNull((p) => p.id == b.projectId));
-      if (ok) {
+      if (r != AttachResult.none) {
         logic.onChange();
         sync?.saveSession(s);
+        if (r == AttachResult.sessionAndBlock) {
+          final d = s.startAt;
+          final ymd =
+              '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+          sync?.upsertScheduleBlock(ymd, b);
+        }
       }
     }
     if (mounted) setState(() {}); // refresh immédiat (pas besoin de quitter)
@@ -3113,9 +3120,8 @@ class _AppRootState extends State<AppRoot>
         logic.currentProjects.firstWhereOrNull((p) => p.id == block.projectId);
     final blockAct =
         _state?.activities.firstWhereOrNull((a) => a.id == block.activityId);
-    final attachTarget =
-        attachTargetFor(block, blockActivity: blockAct, project: blockProject);
-    final attachable = attachTarget != null;
+    final attachable =
+        canAttachSessionToBlock(block, blockActivity: blockAct, project: blockProject);
     final cs = Theme.of(ctx).colorScheme;
     showModalBottomSheet<void>(
       context: ctx,
@@ -3145,16 +3151,16 @@ class _AppRootState extends State<AppRoot>
               subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
               onTap: () async {
                 Navigator.pop(sheetCtx);
-                if (attachTarget == AttachTarget.block) {
-                  // Bloc libre (agenda Google, perso) : il prend l'activité du chrono.
-                  if (!attachBlockToSession(block, session)) return;
+                final r = attachSessionToBlock(session, block,
+                    blockActivity: blockAct, project: blockProject);
+                if (r == AttachResult.none) return;
+                logic.onChange();
+                if (r == AttachResult.sessionAndBlock) {
+                  // Le bloc prend l'activité du chrono (le chrono fait foi).
                   final n = DateTime.now();
                   final ymd =
                       '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
                   await _sync.upsertScheduleBlock(ymd, block);
-                } else if (attachSessionToBlock(session, block,
-                    blockActivity: blockAct, project: blockProject)) {
-                  logic.onChange();
                 }
               },
             ),

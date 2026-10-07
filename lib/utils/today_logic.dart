@@ -184,30 +184,60 @@ String? blockChronoActivityId(ScheduleBlock b,
   return project?.linkedActivityId;
 }
 
-/// Peut-on rattacher une session à ce bloc de façon à ce que
-/// [sessionMatchesBlock] devienne vrai ? Faux pour un bloc libre (ni tâche,
-/// ni activité-temps, ni projet avec activité liée).
+/// Peut-on rattacher une session à ce bloc ? Toujours, sauf une routine sans
+/// activité liée (un chrono ne peut pas tourner « sur » une routine).
 bool canAttachSessionToBlock(ScheduleBlock b,
     {Activity? blockActivity, Project? project}) {
   if (b.taskId != null) return true;
-  return blockChronoActivityId(b, blockActivity: blockActivity, project: project) != null;
+  if (blockActivity != null && blockActivity.isHabit) {
+    return blockActivity.linkedActivityId != null;
+  }
+  return true;
 }
 
-/// « Pour ce bloc » : ré-attribue la session EN COURS au bloc — elle porte
-/// désormais la tâche et l'action du bloc, et tourne sur son activité-temps
-/// quand le bloc en impose une. Le temps compte alors pour le bloc (et peut le
-/// valider). Mutation en mémoire : l'appelant persiste (`onChange` / save).
-/// Retourne false (sans rien toucher) si le bloc n'est pas rattachable.
-bool attachSessionToBlock(Session s, ScheduleBlock b,
+/// Ce qu'un rattachement a modifié : rien (bloc non rattachable), la session
+/// seule, ou la session ET le bloc (à persister tous les deux).
+enum AttachResult { none, session, sessionAndBlock }
+
+/// « Pour ce bloc » (chrono en cours ou session terminée) : **le chrono fait
+/// foi**. La session GARDE son activité — c'est elle qui alimente les stats
+/// par activité / domaine, et l'utilisateur l'a choisie en lançant le chrono
+/// (la « Création de contenu » faite pendant un bloc « Préparation » reste de
+/// la création de contenu). Elle prend la tâche et l'action du bloc ; quand le
+/// bloc n'a pas de tâche et tourne sur une autre activité (ou aucune : miroir
+/// Google Agenda, bloc perso), c'est le BLOC qui prend l'activité du chrono,
+/// pour que [sessionMatchesBlock] devienne vrai. Seule exception : un bloc de
+/// ROUTINE — une routine se reconnaît à son activité, la session bascule sur
+/// l'activité liée de la routine (le +1 reste cohérent).
+/// Mutation en mémoire : l'appelant persiste selon le résultat (session via
+/// save ; bloc via `upsertScheduleBlock`, qui garde `subtitle` des miroirs).
+AttachResult attachSessionToBlock(Session s, ScheduleBlock b,
     {Activity? blockActivity, Project? project}) {
   if (!canAttachSessionToBlock(b, blockActivity: blockActivity, project: project)) {
-    return false;
+    return AttachResult.none;
   }
-  s.taskId = b.taskId;
-  s.actionId = b.actionId;
-  final act = blockChronoActivityId(b, blockActivity: blockActivity, project: project);
-  if (act != null) s.activityId = act;
-  return true;
+  if (b.taskId != null) {
+    s.taskId = b.taskId;
+    s.actionId = b.actionId;
+    return AttachResult.session;
+  }
+  if (s.taskId != null) {
+    s.taskId = null;
+    s.actionId = null; // action de tâche : n'a plus de sens hors de sa tâche
+  }
+  if (blockActivity != null && blockActivity.isHabit) {
+    s.actionId = b.actionId;
+    s.activityId = blockActivity.linkedActivityId!;
+    return AttachResult.session;
+  }
+  final linkAct = blockChronoActivityId(b, blockActivity: blockActivity, project: project);
+  if (linkAct != null && linkAct == s.activityId) {
+    s.actionId = b.actionId ?? s.actionId;
+    return AttachResult.session;
+  }
+  b.activityId = s.activityId;
+  b.actionId = s.actionId;
+  return AttachResult.sessionAndBlock;
 }
 
 /// Blocs d'une journée auxquels une session (en cours ou TERMINÉE) peut être
@@ -253,35 +283,6 @@ String? shiftedStartAfter(int nowMin, int durationMin) {
   final start = ((nowMin + 14) ~/ 15) * 15;
   if (start + durationMin > 24 * 60) return null;
   return '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}';
-}
-
-/// Où écrire quand l'utilisateur dit « Pour ce bloc » :
-/// - [session] : le bloc a une source (tâche, activité-temps, routine liée,
-///   projet lié) → la session est réécrite dessus (`attachSessionToBlock`) ;
-/// - [block] : bloc LIBRE (import Google Agenda, bloc perso, projet sans
-///   activité liée) → le bloc prend l'activité du chrono (`attachBlockToSession`) ;
-/// - null : rien à faire (routine sans activité liée).
-enum AttachTarget { session, block }
-
-AttachTarget? attachTargetFor(ScheduleBlock b,
-    {Activity? blockActivity, Project? project}) {
-  if (canAttachSessionToBlock(b, blockActivity: blockActivity, project: project)) {
-    return AttachTarget.session;
-  }
-  if (b.taskId == null && b.activityId == null) return AttachTarget.block;
-  return null;
-}
-
-/// « Pour ce bloc » sur un bloc libre : le bloc devient un bloc de l'activité
-/// du chrono (et de son action propre, le cas échéant), donc
-/// [sessionMatchesBlock] devient vrai. Mutation en mémoire : l'appelant
-/// persiste le bloc (`upsertScheduleBlock`). Les miroirs Google Agenda gardent
-/// ce lien : la resynchronisation ne touche qu'heure, durée et titre.
-bool attachBlockToSession(ScheduleBlock b, Session s) {
-  if (b.taskId != null || b.activityId != null) return false;
-  b.activityId = s.activityId;
-  b.actionId = s.taskId == null ? s.actionId : null;
-  return true;
 }
 
 /// Réveil au changement de bloc : à chaque tick (minute), signale qu'un bloc

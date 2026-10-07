@@ -278,7 +278,12 @@ class SessionsCard extends StatelessWidget {
       s.taskId = null;
       s.actionId = null;
     } else if (block != null) {
-      attachSessionToBlock(s, block!, blockActivity: _act(block!.activityId), project: _proj(block!.projectId));
+      final r = attachSessionToBlock(s, block!,
+          blockActivity: _act(block!.activityId), project: _proj(block!.projectId));
+      if (r == AttachResult.sessionAndBlock) {
+        // Le bloc prend l'activité du chrono (le chrono fait foi).
+        await sync.upsertScheduleBlock(date, block!);
+      }
     }
     await sync.saveSession(s);
     onChanged();
