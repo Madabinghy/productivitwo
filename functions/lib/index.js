@@ -1802,7 +1802,11 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeUpdateTask)(uid, args.projectId, args.taskId, args);
                 }
                 else if (toolName === "mark_action_done") {
-                    text = await (0, execute_1.executeMarkActionDone)(uid, args.projectId, args.taskId, args.actionId, args.done);
+                    // Idempotent (B3) : `done` omis ou "true" ⇒ faite ; jamais de bascule
+                    // (un done undefined tombait en false → « démarquée »).
+                    const done = args.done === undefined || args.done === null
+                        ? true : args.done === true || String(args.done).toLowerCase() === "true";
+                    text = await (0, execute_1.executeMarkActionDone)(uid, args.projectId, args.taskId, args.actionId, done);
                 }
                 else if (toolName === "mark_checklist_item") {
                     text = await (0, execute_1.executeMarkChecklistItem)(uid, args.projectId, args.taskId, args.actionId, args.itemId, args.done);

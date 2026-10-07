@@ -363,6 +363,10 @@ Secrets : toute comparaison passe par `secretsMatch()` (temps constant) — jama
 
 Après modification : `npm run build` dans `functions/`, puis `firebase deploy --only functions`.
 
+**Phases par libellé** (B1, 2026-10, `functions/src/phase_resolve.ts`) : `push_gantt` / `add_task` / `update_task` résolvent
+`groupLabel` ou un `phaseId` égal au libellé d'une phase → vrai `phaseId` (mono-phase : tâche sans indication → la phase
+unique). `mark_action_done` est idempotent (`done` omis = true, jamais de bascule).
+
 **Attention** : `executePushGantt` dans `execute.ts` doit toujours appeler `normalizeTasks()`
 pour convertir les actions `string[]` en `TaskAction` maps — ne pas faire de spread direct `{ ...t }`.
 

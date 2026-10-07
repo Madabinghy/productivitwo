@@ -336,12 +336,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     if (widget.date != todayStr) return;
     final dayStart = DateTime(now.year, now.month, now.day);
+    final nowMin = now.hour * 60 + now.minute;
     for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
           b.activityId == null ||
           _won.contains(b.id)) {
         continue;
       }
+      // Un bloc qui n'a pas commencé ne se coche pas tout seul : un programme
+      // réécrit (schedule_day) ne doit pas « hériter » du fait d'un ancien
+      // bloc de même source (B2, brief 2026-10).
+      if (blockStartMin(b) > nowMin) continue;
       // Sens inverse du binding : une source validée ailleurs (routine faite,
       // temps loggué) coche son bloc — qu'il soit défi ou bloc routine/activité.
       final act = _activityById(b.activityId!);
@@ -352,9 +357,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         reached =
             tgt > 0 && widget.logic.habitValueOn(b.activityId!, dayStart) >= tgt;
       } else {
-        // Temps attribuable À CE BLOC (action → tâche → activité) : travailler
-        // une autre tâche de la même activité ne coche plus ce bloc.
-        final loggedMin = loggedMinForBlock(b, widget.logic.state.sessions, dayStart, now);
+        // Temps attribuable À CE BLOC (action → tâche → activité) et DANS SON
+        // CRÉNEAU : du temps loggué le matin ne coche pas un bloc de l'après-midi.
+        final blockStart = dayStart.add(Duration(minutes: blockStartMin(b)));
+        final blockEnd = dayStart.add(Duration(minutes: blockEndMin(b)));
+        final loggedMin = loggedMinForBlock(b, widget.logic.state.sessions, blockStart,
+            blockEnd.isAfter(now) ? now : blockEnd);
         final threshold = (b.durationMin * 0.6).round();
         reached = loggedMin >= (threshold < 10 ? 10 : threshold);
       }
