@@ -75,6 +75,13 @@ Logique pure serveur : `functions/src/interventions.ts` (tests `functions/test/i
    carte « Bilan de la séance » (texte libre + points « à reprendre », bouton Enregistrer → `saveProject` + report
    dans la prépa suivante) ; une tâche 📝 Préparer rappelle le bilan de la séance précédente ; le jalon affiche
    date · créneau · lieu. Les modèles se créent toujours via le MCP (pas d'éditeur web pour l'instant).
-3. **Mobile** : écran « séance en cours » plein écran type player (étape en cours, heure prévue, temps
-   restant, étape suivante), bilan à la fin.
+3. **Mobile** (livré) : écran « séance en cours » (`widgets/session_player_screen.dart`, route plein écran) :
+   étape en cours en grand (heure prévue lue dans le libellé « 13h45 … », fin prévue = heure de l'étape
+   suivante, retard affiché), reste du créneau, « Étape suivante » / « Précédente », liste complète cochable,
+   ajout d'étape, chrono optionnel ; « Terminer la séance » → feuille de bilan (texte + points à reprendre,
+   chips « Non fait : … » pour les étapes sautées) → jalon et action faits, `status: done`, report dans la prépa
+   suivante, `saveProject`. Entrées : bouton « Séance en cours » sur le jalon dans la fiche projet mobile, ▶ du
+   radar « Cette semaine » (`widgets/week_radar_card.dart`, en tête de l'onglet Projets, même logique que le web)
+   pour une séance du jour, et lancement d'un bloc du programme qui vise un jalon de séance (après le chrono).
+   Les étapes sont la checklist de l'action « Dérouler la séance » : identiques web / MCP.
 4. (§ 2.3) « Planifier la prépa » : pousse les actions de prépa dans les trous de la semaine.
