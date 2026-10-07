@@ -6,7 +6,9 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show groupByFolder;
 import 'package:productivitwo_v1/utils/folder_merge.dart';
+import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -22,6 +24,9 @@ import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 const _kDayLong = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+const _kDayShort = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+const _kMonthShort = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+String _dayMonth(DateTime d) => '${_kDayShort[d.weekday - 1]} ${d.day} ${_kMonthShort[d.month - 1]}';
 
 String _fmtHm(int min) {
   final h = min ~/ 60, m = min % 60;
@@ -70,6 +75,8 @@ class _ProjectsViewState extends State<ProjectsView> {
   bool _creating = false;
   // Dossiers (clients) dépliés dans le tableau ; repliés par défaut.
   final Set<String> _openFolders = {};
+  // Radar « Cette semaine » : projets sans jalon à 14 jours repliés par défaut.
+  bool _showQuiet = false;
   // Blocs de la semaine courante, pour « planifiée demain 9 h ».
   final Map<String, List<ScheduleBlock>> _byDay = {};
   final List<StreamSubscription<DailySchedule?>> _subs = [];
@@ -264,6 +271,7 @@ class _ProjectsViewState extends State<ProjectsView> {
         padding: const EdgeInsets.fromLTRB(32, 22, 32, 26),
         children: [
           _header(active.length, atRisk, noNext),
+          ..._weekCardOrNothing(now),
           if (objective != null) ...[
             const SizedBox(height: 18),
             _objectiveCard(objective, now),
@@ -326,6 +334,228 @@ class _ProjectsViewState extends State<ProjectsView> {
         ),
       ),
     ]);
+  }
+
+  // ── Radar « Cette semaine » (brief 2026-10, § 2.1) ─────────────────────────
+  // Pour chaque projet vivant : prochain jalon (date, créneau), état de sa
+  // préparation, état de la clôture précédente. 3 lignes max par projet, tri
+  // par date du jalon ; les dossiers coiffent leurs sous-projets ; un projet
+  // sans jalon à 14 jours est replié. Clic → la tâche Préparer (sinon le jalon).
+
+  List<Widget> _weekCardOrNothing(DateTime now) {
+    final today = dateOnly(now);
+    final radar = weekRadar(widget.projects, today);
+    if (radar.isEmpty || _mode != _Mode.active) return const [];
+    return [const SizedBox(height: 18), _weekCard(radar, today)];
+  }
+
+  Widget _weekCard(List<ProjectRadar> radar, DateTime today) {
+    final hot = radar.where((r) => !r.isQuiet(today)).toList();
+    final quiet = radar.where((r) => r.isQuiet(today)).toList();
+    final shown = _showQuiet ? radar : hot;
+    final byId = {for (final r in radar) r.project.id: r};
+    final groups = groupByFolder([for (final r in shown) r.project], widget.projects);
+    final late = hot.where((r) => (r.daysTo(today) ?? 0) < 0).length;
+    final toClose = radar
+        .where((r) => r.previous?.closureState == ClosureState.todo)
+        .length;
+
+    final rows = <Widget>[];
+    for (final g in groups) {
+      if (g.folder != null) {
+        rows.add(Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
+          child: Row(children: [
+            const Icon(Icons.folder_outlined, size: 13, color: kBText3),
+            const SizedBox(width: 6),
+            _label(g.folder!.title.toUpperCase()),
+          ]),
+        ));
+      }
+      for (final p in g.projects) {
+        rows.add(_radarRow(byId[p.id]!, today, indent: g.folder != null));
+      }
+    }
+
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+          child: Row(children: [
+            const Icon(Icons.radar, size: 18, color: kBPrimary),
+            const SizedBox(width: 12),
+            _label('CETTE SEMAINE'),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${hot.length} séance${hot.length > 1 ? 's' : ''} à 14 jours'
+                '${late > 0 ? ' · $late en retard' : ''}'
+                '${toClose > 0 ? ' · $toClose clôture${toClose > 1 ? 's' : ''} à faire' : ''}',
+                style: const TextStyle(fontSize: 12.5, color: kBText3, fontFeatures: _tabular),
+              ),
+            ),
+          ]),
+        ),
+        if (hot.isEmpty && !_showQuiet)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 6, 20, 10),
+            child: Text('Aucune séance dans les 14 prochains jours.',
+                style: TextStyle(fontSize: 13, color: kBText3)),
+          ),
+        ...rows,
+        if (quiet.isNotEmpty)
+          InkWell(
+            onTap: () => setState(() => _showQuiet = !_showQuiet),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              child: Row(children: [
+                Icon(_showQuiet ? Icons.expand_less : Icons.expand_more, size: 16, color: kBText3),
+                const SizedBox(width: 6),
+                Text(
+                  _showQuiet
+                      ? 'Masquer les projets sans séance à 14 jours'
+                      : '${quiet.length} projet${quiet.length > 1 ? 's' : ''} sans séance à 14 jours · '
+                          'Afficher',
+                  style: const TextStyle(fontSize: 12.5, color: kBText3),
+                ),
+              ]),
+            ),
+          )
+        else
+          const SizedBox(height: 10),
+      ]),
+    );
+  }
+
+  Widget _radarRow(ProjectRadar r, DateTime today, {bool indent = false}) {
+    final p = r.project;
+    final next = r.next;
+    final prev = r.previous;
+    final days = r.daysTo(today);
+    final color = domainColor(p.domainId, widget.domains) ?? kBPrimary;
+    final dateColor = days == null
+        ? kBText3
+        : days < 0
+            ? kBAlert
+            : days <= 2
+                ? kBAttention
+                : kBText;
+    final when = next == null
+        ? 'Pas de séance'
+        : days == 0
+            ? 'Aujourd\'hui'
+            : days == 1
+                ? 'Demain'
+                : _dayMonth(next.date);
+    final time = next?.timeRange;
+
+    String prepLine() {
+      if (next == null) return '';
+      switch (next.prepState) {
+        case PrepState.none:
+          return 'Pas de préparation';
+        case PrepState.done:
+          return 'Prépa faite';
+        case PrepState.ready:
+          return 'Prépa prête';
+        case PrepState.readyToPrint:
+          return 'Prépa prête à imprimer';
+        case PrepState.todo:
+          return 'Prépa ${next.prepTotal - next.prepOpen}/${next.prepTotal}';
+      }
+    }
+
+    final prepColor = switch (next?.prepState) {
+      PrepState.readyToPrint || PrepState.ready || PrepState.done => kBPrimary,
+      PrepState.todo => (days != null && days <= 1) ? kBAttention : kBText2,
+      _ => kBText4,
+    };
+
+    String? closureLine() {
+      if (prev == null) return null;
+      final d = _dayMonth(prev.date);
+      return switch (prev.closureState) {
+        ClosureState.none => null,
+        ClosureState.done => 'Clôture du $d faite',
+        ClosureState.todo =>
+          'Clôture du $d : ${prev.closureOpen} action${prev.closureOpen > 1 ? 's' : ''} à faire',
+      };
+    }
+
+    final closure = closureLine();
+    final target = next?.prep?.id ?? next?.milestone.id ?? prev?.closure?.id;
+
+    return InkWell(
+      onTap: () => widget.onOpenProject(p, taskId: target),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(indent ? 40 : 20, 8, 20, 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(
+            width: 120,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(when,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: dateColor,
+                      fontFeatures: _tabular)),
+              if (time != null)
+                Text(time,
+                    style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+              if (days != null && days < 0)
+                Text('J+${-days} · non coché',
+                    style: const TextStyle(fontSize: 11, color: kBAlert)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(top: 5),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  style: const TextStyle(fontSize: 13.5, color: kBText),
+                  children: [
+                    TextSpan(
+                        text: p.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    if (next != null)
+                      TextSpan(
+                          text: ' · ${stripLeadEmoji(next.milestone.title)}',
+                          style: const TextStyle(color: kBText2)),
+                  ],
+                ),
+              ),
+              if (next != null) ...[
+                const SizedBox(height: 3),
+                Text(prepLine(),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: prepColor,
+                        fontFeatures: _tabular)),
+              ],
+              if (closure != null) ...[
+                const SizedBox(height: 2),
+                Text(closure,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: prev!.closureState == ClosureState.todo ? kBAttention : kBText3,
+                        fontFeatures: _tabular)),
+              ],
+            ]),
+          ),
+          const SizedBox(width: 12),
+          const Icon(Icons.chevron_right, size: 16, color: kBText4),
+        ]),
+      ),
+    );
   }
 
   Widget _objectiveCard(StrategicObjective o, DateTime now) {
