@@ -26,15 +26,38 @@ jusqu'ici par convention (émojis 📝 / 🎯 / ✅ + `groupLabel`). L'intervent
 - **Lecture côté app** (`lib/utils/interventions.dart`) : natif d'abord, repli sur la convention pour les
   tâches non migrées. Le radar « Cette semaine » (web, 2.1) s'appuie dessus.
 
+## Rattachements (spec « Rattachement des tâches aux interventions », 2026-10)
+
+Après la première migration (37 triplets), des rattachements étaient faux : regroupement par `groupLabel` +
+premier jalon trouvé. Corrections :
+
+- **`update_task`** accepte `interventionId` (`""` = détacher) + `interventionRole` (`prep | session | closure |
+  extra`). Un rôle principal n'est porté que par une tâche : conflit = refus nommant la tâche en place. Ni statut,
+  ni dates, ni actions modifiés ; le décalage de dates reste réservé à `update_intervention` + `date`.
+- **`delete_intervention(projectId, interventionId, tasks?)`** : `detach` (défaut, un jalon redevient un jalon
+  simple) · `cancel` · `delete` (sur demande explicite). Retourne les tâches touchées.
+- **`update_intervention` + `mergeFrom`** : les tâches de la source passent sur la cible ; un rôle principal déjà
+  tenu → la tâche entrante devient **`extra`** (décision : pas d'échec, pas de rôles `_extra` multiples — un seul
+  rôle secondaire générique) ; bilans concaténés ; source retirée.
+- **Migration** : appariement temporel par jalon 🎯 (📝 dont `endDate` est la plus proche avant, ✅ dont
+  `startDate` est la plus proche à partir du jalon, chaque tâche une seule fois), un repère de titre commun
+  (« J3 », « 23/11 », « 15 oct ») primant sur la proximité ; un 🏁 le jour d'un 🎯 du même groupe devient `extra`,
+  un 🏁 seul n'est pas une séance ; jalon sans 📝 ni ✅ = orphelin, ignoré sauf `includeOrphans:true` ; créneau
+  multi-plages (`8h30–12h30 + 13h30–16h30` → 8h30–16h30, `breaks: [{start, end}]` stocké, durée nette pour
+  l'action « Dérouler ») ; dry run : ⚠️ 📝 / ✅ sans partenaire et jours à deux interventions.
+- Décisions sur les questions ouvertes : (1) conflit de fusion → `extra` ; (2) une intervention porte UNE tâche
+  `session`, les autres jalons du jour sont `extra` ; (3) la pause est stockée (`breaks`), début/fin restent la
+  plage globale.
+
 ## Modèle
 
 ```
 ProjectIntervention {
-  id, title, date (YYYY-MM-DD), startTime, endTime ("HH:mm"), place?, templateId?, docUrl?,
+  id, title, date (YYYY-MM-DD), startTime, endTime ("HH:mm"), breaks?: [{start, end}], place?, templateId?, docUrl?,
   status: planned | done | cancelled,
   debriefText?, carryOver: ChecklistItem[], debriefAt?
 }
-ProjectTask += interventionId?, interventionRole? ("prep" | "session" | "closure")
+ProjectTask += interventionId?, interventionRole? ("prep" | "session" | "closure" | "extra")
 InterventionTemplate { id, name, startTime?, endTime?, place?, sessionContext?,
   prep: { daysBefore, endDaysBefore, actions[] }, closure: { daysAfter, actions[] } }
 ```

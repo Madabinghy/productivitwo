@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = void 0;
+exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = void 0;
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -811,6 +811,8 @@ const UPDATE_TASK_TOOL = {
             barLabel: { type: "string" },
             estimatedMin: TASK_ESTIMATED_MIN_SCHEMA,
             status: { type: "string", enum: ["pending", "done", "skipped"] },
+            interventionId: { type: "string", description: "Rattache la tâche à une intervention du projet (get_project → interventions[]) ; \"\" = détacher. Dates, statut et actions intacts." },
+            interventionRole: { type: "string", enum: ["prep", "session", "closure", "extra"], description: "Obligatoire avec interventionId. Un seul prep / session / closure par intervention (refus nommant la tâche en place) ; extra = tâche secondaire (évaluation le jour de la séance…)" },
             actions: {
                 type: "array",
                 items: TASK_ACTION_ITEM_SCHEMA,
@@ -930,10 +932,27 @@ const UPDATE_INTERVENTION_TOOL = {
             status: { type: "string", enum: ["planned", "done", "cancelled"] },
             debriefText: { type: "string", description: "bilan libre de la séance" },
             carryOver: { type: "array", items: { type: "string" }, description: "points à reprendre à la séance suivante" },
+            mergeFrom: { type: "string", description: "id d'une autre intervention du projet à FUSIONNER dans celle-ci : ses tâches sont rattachées (un rôle principal déjà tenu → extra), les bilans concaténés, puis elle est retirée" },
         },
     },
 };
 exports.UPDATE_INTERVENTION_TOOL = UPDATE_INTERVENTION_TOOL;
+const DELETE_INTERVENTION_TOOL = {
+    name: "delete_intervention",
+    description: "Supprime une intervention SANS toucher à ses tâches par défaut (tasks:\"detach\" : elles perdent le lien et restent " +
+        "telles quelles, un jalon redevient un jalon simple). tasks:\"cancel\" passe les tâches restantes en skipped ; " +
+        "tasks:\"delete\" les supprime (à n'utiliser que sur demande explicite). Retourne la liste des tâches touchées.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "interventionId"],
+        properties: {
+            projectId: { type: "string" },
+            interventionId: { type: "string" },
+            tasks: { type: "string", enum: ["detach", "cancel", "delete"], description: "défaut : detach" },
+        },
+    },
+};
+exports.DELETE_INTERVENTION_TOOL = DELETE_INTERVENTION_TOOL;
 const MANAGE_INTERVENTION_TEMPLATES_TOOL = {
     name: "manage_intervention_templates",
     description: "Modèles d'intervention (« séance Chérubins », « journée SOF 7 h »…) : créneau par défaut, lieu, contexte de la " +
@@ -976,9 +995,12 @@ const MANAGE_INTERVENTION_TEMPLATES_TOOL = {
 exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = MANAGE_INTERVENTION_TEMPLATES_TOOL;
 const MIGRATE_INTERVENTIONS_TOOL = {
     name: "migrate_interventions",
-    description: "Convertit les triplets existants (jalon 🎯/🏁 + 📝 Préparer + ✅ Clôturer de même groupLabel) en interventions natives. " +
-        "dryRun (défaut true) liste ce qui serait créé ; relance avec dryRun:false pour appliquer. Le créneau est lu dans " +
-        "l'action du jalon, sinon la description du projet, sinon defaultStart/defaultEnd.",
+    description: "Convertit les triplets existants en interventions natives : par groupLabel, chaque jalon 🎯 est apparié à la 📝 " +
+        "qui le précède au plus près et à la ✅ qui le suit au plus près (un repère de titre commun — « J3 », « 15 oct » — " +
+        "prime) ; un 🏁 le même jour qu'un 🎯 devient une tâche extra de la séance ; un jalon sans 📝 ni ✅ est ignoré sauf " +
+        "includeOrphans:true. Créneau : toutes les plages du titre (8h30–12h30 + 13h30–16h30 → 8h30–16h30, pause stockée), " +
+        "sinon la description du projet, sinon defaultStart/defaultEnd. dryRun (défaut true) liste ce qui serait créé et " +
+        "signale les 📝 / ✅ sans partenaire et les jours à deux interventions ; relance avec dryRun:false pour appliquer.",
     inputSchema: {
         type: "object",
         properties: {
@@ -986,6 +1008,7 @@ const MIGRATE_INTERVENTIONS_TOOL = {
             dryRun: { type: "boolean" },
             defaultStart: { type: "string" },
             defaultEnd: { type: "string" },
+            includeOrphans: { type: "boolean", description: "migrer aussi les jalons sans 📝 ni ✅ (défaut false)" },
         },
     },
 };

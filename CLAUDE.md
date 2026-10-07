@@ -368,7 +368,7 @@ Après modification : `npm run build` dans `functions/`, puis `firebase deploy -
 `interventionId` + `interventionRole`. Outils `add_intervention` (génère les trois tâches depuis un modèle),
 `update_intervention` (date → décalage des tâches ; bilan `debriefText` + `carryOver` → checklist « Adapter au bilan
 précédent » de la séance suivante), `manage_intervention_templates` (`data/meta.interventionTemplates`),
-`migrate_interventions` (triplets existants → natif, dryRun). Logique pure `functions/src/interventions.ts` ; côté app
+`migrate_interventions` (triplets existants → natif, appariement temporel par jalon, dryRun), `delete_intervention` (détache par défaut), `update_task {interventionId, interventionRole}` (rattacher / détacher ; rôle principal unique, `extra` = secondaire), `update_intervention {mergeFrom}` (fusion). Logique pure `functions/src/interventions.ts` ; côté app
 `lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine ».
 
 **Phases par libellé** (B1, 2026-10, `functions/src/phase_resolve.ts`) : `push_gantt` / `add_task` / `update_task` résolvent
