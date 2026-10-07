@@ -143,16 +143,21 @@ class _ActionsViewState extends State<ActionsView> {
 
   List<Project> get _domainProjects => widget.projects
       .where((p) => _domainId == null || p.domainId == _domainId)
-      .where((p) => _clientId == null || rootProjectOf(p, widget.projects).id == _clientId)
+      .where((p) => inClient(_clientId, p, widget.projects))
       .where((p) => !isFolderProject(p, widget.projects))
       .toList();
 
   int _openCountForClient(String? rootId) {
     var n = 0;
+    if (rootId == null || rootId == kPersoClientId) {
+      for (final a in _activitiesInDomain) {
+        n += a.ownActions.where((x) => !x.done && _filter(x)).length;
+      }
+    }
     for (final p in widget.projects) {
       if (p.status != 'active' || p.paused) continue;
       if (_domainId != null && p.domainId != _domainId) continue;
-      if (rootId != null && rootProjectOf(p, widget.projects).id != rootId) continue;
+      if (!inClient(rootId, p, widget.projects)) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         n += t.actions.where((a) => !a.done && _filter(a)).length;
@@ -161,7 +166,12 @@ class _ActionsViewState extends State<ActionsView> {
     return n;
   }
 
-  List<Activity> get _domainActivities => _domainId == null
+  /// Activités dont les actions simples sont montrées : un client choisi n'en
+  /// a aucune (elles ne sont « pour » personne), « Perso » les a toutes.
+  List<Activity> get _domainActivities =>
+      _clientId != null && _clientId != kPersoClientId ? const [] : _activitiesInDomain;
+
+  List<Activity> get _activitiesInDomain => _domainId == null
       ? widget.activities
       : widget.activities.where((a) => a.domainId == _domainId).toList();
 
@@ -355,6 +365,7 @@ class _ActionsViewState extends State<ActionsView> {
         const SizedBox(height: 10),
         _clientRow(null, 'Tous'),
         for (final r in clientRoots(widget.projects)) _clientRow(r.id, r.title),
+        _clientRow(kPersoClientId, kPersoClientLabel),
       ],
       const SizedBox(height: 22),
       _label('DOMAINE'),

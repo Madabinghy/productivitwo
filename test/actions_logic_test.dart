@@ -168,6 +168,16 @@ void main() {
     test('clientRoots : racines ayant un projet vivant dessous, triées', () {
       expect(clientRoots(all).map((p) => p.id).toList(), ['Chérubins', 'orphelin', 'SOF']);
     });
+    test('inClient : un client = ses projets seulement ; Perso = les actions sans projet', () {
+      expect(inClient(null, cm, all), isTrue);
+      expect(inClient(null, null, all), isTrue);
+      expect(inClient('Chérubins', cm, all), isTrue);
+      expect(inClient('Chérubins', sof, all), isFalse);
+      // La démarche carte grise (action d'activité) n'apparaît plus sous Chérubins.
+      expect(inClient('Chérubins', null, all), isFalse);
+      expect(inClient(kPersoClientId, null, all), isTrue);
+      expect(inClient(kPersoClientId, cm, all), isFalse);
+    });
     test('isFolderProject : sans tâche et avec des enfants', () {
       expect(isFolderProject(cherubins, all), isTrue);
       expect(isFolderProject(vide, all), isTrue);

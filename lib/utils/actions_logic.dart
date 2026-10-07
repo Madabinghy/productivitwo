@@ -144,6 +144,22 @@ List<Project> clientRoots(List<Project> all) {
     ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
 }
 
+/// Entrée « Perso » du filtre « Pour… » : les actions SANS projet (actions
+/// propres d'activité). Un client choisi ne montre que ses projets ; sans
+/// cette entrée, les actions simples n'auraient plus d'endroit où apparaître
+/// filtrées.
+const String kPersoClientId = '__perso__';
+const String kPersoClientLabel = 'Perso';
+
+/// Filtre « Pour… » : null = tout ; [kPersoClientId] = actions sans projet ;
+/// sinon le projet racine (client / dossier) de [p] doit être [clientId].
+/// Une action simple n'est « pour » aucun client.
+bool inClient(String? clientId, Project? p, List<Project> all) {
+  if (clientId == null) return true;
+  if (clientId == kPersoClientId) return p == null;
+  return p != null && rootProjectOf(p, all).id == clientId;
+}
+
 /// Dossier : un projet racine sans tâche dont d'autres projets dépendent —
 /// il sert de client, pas de liste d'actions (jamais « Définir la prochaine »).
 bool isFolderProject(Project p, List<Project> all) =>

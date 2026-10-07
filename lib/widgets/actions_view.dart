@@ -112,9 +112,8 @@ class _ActionsViewState extends State<ActionsView> {
 
   String _rootIdOf(Project p) => rootProjectOf(p, _allProjects).id;
 
-  /// Les actions simples (activités) ne sont « pour » personne : le filtre
-  /// client ne touche que les projets.
-  bool _inClient(Project? p) => _clientFilter == null || p == null || _rootIdOf(p) == _clientFilter;
+  /// Client choisi = ses projets seulement ; « Perso » = les actions simples.
+  bool _inClient(Project? p) => inClient(_clientFilter, p, _allProjects);
 
   // « J'ai… » : 15 min · 1 h · plus (null = tout). Persisté.
   static const _kTimePrefKey = 'actions_time_filter';
@@ -1094,7 +1093,9 @@ class _ActionsViewState extends State<ActionsView> {
     bool inDomain(String? domainId) =>
         activeDomains.isEmpty || activeDomains.contains(domainId);
     final roots = clientRoots(_allProjects);
-    if (_clientFilter != null && !roots.any((r) => r.id == _clientFilter)) {
+    if (_clientFilter != null &&
+        _clientFilter != kPersoClientId &&
+        !roots.any((r) => r.id == _clientFilter)) {
       // Client disparu (archivé, fusionné) : le filtre tombe tout seul.
       _clientFilter = null;
     }
@@ -1351,6 +1352,8 @@ class _ActionsViewState extends State<ActionsView> {
                   color: domainColor(r.domainId, _state.activeDomains)),
               const SizedBox(width: 6),
             ],
+            chip(kPersoClientLabel, _clientFilter == kPersoClientId,
+                () => _setClient(_clientFilter == kPersoClientId ? null : kPersoClientId)),
           ]),
         ),
       ],
