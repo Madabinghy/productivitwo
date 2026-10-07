@@ -1,10 +1,11 @@
 import 'package:productivitwo_v1/models.dart';
 
-// Brief « Projets opérationnel » (2026-10), chantier 2.1 : lecture des
-// INTERVENTIONS existantes sans nouveau modèle. Une intervention = le groupe
-// de tâches d'un même `groupLabel` autour d'un jalon (🎯 / 🏁 / isMilestone),
-// avec sa préparation (titre « 📝 … ») et sa clôture (titre « ✅ … »).
-// Logique pure, partagée web / mobile ; le modèle natif (2.2) la remplacera.
+// Brief « Projets opérationnel » (2026-10), chantiers 2.1 / 2.2 : lecture des
+// INTERVENTIONS d'un projet. Source native d'abord (`Project.interventions`
+// + tâches taguées `interventionId` / `interventionRole`, posées par le
+// serveur) ; repli sur la convention historique pour les tâches non migrées :
+// un jalon (🎯 / 🏁 / isMilestone) + préparation « 📝 … » + clôture « ✅ … »
+// de même `groupLabel`. Logique pure, partagée web / mobile.
 
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -36,19 +37,32 @@ class Intervention {
   final ProjectTask milestone;
   final ProjectTask? prep;
   final ProjectTask? closure;
+  /// Objet natif quand il existe (date, créneau, lieu, bilan font foi).
+  final ProjectIntervention? native;
   const Intervention({
     required this.project,
     required this.groupLabel,
     required this.milestone,
     this.prep,
     this.closure,
+    this.native,
   });
 
-  DateTime get date => _day(milestone.endDate ?? milestone.startDate);
+  String get title => native?.title ?? groupLabel ?? stripLeadEmoji(milestone.title);
 
-  /// Créneau « 13h15–15h00 » lu dans les actions du jalon, son titre, puis la
-  /// description du projet (« Lundi 13h15–15h00, CM1-CM2 »). Null si absent.
+  DateTime get date => native != null ? _day(native!.date) : _day(milestone.endDate ?? milestone.startDate);
+
+  /// Créneau « 13h15–15h00 » : celui de l'objet natif, sinon lu dans les
+  /// actions du jalon, son titre, puis la description du projet. Null si absent.
   String? get timeRange {
+    final n = native;
+    if (n != null && n.startTime.isNotEmpty && n.endTime.isNotEmpty) {
+      String fr(String hm) {
+        final p = hm.split(':');
+        return p.length == 2 ? '${int.tryParse(p[0]) ?? p[0]}h${p[1]}' : hm;
+      }
+      return '${fr(n.startTime)}–${fr(n.endTime)}';
+    }
     final re = RegExp(r'(\d{1,2}\s?h\s?\d{0,2})\s*(?:–|-|—|à)\s*(\d{1,2}\s?h\s?\d{0,2})');
     for (final s in [
       ...milestone.actions.map((a) => a.title),
@@ -67,7 +81,10 @@ class Intervention {
     return null;
   }
 
+  bool get isCancelled => native?.status == 'cancelled' || milestone.status == 'skipped';
+
   bool get isDone =>
+      native?.status == 'done' ||
       milestone.status == 'done' ||
       (milestone.actions.isNotEmpty && milestone.actions.every((a) => a.done));
 
@@ -105,11 +122,33 @@ class Intervention {
 List<Intervention> interventionsOf(Project p) {
   final live = p.tasks.where((t) => t.status != 'skipped').toList();
   final out = <Intervention>[];
-  for (final m in live.where(isMilestoneTask)) {
+  // 1) Natives : une par objet (hors annulées), tâches retrouvées par rôle.
+  final nativeTaskIds = <String>{};
+  for (final n in p.interventions) {
+    final mine = p.tasks.where((t) => t.interventionId == n.id).toList();
+    nativeTaskIds.addAll(mine.map((t) => t.id));
+    if (n.status == 'cancelled') continue;
+    final session = mine.where((t) => t.interventionRole == 'session').firstOrNull ??
+        mine.where(isMilestoneTask).firstOrNull;
+    if (session == null) continue;
+    out.add(Intervention(
+      project: p,
+      groupLabel: n.title,
+      milestone: session,
+      prep: mine.where((t) => t.interventionRole == 'prep').firstOrNull,
+      closure: mine.where((t) => t.interventionRole == 'closure').firstOrNull,
+      native: n,
+    ));
+  }
+  // 2) Convention historique pour le reste (tâches non migrées).
+  for (final m in live.where((t) => isMilestoneTask(t) && !nativeTaskIds.contains(t.id))) {
     final g = (m.groupLabel ?? '').trim();
     final siblings = g.isEmpty
         ? const <ProjectTask>[]
-        : live.where((t) => t.id != m.id && (t.groupLabel ?? '').trim() == g).toList();
+        : live
+            .where((t) =>
+                t.id != m.id && !nativeTaskIds.contains(t.id) && (t.groupLabel ?? '').trim() == g)
+            .toList();
     out.add(Intervention(
       project: p,
       groupLabel: g.isEmpty ? null : g,

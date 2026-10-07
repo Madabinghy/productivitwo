@@ -363,6 +363,14 @@ Secrets : toute comparaison passe par `secretsMatch()` (temps constant) — jama
 
 Après modification : `npm run build` dans `functions/`, puis `firebase deploy --only functions`.
 
+**Interventions** (2026-10, handoff `docs/specs/interventions-2026-10/README.md`) : séance datée portée par le projet
+(`Project.interventions[]`, `ProjectIntervention`) ; ses trois tâches 📝 / 🎯 / ✅ sont des `ProjectTask` taguées
+`interventionId` + `interventionRole`. Outils `add_intervention` (génère les trois tâches depuis un modèle),
+`update_intervention` (date → décalage des tâches ; bilan `debriefText` + `carryOver` → checklist « Adapter au bilan
+précédent » de la séance suivante), `manage_intervention_templates` (`data/meta.interventionTemplates`),
+`migrate_interventions` (triplets existants → natif, dryRun). Logique pure `functions/src/interventions.ts` ; côté app
+`lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine ».
+
 **Phases par libellé** (B1, 2026-10, `functions/src/phase_resolve.ts`) : `push_gantt` / `add_task` / `update_task` résolvent
 `groupLabel` ou un `phaseId` égal au libellé d'une phase → vrai `phaseId` (mono-phase : tâche sans indication → la phase
 unique). `mark_action_done` est idempotent (`done` omis = true, jamais de bascule).

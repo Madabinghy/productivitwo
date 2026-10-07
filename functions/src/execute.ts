@@ -2,6 +2,10 @@ import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
 import { nearestFreeSlot } from "./schedule_dedupe";
 import {
+  DEFAULT_TEMPLATE, InterventionTemplate, TemplateAction, buildIntervention, buildInterventionTasks,
+  shiftTasks, retitleTasks, applyCarryOver, detectTriplets, applyTriplet, validateInput, dayLabelFr, hmFr,
+} from "./interventions";
+import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
   contextsOf,
 } from "./contexts";
@@ -176,6 +180,9 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
     ...(typeof t.groupLabel === "string"  ? { groupLabel:  t.groupLabel } : {}),
     ...(typeof t.color      === "string"  ? { color:       t.color }      : {}),
     ...(typeof t.barLabel   === "string"  ? { barLabel:    t.barLabel }   : {}),
+    ...(typeof t.interventionId   === "string" && t.interventionId ? { interventionId: t.interventionId } : {}),
+    ...(typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
+      ? { interventionRole: t.interventionRole } : {}),
     isMilestone: t.isMilestone === true,
     status: rawStatus,
     actions,
@@ -2945,6 +2952,277 @@ async function executeScheduleDay(
   return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
 }
 
+
+// ── Interventions (brief 2026-10, § 2.2) ─────────────────────────────────────
+// Objet natif porté par le projet (`interventions[]`) + trois tâches taguées.
+// Logique pure dans interventions.ts ; ici : lecture/écriture Firestore.
+
+type AnyRec = Record<string, unknown>;
+
+const sanitizeTasks = (raw: unknown): AnyRec[] =>
+  ((raw as AnyRec[]) ?? []).map((t) => JSON.parse(JSON.stringify(t, (_k, v) =>
+    v && typeof v === "object" && typeof v.toDate === "function" ? v.toDate().toISOString() : v)));
+
+function pickTemplateAction(raw: unknown): TemplateAction {
+  if (typeof raw === "string") return { title: clampStr(raw, 200, "action") };
+  const o = (raw ?? {}) as AnyRec;
+  return {
+    title: clampStr(o.title, 200, "action.title"),
+    ...(Array.isArray(o.contexts) ? { contexts: o.contexts.filter((c): c is string => typeof c === "string") }
+      : typeof o.context === "string" ? { contexts: [o.context] } : {}),
+    ...(typeof o.estimatedMin === "number" ? { estimatedMin: o.estimatedMin } : {}),
+  };
+}
+
+/** Normalise un modèle (stocké ou reçu) ; les parties absentes prennent le défaut. */
+function pickTemplate(raw: AnyRec, fallbackId?: string): InterventionTemplate {
+  const prep = (raw.prep ?? {}) as AnyRec;
+  const closure = (raw.closure ?? {}) as AnyRec;
+  const num = (v: unknown, d: number) => (typeof v === "number" && v >= 0 ? Math.round(v) : d);
+  return {
+    id: typeof raw.id === "string" && raw.id ? raw.id : fallbackId ?? uuidv4(),
+    name: clampStr(raw.name ?? "Modèle", 100, "template.name"),
+    ...(typeof raw.startTime === "string" ? { startTime: raw.startTime } : {}),
+    ...(typeof raw.endTime === "string" ? { endTime: raw.endTime } : {}),
+    ...(typeof raw.place === "string" ? { place: raw.place } : {}),
+    ...(typeof raw.sessionContext === "string" ? { sessionContext: raw.sessionContext } : {}),
+    prep: {
+      daysBefore: num(prep.daysBefore, DEFAULT_TEMPLATE.prep.daysBefore),
+      endDaysBefore: num(prep.endDaysBefore, DEFAULT_TEMPLATE.prep.endDaysBefore),
+      actions: Array.isArray(prep.actions) ? prep.actions.map(pickTemplateAction) : DEFAULT_TEMPLATE.prep.actions,
+    },
+    closure: {
+      daysAfter: num(closure.daysAfter, DEFAULT_TEMPLATE.closure.daysAfter),
+      actions: Array.isArray(closure.actions) ? closure.actions.map(pickTemplateAction) : DEFAULT_TEMPLATE.closure.actions,
+    },
+  };
+}
+
+async function loadTemplates(uid: string): Promise<InterventionTemplate[]> {
+  const snap = await db.doc(`users/${uid}/data/meta`).get();
+  const raw = snap.exists ? (snap.data() as AnyRec).interventionTemplates : null;
+  return Array.isArray(raw) ? raw.map((r) => pickTemplate(r as AnyRec)) : [];
+}
+
+function fmtTemplate(t: InterventionTemplate): string {
+  const acts = (as: TemplateAction[]) => as.map((a) => `${a.title}${a.estimatedMin ? ` (${a.estimatedMin} min)` : ""}`).join(" · ");
+  return `• [${t.id}] ${t.name}` +
+    (t.startTime && t.endTime ? ` · ${hmFr(t.startTime)}–${hmFr(t.endTime)}` : "") +
+    (t.place ? ` · ${t.place}` : "") + (t.sessionContext ? ` · ${t.sessionContext}` : "") +
+    `\n    prépa J-${t.prep.daysBefore} → J-${t.prep.endDaysBefore} : ${acts(t.prep.actions)}` +
+    `\n    clôture J → J+${t.closure.daysAfter} : ${acts(t.closure.actions)}`;
+}
+
+async function executeManageInterventionTemplates(
+  uid: string,
+  args: { action: string; templateId?: string; template?: AnyRec }
+): Promise<string> {
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  const templates = await loadTemplates(uid);
+  const list = () => [
+    `Modèles d'intervention (${templates.length}) — « default » = modèle intégré, toujours disponible :`,
+    fmtTemplate(DEFAULT_TEMPLATE),
+    ...templates.map(fmtTemplate),
+  ].join("\n");
+  switch (args.action) {
+    case "list":
+      return list();
+    case "add": {
+      if (!args.template) return "❌ template requis.";
+      let t: InterventionTemplate;
+      try { t = pickTemplate(args.template); } catch (e) { return `❌ ${e instanceof Error ? e.message : e}`; }
+      if (templates.some((x) => x.id === t.id)) return `❌ Un modèle porte déjà l'id ${t.id}.`;
+      await metaRef.set({ interventionTemplates: [...templates, t] }, { merge: true });
+      return `✅ Modèle créé.\n${fmtTemplate(t)}\n→ add_intervention(projectId, title, date, templateId: "${t.id}")`;
+    }
+    case "update": {
+      const idx = templates.findIndex((x) => x.id === args.templateId);
+      if (idx < 0) return `❌ Modèle introuvable : ${args.templateId}`;
+      let t: InterventionTemplate;
+      try { t = pickTemplate({ ...templates[idx], ...(args.template ?? {}), id: templates[idx].id }); }
+      catch (e) { return `❌ ${e instanceof Error ? e.message : e}`; }
+      const next = templates.slice(); next[idx] = t;
+      await metaRef.set({ interventionTemplates: next }, { merge: true });
+      return `✅ Modèle mis à jour.\n${fmtTemplate(t)}`;
+    }
+    case "delete": {
+      if (!templates.some((x) => x.id === args.templateId)) return `❌ Modèle introuvable : ${args.templateId}`;
+      await metaRef.set({ interventionTemplates: templates.filter((x) => x.id !== args.templateId) }, { merge: true });
+      return `✅ Modèle ${args.templateId} supprimé (les interventions créées avec restent intactes).`;
+    }
+    default:
+      return `❌ action inconnue : ${args.action} (list | add | update | delete)`;
+  }
+}
+
+async function executeAddIntervention(
+  uid: string,
+  args: {
+    projectId: string; title: string; date: string; startTime?: string; endTime?: string; place?: string;
+    templateId?: string; docUrl?: string; steps?: string[]; prepActions?: unknown[]; closureActions?: unknown[];
+  }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(args.projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
+  const data = snap.data() as AnyRec;
+  const templates = await loadTemplates(uid);
+  const tpl = args.templateId && args.templateId !== "default"
+    ? templates.find((t) => t.id === args.templateId) : DEFAULT_TEMPLATE;
+  if (!tpl) return `❌ Modèle introuvable : ${args.templateId} (manage_intervention_templates list)`;
+  const input = {
+    title: args.title, date: args.date,
+    startTime: args.startTime ?? tpl.startTime ?? "", endTime: args.endTime ?? tpl.endTime ?? "",
+    place: args.place ?? tpl.place, templateId: tpl.id === "default" ? undefined : tpl.id, docUrl: args.docUrl,
+  };
+  const err = validateInput(input);
+  if (err) return `❌ ${err}${!input.startTime ? " — passe startTime/endTime ou un modèle qui les fixe" : ""}.`;
+  let prepActions: TemplateAction[] | undefined, closureActions: TemplateAction[] | undefined;
+  try {
+    prepActions = Array.isArray(args.prepActions) ? args.prepActions.map(pickTemplateAction) : undefined;
+    closureActions = Array.isArray(args.closureActions) ? args.closureActions.map(pickTemplateAction) : undefined;
+  } catch (e) { return `❌ ${e instanceof Error ? e.message : e}`; }
+  const intervention = buildIntervention(input);
+  const { prep, session, closure } = buildInterventionTasks(intervention, tpl, {
+    phases: (data.phases as AnyRec[]) ?? [],
+    steps: Array.isArray(args.steps) ? args.steps.map(String) : [],
+    prepActions, closureActions,
+  });
+  await ref.update({
+    interventions: FieldValue.arrayUnion(intervention),
+    tasks: FieldValue.arrayUnion(prep, session, closure),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return [
+    `✅ Intervention « ${intervention.title} » créée — ${dayLabelFr(args.date)} ${hmFr(input.startTime)}–${hmFr(input.endTime)}` +
+      (input.place ? ` · ${input.place}` : "") + ` (modèle : ${tpl.name})`,
+    `• interventionId : ${intervention.id}`,
+    `• 📝 Préparer (${prep.startDate} → ${prep.endDate}, ${(prep.actions as AnyRec[]).length} actions) : ${prep.id}`,
+    `• 🎯 Séance (jalon, ${(session.actions as AnyRec[])[0] && ((session.actions as AnyRec[])[0].checklist as AnyRec[]).length} étapes) : ${session.id}`,
+    `• ✅ Clôturer (${closure.startDate} → ${closure.endDate}, ${(closure.actions as AnyRec[]).length} actions) : ${closure.id}`,
+    prep.phaseId ? `• phase : ${prep.phaseId}` : `⚠️ aucune phase ne couvre le ${args.date} — tâches sans phase (update_task {phaseId} si besoin)`,
+  ].join("\n");
+}
+
+async function executeUpdateIntervention(
+  uid: string,
+  args: {
+    projectId: string; interventionId: string; title?: string; date?: string; startTime?: string; endTime?: string;
+    place?: string | null; docUrl?: string | null; status?: string; debriefText?: string; carryOver?: string[];
+  }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(args.projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
+  const data = snap.data() as AnyRec;
+  const interventions = sanitizeTasks(data.interventions);
+  const idx = interventions.findIndex((i) => i.id === args.interventionId);
+  if (idx < 0) return `Intervention introuvable : ${args.interventionId} (voir get_project → interventions)`;
+  let tasks = sanitizeTasks(data.tasks);
+  const before = interventions[idx];
+  const after: AnyRec = { ...before };
+  const notes: string[] = [];
+
+  if (args.title !== undefined) after.title = clampStr(args.title, 200, "title");
+  if (args.date !== undefined) { assertDate(args.date, "date"); after.date = args.date; }
+  if (args.startTime !== undefined) after.startTime = args.startTime;
+  if (args.endTime !== undefined) after.endTime = args.endTime;
+  if (args.place !== undefined) after.place = args.place;
+  if (args.docUrl !== undefined) after.docUrl = args.docUrl;
+  const err = validateInput(after as never);
+  if (err) return `❌ ${err}`;
+
+  if (after.date !== before.date) {
+    tasks = shiftTasks(tasks, String(after.id), String(before.date), String(after.date));
+    notes.push(`tâches décalées du ${before.date} au ${after.date}`);
+  }
+  if (after.title !== before.title || after.date !== before.date) tasks = retitleTasks(tasks, after);
+  if (after.startTime !== before.startTime || after.endTime !== before.endTime) {
+    tasks = tasks.map((t) => {
+      if (t.interventionId !== after.id || t.interventionRole !== "session") return t;
+      const acts = ((t.actions as AnyRec[]) ?? []).map((a, i) => i === 0
+        ? { ...a, title: `Dérouler la séance (${hmFr(String(after.startTime))}–${hmFr(String(after.endTime))})`,
+            estimatedMin: (() => { const [h1, m1] = String(after.startTime).split(":").map(Number); const [h2, m2] = String(after.endTime).split(":").map(Number); return (h2 * 60 + m2) - (h1 * 60 + m1); })() }
+        : a);
+      return { ...t, actions: acts };
+    });
+    notes.push("créneau mis à jour");
+  }
+  if (args.status !== undefined) {
+    if (!["planned", "done", "cancelled"].includes(args.status)) return `❌ status invalide : ${args.status}`;
+    after.status = args.status;
+    if (args.status === "cancelled") {
+      tasks = tasks.map((t) => t.interventionId === after.id && t.status !== "done" ? { ...t, status: "skipped" } : t);
+      notes.push("séance annulée : tâches restantes passées en skipped");
+    }
+    if (args.status === "done") {
+      tasks = tasks.map((t) => t.interventionId === after.id && t.interventionRole === "session" ? { ...t, status: "done" } : t);
+    }
+  }
+  if (args.debriefText !== undefined) after.debriefText = clampStr(args.debriefText, 5000, "debriefText");
+  if (args.carryOver !== undefined) {
+    const items = args.carryOver.map((s) => String(s).trim()).filter(Boolean);
+    after.carryOver = items.map((title) => ({ id: uuidv4(), title, done: false, doneAt: null }));
+    const r = applyCarryOver(tasks, interventions.map((i, k) => (k === idx ? after : i)), String(after.id), items);
+    tasks = r.tasks;
+    notes.push(r.nextId
+      ? `${items.length} point(s) à reprendre poussés dans la prépa de la séance suivante`
+      : `${items.length} point(s) à reprendre notés (pas de séance suivante planifiée : ils seront repris à la création de la prochaine)`);
+  }
+  if (args.debriefText !== undefined || args.carryOver !== undefined) after.debriefAt = new Date().toISOString();
+
+  const next = interventions.slice(); next[idx] = after;
+  await ref.update({ interventions: next, tasks, updatedAt: FieldValue.serverTimestamp() });
+  return `✅ Intervention « ${after.title} » mise à jour — ${dayLabelFr(String(after.date))} ${hmFr(String(after.startTime))}–${hmFr(String(after.endTime))}` +
+    (notes.length ? `\n• ${notes.join("\n• ")}` : "");
+}
+
+async function executeMigrateInterventions(
+  uid: string,
+  args: { projectId?: string; dryRun?: boolean; defaultStart?: string; defaultEnd?: string }
+): Promise<string> {
+  const dryRun = args.dryRun !== false;
+  const col = db.collection(`users/${uid}/projects`);
+  const docs = args.projectId
+    ? [await col.doc(args.projectId).get()].filter((d) => d.exists)
+    : (await col.where("status", "==", "active").get()).docs;
+  if (!docs.length) return args.projectId ? `Projet introuvable : ${args.projectId}` : "Aucun projet actif.";
+  const out: string[] = [dryRun
+    ? "🔎 Simulation (dryRun) — rien n'est écrit. Relance avec dryRun:false pour appliquer."
+    : "✅ Migration appliquée."];
+  let total = 0;
+  for (const d of docs) {
+    const data = d.data() as AnyRec;
+    let tasks = sanitizeTasks(data.tasks);
+    const found = detectTriplets(tasks, {
+      description: typeof data.description === "string" ? data.description : "",
+      defaultStart: args.defaultStart, defaultEnd: args.defaultEnd,
+    });
+    if (!found.length) continue;
+    total += found.length;
+    out.push(`\n${data.title} (${d.id}) — ${found.length} intervention(s) :`);
+    const created: AnyRec[] = [];
+    for (const t of found) {
+      const flag = t.timeSource === "default" ? " ⚠️ créneau par défaut (passe defaultStart/defaultEnd ou corrige après avec update_intervention)" : "";
+      out.push(`• ${t.date} ${hmFr(t.startTime)}–${hmFr(t.endTime)} « ${t.groupLabel} » — 📝 ${t.prep ? "oui" : "—"} · ✅ ${t.closure ? "oui" : "—"}${flag}`);
+      if (!dryRun) {
+        const r = applyTriplet(tasks, t);
+        tasks = r.tasks;
+        created.push(r.intervention);
+      }
+    }
+    if (!dryRun) {
+      await col.doc(d.id).update({
+        interventions: FieldValue.arrayUnion(...created),
+        tasks,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+  if (!total) out.push("Aucun triplet 📝 / 🎯 / ✅ non migré trouvé.");
+  return out.join("\n");
+}
+
 // Ajoute un bloc de préparation la veille (kind:"prep") au programme existant
 // SANS le remplacer. Idempotent sur (prepForDate, prepForBlockId).
 async function executeAddPrepBlock(
@@ -3602,6 +3880,10 @@ async function executeUpdateSession(
 
 export {
   withBothContexts,
+  executeAddIntervention,
+  executeUpdateIntervention,
+  executeManageInterventionTemplates,
+  executeMigrateInterventions,
   executeListSessions,
   executeDeleteSessions,
   executeUpdateSession,

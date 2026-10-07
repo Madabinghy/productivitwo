@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = void 0;
+exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = void 0;
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -874,6 +874,122 @@ const ESTIMATE_ACCURACY_TOOL = {
     },
 };
 exports.ESTIMATE_ACCURACY_TOOL = ESTIMATE_ACCURACY_TOOL;
+// ── Interventions (brief 2026-10, § 2.2) ─────────────────────────────────────
+const INTERVENTION_ACTION_SCHEMA = {
+    type: "object",
+    required: ["title"],
+    properties: {
+        title: { type: "string" },
+        contexts: { type: "array", items: { type: "string" }, description: "ex. [\"@ordinateur\"], [\"@impression\"]" },
+        estimatedMin: { type: "number" },
+    },
+};
+const ADD_INTERVENTION_TOOL = {
+    name: "add_intervention",
+    description: "Crée une INTERVENTION (séance datée : cours, journée client, module) dans un projet et génère ses trois tâches : " +
+        "📝 Préparer (J-7 → J-1), 🎯 Séance (jalon le jour J, action « Dérouler la séance » avec le déroulé en étapes cochables) " +
+        "et ✅ Clôturer (J → J+2). Les actions de prépa / clôture viennent du modèle (manage_intervention_templates ; " +
+        "« default » = adapter au bilan précédent, produire les supports, fiche de séquence, imprimer @impression / fiche de " +
+        "séquence, report, dépôt) ou de prepActions / closureActions. Préfère cet outil à add_task pour toute séance.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "title", "date"],
+        properties: {
+            projectId: { type: "string" },
+            title: { type: "string", description: "ex. « Séance — 12 oct : contrôle + problèmes du tout »" },
+            date: { type: "string", description: "YYYY-MM-DD" },
+            startTime: { type: "string", description: "HH:mm (défaut : celui du modèle)" },
+            endTime: { type: "string", description: "HH:mm (défaut : celui du modèle)" },
+            place: { type: "string" },
+            templateId: { type: "string", description: "id d'un modèle (manage_intervention_templates list) ; omis = default" },
+            docUrl: { type: "string", description: "lien vers le dossier de séance / fiche de séquence" },
+            steps: { type: "array", items: { type: "string" }, description: "déroulé de la séance, une étape par ligne (« 13h15 Ramasser le DM »)" },
+            prepActions: { type: "array", items: INTERVENTION_ACTION_SCHEMA, description: "remplace les actions de prépa du modèle" },
+            closureActions: { type: "array", items: INTERVENTION_ACTION_SCHEMA, description: "remplace les actions de clôture du modèle" },
+        },
+    },
+};
+exports.ADD_INTERVENTION_TOOL = ADD_INTERVENTION_TOOL;
+const UPDATE_INTERVENTION_TOOL = {
+    name: "update_intervention",
+    description: "Modifie une intervention existante (get_project → interventions[]). Changer la date décale ses trois tâches ; " +
+        "status \"cancelled\" annule les tâches restantes ; le BILAN (debriefText + carryOver) est enregistré et les points " +
+        "à reprendre deviennent la checklist de l'action « Adapter au bilan précédent » de la séance suivante.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "interventionId"],
+        properties: {
+            projectId: { type: "string" },
+            interventionId: { type: "string" },
+            title: { type: "string" },
+            date: { type: "string", description: "YYYY-MM-DD" },
+            startTime: { type: "string" },
+            endTime: { type: "string" },
+            place: { type: "string" },
+            docUrl: { type: "string" },
+            status: { type: "string", enum: ["planned", "done", "cancelled"] },
+            debriefText: { type: "string", description: "bilan libre de la séance" },
+            carryOver: { type: "array", items: { type: "string" }, description: "points à reprendre à la séance suivante" },
+        },
+    },
+};
+exports.UPDATE_INTERVENTION_TOOL = UPDATE_INTERVENTION_TOOL;
+const MANAGE_INTERVENTION_TEMPLATES_TOOL = {
+    name: "manage_intervention_templates",
+    description: "Modèles d'intervention (« séance Chérubins », « journée SOF 7 h »…) : créneau par défaut, lieu, contexte de la " +
+        "séance, actions de prépa (fenêtre J-n) et de clôture (J+n) avec contextes et estimations. " +
+        "action: list | add (template) | update (templateId + template partiel) | delete (templateId).",
+    inputSchema: {
+        type: "object",
+        required: ["action"],
+        properties: {
+            action: { type: "string", enum: ["list", "add", "update", "delete"] },
+            templateId: { type: "string" },
+            template: {
+                type: "object",
+                properties: {
+                    id: { type: "string", description: "slug stable, ex. « cherubins »" },
+                    name: { type: "string" },
+                    startTime: { type: "string" },
+                    endTime: { type: "string" },
+                    place: { type: "string" },
+                    sessionContext: { type: "string", description: "contexte de « Dérouler la séance », ex. @Chérubins" },
+                    prep: {
+                        type: "object",
+                        properties: {
+                            daysBefore: { type: "number" }, endDaysBefore: { type: "number" },
+                            actions: { type: "array", items: INTERVENTION_ACTION_SCHEMA },
+                        },
+                    },
+                    closure: {
+                        type: "object",
+                        properties: {
+                            daysAfter: { type: "number" },
+                            actions: { type: "array", items: INTERVENTION_ACTION_SCHEMA },
+                        },
+                    },
+                },
+            },
+        },
+    },
+};
+exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = MANAGE_INTERVENTION_TEMPLATES_TOOL;
+const MIGRATE_INTERVENTIONS_TOOL = {
+    name: "migrate_interventions",
+    description: "Convertit les triplets existants (jalon 🎯/🏁 + 📝 Préparer + ✅ Clôturer de même groupLabel) en interventions natives. " +
+        "dryRun (défaut true) liste ce qui serait créé ; relance avec dryRun:false pour appliquer. Le créneau est lu dans " +
+        "l'action du jalon, sinon la description du projet, sinon defaultStart/defaultEnd.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            projectId: { type: "string", description: "omis = tous les projets actifs" },
+            dryRun: { type: "boolean" },
+            defaultStart: { type: "string" },
+            defaultEnd: { type: "string" },
+        },
+    },
+};
+exports.MIGRATE_INTERVENTIONS_TOOL = MIGRATE_INTERVENTIONS_TOOL;
 const UPDATE_ACTION_TOOL = {
     name: "update_action",
     description: "Modifie UNE action existante sans toucher au reste : action propre d'une activité (activityId + actionId, " +
