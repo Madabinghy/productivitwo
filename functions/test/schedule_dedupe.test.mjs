@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -57,4 +57,21 @@ test("fillAgainstExisting : garde les trous, écarte les chevauchements, ignore 
   assert.deepEqual(r.dropped.map((b) => b.title), ["Chevauche le fait", "Mord sur le cours", "Chevauche un entrant déjà posé"]);
   assert.equal(toMin("09:30"), 570);
   assert.equal(toMin("x"), 0);
+});
+
+test("nearestFreeSlot : créneau libre le plus proche, dans la fenêtre, sans chevauchement", () => {
+  const busy = [
+    { startTime: "09:00", durationMin: 60, status: "pending" },
+    { startTime: "10:00", durationMin: 30, status: "pending" },
+    { startTime: "11:00", durationMin: 60, status: "deleted" },
+  ];
+  const win = { startMin: 8 * 60, endMin: 20 * 60 };
+  // Demandé 09:30 (occupé) → 10:30 est libre (le bloc supprimé de 11 h ne compte pas).
+  assert.equal(nearestFreeSlot({ startTime: "09:30", durationMin: 45 }, busy, win), "10:30");
+  // Demandé 09:00 avec 60 min : 08:00 est à −60, 10:30 à +90 → 08:00.
+  assert.equal(nearestFreeSlot({ startTime: "09:00", durationMin: 60 }, busy, win), "08:00");
+  // Trop long pour la fenêtre → null.
+  assert.equal(nearestFreeSlot({ startTime: "09:00", durationMin: 13 * 60 }, busy, win), null);
+  // Jamais avant le début de la journée active.
+  assert.equal(nearestFreeSlot({ startTime: "07:00", durationMin: 30 }, [], win), "08:00");
 });

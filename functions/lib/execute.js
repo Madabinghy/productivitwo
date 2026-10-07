@@ -76,6 +76,7 @@ exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const phase_resolve_1 = require("./phase_resolve");
+const schedule_dedupe_2 = require("./schedule_dedupe");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
@@ -502,14 +503,18 @@ async function executeGetUserContext(uid) {
         .map((d) => d.data())
         .filter((v) => !v.deleted)
         .map((v) => {
-        // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — non faites.
-        const ownActions = Array.isArray(v.ownActions)
-            ? v.ownActions
-                .filter((a) => !(a === null || a === void 0 ? void 0 : a.done))
-                .map((a) => (Object.assign(Object.assign({ id: a.id, title: a.title }, (estimatedMinOrUndefined(a.estimatedMin) !== undefined
-                ? { estimatedMin: estimatedMinOrUndefined(a.estimatedMin) } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {}))))
-            : [];
-        return Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {}));
+        // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — les
+        // ouvertes, avec `done:false` et `estimatedMin` (null = pas d'estimation)
+        // explicites (B8, brief 2026-10) ; les faites sont juste comptées.
+        const allOwn = Array.isArray(v.ownActions) ? v.ownActions : [];
+        const ownDone = allOwn.filter((a) => (a === null || a === void 0 ? void 0 : a.done) === true).length;
+        const ownActions = allOwn
+            .filter((a) => (a === null || a === void 0 ? void 0 : a.done) !== true)
+            .map((a) => {
+            var _a;
+            return (Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
+        });
+        return Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
     // ── Réalisé des 7 derniers jours ──────────────────────────────────────────
     // Taux de complétion des habitudes/routines (habitHits groupés par habitId)
@@ -2612,9 +2617,20 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     const skipped = dropped.length
         ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
         : "";
-    const clashed = overlapping.length
-        ? `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé dans le programme existant : ${overlapping.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
-        : "";
+    // B9 : un bloc écarté n'est pas perdu en silence — on indique le créneau
+    // libre le plus proche (dans la journée active) pour le reposer.
+    let clashed = "";
+    if (overlapping.length) {
+        const win = await readDayWindowHours(uid);
+        const busy = [...preserved, ...newBlocks];
+        const hints = overlapping.map((b) => {
+            var _a, _b;
+            const slot = (0, schedule_dedupe_2.nearestFreeSlot)(b, busy, { startMin: ((_a = win === null || win === void 0 ? void 0 : win.startHour) !== null && _a !== void 0 ? _a : 7) * 60, endMin: ((_b = win === null || win === void 0 ? void 0 : win.endHour) !== null && _b !== void 0 ? _b : 22) * 60 });
+            return `${b.startTime} ${b.title}` + (slot ? ` → libre à ${slot}` : " → aucun créneau libre de cette durée");
+        });
+        clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
+            `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
+    }
     const head = fill
         ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
         : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;

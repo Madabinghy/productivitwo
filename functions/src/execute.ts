@@ -1,5 +1,6 @@
 import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
+import { nearestFreeSlot } from "./schedule_dedupe";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
   contextsOf,
@@ -526,18 +527,20 @@ async function executeGetUserContext(uid: string): Promise<string> {
     .map((d) => d.data())
     .filter((v) => !v.deleted)
     .map((v) => {
-    // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — non faites.
-    const ownActions = Array.isArray(v.ownActions)
-      ? v.ownActions
-          .filter((a: { done?: boolean }) => !a?.done)
-          .map((a: Record<string, unknown>) => ({
-            id: a.id,
-            title: a.title,
-            ...(estimatedMinOrUndefined(a.estimatedMin) !== undefined
-              ? { estimatedMin: estimatedMinOrUndefined(a.estimatedMin) } : {}),
-            ...(contextsOf(a).length > 0 ? { contexts: contextsOf(a) } : {}),
-          }))
-      : [];
+    // Actions PROPRES de l'activité (TaskAction sans tâche/projet) — les
+    // ouvertes, avec `done:false` et `estimatedMin` (null = pas d'estimation)
+    // explicites (B8, brief 2026-10) ; les faites sont juste comptées.
+    const allOwn = Array.isArray(v.ownActions) ? (v.ownActions as Array<Record<string, unknown>>) : [];
+    const ownDone = allOwn.filter((a) => a?.done === true).length;
+    const ownActions = allOwn
+      .filter((a) => a?.done !== true)
+      .map((a) => ({
+        id: a.id,
+        title: a.title,
+        done: false,
+        estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
+        ...(contextsOf(a).length > 0 ? { contexts: contextsOf(a) } : {}),
+      }));
     return {
       id: v.id,
       name: v.name,
@@ -547,6 +550,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
       ...(ownActions.length > 0 ? { ownActions } : {}),
+      ...(ownDone > 0 ? { ownActionsDone: ownDone } : {}),
     };
   });
 
@@ -2922,9 +2926,19 @@ async function executeScheduleDay(
   const skipped = dropped.length
     ? `\n📅 ${dropped.length} bloc(s) non recréé(s) — déjà présents comme rendez-vous Google Agenda : ${dropped.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
     : "";
-  const clashed = overlapping.length
-    ? `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé dans le programme existant : ${overlapping.map((b) => `${b.startTime} ${b.title}`).join(", ")}`
-    : "";
+  // B9 : un bloc écarté n'est pas perdu en silence — on indique le créneau
+  // libre le plus proche (dans la journée active) pour le reposer.
+  let clashed = "";
+  if (overlapping.length) {
+    const win = await readDayWindowHours(uid);
+    const busy = [...preserved, ...newBlocks];
+    const hints = overlapping.map((b) => {
+      const slot = nearestFreeSlot(b, busy, { startMin: (win?.startHour ?? 7) * 60, endMin: (win?.endHour ?? 22) * 60 });
+      return `${b.startTime} ${b.title}` + (slot ? ` → libre à ${slot}` : " → aucun créneau libre de cette durée");
+    });
+    clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
+      `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
+  }
   const head = fill
     ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
     : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;
