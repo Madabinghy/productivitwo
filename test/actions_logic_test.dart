@@ -147,5 +147,12 @@ void main() {
       expect(isFolderProject(sof, all), isFalse);
       expect(isFolderProject(cm, all), isFalse);
     });
+    test('groupByFolder : enfants sous leur dossier, ordre d\'apparition, dossier jamais listé', () {
+      final groups = groupByFolder([sof, cm, cherubins, orphan, sixieme, vide], all);
+      expect(groups.map((g) => g.folder?.id).toList(), [null, 'Chérubins', null]);
+      expect(groups[0].projects.map((p) => p.id).toList(), ['SOF']);
+      expect(groups[1].projects.map((p) => p.id).toList(), ['CM', '6e']);
+      expect(groups[2].projects.map((p) => p.id).toList(), ['orphelin']);
+    });
   });
 }

@@ -26,6 +26,11 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
   plus), tap = feuille d'action (étapes `StepsSection`, chrono, caser, fait), glisser droite = fait / gauche = caser
   demain, capture rapide → boîte d'entrée. Même logique pure que le web (`utils/actions_logic.dart`).
+  **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
+  *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
+  vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre
+  « Pour… » dans Actions. Mobile : en-tête de dossier repliable dans Projets (`goals_view.dart`) + filtre « Pour » dans
+  Actions ; jamais « Définir la prochaine action » sur un dossier.
   **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
   MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
   `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé ; programme du jour en liste 48 px

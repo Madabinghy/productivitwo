@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class GoalsView extends StatefulWidget {
   final List<Domain> domains;
@@ -39,6 +41,24 @@ class _GoalsViewState extends State<GoalsView> {
   Map<String, String> _objectiveTitles = {};
   bool _showRealized = false;
   bool _showOutOfScope = false;
+  // Dossiers (projets racines sans tâche) repliés dans la liste ; ouverts par
+  // défaut, persistés localement.
+  static const _kFoldersPrefKey = 'projects_folders_collapsed';
+  Set<String> _collapsedFolders = {};
+
+  Future<void> _loadCollapsedFolders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_kFoldersPrefKey) ?? const [];
+    if (mounted && ids.isNotEmpty) setState(() => _collapsedFolders = ids.toSet());
+  }
+
+  Future<void> _toggleFolder(String id) async {
+    setState(() {
+      _collapsedFolders.contains(id) ? _collapsedFolders.remove(id) : _collapsedFolders.add(id);
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kFoldersPrefKey, _collapsedFolders.toList());
+  }
   bool _showArchived = false;
   bool _showCompleted = false;
   // Phases futures dépliées dans les cartes-projet ('projectId|phaseId').
@@ -62,6 +82,7 @@ class _GoalsViewState extends State<GoalsView> {
   void initState() {
     super.initState();
     _subscribeProjects();
+    _loadCollapsedFolders();
     _sync.fetchStrategicObjectives().then((objs) {
       if (!mounted) return;
       setState(() => _objectiveTitles = {
@@ -134,8 +155,11 @@ class _GoalsViewState extends State<GoalsView> {
     // Projets TERMINÉS (clôturés explicitement par l'utilisateur).
     final completedProjects = _projects.where((p) => p.status == 'done').toList()
       ..sort((a, b) => a.title.compareTo(b.title));
+    // Les dossiers ne sont pas des projets à lister : ils coiffent leurs
+    // sous-projets dans les sections (en-tête repliable).
     final activeProjects = _projects
         .where((p) => p.status != 'archived' && p.status != 'done')
+        .where((p) => !isFolderProject(p, _projects))
         .toList();
     final archivedProjects = _projects.where((p) => p.status == 'archived').toList()
       ..sort((a, b) => a.title.compareTo(b.title));
@@ -380,23 +404,74 @@ class _GoalsViewState extends State<GoalsView> {
         projectMap[pair.project.id] = pair.project;
       }
 
-      for (final projectId in byProject.keys) {
-        final project = projectMap[projectId]!;
-        final tasks = byProject[projectId]!;
+      for (final g in groupByFolder(projectMap.values.toList(), _projects)) {
+        final folder = g.folder;
+        if (folder == null) {
+          final project = g.projects.single;
+          widgets.add(SliverToBoxAdapter(
+            child: _projectCard(context, project, byProject[project.id]!, todayD, color),
+          ));
+          continue;
+        }
+        final collapsed = _collapsedFolders.contains(folder.id);
         widgets.add(SliverToBoxAdapter(
-          child: _projectCard(context, project, tasks, todayD, color),
+          child: _folderHeader(context, folder, g.projects.length, color, collapsed),
         ));
+        if (collapsed) continue;
+        for (final project in g.projects) {
+          widgets.add(SliverToBoxAdapter(
+            child: _projectCard(context, project, byProject[project.id]!, todayD, color,
+                underFolder: true),
+          ));
+        }
       }
     }
 
     return widgets;
   }
 
+  /// En-tête d'un dossier (client) : ses sous-projets suivent, en retrait ;
+  /// tap = replier / déplier.
+  Widget _folderHeader(
+      BuildContext context, Project folder, int count, Color color, bool collapsed) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _toggleFolder(folder.id),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+          child: Row(children: [
+            Icon(collapsed ? Icons.folder_outlined : Icons.folder_open_outlined,
+                size: 20, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(folder.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+            Text('$count sous-projet${count > 1 ? 's' : ''}',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withOpacity(.45))),
+            const SizedBox(width: 4),
+            Icon(collapsed ? Icons.expand_more : Icons.expand_less,
+                size: 20, color: cs.onSurface.withOpacity(.45)),
+          ]),
+        ),
+      ),
+    );
+  }
+
   /// La carte-projet : en-tête (titre + progression, tap → fiche projet),
   /// phase(s) en cours avec leurs tâches, actions libres du fil de l'eau,
   /// phases futures repliées (« dès le … »).
   Widget _projectCard(BuildContext context, Project project,
-      List<ProjectTask> startedTasks, DateTime todayD, Color color) {
+      List<ProjectTask> startedTasks, DateTime todayD, Color color,
+      {bool underFolder = false}) {
     final cs = Theme.of(context).colorScheme;
     const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
         'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -416,7 +491,8 @@ class _GoalsViewState extends State<GoalsView> {
     }
     final progress = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
 
-    final parentTitle = project.parentProjectId == null
+    // Sous un en-tête de dossier, la mention du parent est redondante.
+    final parentTitle = project.parentProjectId == null || underFolder
         ? null
         : _projects
             .where((x) => x.id == project.parentProjectId)
@@ -717,7 +793,7 @@ class _GoalsViewState extends State<GoalsView> {
     children.add(const SizedBox(height: 10));
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      padding: EdgeInsets.fromLTRB(underFolder ? 24 : 12, 6, 12, 6),
       child: Container(
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(.22),

@@ -138,6 +138,40 @@ List<Project> clientRoots(List<Project> all) {
 bool isFolderProject(Project p, List<Project> all) =>
     p.tasks.isEmpty && all.any((x) => x.parentProjectId == p.id);
 
+/// Groupe de projets sous un dossier (racine sans tâche) : [folder] null =
+/// projet hors dossier, seul dans son groupe.
+class FolderGroup {
+  final Project? folder;
+  final List<Project> projects;
+  const FolderGroup(this.folder, this.projects);
+}
+
+/// Regroupe [projects] par dossier en gardant l'ordre d'apparition : le
+/// premier projet d'un dossier ouvre son groupe, les suivants s'y rangent.
+/// Les dossiers eux-mêmes présents dans [projects] ne sont pas listés (ils
+/// sont l'en-tête du groupe) ; un dossier sans enfant listé n'apparaît pas.
+List<FolderGroup> groupByFolder(List<Project> projects, List<Project> all) {
+  final out = <FolderGroup>[];
+  final byFolder = <String, FolderGroup>{};
+  for (final p in projects) {
+    if (isFolderProject(p, all)) continue;
+    final root = rootProjectOf(p, all);
+    if (root.id == p.id || !isFolderProject(root, all)) {
+      out.add(FolderGroup(null, [p]));
+      continue;
+    }
+    final g = byFolder[root.id];
+    if (g != null) {
+      g.projects.add(p);
+    } else {
+      final ng = FolderGroup(root, [p]);
+      byFolder[root.id] = ng;
+      out.add(ng);
+    }
+  }
+  return out;
+}
+
 /// Filtre actif (contexte ou temps) : on ne montre que les projets qui ont au
 /// moins une action qui passe — « que puis-je faire @maison ? » va droit à
 /// l'essentiel. Les autres sont comptés (lien « Afficher ») au lieu d'être
