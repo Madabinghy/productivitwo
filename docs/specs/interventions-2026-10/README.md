@@ -84,4 +84,14 @@ Logique pure serveur : `functions/src/interventions.ts` (tests `functions/test/i
    radar « Cette semaine » (`widgets/week_radar_card.dart`, en tête de l'onglet Projets, même logique que le web)
    pour une séance du jour, et lancement d'un bloc du programme qui vise un jalon de séance (après le chrono).
    Les étapes sont la checklist de l'action « Dérouler la séance » : identiques web / MCP.
-4. (§ 2.3) « Planifier la prépa » : pousse les actions de prépa dans les trous de la semaine.
+4. **« Planifier la prépa »** (§ 2.3, livré) : outil MCP `plan_prep(projectId, interventionId, apply?, eveningFrom?)`
+   — logique pure `functions/src/prep_planner.ts` (tests `prep_planner.test.mjs`) : les actions ouvertes de la 📝
+   vont dans les trous du programme, **la veille au soir d'abord** (dès 18 h, `eveningFrom`), puis les soirs
+   précédents, puis les journées (le plus tard possible), puis le jour même avant la séance ; l'**impression**
+   (@impression / « Imprimer ») est posée **sur place**, collée au début du créneau (15 min de marge, reculée si un
+   bloc gêne) ; blocs existants (miroirs Google Agenda compris), journée active (`data/meta.dayWindow`) et heure
+   locale (`tzOffsetMin`) respectés ; jamais avant le début de la tâche 📝 ni avant maintenant. `apply:false`
+   (défaut) = proposition ; `apply:true` = `schedule_day(mode:"fill")` jour par jour avec chrono ciblé
+   (`projectId` + `taskId` de la 📝 + `actionId`). Une action sans trou est signalée avec deux créneaux de repli.
+   Web : bouton « Planifier la prépa avec Claude » sur la tâche 📝 dans Réalisation (`planPrepPrompt`,
+   `claude_link.dart`) — Claude propose, l'utilisateur valide, Claude relance avec `apply:true`.

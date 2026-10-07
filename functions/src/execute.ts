@@ -1,11 +1,12 @@
 import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
-import { nearestFreeSlot } from "./schedule_dedupe";
+import { nearestFreeSlot, toMin } from "./schedule_dedupe";
 import {
   DEFAULT_TEMPLATE, InterventionTemplate, TemplateAction, buildIntervention, buildInterventionTasks,
   shiftTasks, retitleTasks, applyCarryOver, detectTriplets, applyTriplet, validateInput, dayLabelFr, hmFr,
   attachTask, detachAll, mergeInterventions, netSlotMin,
 } from "./interventions";
+import { planPrep, addDays as addDaysYmd } from "./prep_planner";
 import {
   DEFAULT_GTD_CONTEXTS, normalizeContext, countContextUsage, renameContextInActions, removeContextFromActions,
   contextsOf,
@@ -3239,6 +3240,94 @@ async function executeDeleteIntervention(
     (lines.length ? lines.join("\n") : "• aucune tâche liée");
 }
 
+// « Planifier la prépa » (§ 2.3) : les actions ouvertes de la 📝 d'une
+// intervention → trous du programme (veille au soir d'abord, impression sur
+// place collée au début de la séance). apply:false (défaut) = proposition ;
+// apply:true = écriture via schedule_day(mode:"fill"), jour par jour.
+async function executePlanPrep(
+  uid: string,
+  args: { projectId: string; interventionId: string; apply?: boolean; eveningFrom?: string }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(args.projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${args.projectId}`;
+  const data = snap.data() as AnyRec;
+  const interventions = sanitizeTasks(data.interventions);
+  const i = interventions.find((x) => x.id === args.interventionId);
+  if (!i) return `Intervention introuvable : ${args.interventionId} (get_project → interventions[])`;
+  const tasks = sanitizeTasks(data.tasks);
+  const prep = tasks.find((t) => t.interventionId === i.id && t.interventionRole === "prep");
+  if (!prep) return `❌ « ${i.title} » n'a pas de tâche 📝 Préparer rattachée (update_task {interventionId, interventionRole:"prep"}).`;
+  const open = ((prep.actions as AnyRec[]) ?? []).filter((a) => a.done !== true).map((a) => ({
+    id: String(a.id), title: String(a.title ?? ""),
+    estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
+    contexts: contextsOf(a),
+  }));
+  if (!open.length) return `✅ Rien à planifier : toutes les actions de « ${prep.title} » sont faites.`;
+
+  // Journée active + heure locale de l'utilisateur.
+  const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+  const meta = metaSnap.exists ? (metaSnap.data() as AnyRec) : {};
+  const dw = (meta.dayWindow ?? {}) as { startMin?: unknown; endMin?: unknown };
+  const window = {
+    startMin: typeof dw.startMin === "number" ? dw.startMin : 8 * 60,
+    endMin: typeof dw.endMin === "number" ? dw.endMin : 22 * 60,
+  };
+  const tz = typeof meta.tzOffsetMin === "number" ? meta.tzOffsetMin : 120;
+  const local = new Date(Date.now() + tz * 60_000);
+  const today = local.toISOString().slice(0, 10);
+  const nowMin = local.getUTCHours() * 60 + local.getUTCMinutes();
+  const D = String(i.date);
+  if (D < today) return `❌ La séance « ${i.title} » est passée (${D}).`;
+
+  const earliest = String(prep.startDate ?? "").slice(0, 10) || undefined;
+  const firstDay = [addDaysYmd(D, -7), earliest ?? today, today].sort().pop()!;
+  const existing: Record<string, AnyRec[]> = {};
+  for (let d = firstDay; d <= D; d = addDaysYmd(d, 1)) {
+    const s = await db.doc(`users/${uid}/daily_schedules/${d}`).get();
+    existing[d] = s.exists ? (((s.data() as AnyRec).blocks as AnyRec[]) ?? []) : [];
+  }
+  const eveningFromMin = args.eveningFrom ? toMin(args.eveningFrom) : undefined;
+  const plan = planPrep({
+    intervention: { date: D, startTime: String(i.startTime), title: String(i.title) },
+    actions: open, existing, window, today, nowMin, earliest,
+    ...(eveningFromMin ? { eveningFromMin } : {}),
+  });
+
+  const lines = plan.placements.map((p) =>
+    `• ${p.date} ${hmFr(p.startTime)} (${p.durationMin} min) — ${p.title} · ${p.why}`);
+  const missing = plan.unplaced.map((u) =>
+    `⚠️ « ${u.title} » (${u.durationMin} min) : aucun trou` +
+    (u.alternatives.length
+      ? ` — repli possible : ${u.alternatives.map((a) => `${a.date} ${hmFr(a.startTime)}`).join(" ou ")}`
+      : " — libère un créneau ou réduis l'estimation"));
+  const head = `📝 Prépa de « ${i.title} » (${dayLabelFr(D)} ${hmFr(String(i.startTime))}) — ${open.length} action(s) ouverte(s), journée active ${hmFr(fromMinHm(window.startMin))}–${hmFr(fromMinHm(window.endMin))}`;
+
+  if (args.apply !== true) {
+    return [
+      head,
+      ...(lines.length ? ["Proposition (rien n'est écrit) :", ...lines] : ["Aucun créneau trouvé."]),
+      ...missing,
+      lines.length ? `→ Pour poser ces blocs : plan_prep(projectId, interventionId, apply:true). Pour un autre soir de début : eveningFrom:"19:00".` : "",
+    ].filter(Boolean).join("\n");
+  }
+
+  const byDate = new Map<string, typeof plan.placements>();
+  for (const p of plan.placements) byDate.set(p.date, [...(byDate.get(p.date) ?? []), p]);
+  const out: string[] = [head, `✅ ${plan.placements.length} bloc(s) posé(s) :`];
+  for (const [date, ps] of byDate) {
+    const res = await executeScheduleDay(uid, date, ps.map((p) => ({
+      startTime: p.startTime, durationMin: p.durationMin, title: p.title, category: "project",
+      projectId: args.projectId, taskId: String(prep.id), actionId: p.actionId,
+    })), { mode: "fill", generatedBy: "claude" });
+    out.push(res);
+  }
+  out.push(...missing);
+  return out.join("\n");
+}
+
+const fromMinHm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
 async function executeMigrateInterventions(
   uid: string,
   args: { projectId?: string; dryRun?: boolean; defaultStart?: string; defaultEnd?: string; includeOrphans?: boolean }
@@ -3949,6 +4038,7 @@ export {
   executeAddIntervention,
   executeUpdateIntervention,
   executeDeleteIntervention,
+  executePlanPrep,
   executeManageInterventionTemplates,
   executeMigrateInterventions,
   executeListSessions,

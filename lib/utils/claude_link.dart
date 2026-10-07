@@ -99,6 +99,22 @@ String planWeekPrompt({
       'Propose d\'abord, puis applique jour par jour avec schedule_day si je valide.';
 }
 
+/// Depuis une tâche 📝 Préparer (Réalisation web) : « Planifier la prépa avec
+/// Claude » → plan_prep (veille au soir, impression sur place), proposition
+/// puis application si l'utilisateur valide.
+String planPrepPrompt({
+  required String projectId,
+  required String interventionId,
+  required String interventionTitle,
+  required int openActions,
+}) =>
+    'Planifie la préparation de ma séance « $interventionTitle » avec Productivitwo : appelle '
+    'plan_prep(projectId: "$projectId", interventionId: "$interventionId") et montre-moi la proposition '
+    '($openActions action${openActions > 1 ? 's' : ''} à caser : la veille au soir de préférence, l\'impression sur place juste '
+    'avant la séance). Respecte mes rendez-vous Google Agenda déjà présents dans les programmes et ma journée active. '
+    'Si une action n\'a pas de trou, propose-moi les deux meilleurs créneaux. '
+    'N\'écris rien sans ma validation : quand je dis ok, relance plan_prep avec apply:true.';
+
 // ─── AUTOMATISER AVEC CLAUDE ─────────────────────────────────────────────────
 //
 // L'app n'exécute rien : elle ouvre Claude avec la demande « crée une tâche
