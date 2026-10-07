@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -648,7 +650,11 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
       out.add(_debriefCard(i));
     } else if (e.task.interventionRole == 'prep') {
       final prev = _previousWithDebrief(i);
-      if (prev != null) out.add(_previousDebriefCard(prev));
+      out.add(_prepPlanCard(i, e.task));
+      if (prev != null) {
+        out.add(const SizedBox(height: 10));
+        out.add(_previousDebriefCard(prev));
+      }
     } else if (e.task.interventionRole == 'session') {
       out.add(_sessionInfoCard(i));
     }
@@ -679,6 +685,53 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
           ),
         ]),
       );
+
+  /// Tâche 📝 Préparer : « Planifier la prépa avec Claude » (plan_prep).
+  Widget _prepPlanCard(ProjectIntervention i, ProjectTask prep) {
+    final open = prep.actions.where((a) => !a.done).length;
+    final est = prep.actions.where((a) => !a.done).fold<int>(0, (n, a) => n + (a.estimatedMin ?? 30));
+    return _interventionBox(
+      child: Row(children: [
+        const Icon(Icons.event_available_outlined, size: 16, color: kBPrimary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            open == 0
+                ? 'Préparation terminée pour la séance du ${interventionDayLabel(i.date)}.'
+                : '$open action${open > 1 ? 's' : ''} à caser avant le ${interventionDayLabel(i.date)} (≈ ${fmtMin(est)}) — '
+                    'la veille au soir de préférence, l\'impression sur place.',
+            style: const TextStyle(fontSize: 12.5, color: kBText2, height: 1.35),
+          ),
+        ),
+        if (open > 0) ...[
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final uri = claudeNewUri(planPrepPrompt(
+                projectId: _p.id,
+                interventionId: i.id,
+                interventionTitle: i.title,
+                openActions: open,
+              ));
+              final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+              if (!ok && mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude.')));
+              }
+            },
+            icon: const Icon(Icons.auto_awesome, size: 15),
+            label: const Text('Planifier la prépa avec Claude'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: kBPrimary,
+              side: const BorderSide(color: kBLine),
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
 
   Widget _previousDebriefCard(ProjectIntervention prev) => _interventionBox(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

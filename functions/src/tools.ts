@@ -989,6 +989,27 @@ const UPDATE_INTERVENTION_TOOL = {
   },
 };
 
+const PLAN_PREP_TOOL = {
+  name: "plan_prep",
+  description:
+    "Planifie la PRÉPARATION d'une intervention : pousse les actions ouvertes de sa tâche 📝 dans les trous du " +
+    "programme — la veille au soir de préférence, puis les soirs précédents, puis les journées ; l'impression " +
+    "(@impression / « Imprimer ») est posée SUR PLACE, collée au début du créneau de la séance (jamais le matin à " +
+    "la maison) ; rendez-vous Google Agenda, blocs existants et journée active respectés. apply:false (défaut) = " +
+    "proposition à faire valider ; apply:true = pose les blocs via schedule_day(mode:\"fill\") avec chrono ciblé " +
+    "(projectId + taskId + actionId). Une action sans trou est signalée avec deux créneaux de repli.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "interventionId"],
+    properties: {
+      projectId: { type: "string" },
+      interventionId: { type: "string", description: "get_project → interventions[]" },
+      apply: { type: "boolean", description: "true = écrire les blocs (après validation de l'utilisateur)" },
+      eveningFrom: { type: "string", description: "début du « soir », HH:mm (défaut 18:00)" },
+    },
+  },
+};
+
 const DELETE_INTERVENTION_TOOL = {
   name: "delete_intervention",
   description:
@@ -1303,6 +1324,7 @@ UPDATE_ACTION_TOOL,
 ADD_INTERVENTION_TOOL,
 UPDATE_INTERVENTION_TOOL,
 DELETE_INTERVENTION_TOOL,
+PLAN_PREP_TOOL,
 MANAGE_INTERVENTION_TEMPLATES_TOOL,
 MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,

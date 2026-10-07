@@ -5,6 +5,7 @@ exports.withBothContexts = withBothContexts;
 exports.executeAddIntervention = executeAddIntervention;
 exports.executeUpdateIntervention = executeUpdateIntervention;
 exports.executeDeleteIntervention = executeDeleteIntervention;
+exports.executePlanPrep = executePlanPrep;
 exports.executeManageInterventionTemplates = executeManageInterventionTemplates;
 exports.executeMigrateInterventions = executeMigrateInterventions;
 exports.executeListSessions = executeListSessions;
@@ -83,6 +84,7 @@ const schedule_dedupe_1 = require("./schedule_dedupe");
 const phase_resolve_1 = require("./phase_resolve");
 const schedule_dedupe_2 = require("./schedule_dedupe");
 const interventions_1 = require("./interventions");
+const prep_planner_1 = require("./prep_planner");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
 const estimates_1 = require("./estimates");
@@ -2936,6 +2938,88 @@ async function executeDeleteIntervention(uid, args) {
     return `✅ Intervention « ${target.title} » (${(0, interventions_1.dayLabelFr)(String(target.date))}) supprimée — tâches : ${mode}\n` +
         (lines.length ? lines.join("\n") : "• aucune tâche liée");
 }
+// « Planifier la prépa » (§ 2.3) : les actions ouvertes de la 📝 d'une
+// intervention → trous du programme (veille au soir d'abord, impression sur
+// place collée au début de la séance). apply:false (défaut) = proposition ;
+// apply:true = écriture via schedule_day(mode:"fill"), jour par jour.
+async function executePlanPrep(uid, args) {
+    var _a, _b, _c, _d, _e;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(args.projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${args.projectId}`;
+    const data = snap.data();
+    const interventions = sanitizeTasks(data.interventions);
+    const i = interventions.find((x) => x.id === args.interventionId);
+    if (!i)
+        return `Intervention introuvable : ${args.interventionId} (get_project → interventions[])`;
+    const tasks = sanitizeTasks(data.tasks);
+    const prep = tasks.find((t) => t.interventionId === i.id && t.interventionRole === "prep");
+    if (!prep)
+        return `❌ « ${i.title} » n'a pas de tâche 📝 Préparer rattachée (update_task {interventionId, interventionRole:"prep"}).`;
+    const open = ((_a = prep.actions) !== null && _a !== void 0 ? _a : []).filter((a) => a.done !== true).map((a) => {
+        var _a, _b;
+        return ({
+            id: String(a.id), title: String((_a = a.title) !== null && _a !== void 0 ? _a : ""),
+            estimatedMin: (_b = estimatedMinOrUndefined(a.estimatedMin)) !== null && _b !== void 0 ? _b : null,
+            contexts: (0, contexts_1.contextsOf)(a),
+        });
+    });
+    if (!open.length)
+        return `✅ Rien à planifier : toutes les actions de « ${prep.title} » sont faites.`;
+    // Journée active + heure locale de l'utilisateur.
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const meta = metaSnap.exists ? metaSnap.data() : {};
+    const dw = ((_b = meta.dayWindow) !== null && _b !== void 0 ? _b : {});
+    const window = {
+        startMin: typeof dw.startMin === "number" ? dw.startMin : 8 * 60,
+        endMin: typeof dw.endMin === "number" ? dw.endMin : 22 * 60,
+    };
+    const tz = typeof meta.tzOffsetMin === "number" ? meta.tzOffsetMin : 120;
+    const local = new Date(Date.now() + tz * 60000);
+    const today = local.toISOString().slice(0, 10);
+    const nowMin = local.getUTCHours() * 60 + local.getUTCMinutes();
+    const D = String(i.date);
+    if (D < today)
+        return `❌ La séance « ${i.title} » est passée (${D}).`;
+    const earliest = String((_c = prep.startDate) !== null && _c !== void 0 ? _c : "").slice(0, 10) || undefined;
+    const firstDay = [(0, prep_planner_1.addDays)(D, -7), earliest !== null && earliest !== void 0 ? earliest : today, today].sort().pop();
+    const existing = {};
+    for (let d = firstDay; d <= D; d = (0, prep_planner_1.addDays)(d, 1)) {
+        const s = await db_1.db.doc(`users/${uid}/daily_schedules/${d}`).get();
+        existing[d] = s.exists ? ((_d = s.data().blocks) !== null && _d !== void 0 ? _d : []) : [];
+    }
+    const eveningFromMin = args.eveningFrom ? (0, schedule_dedupe_2.toMin)(args.eveningFrom) : undefined;
+    const plan = (0, prep_planner_1.planPrep)(Object.assign({ intervention: { date: D, startTime: String(i.startTime), title: String(i.title) }, actions: open, existing, window, today, nowMin, earliest }, (eveningFromMin ? { eveningFromMin } : {})));
+    const lines = plan.placements.map((p) => `• ${p.date} ${(0, interventions_1.hmFr)(p.startTime)} (${p.durationMin} min) — ${p.title} · ${p.why}`);
+    const missing = plan.unplaced.map((u) => `⚠️ « ${u.title} » (${u.durationMin} min) : aucun trou` +
+        (u.alternatives.length
+            ? ` — repli possible : ${u.alternatives.map((a) => `${a.date} ${(0, interventions_1.hmFr)(a.startTime)}`).join(" ou ")}`
+            : " — libère un créneau ou réduis l'estimation"));
+    const head = `📝 Prépa de « ${i.title} » (${(0, interventions_1.dayLabelFr)(D)} ${(0, interventions_1.hmFr)(String(i.startTime))}) — ${open.length} action(s) ouverte(s), journée active ${(0, interventions_1.hmFr)(fromMinHm(window.startMin))}–${(0, interventions_1.hmFr)(fromMinHm(window.endMin))}`;
+    if (args.apply !== true) {
+        return [
+            head,
+            ...(lines.length ? ["Proposition (rien n'est écrit) :", ...lines] : ["Aucun créneau trouvé."]),
+            ...missing,
+            lines.length ? `→ Pour poser ces blocs : plan_prep(projectId, interventionId, apply:true). Pour un autre soir de début : eveningFrom:"19:00".` : "",
+        ].filter(Boolean).join("\n");
+    }
+    const byDate = new Map();
+    for (const p of plan.placements)
+        byDate.set(p.date, [...((_e = byDate.get(p.date)) !== null && _e !== void 0 ? _e : []), p]);
+    const out = [head, `✅ ${plan.placements.length} bloc(s) posé(s) :`];
+    for (const [date, ps] of byDate) {
+        const res = await executeScheduleDay(uid, date, ps.map((p) => ({
+            startTime: p.startTime, durationMin: p.durationMin, title: p.title, category: "project",
+            projectId: args.projectId, taskId: String(prep.id), actionId: p.actionId,
+        })), { mode: "fill", generatedBy: "claude" });
+        out.push(res);
+    }
+    out.push(...missing);
+    return out.join("\n");
+}
+const fromMinHm = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 async function executeMigrateInterventions(uid, args) {
     const dryRun = args.dryRun !== false;
     const col = db_1.db.collection(`users/${uid}/projects`);

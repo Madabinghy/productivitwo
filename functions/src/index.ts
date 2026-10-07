@@ -38,6 +38,7 @@ import {
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
+  PLAN_PREP_TOOL,
   LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -59,6 +60,7 @@ import {
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
   executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction, executeEstimateAccuracy,
   executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
+  executePlanPrep,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
   executeLogRoutineHit, executeMarkBlockDone,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
@@ -1669,6 +1671,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
+            PLAN_PREP_TOOL,
             ESTIMATE_ACCURACY_TOOL,
             LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
@@ -1884,6 +1887,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeAddIntervention(uid, args as unknown as Parameters<typeof executeAddIntervention>[1]);
         } else if (toolName === "update_intervention") {
           text = await executeUpdateIntervention(uid, args as unknown as Parameters<typeof executeUpdateIntervention>[1]);
+        } else if (toolName === "plan_prep") {
+          text = await executePlanPrep(uid, args as unknown as Parameters<typeof executePlanPrep>[1]);
         } else if (toolName === "delete_intervention") {
           text = await executeDeleteIntervention(uid, args as unknown as Parameters<typeof executeDeleteIntervention>[1]);
         } else if (toolName === "manage_intervention_templates") {
