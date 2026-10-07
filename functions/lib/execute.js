@@ -1072,12 +1072,33 @@ async function executeDeleteActivity(uid, activityId) {
     return `✅ Activité "${name}" supprimée.`;
 }
 async function executeUpdateProject(uid, projectId, updates) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
         return `Projet introuvable : ${projectId}`;
-    const title = (_a = updates.title) !== null && _a !== void 0 ? _a : ((_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.title) !== null && _c !== void 0 ? _c : projectId);
+    // Parent (hiérarchie client / dossier) : existe, pas lui-même, pas un de
+    // ses propres descendants (sinon boucle). "" ou null = détacher.
+    if (updates.parentProjectId !== undefined) {
+        const pid = updates.parentProjectId;
+        if (pid) {
+            if (pid === projectId)
+                return `❌ Un projet ne peut pas être son propre parent.`;
+            const all = (await db_1.db.collection(`users/${uid}/projects`).get()).docs
+                .map((d) => ({ id: d.id, parent: d.data().parentProjectId }));
+            if (!all.some((p) => p.id === pid))
+                return `❌ Projet parent introuvable : ${pid}`;
+            let cur = pid;
+            const seen = new Set();
+            while (cur && !seen.has(cur)) {
+                if (cur === projectId)
+                    return `❌ ${pid} dépend déjà de ce projet : rattachement circulaire refusé.`;
+                seen.add(cur);
+                cur = (_b = (_a = all.find((p) => p.id === cur)) === null || _a === void 0 ? void 0 : _a.parent) !== null && _b !== void 0 ? _b : null;
+            }
+        }
+    }
+    const title = (_c = updates.title) !== null && _c !== void 0 ? _c : ((_e = (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : projectId);
     if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
         return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, completed`;
     const patch = { updatedAt: db_1.FieldValue.serverTimestamp() };
@@ -1089,6 +1110,8 @@ async function executeUpdateProject(uid, projectId, updates) {
         patch.description = clampStr(updates.description, 5000, "description");
     if (updates.status !== undefined)
         patch.status = updates.status;
+    if (updates.parentProjectId !== undefined)
+        patch.parentProjectId = updates.parentProjectId || null;
     await ref.update(patch);
     return `✅ Projet "${title}" mis à jour.`;
 }
