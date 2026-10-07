@@ -89,6 +89,31 @@ class _ActionsViewState extends State<ActionsView> {
   /// Domaine d'une entrée : celui du projet, sinon celui de l'activité.
   String? _domainOf(_Entry e) => e.project?.domainId ?? e.activity?.domainId;
 
+  // Filtre « Pour… » (client = projet racine, dossier compris) : mono, null =
+  // tous. Même clé de lecture que le web (`rootProjectOf`).
+  static const _kClientPrefKey = 'actions_client_filter';
+  String? _clientFilter;
+
+  Future<void> _loadClientFilter() async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = prefs.getString(_kClientPrefKey);
+    if (mounted && id != null) setState(() => _clientFilter = id);
+  }
+
+  Future<void> _setClient(String? id) async {
+    setState(() => _clientFilter = id);
+    final prefs = await SharedPreferences.getInstance();
+    id == null ? await prefs.remove(_kClientPrefKey) : await prefs.setString(_kClientPrefKey, id);
+  }
+
+  List<Project> get _allProjects => widget.logic.currentProjects;
+
+  String _rootIdOf(Project p) => rootProjectOf(p, _allProjects).id;
+
+  /// Les actions simples (activités) ne sont « pour » personne : le filtre
+  /// client ne touche que les projets.
+  bool _inClient(Project? p) => _clientFilter == null || p == null || _rootIdOf(p) == _clientFilter;
+
   // « J'ai… » : 15 min · 1 h · plus (null = tout). Persisté.
   static const _kTimePrefKey = 'actions_time_filter';
   TimeBucket? _time;
@@ -145,6 +170,7 @@ class _ActionsViewState extends State<ActionsView> {
     super.initState();
     widget.logic.addListener(_onLogicChange);
     _loadDomainFilter();
+    _loadClientFilter();
     _loadPrefs();
     _subscribeToday();
   }
@@ -184,7 +210,7 @@ class _ActionsViewState extends State<ActionsView> {
   /// Projets actifs sans aucune action ouverte → « Définir la prochaine action ».
   List<Project> _projectsNeedingNext() => [
         for (final g in projectActionGroups(widget.logic.currentProjects, filter: (_) => true))
-          if (g.entries.isEmpty) g.project,
+          if (g.entries.isEmpty && !isFolderProject(g.project, _allProjects)) g.project,
       ];
 
   /// Ids des actions portées par un bloc du programme d'aujourd'hui.
@@ -1064,13 +1090,20 @@ class _ActionsViewState extends State<ActionsView> {
     final activeDomains = _domainFilter.where(domainIds.contains).toSet();
     bool inDomain(String? domainId) =>
         activeDomains.isEmpty || activeDomains.contains(domainId);
+    final roots = clientRoots(_allProjects);
+    if (_clientFilter != null && !roots.any((r) => r.id == _clientFilter)) {
+      // Client disparu (archivé, fusionné) : le filtre tombe tout seul.
+      _clientFilter = null;
+    }
     bool passes(_Entry e) =>
         inDomain(_domainOf(e)) &&
+        _inClient(e.project) &&
         passesContexts(e.action, active) &&
         passesTime(e.action, _time);
     final shown = all.where(passes).toList();
     final hiddenByFilters = all.length - shown.length;
-    final needNextShown = needingNext.where((p) => inDomain(p.domainId)).toList();
+    final needNextShown =
+        needingNext.where((p) => inDomain(p.domainId) && _inClient(p)).toList();
 
     return SafeArea(
       child: ListView(
@@ -1118,7 +1151,7 @@ class _ActionsViewState extends State<ActionsView> {
           const SizedBox(height: 6),
           _captureField(cs),
           const SizedBox(height: 10),
-          _filtersBar(cs, contexts, active, domains, activeDomains, hiddenByFilters),
+          _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
           const SizedBox(height: 6),
 
           // ── @courses actif → la liste de courses du menu, cochable ────────
@@ -1219,7 +1252,7 @@ class _ActionsViewState extends State<ActionsView> {
   // ── Filtres : J'ai… · Je suis… · Domaine ───────────────────────────────────
 
   Widget _filtersBar(ColorScheme cs, List<String> contexts, Set<String> active,
-      List<Domain> domains, Set<String> activeDomains, int hidden) {
+      List<Domain> domains, Set<String> activeDomains, List<Project> roots, int hidden) {
     Widget chip(String label, bool on, VoidCallback onTap, {Color? color}) => ChoiceChip(
           selected: on,
           onSelected: (_) => onTap(),
@@ -1289,7 +1322,23 @@ class _ActionsViewState extends State<ActionsView> {
           ]),
         ),
       ],
-      if (hidden > 0 && (active.isNotEmpty || _time != null || activeDomains.isNotEmpty))
+      if (roots.length > 1) ...[
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            label('POUR'),
+            for (final r in roots) ...[
+              chip(r.title, _clientFilter == r.id,
+                  () => _setClient(_clientFilter == r.id ? null : r.id),
+                  color: domainColor(r.domainId, _state.activeDomains)),
+              const SizedBox(width: 6),
+            ],
+          ]),
+        ),
+      ],
+      if (hidden > 0 &&
+          (active.isNotEmpty || _time != null || activeDomains.isNotEmpty || _clientFilter != null))
         Padding(
           padding: const EdgeInsets.only(top: 6),
           child: Text(
@@ -1457,7 +1506,9 @@ class _ActionsViewState extends State<ActionsView> {
 
   Widget _projectHeader(ColorScheme cs, Project p) => _groupHeader(
         cs,
-        p.title,
+        _rootIdOf(p) != p.id && _clientFilter == null
+            ? '${rootProjectOf(p, _allProjects).title} › ${p.title}'
+            : p.title,
         domainColor(p.domainId, _state.activeDomains) ?? cs.primary,
         onTap: () => _openProject(p),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
