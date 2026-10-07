@@ -114,4 +114,38 @@ void main() {
     expect(g.single.activity.id, 'b');
     expect(g.single.actions.single.title, 'y');
   });
+
+  group('clients (projets racines)', () {
+    Project proj(String id, {String? parent, List<ProjectTask>? tasks, bool paused = false}) => Project(
+        id: id,
+        title: id,
+        startDate: DateTime(2026, 9, 1),
+        createdBy: 'u',
+        tasks: tasks ?? [_t('t$id', '2026-09-01', [_a('x')])],
+        parentProjectId: parent,
+        paused: paused);
+    final cherubins = proj('Chérubins', tasks: []);
+    final cm = proj('CM', parent: 'Chérubins');
+    final sixieme = proj('6e', parent: 'Chérubins');
+    final sof = proj('SOF');
+    final orphan = proj('orphelin', parent: 'disparu');
+    final pausedChild = proj('pause', parent: 'Vide', paused: true);
+    final vide = proj('Vide', tasks: []);
+    final all = [cherubins, cm, sixieme, sof, orphan, pausedChild, vide];
+
+    test('rootProjectOf remonte jusqu\'à la racine ; parent inconnu = racine', () {
+      expect(rootProjectOf(cm, all).id, 'Chérubins');
+      expect(rootProjectOf(sof, all).id, 'SOF');
+      expect(rootProjectOf(orphan, all).id, 'orphelin');
+    });
+    test('clientRoots : racines ayant un projet vivant dessous, triées', () {
+      expect(clientRoots(all).map((p) => p.id).toList(), ['Chérubins', 'orphelin', 'SOF']);
+    });
+    test('isFolderProject : sans tâche et avec des enfants', () {
+      expect(isFolderProject(cherubins, all), isTrue);
+      expect(isFolderProject(vide, all), isTrue);
+      expect(isFolderProject(sof, all), isFalse);
+      expect(isFolderProject(cm, all), isFalse);
+    });
+  });
 }

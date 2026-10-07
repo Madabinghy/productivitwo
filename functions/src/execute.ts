@@ -1202,11 +1202,29 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
 async function executeUpdateProject(
   uid: string,
   projectId: string,
-  updates: { domainId?: string; title?: string; description?: string; status?: string }
+  updates: { domainId?: string; title?: string; description?: string; status?: string; parentProjectId?: string | null }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/projects`).doc(projectId);
   const snap = await ref.get();
   if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  // Parent (hiérarchie client / dossier) : existe, pas lui-même, pas un de
+  // ses propres descendants (sinon boucle). "" ou null = détacher.
+  if (updates.parentProjectId !== undefined) {
+    const pid = updates.parentProjectId;
+    if (pid) {
+      if (pid === projectId) return `❌ Un projet ne peut pas être son propre parent.`;
+      const all = (await db.collection(`users/${uid}/projects`).get()).docs
+        .map((d) => ({ id: d.id, parent: d.data().parentProjectId as string | null | undefined }));
+      if (!all.some((p) => p.id === pid)) return `❌ Projet parent introuvable : ${pid}`;
+      let cur: string | null | undefined = pid;
+      const seen = new Set<string>();
+      while (cur && !seen.has(cur)) {
+        if (cur === projectId) return `❌ ${pid} dépend déjà de ce projet : rattachement circulaire refusé.`;
+        seen.add(cur);
+        cur = all.find((p) => p.id === cur)?.parent ?? null;
+      }
+    }
+  }
   const title = updates.title ?? (snap.data()?.title ?? projectId);
 
   if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
@@ -1217,6 +1235,7 @@ async function executeUpdateProject(
   if (updates.title       !== undefined) patch.title       = clampStr(updates.title, 200, "title");
   if (updates.description !== undefined) patch.description = clampStr(updates.description, 5000, "description");
   if (updates.status      !== undefined) patch.status      = updates.status;
+  if (updates.parentProjectId !== undefined) patch.parentProjectId = updates.parentProjectId || null;
 
   await ref.update(patch);
   return `✅ Projet "${title}" mis à jour.`;

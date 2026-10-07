@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 
@@ -102,6 +103,40 @@ List<ProjectActions> projectActionGroups(
   });
   return out;
 }
+
+/// Projet racine (client) d'un projet : on remonte `parentProjectId` jusqu'à
+/// un projet sans parent connu. Un parent introuvable = le projet est racine.
+Project rootProjectOf(Project p, List<Project> all) {
+  var cur = p;
+  final seen = <String>{p.id};
+  while (cur.parentProjectId != null) {
+    final parent = all.where((x) => x.id == cur.parentProjectId).firstOrNull;
+    if (parent == null || !seen.add(parent.id)) break;
+    cur = parent;
+  }
+  return cur;
+}
+
+bool _liveProject(Project p) => p.status == 'active' && !p.paused;
+
+/// « Pour… » : les racines (clients, dossiers) qui ont au moins un projet
+/// vivant sous elles (elles comprises), triées par titre.
+List<Project> clientRoots(List<Project> all) {
+  final roots = <String, Project>{};
+  for (final p in all) {
+    // Un dossier ne compte que par ses enfants vivants.
+    if (!_liveProject(p) || isFolderProject(p, all)) continue;
+    final r = rootProjectOf(p, all);
+    roots[r.id] = r;
+  }
+  return roots.values.toList()
+    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+}
+
+/// Dossier : un projet racine sans tâche dont d'autres projets dépendent —
+/// il sert de client, pas de liste d'actions (jamais « Définir la prochaine »).
+bool isFolderProject(Project p, List<Project> all) =>
+    p.tasks.isEmpty && all.any((x) => x.parentProjectId == p.id);
 
 /// Filtre actif (contexte ou temps) : on ne montre que les projets qui ont au
 /// moins une action qui passe — « que puis-je faire @maison ? » va droit à

@@ -24,6 +24,7 @@ const _kPrefContexts = 'web.actions.contexts';
 const _kPrefTime = 'web.actions.time';
 const _kPrefDomain = 'web.actions.domain';
 const _kPrefSort = 'web.actions.sort';
+const _kPrefClient = 'web.actions.client';
 
 class ActionsView extends StatefulWidget {
   final List<Project> projects;
@@ -54,6 +55,8 @@ class _ActionsViewState extends State<ActionsView> {
   bool _showUnmatched = false;
   bool get _filtering => _contexts.isNotEmpty || _time != null;
   String? _domainId;
+  // « Pour… » : projet racine (client) ; null = tous.
+  String? _clientId;
   ActionsSort _sort = ActionsSort.dueDate;
   bool _showPaused = false;
   final Set<String> _expanded = {};
@@ -110,6 +113,7 @@ class _ActionsViewState extends State<ActionsView> {
         final t = p.getString(_kPrefTime);
         _time = TimeBucket.values.where((b) => b.name == t).firstOrNull;
         _domainId = p.getString(_kPrefDomain);
+        _clientId = p.getString(_kPrefClient);
         final s = p.getString(_kPrefSort);
         _sort = ActionsSort.values.where((x) => x.name == s).firstOrNull ?? ActionsSort.dueDate;
       });
@@ -125,6 +129,9 @@ class _ActionsViewState extends State<ActionsView> {
           ? await p.remove(_kPrefDomain)
           : await p.setString(_kPrefDomain, _domainId!);
       await p.setString(_kPrefSort, _sort.name);
+      _clientId == null
+          ? await p.remove(_kPrefClient)
+          : await p.setString(_kPrefClient, _clientId!);
     } catch (_) {}
   }
 
@@ -132,9 +139,25 @@ class _ActionsViewState extends State<ActionsView> {
 
   bool _filter(TaskAction a) => passesContexts(a, _contexts) && passesTime(a, _time);
 
-  List<Project> get _domainProjects => _domainId == null
-      ? widget.projects
-      : widget.projects.where((p) => p.domainId == _domainId).toList();
+  List<Project> get _domainProjects => widget.projects
+      .where((p) => _domainId == null || p.domainId == _domainId)
+      .where((p) => _clientId == null || rootProjectOf(p, widget.projects).id == _clientId)
+      .where((p) => !isFolderProject(p, widget.projects))
+      .toList();
+
+  int _openCountForClient(String? rootId) {
+    var n = 0;
+    for (final p in widget.projects) {
+      if (p.status != 'active' || p.paused) continue;
+      if (_domainId != null && p.domainId != _domainId) continue;
+      if (rootId != null && rootProjectOf(p, widget.projects).id != rootId) continue;
+      for (final t in p.tasks) {
+        if (t.status == 'done' || t.status == 'skipped') continue;
+        n += t.actions.where((a) => !a.done && _filter(a)).length;
+      }
+    }
+    return n;
+  }
 
   List<Activity> get _domainActivities => _domainId == null
       ? widget.activities
@@ -324,6 +347,13 @@ class _ActionsViewState extends State<ActionsView> {
             _savePrefs();
           }),
       ]),
+      if (clientRoots(widget.projects).length > 1) ...[
+        const SizedBox(height: 22),
+        _label('POUR…'),
+        const SizedBox(height: 10),
+        _clientRow(null, 'Tous'),
+        for (final r in clientRoots(widget.projects)) _clientRow(r.id, r.title),
+      ],
       const SizedBox(height: 22),
       _label('DOMAINE'),
       const SizedBox(height: 10),
@@ -346,6 +376,49 @@ class _ActionsViewState extends State<ActionsView> {
             muted: !_showPaused),
       ),
     ]);
+  }
+
+  Widget _clientRow(String? id, String name) {
+    final selected = _clientId == id;
+    final count = _openCountForClient(id);
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _clientId = id;
+          _showUnmatched = false;
+        });
+        _savePrefs();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: selected ? kBActive : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(children: [
+          Icon(id == null ? Icons.all_inclusive : Icons.folder_outlined,
+              size: 14, color: selected ? kBText : kBText3),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? kBText : kBText2)),
+          ),
+          Text('$count',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: count == 0 ? kBText4 : kBText3,
+                  fontFeatures: _tabular)),
+        ]),
+      ),
+    );
   }
 
   Widget _domainRow(String? id, String name) {
@@ -560,6 +633,8 @@ class _ActionsViewState extends State<ActionsView> {
     final expanded = _expanded.contains(p.id);
     final shown = expanded ? g.entries : g.entries.take(3).toList();
     final hidden = g.entries.length - shown.length;
+    final root = rootProjectOf(p, widget.projects);
+    final parentPrefix = root.id != p.id && _clientId == null ? '${root.title} › ' : '';
     final daysLeft = p.endDate == null
         ? null
         : DateTime(p.endDate!.year, p.endDate!.month, p.endDate!.day)
@@ -573,10 +648,16 @@ class _ActionsViewState extends State<ActionsView> {
           Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(p.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+            child: Text.rich(
+              TextSpan(children: [
+                if (parentPrefix.isNotEmpty)
+                  TextSpan(text: parentPrefix, style: const TextStyle(color: kBText3, fontWeight: FontWeight.w500)),
+                TextSpan(text: p.title),
+              ]),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText),
+            ),
           ),
           if (p.endDate != null) ...[
             const SizedBox(width: 8),
