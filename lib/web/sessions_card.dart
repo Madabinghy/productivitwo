@@ -39,7 +39,8 @@ class SessionsCard extends StatelessWidget {
     return sessions
         .where((s) => !s.deleted && s.startAt.isBefore(next) && (s.endAt ?? DateTime.now()).isAfter(d))
         .toList()
-      ..sort((a, b) => a.startAt.compareTo(b.startAt));
+      // Antéchronologique : le dernier chrono (celui qu'on vient de couper) en tête.
+      ..sort((a, b) => b.startAt.compareTo(a.startAt));
   }
 
   Activity? _act(String? id) => id == null ? null : activities.where((a) => a.id == id).firstOrNull;
@@ -92,6 +93,7 @@ class SessionsCard extends StatelessWidget {
     final a = _act(s.activityId);
     final color = domainColor(a?.domainId, domains) ?? kBPrimary;
     final b = _blockOf(s);
+    final target = sessionTargetLabel(s, projects: projects, activities: activities);
     final open = s.endAt == null;
     return InkWell(
       onTap: () => _edit(context, s),
@@ -109,10 +111,10 @@ class SessionsCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kBText)),
               Text(
                 '${_hm(s.startAt)} → ${open ? 'en cours' : _hm(s.endAt!)} · ${fmtMin(s.duration.inMinutes)}'
-                '${b != null ? ' · ${b.title}${b.status == 'deleted' ? ' (retiré)' : ''}' : ' · hors bloc'}',
+                '${b != null ? ' · ${b.title}${b.status == 'deleted' ? ' (retiré)' : ''}' : target != null ? ' · pour $target' : ' · hors bloc'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: b != null || open ? kBText3 : kBAttention),
+                style: TextStyle(fontSize: 12, color: b != null || target != null || open ? kBText3 : kBAttention),
               ),
             ]),
           ),
