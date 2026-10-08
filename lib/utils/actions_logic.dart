@@ -64,6 +64,9 @@ class ProjectActions {
 List<ProjectActions> projectActionGroups(
   List<Project> projects, {
   required bool Function(TaskAction) filter,
+  /// Filtre sur la tâche porteuse (ex. « En retard » = échéance dépassée) ;
+  /// null = toutes.
+  bool Function(ProjectTask)? taskFilter,
   ActionsSort sort = ActionsSort.dueDate,
   List<String> domainOrder = const [],
   /// Date du prochain jalon / séance d'un projet (tri `milestone`) ; null = aucun.
@@ -74,9 +77,12 @@ List<ProjectActions> projectActionGroups(
     if (p.status != 'active' || p.paused) continue;
     final entries = <({ProjectTask task, TaskAction action})>[];
     final next = nextAction(p);
-    if (next != null && filter(next.action)) entries.add(next);
+    if (next != null && filter(next.action) && (taskFilter?.call(next.task) ?? true)) {
+      entries.add(next);
+    }
     for (final t in ganttOrder(p)) {
       if (t.status == 'done' || t.status == 'skipped') continue;
+      if (taskFilter != null && !taskFilter(t)) continue;
       for (final a in t.actions) {
         if (a.done || !filter(a)) continue;
         if (next != null && a.id == next.action.id) continue;
@@ -165,19 +171,26 @@ bool inClient(String? clientId, Project? p, List<Project> all) {
 bool isFolderProject(Project p, List<Project> all) =>
     p.tasks.isEmpty && all.any((x) => x.parentProjectId == p.id);
 
+/// Tâche EN RETARD : ouverte (ni faite ni annulée) et échéance strictement
+/// avant le jour de [today]. Règle unique du filtre « En retard » (web), du
+/// groupe « En retard » et de la pastille.
+bool isOverdueTask(ProjectTask t, DateTime today) {
+  if (t.status == 'done' || t.status == 'skipped' || t.endDate == null) return false;
+  final d = DateTime(today.year, today.month, today.day);
+  final due = DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day);
+  return due.isBefore(d);
+}
+
 /// Actions EN RETARD : ouvertes, dans une tâche ouverte (ni faite ni annulée)
 /// d'un projet vivant, dont l'échéance de la tâche est avant [today]. Même
 /// règle que le groupe « En retard » d'Actions (mobile et web) — alimente la
 /// pastille de l'onglet Actions.
 int overdueActionCount(List<Project> projects, DateTime today) {
-  final d = DateTime(today.year, today.month, today.day);
   var n = 0;
   for (final p in projects) {
     if (p.status != 'active' || p.paused) continue;
     for (final t in p.tasks) {
-      if (t.status == 'done' || t.status == 'skipped' || t.endDate == null) continue;
-      final due = DateTime(t.endDate!.year, t.endDate!.month, t.endDate!.day);
-      if (!due.isBefore(d)) continue;
+      if (!isOverdueTask(t, today)) continue;
       n += t.actions.where((a) => !a.done).length;
     }
   }

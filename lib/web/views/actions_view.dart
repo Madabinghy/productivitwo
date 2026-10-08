@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _tabular = [FontFeature.tabularFigures()];
 const _kPrefContexts = 'web.actions.contexts';
 const _kPrefTime = 'web.actions.time';
+const _kPrefOverdue = 'web.actions.overdue';
 const _kPrefDomain = 'web.actions.domain';
 const _kPrefSort = 'web.actions.sort';
 const _kPrefClient = 'web.actions.client';
@@ -55,7 +56,12 @@ class _ActionsViewState extends State<ActionsView> {
   TimeBucket? _time;
   // Filtre actif : projets sans action correspondante masqués, sauf demande.
   bool _showUnmatched = false;
-  bool get _filtering => _contexts.isNotEmpty || _time != null;
+  // « En retard » : seules les actions d'une tâche à l'échéance dépassée
+  // (`isOverdueTask`) ; les actions simples n'ont pas d'échéance → masquées.
+  bool _overdue = false;
+  bool get _filtering => _contexts.isNotEmpty || _time != null || _overdue;
+  bool Function(ProjectTask)? get _taskFilter =>
+      _overdue ? (t) => isOverdueTask(t, DateTime.now()) : null;
   String? _domainId;
   // « Pour… » : projet racine (client) ; null = tous.
   String? _clientId;
@@ -114,6 +120,7 @@ class _ActionsViewState extends State<ActionsView> {
           ..addAll(p.getStringList(_kPrefContexts) ?? const []);
         final t = p.getString(_kPrefTime);
         _time = TimeBucket.values.where((b) => b.name == t).firstOrNull;
+        _overdue = p.getBool(_kPrefOverdue) ?? false;
         _domainId = p.getString(_kPrefDomain);
         _clientId = p.getString(_kPrefClient);
         final s = p.getString(_kPrefSort);
@@ -127,6 +134,7 @@ class _ActionsViewState extends State<ActionsView> {
       final p = await SharedPreferences.getInstance();
       await p.setStringList(_kPrefContexts, _contexts.toList());
       _time == null ? await p.remove(_kPrefTime) : await p.setString(_kPrefTime, _time!.name);
+      _overdue ? await p.setBool(_kPrefOverdue, true) : await p.remove(_kPrefOverdue);
       _domainId == null
           ? await p.remove(_kPrefDomain)
           : await p.setString(_kPrefDomain, _domainId!);
@@ -149,7 +157,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   int _openCountForClient(String? rootId) {
     var n = 0;
-    if (rootId == null || rootId == kPersoClientId) {
+    if (!_overdue && (rootId == null || rootId == kPersoClientId)) {
       for (final a in _activitiesInDomain) {
         n += a.ownActions.where((x) => !x.done && _filter(x)).length;
       }
@@ -160,6 +168,7 @@ class _ActionsViewState extends State<ActionsView> {
       if (!inClient(rootId, p, widget.projects)) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
+        if (_taskFilter != null && !_taskFilter!(t)) continue;
         n += t.actions.where((a) => !a.done && _filter(a)).length;
       }
     }
@@ -169,7 +178,9 @@ class _ActionsViewState extends State<ActionsView> {
   /// Activités dont les actions simples sont montrées : un client choisi n'en
   /// a aucune (elles ne sont « pour » personne), « Perso » les a toutes.
   List<Activity> get _domainActivities =>
-      _clientId != null && _clientId != kPersoClientId ? const [] : _activitiesInDomain;
+      _overdue || (_clientId != null && _clientId != kPersoClientId)
+          ? const []
+          : _activitiesInDomain;
 
   List<Activity> get _activitiesInDomain => _domainId == null
       ? widget.activities
@@ -194,10 +205,12 @@ class _ActionsViewState extends State<ActionsView> {
       if (domainId != null && p.domainId != domainId) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
+        if (_taskFilter != null && !_taskFilter!(t)) continue;
         n += t.actions.where((a) => !a.done && _filter(a)).length;
       }
     }
     for (final act in widget.activities) {
+      if (_overdue) break;
       if (act.deleted) continue;
       if (domainId != null && act.domainId != domainId) continue;
       n += act.ownActions.where((a) => !a.done && _filter(a)).length;
@@ -359,6 +372,18 @@ class _ActionsViewState extends State<ActionsView> {
             _savePrefs();
           }),
       ]),
+      const SizedBox(height: 22),
+      _label('ÉTAT'),
+      const SizedBox(height: 10),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        _chip('En retard', selected: _overdue, onTap: () {
+          setState(() {
+            _overdue = !_overdue;
+            _showUnmatched = false;
+          });
+          _savePrefs();
+        }),
+      ]),
       if (clientRoots(widget.projects).length > 1) ...[
         const SizedBox(height: 22),
         _label('POUR…'),
@@ -490,6 +515,7 @@ class _ActionsViewState extends State<ActionsView> {
         _time != null && _sort == ActionsSort.dueDate ? ActionsSort.milestone : _sort;
     final allGroups = projectActionGroups(_domainProjects,
         filter: _filter,
+        taskFilter: _taskFilter,
         sort: effectiveSort,
         domainOrder: [for (final d in widget.domains) d.id],
         urgencyOf: (p) => nextInterventionOf(p, today)?.date);
@@ -497,6 +523,7 @@ class _ActionsViewState extends State<ActionsView> {
     final vis = visibleProjectGroups(allGroups, filtering: _filtering && !_showUnmatched);
     final groups = vis.shown;
     final filterLabel = [
+      if (_overdue) 'en retard',
       ...(_contexts.toList()..sort()),
       if (_time != null)
         switch (_time!) {
