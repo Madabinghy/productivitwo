@@ -260,10 +260,12 @@ Claude ne les recrée pas lors d'une régénération.
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
-- `schedule_day(date, blocks[])` — crée ou remplace le programme (un bloc peut porter `actionId` → chrono ciblé). **Le passé
-  est immuable** (2026-10) : en mode remplacement, les blocs déjà vécus (faits, sautés, commencés avant maintenant dans la
-  journée de l'utilisateur, tombstones passés compris — `isSettledBlock`, `schedule_dedupe.ts`) survivent et un entrant
-  qui les chevauche est écarté ; seul l'avenir est remplacé
+- `schedule_day(date, blocks[])` — crée ou remplace le programme (un bloc peut porter `actionId` → chrono ciblé). **Le vécu
+  est immuable** (B10, 2026-10) : en mode remplacement, un bloc **fait**, un bloc sur lequel un **chrono réel** a tourné
+  (`blockHasSession`, sessions du jour) et les tombstones (`skipped` / `deleted`) survivent (`isSettledBlock`,
+  `schedule_dedupe.ts`) et un entrant qui les chevauche est écarté ; un bloc passé NON fait a sauté : non relisté, il est
+  retiré. En mode `fill`, un entrant écarté dit **quel bloc occupe le créneau** (titre, heure, statut, id) et propose le
+  créneau libre le plus proche, dans la journée active d'abord sinon n'importe où dans les 24 h (`nearestFreeSlotAnywhere`)
 - `add_activity_action(activityId, title, context?, contexts?)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
 - `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
@@ -287,8 +289,9 @@ Claude ne les recrée pas lors d'une régénération.
   référence le domaine par id) ; la fiche intention / minimum vital reste dans `save_domain_definition`, qui ne renomme
   jamais. **Retouches unitaires** (2026-10) : `update_task {description}` (`""` = effacer), `update_project {phases:[{id,
   label?, color?, startDate?, endDate?}]}` (par id, jamais d'ajout / suppression : `push_gantt`), `update_block(date,
-  blockId, title?, startTime?, durationMin?, category?, status?, projectId?, taskId?, activityId?, actionId?)` (`""` sur
-  un lien = le retirer ; le reste du programme est intact)
+  blockId, title?, startTime?, durationMin?, category?, status?, skipReason?, delete?, projectId?, taskId?, activityId?,
+  actionId?)` (`""` sur un lien = le retirer ; `status:"skipped"` + `skipReason` ou `delete:true` libèrent le créneau d'un
+  bloc passé non fait ; le reste du programme est intact)
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

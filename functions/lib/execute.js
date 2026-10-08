@@ -2105,6 +2105,33 @@ async function executeMarkBlockDone(uid, date, blockId, done) {
     await ref.update({ blocks });
     return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
 }
+/** Sessions de chrono du jour (heure murale de l'app), pour reconnaître un
+ *  bloc sur lequel un chrono réel a tourné (`blockHasSession`). */
+async function readDaySessions(uid, date) {
+    const snap = await db_1.db.collection(`users/${uid}/sessions`)
+        .where("startAt", ">=", `${date}T00:00:00`)
+        .where("startAt", "<=", `${date}T23:59:59.999`)
+        .get();
+    const out = [];
+    for (const doc of (0, sessions_audit_1.liveSessionDocs)(snap)) {
+        const v = doc.data();
+        if (typeof v.startAt !== "string")
+            continue;
+        const sMs = (0, sessions_audit_1.wallMs)(v.startAt);
+        const eMs = typeof v.endAt === "string" ? (0, sessions_audit_1.wallMs)(v.endAt) : (0, sessions_audit_1.wallMs)((0, sessions_audit_1.toWallIso)(Date.now()));
+        const d0 = (0, sessions_audit_1.wallMs)(`${date}T00:00:00`);
+        const startMin = Math.max(0, Math.floor((sMs - d0) / 60000));
+        const endMin = Math.min(24 * 60, Math.ceil((eMs - d0) / 60000));
+        if (endMin <= startMin)
+            continue;
+        out.push({
+            startMin, endMin,
+            taskId: typeof v.taskId === "string" ? v.taskId : null,
+            activityId: typeof v.activityId === "string" ? v.activityId : null,
+        });
+    }
+    return out;
+}
 const BLOCK_CATEGORIES = new Set(["project", "routine", "personal", "break"]);
 const BLOCK_STATUSES = new Set(["pending", "done", "skipped", "deleted"]);
 /** Retouche unitaire d'un bloc du programme : seuls les champs fournis
@@ -2113,6 +2140,8 @@ async function executeUpdateBlock(uid, date, blockId, updates) {
     var _a;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    if (updates.delete === true)
+        updates = Object.assign(Object.assign({}, updates), { status: "deleted" });
     const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
     const snap = await ref.get();
     if (!snap.exists)
@@ -2153,6 +2182,9 @@ async function executeUpdateBlock(uid, date, blockId, updates) {
             patch.doneAt = new Date().toISOString();
         else if (updates.status === "pending")
             patch.doneAt = null;
+    }
+    if (updates.skipReason !== undefined) {
+        patch.skipReason = updates.skipReason.trim() ? clampStr(updates.skipReason, 300, "skipReason") : null;
     }
     for (const k of ["projectId", "taskId", "activityId", "actionId"]) {
         if (updates[k] !== undefined)
@@ -2752,7 +2784,7 @@ async function executeUpdateSessionTemplate(uid, args) {
         : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
 }
 async function executeScheduleDay(uid, date, blocks, opts = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -2795,14 +2827,12 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     // d'événements Google Agenda (tous statuts : un remplacement de programme
     // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
     const prevBlocks = (_a = prevData.blocks) !== null && _a !== void 0 ? _a : [];
-    // Le passé est immuable : un remplacement ne touche que ce qui reste à
-    // venir. Les blocs déjà vécus (faits, sautés, commencés avant maintenant
-    // dans la journée de l'utilisateur) survivent, et un entrant qui les
-    // chevaucherait est écarté comme en mode compléter.
-    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
-    const tzOffset = metaSnap.exists ? metaSnap.data().tzOffsetMin : null;
-    const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
-    const settledCtx = { date, today: lived.ymd, nowMin: (0, schedule_dedupe_2.toMin)(lived.hm) };
+    // Le vécu est immuable (B10) : un remplacement ne touche jamais un bloc
+    // FAIT ni un bloc sur lequel un chrono réel a tourné ; un bloc passé non
+    // fait a sauté, il se remplace comme un bloc futur (non relisté = retiré).
+    // Un entrant qui chevauche un bloc vécu est écarté comme en mode compléter.
+    const daySessions = fill ? [] : await readDaySessions(uid, date);
+    const settledCtx = { sessions: daySessions };
     const settled = fill ? [] : prevBlocks.filter((b) => (0, schedule_dedupe_1.isSettledBlock)(b, settledCtx));
     const preserved = fill ? prevBlocks : prevBlocks
         .filter((b) => (0, schedule_dedupe_1.isSettledBlock)(b, settledCtx) ||
@@ -2818,7 +2848,7 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     const { kept: afterMirrors, dropped } = (0, schedule_dedupe_1.splitAgainstMirrors)(normalizedBlocks, preserved);
     // En mode compléter, un entrant qui chevauche un bloc existant (fait, manuel,
     // reporté…) est écarté : on ne touche pas à ce qui est déjà posé.
-    const { kept: newBlocks, dropped: overlapping } = fill
+    const { kept: newBlocks, conflicts } = fill
         ? (0, schedule_dedupe_1.fillAgainstExisting)(afterMirrors, preserved)
         : (0, schedule_dedupe_1.fillAgainstExisting)(afterMirrors, settled);
     await ref.set({
@@ -2845,19 +2875,24 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     // B9 : un bloc écarté n'est pas perdu en silence — on indique le créneau
     // libre le plus proche (dans la journée active) pour le reposer.
     let clashed = "";
-    if (overlapping.length) {
+    if (conflicts.length) {
         const win = await readDayWindowHours(uid);
         const busy = [...preserved, ...newBlocks];
-        const hints = overlapping.map((b) => {
-            var _a, _b;
-            const slot = (0, schedule_dedupe_2.nearestFreeSlot)(b, busy, { startMin: ((_a = win === null || win === void 0 ? void 0 : win.startHour) !== null && _a !== void 0 ? _a : 7) * 60, endMin: ((_b = win === null || win === void 0 ? void 0 : win.endHour) !== null && _b !== void 0 ? _b : 22) * 60 });
-            return `${b.startTime} ${b.title}` + (slot ? ` → libre à ${slot}` : " → aucun créneau libre de cette durée");
+        const window = { startMin: ((_p = win === null || win === void 0 ? void 0 : win.startHour) !== null && _p !== void 0 ? _p : 7) * 60, endMin: ((_q = win === null || win === void 0 ? void 0 : win.endHour) !== null && _q !== void 0 ? _q : 22) * 60 };
+        const hints = conflicts.map(({ block: b, by }) => {
+            const found = (0, schedule_dedupe_1.nearestFreeSlotAnywhere)(b, busy, window);
+            const byLabel = `occupé par « ${by.title} » (${by.startTime}, ${by.durationMin} min, ${by.status}, id:${by.id})`;
+            const slot = found
+                ? ` → libre à ${found.slot}${found.inWindow ? "" : " (hors journée active)"}`
+                : " → aucun créneau libre de cette durée";
+            return `${b.startTime} ${b.title} — ${byLabel}${slot}`;
         });
-        clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
-            `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
+        clashed = `\n⛔ ${conflicts.length} bloc(s) écarté(s) : ${hints.join(" · ")}` +
+            `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée, ou libère le créneau avec ` +
+            `update_block(status:"skipped" | delete:true) si le bloc occupant a sauté.`;
     }
     const livedNote = settled.length
-        ? ` · ${settled.length} bloc(s) déjà vécu(s) conservé(s) (le passé n'est jamais remplacé)`
+        ? ` · ${settled.length} bloc(s) vécu(s) conservé(s) (faits, chrono rattaché, sautés / retirés)`
         : "";
     const head = fill
         ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`

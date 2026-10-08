@@ -1,6 +1,6 @@
-import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors } from "./schedule_dedupe";
+import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nearestFreeSlotAnywhere, DaySession } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
-import { nearestFreeSlot, toMin } from "./schedule_dedupe";
+import { toMin } from "./schedule_dedupe";
 import {
   DEFAULT_TEMPLATE, InterventionTemplate, TemplateAction, buildIntervention, buildInterventionTasks,
   shiftTasks, retitleTasks, applyCarryOver, detectTriplets, applyTriplet, validateInput, dayLabelFr, hmFr,
@@ -2328,6 +2328,32 @@ async function executeMarkBlockDone(
   return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
 }
 
+/** Sessions de chrono du jour (heure murale de l'app), pour reconnaître un
+ *  bloc sur lequel un chrono réel a tourné (`blockHasSession`). */
+async function readDaySessions(uid: string, date: string): Promise<DaySession[]> {
+  const snap = await db.collection(`users/${uid}/sessions`)
+    .where("startAt", ">=", `${date}T00:00:00`)
+    .where("startAt", "<=", `${date}T23:59:59.999`)
+    .get();
+  const out: DaySession[] = [];
+  for (const doc of liveSessionDocs(snap)) {
+    const v = doc.data() as Record<string, unknown>;
+    if (typeof v.startAt !== "string") continue;
+    const sMs = wallMs(v.startAt);
+    const eMs = typeof v.endAt === "string" ? wallMs(v.endAt) : wallMs(toWallIso(Date.now()));
+    const d0 = wallMs(`${date}T00:00:00`);
+    const startMin = Math.max(0, Math.floor((sMs - d0) / 60000));
+    const endMin = Math.min(24 * 60, Math.ceil((eMs - d0) / 60000));
+    if (endMin <= startMin) continue;
+    out.push({
+      startMin, endMin,
+      taskId: typeof v.taskId === "string" ? v.taskId : null,
+      activityId: typeof v.activityId === "string" ? v.activityId : null,
+    });
+  }
+  return out;
+}
+
 const BLOCK_CATEGORIES = new Set(["project", "routine", "personal", "break"]);
 const BLOCK_STATUSES = new Set(["pending", "done", "skipped", "deleted"]);
 
@@ -2339,10 +2365,12 @@ async function executeUpdateBlock(
   blockId: string,
   updates: {
     title?: string; startTime?: string; durationMin?: number; category?: string; status?: string;
+    skipReason?: string; delete?: boolean;
     projectId?: string; taskId?: string; activityId?: string; actionId?: string;
   }
 ): Promise<string> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  if (updates.delete === true) updates = { ...updates, status: "deleted" };
   const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
   const snap = await ref.get();
   if (!snap.exists) return `Aucun programme pour le ${date}.`;
@@ -2376,6 +2404,9 @@ async function executeUpdateBlock(
     patch.status = updates.status;
     if (updates.status === "done") patch.doneAt = new Date().toISOString();
     else if (updates.status === "pending") patch.doneAt = null;
+  }
+  if (updates.skipReason !== undefined) {
+    patch.skipReason = updates.skipReason.trim() ? clampStr(updates.skipReason, 300, "skipReason") : null;
   }
   for (const k of ["projectId", "taskId", "activityId", "actionId"] as const) {
     if (updates[k] !== undefined) patch[k] = updates[k] ? updates[k] : null;
@@ -3084,14 +3115,12 @@ async function executeScheduleDay(
   // d'événements Google Agenda (tous statuts : un remplacement de programme
   // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
   const prevBlocks = (prevData.blocks as Array<Record<string, unknown>>) ?? [];
-  // Le passé est immuable : un remplacement ne touche que ce qui reste à
-  // venir. Les blocs déjà vécus (faits, sautés, commencés avant maintenant
-  // dans la journée de l'utilisateur) survivent, et un entrant qui les
-  // chevaucherait est écarté comme en mode compléter.
-  const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
-  const tzOffset = metaSnap.exists ? (metaSnap.data() as Record<string, unknown>).tzOffsetMin : null;
-  const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
-  const settledCtx = { date, today: lived.ymd, nowMin: toMin(lived.hm) };
+  // Le vécu est immuable (B10) : un remplacement ne touche jamais un bloc
+  // FAIT ni un bloc sur lequel un chrono réel a tourné ; un bloc passé non
+  // fait a sauté, il se remplace comme un bloc futur (non relisté = retiré).
+  // Un entrant qui chevauche un bloc vécu est écarté comme en mode compléter.
+  const daySessions: DaySession[] = fill ? [] : await readDaySessions(uid, date);
+  const settledCtx = { sessions: daySessions };
   const settled = fill ? [] : prevBlocks.filter((b) => isSettledBlock(b, settledCtx));
   const preserved = fill ? prevBlocks : prevBlocks
     .filter((b) =>
@@ -3108,7 +3137,7 @@ async function executeScheduleDay(
   const { kept: afterMirrors, dropped } = splitAgainstMirrors(normalizedBlocks, preserved);
   // En mode compléter, un entrant qui chevauche un bloc existant (fait, manuel,
   // reporté…) est écarté : on ne touche pas à ce qui est déjà posé.
-  const { kept: newBlocks, dropped: overlapping } = fill
+  const { kept: newBlocks, conflicts } = fill
     ? fillAgainstExisting(afterMirrors, preserved)
     : fillAgainstExisting(afterMirrors, settled);
 
@@ -3137,18 +3166,24 @@ async function executeScheduleDay(
   // B9 : un bloc écarté n'est pas perdu en silence — on indique le créneau
   // libre le plus proche (dans la journée active) pour le reposer.
   let clashed = "";
-  if (overlapping.length) {
+  if (conflicts.length) {
     const win = await readDayWindowHours(uid);
     const busy = [...preserved, ...newBlocks];
-    const hints = overlapping.map((b) => {
-      const slot = nearestFreeSlot(b, busy, { startMin: (win?.startHour ?? 7) * 60, endMin: (win?.endHour ?? 22) * 60 });
-      return `${b.startTime} ${b.title}` + (slot ? ` → libre à ${slot}` : " → aucun créneau libre de cette durée");
+    const window = { startMin: (win?.startHour ?? 7) * 60, endMin: (win?.endHour ?? 22) * 60 };
+    const hints = conflicts.map(({ block: b, by }) => {
+      const found = nearestFreeSlotAnywhere(b, busy, window);
+      const byLabel = `occupé par « ${by.title} » (${by.startTime}, ${by.durationMin} min, ${by.status}, id:${by.id})`;
+      const slot = found
+        ? ` → libre à ${found.slot}${found.inWindow ? "" : " (hors journée active)"}`
+        : " → aucun créneau libre de cette durée";
+      return `${b.startTime} ${b.title} — ${byLabel}${slot}`;
     });
-    clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
-      `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
+    clashed = `\n⛔ ${conflicts.length} bloc(s) écarté(s) : ${hints.join(" · ")}` +
+      `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée, ou libère le créneau avec ` +
+      `update_block(status:"skipped" | delete:true) si le bloc occupant a sauté.`;
   }
   const livedNote = settled.length
-    ? ` · ${settled.length} bloc(s) déjà vécu(s) conservé(s) (le passé n'est jamais remplacé)`
+    ? ` · ${settled.length} bloc(s) vécu(s) conservé(s) (faits, chrono rattaché, sautés / retirés)`
     : "";
   const head = fill
     ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`

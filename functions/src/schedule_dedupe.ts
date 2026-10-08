@@ -82,40 +82,59 @@ const overlaps = (a: AnyBlock, b: AnyBlock): boolean => {
 export function fillAgainstExisting<T extends AnyBlock>(
   incoming: T[],
   existing: AnyBlock[]
-): { kept: T[]; dropped: T[] } {
+): { kept: T[]; dropped: T[]; conflicts: Array<{ block: T; by: AnyBlock }> } {
   const busy: AnyBlock[] = existing.filter(isOccupying);
   const kept: T[] = [];
   const dropped: T[] = [];
+  const conflicts: Array<{ block: T; by: AnyBlock }> = [];
   for (const b of incoming) {
-    if (busy.some((e) => overlaps(b, e))) {
+    const by = busy.find((e) => overlaps(b, e));
+    if (by) {
       dropped.push(b);
+      conflicts.push({ block: b, by });
     } else {
       kept.push(b);
       busy.push(b);
     }
   }
-  return { kept, dropped };
+  return { kept, dropped, conflicts };
+}
+
+/** Session de chrono ramenée aux minutes murales du jour du programme. */
+export interface DaySession {
+  startMin: number;
+  endMin: number;
+  taskId?: string | null;
+  activityId?: string | null;
+}
+
+/** Un chrono RÉEL a tourné pour ce bloc : même tâche (sinon même activité)
+ *  et au moins une minute en commun avec son créneau. */
+export function blockHasSession(b: AnyBlock, sessions: DaySession[]): boolean {
+  const bS = toMin(b.startTime), bE = bS + Number(b.durationMin ?? 0);
+  return sessions.some((s) => {
+    const sameSource = (b.taskId != null && s.taskId === b.taskId) ||
+      (b.taskId == null && b.activityId != null && s.activityId === b.activityId);
+    return sameSource && s.startMin < bE && bS < s.endMin;
+  });
 }
 
 /**
- * Bloc déjà VÉCU, qu'un remplacement de programme ne doit jamais effacer :
- * fait ou sauté (un fait), ou dont le créneau a commencé avant « maintenant »
- * dans la journée de l'utilisateur ([date] = jour du programme, [today] /
- * [nowMin] = jour et heure vécus). Un jour passé est entièrement vécu, un jour
- * futur pas du tout. Les tombstones (`deleted`) passés sont gardés aussi : ils
- * disent « ne pas recréer » et restent rattachables après coup.
- * Constat 2026-10-07 : une régénération du soir avait effacé toute la journée,
- * dont un bloc de correction fait sur lequel une session de 7 h devait être
- * rattachée.
+ * Bloc VÉCU, qu'un remplacement de programme ne doit jamais effacer (B10) :
+ * **fait**, ou un chrono réel y est rattaché ([sessions]). Les tombstones
+ * (`skipped`, `deleted`) sont gardés aussi : ils n'occupent pas le créneau,
+ * disent « ne pas recréer » et nourrissent le check-in du soir. Un bloc
+ * passé NON fait n'est pas protégé : il a sauté, il se remplace comme un bloc
+ * futur (constat 2026-10-07 : un BPF de 22 h 40 resté `pending` bloquait
+ * 23 h 15 et personne ne pouvait le retirer).
+ * (La première version protégeait « commencé avant maintenant » : trop large.)
  */
 export function isSettledBlock(
   b: AnyBlock,
-  ctx: { date: string; today: string; nowMin: number }
+  ctx: { sessions?: DaySession[] } = {}
 ): boolean {
-  if (b.status === "done" || b.status === "skipped") return true;
-  if (ctx.date < ctx.today) return true;
-  if (ctx.date > ctx.today) return false;
-  return toMin(b.startTime) < ctx.nowMin;
+  if (b.status === "done" || b.status === "skipped" || b.status === "deleted") return true;
+  return blockHasSession(b, ctx.sessions ?? []);
 }
 
 const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
@@ -147,4 +166,18 @@ export function nearestFreeSlot(
     }
   }
   return null;
+}
+
+/** Créneau libre le plus proche : dans la journée active d'abord, sinon
+ *  n'importe où dans les 24 h (le soir tard après le dernier bloc, par ex.). */
+export function nearestFreeSlotAnywhere(
+  block: AnyBlock,
+  existing: AnyBlock[],
+  window: { startMin: number; endMin: number },
+  step = 15
+): { slot: string; inWindow: boolean } | null {
+  const inWin = nearestFreeSlot(block, existing, window, step);
+  if (inWin) return { slot: inWin, inWindow: true };
+  const any = nearestFreeSlot(block, existing, { startMin: 0, endMin: 24 * 60 }, step);
+  return any ? { slot: any, inWindow: false } : null;
 }
