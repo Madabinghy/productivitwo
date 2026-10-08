@@ -242,9 +242,11 @@ AttachResult attachSessionToBlock(Session s, ScheduleBlock b,
 
 /// Blocs d'une journée auxquels une session (en cours ou TERMINÉE) peut être
 /// rattachée après coup, les plus pertinents d'abord : chevauchement avec la
-/// session (minutes) décroissant, puis proximité du début. Les blocs supprimés
-/// et les blocs libres non rattachables sont exclus. [day] = minuit du jour
-/// des blocs ; `overlapMin` = 0 si la session est hors du créneau.
+/// session (minutes) décroissant, puis proximité du début. Les blocs
+/// **retirés du programme** (`status: deleted`, balayés pour alléger la page)
+/// restent proposés, en fin de liste : on veut pouvoir rattacher un bloc déjà
+/// passé. Seuls les blocs non rattachables sont exclus. [day] = minuit du
+/// jour des blocs ; `overlapMin` = 0 si la session est hors du créneau.
 List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
   Session s,
   List<ScheduleBlock> blocks,
@@ -256,7 +258,6 @@ List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
   final sEnd = s.endAt ?? DateTime.now();
   final out = <({ScheduleBlock block, int overlapMin})>[];
   for (final b in blocks) {
-    if (b.status == 'deleted') continue;
     if (!canAttachSessionToBlock(b,
         blockActivity: activityOf?.call(b.activityId), project: projectOf?.call(b.projectId))) {
       continue;
@@ -269,6 +270,8 @@ List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
     out.add((block: b, overlapMin: overlap));
   }
   out.sort((x, y) {
+    final xd = x.block.status == 'deleted', yd = y.block.status == 'deleted';
+    if (xd != yd) return xd ? 1 : -1;
     if (x.overlapMin != y.overlapMin) return y.overlapMin.compareTo(x.overlapMin);
     final dx = (blockStartMin(x.block) - (sStart.hour * 60 + sStart.minute)).abs();
     final dy = (blockStartMin(y.block) - (sStart.hour * 60 + sStart.minute)).abs();

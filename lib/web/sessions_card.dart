@@ -48,13 +48,15 @@ class SessionsCard extends StatelessWidget {
   String _hm(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-  /// Bloc que la session sert (même règle d'affichage que la frise).
-  ScheduleBlock? _blockOf(Session s) => blocks
-      .where((b) => b.status != 'deleted')
-      .where((b) => sessionMatchesBlock(s, b,
-          projectLinkedActivityId: _proj(b.projectId)?.linkedActivityId,
-          activityLinkedActivityId: _act(b.activityId)?.linkedActivityId))
-      .firstOrNull;
+  bool _on(Session s, ScheduleBlock b) => sessionMatchesBlock(s, b,
+      projectLinkedActivityId: _proj(b.projectId)?.linkedActivityId,
+      activityLinkedActivityId: _act(b.activityId)?.linkedActivityId);
+
+  /// Bloc que la session sert : un bloc vivant d'abord (même règle que la
+  /// frise), sinon un bloc retiré du programme auquel elle a été rattachée.
+  ScheduleBlock? _blockOf(Session s) =>
+      blocks.where((b) => b.status != 'deleted').where((b) => _on(s, b)).firstOrNull ??
+      blocks.where((b) => _on(s, b)).firstOrNull;
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +109,7 @@ class SessionsCard extends StatelessWidget {
                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: kBText)),
               Text(
                 '${_hm(s.startAt)} → ${open ? 'en cours' : _hm(s.endAt!)} · ${fmtMin(s.duration.inMinutes)}'
-                '${b != null ? ' · ${b.title}' : ' · hors bloc'}',
+                '${b != null ? ' · ${b.title}${b.status == 'deleted' ? ' (retiré)' : ''}' : ' · hors bloc'}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 12, color: b != null || open ? kBText3 : kBAttention),
@@ -219,7 +221,9 @@ class SessionsCard extends StatelessWidget {
                     DropdownMenuItem(
                       value: c.block.id,
                       child: Text(
-                        '${c.block.startTime} · ${c.block.title}${c.overlapMin > 0 ? ' (${c.overlapMin} min en commun)' : ''}',
+                        '${c.block.startTime} · ${c.block.title}'
+                        '${c.overlapMin > 0 ? ' (${c.overlapMin} min en commun)' : ''}'
+                        '${c.block.status == 'deleted' ? ' · retiré du programme' : ''}',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),

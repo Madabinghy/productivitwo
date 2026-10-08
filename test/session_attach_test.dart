@@ -25,15 +25,16 @@ void main() {
   ];
   final acts = {'a1': Activity(id: 'a1', domainId: 'd', name: 'Prépa', habitTarget: 1)};
 
-  test('blockCandidatesForSession : chevauchement d\'abord, supprimés exclus', () {
+  test('blockCandidatesForSession : chevauchement d\'abord, blocs retirés en fin de liste', () {
     final s = Session(
         activityId: 'a1', startAt: DateTime(2026, 10, 7, 9, 10), endAt: DateTime(2026, 10, 7, 11, 10));
     final c = blockCandidatesForSession(s, blocks, day, activityOf: (id) => acts[id]);
-    expect(c.map((x) => x.block.id).toList(), ['kahoot', 'corr', 'free', 'act']);
+    expect(c.map((x) => x.block.id).toList(), ['kahoot', 'corr', 'free', 'act', 'old']);
     expect(c[0].overlapMin, 60);
     expect(c[1].overlapMin, 35);
     expect(c[2].overlapMin, 0);
     expect(c[3].overlapMin, 0);
+    expect(c[4].overlapMin, 30); // retiré du programme : proposé, mais en dernier
   });
 
   test('attachSessionToBlock marche aussi sur une session terminée', () {
