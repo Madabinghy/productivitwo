@@ -150,6 +150,22 @@ ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   return null;
 }
 
+/// F1 — bloc qui porte le trait « maintenant » À L'INTÉRIEUR de sa carte
+/// (liste mobile) : un bloc pending dont le créneau contient [nowMin]. Deux
+/// blocs qui se chevauchent : celui qui a commencé en dernier. Null = trou
+/// dans le programme, le trait se dessine entre les blocs.
+ScheduleBlock? nowLineBlock(Iterable<ScheduleBlock> blocks, int nowMin) {
+  ScheduleBlock? best;
+  for (final b in blocks) {
+    if (b.status != 'pending') continue;
+    final s = blockStartMin(b);
+    if (s <= nowMin && nowMin < s + b.durationMin) {
+      if (best == null || s > blockStartMin(best)) best = b;
+    }
+  }
+  return best;
+}
+
 /// Fenêtre d'anticipation : un chrono lancé moins de 15 min avant un bloc est
 /// probablement pour lui (le cours de 14 h qu'on démarre à 13 h 55).
 const int kBlockAttachLookaheadMin = 15;
