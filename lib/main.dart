@@ -975,9 +975,12 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
     final sched = await FirestoreSync().fetchDailySchedule(_dayKey);
     if (!mounted) return;
     setState(() {
-      _dayBlocks = sched?.blocks.where((b) => b.status != 'deleted').toList() ?? const [];
+      // Les blocs retirés du programme restent rattachables (proposés en fin
+      // de liste) ; pour l'affichage, un bloc vivant prime.
+      _dayBlocks = sched?.blocks.toList() ?? const [];
       _blocksLoaded = true;
-      _block = _dayBlocks.where(_sessionOn).firstOrNull;
+      _block = _dayBlocks.where((b) => b.status != 'deleted').where(_sessionOn).firstOrNull ??
+          _dayBlocks.where(_sessionOn).firstOrNull;
     });
   }
 
@@ -1020,7 +1023,8 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
               title: Text(c.block.title, maxLines: 2, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                   '${c.block.startTime} · ${c.block.durationMin} min'
-                  '${c.overlapMin > 0 ? ' · ${c.overlapMin} min en commun' : ''}'),
+                  '${c.overlapMin > 0 ? ' · ${c.overlapMin} min en commun' : ''}'
+                  '${c.block.status == 'deleted' ? ' · retiré du programme' : ''}'),
               onTap: () => Navigator.pop(context, c.block.id),
             ),
           const SizedBox(height: 8),
@@ -1141,7 +1145,8 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
                       ? "Aucun — hors bloc"
                       : _block == null
                           ? "Aucun — hors bloc"
-                          : "${_block!.startTime} · ${_block!.title}"),
+                          : "${_block!.startTime} · ${_block!.title}"
+                              "${_block!.status == 'deleted' ? ' (retiré du programme)' : ''}"),
               trailing: const Icon(Icons.chevron_right),
               onTap: _blocksLoaded ? () => _pickBlock(context) : null,
             ),
