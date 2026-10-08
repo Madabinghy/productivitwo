@@ -66,6 +66,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   // (même comportement que la timeline horaire).
   final _nowKey = GlobalKey();
   bool _scrolledToNow = false;
+  // Blocs passés repliés (« Plus tôt ») : dépliés à la demande, le temps de
+  // la session d'écran.
+  bool _showEarlier = false;
   // Clés par bloc (id) — cibles du saut minimap « scroll vers HH:mm ».
   final Map<String, GlobalKey> _blockKeys = {};
 
@@ -502,19 +505,29 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             int toMin(String hm) =>
                 (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
                 (int.tryParse(hm.substring(3, 5)) ?? 0);
+            // Aujourd'hui : les blocs finis depuis un moment sont repliés en
+            // une ligne « Plus tôt » — l'écran reste sur ce qui vient, le
+            // passé reste dans le programme (rattachement après coup, bilan).
+            final fold = _isToday && !_showEarlier
+                ? foldEarlierBlocks(visible, nowMin)
+                : (folded: const <ScheduleBlock>[], shown: visible);
+            final rows = fold.shown;
             var nowIndex =
-                _isToday ? visible.indexWhere((b) => toMin(b.startTime) > nowMin) : -1;
+                _isToday ? rows.indexWhere((b) => toMin(b.startTime) > nowMin) : -1;
             final nowAtEnd = _isToday && nowIndex == -1;
-            if (nowAtEnd) nowIndex = visible.length;
+            if (nowAtEnd) nowIndex = rows.length;
             return Column(children: [
-              for (var i = 0; i < visible.length; i++) ...[
+              if (fold.folded.isNotEmpty) _earlierRow(cs, fold.folded),
+              if (_isToday && _showEarlier && foldEarlierBlocks(visible, nowMin).folded.isNotEmpty)
+                _earlierRow(cs, const [], expanded: true),
+              for (var i = 0; i < rows.length; i++) ...[
                 if (i == nowIndex)
                   KeyedSubtree(key: _nowKey, child: _nowLine(now)),
                 // GlobalKey par bloc : cible du saut minimap (jauge).
                 KeyedSubtree(
-                  key: _keyFor(visible[i].id),
-                  child: _buildBlock(context, cs, visible[i],
-                      key: ValueKey(visible[i].id)),
+                  key: _keyFor(rows[i].id),
+                  child: _buildBlock(context, cs, rows[i],
+                      key: ValueKey(rows[i].id)),
                 ),
               ],
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
@@ -522,6 +535,42 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           }),
         if (bare) _addRow(cs),
       ],
+    );
+  }
+
+  /// Ligne « Plus tôt · n blocs · k faits · durée » (repliée) ou « Masquer les
+  /// blocs passés » (dépliée) : les blocs finis depuis un moment ne chargent
+  /// pas la liste, mais restent à portée de main.
+  Widget _earlierRow(ColorScheme cs, List<ScheduleBlock> folded, {bool expanded = false}) {
+    final done = folded.where((b) => b.status == 'done').length;
+    final min = folded.fold<int>(0, (s, b) => s + b.durationMin);
+    final label = expanded
+        ? 'Masquer les blocs passés'
+        : 'Plus tôt · ${folded.length} bloc${folded.length > 1 ? 's' : ''}'
+            '${done > 0 ? ' · $done fait${done > 1 ? 's' : ''}' : ''} · ${fmtMin(min)}';
+    return InkWell(
+      onTap: () => setState(() => _showEarlier = !expanded),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 40),
+            child: Icon(expanded ? Icons.expand_less : Icons.history_rounded,
+                size: 18, color: cs.onSurface.withOpacity(.5)),
+          ),
+          const SizedBox(width: 22),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withOpacity(.55))),
+          ),
+          if (!expanded) Icon(Icons.expand_more, size: 18, color: cs.onSurface.withOpacity(.4)),
+        ]),
+      ),
     );
   }
 

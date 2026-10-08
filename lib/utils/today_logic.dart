@@ -280,6 +280,24 @@ List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
   return out;
 }
 
+/// Liste du jour (mobile) : les blocs TERMINÉS depuis un moment sont repliés
+/// en une ligne « Plus tôt » pour garder l'écran sur ce qui vient, sans les
+/// perdre (le passé reste dans le programme : rattachement après coup, bilan).
+/// Repliés = blocs finis avant [nowMin], sauf les [keep] derniers (contexte
+/// immédiat). Les blocs non triés sont acceptés ; l'ordre du résultat suit
+/// [blocks]. Rien n'est replié s'il n'y a pas plus de [keep] blocs finis.
+({List<ScheduleBlock> folded, List<ScheduleBlock> shown}) foldEarlierBlocks(
+    List<ScheduleBlock> blocks, int nowMin, {int keep = 2}) {
+  final ended = blocks.where((b) => blockEndMin(b) <= nowMin).toList()
+    ..sort((a, b) => blockEndMin(a).compareTo(blockEndMin(b)));
+  if (ended.length <= keep) return (folded: const [], shown: blocks);
+  final foldedIds = ended.sublist(0, ended.length - keep).map((b) => b.id).toSet();
+  return (
+    folded: blocks.where((b) => foldedIds.contains(b.id)).toList(),
+    shown: blocks.where((b) => !foldedIds.contains(b.id)).toList(),
+  );
+}
+
 /// « Décaler après ma parenthèse » : prochain quart d'heure ≥ maintenant, en
 /// "HH:mm" ; null si le bloc ne tiendrait plus dans la journée.
 String? shiftedStartAfter(int nowMin, int durationMin) {
