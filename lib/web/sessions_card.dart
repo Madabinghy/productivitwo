@@ -39,7 +39,8 @@ class SessionsCard extends StatelessWidget {
     return sessions
         .where((s) => !s.deleted && s.startAt.isBefore(next) && (s.endAt ?? DateTime.now()).isAfter(d))
         .toList()
-      ..sort((a, b) => a.startAt.compareTo(b.startAt));
+      // Antéchronologique : le dernier chrono (celui qu'on vient de couper) en tête.
+      ..sort((a, b) => b.startAt.compareTo(a.startAt));
   }
 
   Activity? _act(String? id) => id == null ? null : activities.where((a) => a.id == id).firstOrNull;
