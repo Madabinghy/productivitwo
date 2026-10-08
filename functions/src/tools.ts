@@ -421,6 +421,25 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
   },
 };
 
+const UPDATE_DOMAIN_TOOL = {
+  name: "update_domain",
+  description:
+    "Modifie un domaine de vie existant : nom, objectif quotidien, couleur. Seuls les champs fournis changent. " +
+    "Le renommage est sûr : activités, projets et objectifs référencent le domaine par id. " +
+    "(La fiche intention / minimum vital se modifie via save_domain_definition.)",
+  inputSchema: {
+    type: "object",
+    required: ["domainId"],
+    properties: {
+      domainId:    { type: "string", description: "id du domaine (get_user_context)" },
+      name:        { type: "string", description: "Nouveau nom" },
+      goalMinDay:  { type: "number", description: "Objectif quotidien en minutes (0 = retirer)" },
+      autoGoal:    { type: "boolean", description: "true = objectif calculé depuis les activités" },
+      colorValue:  { type: "number", description: "Valeur entière Flutter Color.value" },
+    },
+  },
+};
+
 const DELETE_DOMAIN_TOOL = {
   name: "delete_domain",
   description:
@@ -564,6 +583,21 @@ const UPDATE_PROJECT_TOOL = {
       description: { type: "string", description: "CONCIS : 2-3 phrases (~300 caractères max) — le cap et le contexte essentiel. JAMAIS d'audit, de spec ou d'historique ici : ce détail va dans un DOCUMENT du projet (save_document, category 'notes' ou 'brief'). La fiche mobile tronque au-delà de 4 lignes." },
       status:      { type: "string", enum: ["active", "archived", "done"] },
       parentProjectId: { type: "string", description: "id du projet parent (client / dossier) ; chaîne vide = détacher (projet racine)" },
+      phases: {
+        type: "array",
+        description: "Retouche UNITAIRE de phases existantes (par id, get_project → phases[].id) : seuls les champs fournis changent, les autres phases ne bougent pas. Pour ajouter / supprimer des phases, passer par push_gantt.",
+        items: {
+          type: "object",
+          required: ["id"],
+          properties: {
+            id:        { type: "string" },
+            label:     { type: "string" },
+            color:     { type: "string", description: "hex, ex. #0F766E" },
+            startDate: { type: "string", description: "YYYY-MM-DD" },
+            endDate:   { type: "string", description: "YYYY-MM-DD" },
+          },
+        },
+      },
     },
   },
 };
@@ -848,6 +882,7 @@ const UPDATE_TASK_TOOL = {
       projectId:   { type: "string", description: "id du projet" },
       taskId:      { type: "string", description: "id de la tâche (get_project)" },
       title:       { type: "string" },
+      description: { type: "string", description: "Description / notes de la tâche (chaîne vide = effacer)" },
       phaseId:     { type: "string" },
       groupLabel:  { type: "string" },
       startDate:   { type: "string", description: "YYYY-MM-DD" },
@@ -1272,6 +1307,31 @@ const MARK_BLOCK_DONE_TOOL = {
   },
 };
 
+const UPDATE_BLOCK_TOOL = {
+  name: "update_block",
+  description:
+    "Retouche UN bloc du programme horaire (titre, heure, durée, catégorie, liens projet / tâche / activité / action) " +
+    "sans toucher au reste du programme. Préfère cet outil à schedule_day pour renommer ou déplacer un seul bloc. " +
+    "Récupère blockId via get_day_schedule. Pour marquer fait : mark_block_done ; pour retirer : status \"deleted\".",
+  inputSchema: {
+    type: "object",
+    required: ["date", "blockId"],
+    properties: {
+      date:        { type: "string", description: "jour du programme, format YYYY-MM-DD" },
+      blockId:     { type: "string", description: "id du bloc (get_day_schedule)" },
+      title:       { type: "string" },
+      startTime:   { type: "string", description: "HH:mm" },
+      durationMin: { type: "number" },
+      category:    { type: "string", enum: ["project", "routine", "personal", "break"] },
+      status:      { type: "string", enum: ["pending", "done", "skipped", "deleted"] },
+      projectId:   { type: "string", description: "chaîne vide = retirer le lien" },
+      taskId:      { type: "string", description: "chaîne vide = retirer le lien" },
+      activityId:  { type: "string", description: "chaîne vide = retirer le lien" },
+      actionId:    { type: "string", description: "chaîne vide = retirer le lien" },
+    },
+  },
+};
+
 const GENERATE_WEEKLY_REPORT_TOOL = {
   name: "generate_weekly_report",
   description:
@@ -1351,6 +1411,7 @@ PROPOSE_CHANGE_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,
+UPDATE_DOMAIN_TOOL,
 PUSH_ASSISTANT_MESSAGE_TOOL,
 DELETE_DOMAIN_TOOL,
 GET_DOCUMENT_TEMPLATE_TOOL,
@@ -1389,6 +1450,7 @@ MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 MARK_BLOCK_DONE_TOOL,
+UPDATE_BLOCK_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,
 GET_SHOPPING_LIST_TOOL,
 ADD_SHOPPING_ITEM_TOOL,

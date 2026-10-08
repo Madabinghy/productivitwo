@@ -29,7 +29,7 @@ import {
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
-  CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+  CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
   SAVE_DOMAIN_DEFINITION_TOOL,
@@ -39,7 +39,7 @@ import {
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
   PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
-  LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+  LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
   UPDATE_SESSION_TEMPLATE_TOOL,
@@ -53,7 +53,7 @@ import {
   executeGetDayBlocks, executeCreateActivity,
   executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem,
-  executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
+  executeRestoreItem, executeCreateDomain, executeUpdateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
@@ -62,7 +62,7 @@ import {
   executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
   executePlanPrep, executeWeeklyReview, executeUpdateActions,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
-  executeLogRoutineHit, executeMarkBlockDone,
+  executeLogRoutineHit, executeMarkBlockDone, executeUpdateBlock,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
   executeListObjectives, executeSaveObjective,
@@ -1662,7 +1662,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
-            CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+            CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
             SAVE_DOMAIN_DEFINITION_TOOL,
@@ -1673,7 +1673,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
             PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
             ESTIMATE_ACCURACY_TOOL,
-            LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+            LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
             LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
             UPDATE_SESSION_TEMPLATE_TOOL,
@@ -1737,6 +1737,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeDeleteRoutine(uid, args.routineId as string);
         } else if (toolName === "create_domain") {
           text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
+        } else if (toolName === "update_domain") {
+          text = await executeUpdateDomain(uid, args.domainId as string, args as Parameters<typeof executeUpdateDomain>[2]);
         } else if (toolName === "delete_domain") {
           text = await executeDeleteDomain(uid, args.domainId as string);
         } else if (toolName === "get_document_template") {
@@ -1916,6 +1918,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.activityId as string,
             args.delta === undefined ? 1 : (args.delta as number),
           );
+        } else if (toolName === "update_block") {
+          text = await executeUpdateBlock(
+            uid, args.date as string, args.blockId as string,
+            args as Parameters<typeof executeUpdateBlock>[3]);
         } else if (toolName === "mark_block_done") {
           text = await executeMarkBlockDone(
             uid,

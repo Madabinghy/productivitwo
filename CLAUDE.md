@@ -283,6 +283,12 @@ Claude ne les recrée pas lors d'une régénération.
   nouvelle session). Logique pure `functions/src/sessions_audit.ts` ; toute lecture serveur de stats passe par
   `liveSessionDocs()`. Côté app, `FirestoreSync.mergeSessions` : un remote supprimé ou fermé gagne sur une copie
   locale ouverte (fin des chronos « ressuscités » → semaines > 168 h)
+- `update_domain(domainId, name?, goalMinDay?, autoGoal?, colorValue?)` — retouche un domaine (renommage sûr : tout
+  référence le domaine par id) ; la fiche intention / minimum vital reste dans `save_domain_definition`, qui ne renomme
+  jamais. **Retouches unitaires** (2026-10) : `update_task {description}` (`""` = effacer), `update_project {phases:[{id,
+  label?, color?, startDate?, endDate?}]}` (par id, jamais d'ajout / suppression : `push_gantt`), `update_block(date,
+  blockId, title?, startTime?, durationMin?, category?, status?, projectId?, taskId?, activityId?, actionId?)` (`""` sur
+  un lien = le retirer ; le reste du programme est intact)
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

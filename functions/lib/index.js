@@ -1614,7 +1614,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
                         tools_1.GET_SHOPPING_LIST_TOOL, tools_1.ADD_SHOPPING_ITEM_TOOL, tools_1.CHECK_SHOPPING_ITEM_TOOL,
-                        tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
+                        tools_1.CREATE_DOMAIN_TOOL, tools_1.UPDATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL, tools_1.ADD_PREP_BLOCK_TOOL, tools_1.ADD_EVENT_TOOL,
                         tools_1.SAVE_DOMAIN_DEFINITION_TOOL,
@@ -1625,7 +1625,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.ADD_INTERVENTION_TOOL, tools_1.UPDATE_INTERVENTION_TOOL, tools_1.DELETE_INTERVENTION_TOOL, tools_1.MANAGE_INTERVENTION_TEMPLATES_TOOL, tools_1.MIGRATE_INTERVENTIONS_TOOL,
                         tools_1.PLAN_PREP_TOOL, tools_1.WEEKLY_REVIEW_TOOL, tools_1.UPDATE_ACTIONS_TOOL,
                         tools_1.ESTIMATE_ACCURACY_TOOL,
-                        tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL,
+                        tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL, tools_1.UPDATE_BLOCK_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
                         tools_1.LIST_SESSION_TEMPLATES_TOOL, tools_1.CREATE_SESSION_TEMPLATE_TOOL,
                         tools_1.UPDATE_SESSION_TEMPLATE_TOOL,
@@ -1708,6 +1708,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "create_domain") {
                     text = await (0, execute_1.executeCreateDomain)(uid, args);
+                }
+                else if (toolName === "update_domain") {
+                    text = await (0, execute_1.executeUpdateDomain)(uid, args.domainId, args);
                 }
                 else if (toolName === "delete_domain") {
                     text = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);
@@ -1899,6 +1902,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "log_routine_hit") {
                     text = await (0, execute_1.executeLogRoutineHit)(uid, args.activityId, args.delta === undefined ? 1 : args.delta);
+                }
+                else if (toolName === "update_block") {
+                    text = await (0, execute_1.executeUpdateBlock)(uid, args.date, args.blockId, args);
                 }
                 else if (toolName === "mark_block_done") {
                     text = await (0, execute_1.executeMarkBlockDone)(uid, args.date, args.blockId, args.done === undefined ? true : args.done);

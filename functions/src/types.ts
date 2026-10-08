@@ -29,6 +29,7 @@ export interface TaskActionPayload {
 export interface ProjectTask {
   id?: string;
   title: string;
+  description?: string;
   phaseId?: string;
   groupLabel?: string;
   startDate: string;
