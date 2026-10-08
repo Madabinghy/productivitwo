@@ -265,7 +265,8 @@ Claude ne les recrée pas lors d'une régénération.
   (`blockHasSession`, sessions du jour) et les tombstones (`skipped` / `deleted`) survivent (`isSettledBlock`,
   `schedule_dedupe.ts`) et un entrant qui les chevauche est écarté ; un bloc passé NON fait a sauté : non relisté, il est
   retiré. En mode `fill`, un entrant écarté dit **quel bloc occupe le créneau** (titre, heure, statut, id) et propose le
-  créneau libre le plus proche, dans la journée active d'abord sinon n'importe où dans les 24 h (`nearestFreeSlotAnywhere`)
+  prochain créneau libre **vers l'avant** à partir de max(maintenant, heure demandée) pour aujourd'hui, de l'heure demandée
+  sinon, jamais depuis 00:00 (B11, `nextFreeSlot`) ; rien de libre ⇒ « aucun créneau de N min libre avant « Sommeil » 23:30 »
 - `add_activity_action(activityId, title, context?, contexts?)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
 - `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe

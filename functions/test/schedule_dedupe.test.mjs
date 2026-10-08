@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, isSettledBlock, blockHasSession } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -131,4 +131,20 @@ test("nearestFreeSlotAnywhere : la journée active d'abord, sinon le vrai libre 
   assert.deepEqual(r, { slot: "23:30", inWindow: false });
   const r2 = nearestFreeSlotAnywhere({ startTime: "09:00", durationMin: 30 }, [], win);
   assert.deepEqual(r2, { slot: "09:00", inWindow: true });
+});
+
+test("nextFreeSlot (B11) : vers l'avant depuis max(maintenant, demandé), jamais depuis 00:00 ; sinon dit jusqu'où", () => {
+  const bpf = { id: "bpf", startTime: "22:40", durationMin: 50, status: "pending", title: "BPF" };
+  const sommeil = { id: "s", startTime: "23:30", durationMin: 30, status: "pending", title: "Sommeil" };
+  const want = { startTime: "23:15", durationMin: 15 };
+  // 23:05, BPF jusqu'à 23:30 puis Sommeil : rien de 15 min avant Sommeil 23:30.
+  assert.deepEqual(nextFreeSlot(want, [bpf, sommeil], Math.max(toMin("23:05"), toMin("23:15"))),
+    { slot: null, until: { title: "Sommeil", startTime: "23:30" } });
+  // Sans Sommeil : 23:30 est libre (après le BPF), pas 20:45.
+  assert.deepEqual(nextFreeSlot(want, [bpf], toMin("23:15")), { slot: "23:30", until: null });
+  // Autre date : à partir de l'heure demandée, trou de 09:00 ignoré.
+  const busy = [{ startTime: "10:00", durationMin: 60, status: "pending", title: "A" }];
+  assert.deepEqual(nextFreeSlot({ startTime: "10:30", durationMin: 30 }, busy, toMin("10:30")), { slot: "11:00", until: null });
+  // Dépasse minuit : rien.
+  assert.deepEqual(nextFreeSlot({ startTime: "23:50", durationMin: 30 }, [], toMin("23:50")), { slot: null, until: null });
 });

@@ -2784,7 +2784,7 @@ async function executeUpdateSessionTemplate(uid, args) {
         : `✅ Déroulé « ${(_a = patch.title) !== null && _a !== void 0 ? _a : t} » mis à jour${patch.steps ? ` — ${patch.steps.length} étape(s)` : ""}.`;
 }
 async function executeScheduleDay(uid, date, blocks, opts = {}) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
     if (!(blocks === null || blocks === void 0 ? void 0 : blocks.length))
@@ -2876,15 +2876,19 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     // libre le plus proche (dans la journée active) pour le reposer.
     let clashed = "";
     if (conflicts.length) {
-        const win = await readDayWindowHours(uid);
+        // B11 : suggestion vers l'avant seulement — à partir de maintenant (heure
+        // vécue, si c'est aujourd'hui) ou de l'heure demandée, jamais depuis 00:00.
+        const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+        const tzOffset = metaSnap.exists ? metaSnap.data().tzOffsetMin : null;
+        const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
+        const nowMin = lived.ymd === date ? (0, schedule_dedupe_2.toMin)(lived.hm) : 0;
         const busy = [...preserved, ...newBlocks];
-        const window = { startMin: ((_p = win === null || win === void 0 ? void 0 : win.startHour) !== null && _p !== void 0 ? _p : 7) * 60, endMin: ((_q = win === null || win === void 0 ? void 0 : win.endHour) !== null && _q !== void 0 ? _q : 22) * 60 };
         const hints = conflicts.map(({ block: b, by }) => {
-            const found = (0, schedule_dedupe_1.nearestFreeSlotAnywhere)(b, busy, window);
+            const found = (0, schedule_dedupe_1.nextFreeSlot)(b, busy, Math.max(nowMin, (0, schedule_dedupe_2.toMin)(b.startTime)));
             const byLabel = `occupé par « ${by.title} » (${by.startTime}, ${by.durationMin} min, ${by.status}, id:${by.id})`;
-            const slot = found
-                ? ` → libre à ${found.slot}${found.inWindow ? "" : " (hors journée active)"}`
-                : " → aucun créneau libre de cette durée";
+            const slot = found.slot
+                ? ` → prochain créneau libre : ${found.slot}`
+                : ` → aucun créneau de ${b.durationMin} min libre avant ${found.until ? `« ${found.until.title} » ${found.until.startTime}` : "minuit"}`;
             return `${b.startTime} ${b.title} — ${byLabel}${slot}`;
         });
         clashed = `\n⛔ ${conflicts.length} bloc(s) écarté(s) : ${hints.join(" · ")}` +
