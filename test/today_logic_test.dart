@@ -77,4 +77,22 @@ void main() {
     ]);
     expect(r, [(category: 'project', min: 60), (category: 'break', min: 45)]);
   });
+
+  test('foldEarlierBlocks : blocs finis repliés sauf les 2 derniers ; rien si peu de passé', () {
+    ScheduleBlock b(String id, String start, int dur) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id);
+    final blocks = [
+      b('a', '08:00', 60),
+      b('b', '09:00', 60),
+      b('c', '10:00', 60),
+      b('cur', '13:00', 120),
+      b('d', '16:00', 60),
+    ];
+    final r = foldEarlierBlocks(blocks, 14 * 60);
+    expect(r.folded.map((x) => x.id).toList(), ['a']);
+    expect(r.shown.map((x) => x.id).toList(), ['b', 'c', 'cur', 'd']);
+    final early = foldEarlierBlocks(blocks, 9 * 60 + 30);
+    expect(early.folded, isEmpty);
+    expect(early.shown.length, 5);
+  });
 }
