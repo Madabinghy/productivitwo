@@ -138,6 +138,7 @@ export function isSettledBlock(
 }
 
 const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const fromMin_ = fromMin;
 
 /**
  * Créneau libre le plus proche de l'heure demandée (B9) : on cherche, par pas
@@ -166,6 +167,42 @@ export function nearestFreeSlot(
     }
   }
   return null;
+}
+
+/**
+ * B11 — suggestion pour un bloc écarté : le premier créneau libre VERS
+ * L'AVANT à partir de [fromMin] (= max(maintenant, heure demandée) pour la
+ * date du jour, heure demandée sinon — jamais depuis 00:00 : « libre à 20:45 »
+ * proposé à 23:05 est inutilisable). Durée = celle du bloc. Si rien ne tient
+ * avant la fin de journée, dit jusqu'où : le bloc occupant suivant (« aucun
+ * créneau de 15 min avant Sommeil 23:30 ») ou minuit.
+ */
+export function nextFreeSlot(
+  block: AnyBlock,
+  existing: AnyBlock[],
+  fromMin: number,
+  step = 15
+): { slot: string | null; until: { title: string; startTime: string } | null } {
+  const dur = Number(block.durationMin ?? 0);
+  const busy = existing.filter(isOccupying);
+  const dayEnd = 24 * 60;
+  if (dur <= 0 || fromMin + dur > dayEnd) return { slot: null, until: null };
+  const free = (start: number) =>
+    !busy.some((e) => overlaps({ startTime: fromMin_(start), durationMin: dur }, e));
+  const first = Math.max(0, fromMin);
+  const starts = [first, ...Array.from({ length: Math.ceil((dayEnd - first) / step) }, (_, i) => Math.ceil(first / step) * step + i * step)];
+  for (const start of starts) {
+    if (start + dur > dayEnd) break;
+    if (free(start)) return { slot: fromMin_(start), until: null };
+  }
+  // Rien : le bloc occupant qui ferme la fenêtre (premier à commencer après fromMin).
+  const after = busy
+    .filter((e) => toMin(e.startTime) >= first)
+    .sort((a, b) => toMin(a.startTime) - toMin(b.startTime))[0];
+  return {
+    slot: null,
+    until: after ? { title: String(after.title ?? ""), startTime: String(after.startTime) } : null,
+  };
 }
 
 /** Créneau libre le plus proche : dans la journée active d'abord, sinon

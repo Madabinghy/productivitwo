@@ -13,6 +13,7 @@ exports.fillAgainstExisting = fillAgainstExisting;
 exports.blockHasSession = blockHasSession;
 exports.isSettledBlock = isSettledBlock;
 exports.nearestFreeSlot = nearestFreeSlot;
+exports.nextFreeSlot = nextFreeSlot;
 exports.nearestFreeSlotAnywhere = nearestFreeSlotAnywhere;
 const norm = (s) => String(s !== null && s !== void 0 ? s : "")
     .toLowerCase()
@@ -127,6 +128,7 @@ function isSettledBlock(b, ctx = {}) {
     return blockHasSession(b, (_a = ctx.sessions) !== null && _a !== void 0 ? _a : []);
 }
 const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+const fromMin_ = fromMin;
 /**
  * Créneau libre le plus proche de l'heure demandée (B9) : on cherche, par pas
  * de 15 min, le début le plus proche (avant ou après) dans la fenêtre
@@ -151,6 +153,39 @@ function nearestFreeSlot(block, existing, window, step = 15) {
         }
     }
     return null;
+}
+/**
+ * B11 — suggestion pour un bloc écarté : le premier créneau libre VERS
+ * L'AVANT à partir de [fromMin] (= max(maintenant, heure demandée) pour la
+ * date du jour, heure demandée sinon — jamais depuis 00:00 : « libre à 20:45 »
+ * proposé à 23:05 est inutilisable). Durée = celle du bloc. Si rien ne tient
+ * avant la fin de journée, dit jusqu'où : le bloc occupant suivant (« aucun
+ * créneau de 15 min avant Sommeil 23:30 ») ou minuit.
+ */
+function nextFreeSlot(block, existing, fromMin, step = 15) {
+    var _a, _b;
+    const dur = Number((_a = block.durationMin) !== null && _a !== void 0 ? _a : 0);
+    const busy = existing.filter(exports.isOccupying);
+    const dayEnd = 24 * 60;
+    if (dur <= 0 || fromMin + dur > dayEnd)
+        return { slot: null, until: null };
+    const free = (start) => !busy.some((e) => overlaps({ startTime: fromMin_(start), durationMin: dur }, e));
+    const first = Math.max(0, fromMin);
+    const starts = [first, ...Array.from({ length: Math.ceil((dayEnd - first) / step) }, (_, i) => Math.ceil(first / step) * step + i * step)];
+    for (const start of starts) {
+        if (start + dur > dayEnd)
+            break;
+        if (free(start))
+            return { slot: fromMin_(start), until: null };
+    }
+    // Rien : le bloc occupant qui ferme la fenêtre (premier à commencer après fromMin).
+    const after = busy
+        .filter((e) => (0, exports.toMin)(e.startTime) >= first)
+        .sort((a, b) => (0, exports.toMin)(a.startTime) - (0, exports.toMin)(b.startTime))[0];
+    return {
+        slot: null,
+        until: after ? { title: String((_b = after.title) !== null && _b !== void 0 ? _b : ""), startTime: String(after.startTime) } : null,
+    };
 }
 /** Créneau libre le plus proche : dans la journée active d'abord, sinon
  *  n'importe où dans les 24 h (le soir tard après le dernier bloc, par ex.). */
