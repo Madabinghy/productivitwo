@@ -1251,11 +1251,39 @@ async function executeDeleteActivity(uid: string, activityId: string): Promise<s
 async function executeUpdateProject(
   uid: string,
   projectId: string,
-  updates: { domainId?: string; title?: string; description?: string; status?: string; parentProjectId?: string | null }
+  updates: {
+    domainId?: string; title?: string; description?: string; status?: string; parentProjectId?: string | null;
+    phases?: Array<{ id: string; label?: string; color?: string; startDate?: string; endDate?: string }>;
+  }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/projects`).doc(projectId);
   const snap = await ref.get();
   if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  // Phases : retouche unitaire par id (libellé, couleur, dates) — jamais
+  // d'ajout ni de suppression ici (push_gantt), les tâches ne bougent pas.
+  let phasesPatch: Array<Record<string, unknown>> | undefined;
+  let phasesNote = "";
+  if (updates.phases !== undefined) {
+    if (!Array.isArray(updates.phases) || !updates.phases.length) return `❌ phases : tableau non vide attendu.`;
+    const current = ((snap.data()?.phases ?? []) as Array<Record<string, unknown>>).map((p) => ({ ...p }));
+    const touched: string[] = [];
+    for (const u of updates.phases) {
+      const ph = current.find((p) => p.id === u.id);
+      if (!ph) return `❌ Phase introuvable : ${u.id} (get_project → phases[].id).`;
+      try {
+        if (u.label !== undefined) ph.label = clampStr(u.label, 200, "phase.label");
+        if (u.startDate !== undefined) { assertDate(u.startDate, "phase.startDate"); ph.startDate = u.startDate; }
+        if (u.endDate !== undefined) { assertDate(u.endDate, "phase.endDate"); ph.endDate = u.endDate; }
+        if (u.color !== undefined) ph.color = u.color;
+      } catch (e) {
+        return `❌ ${(e as Error).message}`;
+      }
+      if (String(ph.startDate) > String(ph.endDate)) return `❌ Phase « ${ph.label} » : début après la fin.`;
+      touched.push(String(ph.label));
+    }
+    phasesPatch = current;
+    phasesNote = ` · phase(s) retouchée(s) : ${touched.join(", ")}`;
+  }
   // Parent (hiérarchie client / dossier) : existe, pas lui-même, pas un de
   // ses propres descendants (sinon boucle). "" ou null = détacher.
   if (updates.parentProjectId !== undefined) {
@@ -1285,9 +1313,10 @@ async function executeUpdateProject(
   if (updates.description !== undefined) patch.description = clampStr(updates.description, 5000, "description");
   if (updates.status      !== undefined) patch.status      = updates.status;
   if (updates.parentProjectId !== undefined) patch.parentProjectId = updates.parentProjectId || null;
+  if (phasesPatch !== undefined) patch.phases = phasesPatch;
 
   await ref.update(patch);
-  return `✅ Projet "${title}" mis à jour.`;
+  return `✅ Projet "${title}" mis à jour${phasesNote}.`;
 }
 
 async function executeUpdateTaskStatus(
@@ -1606,6 +1635,10 @@ async function executeUpdateTask(
   try {
     const patch: Record<string, unknown> = {};
     if (updates.title      !== undefined) patch.title      = clampStr(updates.title, 200, "title");
+    if (updates.description !== undefined) {
+      const d = clampStr(updates.description, 5000, "description");
+      patch.description = d.trim() ? d : null;
+    }
     if (updates.startDate  !== undefined) { assertDate(updates.startDate, "startDate"); patch.startDate = updates.startDate; }
     if (updates.endDate    !== undefined) { assertDate(updates.endDate,   "endDate");   patch.endDate   = updates.endDate; }
     if (updates.status     !== undefined) {
@@ -2293,6 +2326,70 @@ async function executeMarkBlockDone(
   };
   await ref.update({ blocks });
   return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
+}
+
+const BLOCK_CATEGORIES = new Set(["project", "routine", "personal", "break"]);
+const BLOCK_STATUSES = new Set(["pending", "done", "skipped", "deleted"]);
+
+/** Retouche unitaire d'un bloc du programme : seuls les champs fournis
+ *  changent ("" sur un lien = le retirer). Le reste du doc est intact. */
+async function executeUpdateBlock(
+  uid: string,
+  date: string,
+  blockId: string,
+  updates: {
+    title?: string; startTime?: string; durationMin?: number; category?: string; status?: string;
+    projectId?: string; taskId?: string; activityId?: string; actionId?: string;
+  }
+): Promise<string> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+  const ref = db.doc(`users/${uid}/daily_schedules/${date}`);
+  const snap = await ref.get();
+  if (!snap.exists) return `Aucun programme pour le ${date}.`;
+  const data = snap.data() as Record<string, unknown>;
+  const blocks = ((data.blocks || []) as Array<Record<string, unknown>>).slice();
+  const idx = blocks.findIndex((b) => b.id === blockId);
+  if (idx === -1) return `Bloc introuvable : ${blockId}`;
+
+  const patch: Record<string, unknown> = {};
+  if (updates.title !== undefined) {
+    const t = clampStr(updates.title, 300, "title").trim();
+    if (!t) return "title vide.";
+    patch.title = t;
+  }
+  if (updates.startTime !== undefined) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(updates.startTime)) return `startTime : format HH:mm attendu, reçu "${updates.startTime}"`;
+    patch.startTime = updates.startTime;
+  }
+  if (updates.durationMin !== undefined) {
+    if (!Number.isFinite(updates.durationMin) || updates.durationMin < 5 || updates.durationMin > 24 * 60) {
+      return "durationMin : entre 5 et 1440.";
+    }
+    patch.durationMin = Math.round(updates.durationMin);
+  }
+  if (updates.category !== undefined) {
+    if (!BLOCK_CATEGORIES.has(updates.category)) return `category invalide : "${updates.category}"`;
+    patch.category = updates.category;
+  }
+  if (updates.status !== undefined) {
+    if (!BLOCK_STATUSES.has(updates.status)) return `status invalide : "${updates.status}"`;
+    patch.status = updates.status;
+    if (updates.status === "done") patch.doneAt = new Date().toISOString();
+    else if (updates.status === "pending") patch.doneAt = null;
+  }
+  for (const k of ["projectId", "taskId", "activityId", "actionId"] as const) {
+    if (updates[k] !== undefined) patch[k] = updates[k] ? updates[k] : null;
+  }
+  if (!Object.keys(patch).length) return "Rien à modifier.";
+
+  const before = String(blocks[idx].title ?? blockId);
+  blocks[idx] = { ...blocks[idx], ...patch };
+  await ref.update({ blocks });
+  const after = String(blocks[idx].title);
+  const what = Object.keys(patch).filter((k) => k !== "doneAt").join(", ");
+  return before !== after
+    ? `✅ Bloc « ${before} » → « ${after} » (${what}).`
+    : `✅ Bloc « ${before} » mis à jour (${what}).`;
 }
 
 async function executeGetAssistantMessages(uid: string): Promise<string> {
@@ -4225,6 +4322,7 @@ export {
   executeAddActivityAction,
   executeLogRoutineHit,
   executeMarkBlockDone,
+  executeUpdateBlock,
   executeGetAssistantMessages,
   executeDeleteAssistantMessage,
   executeGetOrionQueue,

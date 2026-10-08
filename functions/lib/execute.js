@@ -54,6 +54,7 @@ exports.executeLinkActionToActivity = executeLinkActionToActivity;
 exports.executeAddActivityAction = executeAddActivityAction;
 exports.executeLogRoutineHit = executeLogRoutineHit;
 exports.executeMarkBlockDone = executeMarkBlockDone;
+exports.executeUpdateBlock = executeUpdateBlock;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
 exports.executeDeleteAssistantMessage = executeDeleteAssistantMessage;
 exports.executeGetOrionQueue = executeGetOrionQueue;
@@ -1125,11 +1126,48 @@ async function executeDeleteActivity(uid, activityId) {
     return `✅ Activité "${name}" supprimée.`;
 }
 async function executeUpdateProject(uid, projectId, updates) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d, _e, _f, _g;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
         return `Projet introuvable : ${projectId}`;
+    // Phases : retouche unitaire par id (libellé, couleur, dates) — jamais
+    // d'ajout ni de suppression ici (push_gantt), les tâches ne bougent pas.
+    let phasesPatch;
+    let phasesNote = "";
+    if (updates.phases !== undefined) {
+        if (!Array.isArray(updates.phases) || !updates.phases.length)
+            return `❌ phases : tableau non vide attendu.`;
+        const current = ((_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.phases) !== null && _b !== void 0 ? _b : []).map((p) => (Object.assign({}, p)));
+        const touched = [];
+        for (const u of updates.phases) {
+            const ph = current.find((p) => p.id === u.id);
+            if (!ph)
+                return `❌ Phase introuvable : ${u.id} (get_project → phases[].id).`;
+            try {
+                if (u.label !== undefined)
+                    ph.label = clampStr(u.label, 200, "phase.label");
+                if (u.startDate !== undefined) {
+                    assertDate(u.startDate, "phase.startDate");
+                    ph.startDate = u.startDate;
+                }
+                if (u.endDate !== undefined) {
+                    assertDate(u.endDate, "phase.endDate");
+                    ph.endDate = u.endDate;
+                }
+                if (u.color !== undefined)
+                    ph.color = u.color;
+            }
+            catch (e) {
+                return `❌ ${e.message}`;
+            }
+            if (String(ph.startDate) > String(ph.endDate))
+                return `❌ Phase « ${ph.label} » : début après la fin.`;
+            touched.push(String(ph.label));
+        }
+        phasesPatch = current;
+        phasesNote = ` · phase(s) retouchée(s) : ${touched.join(", ")}`;
+    }
     // Parent (hiérarchie client / dossier) : existe, pas lui-même, pas un de
     // ses propres descendants (sinon boucle). "" ou null = détacher.
     if (updates.parentProjectId !== undefined) {
@@ -1147,11 +1185,11 @@ async function executeUpdateProject(uid, projectId, updates) {
                 if (cur === projectId)
                     return `❌ ${pid} dépend déjà de ce projet : rattachement circulaire refusé.`;
                 seen.add(cur);
-                cur = (_b = (_a = all.find((p) => p.id === cur)) === null || _a === void 0 ? void 0 : _a.parent) !== null && _b !== void 0 ? _b : null;
+                cur = (_d = (_c = all.find((p) => p.id === cur)) === null || _c === void 0 ? void 0 : _c.parent) !== null && _d !== void 0 ? _d : null;
             }
         }
     }
-    const title = (_c = updates.title) !== null && _c !== void 0 ? _c : ((_e = (_d = snap.data()) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : projectId);
+    const title = (_e = updates.title) !== null && _e !== void 0 ? _e : ((_g = (_f = snap.data()) === null || _f === void 0 ? void 0 : _f.title) !== null && _g !== void 0 ? _g : projectId);
     if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
         return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, completed`;
     const patch = { updatedAt: db_1.FieldValue.serverTimestamp() };
@@ -1165,8 +1203,10 @@ async function executeUpdateProject(uid, projectId, updates) {
         patch.status = updates.status;
     if (updates.parentProjectId !== undefined)
         patch.parentProjectId = updates.parentProjectId || null;
+    if (phasesPatch !== undefined)
+        patch.phases = phasesPatch;
     await ref.update(patch);
-    return `✅ Projet "${title}" mis à jour.`;
+    return `✅ Projet "${title}" mis à jour${phasesNote}.`;
 }
 async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     var _a;
@@ -1424,6 +1464,10 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
         const patch = {};
         if (updates.title !== undefined)
             patch.title = clampStr(updates.title, 200, "title");
+        if (updates.description !== undefined) {
+            const d = clampStr(updates.description, 5000, "description");
+            patch.description = d.trim() ? d : null;
+        }
         if (updates.startDate !== undefined) {
             assertDate(updates.startDate, "startDate");
             patch.startDate = updates.startDate;
@@ -2060,6 +2104,70 @@ async function executeMarkBlockDone(uid, date, blockId, done) {
     blocks[idx] = Object.assign(Object.assign({}, blocks[idx]), { status: done ? "done" : "pending", doneAt: done ? new Date().toISOString() : null });
     await ref.update({ blocks });
     return `✅ Bloc "${title}" ${done ? "marqué fait" : "remis à faire"}.`;
+}
+const BLOCK_CATEGORIES = new Set(["project", "routine", "personal", "break"]);
+const BLOCK_STATUSES = new Set(["pending", "done", "skipped", "deleted"]);
+/** Retouche unitaire d'un bloc du programme : seuls les champs fournis
+ *  changent ("" sur un lien = le retirer). Le reste du doc est intact. */
+async function executeUpdateBlock(uid, date, blockId, updates) {
+    var _a;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return `Date invalide : ${date}. Format attendu : YYYY-MM-DD`;
+    const ref = db_1.db.doc(`users/${uid}/daily_schedules/${date}`);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Aucun programme pour le ${date}.`;
+    const data = snap.data();
+    const blocks = (data.blocks || []).slice();
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx === -1)
+        return `Bloc introuvable : ${blockId}`;
+    const patch = {};
+    if (updates.title !== undefined) {
+        const t = clampStr(updates.title, 300, "title").trim();
+        if (!t)
+            return "title vide.";
+        patch.title = t;
+    }
+    if (updates.startTime !== undefined) {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(updates.startTime))
+            return `startTime : format HH:mm attendu, reçu "${updates.startTime}"`;
+        patch.startTime = updates.startTime;
+    }
+    if (updates.durationMin !== undefined) {
+        if (!Number.isFinite(updates.durationMin) || updates.durationMin < 5 || updates.durationMin > 24 * 60) {
+            return "durationMin : entre 5 et 1440.";
+        }
+        patch.durationMin = Math.round(updates.durationMin);
+    }
+    if (updates.category !== undefined) {
+        if (!BLOCK_CATEGORIES.has(updates.category))
+            return `category invalide : "${updates.category}"`;
+        patch.category = updates.category;
+    }
+    if (updates.status !== undefined) {
+        if (!BLOCK_STATUSES.has(updates.status))
+            return `status invalide : "${updates.status}"`;
+        patch.status = updates.status;
+        if (updates.status === "done")
+            patch.doneAt = new Date().toISOString();
+        else if (updates.status === "pending")
+            patch.doneAt = null;
+    }
+    for (const k of ["projectId", "taskId", "activityId", "actionId"]) {
+        if (updates[k] !== undefined)
+            patch[k] = updates[k] ? updates[k] : null;
+    }
+    if (!Object.keys(patch).length)
+        return "Rien à modifier.";
+    const before = String((_a = blocks[idx].title) !== null && _a !== void 0 ? _a : blockId);
+    blocks[idx] = Object.assign(Object.assign({}, blocks[idx]), patch);
+    await ref.update({ blocks });
+    const after = String(blocks[idx].title);
+    const what = Object.keys(patch).filter((k) => k !== "doneAt").join(", ");
+    return before !== after
+        ? `✅ Bloc « ${before} » → « ${after} » (${what}).`
+        : `✅ Bloc « ${before} » mis à jour (${what}).`;
 }
 async function executeGetAssistantMessages(uid) {
     const [pendingSnap, shownSnap] = await Promise.all([

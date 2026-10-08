@@ -39,7 +39,7 @@ import {
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
   PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
-  LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+  LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
   UPDATE_SESSION_TEMPLATE_TOOL,
@@ -62,7 +62,7 @@ import {
   executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
   executePlanPrep, executeWeeklyReview, executeUpdateActions,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
-  executeLogRoutineHit, executeMarkBlockDone,
+  executeLogRoutineHit, executeMarkBlockDone, executeUpdateBlock,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
   executeListObjectives, executeSaveObjective,
@@ -1673,7 +1673,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
             PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
             ESTIMATE_ACCURACY_TOOL,
-            LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL,
+            LOG_ROUTINE_HIT_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
             LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
             UPDATE_SESSION_TEMPLATE_TOOL,
@@ -1918,6 +1918,10 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.activityId as string,
             args.delta === undefined ? 1 : (args.delta as number),
           );
+        } else if (toolName === "update_block") {
+          text = await executeUpdateBlock(
+            uid, args.date as string, args.blockId as string,
+            args as Parameters<typeof executeUpdateBlock>[3]);
         } else if (toolName === "mark_block_done") {
           text = await executeMarkBlockDone(
             uid,
