@@ -29,7 +29,7 @@ import {
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
   GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
-  CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+  CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
   SAVE_DOMAIN_DEFINITION_TOOL,
@@ -53,7 +53,7 @@ import {
   executeGetDayBlocks, executeCreateActivity,
   executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem,
-  executeRestoreItem, executeCreateDomain, executeDeleteDomain, executeDeleteActivity,
+  executeRestoreItem, executeCreateDomain, executeUpdateDomain, executeDeleteDomain, executeDeleteActivity,
   executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
@@ -1662,7 +1662,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
             GET_SHOPPING_LIST_TOOL, ADD_SHOPPING_ITEM_TOOL, CHECK_SHOPPING_ITEM_TOOL,
-            CREATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
+            CREATE_DOMAIN_TOOL, UPDATE_DOMAIN_TOOL, DELETE_DOMAIN_TOOL, PUSH_ASSISTANT_MESSAGE_TOOL,
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
             SAVE_DOMAIN_DEFINITION_TOOL,
@@ -1737,6 +1737,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeDeleteRoutine(uid, args.routineId as string);
         } else if (toolName === "create_domain") {
           text = await executeCreateDomain(uid, args as Parameters<typeof executeCreateDomain>[1]);
+        } else if (toolName === "update_domain") {
+          text = await executeUpdateDomain(uid, args.domainId as string, args as Parameters<typeof executeUpdateDomain>[2]);
         } else if (toolName === "delete_domain") {
           text = await executeDeleteDomain(uid, args.domainId as string);
         } else if (toolName === "get_document_template") {

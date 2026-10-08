@@ -1181,6 +1181,32 @@ async function executeCreateDomain(
   return `✅ Domaine "${args.name}" créé (id: ${id}). Il apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
+async function executeUpdateDomain(
+  uid: string,
+  domainId: string,
+  updates: { name?: string; goalMinDay?: number; autoGoal?: boolean; colorValue?: number }
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/domains`).doc(domainId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data()?.deleted === true) return `Domaine introuvable : ${domainId}`;
+  const patch: Record<string, unknown> = {};
+  if (updates.name !== undefined) {
+    const name = clampStr(updates.name, 80, "name").trim();
+    if (!name) return "name vide.";
+    patch.name = name;
+  }
+  if (updates.goalMinDay !== undefined) patch.goalMinDay = updates.goalMinDay > 0 ? updates.goalMinDay : null;
+  if (updates.autoGoal !== undefined) patch.autoGoal = updates.autoGoal;
+  if (updates.colorValue !== undefined) patch.colorValue = updates.colorValue;
+  if (!Object.keys(patch).length) return "Rien à modifier (name, goalMinDay, autoGoal ou colorValue).";
+  await ref.update(patch);
+  const before = String(snap.data()?.name ?? domainId);
+  const after = String(patch.name ?? before);
+  return patch.name !== undefined && after !== before
+    ? `✅ Domaine « ${before} » renommé « ${after} »${Object.keys(patch).length > 1 ? " (+ autres champs)" : ""}.`
+    : `✅ Domaine « ${before} » mis à jour (${Object.keys(patch).join(", ")}).`;
+}
+
 async function executeDeleteDomain(uid: string, domainId: string): Promise<string> {
   const ref = db.collection(`users/${uid}/domains`).doc(domainId);
   const snap = await ref.get();
@@ -4179,6 +4205,7 @@ export {
   executeCheckShoppingItem,
   executeRestoreItem,
   executeCreateDomain,
+  executeUpdateDomain,
   executeDeleteDomain,
   executeDeleteActivity,
   executeUpdateProject,

@@ -421,6 +421,25 @@ const PUSH_ASSISTANT_MESSAGE_TOOL = {
   },
 };
 
+const UPDATE_DOMAIN_TOOL = {
+  name: "update_domain",
+  description:
+    "Modifie un domaine de vie existant : nom, objectif quotidien, couleur. Seuls les champs fournis changent. " +
+    "Le renommage est sûr : activités, projets et objectifs référencent le domaine par id. " +
+    "(La fiche intention / minimum vital se modifie via save_domain_definition.)",
+  inputSchema: {
+    type: "object",
+    required: ["domainId"],
+    properties: {
+      domainId:    { type: "string", description: "id du domaine (get_user_context)" },
+      name:        { type: "string", description: "Nouveau nom" },
+      goalMinDay:  { type: "number", description: "Objectif quotidien en minutes (0 = retirer)" },
+      autoGoal:    { type: "boolean", description: "true = objectif calculé depuis les activités" },
+      colorValue:  { type: "number", description: "Valeur entière Flutter Color.value" },
+    },
+  },
+};
+
 const DELETE_DOMAIN_TOOL = {
   name: "delete_domain",
   description:
@@ -1351,6 +1370,7 @@ PROPOSE_CHANGE_TOOL,
 CREATE_ROUTINE_TOOL,
 CREATE_ACTIVITY_TOOL,
 CREATE_DOMAIN_TOOL,
+UPDATE_DOMAIN_TOOL,
 PUSH_ASSISTANT_MESSAGE_TOOL,
 DELETE_DOMAIN_TOOL,
 GET_DOCUMENT_TEMPLATE_TOOL,

@@ -1614,7 +1614,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
                         tools_1.GET_SHOPPING_LIST_TOOL, tools_1.ADD_SHOPPING_ITEM_TOOL, tools_1.CHECK_SHOPPING_ITEM_TOOL,
-                        tools_1.CREATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
+                        tools_1.CREATE_DOMAIN_TOOL, tools_1.UPDATE_DOMAIN_TOOL, tools_1.DELETE_DOMAIN_TOOL, tools_1.PUSH_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_ASSISTANT_MESSAGES_TOOL, tools_1.DELETE_ASSISTANT_MESSAGE_TOOL,
                         tools_1.GET_DAY_SCHEDULE_TOOL, tools_1.SCHEDULE_DAY_TOOL, tools_1.ADD_PREP_BLOCK_TOOL, tools_1.ADD_EVENT_TOOL,
                         tools_1.SAVE_DOMAIN_DEFINITION_TOOL,
@@ -1708,6 +1708,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "create_domain") {
                     text = await (0, execute_1.executeCreateDomain)(uid, args);
+                }
+                else if (toolName === "update_domain") {
+                    text = await (0, execute_1.executeUpdateDomain)(uid, args.domainId, args);
                 }
                 else if (toolName === "delete_domain") {
                     text = await (0, execute_1.executeDeleteDomain)(uid, args.domainId);

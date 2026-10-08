@@ -34,6 +34,7 @@ exports.executeAddShoppingItem = executeAddShoppingItem;
 exports.executeCheckShoppingItem = executeCheckShoppingItem;
 exports.executeRestoreItem = executeRestoreItem;
 exports.executeCreateDomain = executeCreateDomain;
+exports.executeUpdateDomain = executeUpdateDomain;
 exports.executeDeleteDomain = executeDeleteDomain;
 exports.executeDeleteActivity = executeDeleteActivity;
 exports.executeUpdateProject = executeUpdateProject;
@@ -1059,6 +1060,34 @@ async function executeCreateDomain(uid, args) {
         createdAt: db_1.FieldValue.serverTimestamp(),
     });
     return `✅ Domaine "${args.name}" créé (id: ${id}). Il apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+}
+async function executeUpdateDomain(uid, domainId, updates) {
+    var _a, _b, _c, _d;
+    const ref = db_1.db.collection(`users/${uid}/domains`).doc(domainId);
+    const snap = await ref.get();
+    if (!snap.exists || ((_a = snap.data()) === null || _a === void 0 ? void 0 : _a.deleted) === true)
+        return `Domaine introuvable : ${domainId}`;
+    const patch = {};
+    if (updates.name !== undefined) {
+        const name = clampStr(updates.name, 80, "name").trim();
+        if (!name)
+            return "name vide.";
+        patch.name = name;
+    }
+    if (updates.goalMinDay !== undefined)
+        patch.goalMinDay = updates.goalMinDay > 0 ? updates.goalMinDay : null;
+    if (updates.autoGoal !== undefined)
+        patch.autoGoal = updates.autoGoal;
+    if (updates.colorValue !== undefined)
+        patch.colorValue = updates.colorValue;
+    if (!Object.keys(patch).length)
+        return "Rien à modifier (name, goalMinDay, autoGoal ou colorValue).";
+    await ref.update(patch);
+    const before = String((_c = (_b = snap.data()) === null || _b === void 0 ? void 0 : _b.name) !== null && _c !== void 0 ? _c : domainId);
+    const after = String((_d = patch.name) !== null && _d !== void 0 ? _d : before);
+    return patch.name !== undefined && after !== before
+        ? `✅ Domaine « ${before} » renommé « ${after} »${Object.keys(patch).length > 1 ? " (+ autres champs)" : ""}.`
+        : `✅ Domaine « ${before} » mis à jour (${Object.keys(patch).join(", ")}).`;
 }
 async function executeDeleteDomain(uid, domainId) {
     var _a, _b;
