@@ -163,7 +163,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     } else {
       HapticFeedback.selectionClick();
     }
-    await _sync.updateBlockStatus(widget.date, block.id, newStatus);
+    // Geste manuel : décocher interdit à l'automatisme de recocher ce bloc
+    // (sinon il revenait « fait » à la prochaine ouverture, temps loggué aidant).
+    if (newStatus == 'pending') block.noAutoWin = true;
+    await _sync.updateBlockStatus(widget.date, block.id, newStatus, manual: true);
     // Défi coché → plus rien à rappeler.
     if (newStatus == 'done') await cancelChallengeNotifications(block);
     if (block.challenge && newStatus == 'done' && !_won.contains(block.id)) {
@@ -343,6 +346,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
           b.activityId == null ||
+          b.noAutoWin ||
           _won.contains(b.id)) {
         continue;
       }
