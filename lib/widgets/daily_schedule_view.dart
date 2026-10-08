@@ -56,6 +56,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   StreamSubscription<DailySchedule?>? _sub;
   // Défis déjà comptés (tap OU auto) — évite tout double comptage par bloc.
   final Set<String> _won = {};
+  // Blocs d'activité / de tâche dont le temps de chrono a atteint le seuil :
+  // on PROPOSE « Marquer fait ? » (un tap), on ne coche plus tout seul — le
+  // temps passé n'est pas une preuve que la chose a été faite (deux blocs
+  // voisins sur la même source, un seul chrono…). Valeur = minutes faites.
+  final Map<String, int> _suggested = {};
   // Blocs ayant déjà validé leur routine liée — évite de re-incrémenter au
   // re-cochage (binding bidirectionnel défi ↔ routine).
   final Set<String> _routineHit = {};
@@ -360,18 +365,29 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       final bool reached;
       if (act != null && act.isHabit) {
         // Routine validée (FAB, donjon, minuteur…) → atteinte de la cible.
+        // Geste explicite de l'utilisateur : l'automatisme reste fiable.
         final tgt = widget.logic.activeHabitTarget(act);
         reached =
             tgt > 0 && widget.logic.habitValueOn(b.activityId!, dayStart) >= tgt;
       } else {
         // Temps attribuable À CE BLOC (action → tâche → activité) et DANS SON
-        // CRÉNEAU : du temps loggué le matin ne coche pas un bloc de l'après-midi.
+        // CRÉNEAU : du temps loggué le matin ne concerne pas un bloc de
+        // l'après-midi. Seuil atteint ⇒ PROPOSITION « Marquer fait ? », jamais
+        // de coche silencieuse (décision 2026-10).
         final blockStart = dayStart.add(Duration(minutes: blockStartMin(b)));
         final blockEnd = dayStart.add(Duration(minutes: blockEndMin(b)));
         final loggedMin = loggedMinForBlock(b, widget.logic.state.sessions, blockStart,
             blockEnd.isAfter(now) ? now : blockEnd);
         final threshold = (b.durationMin * 0.6).round();
-        reached = loggedMin >= (threshold < 10 ? 10 : threshold);
+        if (loggedMin >= (threshold < 10 ? 10 : threshold)) {
+          if (_suggested[b.id] != loggedMin) {
+            _suggested[b.id] = loggedMin;
+            if (mounted) setState(() {});
+          }
+        } else if (_suggested.remove(b.id) != null && mounted) {
+          setState(() {});
+        }
+        reached = false;
       }
       if (reached) {
         _won.add(b.id);
@@ -560,6 +576,54 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (asideLabel(aside) != null) _asideRow(cs, aside),
         if (bare) _addRow(cs),
       ],
+    );
+  }
+
+  /// « 1 h 05 fait · Marquer fait ? » : le temps de chrono a atteint le seuil
+  /// du bloc ; un tap confirme (bloc de tâche → feuille « où en est la
+  /// tâche »), ✕ écarte la proposition pour ce bloc (persisté : `noAutoWin`).
+  Widget _suggestRow(ColorScheme cs, ScheduleBlock block, int loggedMin) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(children: [
+        Expanded(
+          child: InkWell(
+            onTap: () => _toggleDone(block),
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: cs.primary.withOpacity(.10),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: cs.primary.withOpacity(.35)),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.check_circle_outline, size: 16, color: cs.primary),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text('${fmtMin(loggedMin)} fait · Marquer fait ?',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.primary)),
+                ),
+              ]),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Non, pas fait',
+          visualDensity: VisualDensity.compact,
+          icon: Icon(Icons.close, size: 16, color: cs.onSurface.withOpacity(.45)),
+          onPressed: () async {
+            setState(() {
+              block.noAutoWin = true;
+              _suggested.remove(block.id);
+            });
+            await _sync.updateBlockStatus(widget.date, block.id, 'pending', manual: true);
+          },
+        ),
+      ]),
     );
   }
 
@@ -980,6 +1044,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                       ),
                     ),
                 ]),
+                if (block.status == 'pending' && !block.noAutoWin && _suggested.containsKey(block.id))
+                  _suggestRow(cs, block, _suggested[block.id]!),
                 if (nowInside) _nowZone(context, cs, block, now, startMin),
               ],
             ),
