@@ -168,6 +168,26 @@ void main() {
     test('clientRoots : racines ayant un projet vivant dessous, triées', () {
       expect(clientRoots(all).map((p) => p.id).toList(), ['Chérubins', 'orphelin', 'SOF']);
     });
+    ProjectTask due(String id, String end, List<TaskAction> actions, {String status = 'pending'}) =>
+        ProjectTask(
+            id: id, title: id, startDate: DateTime(2026, 9, 1), endDate: DateTime.parse(end),
+            actions: actions, status: status);
+    test('isOverdueTask : échéance avant aujourd\'hui, tâche ouverte seulement', () {
+      final today = DateTime(2026, 10, 8, 15);
+      expect(isOverdueTask(due('a', '2026-10-07', [_a('x')]), today), isTrue);
+      expect(isOverdueTask(due('b', '2026-10-08', [_a('x')]), today), isFalse);
+      expect(isOverdueTask(due('c', '2026-10-01', [_a('x')], status: 'done'), today), isFalse);
+      expect(isOverdueTask(_t('d', '2026-09-01', [_a('x')]), today), isFalse);
+    });
+    test('projectActionGroups taskFilter : ne garde que les actions des tâches retenues', () {
+      final p = proj('P', tasks: [
+        due('late', '2026-10-01', [_a('l1'), _a('l2')]),
+        due('soon', '2026-10-20', [_a('s1')]),
+      ]);
+      final g = projectActionGroups([p],
+          filter: (_) => true, taskFilter: (t) => isOverdueTask(t, DateTime(2026, 10, 8)));
+      expect(g.single.entries.map((e) => e.action.title).toList(), ['l1', 'l2']);
+    });
     test('inClient : un client = ses projets seulement ; Perso = les actions sans projet', () {
       expect(inClient(null, cm, all), isTrue);
       expect(inClient(null, null, all), isTrue);
