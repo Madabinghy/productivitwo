@@ -1,4 +1,4 @@
-import { fillAgainstExisting, splitAgainstMirrors } from "./schedule_dedupe";
+import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
 import { nearestFreeSlot, toMin } from "./schedule_dedupe";
 import {
@@ -2961,8 +2961,18 @@ async function executeScheduleDay(
   // d'événements Google Agenda (tous statuts : un remplacement de programme
   // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
   const prevBlocks = (prevData.blocks as Array<Record<string, unknown>>) ?? [];
+  // Le passé est immuable : un remplacement ne touche que ce qui reste à
+  // venir. Les blocs déjà vécus (faits, sautés, commencés avant maintenant
+  // dans la journée de l'utilisateur) survivent, et un entrant qui les
+  // chevaucherait est écarté comme en mode compléter.
+  const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+  const tzOffset = metaSnap.exists ? (metaSnap.data() as Record<string, unknown>).tzOffsetMin : null;
+  const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
+  const settledCtx = { date, today: lived.ymd, nowMin: toMin(lived.hm) };
+  const settled = fill ? [] : prevBlocks.filter((b) => isSettledBlock(b, settledCtx));
   const preserved = fill ? prevBlocks : prevBlocks
     .filter((b) =>
+      isSettledBlock(b, settledCtx) ||
       b.gcalEventId != null ||
       // Défi programmé 🔥 = engagement pris (alarme locale armée côté app) —
       // un remplacement de programme ne l'efface jamais en silence.
@@ -2977,7 +2987,7 @@ async function executeScheduleDay(
   // reporté…) est écarté : on ne touche pas à ce qui est déjà posé.
   const { kept: newBlocks, dropped: overlapping } = fill
     ? fillAgainstExisting(afterMirrors, preserved)
-    : { kept: afterMirrors, dropped: [] as typeof afterMirrors };
+    : fillAgainstExisting(afterMirrors, settled);
 
   await ref.set({
     date,
@@ -3014,9 +3024,12 @@ async function executeScheduleDay(
     clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
       `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
   }
+  const livedNote = settled.length
+    ? ` · ${settled.length} bloc(s) déjà vécu(s) conservé(s) (le passé n'est jamais remplacé)`
+    : "";
   const head = fill
     ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
-    : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;
+    : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)${livedNote}`;
   return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
 }
 

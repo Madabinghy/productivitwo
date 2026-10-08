@@ -97,6 +97,27 @@ export function fillAgainstExisting<T extends AnyBlock>(
   return { kept, dropped };
 }
 
+/**
+ * Bloc déjà VÉCU, qu'un remplacement de programme ne doit jamais effacer :
+ * fait ou sauté (un fait), ou dont le créneau a commencé avant « maintenant »
+ * dans la journée de l'utilisateur ([date] = jour du programme, [today] /
+ * [nowMin] = jour et heure vécus). Un jour passé est entièrement vécu, un jour
+ * futur pas du tout. Les tombstones (`deleted`) passés sont gardés aussi : ils
+ * disent « ne pas recréer » et restent rattachables après coup.
+ * Constat 2026-10-07 : une régénération du soir avait effacé toute la journée,
+ * dont un bloc de correction fait sur lequel une session de 7 h devait être
+ * rattachée.
+ */
+export function isSettledBlock(
+  b: AnyBlock,
+  ctx: { date: string; today: string; nowMin: number }
+): boolean {
+  if (b.status === "done" || b.status === "skipped") return true;
+  if (ctx.date < ctx.today) return true;
+  if (ctx.date > ctx.today) return false;
+  return toMin(b.startTime) < ctx.nowMin;
+}
+
 const fromMin = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 /**

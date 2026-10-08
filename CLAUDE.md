@@ -260,7 +260,10 @@ Claude ne les recrée pas lors d'une régénération.
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
-- `schedule_day(date, blocks[])` — crée ou remplace le programme entier (un bloc peut porter `actionId` → chrono ciblé)
+- `schedule_day(date, blocks[])` — crée ou remplace le programme (un bloc peut porter `actionId` → chrono ciblé). **Le passé
+  est immuable** (2026-10) : en mode remplacement, les blocs déjà vécus (faits, sautés, commencés avant maintenant dans la
+  journée de l'utilisateur, tombstones passés compris — `isSettledBlock`, `schedule_dedupe.ts`) survivent et un entrant
+  qui les chevauche est écarté ; seul l'avenir est remplacé
 - `add_activity_action(activityId, title, context?, contexts?)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
 - `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
