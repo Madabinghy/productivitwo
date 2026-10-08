@@ -116,4 +116,14 @@ void main() {
     expect(asideDetail(a.moved[1]), '→ 2026-10-09 09:00');
     expect(asideDetail(a.skipped[0]), 'sauté · energie');
   });
+
+  test('nowLineBlock : bloc en cours, le dernier commencé si chevauchement, null dans un trou', () {
+    ScheduleBlock b(String id, String start, int dur, {String status = 'pending'}) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, status: status);
+    final blocks = [b('a', '09:00', 120), b('b', '10:00', 30), b('done', '10:00', 60, status: 'done')];
+    expect(nowLineBlock(blocks, 9 * 60 + 30)?.id, 'a');
+    expect(nowLineBlock(blocks, 10 * 60 + 10)?.id, 'b', reason: 'chevauchement : le dernier commencé');
+    expect(nowLineBlock(blocks, 10 * 60 + 45)?.id, 'a');
+    expect(nowLineBlock(blocks, 11 * 60 + 30), isNull, reason: 'trou : trait entre les blocs');
+  });
 }

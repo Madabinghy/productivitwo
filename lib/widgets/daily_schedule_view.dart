@@ -517,9 +517,13 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 ? foldEarlierBlocks(visible, nowMin)
                 : (folded: const <ScheduleBlock>[], shown: visible);
             final rows = fold.shown;
-            var nowIndex =
-                _isToday ? rows.indexWhere((b) => toMin(b.startTime) > nowMin) : -1;
-            final nowAtEnd = _isToday && nowIndex == -1;
+            // F1 : s'il y a un bloc en cours, le trait vit DANS sa carte ;
+            // sinon (trou), il se dessine entre les blocs.
+            final nowBlock = _isToday ? nowLineBlock(rows, nowMin) : null;
+            var nowIndex = _isToday && nowBlock == null
+                ? rows.indexWhere((b) => toMin(b.startTime) > nowMin)
+                : -1;
+            final nowAtEnd = _isToday && nowBlock == null && nowIndex == -1;
             if (nowAtEnd) nowIndex = rows.length;
             return Column(children: [
               if (fold.folded.isNotEmpty) _earlierRow(cs, fold.folded),
@@ -528,12 +532,23 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               for (var i = 0; i < rows.length; i++) ...[
                 if (i == nowIndex)
                   KeyedSubtree(key: _nowKey, child: _nowLine(now)),
-                // GlobalKey par bloc : cible du saut minimap (jauge).
-                KeyedSubtree(
-                  key: _keyFor(rows[i].id),
-                  child: _buildBlock(context, cs, rows[i],
-                      key: ValueKey(rows[i].id)),
-                ),
+                // GlobalKey par bloc : cible du saut minimap (jauge) ; le
+                // bloc qui porte le trait est aussi la cible de l'auto-scroll.
+                if (nowBlock != null && rows[i].id == nowBlock.id)
+                  KeyedSubtree(
+                    key: _nowKey,
+                    child: KeyedSubtree(
+                      key: _keyFor(rows[i].id),
+                      child: _buildBlock(context, cs, rows[i],
+                          key: ValueKey(rows[i].id), nowInside: true),
+                    ),
+                  )
+                else
+                  KeyedSubtree(
+                    key: _keyFor(rows[i].id),
+                    child: _buildBlock(context, cs, rows[i],
+                        key: ValueKey(rows[i].id)),
+                  ),
               ],
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
@@ -716,7 +731,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Widget _buildBlock(BuildContext context, ColorScheme cs, ScheduleBlock block,
-      {required Key key}) {
+      {required Key key, bool nowInside = false}) {
     if (block.isPrep) return _buildPrepBlock(context, cs, block, key: key);
     final isDone = block.status == 'done';
     final dark = cs.brightness == Brightness.dark;
@@ -812,7 +827,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             decoration: BoxDecoration(
               color: current ? (dark ? kBActive : cs.primaryContainer.withOpacity(.35)) : null,
               borderRadius: BorderRadius.circular(12),
-              border: current ? Border.all(color: primary.withOpacity(.35)) : null,
+              // F1 : bordure rouge sombre quand le trait « maintenant » est dedans.
+              border: nowInside
+                  ? Border.all(color: const Color(0xFF7A3A36))
+                  : current
+                      ? Border.all(color: primary.withOpacity(.35))
+                      : null,
             ),
             // Disposition « B » (choix user 2026-10-01) : ligne 1 = début → fin
             // (+ en cours) à gauche, méta (durée · fait · contexte) à droite ;
@@ -826,7 +846,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                     children: [
                   Text(
                     '${block.startTime} → ${_clockOfMin(startMin + block.durationMin)}'
-                    '${current ? ' · en cours' : ''}',
+                    '${nowInside && block.durationMin < 10 ? ' · reste ${startMin + block.durationMin - nowMin} min' : current ? ' · en cours' : ''}',
                     maxLines: 1,
                     softWrap: false,
                     style: TextStyle(
@@ -956,10 +976,96 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                       ),
                     ),
                 ]),
+                if (nowInside) _nowZone(context, cs, block, now, startMin),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// F1 — zone du trait « maintenant » DANS le bloc en cours (~30 px sous le
+  /// texte, 16 px si le bloc fait moins de 10 min). Le trait (pastille HH:mm
+  /// + ligne 3 px) descend de 0 à 100 % du créneau ; sous lui, « ce qui
+  /// reste » en rouge très léger ; à sa droite, le badge « reste N min ».
+  /// Position animée sur 300 ms (0 si « réduire les animations »).
+  Widget _nowZone(BuildContext context, ColorScheme cs, ScheduleBlock block, DateTime now,
+      int startMin) {
+    const red = Color(0xFFE53935);
+    const redSoft = Color(0x1FE53935);
+    final total = block.durationMin;
+    final nowMin = now.hour * 60 + now.minute;
+    final elapsed = (nowMin - startMin).clamp(0, total);
+    final frac = total <= 0 ? 0.0 : elapsed / total;
+    final remaining = total - elapsed;
+    final short = total < 10;
+    final zoneH = short ? 16.0 : 30.0;
+    const lineH = 3.0;
+    final reduce = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final dur = reduce ? Duration.zero : const Duration(milliseconds: 300);
+    final hm =
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final y = frac * (zoneH - lineH);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: SizedBox(
+        height: zoneH,
+        child: Stack(clipBehavior: Clip.none, children: [
+          // Ce qui reste : du trait au bas de la zone.
+          AnimatedPositioned(
+            duration: dur,
+            curve: Curves.easeOut,
+            left: -4,
+            right: -4,
+            top: y,
+            bottom: 0,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: redSoft,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+              ),
+            ),
+          ),
+          // Le trait : pastille calée au bord gauche, ligne, badge « reste ».
+          AnimatedPositioned(
+            duration: dur,
+            curve: Curves.easeOut,
+            left: 0,
+            right: 0,
+            top: y - 9 + lineH / 2,
+            height: 18,
+            child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                decoration: BoxDecoration(color: red, borderRadius: BorderRadius.circular(999)),
+                child: Text(hm,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+              ),
+              Expanded(
+                child: Container(
+                  height: lineH,
+                  margin: const EdgeInsets.only(left: 6, right: 6),
+                  decoration:
+                      BoxDecoration(color: red, borderRadius: BorderRadius.circular(1.5)),
+                ),
+              ),
+              if (!short)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: red.withOpacity(.7)),
+                  ),
+                  child: Text('reste ${fmtMin(remaining)}',
+                      style: const TextStyle(
+                          color: red, fontSize: 10.5, fontWeight: FontWeight.w700)),
+                ),
+            ]),
+          ),
+        ]),
       ),
     );
   }
