@@ -215,6 +215,13 @@ class _WeekRadarCardState extends State<WeekRadarCard> {
               icon: Icon(Icons.play_circle_fill, color: cs.primary, size: 28),
               onPressed: () => widget.onPlay(p, next),
             )
+          else if (next != null && next.native != null && !next.isDone)
+            // Séance à venir : aperçu du déroulé (même écran, mode aperçu).
+            IconButton(
+              tooltip: 'Aperçu de la séance',
+              icon: Icon(Icons.visibility_outlined, color: cs.onSurface.withOpacity(.5), size: 22),
+              onPressed: () => widget.onPlay(p, next),
+            )
           else
             Icon(Icons.chevron_right, size: 18, color: cs.onSurface.withOpacity(.35)),
         ]),

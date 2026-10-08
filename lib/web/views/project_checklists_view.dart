@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/web/action_dialogs.dart';
+import 'package:productivitwo_v1/web/session_preview_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -672,19 +673,36 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
         child: child,
       );
 
-  Widget _sessionInfoCard(ProjectIntervention i) => _interventionBox(
-        child: Row(children: [
-          const Icon(Icons.school_outlined, size: 16, color: kBPrimary),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              '${interventionDayLabel(i.date)} · ${hmFr(i.startTime)}–${hmFr(i.endTime)}'
-              '${i.place != null && i.place!.isNotEmpty ? ' · ${i.place}' : ''}',
-              style: const TextStyle(fontSize: 13, color: kBText2, fontFeatures: _tabular),
-            ),
+  Widget _sessionInfoCard(ProjectIntervention i) {
+    final task = _p.tasks
+        .where((t) => t.interventionId == i.id && t.interventionRole == 'session')
+        .firstOrNull;
+    return _interventionBox(
+      child: Row(children: [
+        const Icon(Icons.school_outlined, size: 16, color: kBPrimary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            '${interventionDayLabel(i.date)} · ${hmFr(i.startTime)}–${hmFr(i.endTime)}'
+            '${i.place != null && i.place!.isNotEmpty ? ' · ${i.place}' : ''}',
+            style: const TextStyle(fontSize: 13, color: kBText2, fontFeatures: _tabular),
           ),
-        ]),
-      );
+        ),
+        if (task != null) ...[
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: () => showSessionPreviewDialog(context,
+                    project: _p, intervention: i, sessionTask: task, sync: widget.sync)
+                .then((_) {
+              if (mounted) setState(() {});
+            }),
+            icon: const Icon(Icons.visibility_outlined, size: 16),
+            label: const Text('Aperçu de la séance'),
+          ),
+        ],
+      ]),
+    );
+  }
 
   /// Tâche 📝 Préparer : « Planifier la prépa avec Claude » (plan_prep).
   Widget _prepPlanCard(ProjectIntervention i, ProjectTask prep) {

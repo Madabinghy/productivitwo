@@ -107,6 +107,18 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen> {
 
   int get _endMin => hmToMin(i.endTime);
 
+  /// Aperçu (séance à venir ou passée) : pas de « reste / dépassé », pas de
+  /// retard sur l'étape — juste le déroulé et ses cases à cocher.
+  bool get _isToday {
+    final d = i.date, n = DateTime.now();
+    return d.year == n.year && d.month == n.month && d.day == n.day;
+  }
+
+  bool get _isPast {
+    final n = DateTime.now();
+    return i.date.isBefore(DateTime(n.year, n.month, n.day));
+  }
+
   ChecklistItem? get _current => steps.where((c) => !c.done).firstOrNull;
   int get _currentIdx => _current == null ? steps.length : steps.indexOf(_current!);
 
@@ -319,8 +331,9 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen> {
     final current = _current;
     final plannedStart = current == null ? null : stepPlannedMin(current.title);
     final plannedEnd = _currentEndMin;
-    final late = plannedEnd != null && now > plannedEnd && current != null ? now - plannedEnd : 0;
-    final remaining = _endMin > 0 ? _endMin - now : null;
+    final preview = !_isToday;
+    final late = !preview && plannedEnd != null && now > plannedEnd && current != null ? now - plannedEnd : 0;
+    final remaining = !preview && _endMin > 0 ? _endMin - now : null;
     final place = (i.place ?? '').trim();
 
     return Scaffold(
@@ -332,6 +345,7 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen> {
           Text(i.title, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
           Text(
+            '${preview ? '${interventionDayLabel(i.date)} · ' : ''}'
             '${p.title} · ${hmFr(i.startTime)}–${hmFr(i.endTime)}${place.isNotEmpty ? ' · $place' : ''}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -359,6 +373,15 @@ class _SessionPlayerScreenState extends State<_SessionPlayerScreen> {
               Text(total == 0 ? 'Pas d\'étapes' : 'Étape ${(_currentIdx + 1).clamp(1, total)} / $total',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(.6))),
               const Spacer(),
+              if (preview)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: cs.onSurface.withOpacity(.07), borderRadius: BorderRadius.circular(999)),
+                  child: Text(_isPast ? 'Aperçu · séance passée' : 'Aperçu · à venir',
+                      style: TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onSurface.withOpacity(.6))),
+                ),
               if (remaining != null)
                 Text(
                   remaining >= 0 ? 'reste ${_fmt(remaining)}' : 'dépassé de ${_fmt(-remaining)}',
