@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, nextFreeSlot, isSettledBlock, blockHasSession, traceUnlisted } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -147,4 +147,15 @@ test("nextFreeSlot (B11) : vers l'avant depuis max(maintenant, demandé), jamais
   assert.deepEqual(nextFreeSlot({ startTime: "10:30", durationMin: 30 }, busy, toMin("10:30")), { slot: "11:00", until: null });
   // Dépasse minuit : rien.
   assert.deepEqual(nextFreeSlot({ startTime: "23:50", durationMin: 30 }, [], toMin("23:50")), { slot: null, until: null });
+});
+
+test("traceUnlisted (B12) : un pending écarté non relisté devient une trace skipped/replanifie ; relisté = rien", () => {
+  const corr = { id: "corr", startTime: "11:30", durationMin: 60, status: "done", title: "Correction" };
+  const bpf = { id: "bpf", startTime: "22:40", durationMin: 50, status: "pending", title: "BPF" };
+  const prep = { id: "prep", startTime: "21:00", durationMin: 75, status: "pending", title: "Préparer la séance" };
+  const prev = [corr, bpf, prep];
+  const preserved = [corr];
+  const incoming = [{ id: "n1", startTime: "21:15", durationMin: 60, status: "pending", title: "préparer la séance" }];
+  const traces = traceUnlisted(prev, preserved, incoming);
+  assert.deepEqual(traces.map((b) => [b.id, b.status, b.skipReason]), [["bpf", "skipped", "replanifie"]]);
 });

@@ -1313,7 +1313,8 @@ const UPDATE_BLOCK_TOOL = {
     "Retouche UN bloc du programme horaire (titre, heure, durée, catégorie, liens projet / tâche / activité / action) " +
     "sans toucher au reste du programme. Préfère cet outil à schedule_day pour renommer ou déplacer un seul bloc. " +
     "Récupère blockId via get_day_schedule. Pour marquer fait : mark_block_done ; un bloc passé NON fait qui bloque un créneau : " +
-    "status \"skipped\" (+ skipReason) ou delete:true.",
+    "status \"skipped\" (+ skipReason) ou delete:true ; pour le déplacer en un appel : moveTo {date, startTime}. " +
+    "Sauté / déplacé = hors de la vue du programme, tracé pour le check-in du soir.",
   inputSchema: {
     type: "object",
     required: ["date", "blockId"],
@@ -1327,6 +1328,15 @@ const UPDATE_BLOCK_TOOL = {
       status:      { type: "string", enum: ["pending", "done", "skipped", "deleted"], description: "skipped = a sauté (libère le créneau, nourrit le check-in du soir) ; deleted = retiré" },
       skipReason:  { type: "string", description: "pourquoi le bloc a sauté (avec status skipped)" },
       delete:      { type: "boolean", description: "true = retirer le bloc (équivaut à status deleted)" },
+      moveTo: {
+        type: "object",
+        description: "Déplacement ATOMIQUE : copie le bloc à cette date / heure (statut pending) et marque l'origine déplacée (hors de la vue, tracée). Refusé si le créneau de destination est occupé (le message nomme l'occupant). Un bloc 📅 agenda ne se déplace que dans l'agenda.",
+        required: ["date", "startTime"],
+        properties: {
+          date:      { type: "string", description: "YYYY-MM-DD (peut être le même jour)" },
+          startTime: { type: "string", description: "HH:mm" },
+        },
+      },
       projectId:   { type: "string", description: "chaîne vide = retirer le lien" },
       taskId:      { type: "string", description: "chaîne vide = retirer le lien" },
       activityId:  { type: "string", description: "chaîne vide = retirer le lien" },

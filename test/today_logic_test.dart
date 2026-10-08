@@ -95,4 +95,25 @@ void main() {
     expect(early.folded, isEmpty);
     expect(early.shown.length, 5);
   });
+
+  test('asideBlocks / asideLabel : sautés et déplacés hors de la vue, compteur de pied', () {
+    ScheduleBlock b(String id, String status, {String? reason, Map<String, dynamic>? movedTo}) =>
+        ScheduleBlock(id: id, startTime: '10:00', durationMin: 30, title: id, status: status,
+            skipReason: reason, movedTo: movedTo);
+    final a = asideBlocks([
+      b('ok', 'pending'),
+      b('fait', 'done'),
+      b('rep', 'skipped', reason: 'reporte'),
+      b('mv', 'skipped', movedTo: {'date': '2026-10-09', 'startTime': '09:00'}),
+      b('sk', 'skipped', reason: 'energie'),
+      b('del', 'deleted'),
+    ]);
+    expect(a.moved.map((x) => x.id).toList(), ['rep', 'mv']);
+    expect(a.skipped.map((x) => x.id).toList(), ['sk']);
+    expect(asideLabel(a), '2 blocs déplacés · 1 sauté');
+    expect(asideLabel(asideBlocks([b('sk', 'skipped')])), '1 bloc sauté');
+    expect(asideLabel(asideBlocks([b('ok', 'pending')])), isNull);
+    expect(asideDetail(a.moved[1]), '→ 2026-10-09 09:00');
+    expect(asideDetail(a.skipped[0]), 'sauté · energie');
+  });
 }

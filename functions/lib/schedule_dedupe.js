@@ -10,6 +10,7 @@ exports.sameSlot = sameSlot;
 exports.splitAgainstMirrors = splitAgainstMirrors;
 exports.dropPlainDuplicates = dropPlainDuplicates;
 exports.fillAgainstExisting = fillAgainstExisting;
+exports.traceUnlisted = traceUnlisted;
 exports.blockHasSession = blockHasSession;
 exports.isSettledBlock = isSettledBlock;
 exports.nearestFreeSlot = nearestFreeSlot;
@@ -99,6 +100,19 @@ function fillAgainstExisting(incoming, existing) {
         }
     }
     return { kept, dropped, conflicts };
+}
+/**
+ * B12 — remplacement : les blocs `pending` écartés (ni vécus ni préservés) et
+ * NON relistés (aucun entrant de même titre) ont sauté : ils sortent de la vue
+ * mais restent tracés (`skipped`, cause « replanifie ») pour le check-in du
+ * soir et estimate_accuracy. Relisté = re-posé, pas de trace.
+ */
+function traceUnlisted(prevBlocks, preserved, newBlocks) {
+    const norm = (t) => String(t !== null && t !== void 0 ? t : "").trim().toLowerCase();
+    const relisted = new Set(newBlocks.map((b) => norm(b.title)));
+    return prevBlocks
+        .filter((b) => !preserved.includes(b) && b.status === "pending" && !relisted.has(norm(b.title)))
+        .map((b) => { var _a; return (Object.assign(Object.assign({}, b), { status: "skipped", skipReason: (_a = b.skipReason) !== null && _a !== void 0 ? _a : "replanifie" })); });
 }
 /** Un chrono RÉEL a tourné pour ce bloc : même tâche (sinon même activité)
  *  et au moins une minute en commun avec son créneau. */

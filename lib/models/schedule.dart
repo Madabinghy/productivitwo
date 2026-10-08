@@ -69,6 +69,11 @@ class ScheduleBlock {
   // ce champ marque la copie (YYYY-MM-DD d'origine) — affichage « reporté
   // d'hier » + idempotence (pas de double copie du même bloc source).
   String? carriedFromDate;
+  // ── Déplacement (B12) ─────────────────────────────────────────────────────
+  // Origine d'un bloc déplacé (update_block moveTo / « Reporter ») : status
+  // skipped + skipReason "reporte" + destination {date, startTime, blockId}.
+  // Hors de la vue du programme, compté dans « n déplacés » en pied.
+  Map<String, dynamic>? movedTo;
   // ── Miroir Google Agenda ───────────────────────────────────────────────────
   // Bloc IMPORTÉ d'un événement de l'agenda (≠ créé par Productivitwo).
   // L'agenda est sa source de vérité : la sync sortante l'ignore (jamais
@@ -101,6 +106,7 @@ class ScheduleBlock {
     this.skipReason,
     this.reportReason,
     this.carriedFromDate,
+    this.movedTo,
     this.gcalEventId,
     this.sessionTemplateId,
   })  : id = id ?? _uuid.v4(),
@@ -129,6 +135,7 @@ class ScheduleBlock {
         'skipReason': skipReason,
         'reportReason': reportReason,
         'carriedFromDate': carriedFromDate,
+        'movedTo': movedTo,
         'gcalEventId': gcalEventId,
         'sessionTemplateId': sessionTemplateId,
       };
@@ -154,6 +161,7 @@ class ScheduleBlock {
         skipReason: j['skipReason'],
         reportReason: j['reportReason'],
         carriedFromDate: j['carriedFromDate'],
+        movedTo: j['movedTo'] is Map ? Map<String, dynamic>.from(j['movedTo'] as Map) : null,
         gcalEventId: j['gcalEventId'],
         sessionTemplateId: j['sessionTemplateId'],
       );

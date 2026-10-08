@@ -95,6 +95,9 @@ class TodayViewState extends State<TodayView> {
   Timer? _ticker;
 
   List<ScheduleBlock> _blocks = [];
+  // Tous les blocs vivants (sautés / déplacés compris) : rattachement après
+  // coup et compteur « n déplacés · n sautés » (B12).
+  List<ScheduleBlock> _allBlocks = [];
   String? _generatedBy;
   List<Session> _sessions = [];
   List<HabitHit> _hits = [];
@@ -184,13 +187,16 @@ class TodayViewState extends State<TodayView> {
 
   void _onSchedule(DailySchedule? s) {
     if (!mounted) return;
-    final blocks = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+    final all = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    // B12 : sautés / déplacés hors de la vue.
+    final blocks = all.where((b) => b.status != 'skipped').toList();
     if (!_initialScrollDone && blocks.isNotEmpty) {
       _initialScrollDone = true;
       _scrollNowPending = true;
     }
     setState(() {
+      _allBlocks = all;
       _blocks = blocks;
       _generatedBy = s?.generatedBy;
     });
@@ -1316,6 +1322,10 @@ class TodayViewState extends State<TodayView> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(child: _label('PROGRAMME DU JOUR')),
+          if (asideLabel(asideBlocks(_allBlocks)) != null) ...[
+            _asideLink(),
+            const SizedBox(width: 14),
+          ],
           if (_editing) ...[
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
@@ -1486,6 +1496,10 @@ class TodayViewState extends State<TodayView> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Expanded(child: _label('PROGRAMME DU JOUR')),
+          if (asideLabel(asideBlocks(_allBlocks)) != null) ...[
+            _asideLink(),
+            const SizedBox(width: 14),
+          ],
           if (_editing) ...[
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
@@ -2173,7 +2187,7 @@ class TodayViewState extends State<TodayView> {
         SessionsCard(
           date: _today,
           sessions: _sessions,
-          blocks: _blocks,
+          blocks: _allBlocks,
           activities: widget.activities,
           projects: widget.projects,
           domains: widget.domains,
@@ -2446,6 +2460,47 @@ class TodayViewState extends State<TodayView> {
           ]),
         ),
       );
+
+  /// B12 — « 2 déplacés · 1 sauté » : lien discret dans l'en-tête, clic =
+  /// liste repliée (heure prévue, titre, destination ou cause).
+  Widget _asideLink() {
+    final a = asideBlocks(_allBlocks);
+    return _textLink(asideLabel(a)!, () {
+      final items = [...a.moved, ...a.skipped]..sort((x, y) => x.startTime.compareTo(y.startTime));
+      showDialog<void>(
+        context: context,
+        builder: (d) => AlertDialog(
+          backgroundColor: kBRaised,
+          title: const Text('Hors du programme', style: TextStyle(color: kBText, fontSize: 16)),
+          content: SizedBox(
+            width: 420,
+            child: ListView(shrinkWrap: true, children: [
+              for (final b in items)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(
+                        b.movedTo != null || b.skipReason == 'reporte'
+                            ? Icons.redo_rounded
+                            : Icons.skip_next_rounded,
+                        size: 16, color: kBText3),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('${b.startTime} · ${b.title}',
+                            style: const TextStyle(fontSize: 13.5, color: kBText)),
+                        Text(asideDetail(b), style: const TextStyle(fontSize: 12, color: kBText3)),
+                      ]),
+                    ),
+                  ]),
+                ),
+            ]),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('Fermer'))],
+        ),
+      );
+    });
+  }
 
   Widget _textLink(String label, VoidCallback onTap) => InkWell(
         borderRadius: BorderRadius.circular(6),

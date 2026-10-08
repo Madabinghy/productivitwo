@@ -100,6 +100,24 @@ export function fillAgainstExisting<T extends AnyBlock>(
   return { kept, dropped, conflicts };
 }
 
+/**
+ * B12 — remplacement : les blocs `pending` écartés (ni vécus ni préservés) et
+ * NON relistés (aucun entrant de même titre) ont sauté : ils sortent de la vue
+ * mais restent tracés (`skipped`, cause « replanifie ») pour le check-in du
+ * soir et estimate_accuracy. Relisté = re-posé, pas de trace.
+ */
+export function traceUnlisted(
+  prevBlocks: AnyBlock[],
+  preserved: AnyBlock[],
+  newBlocks: AnyBlock[]
+): AnyBlock[] {
+  const norm = (t: unknown) => String(t ?? "").trim().toLowerCase();
+  const relisted = new Set(newBlocks.map((b) => norm(b.title)));
+  return prevBlocks
+    .filter((b) => !preserved.includes(b) && b.status === "pending" && !relisted.has(norm(b.title)))
+    .map((b) => ({ ...b, status: "skipped", skipReason: b.skipReason ?? "replanifie" }));
+}
+
 /** Session de chrono ramenée aux minutes murales du jour du programme. */
 export interface DaySession {
   startMin: number;

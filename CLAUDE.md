@@ -257,6 +257,14 @@ sous-action d'une tâche avec `projectId`+`taskId`). Lancer le bloc (▶) démar
 **Soft-delete des blocs** : swipe dans l'app → `status: "deleted"` (jamais retiré du tableau).
 `get_day_schedule` affiche les blocs supprimés avec `❌ [supprimé — ne pas recréer]` pour que
 Claude ne les recrée pas lors d'une régénération.
+**Sautés / déplacés hors de la vue** (B12, 2026-10) : le programme n'affiche que ce qui reste à faire ou ce qui a été
+fait. Un bloc `skipped` (sauté, reporté, déplacé via `update_block {moveTo}`, non relisté par un `schedule_day` de
+remplacement → trace `skipReason:"replanifie"`) sort de la vue, mobile et web, et ne laisse qu'un compteur discret
+« 2 blocs déplacés · 1 sauté » (pied de liste mobile, en-tête de la carte web ; tap = liste : heure prévue, titre,
+destination ou cause — `asideBlocks` / `asideLabel` / `asideDetail`, `utils/today_logic.dart`). Déplacé = `movedTo
+{date, startTime, blockId}` sur l'origine (ou `skipReason:"reporte"`). Ces traces n'ont qu'un usage : check-in du soir
+(« ↪ DÉPLACÉ → … » / « ❌ SAUTÉ (cause) ») et `estimate_accuracy`. Un miroir 📅 agenda ne se saute ni ne se déplace
+depuis l'app (refusé par `update_block`) : il se déplace dans l'agenda.
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour
@@ -292,7 +300,8 @@ Claude ne les recrée pas lors d'une régénération.
   label?, color?, startDate?, endDate?}]}` (par id, jamais d'ajout / suppression : `push_gantt`), `update_block(date,
   blockId, title?, startTime?, durationMin?, category?, status?, skipReason?, delete?, projectId?, taskId?, activityId?,
   actionId?)` (`""` sur un lien = le retirer ; `status:"skipped"` + `skipReason` ou `delete:true` libèrent le créneau d'un
-  bloc passé non fait ; le reste du programme est intact)
+  bloc passé non fait ; `moveTo {date, startTime}` = déplacement ATOMIQUE (copie à destination, origine tracée
+  `movedTo`, refusé si le créneau est occupé) ; le reste du programme est intact)
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les
