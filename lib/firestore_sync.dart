@@ -3179,8 +3179,11 @@ class FirestoreSync {
   }
 
   /// Met à jour le status d'un bloc (pending → done | skipped) sans recharger le doc entier.
+  /// [manual] = geste de l'utilisateur : décocher pose `noAutoWin` (le
+  /// passage automatique en « fait » ne recochera plus ce bloc), cocher le
+  /// lève. L'automatisme appelle sans [manual].
   Future<void> updateBlockStatus(
-      String date, String blockId, String status) async {
+      String date, String blockId, String status, {bool manual = false}) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');
     final snap = await ref.get();
@@ -3194,6 +3197,8 @@ class FirestoreSync {
       if (b['id'] == blockId) {
         b['status'] = status;
         if (status == 'done') b['doneAt'] = DateTime.now().toIso8601String();
+        if (manual && status == 'pending') b['noAutoWin'] = true;
+        if (manual && status == 'done') b['noAutoWin'] = false;
         break;
       }
     }

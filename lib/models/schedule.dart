@@ -43,6 +43,9 @@ class ScheduleBlock {
   String status;      // pending | done | skipped | deleted
   DateTime? doneAt;
   bool challenge;     // bloc né d'un « Challenge me » programmé (badge 🔥 + streak)
+  // L'utilisateur a DÉCOCHÉ ce bloc à la main : le passage automatique en
+  // « fait » (temps loggué / routine atteinte) ne le recoche plus jamais.
+  bool noAutoWin;
   List<String> reminders; // dates ISO des rappels programmés (max 2 pour un défi)
   // ── Préparation la veille ──────────────────────────────────────────────────
   // Absents = bloc normal (rétrocompatible). kind:"prep" = mini-bloc « préparer
@@ -98,6 +101,7 @@ class ScheduleBlock {
     this.status = 'pending',
     this.doneAt,
     this.challenge = false,
+    this.noAutoWin = false,
     List<String>? reminders,
     this.kind = 'normal',
     this.prepForDate,
@@ -127,6 +131,7 @@ class ScheduleBlock {
         'status': status,
         'doneAt': doneAt?.toIso8601String(),
         'challenge': challenge,
+        'noAutoWin': noAutoWin,
         'reminders': reminders,
         'kind': kind,
         'prepForDate': prepForDate,
@@ -153,6 +158,7 @@ class ScheduleBlock {
         status: j['status'] ?? 'pending',
         doneAt: _parseDateOrNull(j['doneAt']),
         challenge: j['challenge'] == true,
+        noAutoWin: j['noAutoWin'] == true,
         reminders: (j['reminders'] as List?)?.map((e) => e.toString()).toList(),
         kind: j['kind'] ?? 'normal',
         prepForDate: j['prepForDate'],

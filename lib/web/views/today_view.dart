@@ -337,8 +337,12 @@ class TodayViewState extends State<TodayView> {
     _busy = true;
     try {
       final newStatus = b.status == 'done' ? 'pending' : 'done';
-      setState(() => b.status = newStatus);
-      await widget.sync.updateBlockStatus(_today, b.id, newStatus);
+      setState(() {
+        b.status = newStatus;
+        if (newStatus == 'pending') b.noAutoWin = true;
+      });
+      // Geste manuel : décocher ici interdit au mobile de recocher ce bloc.
+      await widget.sync.updateBlockStatus(_today, b.id, newStatus, manual: true);
       if (newStatus == 'done') _completeLinkedRoutine(b);
     } finally {
       _busy = false;
