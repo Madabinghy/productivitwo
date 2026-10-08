@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
+import 'package:productivitwo_v1/web/session_preview_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 
@@ -552,6 +553,22 @@ class _ProjectsViewState extends State<ProjectsView> {
             ]),
           ),
           const SizedBox(width: 12),
+          // Aperçu de la séance (à venir ou du jour) : le déroulé et ses
+          // étapes cochables, sans attendre qu'elle soit « en cours ».
+          if (next?.native != null)
+            IconButton(
+              tooltip: 'Aperçu de la séance',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.visibility_outlined, size: 18, color: kBText3),
+              onPressed: () => showSessionPreviewDialog(context,
+                      project: p,
+                      intervention: next!.native!,
+                      sessionTask: next.milestone,
+                      sync: widget.sync)
+                  .then((_) {
+                if (mounted) setState(() {});
+              }),
+            ),
           const Icon(Icons.chevron_right, size: 16, color: kBText4),
         ]),
       ),
