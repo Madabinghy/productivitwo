@@ -44,4 +44,20 @@ void main() {
     expect(s.taskId, 't1');
     expect(s.endAt, DateTime(2026, 10, 7, 11, 0));
   });
+
+  test('sessionTargetLabel : tâche › action, action propre, ou rien', () {
+    final task = ProjectTask(
+        id: 't1', title: 'Corriger le DM', startDate: DateTime(2026, 10, 5),
+        actions: [TaskAction(id: 'a1', title: 'Corriger')]);
+    final p = Project(id: 'p', title: 'Géo', startDate: DateTime(2026, 10, 1), createdBy: 'u', tasks: [task]);
+    final act = Activity(id: 'v', domainId: 'd', name: 'Voiture', ownActions: [TaskAction(id: 'o1', title: 'Carte grise')]);
+    final t0 = DateTime(2026, 10, 7, 11, 30);
+    expect(sessionTargetLabel(Session(activityId: 'prep', startAt: t0, taskId: 't1', actionId: 'a1'),
+        projects: [p], activities: [act]), 'Corriger le DM › Corriger');
+    expect(sessionTargetLabel(Session(activityId: 'prep', startAt: t0, taskId: 't1'),
+        projects: [p], activities: [act]), 'Corriger le DM');
+    expect(sessionTargetLabel(Session(activityId: 'v', startAt: t0, actionId: 'o1'),
+        projects: [p], activities: [act]), 'Voiture › Carte grise');
+    expect(sessionTargetLabel(Session(activityId: 'prep', startAt: t0), projects: [p], activities: [act]), isNull);
+  });
 }

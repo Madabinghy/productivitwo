@@ -993,6 +993,18 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
       projectLinkedActivityId: _projOf(b.projectId)?.linkedActivityId,
       activityLinkedActivityId: _actOf(b.activityId)?.linkedActivityId);
 
+  /// Libellé « Tâche › action » de la session, en tenant compte d'un bloc
+  /// choisi mais pas encore enregistré.
+  String? _targetLabel() {
+    final s = widget.session;
+    final b = _block;
+    final preview = b != null && !_sessionOn(b)
+        ? (Session(activityId: s.activityId, startAt: s.startAt, taskId: b.taskId, actionId: b.actionId))
+        : s;
+    return sessionTargetLabel(preview,
+        projects: widget.logic.currentProjects, activities: widget.logic.state.activities);
+  }
+
   Future<void> _pickBlock(BuildContext context) async {
     final candidates = blockCandidatesForSession(widget.session, _dayBlocks, _day,
         activityOf: _actOf, projectOf: _projOf);
@@ -1150,6 +1162,15 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _blocksLoaded ? () => _pickBlock(context) : null,
             ),
+            // Ce pour quoi compte la session (tâche › action), même sans bloc
+            // visible : le bloc peut avoir disparu du programme, pas le lien.
+            if (!_detachBlock && _targetLabel() != null)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.flag_outlined),
+                title: const Text("Pour"),
+                subtitle: Text(_targetLabel()!),
+              ),
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,

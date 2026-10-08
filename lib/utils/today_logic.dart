@@ -280,6 +280,39 @@ List<({ScheduleBlock block, int overlapMin})> blockCandidatesForSession(
   return out;
 }
 
+/// Ce POUR QUOI compte une session, bloc ou pas : « Tâche › action » (tâche de
+/// projet, via `taskId` / `actionId`), « Activité › action propre » (`actionId`
+/// seul), ou null si la session ne porte rien. Affiché dans « Modifier la
+/// session » (mobile) et « Chronos du jour » (web) : un bloc peut avoir
+/// disparu du programme, le lien à la tâche, lui, reste.
+String? sessionTargetLabel(
+  Session s, {
+  required Iterable<Project> projects,
+  required Iterable<Activity> activities,
+}) {
+  if (s.taskId != null) {
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        if (t.id != s.taskId) continue;
+        final a = s.actionId == null
+            ? null
+            : t.actions.where((x) => x.id == s.actionId).firstOrNull;
+        return a == null ? t.title : '${t.title} › ${a.title}';
+      }
+    }
+    return 'Tâche introuvable';
+  }
+  if (s.actionId != null) {
+    for (final act in activities) {
+      if (act.id != s.activityId) continue;
+      final a = act.ownActions.where((x) => x.id == s.actionId).firstOrNull;
+      if (a != null) return '${act.name} › ${a.title}';
+    }
+    return 'Action introuvable';
+  }
+  return null;
+}
+
 /// Liste du jour (mobile) : les blocs TERMINÉS depuis un moment sont repliés
 /// en une ligne « Plus tôt » pour garder l'écran sur ce qui vient, sans les
 /// perdre (le passé reste dans le programme : rattachement après coup, bilan).
