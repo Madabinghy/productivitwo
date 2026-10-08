@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, isSettledBlock } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -74,4 +74,32 @@ test("nearestFreeSlot : créneau libre le plus proche, dans la fenêtre, sans ch
   assert.equal(nearestFreeSlot({ startTime: "09:00", durationMin: 13 * 60 }, busy, win), null);
   // Jamais avant le début de la journée active.
   assert.equal(nearestFreeSlot({ startTime: "07:00", durationMin: 30 }, [], win), "08:00");
+});
+
+test("isSettledBlock : faits / sautés, jour passé, ou commencé avant maintenant — jamais le futur", () => {
+  const ctx = { date: "2026-10-07", today: "2026-10-07", nowMin: toMin("18:50") };
+  const b = (startTime, status = "pending") => ({ startTime, durationMin: 60, status });
+  assert.equal(isSettledBlock(b("11:30"), ctx), true, "commencé avant maintenant");
+  assert.equal(isSettledBlock(b("11:30", "deleted"), ctx), true, "tombstone passé gardé");
+  assert.equal(isSettledBlock(b("21:00"), ctx), false, "à venir : remplaçable");
+  assert.equal(isSettledBlock(b("21:00", "done"), ctx), true, "fait = un fait");
+  assert.equal(isSettledBlock(b("21:00"), { ...ctx, date: "2026-10-06" }), true, "jour passé");
+  assert.equal(isSettledBlock(b("08:00"), { ...ctx, date: "2026-10-08" }), false, "jour futur");
+});
+
+test("remplacement : un entrant qui chevauche un bloc vécu est écarté (le passé est immuable)", () => {
+  const ctx = { date: "2026-10-07", today: "2026-10-07", nowMin: toMin("18:50") };
+  const prev = [
+    { id: "corr", startTime: "11:30", durationMin: 420, status: "done", title: "Correction" },
+    { id: "soir", startTime: "21:00", durationMin: 60, status: "pending", title: "Prépa" },
+  ];
+  const settled = prev.filter((b) => isSettledBlock(b, ctx));
+  assert.deepEqual(settled.map((b) => b.id), ["corr"]);
+  const incoming = [
+    { startTime: "12:00", durationMin: 60, title: "Doublon passé" },
+    { startTime: "21:00", durationMin: 75, title: "Nouvelle prépa" },
+  ];
+  const { kept, dropped } = fillAgainstExisting(incoming, settled);
+  assert.deepEqual(kept.map((b) => b.title), ["Nouvelle prépa"]);
+  assert.deepEqual(dropped.map((b) => b.title), ["Doublon passé"]);
 });

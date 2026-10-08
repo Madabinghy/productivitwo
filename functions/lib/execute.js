@@ -2658,8 +2658,18 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     // d'événements Google Agenda (tous statuts : un remplacement de programme
     // ne peut pas effacer un rendez-vous, ni ressusciter un miroir swipé).
     const prevBlocks = (_a = prevData.blocks) !== null && _a !== void 0 ? _a : [];
+    // Le passé est immuable : un remplacement ne touche que ce qui reste à
+    // venir. Les blocs déjà vécus (faits, sautés, commencés avant maintenant
+    // dans la journée de l'utilisateur) survivent, et un entrant qui les
+    // chevaucherait est écarté comme en mode compléter.
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const tzOffset = metaSnap.exists ? metaSnap.data().tzOffsetMin : null;
+    const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
+    const settledCtx = { date, today: lived.ymd, nowMin: (0, schedule_dedupe_2.toMin)(lived.hm) };
+    const settled = fill ? [] : prevBlocks.filter((b) => (0, schedule_dedupe_1.isSettledBlock)(b, settledCtx));
     const preserved = fill ? prevBlocks : prevBlocks
-        .filter((b) => b.gcalEventId != null ||
+        .filter((b) => (0, schedule_dedupe_1.isSettledBlock)(b, settledCtx) ||
+        b.gcalEventId != null ||
         // Défi programmé 🔥 = engagement pris (alarme locale armée côté app) —
         // un remplacement de programme ne l'efface jamais en silence.
         (b.challenge === true && b.status !== "deleted") ||
@@ -2673,7 +2683,7 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     // reporté…) est écarté : on ne touche pas à ce qui est déjà posé.
     const { kept: newBlocks, dropped: overlapping } = fill
         ? (0, schedule_dedupe_1.fillAgainstExisting)(afterMirrors, preserved)
-        : { kept: afterMirrors, dropped: [] };
+        : (0, schedule_dedupe_1.fillAgainstExisting)(afterMirrors, settled);
     await ref.set({
         date,
         generatedBy,
@@ -2709,9 +2719,12 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
         clashed = `\n⛔ ${overlapping.length} bloc(s) écarté(s) — créneau déjà occupé : ${hints.join(" · ")}` +
             `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée si elle convient.`;
     }
+    const livedNote = settled.length
+        ? ` · ${settled.length} bloc(s) déjà vécu(s) conservé(s) (le passé n'est jamais remplacé)`
+        : "";
     const head = fill
         ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
-        : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)`;
+        : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)${livedNote}`;
     return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
 }
 const sanitizeTasks = (raw) => {
