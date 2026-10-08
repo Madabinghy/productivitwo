@@ -636,7 +636,8 @@ export const proposeDayPlan = onRequest(
       const refBlocks = ((refData.blocks as Array<Record<string, unknown>>) ?? [])
         .filter((b) => b.status !== "deleted" && b.kind !== "prep");
       const refLines = refBlocks.map((b) => {
-        const st = b.status === "done" ? "✅" : "❌ SAUTÉ";
+        const mt = b.movedTo as { date?: string; startTime?: string } | null | undefined;
+        const st = b.status === "done" ? "✅" : mt ? `↪ DÉPLACÉ → ${mt.date} ${mt.startTime}` : "❌ SAUTÉ";
         // La raison du report est citée telle quelle : « pas sur place » hier
         // ≠ aujourd'hui — la proposition peut en tenir compte.
         const reason = b.skipReason

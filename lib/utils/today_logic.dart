@@ -313,6 +313,53 @@ String? sessionTargetLabel(
   return null;
 }
 
+/// B12 — le programme n'affiche que ce qui reste à faire ou ce qui a été fait.
+/// Les blocs sautés ou déplacés (`status: skipped`) sortent de la vue et ne
+/// laissent qu'un compteur en pied : « 2 blocs déplacés · 1 sauté ».
+/// Déplacé = `movedTo` posé ou cause « reporte » ; sauté = le reste.
+({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) asideBlocks(
+    Iterable<ScheduleBlock> blocks) {
+  final moved = <ScheduleBlock>[];
+  final skipped = <ScheduleBlock>[];
+  for (final b in blocks) {
+    if (b.status != 'skipped') continue;
+    (b.movedTo != null || b.skipReason == 'reporte' ? moved : skipped).add(b);
+  }
+  return (moved: moved, skipped: skipped);
+}
+
+/// Libellé du compteur de pied ; null s'il n'y a rien à tracer.
+String? asideLabel(({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) a) {
+  final parts = <String>[];
+  if (a.moved.isNotEmpty) {
+    parts.add('${a.moved.length} bloc${a.moved.length > 1 ? 's' : ''} déplacé${a.moved.length > 1 ? 's' : ''}');
+  }
+  if (a.skipped.isNotEmpty) {
+    parts.add(a.moved.isEmpty
+        ? '${a.skipped.length} bloc${a.skipped.length > 1 ? 's' : ''} sauté${a.skipped.length > 1 ? 's' : ''}'
+        : '${a.skipped.length} sauté${a.skipped.length > 1 ? 's' : ''}');
+  }
+  return parts.isEmpty ? null : parts.join(' · ');
+}
+
+/// Ligne de détail d'un bloc écarté : heure prévue, titre, et où il est parti
+/// ou pourquoi il a sauté.
+String asideDetail(ScheduleBlock b) {
+  final mt = b.movedTo;
+  if (mt != null) return '→ ${mt['date'] ?? ''} ${mt['startTime'] ?? ''}'.trim();
+  switch (b.skipReason) {
+    case 'reporte':
+      return '→ reporté au lendemain';
+    case 'replanifie':
+      return 'retiré à la replanification';
+    case null:
+    case '':
+      return 'sauté';
+    default:
+      return 'sauté · ${b.skipReason}';
+  }
+}
+
 /// Liste du jour (mobile) : les blocs TERMINÉS depuis un moment sont repliés
 /// en une ligne « Plus tôt » pour garder l'écran sur ce qui vient, sans les
 /// perdre (le passé reste dans le programme : rattachement après coup, bilan).

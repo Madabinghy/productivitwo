@@ -437,7 +437,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final cs = Theme.of(context).colorScheme;
     // Tri chronologique : les défis (ajoutés en fin de tableau) se placent à
     // leur heure dans le programme, pas en bas de liste.
-    final visible = (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
+    // B12 : sautés / déplacés hors de la vue, tracés par un compteur en pied.
+    final aside = asideBlocks(_schedule?.blocks ?? const []);
+    final visible = (_schedule?.blocks
+                .where((b) => b.status != 'deleted' && b.status != 'skipped')
+                .toList() ??
+            [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isToday) return;
@@ -533,8 +538,54 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
+        if (asideLabel(aside) != null) _asideRow(cs, aside),
         if (bare) _addRow(cs),
       ],
+    );
+  }
+
+  /// Pied « 2 blocs déplacés · 1 sauté » : tap = liste repliée (heure prévue,
+  /// titre, destination ou cause). Zéro espace quand il n'y a rien.
+  Widget _asideRow(ColorScheme cs, ({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) a) {
+    return InkWell(
+      onTap: () => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (_) => SafeArea(
+          child: ListView(shrinkWrap: true, padding: const EdgeInsets.only(bottom: 12), children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Text('Hors du programme',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            ),
+            for (final b in [...a.moved, ...a.skipped]
+              ..sort((x, y) => x.startTime.compareTo(y.startTime)))
+              ListTile(
+                dense: true,
+                leading: Icon(
+                    b.movedTo != null || b.skipReason == 'reporte'
+                        ? Icons.redo_rounded
+                        : Icons.skip_next_rounded,
+                    color: cs.onSurface.withOpacity(.5)),
+                title: Text('${b.startTime} · ${b.title}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                subtitle: Text(asideDetail(b)),
+              ),
+          ]),
+        ),
+      ),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 36),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(children: [
+          const SizedBox(width: 62),
+          Expanded(
+            child: Text(asideLabel(a)!,
+                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.45))),
+          ),
+          Icon(Icons.chevron_right, size: 16, color: cs.onSurface.withOpacity(.35)),
+        ]),
+      ),
     );
   }
 

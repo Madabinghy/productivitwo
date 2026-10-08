@@ -1,4 +1,4 @@
-import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, DaySession } from "./schedule_dedupe";
+import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
 import { toMin } from "./schedule_dedupe";
 import {
@@ -2366,6 +2366,7 @@ async function executeUpdateBlock(
   updates: {
     title?: string; startTime?: string; durationMin?: number; category?: string; status?: string;
     skipReason?: string; delete?: boolean;
+    moveTo?: { date: string; startTime: string };
     projectId?: string; taskId?: string; activityId?: string; actionId?: string;
   }
 ): Promise<string> {
@@ -2378,6 +2379,76 @@ async function executeUpdateBlock(
   const blocks = ((data.blocks || []) as Array<Record<string, unknown>>).slice();
   const idx = blocks.findIndex((b) => b.id === blockId);
   if (idx === -1) return `Bloc introuvable : ${blockId}`;
+
+  // Un miroir Google Agenda ne se saute ni ne se déplace ici : l'agenda est sa
+  // source de vérité, il se déplace DANS l'agenda (la resync suit).
+  const isMirror = blocks[idx].gcalEventId != null;
+  if (isMirror && (updates.moveTo || updates.status === "skipped" || updates.status === "deleted")) {
+    return `📅 « ${blocks[idx].title} » est un rendez-vous Google Agenda : il ne se saute pas et ne se déplace pas ` +
+      `depuis Productivitwo. Déplace-le ou supprime-le dans l'agenda, le programme suivra à la prochaine synchronisation.`;
+  }
+
+  // B12 — déplacement ATOMIQUE : copie à destination (statut pending, lien
+  // vers l'origine) + origine marquée « déplacée » (skipped/reporte + movedTo).
+  // Un seul appel au lieu de skip ici + fill là-bas.
+  if (updates.moveTo) {
+    const mv = updates.moveTo;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(mv.date))) return `moveTo.date : format YYYY-MM-DD attendu, reçu "${mv.date}"`;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(mv.startTime))) return `moveTo.startTime : format HH:mm attendu, reçu "${mv.startTime}"`;
+    const origin = blocks[idx];
+    if (origin.status === "done") return `« ${origin.title} » est déjà fait : rien à déplacer.`;
+    const destRef = db.doc(`users/${uid}/daily_schedules/${mv.date}`);
+    const destSnap = mv.date === date ? null : await destRef.get();
+    const destBlocks = mv.date === date
+      ? blocks.filter((b) => b.id !== blockId)
+      : (((destSnap?.data()?.blocks as Array<Record<string, unknown>>) ?? []).slice());
+    const copy: Record<string, unknown> = {
+      ...origin,
+      id: uuidv4(),
+      startTime: mv.startTime,
+      status: "pending",
+      doneAt: null,
+      skipReason: null,
+      reportReason: null,
+      movedTo: null,
+      carriedFromDate: `${date}:${blockId}`,
+      movedFrom: { date, blockId, startTime: origin.startTime },
+    };
+    const { conflicts } = fillAgainstExisting([copy], destBlocks);
+    if (conflicts.length) {
+      const by = conflicts[0].by;
+      const found = nextFreeSlot(copy, destBlocks, toMin(mv.startTime));
+      const hint = found.slot
+        ? `prochain créneau libre : ${found.slot}`
+        : `aucun créneau de ${copy.durationMin} min libre avant ${found.until ? `« ${found.until.title} » ${found.until.startTime}` : "minuit"}`;
+      return `⛔ ${mv.date} ${mv.startTime} est occupé par « ${by.title} » (${by.startTime}, ${by.durationMin} min, ${by.status}, id:${by.id}) — ${hint}.`;
+    }
+    const movedOrigin = {
+      ...origin,
+      status: "skipped",
+      skipReason: "reporte",
+      movedTo: { date: mv.date, startTime: mv.startTime, blockId: copy.id },
+    };
+    if (mv.date === date) {
+      blocks[idx] = movedOrigin;
+      blocks.push(copy);
+      await ref.update({ blocks });
+    } else {
+      blocks[idx] = movedOrigin;
+      const destData = destSnap?.exists ? (destSnap.data() as Record<string, unknown>) : {};
+      await Promise.all([
+        ref.update({ blocks }),
+        destRef.set({
+          date: mv.date,
+          generatedBy: destData.generatedBy ?? "claude",
+          generatedAt: destData.generatedAt ?? FieldValue.serverTimestamp(),
+          blocks: [...destBlocks, copy],
+        }, { merge: true }),
+      ]);
+    }
+    return `↪ « ${origin.title} » déplacé : ${date} ${origin.startTime} → ${mv.date} ${mv.startTime} (nouvel id ${copy.id}). ` +
+      `L'origine reste tracée (déplacée), hors de la vue du programme.`;
+  }
 
   const patch: Record<string, unknown> = {};
   if (updates.title !== undefined) {
@@ -2407,6 +2478,9 @@ async function executeUpdateBlock(
   }
   if (updates.skipReason !== undefined) {
     patch.skipReason = updates.skipReason.trim() ? clampStr(updates.skipReason, 300, "skipReason") : null;
+  }
+  if (updates.status === "skipped" && updates.skipReason === undefined && !blocks[idx].skipReason) {
+    patch.skipReason = "saute";
   }
   for (const k of ["projectId", "taskId", "activityId", "actionId"] as const) {
     if (updates[k] !== undefined) patch[k] = updates[k] ? updates[k] : null;
@@ -2914,7 +2988,13 @@ async function executeGetDaySchedule(uid: string, date: string): Promise<string>
     s === "done" ? "✅" : s === "skipped" ? "⏭" : s === "deleted" ? "❌" : "⬜";
   const lines = blocks.map((b) => {
     const icon = statusIcon(b.status as string);
-    const deletedNote = b.status === "deleted" ? " [supprimé par l'utilisateur — ne pas recréer]" : "";
+    const mt = b.movedTo as { date?: string; startTime?: string } | null | undefined;
+    const deletedNote = b.status === "deleted"
+      ? " [supprimé par l'utilisateur — ne pas recréer]"
+      : b.status === "skipped"
+        ? (mt ? ` [déplacé → ${mt.date} ${mt.startTime} — hors de la vue, ne pas recréer]`
+              : ` [sauté${b.skipReason ? ` — ${b.skipReason}` : ""} — hors de la vue]`)
+        : "";
     // Miroir d'un rendez-vous Google Agenda : il est DÉJÀ dans le programme et
     // dans l'agenda — Claude ne doit ni le recréer dans schedule_day ni le
     // renvoyer vers Google Calendar.
@@ -3140,12 +3220,17 @@ async function executeScheduleDay(
   const { kept: newBlocks, conflicts } = fill
     ? fillAgainstExisting(afterMirrors, preserved)
     : fillAgainstExisting(afterMirrors, settled);
+  // B12 — un bloc passé non fait et NON relisté a sauté : il sort de la vue
+  // mais reste tracé (status skipped, cause « replanifie ») pour le check-in
+  // du soir et estimate_accuracy. Relisté (même titre) = simplement re-posé,
+  // pas de trace.
+  const traces = fill ? [] : traceUnlisted(prevBlocks, preserved, newBlocks);
 
   await ref.set({
     date,
     generatedBy,
     generatedAt: FieldValue.serverTimestamp(),
-    blocks: [...preserved, ...newBlocks],
+    blocks: [...preserved, ...traces, ...newBlocks],
     dayReason: prevData.dayReason ?? null,
     plannedAt: prevData.plannedAt ?? null,
     plannedSameDay: prevData.plannedSameDay ?? false,
@@ -3186,9 +3271,11 @@ async function executeScheduleDay(
       `\n   Repose-les avec schedule_day(mode:"fill") à l'heure indiquée, ou libère le créneau avec ` +
       `update_block(status:"skipped" | delete:true) si le bloc occupant a sauté.`;
   }
-  const livedNote = settled.length
+  const livedNote = (settled.length
     ? ` · ${settled.length} bloc(s) vécu(s) conservé(s) (faits, chrono rattaché, sautés / retirés)`
-    : "";
+    : "") + (traces.length
+    ? ` · ${traces.length} bloc(s) non relisté(s) tracé(s) comme sautés (hors de la vue)`
+    : "");
   const head = fill
     ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
     : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)${livedNote}`;
