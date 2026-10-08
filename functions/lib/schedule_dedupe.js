@@ -10,8 +10,10 @@ exports.sameSlot = sameSlot;
 exports.splitAgainstMirrors = splitAgainstMirrors;
 exports.dropPlainDuplicates = dropPlainDuplicates;
 exports.fillAgainstExisting = fillAgainstExisting;
+exports.blockHasSession = blockHasSession;
 exports.isSettledBlock = isSettledBlock;
 exports.nearestFreeSlot = nearestFreeSlot;
+exports.nearestFreeSlotAnywhere = nearestFreeSlotAnywhere;
 const norm = (s) => String(s !== null && s !== void 0 ? s : "")
     .toLowerCase()
     .normalize("NFD")
@@ -83,36 +85,46 @@ function fillAgainstExisting(incoming, existing) {
     const busy = existing.filter(exports.isOccupying);
     const kept = [];
     const dropped = [];
+    const conflicts = [];
     for (const b of incoming) {
-        if (busy.some((e) => overlaps(b, e))) {
+        const by = busy.find((e) => overlaps(b, e));
+        if (by) {
             dropped.push(b);
+            conflicts.push({ block: b, by });
         }
         else {
             kept.push(b);
             busy.push(b);
         }
     }
-    return { kept, dropped };
+    return { kept, dropped, conflicts };
+}
+/** Un chrono RÉEL a tourné pour ce bloc : même tâche (sinon même activité)
+ *  et au moins une minute en commun avec son créneau. */
+function blockHasSession(b, sessions) {
+    var _a;
+    const bS = (0, exports.toMin)(b.startTime), bE = bS + Number((_a = b.durationMin) !== null && _a !== void 0 ? _a : 0);
+    return sessions.some((s) => {
+        const sameSource = (b.taskId != null && s.taskId === b.taskId) ||
+            (b.taskId == null && b.activityId != null && s.activityId === b.activityId);
+        return sameSource && s.startMin < bE && bS < s.endMin;
+    });
 }
 /**
- * Bloc déjà VÉCU, qu'un remplacement de programme ne doit jamais effacer :
- * fait ou sauté (un fait), ou dont le créneau a commencé avant « maintenant »
- * dans la journée de l'utilisateur ([date] = jour du programme, [today] /
- * [nowMin] = jour et heure vécus). Un jour passé est entièrement vécu, un jour
- * futur pas du tout. Les tombstones (`deleted`) passés sont gardés aussi : ils
- * disent « ne pas recréer » et restent rattachables après coup.
- * Constat 2026-10-07 : une régénération du soir avait effacé toute la journée,
- * dont un bloc de correction fait sur lequel une session de 7 h devait être
- * rattachée.
+ * Bloc VÉCU, qu'un remplacement de programme ne doit jamais effacer (B10) :
+ * **fait**, ou un chrono réel y est rattaché ([sessions]). Les tombstones
+ * (`skipped`, `deleted`) sont gardés aussi : ils n'occupent pas le créneau,
+ * disent « ne pas recréer » et nourrissent le check-in du soir. Un bloc
+ * passé NON fait n'est pas protégé : il a sauté, il se remplace comme un bloc
+ * futur (constat 2026-10-07 : un BPF de 22 h 40 resté `pending` bloquait
+ * 23 h 15 et personne ne pouvait le retirer).
+ * (La première version protégeait « commencé avant maintenant » : trop large.)
  */
-function isSettledBlock(b, ctx) {
-    if (b.status === "done" || b.status === "skipped")
+function isSettledBlock(b, ctx = {}) {
+    var _a;
+    if (b.status === "done" || b.status === "skipped" || b.status === "deleted")
         return true;
-    if (ctx.date < ctx.today)
-        return true;
-    if (ctx.date > ctx.today)
-        return false;
-    return (0, exports.toMin)(b.startTime) < ctx.nowMin;
+    return blockHasSession(b, (_a = ctx.sessions) !== null && _a !== void 0 ? _a : []);
 }
 const fromMin = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 /**
@@ -139,5 +151,14 @@ function nearestFreeSlot(block, existing, window, step = 15) {
         }
     }
     return null;
+}
+/** Créneau libre le plus proche : dans la journée active d'abord, sinon
+ *  n'importe où dans les 24 h (le soir tard après le dernier bloc, par ex.). */
+function nearestFreeSlotAnywhere(block, existing, window, step = 15) {
+    const inWin = nearestFreeSlot(block, existing, window, step);
+    if (inWin)
+        return { slot: inWin, inWindow: true };
+    const any = nearestFreeSlot(block, existing, { startMin: 0, endMin: 24 * 60 }, step);
+    return any ? { slot: any, inWindow: false } : null;
 }
 //# sourceMappingURL=schedule_dedupe.js.map

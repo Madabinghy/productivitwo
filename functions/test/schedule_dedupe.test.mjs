@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, isSettledBlock } from "../lib/schedule_dedupe.js";
+import { sameSlot, splitAgainstMirrors, dropPlainDuplicates, fillAgainstExisting, toMin, nearestFreeSlot, nearestFreeSlotAnywhere, isSettledBlock, blockHasSession } from "../lib/schedule_dedupe.js";
 
 const mirror = { id: "gcal-1", startTime: "08:30", durationMin: 240, title: "Cléa Numérique - LAM4", gcalEventId: "1", status: "pending" };
 
@@ -76,30 +76,59 @@ test("nearestFreeSlot : créneau libre le plus proche, dans la fenêtre, sans ch
   assert.equal(nearestFreeSlot({ startTime: "07:00", durationMin: 30 }, [], win), "08:00");
 });
 
-test("isSettledBlock : faits / sautés, jour passé, ou commencé avant maintenant — jamais le futur", () => {
-  const ctx = { date: "2026-10-07", today: "2026-10-07", nowMin: toMin("18:50") };
-  const b = (startTime, status = "pending") => ({ startTime, durationMin: 60, status });
-  assert.equal(isSettledBlock(b("11:30"), ctx), true, "commencé avant maintenant");
-  assert.equal(isSettledBlock(b("11:30", "deleted"), ctx), true, "tombstone passé gardé");
-  assert.equal(isSettledBlock(b("21:00"), ctx), false, "à venir : remplaçable");
-  assert.equal(isSettledBlock(b("21:00", "done"), ctx), true, "fait = un fait");
-  assert.equal(isSettledBlock(b("21:00"), { ...ctx, date: "2026-10-06" }), true, "jour passé");
-  assert.equal(isSettledBlock(b("08:00"), { ...ctx, date: "2026-10-08" }), false, "jour futur");
+test("isSettledBlock (B10) : fait, chrono rattaché, ou tombstone — un bloc passé non fait n'est PAS protégé", () => {
+  const b = (startTime, status = "pending", extra = {}) => ({ startTime, durationMin: 50, status, ...extra });
+  assert.equal(isSettledBlock(b("22:40")), false, "BPF passé non fait : il a sauté, remplaçable");
+  assert.equal(isSettledBlock(b("22:40", "done")), true, "fait = un fait");
+  assert.equal(isSettledBlock(b("22:40", "skipped")), true, "sauté : tombstone gardé (check-in)");
+  assert.equal(isSettledBlock(b("22:40", "deleted")), true, "retiré : tombstone gardé (ne pas recréer)");
+  const corr = b("11:30", "pending", { taskId: "t-corr", durationMin: 420 });
+  const sessions = [{ startMin: toMin("11:30"), endMin: toMin("18:40"), taskId: "t-corr", activityId: "prepa" }];
+  assert.equal(isSettledBlock(corr, { sessions }), true, "chrono réel sur la tâche du bloc : protégé");
+  assert.equal(isSettledBlock(b("21:00", "pending", { taskId: "autre" }), { sessions }), false);
+  // Bloc d'activité (sans tâche) : même activité + chevauchement.
+  const act = b("12:00", "pending", { activityId: "prepa", durationMin: 60 });
+  assert.equal(blockHasSession(act, sessions), true);
+  assert.equal(blockHasSession(b("19:00", "pending", { activityId: "prepa" }), sessions), false, "hors créneau");
 });
 
-test("remplacement : un entrant qui chevauche un bloc vécu est écarté (le passé est immuable)", () => {
-  const ctx = { date: "2026-10-07", today: "2026-10-07", nowMin: toMin("18:50") };
+test("remplacement (B10) : le BPF passé non relisté disparaît, le bloc fait reste, un entrant sur un bloc fait est écarté", () => {
   const prev = [
     { id: "corr", startTime: "11:30", durationMin: 420, status: "done", title: "Correction" },
-    { id: "soir", startTime: "21:00", durationMin: 60, status: "pending", title: "Prépa" },
+    { id: "bpf", startTime: "22:40", durationMin: 50, status: "pending", title: "BPF" },
   ];
-  const settled = prev.filter((b) => isSettledBlock(b, ctx));
+  const settled = prev.filter((b) => isSettledBlock(b));
   assert.deepEqual(settled.map((b) => b.id), ["corr"]);
   const incoming = [
     { startTime: "12:00", durationMin: 60, title: "Doublon passé" },
-    { startTime: "21:00", durationMin: 75, title: "Nouvelle prépa" },
+    { startTime: "23:15", durationMin: 15, title: "Petit bloc du soir" },
   ];
-  const { kept, dropped } = fillAgainstExisting(incoming, settled);
-  assert.deepEqual(kept.map((b) => b.title), ["Nouvelle prépa"]);
+  const { kept, dropped, conflicts } = fillAgainstExisting(incoming, settled);
+  assert.deepEqual(kept.map((b) => b.title), ["Petit bloc du soir"]);
   assert.deepEqual(dropped.map((b) => b.title), ["Doublon passé"]);
+  assert.equal(conflicts[0].by.id, "corr", "le message nomme le bloc occupant");
+});
+
+test("mode compléter : un bloc écarté nomme son occupant ; sauté ou retiré, il libère le créneau", () => {
+  const bpf = { id: "bpf", startTime: "22:40", durationMin: 50, status: "pending", title: "BPF" };
+  const want = [{ startTime: "23:15", durationMin: 15, title: "Soir" }];
+  const r1 = fillAgainstExisting(want, [bpf]);
+  assert.equal(r1.kept.length, 0);
+  assert.equal(r1.conflicts[0].by.id, "bpf");
+  const r2 = fillAgainstExisting(want, [{ ...bpf, status: "skipped" }]);
+  assert.equal(r2.kept.length, 1, "update_block(status:skipped) libère le créneau");
+  const r3 = fillAgainstExisting(want, [{ ...bpf, status: "deleted" }]);
+  assert.equal(r3.kept.length, 1, "update_block(delete:true) aussi");
+});
+
+test("nearestFreeSlotAnywhere : la journée active d'abord, sinon le vrai libre hors fenêtre (23:30 après le dernier bloc)", () => {
+  const busy = [
+    { startTime: "07:00", durationMin: 15 * 60, status: "done", title: "Journée" },
+    { startTime: "22:00", durationMin: 90, status: "pending", title: "Soirée" },
+  ];
+  const win = { startMin: 7 * 60, endMin: 22 * 60 };
+  const r = nearestFreeSlotAnywhere({ startTime: "22:40", durationMin: 30 }, busy, win);
+  assert.deepEqual(r, { slot: "23:30", inWindow: false });
+  const r2 = nearestFreeSlotAnywhere({ startTime: "09:00", durationMin: 30 }, [], win);
+  assert.deepEqual(r2, { slot: "09:00", inWindow: true });
 });

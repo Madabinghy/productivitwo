@@ -1312,7 +1312,8 @@ const UPDATE_BLOCK_TOOL = {
   description:
     "Retouche UN bloc du programme horaire (titre, heure, durée, catégorie, liens projet / tâche / activité / action) " +
     "sans toucher au reste du programme. Préfère cet outil à schedule_day pour renommer ou déplacer un seul bloc. " +
-    "Récupère blockId via get_day_schedule. Pour marquer fait : mark_block_done ; pour retirer : status \"deleted\".",
+    "Récupère blockId via get_day_schedule. Pour marquer fait : mark_block_done ; un bloc passé NON fait qui bloque un créneau : " +
+    "status \"skipped\" (+ skipReason) ou delete:true.",
   inputSchema: {
     type: "object",
     required: ["date", "blockId"],
@@ -1323,7 +1324,9 @@ const UPDATE_BLOCK_TOOL = {
       startTime:   { type: "string", description: "HH:mm" },
       durationMin: { type: "number" },
       category:    { type: "string", enum: ["project", "routine", "personal", "break"] },
-      status:      { type: "string", enum: ["pending", "done", "skipped", "deleted"] },
+      status:      { type: "string", enum: ["pending", "done", "skipped", "deleted"], description: "skipped = a sauté (libère le créneau, nourrit le check-in du soir) ; deleted = retiré" },
+      skipReason:  { type: "string", description: "pourquoi le bloc a sauté (avec status skipped)" },
+      delete:      { type: "boolean", description: "true = retirer le bloc (équivaut à status deleted)" },
       projectId:   { type: "string", description: "chaîne vide = retirer le lien" },
       taskId:      { type: "string", description: "chaîne vide = retirer le lien" },
       activityId:  { type: "string", description: "chaîne vide = retirer le lien" },
