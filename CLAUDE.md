@@ -265,6 +265,10 @@ destination ou cause — `asideBlocks` / `asideLabel` / `asideDetail`, `utils/to
 {date, startTime, blockId}` sur l'origine (ou `skipReason:"reporte"`). Ces traces n'ont qu'un usage : check-in du soir
 (« ↪ DÉPLACÉ → … » / « ❌ SAUTÉ (cause) ») et `estimate_accuracy`. Un miroir 📅 agenda ne se saute ni ne se déplace
 depuis l'app (refusé par `update_block`) : il se déplace dans l'agenda.
+**Annuler un bloc** (« pas disponible », 2026-10) : sans report ni déplacement — mobile : appui long → « Annuler le
+bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `skipReason: kSkipUnavailable`
+(`"indisponible"`, `FirestoreSync.setBlockCancelled`) ; compté à part (« 1 annulé », `asideBlocks().cancelled`) et
+**rétablissable** depuis la liste « Hors du programme ». Jamais sur un miroir agenda (`canCancelBlock`).
 
 **Outils MCP** :
 - `get_day_schedule(date)` — lit le programme du jour

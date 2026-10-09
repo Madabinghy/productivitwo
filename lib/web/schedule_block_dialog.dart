@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show canCancelBlock, kSkipUnavailable;
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
@@ -188,6 +189,22 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
                 icon: const Icon(Icons.delete_outline, size: 18),
                 label: const Text('Supprimer'),
                 style: TextButton.styleFrom(foregroundColor: kBAlert),
+              ),
+            if (!widget.isNew && canCancelBlock(widget.block))
+              Tooltip(
+                message: 'Annuler ce bloc : il sort du programme, sans report ni déplacement',
+                child: TextButton.icon(
+                  onPressed: _valid
+                      ? () {
+                          final b = _result(status: 'skipped');
+                          b.skipReason = kSkipUnavailable;
+                          Navigator.of(context).pop(b);
+                        }
+                      : null,
+                  icon: const Icon(Icons.event_busy_rounded, size: 18),
+                  label: const Text('Pas disponible'),
+                  style: TextButton.styleFrom(foregroundColor: kBText2),
+                ),
               ),
             const Spacer(),
             TextButton(

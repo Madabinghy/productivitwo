@@ -360,27 +360,51 @@ String? sessionTargetLabel(
 /// Les blocs sautés ou déplacés (`status: skipped`) sortent de la vue et ne
 /// laissent qu'un compteur en pied : « 2 blocs déplacés · 1 sauté ».
 /// Déplacé = `movedTo` posé ou cause « reporte » ; sauté = le reste.
-({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) asideBlocks(
-    Iterable<ScheduleBlock> blocks) {
+typedef AsideBlocks = ({
+  List<ScheduleBlock> moved,
+  List<ScheduleBlock> cancelled,
+  List<ScheduleBlock> skipped,
+});
+
+/// Cause d'un bloc ANNULÉ par l'utilisateur (« pas disponible ») : il sort du
+/// programme sans report ni déplacement, et se rétablit d'un tap.
+const kSkipUnavailable = 'indisponible';
+
+bool isCancelledBlock(ScheduleBlock b) =>
+    b.status == 'skipped' && b.skipReason == kSkipUnavailable && b.movedTo == null;
+
+/// Un bloc s'annule s'il reste à faire et ne vient pas de l'agenda (un miroir
+/// se gère dans Google Agenda).
+bool canCancelBlock(ScheduleBlock b) => b.status == 'pending' && b.gcalEventId == null;
+
+AsideBlocks asideBlocks(Iterable<ScheduleBlock> blocks) {
   final moved = <ScheduleBlock>[];
+  final cancelled = <ScheduleBlock>[];
   final skipped = <ScheduleBlock>[];
   for (final b in blocks) {
     if (b.status != 'skipped') continue;
-    (b.movedTo != null || b.skipReason == 'reporte' ? moved : skipped).add(b);
+    if (b.movedTo != null || b.skipReason == 'reporte') {
+      moved.add(b);
+    } else if (isCancelledBlock(b)) {
+      cancelled.add(b);
+    } else {
+      skipped.add(b);
+    }
   }
-  return (moved: moved, skipped: skipped);
+  return (moved: moved, cancelled: cancelled, skipped: skipped);
 }
 
 /// Libellé du compteur de pied ; null s'il n'y a rien à tracer.
-String? asideLabel(({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) a) {
+String? asideLabel(AsideBlocks a) {
   final parts = <String>[];
-  if (a.moved.isNotEmpty) {
-    parts.add('${a.moved.length} bloc${a.moved.length > 1 ? 's' : ''} déplacé${a.moved.length > 1 ? 's' : ''}');
-  }
-  if (a.skipped.isNotEmpty) {
-    parts.add(a.moved.isEmpty
-        ? '${a.skipped.length} bloc${a.skipped.length > 1 ? 's' : ''} sauté${a.skipped.length > 1 ? 's' : ''}'
-        : '${a.skipped.length} sauté${a.skipped.length > 1 ? 's' : ''}');
+  for (final (c, w) in [
+    (a.moved.length, 'déplacé'),
+    (a.cancelled.length, 'annulé'),
+    (a.skipped.length, 'sauté'),
+  ]) {
+    if (c == 0) continue;
+    final pl = c > 1 ? 's' : '';
+    parts.add(parts.isEmpty ? '$c bloc$pl $w$pl' : '$c $w$pl');
   }
   return parts.isEmpty ? null : parts.join(' · ');
 }
@@ -395,6 +419,8 @@ String asideDetail(ScheduleBlock b) {
       return '→ reporté au lendemain';
     case 'replanifie':
       return 'retiré à la replanification';
+    case kSkipUnavailable:
+      return 'annulé · pas disponible';
     case null:
     case '':
       return 'sauté';
