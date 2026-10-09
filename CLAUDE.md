@@ -326,7 +326,11 @@ basculer la session sur l'activité liée de la routine. Plusieurs sessions peuv
 sur chaque session) ; limite : un bloc sans tâche ne reconnaît que la dernière activité rattachée. Même action
 après coup : menu « Bloc ▾ » de la carte mobile, pilule « Pour ce bloc » de la carte web. La resync Google ne
 touche qu'heure/durée/titre, le lien survit. Un miroir d'événement récurrent change d'id chaque occurrence :
-rattachement à refaire (mémoire « titre → activité » = piste ultérieure). **Réveil au changement de bloc** : `BlockTransitionWatcher`
+rattachement à refaire (mémoire « titre → activité » = piste ultérieure). **Miroir = séance** (2026-10) : un miroir
+agenda sans tâche posé le jour d'une intervention native dont le créneau se recouvre (≥ 15 min) reçoit EN MÉMOIRE le
+projet et la tâche 🎯 de la séance (`linkMirrorsToSessions`, `utils/interventions.dart`, appelé au chargement du
+programme mobile et web) : ▶, écran séance, déroulé, temps attribué — sans rien stocker, donc valable pour chaque
+occurrence d'un événement récurrent. **Réveil au changement de bloc** : `BlockTransitionWatcher`
 (tick minute `AppLogic.tickBlockTransition` côté mobile → même feuille ; ticker de `TodayView` web → SnackBar
 « Pour ce bloc ») signale un bloc qui VIENT de devenir courant pendant un chrono hors source, une fois par
 couple session × bloc, jamais à l'ouverture de l'app. Le web n'affiche jamais « Terminer le bloc » pour un chrono

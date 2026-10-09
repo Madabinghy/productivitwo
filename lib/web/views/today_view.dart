@@ -11,6 +11,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/focus_context.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/assistant_engine.dart';
 import 'package:productivitwo_v1/web/sessions_card.dart';
@@ -189,6 +190,9 @@ class TodayViewState extends State<TodayView> {
     if (!mounted) return;
     final all = (s?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    // Miroirs agenda du jour d'une séance → reliés à la séance (en mémoire).
+    final day = DateTime.tryParse(_today);
+    if (day != null) linkMirrorsToSessions(all, widget.projects, day);
     // B12 : sautés / déplacés hors de la vue.
     final blocks = all.where((b) => b.status != 'skipped').toList();
     if (!_initialScrollDone && blocks.isNotEmpty) {

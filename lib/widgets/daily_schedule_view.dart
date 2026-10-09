@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
@@ -119,6 +120,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     widget.onRegisterScrollToMinute?.call(_scrollToMinute);
     _sub = _sync.streamDailySchedule(widget.date).listen((s) {
       if (mounted) {
+        // Miroirs agenda du jour d'une séance → reliés à la séance (en mémoire).
+        final day = DateTime.tryParse(widget.date);
+        if (s != null && day != null) {
+          linkMirrorsToSessions(s.blocks, widget.logic.currentProjects, day);
+        }
         setState(() => _schedule = s);
         if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
       }

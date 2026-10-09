@@ -156,4 +156,31 @@ void main() {
     expect(radar[1].isQuiet(today), isTrue);
     expect(radar[0].isQuiet(today), isFalse);
   });
+
+  test('linkMirrorsToSessions : un miroir agenda du jour de la séance reçoit projet + tâche 🎯', () {
+    final session = ProjectTask(
+        id: 't-session', title: '🎯 Séance', startDate: DateTime(2026, 10, 9),
+        interventionId: 'i1', interventionRole: 'session', isMilestone: true);
+    final p = Project(
+        id: 'p', title: 'Cléa', startDate: DateTime(2026, 9, 1), createdBy: 'u',
+        tasks: [session],
+        interventions: [
+          ProjectIntervention(id: 'i1', title: 'LAM4', date: DateTime(2026, 10, 9), startTime: '08:30', endTime: '16:30'),
+        ]);
+    ScheduleBlock b(String id, String start, int dur, {String? gcal, String? taskId}) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, gcalEventId: gcal, taskId: taskId);
+    final matin = b('m', '08:30', 240, gcal: 'g1');
+    final aprem = b('a', '13:30', 180, gcal: 'g2');
+    final soir = b('s', '19:00', 120, gcal: 'g3');
+    final manuel = b('x', '09:00', 60);
+    final deja = b('d', '10:00', 60, gcal: 'g4', taskId: 'autre');
+    final n = linkMirrorsToSessions([matin, aprem, soir, manuel, deja], [p], DateTime(2026, 10, 9));
+    expect(n, 2);
+    expect(matin.taskId, 't-session');
+    expect(aprem.projectId, 'p');
+    expect(soir.taskId, isNull, reason: 'hors créneau');
+    expect(manuel.taskId, isNull, reason: 'pas un miroir');
+    expect(deja.taskId, 'autre', reason: 'déjà relié');
+    expect(linkMirrorsToSessions([b('m2', '08:30', 240, gcal: 'g5')], [p], DateTime(2026, 10, 10)), 0);
+  });
 }
