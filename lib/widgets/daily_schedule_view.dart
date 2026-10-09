@@ -217,12 +217,19 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   /// Sens inverse du binding bloc ↔ tâche : une tâche terminée ailleurs coche
   /// automatiquement son bloc « projet » dans le programme. Appelé en post-frame.
+  /// Jamais un bloc décoché à la main (`noAutoWin`), ni un bloc d'aujourd'hui
+  /// pas encore commencé : une séance en deux blocs validée le matin ne coche
+  /// pas le bloc de l'après-midi.
   void _maybeSyncProjectBlocks() {
     if (!mounted) return;
+    final now = DateTime.now();
+    final nowMin = now.hour * 60 + now.minute;
     for (final b in _schedule?.blocks ?? const <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
           b.projectId == null ||
           b.taskId == null ||
+          b.noAutoWin ||
+          (_isToday && blockStartMin(b) > nowMin) ||
           _projectSynced.contains(b.id)) {
         continue;
       }
