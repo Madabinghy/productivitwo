@@ -169,11 +169,11 @@ List<EngagementStat> todayEngagements({
 /// Stat 7 jours glissants d'UNE routine (carte contexte de l'onglet
 /// Maintenant). Cible hebdo-isée comme partout (daily ×7 ; monthly = cible
 /// brute, à titre indicatif). Null si l'activité n'est pas une routine.
-EngagementStat? rollingStatFor(Activity a, List<HabitHit> hits) {
+EngagementStat? rollingStatFor(Activity a, List<HabitHit> hits, {DateTime? now}) {
   if (!a.isHabit) return null;
   final base = a.habitTarget ?? 1;
   final target = a.habitFreq == HabitFreq.daily ? base * 7 : base;
-  final now = DateTime.now();
+  now ??= DateTime.now();
   final from = now.subtract(const Duration(days: 7));
   return EngagementStat(
     id: a.id,
