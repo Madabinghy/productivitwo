@@ -420,7 +420,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
 
   /// Temps loggué AUJOURD'HUI sur la source du bloc (activité-temps directe,
-  /// ou tâche Gantt via `Session.taskId`), borné à la journée. Le réel mesuré
+  /// ou tâche Gantt via `Session.taskId`), borné à la fenêtre du bloc
+  /// (`blockLogWindow` : la journée, partagée si d'autres blocs ont la même source). Le réel mesuré
   /// à côté du prévu — la timeline a sa couche « réalisé », la liste a ce badge.
   /// Réel attribuable au bloc (action → tâche → activité, cf. loggedMinForBlock).
   /// Bloc routine (activité habit) sans tâche : pas de temps, c'est un compteur.
@@ -830,8 +831,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final int loggedMin;
     if (_isToday) {
       final dayStart = DateTime(now.year, now.month, now.day);
-      loggedMin = _loggedMinFor(
-          block, dayStart, dayStart.add(const Duration(days: 1)));
+      final w = blockLogWindow(block, _schedule?.blocks ?? const []);
+      loggedMin = _loggedMinFor(block, dayStart.add(Duration(minutes: w.start)),
+          dayStart.add(Duration(minutes: w.end)));
     } else {
       loggedMin = 0;
     }
