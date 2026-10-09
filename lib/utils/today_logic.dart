@@ -140,6 +140,33 @@ int loggedMinForBlock(ScheduleBlock b, Iterable<Session> sessions, DateTime star
   return sum.inMinutes;
 }
 
+/// Fenêtre (minutes depuis minuit) où le temps d'une source compte pour [b] :
+/// seul bloc sur sa source (action, sinon tâche, sinon activité) ⇒ toute la
+/// journée ; plusieurs blocs sur la même source (séance en deux blocs matin /
+/// après-midi) ⇒ la journée est partagée à mi-chemin entre eux, pour qu'un
+/// chrono du matin ne s'affiche pas aussi sur le bloc de l'après-midi.
+({int start, int end}) blockLogWindow(ScheduleBlock b, Iterable<ScheduleBlock> blocks) {
+  String? key(ScheduleBlock x) => x.actionId != null
+      ? 'a:${x.actionId}'
+      : x.taskId != null
+          ? 't:${x.taskId}'
+          : x.activityId != null
+              ? 'v:${x.activityId}'
+              : null;
+  final k = key(b);
+  if (k == null) return (start: 0, end: 24 * 60);
+  final same = blocks.where((x) => x.status != 'deleted' && key(x) == k).toList();
+  if (!same.any((x) => x.id == b.id)) same.add(b);
+  if (same.length < 2) return (start: 0, end: 24 * 60);
+  same.sort((x, y) => blockStartMin(x).compareTo(blockStartMin(y)));
+  final i = same.indexWhere((x) => x.id == b.id);
+  final start = i == 0 ? 0 : (blockEndMin(same[i - 1]) + blockStartMin(b)) ~/ 2;
+  final end = i == same.length - 1
+      ? 24 * 60
+      : (blockEndMin(b) + blockStartMin(same[i + 1])) ~/ 2;
+  return (start: start, end: end < start ? start : end);
+}
+
 /// Bloc pending dont le créneau contient [nowMin] (le premier), sinon null.
 ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   for (final b in blocks) {
