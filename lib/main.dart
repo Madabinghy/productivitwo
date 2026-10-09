@@ -3128,6 +3128,54 @@ class _AppRootState extends State<AppRoot>
     });
   }
 
+  /// Une ligne « ÉTIQUETTE  [pastille colorée : nom]  détail » de la feuille
+  /// « Pour ce bloc » : le nom est le seul élément en couleur et en gras.
+  Widget _attachLine(ColorScheme cs, String label, String name, Color color, IconData icon,
+      {String? detail}) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      SizedBox(
+        width: 58,
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .6,
+                color: cs.onSurface.withOpacity(.45))),
+      ),
+      Flexible(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: color.withOpacity(.14),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: color.withOpacity(.45)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+              ),
+            ]),
+          ),
+          if (detail != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 4, top: 3),
+              child: Text(detail,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurface.withOpacity(.55),
+                      fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
+        ]),
+      ),
+    ]);
+  }
+
   void _showSessionVsBlockSheet(Session session, ScheduleBlock block) {
     final ctx = _navigatorKey.currentState?.overlay?.context;
     if (ctx == null || !mounted) return;
@@ -3154,27 +3202,39 @@ class _AppRootState extends State<AppRoot>
       showDragHandle: true,
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // En-tête : ce qu'on associe à quoi, lisible d'un coup d'œil —
+          // CHRONO (activité, pastille primaire) et BLOC (titre, pastille à la
+          // couleur de sa catégorie) sur deux lignes étiquetées, puis la question.
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(
-                    upcoming
-                        ? '« ${block.title} » commence à ${block.startTime}'
-                        : 'Tu es sur « ${block.title} » jusqu\'à $endLabel',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 4),
-                Text('$actName, c\'est…',
-                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.6))),
-              ]),
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _attachLine(cs, 'CHRONO', actName, cs.primary, Icons.timer_outlined),
+              const SizedBox(height: 8),
+              _attachLine(
+                  cs,
+                  'BLOC',
+                  block.title,
+                  switch (block.category) {
+                    'routine' => const Color(0xFF1A9E6E),
+                    'personal' => cs.secondary,
+                    'break' => cs.outline,
+                    _ => cs.tertiary,
+                  },
+                  Icons.event_note_outlined,
+                  detail: upcoming
+                      ? 'commence à ${block.startTime}'
+                      : '${block.startTime} → $endLabel · en cours'),
+              const SizedBox(height: 12),
+              Text('C\'est pour ce bloc ?',
+                  style: TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w800, color: cs.onSurface)),
+            ]),
           ),
           if (attachable)
             ListTile(
               leading: Icon(Icons.link_rounded, color: cs.primary),
               title: const Text('Pour ce bloc'),
-              subtitle: const Text('Le temps compte pour lui (et peut le valider)'),
+              subtitle: Text('Le temps de « $actName » compte pour ce bloc'),
               onTap: () async {
                 Navigator.pop(sheetCtx);
                 final r = attachSessionToBlock(session, block,
