@@ -225,8 +225,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   Future<void> _toggleDone(ScheduleBlock b) async {
     final to = b.status == 'done' ? 'pending' : 'done';
     b.status = to;
+    b.noAutoWin = to == 'pending';
     setState(() => _selectedId = null);
-    await _sync.updateBlockStatus(widget.date, b.id, to);
+    await _sync.updateBlockStatus(widget.date, b.id, to, manual: true);
     // Défi coché → plus rien à rappeler.
     if (to == 'done') await cancelChallengeNotifications(b);
   }

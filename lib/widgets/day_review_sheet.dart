@@ -124,7 +124,7 @@ class _DayReviewSheetState extends State<_DayReviewSheet> {
 
   Future<void> _togglePrep(ScheduleBlock b) async {
     final newStatus = b.status == 'done' ? 'pending' : 'done';
-    await _sync.updateBlockStatus(_todayYmd, b.id, newStatus);
+    await _sync.updateBlockStatus(_todayYmd, b.id, newStatus, manual: true);
   }
 
   /// Minutes réelles logguées sur un bloc (même croisement que la carte

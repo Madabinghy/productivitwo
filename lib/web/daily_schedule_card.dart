@@ -56,7 +56,7 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
     _busy = true;
     try {
       final newStatus = block.status == 'done' ? 'pending' : 'done';
-      await widget.sync.updateBlockStatus(_todayStr, block.id, newStatus);
+      await widget.sync.updateBlockStatus(_todayStr, block.id, newStatus, manual: true);
       if (newStatus == 'done') _completeLinkedRoutine(block);
     } finally {
       _busy = false;
