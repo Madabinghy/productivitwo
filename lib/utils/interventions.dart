@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin;
 
 // Brief « Projets opérationnel » (2026-10), chantiers 2.1 / 2.2 : lecture des
 // INTERVENTIONS d'un projet. Source native d'abord (`Project.interventions`
@@ -214,4 +215,53 @@ List<ProjectRadar> weekRadar(List<Project> projects, DateTime today) {
     return a.next!.date.compareTo(b.next!.date);
   });
   return out;
+}
+
+/// Un miroir Google Agenda posé le jour d'une séance native du même créneau
+/// EST cette séance (2026-10) : le bloc reçoit, en mémoire, le projet et la
+/// tâche 🎯 de l'intervention (▶, écran séance, déroulé cochable, temps
+/// attribué). Rien n'est stocké : un événement récurrent change d'id à chaque
+/// occurrence, l'appariement se refait à chaque chargement. Ne touche que les
+/// miroirs sans tâche ; en cas de plusieurs séances, le plus grand recouvrement
+/// gagne (15 min au moins). Retourne le nombre de blocs reliés.
+int linkMirrorsToSessions(Iterable<ScheduleBlock> blocks, Iterable<Project> projects, DateTime day) {
+  final d0 = DateTime(day.year, day.month, day.day);
+  int toMin(String hm) {
+    final p = hm.split(':');
+    if (p.length != 2) return 0;
+    return (int.tryParse(p[0]) ?? 0) * 60 + (int.tryParse(p[1]) ?? 0);
+  }
+  final candidates = <({Project p, ProjectIntervention i, ProjectTask t, int s, int e})>[];
+  for (final p in projects) {
+    if (p.status != 'active' || p.paused) continue;
+    for (final i in p.interventions) {
+      if (i.status == 'cancelled') continue;
+      if (DateTime(i.date.year, i.date.month, i.date.day) != d0) continue;
+      final t = p.tasks
+          .where((t) => t.interventionId == i.id && t.interventionRole == 'session')
+          .firstOrNull;
+      if (t == null) continue;
+      candidates.add((p: p, i: i, t: t, s: toMin(i.startTime), e: toMin(i.endTime)));
+    }
+  }
+  if (candidates.isEmpty) return 0;
+  var n = 0;
+  for (final b in blocks) {
+    if (b.gcalEventId == null || b.taskId != null || b.status == 'deleted') continue;
+    final bs = blockStartMin(b), be = blockEndMin(b);
+    ({Project p, ProjectIntervention i, ProjectTask t, int s, int e})? best;
+    var bestOverlap = 0;
+    for (final c in candidates) {
+      final ov = (be < c.e ? be : c.e) - (bs > c.s ? bs : c.s);
+      if (ov >= 15 && ov > bestOverlap) {
+        best = c;
+        bestOverlap = ov;
+      }
+    }
+    if (best == null) continue;
+    b.projectId = best.p.id;
+    b.taskId = best.t.id;
+    n++;
+  }
+  return n;
 }
