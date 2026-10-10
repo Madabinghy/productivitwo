@@ -15,6 +15,8 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCou
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
+import 'package:productivitwo_v1/widgets/block_work_screen.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/claude_automation_sheet.dart';
@@ -2934,11 +2936,39 @@ class _AppRootState extends State<AppRoot>
       final project =
           _dashboardProjects.firstWhereOrNull((p) => p.id == block.projectId);
       if (project != null) {
-        showProjectSheet(context,
+        void openTask() => showProjectSheet(context,
             project: project,
             domains: _state?.domains ?? [],
             targetTaskId: block.taskId,
             activities: _state?.activities ?? const []);
+        final task = project.tasks.firstWhereOrNull((t) => t.id == block.taskId);
+        if (task == null) {
+          openTask();
+          return;
+        }
+        // Bloc d'une séance : l'écran séance (déroulé, étape en cours).
+        if (task.interventionRole == 'session' && task.interventionId != null) {
+          final i = project.interventions.firstWhereOrNull((x) => x.id == task.interventionId);
+          if (i != null) {
+            showSessionPlayer(context, project: project, intervention: i, sessionTask: task, sync: _sync);
+            return;
+          }
+        }
+        // Bloc de tâche : ce qu'il y a à faire (action + étapes), pas la fiche.
+        final isToday = logic.todayBlocks.any((b) => b.id == block.id);
+        showBlockWorkScreen(context,
+            project: project,
+            task: task,
+            block: block,
+            isToday: isToday,
+            sync: _sync,
+            onStartTimer: isToday && block.status == 'pending'
+                ? () => _launchScheduledBlock(block, goToNow: false)
+                : null,
+            onOpenTask: openTask,
+            onBlockDone: isToday
+                ? () => _sync.updateBlockStatus(ymdOf(DateTime.now()), block.id, 'done', manual: true)
+                : null);
         return;
       }
     }
