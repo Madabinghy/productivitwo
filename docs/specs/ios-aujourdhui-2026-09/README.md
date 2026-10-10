@@ -69,7 +69,7 @@ Label + liens **Demain** (planif du lendemain existante de `TodayView`) et **Mod
 (`showPlanNextSheet` / éditeur existant). Puis `DailyScheduleView` **en mode liste** (pas la frise
 `DayTimelineView`) : ligne **48 px min**, heure 13 px, coche 24 px (`updateBlockStatus`), pastille
 catégorie 8 px, titre 15 px, durée 12 px à droite. Bloc en cours : fond `#12241B`, bordure
-`kBPrimary .35`, heure en primaire w700, point vert à la place de la coche. Fait : titre barré
+`kBPrimary .35`, heure en primaire w700, coche cerclée de primaire (2026-10 : le point vert seul ne se lisait pas comme une coche). Fait : titre barré
 `#86A093`. Swipe gauche = supprimer, long press = réordonner, tap = éditer (existant).
 Le toggle liste / frise de `TodayView` (`_timelinePrefKey`) reste disponible via un bouton en fin
 de section (« Voir en frise »).
