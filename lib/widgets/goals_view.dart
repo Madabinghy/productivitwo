@@ -443,7 +443,9 @@ class _GoalsViewState extends State<GoalsView> {
         projectMap[pair.project.id] = pair.project;
       }
 
-      for (final g in groupByFolder(projectMap.values.toList(), _projects)) {
+      // Une famille (racine + sous-projets) sous UN en-tête repliable, que la
+      // racine soit un dossier ou un projet avec ses propres tâches.
+      for (final g in groupByRoot(projectMap.values.toList(), _projects)) {
         final folder = g.folder;
         if (folder == null) {
           final project = g.projects.single;
@@ -460,7 +462,7 @@ class _GoalsViewState extends State<GoalsView> {
         for (final project in g.projects) {
           widgets.add(SliverToBoxAdapter(
             child: _projectCard(context, project, byProject[project.id]!, todayD, color,
-                underFolder: true),
+                underFolder: true, familyRoot: project.id == folder.id),
           ));
         }
       }
@@ -469,8 +471,8 @@ class _GoalsViewState extends State<GoalsView> {
     return widgets;
   }
 
-  /// En-tête d'un dossier (client) : ses sous-projets suivent, en retrait ;
-  /// tap = replier / déplier.
+  /// En-tête d'une famille (client, dossier ou projet parent) : ses projets
+  /// suivent ; tap = replier / déplier.
   Widget _folderHeader(
       BuildContext context, Project folder, int count, Color color, bool collapsed) {
     final cs = Theme.of(context).colorScheme;
@@ -491,7 +493,7 @@ class _GoalsViewState extends State<GoalsView> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             ),
-            Text('$count sous-projet${count > 1 ? 's' : ''}',
+            Text('$count projet${count > 1 ? 's' : ''}',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -510,7 +512,7 @@ class _GoalsViewState extends State<GoalsView> {
   /// phases futures repliées (« dès le … »).
   Widget _projectCard(BuildContext context, Project project,
       List<ProjectTask> startedTasks, DateTime todayD, Color color,
-      {bool underFolder = false}) {
+      {bool underFolder = false, bool familyRoot = false}) {
     final cs = Theme.of(context).colorScheme;
     const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
         'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -530,13 +532,6 @@ class _GoalsViewState extends State<GoalsView> {
     }
     final progress = total == 0 ? 0.0 : (done / total).clamp(0.0, 1.0);
 
-    // Sous un en-tête de dossier, la mention du parent est redondante.
-    final parentTitle = project.parentProjectId == null || underFolder
-        ? null
-        : _projects
-            .where((x) => x.id == project.parentProjectId)
-            .firstOrNull
-            ?.title;
 
     // Fil de l'eau : jamais une carte — actions non faites en rows légères.
     final flowTask =
@@ -639,24 +634,11 @@ class _GoalsViewState extends State<GoalsView> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (parentTitle != null)
-                Row(children: [
-                  Icon(Icons.subdirectory_arrow_right,
-                      size: 11, color: cs.onSurface.withOpacity(.4)),
-                  const SizedBox(width: 3),
-                  Flexible(
-                    child: Text('sous-projet de « $parentTitle »',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontStyle: FontStyle.italic,
-                            color: cs.onSurface.withOpacity(.45))),
-                  ),
-                ]),
               Row(children: [
                 Expanded(
-                  child: Text(project.title,
+                  // Sous l'en-tête de sa propre famille, la racine ne répète
+                  // pas son nom : ce sont ses tâches « générales ».
+                  child: Text(familyRoot ? 'Général' : project.title,
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w800)),
                 ),

@@ -29,7 +29,8 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre
-  « Pour… » dans Actions. Mobile : en-tête de dossier repliable dans Projets (`goals_view.dart`) + filtre « Pour » dans
+  « Pour… » dans Actions. Mobile : en-tête de FAMILLE repliable dans Projets (`goals_view.dart`, `groupByRoot` : racine dossier OU projet
+  avec ses propres tâches, dont la carte devient « Général » ; plus de mention « sous-projet de ») + filtre « Pour » dans
   Actions ; jamais « Définir la prochaine action » sur un dossier. Filtre « Pour… » (`inClient`, `actions_logic.dart`) :
   un client choisi ne montre QUE ses projets (les actions simples d'activité disparaissent) ; entrée **« Perso »**
   (`kPersoClientId`) = les actions sans projet ; « Tous » = tout.

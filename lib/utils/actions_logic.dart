@@ -205,6 +205,38 @@ class FolderGroup {
   const FolderGroup(this.folder, this.projects);
 }
 
+/// Regroupe [projects] par FAMILLE (projet racine), que la racine soit un
+/// dossier ou un projet qui a ses propres tâches (Chérubins, SOF Conseil) :
+/// une famille de plusieurs projets donne un groupe dont `folder` est la
+/// racine et dont la racine, si elle est listée, vient en tête. Un projet
+/// seul dans sa famille reste seul (`folder` null). Ordre d'apparition gardé ;
+/// un dossier n'est jamais listé comme projet.
+List<FolderGroup> groupByRoot(List<Project> projects, List<Project> all) {
+  final order = <String>[];
+  final roots = <String, Project>{};
+  final members = <String, List<Project>>{};
+  for (final p in projects) {
+    if (isFolderProject(p, all)) continue;
+    final r = rootProjectOf(p, all);
+    if (!members.containsKey(r.id)) {
+      order.add(r.id);
+      roots[r.id] = r;
+      members[r.id] = [];
+    }
+    members[r.id]!.add(p);
+  }
+  return [
+    for (final id in order)
+      if (members[id]!.length == 1 && members[id]!.single.id == id)
+        FolderGroup(null, members[id]!)
+      else
+        FolderGroup(roots[id], [
+          ...members[id]!.where((p) => p.id == id),
+          ...members[id]!.where((p) => p.id != id),
+        ]),
+  ];
+}
+
 /// Regroupe [projects] par dossier en gardant l'ordre d'apparition : le
 /// premier projet d'un dossier ouvre son groupe, les suivants s'y rangent.
 /// Les dossiers eux-mêmes présents dans [projects] ne sont pas listés (ils

@@ -211,5 +211,20 @@ void main() {
       expect(groups[1].projects.map((p) => p.id).toList(), ['CM', '6e']);
       expect(groups[2].projects.map((p) => p.id).toList(), ['orphelin']);
     });
+    test('groupByRoot : une famille sous sa racine, même si la racine a ses propres tâches', () {
+      final conseil = proj('Conseil');
+      final lam4 = proj('LAM4', parent: 'Conseil');
+      final everyone = [...all, conseil, lam4];
+      final groups = groupByRoot([lam4, sof, cm, conseil, sixieme, vide], everyone);
+      expect(groups.map((g) => g.folder?.id).toList(), ['Conseil', null, 'Chérubins']);
+      // La racine qui a des tâches vient en tête de sa famille.
+      expect(groups[0].projects.map((p) => p.id).toList(), ['Conseil', 'LAM4']);
+      expect(groups[1].projects.map((p) => p.id).toList(), ['SOF']);
+      expect(groups[2].projects.map((p) => p.id).toList(), ['CM', '6e']);
+      // Un enfant seul affiché garde l'en-tête de sa famille.
+      expect(groupByRoot([lam4], everyone).single.folder?.id, 'Conseil');
+      // Une racine seule reste une carte simple.
+      expect(groupByRoot([conseil], everyone).single.folder, isNull);
+    });
   });
 }
