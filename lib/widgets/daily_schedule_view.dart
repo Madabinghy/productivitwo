@@ -835,7 +835,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final muted = dark ? kBText3 : cs.onSurface.withOpacity(.6);
     final hourColor = dark ? kBText4 : cs.onSurface.withOpacity(.45);
     // Bloc en cours (aujourd'hui, pending, créneau contenant l'heure) :
-    // fond + bordure primaire, heure en primaire, point vert à la place de la coche.
+    // fond + bordure primaire, heure en primaire, coche cerclée de primaire.
     final now = DateTime.now();
     final nowMin = now.hour * 60 + now.minute;
     int toMin(String hm) =>
@@ -989,7 +989,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 ]),
                 const SizedBox(height: 4),
                 Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  // Coche 24 px (point vert pour le bloc en cours)
+                  // Coche 24 px. Le bloc en cours garde une vraie coche (cerclée
+                  // de la couleur primaire) : un point seul ne se lisait pas
+                  // comme « à cocher » et cachait la feuille de la tâche.
                   GestureDetector(
                     onTap: () => _toggleDone(block),
                     behavior: HitTestBehavior.opaque,
@@ -999,12 +1001,15 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                         width: 24,
                         height: 24,
                         child: Center(
-                          child: current
+                          child: current && !isDone
                               ? Container(
-                                  width: 10,
-                                  height: 10,
-                                  decoration:
-                                      BoxDecoration(color: primary, shape: BoxShape.circle))
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: primary.withOpacity(.12),
+                                    border: Border.all(color: primary, width: 2),
+                                  ))
                               : AnimatedContainer(
                                   duration: const Duration(milliseconds: 200),
                                   width: 24,
