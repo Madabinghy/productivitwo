@@ -434,10 +434,21 @@ class TodayViewState extends State<TodayView> {
     final updated = await showScheduleBlockDialog(context, block: b);
     if (updated == null || !mounted) return;
     // Soft-delete : retiré de la frise tout de suite, le flux confirmera.
+    final cancelled = isCancelledBlock(updated);
     setState(() {
-      if (updated.status == 'deleted') _blocks.remove(updated);
+      if (updated.status == 'deleted' || cancelled) _blocks.remove(updated);
     });
     await widget.sync.upsertScheduleBlock(_today, updated);
+    if (cancelled && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('« ${updated.title} » annulé — il sort du programme'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () => widget.sync.setBlockCancelled(_today, updated.id, false),
+        ),
+      ));
+    }
   }
 
   Future<void> _addBlock() async {
@@ -2474,7 +2485,8 @@ class TodayViewState extends State<TodayView> {
   Widget _asideLink() {
     final a = asideBlocks(_allBlocks);
     return _textLink(asideLabel(a)!, () {
-      final items = [...a.moved, ...a.skipped]..sort((x, y) => x.startTime.compareTo(y.startTime));
+      final items = [...a.moved, ...a.cancelled, ...a.skipped]
+        ..sort((x, y) => x.startTime.compareTo(y.startTime));
       showDialog<void>(
         context: context,
         builder: (d) => AlertDialog(
@@ -2490,7 +2502,9 @@ class TodayViewState extends State<TodayView> {
                     Icon(
                         b.movedTo != null || b.skipReason == 'reporte'
                             ? Icons.redo_rounded
-                            : Icons.skip_next_rounded,
+                            : isCancelledBlock(b)
+                                ? Icons.event_busy_rounded
+                                : Icons.skip_next_rounded,
                         size: 16, color: kBText3),
                     const SizedBox(width: 10),
                     Expanded(
@@ -2500,6 +2514,14 @@ class TodayViewState extends State<TodayView> {
                         Text(asideDetail(b), style: const TextStyle(fontSize: 12, color: kBText3)),
                       ]),
                     ),
+                    if (isCancelledBlock(b))
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(d);
+                          widget.sync.setBlockCancelled(_today, b.id, false);
+                        },
+                        child: const Text('Rétablir'),
+                      ),
                   ]),
                 ),
             ]),

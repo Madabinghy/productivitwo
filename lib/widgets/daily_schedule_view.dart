@@ -643,7 +643,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   /// Pied « 2 blocs déplacés · 1 sauté » : tap = liste repliée (heure prévue,
   /// titre, destination ou cause). Zéro espace quand il n'y a rien.
-  Widget _asideRow(ColorScheme cs, ({List<ScheduleBlock> moved, List<ScheduleBlock> skipped}) a) {
+  Widget _asideRow(ColorScheme cs, AsideBlocks a) {
     return InkWell(
       onTap: () => showModalBottomSheet<void>(
         context: context,
@@ -655,17 +655,28 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               child: Text('Hors du programme',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             ),
-            for (final b in [...a.moved, ...a.skipped]
+            for (final b in [...a.moved, ...a.cancelled, ...a.skipped]
               ..sort((x, y) => x.startTime.compareTo(y.startTime)))
               ListTile(
                 dense: true,
                 leading: Icon(
                     b.movedTo != null || b.skipReason == 'reporte'
                         ? Icons.redo_rounded
-                        : Icons.skip_next_rounded,
+                        : isCancelledBlock(b)
+                            ? Icons.event_busy_rounded
+                            : Icons.skip_next_rounded,
                     color: cs.onSurface.withOpacity(.5)),
                 title: Text('${b.startTime} · ${b.title}', maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Text(asideDetail(b)),
+                trailing: isCancelledBlock(b)
+                    ? TextButton(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await _sync.setBlockCancelled(widget.date, b.id, false);
+                        },
+                        child: const Text('Rétablir'),
+                      )
+                    : null,
               ),
           ]),
         ),
@@ -1348,6 +1359,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               Navigator.pop(sctx);
               _askDuration(context, block);
             }),
+            if (canCancelBlock(block))
+              row(Icons.event_busy_rounded, 'Annuler le bloc',
+                  'pas disponible — il sort du programme, sans report', () async {
+                Navigator.pop(sctx);
+                await _cancelBlock(block);
+              }, color: cs.error),
             row(Icons.redo_rounded, 'Reporter au lendemain',
                 'le bloc est posé dans le programme de demain, à la même heure',
                 () async {
@@ -1372,6 +1389,25 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         ),
       ),
     );
+  }
+
+  /// « Pas disponible » : le bloc sort du programme (compteur de pied « 1 annulé »),
+  /// sans report ni déplacement. « Annuler » 5 s le remet tel quel.
+  Future<void> _cancelBlock(ScheduleBlock block) async {
+    await _sync.setBlockCancelled(widget.date, block.id, true);
+    if (block.challenge) await cancelChallengeNotifications(block);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('« ${block.title} » annulé'),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () => _sync.setBlockCancelled(widget.date, block.id, false),
+        ),
+      ));
   }
 
   /// Durées proposées en un tap — la modification est libre, aucun fait de

@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
+import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable;
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 
 /// Synchronisation Firestore.
@@ -3024,6 +3025,26 @@ class FirestoreSync {
     await _db
         .doc('users/$uid/daily_schedules/$date')
         .set({'date': date, 'proposalDraft': draft}, SetOptions(merge: true));
+  }
+
+  /// Annule un bloc (« pas disponible ») ou le rétablit, en une écriture :
+  /// annulé = `skipped` + skipReason [kSkipUnavailable], sans report ni
+  /// déplacement ; rétabli = de nouveau à faire, cause effacée.
+  Future<void> setBlockCancelled(String date, String blockId, bool cancelled) async {
+    if (uid == null) return;
+    final ref = _db.doc('users/$uid/daily_schedules/$date');
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final data = snap.data() as Map;
+    final blocks = (data['blocks'] as List?)
+            ?.map((b) => Map<String, dynamic>.from(b as Map))
+            .toList() ??
+        [];
+    final i = blocks.indexWhere((b) => b['id'] == blockId);
+    if (i == -1) return;
+    blocks[i]['status'] = cancelled ? 'skipped' : 'pending';
+    blocks[i]['skipReason'] = cancelled ? kSkipUnavailable : null;
+    await ref.update({'blocks': blocks});
   }
 
   /// Écrit le « pourquoi » d'un engagement rompu sur son bloc (check-in étape

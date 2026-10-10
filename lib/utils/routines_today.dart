@@ -38,7 +38,7 @@ List<RoutineToDo> routinesForToday(
   final out = <RoutineToDo>[];
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq == HabitFreq.monthly) continue;
-    final week = rollingStatFor(a, hits);
+    final week = rollingStatFor(a, hits, now: now);
     if (week == null) continue;
     final weekRatio = (week.done / week.target).clamp(0.0, 1.0).toDouble();
     var dayDone = 0;

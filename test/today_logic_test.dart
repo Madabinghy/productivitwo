@@ -117,6 +117,25 @@ void main() {
     expect(asideDetail(a.skipped[0]), 'sauté · energie');
   });
 
+  test('bloc annulé « pas disponible » : compté à part, rétablissable, jamais un miroir', () {
+    ScheduleBlock b(String id, String status, {String? reason, String? gcal}) => ScheduleBlock(
+        id: id, startTime: '10:00', durationMin: 30, title: id, status: status,
+        skipReason: reason, gcalEventId: gcal);
+    final a = asideBlocks([
+      b('an', 'skipped', reason: kSkipUnavailable),
+      b('rep', 'skipped', reason: 'reporte'),
+      b('sk', 'skipped'),
+    ]);
+    expect(a.cancelled.map((x) => x.id).toList(), ['an']);
+    expect(a.skipped.map((x) => x.id).toList(), ['sk']);
+    expect(asideLabel(a), '1 bloc déplacé · 1 annulé · 1 sauté');
+    expect(asideLabel(asideBlocks([b('an', 'skipped', reason: kSkipUnavailable)])), '1 bloc annulé');
+    expect(asideDetail(a.cancelled[0]), 'annulé · pas disponible');
+    expect(canCancelBlock(b('p', 'pending')), isTrue);
+    expect(canCancelBlock(b('d', 'done')), isFalse);
+    expect(canCancelBlock(b('m', 'pending', gcal: 'evt')), isFalse);
+  });
+
   test('nowLineBlock : bloc en cours, le dernier commencé si chevauchement, null dans un trou', () {
     ScheduleBlock b(String id, String start, int dur, {String status = 'pending'}) =>
         ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, status: status);
