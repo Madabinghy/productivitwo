@@ -1757,9 +1757,20 @@ class _ActionsViewState extends State<ActionsView> {
     void sep() {
       if (meta.isNotEmpty) meta.add(TextSpan(text: ' · ', style: TextStyle(color: cs.onSurface.withOpacity(.3))));
     }
-    if (showHolder && e.holder.isNotEmpty) {
-      meta.add(TextSpan(text: e.holder, style: TextStyle(color: cs.onSurface.withOpacity(.55))));
-    }
+    // D'où vient l'action : « Projet › Tâche » au-dessus du titre (la tâche
+    // seule quand la liste est déjà groupée par projet).
+    final taskTitle = e.task != null && e.task!.id != _flowTaskId ? e.task!.title : null;
+    final holderText = showHolder && e.holder.isNotEmpty ? e.holder : null;
+    final origin = <InlineSpan>[
+      if (holderText != null)
+        TextSpan(text: holderText, style: TextStyle(color: cs.onSurface.withOpacity(.5))),
+      if (holderText != null && taskTitle != null)
+        TextSpan(text: '  ›  ', style: TextStyle(color: cs.onSurface.withOpacity(.3))),
+      if (taskTitle != null)
+        TextSpan(
+            text: taskTitle,
+            style: TextStyle(color: cs.onSurface.withOpacity(.72), fontWeight: FontWeight.w600)),
+    ];
     if (due != null) {
       sep();
       meta.add(TextSpan(
@@ -1859,6 +1870,15 @@ class _ActionsViewState extends State<ActionsView> {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 9),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  if (origin.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: RichText(
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        text: TextSpan(style: const TextStyle(fontSize: 11), children: origin),
+                      ),
+                    ),
                   Text(a.title,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
@@ -1919,11 +1939,14 @@ class _ActionsViewState extends State<ActionsView> {
         Future<void> persist() => _persistEntry(e);
         final today = _day(DateTime.now());
         final due = _dueOf(e);
-        final crumbs = [
+        // En-tête lisible : le porteur (projet / activité) sur une ligne, la
+        // tâche EN ENTIER sur la suivante — c'est elle qui dit « de quoi il
+        // s'agit » (« Clôturer — Contrôle du 7 oct. »).
+        final holderLine = [
           if (e.project != null) e.project!.title,
-          if (e.task != null && e.task!.id != _flowTaskId) e.task!.title,
           if (e.activity != null) e.activity!.name,
-        ].join(' › ');
+        ].join(' · ');
+        final taskLine = e.task != null && e.task!.id != _flowTaskId ? e.task!.title : null;
         Widget pill(String t, {Color? color}) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
@@ -1938,12 +1961,30 @@ class _ActionsViewState extends State<ActionsView> {
         return SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (crumbs.isNotEmpty)
-              Text(crumbs,
-                  maxLines: 1,
+            if (holderLine.isNotEmpty)
+              Text(holderLine,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
-            const SizedBox(height: 4),
+            if (taskLine != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1, right: 4),
+                    child: Icon(Icons.subdirectory_arrow_right,
+                        size: 15, color: cs.onSurface.withOpacity(.4)),
+                  ),
+                  Expanded(
+                    child: Text(taskLine,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface.withOpacity(.8))),
+                  ),
+                ]),
+              ),
+            const SizedBox(height: 6),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               InkWell(
                 borderRadius: BorderRadius.circular(20),

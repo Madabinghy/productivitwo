@@ -26,6 +26,8 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
   plus), tap = feuille d'action (étapes `StepsSection`, chrono, caser, fait), glisser droite = fait / gauche = caser
   demain, capture rapide → boîte d'entrée. Même logique pure que le web (`utils/actions_logic.dart`).
+  Chaque carte porte au-dessus du titre « Projet › Tâche » (la tâche seule en vue par projet) ; la feuille d'action
+  affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué).
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre
