@@ -15,6 +15,7 @@ import {
 } from "./contexts";
 import type { ContextUsage } from "./contexts";
 import { applyActionPatch } from "./action_patch";
+import { removeTask, freeTaskBlocks } from "./task_delete";
 import {
   timeEntries, measured, calibrate, overBudget, workedUnestimated,
   fmtMin as fmtMinutes, fmtFactor, refLabel, adviceLine, calibrationHeadline,
@@ -1343,6 +1344,52 @@ async function executeUpdateTaskStatus(
   const taskTitle = tasks[idx].title ?? taskId;
   const emoji = status === "done" ? "✅" : status === "skipped" ? "⏭️" : "🔄";
   return `${emoji} Tâche "${taskTitle}" → ${status}.`;
+}
+
+async function executeDeleteTask(
+  uid: string,
+  projectId: string,
+  taskId: string,
+  force = false
+): Promise<string> {
+  const ref = db.collection(`users/${uid}/projects`).doc(projectId);
+  const snap = await ref.get();
+  if (!snap.exists) return `Projet introuvable : ${projectId}`;
+  const data = snap.data() as Record<string, unknown>;
+  const tasks = (data.tasks || []) as Array<Record<string, unknown>>;
+  const r = removeTask(tasks, taskId);
+  if (!r.removed) return `Tâche introuvable : ${taskId}`;
+  const title = String(r.removed.title ?? taskId);
+  if (r.interventionRole && !force) {
+    return `⚠️ « ${title} » est une tâche principale de séance (${r.interventionRole}). Rien n'a été supprimé. ` +
+      "Pour retirer la séance : delete_intervention ; pour garder la séance sans cette tâche : update_task " +
+      "{interventionId:\"\"} puis delete_task ; ou delete_task avec force:true.";
+  }
+  await ref.update({ tasks: r.remaining, updatedAt: FieldValue.serverTimestamp() });
+
+  // Blocs à venir de la tâche : libérés (tombstone « deleted », comme le swipe de l'app).
+  const metaSnap = await db.doc(`users/${uid}/data/meta`).get();
+  const tzOffset = metaSnap.exists ? (metaSnap.data() as Record<string, unknown>).tzOffsetMin : null;
+  const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
+  const days = await db.collection(`users/${uid}/daily_schedules`)
+    .where(admin.firestore.FieldPath.documentId(), ">=", lived.ymd).get();
+  const freedDays: string[] = [];
+  for (const d of days.docs) {
+    const blocks = (d.data().blocks || []) as Array<Record<string, unknown>>;
+    const f = freeTaskBlocks(blocks, projectId, taskId, {
+      isToday: d.id === lived.ymd, nowMin: toMin(lived.hm),
+    });
+    if (!f.freed.length) continue;
+    await d.ref.update({ blocks: f.blocks });
+    for (const b of f.freed) freedDays.push(`${d.id} ${b.startTime ?? ""}`.trim());
+  }
+
+  const actions = Array.isArray(r.removed.actions) ? r.removed.actions.length : 0;
+  return `🗑️ Tâche « ${title} » supprimée du projet « ${data.title ?? projectId} »` +
+    (actions ? ` (avec ${actions} action${actions > 1 ? "s" : ""})` : "") + "." +
+    (freedDays.length
+      ? ` Bloc${freedDays.length > 1 ? "s" : ""} du programme libéré${freedDays.length > 1 ? "s" : ""} : ${freedDays.join(", ")}.`
+      : "");
 }
 
 async function executeUpdateActivity(
@@ -4433,6 +4480,7 @@ export {
   executeDeleteActivity,
   executeUpdateProject,
   executeUpdateTaskStatus,
+  executeDeleteTask,
   executeUpdateActivity,
   executeDeleteRoutine,
   executeArchiveProject,

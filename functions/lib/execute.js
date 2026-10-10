@@ -39,6 +39,7 @@ exports.executeDeleteDomain = executeDeleteDomain;
 exports.executeDeleteActivity = executeDeleteActivity;
 exports.executeUpdateProject = executeUpdateProject;
 exports.executeUpdateTaskStatus = executeUpdateTaskStatus;
+exports.executeDeleteTask = executeDeleteTask;
 exports.executeUpdateActivity = executeUpdateActivity;
 exports.executeDeleteRoutine = executeDeleteRoutine;
 exports.executeArchiveProject = executeArchiveProject;
@@ -93,6 +94,7 @@ const default_estimates_1 = require("./default_estimates");
 const project_audit_1 = require("./project_audit");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
+const task_delete_1 = require("./task_delete");
 const estimates_1 = require("./estimates");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
@@ -1226,6 +1228,49 @@ async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     const taskTitle = (_a = tasks[idx].title) !== null && _a !== void 0 ? _a : taskId;
     const emoji = status === "done" ? "✅" : status === "skipped" ? "⏭️" : "🔄";
     return `${emoji} Tâche "${taskTitle}" → ${status}.`;
+}
+async function executeDeleteTask(uid, projectId, taskId, force = false) {
+    var _a, _b, _c;
+    const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `Projet introuvable : ${projectId}`;
+    const data = snap.data();
+    const tasks = (data.tasks || []);
+    const r = (0, task_delete_1.removeTask)(tasks, taskId);
+    if (!r.removed)
+        return `Tâche introuvable : ${taskId}`;
+    const title = String((_a = r.removed.title) !== null && _a !== void 0 ? _a : taskId);
+    if (r.interventionRole && !force) {
+        return `⚠️ « ${title} » est une tâche principale de séance (${r.interventionRole}). Rien n'a été supprimé. ` +
+            "Pour retirer la séance : delete_intervention ; pour garder la séance sans cette tâche : update_task " +
+            "{interventionId:\"\"} puis delete_task ; ou delete_task avec force:true.";
+    }
+    await ref.update({ tasks: r.remaining, updatedAt: db_1.FieldValue.serverTimestamp() });
+    // Blocs à venir de la tâche : libérés (tombstone « deleted », comme le swipe de l'app).
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const tzOffset = metaSnap.exists ? metaSnap.data().tzOffsetMin : null;
+    const lived = userDayParts(typeof tzOffset === "number" ? tzOffset : null);
+    const days = await db_1.db.collection(`users/${uid}/daily_schedules`)
+        .where(admin.firestore.FieldPath.documentId(), ">=", lived.ymd).get();
+    const freedDays = [];
+    for (const d of days.docs) {
+        const blocks = (d.data().blocks || []);
+        const f = (0, task_delete_1.freeTaskBlocks)(blocks, projectId, taskId, {
+            isToday: d.id === lived.ymd, nowMin: (0, schedule_dedupe_2.toMin)(lived.hm),
+        });
+        if (!f.freed.length)
+            continue;
+        await d.ref.update({ blocks: f.blocks });
+        for (const b of f.freed)
+            freedDays.push(`${d.id} ${(_b = b.startTime) !== null && _b !== void 0 ? _b : ""}`.trim());
+    }
+    const actions = Array.isArray(r.removed.actions) ? r.removed.actions.length : 0;
+    return `🗑️ Tâche « ${title} » supprimée du projet « ${(_c = data.title) !== null && _c !== void 0 ? _c : projectId} »` +
+        (actions ? ` (avec ${actions} action${actions > 1 ? "s" : ""})` : "") + "." +
+        (freedDays.length
+            ? ` Bloc${freedDays.length > 1 ? "s" : ""} du programme libéré${freedDays.length > 1 ? "s" : ""} : ${freedDays.join(", ")}.`
+            : "");
 }
 async function executeUpdateActivity(uid, activityId, updates) {
     var _a, _b, _c, _d, _e;
