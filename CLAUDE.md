@@ -320,6 +320,10 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
 - `sync_calendar(date?)` — lit le programme existant et retourne les instructions GCal précises (delete + create_event avec colorId et tag `source: productivitwo`)
 
 **Vue Flutter** : `lib/widgets/daily_schedule_view.dart` dans l'onglet Maintenant.
+**Toucher un bloc de tâche** (mobile, 2026-10) : ouvre l'écran « bloc » (`widgets/block_work_screen.dart`, logique
+`utils/block_work.dart`) — l'action visée (sinon la 1ʳᵉ ouverte) en avant avec ses étapes cochables, les autres actions
+repliées, chrono, « Voir la tâche » (fiche), « Bloc terminé ». Bloc de séance (🎯 d'une intervention) → écran séance.
+Routage dans `_openBlockSource` (`main.dart`).
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien
