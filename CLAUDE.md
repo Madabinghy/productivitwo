@@ -106,7 +106,8 @@ programme · concrètement » (`_agendaCard` : blocs à venir dépliables, étap
 possibles d'une activité, +1 de routine, « Définir la prochaine action ») sous MAINTENANT ; ligne concrète dans les
 blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routinesCard`, logique `utils/routines_today.dart`).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
-prochaine action, 7 jours) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
+prochaine action, 7 jours) ; menu ⋯ d'une ligne : **Terminer le projet** (`status:'done'`, confirmation s'il
+reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
 plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
 dans le shell ; **s'ouvre toujours sur Plan d'action**, y compris depuis un bloc ou une

@@ -39,7 +39,7 @@ String _fmtHm(int min) {
 String _ddmm(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 
-enum _Mode { active, paused, archived }
+enum _Mode { active, paused, done, archived }
 
 class ProjectsView extends StatefulWidget {
   final List<Project> projects;
@@ -107,10 +107,11 @@ class _ProjectsViewState extends State<ProjectsView> {
 
   // ── Données ─────────────────────────────────────────────────────────────────
 
-  List<Project> get _active =>
-      widget.projects.where((p) => p.status != 'archived' && !p.paused).toList();
-  List<Project> get _paused =>
-      widget.projects.where((p) => p.status != 'archived' && p.paused).toList();
+  // Terminé (status 'done', clôturé explicitement) = ni actif ni en veille.
+  bool _open(Project p) => p.status != 'archived' && p.status != 'done';
+  List<Project> get _active => widget.projects.where((p) => _open(p) && !p.paused).toList();
+  List<Project> get _paused => widget.projects.where((p) => _open(p) && p.paused).toList();
+  List<Project> get _done => widget.projects.where((p) => p.status == 'done').toList();
   List<Project> get _archived =>
       widget.projects.where((p) => p.status == 'archived').toList();
 
@@ -126,6 +127,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     final base = switch (_mode) {
       _Mode.active => _active,
       _Mode.paused => _paused,
+      _Mode.done => _done,
       _Mode.archived => _archived,
     };
     final filtered = base
@@ -215,6 +217,44 @@ class _ProjectsViewState extends State<ProjectsView> {
     setState(() => p.paused = paused);
     await widget.sync.saveProject(p);
     widget.onRefresh();
+  }
+
+  /// Terminer (status 'done', rangé dans « Terminés ») ou rouvrir. Des tâches
+  /// encore ouvertes : confirmation, elles restent telles quelles.
+  Future<void> _setDone(Project p, bool done) async {
+    if (done) {
+      final open = p.tasks.where((t) => t.status != 'done' && t.status != 'skipped').length;
+      if (open > 0) {
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: kBRaised,
+            title: Text('Terminer « ${p.title} » ?'),
+            content: Text('$open tâche${open > 1 ? 's' : ''} encore ouverte${open > 1 ? 's' : ''}. '
+                'Le projet passe dans « Terminés » ; tu pourras le rouvrir.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: FilledButton.styleFrom(backgroundColor: kBPrimary, foregroundColor: kBBg),
+                  child: const Text('Terminer')),
+            ],
+          ),
+        );
+        if (ok != true) return;
+      }
+    }
+    setState(() {
+      p.status = done ? 'done' : 'active';
+      if (done) p.paused = false;
+    });
+    await widget.sync.saveProject(p);
+    widget.onRefresh();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(done ? '« ${p.title} » terminé — rangé dans Terminés' : '« ${p.title} » rouvert'),
+      action: SnackBarAction(label: 'Annuler', onPressed: () => _setDone(p, !done)),
+    ));
   }
 
   Future<void> _setArchived(Project p, bool archived) async {
@@ -655,6 +695,9 @@ class _ProjectsViewState extends State<ProjectsView> {
       if (_mode != _Mode.paused)
         _textLink('En veille · ${_paused.length}', () => setState(() => _mode = _Mode.paused),
             muted: true),
+      if (_mode != _Mode.done)
+        _textLink('Terminés · ${_done.length}', () => setState(() => _mode = _Mode.done),
+            muted: true),
       if (_mode != _Mode.archived)
         _textLink('Archivés · ${_archived.length}',
             () => setState(() => _mode = _Mode.archived),
@@ -667,6 +710,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     final title = switch (_mode) {
       _Mode.active => null,
       _Mode.paused => 'EN VEILLE',
+      _Mode.done => 'TERMINÉS',
       _Mode.archived => 'ARCHIVÉS',
     };
     return _card(
@@ -698,6 +742,7 @@ class _ProjectsViewState extends State<ProjectsView> {
                   : switch (_mode) {
                       _Mode.active => 'Aucun projet actif — crée-en un pour commencer.',
                       _Mode.paused => 'Aucun projet en veille.',
+                      _Mode.done => 'Aucun projet terminé.',
                       _Mode.archived => 'Aucun projet archivé.',
                     },
               textAlign: TextAlign.center,
@@ -966,6 +1011,10 @@ class _ProjectsViewState extends State<ProjectsView> {
             _setPaused(p, true);
           case 'resume':
             _setPaused(p, false);
+          case 'complete':
+            _setDone(p, true);
+          case 'reopen':
+            _setDone(p, false);
           case 'archive':
             _setArchived(p, true);
           case 'restore':
@@ -976,11 +1025,17 @@ class _ProjectsViewState extends State<ProjectsView> {
       },
       itemBuilder: (_) => switch (_mode) {
         _Mode.active => const [
+            PopupMenuItem(value: 'complete', child: Text('Terminer le projet')),
             PopupMenuItem(value: 'pause', child: Text('Mettre en veille')),
             PopupMenuItem(value: 'archive', child: Text('Archiver')),
           ],
         _Mode.paused => const [
             PopupMenuItem(value: 'resume', child: Text('Reprendre')),
+            PopupMenuItem(value: 'complete', child: Text('Terminer le projet')),
+            PopupMenuItem(value: 'archive', child: Text('Archiver')),
+          ],
+        _Mode.done => const [
+            PopupMenuItem(value: 'reopen', child: Text('Rouvrir')),
             PopupMenuItem(value: 'archive', child: Text('Archiver')),
           ],
         _Mode.archived => const [
