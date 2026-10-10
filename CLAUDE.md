@@ -284,6 +284,9 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
 - `add_activity_action(activityId, title, context?, contexts?)` — crée une **action propre** (`Activity.ownActions`) sur une activité-temps, programmable ensuite via `schedule_day` (`activityId`+`actionId`)
 - `mark_checklist_item(projectId, taskId, actionId, itemId, done)` — coche une micro-action ; `checklist` accepté sur les actions de `push_gantt` / `add_task` / `update_task` (string ou `{title, done?}`, ids préservés au re-push)
 - `link_action_to_activity(projectId, taskId, actionId, activityId)` — associe une sous-action de tâche à une activité-temps (`TaskAction.linkedActivityId`) → chrono ciblé. L'IA le **propose** quand une action n'est pas déjà liée et qu'une activité-temps du même domaine existe
+- `delete_task(projectId, taskId, force?)` — supprime UNE tâche (et ses actions) comme « Supprimer la tâche » de l'app ;
+  libère les blocs À VENIR qui la visent (`deleted`), le vécu ne bouge pas ; tâche principale de séance refusée sans
+  `force` (logique pure `functions/src/task_delete.ts`). Garder une trace = `update_task_status skipped`
 - `update_action(activityId? | projectId+taskId, actionId, title?, contexts?, addContexts?, removeContexts?, estimatedMin?,
   clearEstimate?, linkedActivityId?, done?, delete?)` — retouche UNE action existante (propre d'une activité ou sous-action de
   projet) sans réécrire les autres ; `done:true` coche aussi la checklist. Logique pure `functions/src/action_patch.ts`.

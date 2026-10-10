@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = void 0;
+exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -590,6 +590,24 @@ const UPDATE_TASK_STATUS_TOOL = {
     },
 };
 exports.UPDATE_TASK_STATUS_TOOL = UPDATE_TASK_STATUS_TOOL;
+const DELETE_TASK_TOOL = {
+    name: "delete_task",
+    description: "Supprime UNE tâche d'un projet (et ses actions), comme « Supprimer la tâche » dans l'app. Les blocs du programme " +
+        "encore à venir qui la visent sont libérés ; le vécu (blocs faits ou passés, chronos) ne bouge pas. Pour une tâche " +
+        "abandonnée mais qu'on veut garder en trace, préférer update_task_status skipped. Une tâche principale d'une séance " +
+        "(📝 / 🎯 / ✅) est refusée sans force:true (sinon delete_intervention ou update_task pour la détacher). " +
+        "Demande toujours confirmation à l'utilisateur avant d'appeler.",
+    inputSchema: {
+        type: "object",
+        required: ["projectId", "taskId"],
+        properties: {
+            projectId: { type: "string", description: "id du projet (list_projects)" },
+            taskId: { type: "string", description: "id de la tâche (get_project)" },
+            force: { type: "boolean", description: "supprimer même une tâche principale de séance" },
+        },
+    },
+};
+exports.DELETE_TASK_TOOL = DELETE_TASK_TOOL;
 const UPDATE_ACTIVITY_TOOL = {
     name: "update_activity",
     description: "Modifie une activité existante (nom, domaine, type, objectif, unité). " +

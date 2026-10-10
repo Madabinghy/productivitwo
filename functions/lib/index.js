@@ -1610,7 +1610,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.LIST_SESSIONS_TOOL, tools_1.DELETE_SESSIONS_TOOL, tools_1.UPDATE_SESSION_TOOL,
                         tools_1.PROPOSE_CHANGE_TOOL,
                         tools_1.CREATE_ROUTINE_TOOL, tools_1.DELETE_ROUTINE_TOOL,
-                        tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL,
+                        tools_1.CREATE_ACTIVITY_TOOL, tools_1.UPDATE_ACTIVITY_TOOL, tools_1.UPDATE_TASK_STATUS_TOOL, tools_1.DELETE_TASK_TOOL,
                         tools_1.UPDATE_PROJECT_TOOL, tools_1.DELETE_ACTIVITY_TOOL,
                         tools_1.GET_DOCUMENT_TEMPLATE_TOOL, tools_1.SAVE_DOCUMENT_TOOL, tools_1.GET_DOCUMENTS_TOOL,
                         tools_1.DELETE_DOCUMENT_TOOL, tools_1.GET_ARCHIVES_TOOL, tools_1.RESTORE_ITEM_TOOL,
@@ -1663,6 +1663,9 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                 }
                 else if (toolName === "update_project") {
                     text = await (0, execute_1.executeUpdateProject)(uid, args.projectId, args);
+                }
+                else if (toolName === "delete_task") {
+                    text = await (0, execute_1.executeDeleteTask)(uid, args.projectId, args.taskId, args.force === true);
                 }
                 else if (toolName === "update_task_status") {
                     text = await (0, execute_1.executeUpdateTaskStatus)(uid, args.projectId, args.taskId, args.status);

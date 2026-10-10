@@ -24,7 +24,7 @@ import {
   LIST_SESSIONS_TOOL, DELETE_SESSIONS_TOOL, UPDATE_SESSION_TOOL,
   PROPOSE_CHANGE_TOOL,
   CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-  CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
+  CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL, DELETE_TASK_TOOL,
   UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
   GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
   DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
@@ -54,7 +54,7 @@ import {
   executeSaveDocument, executeGetDocuments, executeGetArchives,
   executeGetShoppingList, executeAddShoppingItem, executeCheckShoppingItem,
   executeRestoreItem, executeCreateDomain, executeUpdateDomain, executeDeleteDomain, executeDeleteActivity,
-  executeUpdateProject, executeUpdateTaskStatus, executeUpdateActivity,
+  executeUpdateProject, executeUpdateTaskStatus, executeDeleteTask, executeUpdateActivity,
   executeDeleteRoutine,
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
@@ -1658,7 +1658,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             LIST_SESSIONS_TOOL, DELETE_SESSIONS_TOOL, UPDATE_SESSION_TOOL,
             PROPOSE_CHANGE_TOOL,
             CREATE_ROUTINE_TOOL, DELETE_ROUTINE_TOOL,
-            CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL,
+            CREATE_ACTIVITY_TOOL, UPDATE_ACTIVITY_TOOL, UPDATE_TASK_STATUS_TOOL, DELETE_TASK_TOOL,
             UPDATE_PROJECT_TOOL, DELETE_ACTIVITY_TOOL,
             GET_DOCUMENT_TEMPLATE_TOOL, SAVE_DOCUMENT_TOOL, GET_DOCUMENTS_TOOL,
             DELETE_DOCUMENT_TOOL, GET_ARCHIVES_TOOL, RESTORE_ITEM_TOOL,
@@ -1706,6 +1706,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executePushGantt(uid, { uid, ...args });
         } else if (toolName === "update_project") {
           text = await executeUpdateProject(uid, args.projectId as string, args);
+        } else if (toolName === "delete_task") {
+          text = await executeDeleteTask(uid, args.projectId as string, args.taskId as string, args.force === true);
         } else if (toolName === "update_task_status") {
           text = await executeUpdateTaskStatus(uid, args.projectId as string, args.taskId as string, args.status as string);
         } else if (toolName === "archive_project") {

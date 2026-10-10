@@ -619,6 +619,25 @@ const UPDATE_TASK_STATUS_TOOL = {
   },
 };
 
+const DELETE_TASK_TOOL = {
+  name: "delete_task",
+  description:
+    "Supprime UNE tâche d'un projet (et ses actions), comme « Supprimer la tâche » dans l'app. Les blocs du programme " +
+    "encore à venir qui la visent sont libérés ; le vécu (blocs faits ou passés, chronos) ne bouge pas. Pour une tâche " +
+    "abandonnée mais qu'on veut garder en trace, préférer update_task_status skipped. Une tâche principale d'une séance " +
+    "(📝 / 🎯 / ✅) est refusée sans force:true (sinon delete_intervention ou update_task pour la détacher). " +
+    "Demande toujours confirmation à l'utilisateur avant d'appeler.",
+  inputSchema: {
+    type: "object",
+    required: ["projectId", "taskId"],
+    properties: {
+      projectId: { type: "string", description: "id du projet (list_projects)" },
+      taskId:    { type: "string", description: "id de la tâche (get_project)" },
+      force:     { type: "boolean", description: "supprimer même une tâche principale de séance" },
+    },
+  },
+};
+
 const UPDATE_ACTIVITY_TOOL = {
   name: "update_activity",
   description:
@@ -1436,6 +1455,7 @@ RESTORE_ITEM_TOOL,
 DELETE_ACTIVITY_TOOL,
 UPDATE_PROJECT_TOOL,
 UPDATE_TASK_STATUS_TOOL,
+DELETE_TASK_TOOL,
 UPDATE_ACTIVITY_TOOL,
 DELETE_ROUTINE_TOOL,
 GET_DAY_BLOCKS_TOOL,
