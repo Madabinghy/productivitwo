@@ -238,6 +238,8 @@ class _ActionsViewState extends State<ActionsView> {
   }
 
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+  static DateTime today0OrNow() => _day(DateTime.now());
+  static const _newColor = Color(0xFF6FA8FF);
 
   /// Échéance de l'entrée (tâche porteuse), à minuit ; null pour une action simple.
   DateTime? _dueOf(_Entry e) => e.task?.endDate == null ? null : _day(e.task!.endDate!);
@@ -1480,10 +1482,21 @@ class _ActionsViewState extends State<ActionsView> {
     }
 
     final todayList = take((e) => todayIds.contains(e.action.id));
+    // Arrivées aujourd'hui : actions dont la tâche démarre ce jour (devenues
+    // faisables depuis hier, « À venir » hier encore).
+    final arrived = take((e) => e.task != null && startsToday(e.task!, today));
     if (todayList.isNotEmpty) {
       out.add(_sectionLabel(cs, "AUJOURD'HUI · AU PROGRAMME", Icons.today_outlined));
       for (final e in todayList) {
         out.add(_entryTile(cs, e, showHolder: true, planned: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
+    if (arrived.isNotEmpty) {
+      out.add(_sectionLabel(cs, "ARRIVÉES AUJOURD'HUI", Icons.fiber_new_outlined, color: _newColor));
+      for (final e in arrived) {
+        out.add(_entryTile(cs, e, showHolder: true));
       }
       out.add(const SizedBox(height: 8));
     }
@@ -1804,6 +1817,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   Widget _entryTile(ColorScheme cs, _Entry e,
       {bool showHolder = false, bool planned = false, String? startLabel}) {
+    final isNew = e.task != null && startsToday(e.task!, today0OrNow());
     final today = _day(DateTime.now());
     final due = _dueOf(e);
     final late = due != null && due.isBefore(today);
@@ -1826,6 +1840,20 @@ class _ActionsViewState extends State<ActionsView> {
             text: taskTitle,
             style: TextStyle(color: cs.onSurface.withOpacity(.72), fontWeight: FontWeight.w600)),
     ];
+    if (isNew) {
+      meta.add(WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Container(
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+              color: _newColor.withOpacity(.16), borderRadius: BorderRadius.circular(999)),
+          child: const Text('NOUVEAU',
+              style: TextStyle(
+                  fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: .5, color: _newColor)),
+        ),
+      ));
+    }
     if (startLabel != null) {
       meta.add(TextSpan(
           text: startLabel,
