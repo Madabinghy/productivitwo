@@ -587,6 +587,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
+        if (_isToday)
+          if (blocksToCarry(visible, DateTime.now().hour * 60 + DateTime.now().minute) case final carry
+              when showCarryCard(carry, DateTime.now().hour * 60 + DateTime.now().minute))
+            _carryCard(cs, carry),
         if (asideLabel(aside) != null) _asideRow(cs, aside),
         if (bare) _addRow(cs),
       ],
@@ -639,6 +643,60 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         ),
       ]),
     );
+  }
+
+  /// Encart du soir « Caser les n demain » : reporte d'un geste les blocs
+  /// passés non faits (même report que l'appui long, trace « reporté »).
+  /// « Annuler » 6 s remet tout en place.
+  Widget _carryCard(ColorScheme cs, List<ScheduleBlock> carry) {
+    final total = carry.fold<int>(0, (s, b) => s + b.durationMin);
+    final amber = Colors.amber.shade600;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: amber.withOpacity(.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: amber.withOpacity(.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${carry.length} blocs non faits aujourd\'hui · ${fmtMin(total)}',
+            style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.7))),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: amber, foregroundColor: Colors.black87),
+          onPressed: () => _carryAll(carry),
+          icon: const Icon(Icons.redo_rounded, size: 18),
+          label: Text('Caser les ${carry.length} demain'),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _carryAll(List<ScheduleBlock> carry) async {
+    final date = widget.date;
+    for (final b in carry) {
+      await _sync.reportBlockToTomorrow(date, b);
+      await _sync.updateBlockStatus(date, b.id, 'skipped');
+      await _sync.updateBlockSkipReason(date, b.id, 'reporte');
+      if (b.challenge) await cancelChallengeNotifications(b);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('${carry.length} blocs posés demain, à la même heure'),
+        duration: const Duration(seconds: 6),
+        behavior: SnackBarBehavior.floating,
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () async {
+            for (final b in carry) {
+              await _sync.undoReportToTomorrow(date, b.id);
+            }
+          },
+        ),
+      ));
   }
 
   /// Pied « 2 blocs déplacés · 1 sauté » : tap = liste repliée (heure prévue,

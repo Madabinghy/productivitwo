@@ -3392,6 +3392,37 @@ class FirestoreSync {
   /// (statut pending, même heure — ajustable là-bas), en plus de l'annotation
   /// `skipReason:'reporte'` posée sur l'original. Idempotent : pas de double
   /// copie si le bloc source a déjà été reporté (carriedFromDate + id source).
+  /// Annule un report au lendemain : la copie posée demain repasse
+  /// « supprimée » (tombstone) et l'original redevient à faire, sans cause.
+  Future<void> undoReportToTomorrow(String fromDate, String blockId) async {
+    if (uid == null) return;
+    final from = DateTime.tryParse(fromDate);
+    if (from == null) return;
+    final t = from.add(const Duration(days: 1));
+    final tomorrow =
+        '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+    final marker = '$fromDate:$blockId';
+    for (final entry in [
+      (date: tomorrow, test: (Map b) => b['carriedFromDate'] == marker, patch: {'status': 'deleted'}),
+      (date: fromDate, test: (Map b) => b['id'] == blockId, patch: {'status': 'pending', 'skipReason': null}),
+    ]) {
+      final ref = _db.doc('users/$uid/daily_schedules/${entry.date}');
+      final snap = await ref.get();
+      if (!snap.exists) continue;
+      final blocks = ((snap.data() as Map)['blocks'] as List? ?? const [])
+          .map((x) => Map<String, dynamic>.from(x as Map))
+          .toList();
+      var changed = false;
+      for (final b in blocks) {
+        if (entry.test(b)) {
+          b.addAll(entry.patch);
+          changed = true;
+        }
+      }
+      if (changed) await ref.update({'blocks': blocks});
+    }
+  }
+
   Future<void> reportBlockToTomorrow(String fromDate, ScheduleBlock b) async {
     if (uid == null) return;
     final from = DateTime.tryParse(fromDate);

@@ -145,4 +145,21 @@ void main() {
     expect(nowLineBlock(blocks, 10 * 60 + 45)?.id, 'a');
     expect(nowLineBlock(blocks, 11 * 60 + 30), isNull, reason: 'trou : trait entre les blocs');
   });
+
+  test('blocksToCarry / showCarryCard : passés non faits, hors miroirs, le soir et à partir de 2', () {
+    ScheduleBlock b(String id, String start, int dur, {String status = 'pending', String? gcal}) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, status: status, gcalEventId: gcal);
+    final blocks = [
+      b('matin', '06:00', 60),
+      b('fait', '08:00', 60, status: 'done'),
+      b('agenda', '09:00', 60, gcal: 'evt'),
+      b('aprem', '17:20', 30),
+      b('soir', '21:00', 60),
+    ];
+    final carry = blocksToCarry(blocks, 21 * 60 + 10);
+    expect(carry.map((x) => x.id).toList(), ['matin', 'aprem']);
+    expect(showCarryCard(carry, 21 * 60 + 10), isTrue);
+    expect(showCarryCard(carry, 17 * 60), isFalse);
+    expect(showCarryCard(carry.take(1).toList(), 21 * 60), isFalse);
+  });
 }

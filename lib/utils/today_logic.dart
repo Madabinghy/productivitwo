@@ -167,6 +167,17 @@ int loggedMinForBlock(ScheduleBlock b, Iterable<Session> sessions, DateTime star
   return (start: start, end: end < start ? start : end);
 }
 
+/// « Caser demain » en un geste (2026-10) : les blocs du jour PASSÉS et non
+/// faits (encore à faire, créneau fini à [nowMin]), hors miroirs d'agenda (ils
+/// se déplacent dans l'agenda). L'encart du soir n'apparaît qu'à partir de 18 h
+/// et de 2 blocs (`showCarryCard`).
+List<ScheduleBlock> blocksToCarry(Iterable<ScheduleBlock> blocks, int nowMin) => [
+      for (final b in blocks)
+        if (b.status == 'pending' && b.gcalEventId == null && blockEndMin(b) <= nowMin) b,
+    ];
+
+bool showCarryCard(List<ScheduleBlock> carry, int nowMin) => nowMin >= 18 * 60 && carry.length >= 2;
+
 /// Bloc pending dont le créneau contient [nowMin] (le premier), sinon null.
 ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   for (final b in blocks) {
