@@ -171,6 +171,50 @@ bool inClient(String? clientId, Project? p, List<Project> all) {
 bool isFolderProject(Project p, List<Project> all) =>
     p.tasks.isEmpty && all.any((x) => x.parentProjectId == p.id);
 
+DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+/// Tâche PAS ENCORE COMMENCÉE (2026-10) : sa date de début est après
+/// aujourd'hui. Ses actions sortent de la liste principale d'Actions (mobile et
+/// web) et vont dans « À venir » : générées en masse, elles noyaient ce qu'on
+/// peut faire maintenant (« Corriger les contrôles » avant de les ramasser).
+bool isUpcomingTask(ProjectTask t, DateTime today) =>
+    _dayOnly(t.startDate).isAfter(_dayOnly(today));
+
+/// Actions ouvertes des tâches à venir, par date de début puis ordre Gantt.
+List<({Project project, ProjectTask task, TaskAction action})> upcomingActions(
+  List<Project> projects, {
+  required bool Function(TaskAction) filter,
+  required DateTime today,
+}) {
+  final out = <({Project project, ProjectTask task, TaskAction action})>[];
+  for (final p in projects) {
+    if (p.status != 'active' || p.paused) continue;
+    for (final t in ganttOrder(p)) {
+      if (t.status == 'done' || t.status == 'skipped' || !isUpcomingTask(t, today)) continue;
+      for (final a in t.actions) {
+        if (!a.done && filter(a)) out.add((project: p, task: t, action: a));
+      }
+    }
+  }
+  final order = {for (var i = 0; i < out.length; i++) out[i].action.id: i};
+  out.sort((x, y) {
+    final c = _dayOnly(x.task.startDate).compareTo(_dayOnly(y.task.startDate));
+    return c != 0 ? c : order[x.action.id]!.compareTo(order[y.action.id]!);
+  });
+  return out;
+}
+
+/// « dès demain » / « dès jeu. 15 oct. » / « dès le 2 nov. » (au-delà d'une semaine).
+String upcomingLabel(DateTime start, DateTime today) {
+  const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+  const months = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  final s = _dayOnly(start), t = _dayOnly(today);
+  final diff = s.difference(t).inDays;
+  if (diff <= 1) return 'dès demain';
+  if (diff < 7) return 'dès ${days[s.weekday - 1]} ${s.day} ${months[s.month - 1]}';
+  return 'dès le ${s.day} ${months[s.month - 1]}';
+}
+
 /// Tâche EN RETARD : ouverte (ni faite ni annulée) et échéance strictement
 /// avant le jour de [today]. Règle unique du filtre « En retard » (web), du
 /// groupe « En retard » et de la pastille.

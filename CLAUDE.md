@@ -28,6 +28,12 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   demain, capture rapide → boîte d'entrée. Même logique pure que le web (`utils/actions_logic.dart`).
   Chaque carte porte au-dessus du titre « Projet › Tâche » (la tâche seule en vue par projet) ; la feuille d'action
   affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué).
+  **À venir** (2026-10, mobile et web) : une action dont la TÂCHE n'a pas encore commencé (`startDate` > aujourd'hui,
+  `isUpcomingTask`) sort de la liste principale et des compteurs pour une section repliée « À venir · n », triée par
+  date de début avec « dès demain / dès jeu. 15 oct. / dès le 2 nov. » (`upcomingActions`, `upcomingLabel`,
+  `utils/actions_logic.dart`) ; toujours cochable. Exception mobile : action au programme du jour = reste devant. Web :
+  `_taskFilter` exclut toujours les tâches à venir ; un projet dont tout est à venir affiche « Prochaine action dès … »
+  au lieu de « Définir la prochaine action ». Pas (encore) de date par action : c'est la date de la tâche qui fait foi.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre

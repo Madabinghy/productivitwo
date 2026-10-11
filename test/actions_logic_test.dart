@@ -227,4 +227,36 @@ void main() {
       expect(groupByRoot([conseil], everyone).single.folder, isNull);
     });
   });
+
+  group('À venir (date de début de la tâche)', () {
+    final today = DateTime(2026, 10, 11, 21);
+    ProjectTask task(String id, DateTime start, {String status = 'pending', bool done = false}) => ProjectTask(
+        id: id, title: id, startDate: start, status: status,
+        actions: [TaskAction(id: 'a-$id', title: 'action $id', done: done)]);
+    final p = Project(
+        id: 'p', title: 'P', startDate: DateTime(2026, 9, 1), createdBy: 'u',
+        tasks: [
+          task('nov', DateTime(2026, 11, 2)),
+          task('auj', DateTime(2026, 10, 11)),
+          task('demain', DateTime(2026, 10, 12)),
+          task('jeudi', DateTime(2026, 10, 15)),
+          task('faite', DateTime(2026, 10, 13), status: 'done'),
+        ]);
+
+    test('isUpcomingTask : début strictement après aujourd\'hui', () {
+      expect(isUpcomingTask(p.tasks[1], today), isFalse);
+      expect(isUpcomingTask(p.tasks[2], today), isTrue);
+    });
+
+    test('upcomingActions : tâches à venir ouvertes, par date de début', () {
+      final ids = upcomingActions([p], filter: (_) => true, today: today).map((e) => e.task.id).toList();
+      expect(ids, ['demain', 'jeudi', 'nov']);
+    });
+
+    test('upcomingLabel : demain, jour de la semaine, puis date', () {
+      expect(upcomingLabel(DateTime(2026, 10, 12), today), 'dès demain');
+      expect(upcomingLabel(DateTime(2026, 10, 15), today), 'dès jeu. 15 oct.');
+      expect(upcomingLabel(DateTime(2026, 11, 2), today), 'dès le 2 nov.');
+    });
+  });
 }
