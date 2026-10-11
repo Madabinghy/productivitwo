@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -17,7 +18,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
-import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable;
+import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable, mirrorKey;
 import 'package:productivitwo_v1/utils/project_patch.dart';
 import 'package:productivitwo_v1/utils/project_merge.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
@@ -3478,6 +3479,13 @@ class FirestoreSync {
   /// dayMode…) restent intacts. Crée le doc si le jour n'a pas de programme.
   Future<void> upsertScheduleBlock(String date, ScheduleBlock block) async {
     if (uid == null) return;
+    // Miroir d'agenda rattaché à une activité (sans tâche) : on retient
+    // « titre → activité » pour les prochaines occurrences (2026-10).
+    if (block.gcalEventId != null && block.activityId != null && block.taskId == null) {
+      unawaited(_meta().set({
+        'mirrorActivities': {mirrorKey(block.title): block.activityId},
+      }, SetOptions(merge: true)).catchError((_) {}));
+    }
     final ref = _db.doc('users/$uid/daily_schedules/$date');
     final snap = await ref.get();
     if (!snap.exists) {
