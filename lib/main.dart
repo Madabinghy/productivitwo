@@ -11,7 +11,7 @@ import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
@@ -3145,6 +3145,95 @@ class _AppRootState extends State<AppRoot>
   /// courte, jamais bloquante (fermer = parenthèse). « Pour ce bloc » ré-attribue
   /// la session au bloc (elle compte alors pour lui) ; « Décaler » pousse le
   /// bloc au prochain quart d'heure.
+  /// « Ces 42 min, c'était pour quoi ? » (2026-10) : un chrono arrêté qui ne
+  /// visait aucune action (ni tâche) se rattache en un tap à l'une des actions
+  /// probables de son activité — le temps réel alimente l'estimé vs réel sans
+  /// saisie de plus. Rien de proposé (< 3 min, aucune candidate) = rien.
+  void _askStopTarget(Session s) {
+    if (s.actionId != null || s.taskId != null) return;
+    final min = s.duration.inMinutes;
+    if (min < 3) return;
+    final act = logic.state.activities.firstWhereOrNull((a) => a.id == s.activityId);
+    if (act == null || act.isHabit) return;
+    final planned = {for (final b in logic.todayBlocks) if (b.actionId != null) b.actionId!};
+    final cands = stopTargetCandidates(_dashboardProjects, logic.state.activeActivities, s.activityId,
+        today: DateTime.now(), plannedIds: planned);
+    if (cands.isEmpty) return;
+    String fmt(int m) => m >= 60 ? '${m ~/ 60} h ${(m % 60).toString().padLeft(2, '0')}' : '$m min';
+    Future<void>.delayed(const Duration(milliseconds: 350), () async {
+      if (!mounted) return;
+      final picked = await showModalBottomSheet<int>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) {
+          final cs = Theme.of(ctx).colorScheme;
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('Ces ${fmt(min)}, c\'était pour quoi ?',
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text('Actions liées à « ${act.name} », les plus probables d\'abord',
+                    style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+                const SizedBox(height: 10),
+                for (var i = 0; i < cands.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Material(
+                      color: cs.surfaceContainerHighest.withOpacity(.4),
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.pop(ctx, i),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(children: [
+                            Icon(Icons.radio_button_unchecked, size: 18, color: cs.primary),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text(cands[i].action.title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                                Text(
+                                  [
+                                    if (cands[i].project != null) cands[i].project!.title,
+                                    if (cands[i].task != null) cands[i].task!.title,
+                                    if (cands[i].activity != null) cands[i].activity!.name,
+                                  ].join(' › '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.55)),
+                                ),
+                              ]),
+                            ),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Rien de précis')),
+              ]),
+            ),
+          );
+        },
+      );
+      if (picked == null || !mounted) return;
+      final c = cands[picked];
+      s.taskId = c.task?.id;
+      s.actionId = c.action.id;
+      logic.onChange();
+      await _sync.saveSession(s);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${fmt(min)} rattachées à « ${c.action.title} »'),
+        duration: const Duration(seconds: 3),
+      ));
+    });
+  }
+
   void _askSessionVsBlock(Session session, ScheduleBlock block) {
     // Appelé PENDANT le tap du lanceur (FAB, routines…) qui enchaîne
     // start() puis Navigator.pop() : ouvrir la feuille tout de suite la fait
@@ -3439,6 +3528,7 @@ class _AppRootState extends State<AppRoot>
             expeditionBonus: expeditionBonus);
     logic.programBacklogHook ??= _programBacklogItem;
     logic.onSessionOffBlock ??= _askSessionVsBlock;
+    logic.onUserStopped ??= _askStopTarget;
 
 
 

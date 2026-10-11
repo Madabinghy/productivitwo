@@ -358,6 +358,36 @@ List<({TaskAction action, Project? project, ProjectTask? task, Activity? activit
   return out;
 }
 
+/// « C'était pour quoi ? » (2026-10) : à l'arrêt d'un chrono qui ne visait
+/// aucune action, les actions probables de son activité — celles au programme
+/// du jour d'abord, puis par échéance de la tâche ; jamais une tâche à venir.
+List<({TaskAction action, Project? project, ProjectTask? task, Activity? activity})>
+    stopTargetCandidates(
+  List<Project> projects,
+  List<Activity> activities,
+  String activityId, {
+  required DateTime today,
+  Set<String> plannedIds = const {},
+  int limit = 3,
+}) {
+  final all = possibleNow(projects, activities, activityId, filter: (_) => true)
+      .where((x) => x.task == null || !isUpcomingTask(x.task!, today))
+      .toList();
+  final order = {for (var i = 0; i < all.length; i++) all[i].action.id: i};
+  int rank(({TaskAction action, Project? project, ProjectTask? task, Activity? activity}) x) =>
+      plannedIds.contains(x.action.id) ? 0 : 1;
+  all.sort((a, b) {
+    final r = rank(a).compareTo(rank(b));
+    if (r != 0) return r;
+    final da = a.task?.endDate, db = b.task?.endDate;
+    if (da != null && db != null && da != db) return da.compareTo(db);
+    if (da != null && db == null) return -1;
+    if (da == null && db != null) return 1;
+    return order[a.action.id]!.compareTo(order[b.action.id]!);
+  });
+  return all.take(limit).toList();
+}
+
 /// Actions simples ouvertes (`Activity.ownActions`), par activité.
 List<({Activity activity, List<TaskAction> actions})> ownActionGroups(
   List<Activity> activities, {

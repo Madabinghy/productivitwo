@@ -265,4 +265,19 @@ void main() {
       expect(upcomingLabel(DateTime(2026, 11, 2), today), 'dès le 2 nov.');
     });
   });
+
+  test('stopTargetCandidates : programme du jour d\'abord, puis échéance, jamais à venir', () {
+    final today = DateTime(2026, 10, 11, 20);
+    ProjectTask t(String id, DateTime start, DateTime end) => ProjectTask(
+        id: id, title: id, startDate: start, endDate: end,
+        actions: [TaskAction(id: 'a-$id', title: id, linkedActivityId: 'contenu')]);
+    final p = Project(id: 'p', title: 'P', startDate: DateTime(2026, 9, 1), createdBy: 'u', tasks: [
+      t('loin', DateTime(2026, 10, 1), DateTime(2026, 10, 30)),
+      t('proche', DateTime(2026, 10, 1), DateTime(2026, 10, 12)),
+      t('avenir', DateTime(2026, 10, 14), DateTime(2026, 10, 15)),
+      t('prevu', DateTime(2026, 10, 1), DateTime(2026, 11, 2)),
+    ]);
+    final c = stopTargetCandidates([p], const [], 'contenu', today: today, plannedIds: {'a-prevu'});
+    expect(c.map((x) => x.action.id).toList(), ['a-prevu', 'a-proche', 'a-loin']);
+  });
 }
