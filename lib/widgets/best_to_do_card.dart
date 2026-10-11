@@ -10,9 +10,11 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
 
-/// « Le meilleur à faire » — les 3 meilleures routines PAS ENCORE ATTEINTES
+/// « Le meilleur à faire » — TOUTES les routines du jour (2026-10 : plus de
+/// limite à 3, retour user) : d'abord celles PAS ENCORE ATTEINTES
 /// (quotidiennes : cible du jour non remplie ; hebdos : cible des 7 jours non
-/// remplie), classées par max(score du jour, score 7 j). Vit dans Maintenant.
+/// remplie), classées par max(score du jour, score 7 j), puis les atteintes en
+/// fin de liste ; ✅ retire une routine atteinte pour la journée.
 ///
 /// Les rangées reprennent le STYLE des tuiles du lanceur de routines (FAB
 /// « Lancer une routine ») : pastille domaine, nom + série, ▶ chrono /
@@ -191,7 +193,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
       });
     final reachedList = entries.where((e) => e.reached).toList()
       ..sort((x, y) => y.score.compareTo(x.score));
-    var pending = [...unreached.take(3), ...reachedList];
+    var pending = [...unreached, ...reachedList];
     if (_hold != null && _lastOrder.isNotEmpty) {
       // Gel : on garde l'ordre précédent ; une nouvelle entrée va en fin.
       int rank(String id) {
