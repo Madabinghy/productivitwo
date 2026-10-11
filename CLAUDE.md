@@ -379,9 +379,15 @@ tout le tableau `tasks` depuis la copie locale (un onglet resté ouvert écrasai
 perte réelle sur « 6e — Mathématiques ») : `FirestoreSync.patchTaskAction` / `patchActionOf` (UNE action) et
 `patchTaskFields` (quelques champs d'une tâche) relisent le projet dans une transaction et ne remplacent que ça
 (logique pure `utils/project_patch.dart`, sous-projet d'origine pour un dossier fusionné). Branchés : Aujourd'hui,
-Actions, Projets, Plan d'action, Réalisation, Cette semaine, aperçu de séance. Restent sur `saveProjectTasks` /
-`saveProject` (risque connu) : éditions structurelles (ajout / suppression / déplacement de tâche, Gantt, fiche
-projet) et tout le mobile. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
+Actions, Projets, Plan d'action, Réalisation, Cette semaine, aperçu de séance. **Tout le reste** (éditions
+structurelles web, Gantt, fiche projet, tout le mobile) passe par `saveProjectTasks` / `saveProject`, qui
+**fusionnent à trois voies** au lieu d'écraser (`utils/project_merge.dart`) : empreinte de chaque tâche et des champs
+du projet posée au chargement (`_loadedProject` : `fetchProjects`, `streamProjects`, `_loadProject` ; copies de la vue
+fusionnée via `copyTaskBase`), transaction qui relit le serveur ; tâche/champ modifié ici → local, inchangé ici →
+serveur, tâche ajoutée ailleurs → gardée, supprimée ici (id connu de la liste locale) → retirée. Liste sans ids connus
+(projet jamais chargé, liste reconstruite) = comportement historique. Les deux appareils modifient la MÊME tâche →
+la dernière écriture gagne pour cette tâche. Hors connexion / transaction > 10 s : repli sur l'écriture directe
+d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste utilisable sans réseau. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
 « ✓ Action faite » (coche + arrête, annulable).
 
 ## Suppression : soft-delete partout
