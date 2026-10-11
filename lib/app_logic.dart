@@ -256,6 +256,9 @@ class AppLogic {
   // (vaisselle pendant « Contenu ») : l'UI demande quoi en faire — pour ce
   // bloc / parenthèse / décaler. Un seul point d'entrée pour tous les lanceurs.
   void Function(Session session, ScheduleBlock block)? onSessionOffBlock;
+  /// L'utilisateur vient d'ARRÊTER un chrono (pas un changement de chrono) :
+  /// le mobile demande « c'était pour quoi ? » si la session ne visait rien.
+  void Function(Session session)? onUserStopped;
 
   /// Blocs du programme du jour, mis à jour par DailyScheduleView via son stream.
   /// Utilisé pour masquer « Programmer pour plus tard » quand un défi existe déjà.
@@ -615,7 +618,7 @@ class AppLogic {
     // 1) stop si c’est l’activité en cours
     final running = runningActivity();
     if (running != null && running.id == id) {
-      stopActive();
+      stopActive(notify: false);
     }
 
     // 2) soft-delete : marque deleted=true (JAMAIS removeWhere — sinon le merge
@@ -1288,7 +1291,7 @@ class AppLogic {
     return map;
   }
 
-  Session? stopActive() {
+  Session? stopActive({bool notify = true}) {
     final run = state.sessions.where((s) => s.endAt == null).toList();
     if (run.isEmpty) return null;
 
@@ -1299,6 +1302,7 @@ class AppLogic {
     final ended = run.last;
     ended.endAt = DateTime.now();
     onChange();
+    if (notify) onUserStopped?.call(ended);
 
     return ended;
   }
