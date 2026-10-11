@@ -110,6 +110,13 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
         onRename: (c, t) => _mutate(() => renameChecklistItem(a, c.id, t)),
       );
 
+  /// Ligne sous « Étape suivante » : ce qui viendra après l'étape en cours.
+  String _afterNext(TaskAction a, ChecklistItem next) {
+    final open = a.checklist.where((c) => !c.done).toList();
+    if (open.length <= 1) return 'Dernière étape : elle termine l\'action.';
+    return 'Ensuite : ${open[1].title}';
+  }
+
   Widget _actionRow(ColorScheme cs, TaskAction a, {required VoidCallback onTap}) => InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
@@ -267,6 +274,31 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
                         ]),
                       ),
                     _steps(focus),
+                    // « Étape suivante » (2026-10) : téléphone dans une main
+                    // pendant le bloc — un grand bouton coche l'étape en cours,
+                    // sans viser une case. La dernière cochée termine l'action.
+                    if (nextChecklistItem(focus) case final next?) ...[
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: FilledButton.icon(
+                          onPressed: () => _mutate(() => setChecklistItem(focus, next.id, true)),
+                          icon: const Icon(Icons.skip_next_rounded),
+                          label: const Text('Étape suivante',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 4),
+                        child: Text(
+                          _afterNext(focus, next),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55)),
+                        ),
+                      ),
+                    ],
                   ]),
                 ),
                 if (w.open.isNotEmpty) ...[
