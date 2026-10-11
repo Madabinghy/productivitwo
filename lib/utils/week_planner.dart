@@ -279,3 +279,43 @@ ScheduleBlock taskBlock(WeekTask wt, int startMin, {int? durationMin}) => Schedu
       // Aujourd'hui → Maintenant pendant le bloc.
       actionId: wt.task.actions.where((a) => !a.done).firstOrNull?.id,
     );
+
+/// Heure d'arrivée d'un bloc reporté au lendemain : son heure d'origine si
+/// elle est libre, sinon le premier créneau libre après (jusqu'à la fin de la
+/// journée active), sinon le premier avant. Journée pleine : l'heure
+/// d'origine, avec `conflict: true`. Les blocs sautés / supprimés ne
+/// comptent pas.
+({int start, bool conflict}) carrySlot(
+  List<ScheduleBlock> existing,
+  int startMin,
+  int durationMin, {
+  DayWindow window = kDefaultDayWindow,
+}) {
+  final busy = existing.where((b) => b.status != 'skipped' && b.status != 'deleted').toList();
+  bool free(int s) => busy.every((b) => blockEndMin(b) <= s || blockStartMin(b) >= s + durationMin);
+  if (free(startMin)) return (start: startMin, conflict: false);
+  final until = window.endMin > startMin + durationMin ? window.endMin : startMin + durationMin;
+  final after = firstFreeSlot(busy, durationMin, fromMin: startMin, untilMin: until);
+  if (after != null) return (start: after, conflict: false);
+  final before = firstFreeSlot(busy, durationMin, fromMin: window.startMin, untilMin: startMin);
+  if (before != null) return (start: before, conflict: false);
+  return (start: startMin, conflict: true);
+}
+
+/// Message après un report au lendemain : « 3 blocs casés demain : 9 h 30,
+/// 14 h, 16 h 15 », plus « · 1 en conflit (journée pleine) » au besoin.
+/// Les reports qui n'ont rien posé (null) ne comptent pas.
+String carryMessage(List<({String startTime, bool conflict})?> placed) {
+  final ok = placed.whereType<({String startTime, bool conflict})>().toList()
+    ..sort((a, b) => a.startTime.compareTo(b.startTime));
+  if (ok.isEmpty) return 'Déjà au programme de demain';
+  String h(String hm) {
+    final p = hm.split(':');
+    final hh = int.tryParse(p[0]) ?? 0;
+    return p.length > 1 && p[1] != '00' ? '$hh h ${p[1]}' : '$hh h';
+  }
+  final times = ok.map((s) => h(s.startTime)).join(', ');
+  final head = ok.length == 1 ? 'Bloc casé demain à $times' : '${ok.length} blocs casés demain : $times';
+  final c = ok.where((s) => s.conflict).length;
+  return c == 0 ? head : '$head · $c en conflit (journée pleine)';
+}

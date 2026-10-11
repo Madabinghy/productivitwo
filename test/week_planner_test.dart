@@ -249,4 +249,29 @@ void _windowTests() {
       expect(proposedSlot([], 30, isToday: true, nowMin: 19 * 60 + 45), (start: 8 * 60, full: true));
     });
   });
+
+  test('carrySlot : heure d\'origine si libre, sinon après, sinon avant, sinon conflit', () {
+    expect(carrySlot([], 9 * 60, 60), (start: 9 * 60, conflict: false));
+    // Rendez-vous 9 h–10 h → glisse à 10 h.
+    expect(carrySlot([_blk('09:00', 60)], 9 * 60, 60), (start: 10 * 60, conflict: false));
+    // Bloc sauté / supprimé : ne gêne pas.
+    final gone = _blk('09:00', 60)..status = 'skipped';
+    expect(carrySlot([gone], 9 * 60, 60), (start: 9 * 60, conflict: false));
+    // Plus rien après 21 h → premier trou du matin.
+    expect(carrySlot([_blk('21:00', 60), _blk('20:00', 60)], 21 * 60, 60),
+        (start: 8 * 60, conflict: false));
+    // Journée pleine → heure d'origine, en conflit.
+    expect(carrySlot([_blk('08:00', 14 * 60)], 9 * 60, 60), (start: 9 * 60, conflict: true));
+    // Respecte la journée active réglée.
+    expect(carrySlot([_blk('21:00', 60)], 21 * 60, 60, window: const DayWindow(10 * 60, 22 * 60)),
+        (start: 10 * 60, conflict: false));
+  });
+
+  test('carryMessage : heures triées, conflit signalé, rien posé', () {
+    expect(carryMessage([(startTime: '14:00', conflict: false), (startTime: '09:30', conflict: false)]),
+        '2 blocs casés demain : 9 h 30, 14 h');
+    expect(carryMessage([(startTime: '16:15', conflict: true)]),
+        'Bloc casé demain à 16 h 15 · 1 en conflit (journée pleine)');
+    expect(carryMessage([null]), 'Déjà au programme de demain');
+  });
 }

@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/notifications.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/week_planner.dart' show carryMessage;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -687,8 +688,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   Future<void> _carryAll(List<ScheduleBlock> carry) async {
     final date = widget.date;
+    final placed = <({String startTime, bool conflict})?>[];
     for (final b in carry) {
-      await _sync.reportBlockToTomorrow(date, b);
+      placed.add(await _sync.reportBlockToTomorrow(date, b));
       await _sync.updateBlockStatus(date, b.id, 'skipped');
       await _sync.updateBlockSkipReason(date, b.id, 'reporte');
       if (b.challenge) await cancelChallengeNotifications(b);
@@ -697,7 +699,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
-        content: Text('${carry.length} blocs posés demain, à la même heure'),
+        content: Text(carryMessage(placed)),
         duration: const Duration(seconds: 6),
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
@@ -1441,21 +1443,20 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 await _cancelBlock(block);
               }, color: cs.error),
             row(Icons.redo_rounded, 'Reporter au lendemain',
-                'le bloc est posé dans le programme de demain, à la même heure',
+                'le bloc est posé demain, à la même heure si elle est libre',
                 () async {
               Navigator.pop(sctx);
               // Report EFFECTIF : copie dans le doc de demain (décision
               // explicite ≠ simple oubli), puis annotation sur l'original.
-              await _sync.reportBlockToTomorrow(widget.date, block);
+              final placed = await _sync.reportBlockToTomorrow(widget.date, block);
               await _sync.updateBlockStatus(widget.date, block.id, 'skipped');
               await _sync.updateBlockSkipReason(widget.date, block.id, 'reporte');
               // Défi reporté → l'alarme du jour n'a plus lieu d'être.
               await cancelChallengeNotifications(block);
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text(
-                      'Reporté — le bloc est posé dans le programme de demain.'),
-                  duration: Duration(seconds: 3),
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(carryMessage([placed])),
+                  duration: const Duration(seconds: 3),
                   behavior: SnackBarBehavior.floating,
                 ));
               }
