@@ -332,6 +332,16 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
 `utils/block_work.dart`) — l'action visée (sinon la 1ʳᵉ ouverte) en avant avec ses étapes cochables, les autres actions
 repliées, chrono, « Voir la tâche » (fiche), « Bloc terminé ». Bloc de séance (🎯 d'une intervention) → écran séance.
 Routage dans `_openBlockSource` (`main.dart`).
+**Retouches « action » mobile (2026-10, maquettes validées)** : écran bloc → bouton **« Étape suivante »** (coche l'étape
+en cours de l'action en avant, « Ensuite : … ») ; arrêt d'un chrono sans tâche ni action (≥ 3 min, geste user :
+`AppLogic.onUserStopped`, jamais au changement de chrono) → feuille **« Ces n min, c'était pour quoi ? »** avec les
+actions probables de l'activité (`stopTargetCandidates` : programme du jour, puis échéance, jamais à venir) ; Actions
+→ pastille **« NOUVEAU »** + groupe « Arrivées aujourd'hui » pour les tâches qui démarrent le jour même
+(`startsToday`) ; programme du jour, à partir de 18 h et 2 blocs passés non faits (hors miroirs) → encart **« Caser
+les n demain »** (`blocksToCarry` / `showCarryCard`, annulable via `undoReportToTomorrow`) ; **miroirs récurrents** :
+`upsertScheduleBlock` d'un miroir avec activité sans tâche retient `data/meta.mirrorActivities {mirrorKey(titre):
+activityId}`, appliqué EN MÉMOIRE aux miroirs libres au chargement (`applyMirrorMemory`, après `linkMirrorsToSessions`
+— la séance prime).
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien

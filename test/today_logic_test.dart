@@ -162,4 +162,24 @@ void main() {
     expect(showCarryCard(carry, 17 * 60), isFalse);
     expect(showCarryCard(carry.take(1).toList(), 21 * 60), isFalse);
   });
+
+  test('applyMirrorMemory : miroir libre relié par son titre, jamais un bloc déjà relié', () {
+    ScheduleBlock m(String id, String title, {String? activityId, String? projectId, String? gcal = 'evt'}) =>
+        ScheduleBlock(id: id, startTime: '19:00', durationMin: 120, title: title,
+            gcalEventId: gcal, activityId: activityId, projectId: projectId);
+    final blocks = [
+      m('gds', '  GDS '),
+      m('seance', 'GDS', projectId: 'p'),
+      m('deja', 'GDS', activityId: 'autre'),
+      m('perso', 'GDS', gcal: null),
+      m('inconnu', 'Dentiste'),
+    ];
+    expect(mirrorKey('  Cléa   Numérique - LAM4 '), 'cléa numérique - lam4');
+    expect(applyMirrorMemory(blocks, {'gds': 'act-gds'}), 1);
+    expect(blocks[0].activityId, 'act-gds');
+    expect(blocks[1].activityId, isNull);
+    expect(blocks[2].activityId, 'autre');
+    expect(blocks[3].activityId, isNull);
+    expect(blocks[4].activityId, isNull);
+  });
 }

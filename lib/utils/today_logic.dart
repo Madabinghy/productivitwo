@@ -178,6 +178,29 @@ List<ScheduleBlock> blocksToCarry(Iterable<ScheduleBlock> blocks, int nowMin) =>
 
 bool showCarryCard(List<ScheduleBlock> carry, int nowMin) => nowMin >= 18 * 60 && carry.length >= 2;
 
+/// Clé d'un rendez-vous d'agenda pour la mémoire « titre → activité »
+/// (2026-10) : casse, accents de surface et espaces ignorés. Un événement
+/// récurrent change d'id à chaque occurrence, pas de titre.
+String mirrorKey(String title) =>
+    title.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// Applique EN MÉMOIRE la mémoire `mirrorActivities` aux miroirs d'agenda du
+/// jour encore libres (ni activité, ni projet, ni tâche — un miroir déjà relié
+/// à une séance garde sa séance). Rien n'est écrit : valable pour chaque
+/// occurrence d'un événement récurrent. Renvoie le nombre de blocs reliés.
+int applyMirrorMemory(Iterable<ScheduleBlock> blocks, Map<String, String> memory) {
+  if (memory.isEmpty) return 0;
+  var n = 0;
+  for (final b in blocks) {
+    if (b.gcalEventId == null || b.activityId != null || b.projectId != null || b.taskId != null) continue;
+    final id = memory[mirrorKey(b.title)];
+    if (id == null) continue;
+    b.activityId = id;
+    n++;
+  }
+  return n;
+}
+
 /// Bloc pending dont le créneau contient [nowMin] (le premier), sinon null.
 ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   for (final b in blocks) {

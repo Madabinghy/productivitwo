@@ -55,6 +55,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   final _sync = FirestoreSync();
   DailySchedule? _schedule;
   StreamSubscription<DailySchedule?>? _sub;
+  StreamSubscription<Map<String, dynamic>>? _metaSub;
+  /// Mémoire « titre de rendez-vous → activité » (`data/meta.mirrorActivities`).
+  Map<String, String> _mirrorMemory = const {};
   // Défis déjà comptés (tap OU auto) — évite tout double comptage par bloc.
   final Set<String> _won = {};
   // Blocs d'activité / de tâche dont le temps de chrono a atteint le seuil :
@@ -125,9 +128,17 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (s != null && day != null) {
           linkMirrorsToSessions(s.blocks, widget.logic.currentProjects, day);
         }
+        if (s != null) applyMirrorMemory(s.blocks, _mirrorMemory);
         setState(() => _schedule = s);
         if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
       }
+    });
+    _metaSub = _sync.streamMetaDoc().listen((m) {
+      final raw = m['mirrorActivities'];
+      if (raw is! Map || !mounted) return;
+      _mirrorMemory = {for (final e in raw.entries) e.key.toString(): e.value.toString()};
+      final s = _schedule;
+      if (s != null && applyMirrorMemory(s.blocks, _mirrorMemory) > 0) setState(() {});
     });
     // Le trait « maintenant » suit la minute (affichage seul, zéro écriture).
     if (_isToday) {
@@ -141,6 +152,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   void dispose() {
     _nowTick?.cancel();
     _sub?.cancel();
+    _metaSub?.cancel();
     super.dispose();
   }
 
