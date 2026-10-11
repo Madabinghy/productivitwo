@@ -142,9 +142,9 @@ class FocusBand extends StatelessWidget {
                 )
               else
                 Row(mainAxisSize: MainAxisSize.min, children: [
-                  _btn('Pause', onPause),
+                  _doneBtn(),
                   const SizedBox(width: 8),
-                  _btn('Terminé', onDone, primary: true),
+                  _stopBtn(),
                 ]),
             ],
           ),
@@ -167,9 +167,9 @@ class FocusBand extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
                   child: Row(children: [
-                    Expanded(child: _btn('Pause', onPause)),
+                    Expanded(child: _doneBtn()),
                     const SizedBox(width: 8),
-                    Expanded(child: _btn('Terminé', onDone, primary: true)),
+                    Expanded(child: _stopBtn()),
                   ]),
                 ),
               ],
@@ -370,7 +370,9 @@ class FocusBand extends StatelessWidget {
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kBText2)),
       );
 
-  Widget _btn(String label, VoidCallback onTap, {bool primary = false}) => SizedBox(
+  Widget _btn(String label, VoidCallback onTap, {bool primary = false, String? tooltip}) => Tooltip(
+        message: tooltip ?? '',
+        child: SizedBox(
         height: 38,
         child: TextButton(
           onPressed: onTap,
@@ -384,7 +386,16 @@ class FocusBand extends StatelessWidget {
           ),
           child: Text(label),
         ),
+      ),
       );
+
+  // Couper le chrono ≠ finir l'action (retour 2026-10 : « Terminé » cochait
+  // l'action alors qu'on voulait seulement arrêter le temps). L'arrêt est le
+  // geste principal ; cocher l'action est explicite.
+  Widget _stopBtn() => _btn('Arrêter le chrono', onPause,
+      primary: true, tooltip: 'Arrête le chrono — l\'action reste à faire');
+  Widget _doneBtn() => _btn('✓ Action faite', onDone,
+      tooltip: 'Coche l\'action comme faite et arrête le chrono');
 }
 
 class _SmallRing extends CustomPainter {

@@ -242,8 +242,15 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       ));
   }
 
-  Future<void> _save() async {
-    await widget.sync.saveProjectTasks(_p.id, _p.tasks);
+  /// Écriture ciblée : une action, relue et réécrite seule côté serveur.
+  Future<void> _saveAction(TaskAction a) async {
+    await widget.sync.patchActionOf(_p, a);
+    widget.onChanged();
+  }
+
+  /// Écriture ciblée : quelques champs d'une tâche (statut, dates, estimation).
+  Future<void> _saveTask(ProjectTask t, List<String> keys) async {
+    await widget.sync.patchTaskFields(_p.id, t, keys);
     widget.onChanged();
   }
 
@@ -252,13 +259,13 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       a.done = !a.done;
       a.doneAt = a.done ? DateTime.now() : null;
     });
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _toggleChecklist(TaskAction a, ChecklistItem c, bool done) async {
     final changed = setChecklistItem(a, c.id, done);
     setState(() {});
-    await _save();
+    await _saveAction(a);
     if (changed && mounted) {
       _snack(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}');
     }
@@ -267,17 +274,17 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   Future<void> _addChecklist(TaskAction a, String title) async {
     if (addChecklistItem(a, title) == null) return;
     setState(() {});
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _removeChecklist(TaskAction a, ChecklistItem c) async {
     setState(() => removeChecklistItem(a, c.id));
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _toggleTask(ProjectTask t) async {
     setState(() => t.status = t.status == 'done' ? 'pending' : 'done');
-    await _save();
+    await _saveTask(t, const ['status']);
   }
 
   Future<void> _editProject() async {
@@ -312,7 +319,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       t.endDate = day;
       if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
     });
-    await _save();
+    await _saveTask(t, const ['startDate', 'endDate']);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -328,7 +335,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
               t.startDate = oldStart;
               t.endDate = oldEnd;
             });
-            await _save();
+            await _saveTask(t, const ['startDate', 'endDate']);
           },
         ),
       ));
@@ -398,7 +405,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
       estimatedMin: t.estimatedMin,
       onEstimate: (m) async {
         setState(() => t.estimatedMin = m);
-        await _save();
+        await _saveTask(t, const ['estimatedMin']);
         _snack('Tâche estimée ${fmtMin(m)}');
       },
       onPlace: (d, startMin, dur) async {

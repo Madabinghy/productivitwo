@@ -359,7 +359,7 @@ class TodayViewState extends State<TodayView> {
       Project p, TaskAction a, ChecklistItem c, bool done) async {
     final changed = setChecklistItem(a, c.id, done);
     setState(() {});
-    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    await widget.sync.patchActionOf(p, a);
     if (!changed || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
@@ -370,7 +370,7 @@ class TodayViewState extends State<TodayView> {
   Future<void> _addBlockChecklist(Project p, TaskAction a, String title) async {
     if (addChecklistItem(a, title) == null) return;
     setState(() {});
-    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    await widget.sync.patchActionOf(p, a);
   }
 
   Future<void> _toggleTaskAction(Project p, TaskAction a, bool done) async {
@@ -378,13 +378,14 @@ class TodayViewState extends State<TodayView> {
       a.done = done;
       a.doneAt = done ? DateTime.now() : null;
     });
-    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    await widget.sync.patchActionOf(p, a);
   }
 
-  /// « Terminé » de la bande Focus : l'action est faite, le chrono s'arrête,
-  /// le bloc d'origine passe à fait.
+  /// « ✓ Action faite » de la bande Focus : l'action est faite, le chrono
+  /// s'arrête, le bloc d'origine passe à fait. « Annuler » rouvre l'action.
   Future<void> _finishFocus(FocusTarget t) async {
-    if (!t.action.done) await _toggleTaskAction(t.project, t.action, true);
+    final wasDone = t.action.done;
+    if (!wasDone) await _toggleTaskAction(t.project, t.action, true);
     final b = t.block;
     if (b != null) {
       await _finishBlock(b);
@@ -394,7 +395,11 @@ class TodayViewState extends State<TodayView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Action faite : ${t.action.title}'),
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 5),
+      action: wasDone
+          ? null
+          : SnackBarAction(
+              label: 'Annuler', onPressed: () => _toggleTaskAction(t.project, t.action, false)),
     ));
   }
 
@@ -1084,7 +1089,7 @@ class TodayViewState extends State<TodayView> {
     if (p != null) {
       final r = resolveBlockAction(p, b);
       if (r != null) {
-        return (action: r.action, save: () => widget.sync.saveProjectTasks(p.id, p.tasks));
+        return (action: r.action, save: () => widget.sync.patchActionOf(p, r.action));
       }
     }
     final act = _activityOf(b.activityId);

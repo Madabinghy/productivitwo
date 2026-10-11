@@ -205,7 +205,7 @@ class _ProjectsViewState extends State<ProjectsView> {
       a.done = true;
       a.doneAt = DateTime.now();
     });
-    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    await widget.sync.patchActionOf(p, a);
   }
 
   Future<void> _defineNextAction(Project p) async {

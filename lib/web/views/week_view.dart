@@ -268,17 +268,20 @@ class _WeekViewState extends State<WeekView> {
       ));
   }
 
-  Future<void> _saveTasks(Project p) => widget.sync.saveProjectTasks(p.id, p.tasks);
+  /// Écriture ciblée : les champs qu'on touche ici (statut, dates, estimation),
+  /// sur la tâche relue côté serveur — jamais tout le projet depuis le cache.
+  Future<void> _saveTask(WeekTask wt) => widget.sync
+      .patchTaskFields(wt.project.id, wt.task, const ['status', 'startDate', 'endDate', 'estimatedMin']);
 
   /// Estimation de la tâche posée depuis le popover (durée sélectionnée).
   Future<void> _setEstimate(WeekTask wt, int min) async {
     final t = wt.task;
     final old = t.estimatedMin;
     setState(() => t.estimatedMin = min);
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     _snack('Tâche estimée ${_fmtHm(min)}', actionLabel: 'Annuler', onAction: () async {
       setState(() => t.estimatedMin = old);
-      await _saveTasks(wt.project);
+      await _saveTask(wt);
     });
   }
 
@@ -317,11 +320,11 @@ class _WeekViewState extends State<WeekView> {
     final before = t.status;
     final nowDone = before != 'done';
     setState(() => t.status = nowDone ? 'done' : 'pending');
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     _snack(nowDone ? 'Tâche faite' : 'Tâche rouverte', actionLabel: 'Annuler',
         onAction: () async {
       setState(() => t.status = before);
-      await _saveTasks(wt.project);
+      await _saveTask(wt);
     });
   }
 
@@ -333,7 +336,7 @@ class _WeekViewState extends State<WeekView> {
       t.startDate = t.startDate.add(Duration(days: deltaDays));
       if (t.endDate != null) t.endDate = t.endDate!.add(Duration(days: deltaDays));
     });
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     final n = wt.plannedBlocks;
     _snack(
       'Tâche déplacée de ${deltaDays.abs()} jour${deltaDays.abs() > 1 ? 's' : ''}'
@@ -344,7 +347,7 @@ class _WeekViewState extends State<WeekView> {
           t.startDate = oldStart;
           t.endDate = oldEnd;
         });
-        await _saveTasks(wt.project);
+        await _saveTask(wt);
       },
     );
   }
@@ -358,14 +361,14 @@ class _WeekViewState extends State<WeekView> {
       t.endDate = day;
       if (dateOnly(t.startDate).isAfter(day)) t.startDate = day;
     });
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     _snack('Échéance reportée au ${_kDayLong[day.weekday - 1]} ${day.day}',
         actionLabel: 'Annuler', onAction: () async {
       setState(() {
         t.startDate = oldStart;
         t.endDate = oldEnd;
       });
-      await _saveTasks(wt.project);
+      await _saveTask(wt);
     });
   }
 
@@ -377,11 +380,11 @@ class _WeekViewState extends State<WeekView> {
     var end = base.add(Duration(days: deltaDays));
     if (end.isBefore(dateOnly(t.startDate))) end = dateOnly(t.startDate);
     setState(() => t.endDate = end);
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     _snack('Échéance : ${_kDayLong[end.weekday - 1]} ${end.day}', actionLabel: 'Annuler',
         onAction: () async {
       setState(() => t.endDate = oldEnd);
-      await _saveTasks(wt.project);
+      await _saveTask(wt);
     });
   }
 
@@ -419,11 +422,11 @@ class _WeekViewState extends State<WeekView> {
     if (picked == null) return;
     final oldColor = wt.task.color;
     setState(() => wt.task.color = picked.isEmpty ? null : picked);
-    await _saveTasks(wt.project);
+    await _saveTask(wt);
     _snack(picked.isEmpty ? 'Couleur du domaine rétablie' : 'Couleur de la barre modifiée',
         actionLabel: 'Annuler', onAction: () async {
       setState(() => wt.task.color = oldColor);
-      await _saveTasks(wt.project);
+      await _saveTask(wt);
     });
   }
 

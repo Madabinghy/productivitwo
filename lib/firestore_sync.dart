@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable;
+import 'package:productivitwo_v1/utils/project_patch.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 
 /// Synchronisation Firestore.
@@ -1212,6 +1213,54 @@ class FirestoreSync {
     }
     await _col('projects').doc(projectId).update({
       'tasks': tasks.map((t) => t.toJson()).toList(),
+    });
+  }
+
+  /// Document qui porte réellement [taskId] : le sous-projet d'origine quand
+  /// [projectId] est un dossier affiché en vue fusionnée.
+  String _taskDocId(String projectId, String taskId) =>
+      mergedFolderFor(projectId)?.originProject[taskId] ?? projectId;
+
+  /// Écrit UNE action (cocher, étapes, renommer une étape…) dans le projet tel
+  /// qu'il est sur le serveur : transaction qui relit le document et ne
+  /// remplace que cette action. Ne réécrit jamais les autres tâches depuis la
+  /// copie locale (perte de données « 6e — Mathématiques », 2026-10).
+  Future<void> patchTaskAction(String projectId, String taskId, TaskAction action) async {
+    if (uid == null) return;
+    final ref = _col('projects').doc(_taskDocId(projectId, taskId));
+    final json = action.toJson();
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) return;
+      final tasks = replaceActionIn(
+          ((snap.data() as Map)['tasks'] as List?) ?? const [], taskId, json);
+      if (tasks != null) tx.update(ref, {'tasks': tasks});
+    });
+  }
+
+  /// [patchTaskAction] en retrouvant la tâche qui contient [action] dans [p].
+  Future<void> patchActionOf(Project p, TaskAction action) async {
+    for (final t in p.tasks) {
+      if (t.actions.any((a) => identical(a, action) || a.id == action.id)) {
+        await patchTaskAction(p.id, t.id, action);
+        return;
+      }
+    }
+  }
+
+  /// Écrit les seuls champs [keys] de la tâche [task] (statut, dates,
+  /// estimation…) dans le projet tel qu'il est sur le serveur.
+  Future<void> patchTaskFields(String projectId, ProjectTask task, List<String> keys) async {
+    if (uid == null) return;
+    final ref = _col('projects').doc(_taskDocId(projectId, task.id));
+    final all = task.toJson();
+    final fields = {for (final k in keys) if (k != 'phaseId') k: all[k]};
+    await _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) return;
+      final tasks = patchTaskFieldsIn(
+          ((snap.data() as Map)['tasks'] as List?) ?? const [], task.id, fields);
+      if (tasks != null) tx.update(ref, {'tasks': tasks});
     });
   }
 
