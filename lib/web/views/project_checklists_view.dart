@@ -103,8 +103,9 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
     return all.where((e) => !e.action.done).firstOrNull ?? all.firstOrNull;
   }
 
-  Future<void> _save() async {
-    await widget.sync.saveProjectTasks(_p.id, _p.tasks);
+  /// Écriture ciblée : une action, relue et réécrite seule côté serveur.
+  Future<void> _saveAction(TaskAction a) async {
+    await widget.sync.patchActionOf(_p, a);
     widget.onChanged();
   }
 
@@ -124,20 +125,20 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
   Future<void> _toggleItem(TaskAction a, ChecklistItem c, bool v) async {
     final changed = setChecklistItem(a, c.id, v);
     setState(() {});
-    await _save();
+    await _saveAction(a);
     if (changed) _snack(a.done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}');
   }
 
   Future<void> _addItem(TaskAction a, String title) async {
     if (addChecklistItem(a, title) == null) return;
     setState(() {});
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _removeItem(TaskAction a, ChecklistItem c) async {
     final index = a.checklist.indexOf(c);
     setState(() => removeChecklistItem(a, c.id));
-    await _save();
+    await _saveAction(a);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -151,7 +152,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
           onPressed: () async {
             if (a.checklist.any((x) => x.id == c.id)) return;
             setState(() => a.checklist.insert(index.clamp(0, a.checklist.length), c));
-            await _save();
+            await _saveAction(a);
           },
         ),
       ));
@@ -160,17 +161,17 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
   Future<void> _renameItem(TaskAction a, ChecklistItem c, String title) async {
     if (!renameChecklistItem(a, c.id, title)) return;
     setState(() {});
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _moveItem(TaskAction a, int oldIndex, int newIndex) async {
     setState(() => moveChecklistItem(a, oldIndex, newIndex));
-    await _save();
+    await _saveAction(a);
   }
 
   Future<void> _setDone(TaskAction a, bool done) async {
     setState(() => setActionDone(a, done));
-    await _save();
+    await _saveAction(a);
     _snack(done ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}');
   }
 

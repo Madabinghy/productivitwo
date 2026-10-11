@@ -61,7 +61,7 @@ class _SessionPreviewDialogState extends State<_SessionPreviewDialog> {
     final a = _action;
     if (a == null) return;
     setState(() => setChecklistItem(a, c.id, v));
-    await widget.sync.saveProjectTasks(widget.project.id, widget.project.tasks);
+    await widget.sync.patchActionOf(widget.project, a);
   }
 
   @override

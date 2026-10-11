@@ -225,7 +225,7 @@ class _ActionsViewState extends State<ActionsView> {
       a.done = !a.done;
       a.doneAt = a.done ? DateTime.now() : null;
     });
-    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    await widget.sync.patchActionOf(p, a);
   }
 
   Future<void> _toggleOwnAction(Activity act, TaskAction a) async {

@@ -372,6 +372,18 @@ generatedBy:"auto")`** (garde tout l'existant, remplit les trous — `fillAgains
 changements de projets par `propose_change`. `generatedBy:"auto"` ⇒ « planifiée automatiquement » dans
 l'en-tête d'Aujourd'hui (web). Le prompt de la routine est versionné dans le handoff : le modifier là d'abord.
 
+## Écritures ciblées des projets (2026-10)
+
+Cocher une action / une étape, cocher une tâche, changer ses dates ou son estimation depuis le WEB n'écrit plus
+tout le tableau `tasks` depuis la copie locale (un onglet resté ouvert écrasait les modifications faites ailleurs —
+perte réelle sur « 6e — Mathématiques ») : `FirestoreSync.patchTaskAction` / `patchActionOf` (UNE action) et
+`patchTaskFields` (quelques champs d'une tâche) relisent le projet dans une transaction et ne remplacent que ça
+(logique pure `utils/project_patch.dart`, sous-projet d'origine pour un dossier fusionné). Branchés : Aujourd'hui,
+Actions, Projets, Plan d'action, Réalisation, Cette semaine, aperçu de séance. Restent sur `saveProjectTasks` /
+`saveProject` (risque connu) : éditions structurelles (ajout / suppression / déplacement de tâche, Gantt, fiche
+projet) et tout le mobile. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
+« ✓ Action faite » (coche + arrête, annulable).
+
 ## Suppression : soft-delete partout
 
 Ne jamais faire `delete()` direct sauf cas explicite.
