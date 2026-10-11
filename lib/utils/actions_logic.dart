@@ -180,6 +180,11 @@ DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 bool isUpcomingTask(ProjectTask t, DateTime today) =>
     _dayOnly(t.startDate).isAfter(_dayOnly(today));
 
+/// Tâche qui DÉMARRE aujourd'hui : ses actions viennent d'arriver dans la
+/// liste (pastille « nouveau », groupe « Arrivées aujourd'hui »).
+bool startsToday(ProjectTask t, DateTime today) =>
+    _dayOnly(t.startDate) == _dayOnly(today);
+
 /// Actions ouvertes des tâches à venir, par date de début puis ordre Gantt.
 List<({Project project, ProjectTask task, TaskAction action})> upcomingActions(
   List<Project> projects, {

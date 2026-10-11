@@ -253,6 +253,12 @@ void main() {
       expect(ids, ['demain', 'jeudi', 'nov']);
     });
 
+    test('startsToday : seulement le jour même du début', () {
+      expect(startsToday(p.tasks[1], today), isTrue);
+      expect(startsToday(p.tasks[2], today), isFalse);
+      expect(startsToday(task('hier', DateTime(2026, 10, 10)), today), isFalse);
+    });
+
     test('upcomingLabel : demain, jour de la semaine, puis date', () {
       expect(upcomingLabel(DateTime(2026, 10, 12), today), 'dès demain');
       expect(upcomingLabel(DateTime(2026, 10, 15), today), 'dès jeu. 15 oct.');
