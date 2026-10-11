@@ -74,7 +74,7 @@ catégorie 8 px, titre 15 px, durée 12 px à droite. Bloc en cours : fond `#122
 Le toggle liste / frise de `TodayView` (`_timelinePrefKey`) reste disponible via un bouton en fin
 de section (« Voir en frise »).
 
-### 3.4 À TRAITER · n
+### 3.4 À TRAITER · n — retiré (2026-10, trop chargé, peu utilisé ; les tâches en retard restent dans Actions › En retard)
 Carte rayon 16 : tâches en retard (même calcul que le web : `endDate < today`, non done/skipped,
 projets actifs non en pause), 3 max + « + n autres », date en `kBAlert`. Tap → `project_sheet`
 sur la tâche. Lien **Replanifier** → `showPlanNextSheet`. Masquée si vide.
