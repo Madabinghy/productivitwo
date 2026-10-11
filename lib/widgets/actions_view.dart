@@ -63,6 +63,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   // Section « Terminées » repliée par défaut (consultation ponctuelle).
   bool _showDone = false;
+  bool _showUpcoming = false;
   // Section « En pause » repliée par défaut (même logique : consultation
   // ponctuelle, réactivation en un tap).
   bool _showPaused = false;
@@ -1104,8 +1105,17 @@ class _ActionsViewState extends State<ActionsView> {
         _inClient(e.project) &&
         passesContexts(e.action, active) &&
         passesTime(e.action, _time);
-    final shown = all.where(passes).toList();
-    final hiddenByFilters = all.length - shown.length;
+    final passing = all.where(passes).toList();
+    final hiddenByFilters = all.length - passing.length;
+    // Tâche pas encore commencée → « À venir » (sauf action déjà au programme
+    // du jour : on l'a décidé, elle reste devant).
+    final today0 = _day(DateTime.now());
+    final plannedIds = _todayActionIds;
+    bool upcoming(_Entry e) =>
+        e.task != null && isUpcomingTask(e.task!, today0) && !plannedIds.contains(e.action.id);
+    final shown = passing.where((e) => !upcoming(e)).toList();
+    final upcomingEntries = passing.where(upcoming).toList()
+      ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
     final needNextShown =
         needingNext.where((p) => inDomain(p.domainId) && _inClient(p)).toList();
 
@@ -1186,6 +1196,15 @@ class _ActionsViewState extends State<ActionsView> {
                 ),
               ),
             )
+          else if (shown.isEmpty && needNextShown.isEmpty && upcomingEntries.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 24, bottom: 8),
+              child: Center(
+                child: Text('Rien à faire maintenant ici — la suite est dans « À venir ».',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45))),
+              ),
+            )
           else if (shown.isEmpty && needNextShown.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 32),
@@ -1210,6 +1229,7 @@ class _ActionsViewState extends State<ActionsView> {
           else
             ..._byUrgencySections(cs, shown, all, needNextShown),
 
+          ..._upcomingSection(cs, upcomingEntries, today0),
           ..._pausedSection(cs),
           ..._doneSection(cs),
         ],
@@ -1368,6 +1388,40 @@ class _ActionsViewState extends State<ActionsView> {
           ),
         ),
     ]);
+  }
+
+  /// « À venir · n » : actions des tâches qui n'ont pas encore commencé,
+  /// repliées, par date de début. Toujours cochables et lançables (prendre de
+  /// l'avance reste possible).
+  List<Widget> _upcomingSection(ColorScheme cs, List<_Entry> upcoming, DateTime today) {
+    if (upcoming.isEmpty) return const [];
+    return [
+      const SizedBox(height: 6),
+      InkWell(
+        onTap: () => setState(() => _showUpcoming = !_showUpcoming),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(children: [
+            Icon(Icons.upcoming_outlined, size: 16, color: cs.tertiary),
+            const SizedBox(width: 6),
+            Text('À VENIR · ${upcoming.length}',
+                style: TextStyle(
+                    fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.tertiary)),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('pas encore commencées',
+                  style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.4))),
+            ),
+            Icon(_showUpcoming ? Icons.expand_less : Icons.expand_more,
+                size: 18, color: cs.onSurface.withOpacity(.45)),
+          ]),
+        ),
+      ),
+      if (_showUpcoming)
+        for (final e in upcoming)
+          _entryTile(cs, e, showHolder: true, startLabel: upcomingLabel(e.task!.startDate, today)),
+    ];
   }
 
   // ── Sections par urgence ────────────────────────────────────────────────────
@@ -1748,7 +1802,8 @@ class _ActionsViewState extends State<ActionsView> {
     return 'éch. ${due.day} ${m[due.month - 1]}';
   }
 
-  Widget _entryTile(ColorScheme cs, _Entry e, {bool showHolder = false, bool planned = false}) {
+  Widget _entryTile(ColorScheme cs, _Entry e,
+      {bool showHolder = false, bool planned = false, String? startLabel}) {
     final today = _day(DateTime.now());
     final due = _dueOf(e);
     final late = due != null && due.isBefore(today);
@@ -1771,6 +1826,11 @@ class _ActionsViewState extends State<ActionsView> {
             text: taskTitle,
             style: TextStyle(color: cs.onSurface.withOpacity(.72), fontWeight: FontWeight.w600)),
     ];
+    if (startLabel != null) {
+      meta.add(TextSpan(
+          text: startLabel,
+          style: TextStyle(color: cs.tertiary, fontWeight: FontWeight.w700)));
+    }
     if (due != null) {
       sep();
       meta.add(TextSpan(

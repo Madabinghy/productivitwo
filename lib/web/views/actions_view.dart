@@ -56,12 +56,19 @@ class _ActionsViewState extends State<ActionsView> {
   TimeBucket? _time;
   // Filtre actif : projets sans action correspondante masqués, sauf demande.
   bool _showUnmatched = false;
+  bool _showUpcoming = false;
   // « En retard » : seules les actions d'une tâche à l'échéance dépassée
   // (`isOverdueTask`) ; les actions simples n'ont pas d'échéance → masquées.
   bool _overdue = false;
   bool get _filtering => _contexts.isNotEmpty || _time != null || _overdue;
-  bool Function(ProjectTask)? get _taskFilter =>
-      _overdue ? (t) => isOverdueTask(t, DateTime.now()) : null;
+  /// Tâche retenue : jamais une tâche pas encore commencée (elle va dans
+  /// « À venir ») ; avec « En retard », seulement les tâches en retard.
+  bool Function(ProjectTask) get _taskFilter {
+    final now = DateTime.now();
+    return _overdue
+        ? (t) => isOverdueTask(t, now) && !isUpcomingTask(t, now)
+        : (t) => !isUpcomingTask(t, now);
+  }
   String? _domainId;
   // « Pour… » : projet racine (client) ; null = tous.
   String? _clientId;
@@ -168,7 +175,7 @@ class _ActionsViewState extends State<ActionsView> {
       if (!inClient(rootId, p, widget.projects)) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
-        if (_taskFilter != null && !_taskFilter!(t)) continue;
+        if (!_taskFilter(t)) continue;
         n += t.actions.where((a) => !a.done && _filter(a)).length;
       }
     }
@@ -205,7 +212,7 @@ class _ActionsViewState extends State<ActionsView> {
       if (domainId != null && p.domainId != domainId) continue;
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
-        if (_taskFilter != null && !_taskFilter!(t)) continue;
+        if (!_taskFilter(t)) continue;
         n += t.actions.where((a) => !a.done && _filter(a)).length;
       }
     }
@@ -507,7 +514,9 @@ class _ActionsViewState extends State<ActionsView> {
     final open = _openSession;
     final now = open == null
         ? const <({TaskAction action, Project? project, ProjectTask? task, Activity? activity})>[]
-        : possibleNow(_domainProjects, _domainActivities, open.activityId, filter: _filter);
+        : possibleNow(_domainProjects, _domainActivities, open.activityId, filter: _filter)
+            .where((x) => x.task == null || _taskFilter(x.task!))
+            .toList();
     // « J'ai 20 min » + tri par échéance → d'abord ce qui sert la séance la
     // plus proche (brief 2.4) ; le tri explicite « Prochaine séance » fait pareil.
     final today = DateTime.now();
@@ -533,6 +542,9 @@ class _ActionsViewState extends State<ActionsView> {
         },
     ].join(' · ');
     final own = ownActionGroups(_domainActivities, filter: _filter);
+    final upcoming = _overdue
+        ? const <({Project project, ProjectTask task, TaskAction action})>[]
+        : upcomingActions(_domainProjects, filter: _filter, today: today);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (open != null) ...[
@@ -617,6 +629,10 @@ class _ActionsViewState extends State<ActionsView> {
             ),
         ]),
       ),
+      if (upcoming.isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _upcomingCard(upcoming, today),
+      ],
       if (own.isNotEmpty) ...[
         const SizedBox(height: 18),
         _card(
@@ -684,6 +700,13 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
+  /// Projet dont les actions ouvertes sont toutes à venir : date de la
+  /// première et nombre — pas de « Définir la prochaine action » trompeur.
+  ({DateTime start, int count})? _nextUpcomingOf(Project p) {
+    final u = upcomingActions([p], filter: _filter, today: DateTime.now());
+    return u.isEmpty ? null : (start: u.first.task.startDate, count: u.length);
+  }
+
   Widget _projectGroup(ProjectActions g) {
     final p = g.project;
     final color = domainColor(p.domainId, widget.domains) ?? kBText4;
@@ -734,7 +757,15 @@ class _ActionsViewState extends State<ActionsView> {
           _textLink('Ouvrir', () => widget.onOpenProject(p)),
         ]),
       ),
-      if (g.entries.isEmpty)
+      if (_nextUpcomingOf(p) case final next? when g.entries.isEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 0, 8),
+          child: Text(
+              'Prochaine action ${upcomingLabel(next.start, DateTime.now())} · '
+              '${next.count} à venir',
+              style: const TextStyle(fontSize: 12.5, color: kBText3)),
+        )
+      else if (g.entries.isEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 2, 0, 8),
           child: Row(children: [
@@ -785,6 +816,37 @@ class _ActionsViewState extends State<ActionsView> {
       ],
       const Divider(height: 1, color: kBLine),
     ]);
+  }
+
+  /// « À venir · n » : actions des tâches pas encore commencées, repliées, par
+  /// date de début. Cochables et éditables (prendre de l'avance reste possible).
+  Widget _upcomingCard(
+      List<({Project project, ProjectTask task, TaskAction action})> upcoming, DateTime today) {
+    return _card(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _showUpcoming = !_showUpcoming),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              Expanded(child: _label('À VENIR · ${upcoming.length} · PAS ENCORE COMMENCÉES', color: kBText4)),
+              Icon(_showUpcoming ? Icons.expand_less : Icons.expand_more, size: 18, color: kBText3),
+            ]),
+          ),
+        ),
+        if (_showUpcoming) ...[
+          const SizedBox(height: 6),
+          for (final u in upcoming)
+            _actionRow(u.action,
+                height: 38,
+                subtitle: '${upcomingLabel(u.task.startDate, today)} · ${u.project.title} › ${u.task.title}',
+                onToggle: () => _toggleProjectAction(u.project, u.action),
+                onMenu: () => _edit(u.action, project: u.project, task: u.task)),
+        ],
+      ]),
+    );
   }
 
   Widget _actionRow(TaskAction a,
