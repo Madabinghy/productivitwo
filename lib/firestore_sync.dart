@@ -18,7 +18,8 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
-import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable, mirrorKey;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, kSkipUnavailable, mirrorKey;
+import 'package:productivitwo_v1/utils/week_planner.dart' show carrySlot, minToClock;
 import 'package:productivitwo_v1/utils/project_patch.dart';
 import 'package:productivitwo_v1/utils/project_merge.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
@@ -3424,10 +3425,14 @@ class FirestoreSync {
     }
   }
 
-  Future<void> reportBlockToTomorrow(String fromDate, ScheduleBlock b) async {
-    if (uid == null) return;
+  /// Copie [b] au lendemain sur un créneau libre (`carrySlot`) ; retourne
+  /// l'heure retenue et s'il chevauche malgré tout (journée pleine). Null si
+  /// rien n'a été posé (déjà reporté, hors session).
+  Future<({String startTime, bool conflict})?> reportBlockToTomorrow(
+      String fromDate, ScheduleBlock b) async {
+    if (uid == null) return null;
     final from = DateTime.tryParse(fromDate);
-    if (from == null) return;
+    if (from == null) return null;
     final t = from.add(const Duration(days: 1));
     final tomorrow =
         '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
@@ -3444,10 +3449,16 @@ class FirestoreSync {
     // Déjà reporté ? (même bloc source, repérable par id — la copie garde
     // l'id d'origine dans carriedFromDate + un id neuf à elle.)
     final marker = '$fromDate:${b.id}';
-    if (existing.any((x) => x['carriedFromDate'] == marker)) return;
+    if (existing.any((x) => x['carriedFromDate'] == marker)) return null;
 
+    final slot = carrySlot(
+      existing.map(ScheduleBlock.from).toList(),
+      blockStartMin(b),
+      b.durationMin,
+      window: await fetchDayWindow(),
+    );
     final copy = ScheduleBlock(
-      startTime: b.startTime,
+      startTime: minToClock(slot.start),
       durationMin: b.durationMin,
       title: b.title,
       category: b.category,
@@ -3472,6 +3483,7 @@ class FirestoreSync {
       existing.add(copy.toJson());
       await ref.update({'blocks': existing});
     }
+    return (startTime: copy.startTime, conflict: slot.conflict);
   }
 
   /// Remplace un bloc par son id (ou l'ajoute s'il est absent) en ne

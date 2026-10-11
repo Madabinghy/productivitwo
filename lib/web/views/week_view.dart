@@ -309,10 +309,10 @@ class _WeekViewState extends State<WeekView> {
   /// le web laissait l'original en attente côté serveur).
   Future<void> _blockToTomorrow(String date, ScheduleBlock b) async {
     setState(() => _byDay[date]?.remove(b));
-    await widget.sync.reportBlockToTomorrow(date, b);
+    final placed = await widget.sync.reportBlockToTomorrow(date, b);
     await widget.sync.updateBlockStatus(date, b.id, 'skipped');
     await widget.sync.updateBlockSkipReason(date, b.id, 'reporte');
-    _snack('Bloc reporté à demain, à la même heure');
+    _snack(carryMessage([placed]));
   }
 
   Future<void> _toggleDone(WeekTask wt) async {
