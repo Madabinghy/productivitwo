@@ -7,8 +7,6 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
-import 'package:productivitwo_v1/utils/project_health.dart';
-import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
@@ -27,7 +25,6 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
 /// puis le programme horaire du jour, avec bascule vers « Demain » pour
@@ -887,7 +884,6 @@ class TodayViewState extends State<TodayView> {
                     ),
                   ),
                 ] else ...[
-                  _overdueCard(cs, now, link, text3),
                   // « Le meilleur à faire » : les routines à rattraper,
                   // actionnables sur place (+1 / −1 / passer) — ex-Maintenant.
                   BestToDoCard(logic: widget.logic, onStartTimed: widget.onStartTimed),
@@ -1043,117 +1039,4 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
-  /// « À TRAITER · n » (§ 3.4) : tâches en retard des projets actifs non en
-  /// pause, 3 max + « + n autres ». Masquée si vide.
-  Widget _overdueCard(ColorScheme cs, DateTime now, Color link, Color text3) {
-    final items = <({Project p, ProjectTask t})>[];
-    for (final p in widget.logic.currentProjects) {
-      if (p.status != 'active' || p.paused) continue;
-      for (final t in overdueTasks(p, now)) {
-        items.add((p: p, t: t));
-      }
-    }
-    if (items.isEmpty) return const SizedBox.shrink();
-    items.sort((a, b) => a.t.endDate!.compareTo(b.t.endDate!));
-    final dark = cs.brightness == Brightness.dark;
-    final alert = dark ? kBAlert : cs.error;
-    String ddmm(DateTime d) =>
-        '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
-    return Container(
-      margin: const EdgeInsets.only(top: 22),
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
-      decoration: BoxDecoration(
-        color: dark ? kBSurface : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: alert.withOpacity(.25)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(
-            child: Text('À TRAITER · ${items.length}',
-                style: TextStyle(
-                    fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
-          ),
-          InkWell(
-            onTap: () => _openPlan(_ymd(now)),
-            borderRadius: BorderRadius.circular(6),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Text('Replanifier',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: link)),
-            ),
-          ),
-        ]),
-        const SizedBox(height: 4),
-        for (final it in items.take(3))
-          InkWell(
-            onTap: widget.onOpenTask == null ? null : () => widget.onOpenTask!(it.p, it.t),
-            borderRadius: BorderRadius.circular(8),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 44),
-              child: Row(children: [
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(it.t.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
-                    Text(it.p.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: text3)),
-                  ]),
-                ),
-                const SizedBox(width: 8),
-                Text(ddmm(it.t.endDate!),
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: alert,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-                const SizedBox(width: 8),
-              ]),
-            ),
-          ),
-        if (items.length > 3)
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Text('+ ${items.length - 3} autres',
-                style: TextStyle(fontSize: 12, color: text3)),
-          ),
-        // Replanifier AVEC le Claude de l'utilisateur : claude.ai/new?q=… avec
-        // les retards et la journée ; il envoie, Claude replanifie via son
-        // connecteur. Zéro appel à nos functions.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(0, 6, 8, 4),
-          child: SizedBox(
-            height: 44,
-            child: OutlinedButton.icon(
-              icon: Icon(Icons.auto_awesome, size: 16, color: link),
-              label: const Text('Replanifier avec Claude'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: cs.onSurface,
-                side: BorderSide(color: link.withOpacity(.45)),
-                shape: const StadiumBorder(),
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
-              ),
-              onPressed: () {
-                final prompt = replanOverduePrompt(
-                  date: _ymd(now),
-                  now: now,
-                  overdue: [
-                    for (final it in items)
-                      (task: it.t.title, project: it.p.title, due: it.t.endDate!),
-                  ],
-                  todayBlocks: _liveBlocks,
-                );
-                launchUrl(claudeNewUri(prompt), mode: LaunchMode.externalApplication);
-              },
-            ),
-          ),
-        ),
-      ]),
-    );
-  }
 }
