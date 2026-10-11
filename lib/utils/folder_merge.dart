@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/project_merge.dart';
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
@@ -57,6 +58,7 @@ MergedFolder mergeFolder(Project folder, List<Project> all) {
     if (end == null || cEnd.isAfter(end)) end = cEnd;
     for (final t in c.tasks) {
       final copy = ProjectTask.from(t.toJson())..phaseId = c.id;
+      copyTaskBase(t, copy);
       tasks.add(copy);
       originProject[t.id] = c.id;
       originPhase[t.id] = t.phaseId;
@@ -65,6 +67,7 @@ MergedFolder mergeFolder(Project folder, List<Project> all) {
   final view = Project.from(folder.toJson())
     ..phases = phases
     ..tasks = tasks;
+  setKnownTaskIds(tasks, {for (final t in tasks) t.id});
   if (start != null) view.startDate = start;
   if (end != null) view.endDate = folder.endDate ?? end;
   return MergedFolder(

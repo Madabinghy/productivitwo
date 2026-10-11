@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show kSkipUnavailable;
 import 'package:productivitwo_v1/utils/project_patch.dart';
+import 'package:productivitwo_v1/utils/project_merge.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 
 /// Synchronisation Firestore.
@@ -881,10 +882,18 @@ class FirestoreSync {
     await _col('documents').doc(docId).delete();
   }
 
+  /// Projet lu depuis Firestore, empreinte de chargement posée (fusion à la
+  /// sauvegarde, `utils/project_merge.dart`).
+  Project _loadedProject(Map data) {
+    final p = Project.from(data);
+    markProjectLoaded(p);
+    return p;
+  }
+
   Future<List<Project>> fetchProjects() async {
     if (uid == null) return [];
     final snap = await _col('projects').get();
-    return snap.docs.map((d) => Project.from(d.data() as Map)).toList();
+    return snap.docs.map((d) => _loadedProject(d.data() as Map)).toList();
   }
 
   Stream<Map<String, dynamic>> streamMetaDoc() {
@@ -895,7 +904,7 @@ class FirestoreSync {
   Stream<List<Project>> streamProjects() {
     if (uid == null) return const Stream.empty();
     return _col('projects').snapshots().map(
-      (snap) => snap.docs.map((d) => Project.from(d.data() as Map)).toList(),
+      (snap) => snap.docs.map((d) => _loadedProject(d.data() as Map)).toList(),
     );
   }
 
@@ -1175,21 +1184,56 @@ class FirestoreSync {
     }, SetOptions(merge: true));
   }
 
+  /// Enregistre le projet en FUSIONNANT avec la version serveur (2026-10) :
+  /// seuls les champs et les tâches modifiés ici depuis le chargement
+  /// remplacent ceux du serveur ; ce qui a changé ailleurs (MCP, autre
+  /// appareil, autre onglet) est conservé. Voir `utils/project_merge.dart`.
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
     // Dossier affiché en vue fusionnée : ses « phases » sont les sous-projets
     // et ses tâches leur appartiennent — on enregistre la fiche sans eux et on
     // répartit les tâches.
     final merged = mergedFolderFor(project.id);
+    final ref = _col('projects').doc(project.id);
     if (merged != null) {
       final json = project.toJson()
         ..['phases'] = const []
         ..['tasks'] = const [];
-      await _col('projects').doc(project.id).set(json);
+      await _mergedOrDirect(
+          () => _db.runTransaction((tx) async {
+                final snap = await tx.get(ref);
+                final server = snap.exists ? snap.data() as Map : const {};
+                final out = mergeProjectFields(server: server, local: json, base: projectFieldBaseOf(project))
+                  ..['phases'] = const []
+                  ..['tasks'] = const [];
+                tx.set(ref, out);
+              }),
+          () => ref.set(json));
+      markProjectFieldsSaved(project);
       await saveProjectTasks(project.id, project.tasks);
       return;
     }
-    await _col('projects').doc(project.id).set(project.toJson());
+    final json = project.toJson();
+    final byId = {for (final t in project.tasks) t.id: t};
+    final known = knownTaskIdsOf(project.tasks);
+    await _mergedOrDirect(() => _db.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) {
+        tx.set(ref, json);
+        return;
+      }
+      final server = snap.data() as Map;
+      final out = mergeProjectFields(server: server, local: json, base: projectFieldBaseOf(project));
+      out['tasks'] = mergeTaskLists(
+        server: (server['tasks'] as List?) ?? const [],
+        local: [for (final t in project.tasks) t.toJson()],
+        changed: (id) => taskChangedLocally(byId[id]!),
+        known: known,
+      );
+      tx.set(ref, out);
+    }), () => ref.set(json));
+    markProjectFieldsSaved(project);
+    markTasksSaved(project.tasks);
   }
 
   Future<void> deleteProject(String projectId) async {
@@ -1197,23 +1241,67 @@ class FirestoreSync {
     await _col('projects').doc(projectId).delete();
   }
 
-  /// Met à jour uniquement le tableau de tâches d'un projet.
+  /// Enregistre les tâches d'un projet en FUSIONNANT avec le serveur
+  /// (2026-10) : une tâche modifiée ici remplace celle du serveur, une tâche
+  /// inchangée ici garde la version serveur (modifiée ailleurs ou non), une
+  /// tâche ajoutée ailleurs est conservée, une tâche supprimée ici est retirée.
+  /// Avant, tout le tableau était réécrit depuis la copie locale : un onglet
+  /// resté ouvert effaçait les modifications faites ailleurs.
   Future<void> saveProjectTasks(String projectId, List<ProjectTask> tasks) async {
     if (uid == null) return;
+    final known = knownTaskIdsOf(tasks);
+    final byId = {for (final t in tasks) t.id: t};
     final merged = mergedFolderFor(projectId);
     if (merged != null) {
       // Vue fusionnée d'un dossier : chaque sous-projet reçoit ses tâches.
       final split = splitMergedTasks(merged, tasks);
       for (final e in split.entries) {
-        await _col('projects').doc(e.key).update({
-          'tasks': e.value.map((t) => t.toJson()).toList(),
-        });
+        final local = [for (final c in e.value) c.toJson()];
+        final localById = {for (final j in local) j['id'] as String: j};
+        await _mergeWriteTasks(e.key, local,
+            (id) => byId[id] == null || taskChangedLocally(byId[id]!, localById[id]), known);
+        for (final c in e.value) {
+          final src = byId[c.id];
+          if (src != null) setTaskBase(src, localById[c.id]!);
+        }
       }
+      setKnownTaskIds(tasks, byId.keys.toSet());
       return;
     }
-    await _col('projects').doc(projectId).update({
-      'tasks': tasks.map((t) => t.toJson()).toList(),
-    });
+    await _mergeWriteTasks(projectId, [for (final t in tasks) t.toJson()],
+        (id) => taskChangedLocally(byId[id]!), known);
+    markTasksSaved(tasks);
+  }
+
+  Future<void> _mergeWriteTasks(String docId, List<Map<String, dynamic>> local,
+      bool Function(String id) changed, Set<String>? known) async {
+    final ref = _col('projects').doc(docId);
+    await _mergedOrDirect(
+        () => _db.runTransaction((tx) async {
+              final snap = await tx.get(ref);
+              if (!snap.exists) return;
+              tx.update(ref, {
+                'tasks': mergeTaskLists(
+                  server: ((snap.data() as Map)['tasks'] as List?) ?? const [],
+                  local: local,
+                  changed: changed,
+                  known: known,
+                ),
+              });
+            }),
+        () => ref.update({'tasks': local}));
+  }
+
+  /// Écriture fusionnée (transaction) ; hors connexion ou trop lente, repli sur
+  /// l'écriture directe d'avant, mise en file par Firestore — l'app reste
+  /// utilisable sans réseau (le mobile est local-first).
+  Future<void> _mergedOrDirect(Future<void> Function() merged, Future<void> Function() direct) async {
+    try {
+      await merged().timeout(const Duration(seconds: 10));
+    } catch (e) {
+      DevLogger.instance.log('fusion projet impossible ($e) — écriture directe', tag: 'sync');
+      await direct();
+    }
   }
 
   /// Document qui porte réellement [taskId] : le sous-projet d'origine quand
@@ -1243,6 +1331,7 @@ class FirestoreSync {
     for (final t in p.tasks) {
       if (t.actions.any((a) => identical(a, action) || a.id == action.id)) {
         await patchTaskAction(p.id, t.id, action);
+        markTaskSaved(t);
         return;
       }
     }
@@ -1297,7 +1386,7 @@ class FirestoreSync {
     if (uid == null) return null;
     final snap = await _col('projects').doc(projectId).get();
     if (!snap.exists) return null;
-    return Project.from(snap.data() as Map);
+    return _loadedProject(snap.data() as Map);
   }
 
   /// (Dé)rattache un projet à un parent (null = projet racine).
