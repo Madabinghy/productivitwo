@@ -1355,7 +1355,10 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
-          _textLink('Demain', () => showTomorrowScheduleDialog(context, widget.sync)),
+          _textLink(
+              'Demain',
+              () => showTomorrowScheduleDialog(context, widget.sync,
+                  projects: widget.projects, activities: widget.activities)),
           const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
@@ -1531,7 +1534,10 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
-          _textLink('Demain', () => showTomorrowScheduleDialog(context, widget.sync)),
+          _textLink(
+              'Demain',
+              () => showTomorrowScheduleDialog(context, widget.sync,
+                  projects: widget.projects, activities: widget.activities)),
           const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),

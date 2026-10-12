@@ -4,10 +4,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/block_work.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/gantt_axis.dart' show kGanttWeekdaysShort;
+import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart' show firstFreeSlot, minToClock;
@@ -19,9 +21,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// « Demain » (Aujourd'hui web) : le programme du lendemain, pour préparer la
 /// journée le soir — ajouter, modifier, retirer des blocs, ou demander à
 /// Claude de la planifier. ‹ › pour les jours suivants (jamais avant demain).
-Future<void> showTomorrowScheduleDialog(BuildContext context, FirestoreSync sync) =>
+/// Un bloc de tâche (ou d'action d'activité) se déplie : action visée et ses
+/// étapes, autres actions ouvertes, pour voir concrètement la journée.
+Future<void> showTomorrowScheduleDialog(
+  BuildContext context,
+  FirestoreSync sync, {
+  List<Project> projects = const [],
+  List<Activity> activities = const [],
+}) =>
     showDesktopDialog<void>(context,
-        maxWidth: 620, builder: (_) => _TomorrowScheduleDialog(sync: sync));
+        maxWidth: 660,
+        builder: (_) =>
+            _TomorrowScheduleDialog(sync: sync, projects: projects, activities: activities));
 
 const _kMonths = [
   'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
@@ -30,7 +41,10 @@ const _kMonths = [
 
 class _TomorrowScheduleDialog extends StatefulWidget {
   final FirestoreSync sync;
-  const _TomorrowScheduleDialog({required this.sync});
+  final List<Project> projects;
+  final List<Activity> activities;
+  const _TomorrowScheduleDialog(
+      {required this.sync, required this.projects, required this.activities});
 
   @override
   State<_TomorrowScheduleDialog> createState() => _TomorrowScheduleDialogState();
@@ -41,6 +55,7 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
   List<ScheduleBlock>? _blocks;
   StreamSubscription<DailySchedule?>? _sub;
   DayWindow _window = kDefaultDayWindow;
+  final Set<String> _open = {};
 
   DateTime get _day {
     final n = DateTime.now();
@@ -69,11 +84,14 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
     setState(() => _blocks = null);
     _sub = widget.sync.streamDailySchedule(_date).listen((s) {
       if (!mounted) return;
-      setState(() => _blocks = (s?.blocks
+      final blocks = (s?.blocks
               .where((b) => b.status != 'deleted' && b.status != 'skipped')
               .toList() ??
           [])
-        ..sort((a, b) => a.startTime.compareTo(b.startTime)));
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      // Miroir agenda d'une séance → sa tâche 🎯 (en mémoire, comme Aujourd'hui).
+      linkMirrorsToSessions(blocks, widget.projects, _day);
+      setState(() => _blocks = blocks);
     });
   }
 
@@ -196,12 +214,146 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
     );
   }
 
+  /// Ce que le bloc donne à faire : porteur (« Projet › Tâche » ou activité),
+  /// action visée en avant, autres actions ouvertes, nombre de faites.
+  ({String carrier, String? description, BlockWork work})? _workOf(ScheduleBlock b) {
+    final tid = b.taskId;
+    if (tid != null && tid.isNotEmpty) {
+      // Par id de tâche dans tous les projets : un bloc posé depuis la vue
+      // fusionnée d'un dossier porte l'id du dossier, la tâche vit ailleurs.
+      for (final p in widget.projects) {
+        for (final t in p.tasks) {
+          if (t.id == tid) {
+            return (
+              carrier: '${p.title} › ${t.title}',
+              description: t.description,
+              work: blockWork(t, b.actionId),
+            );
+          }
+        }
+      }
+    }
+    final aid = b.actionId;
+    if (aid != null && aid.isNotEmpty && b.activityId != null) {
+      for (final act in widget.activities) {
+        if (act.id != b.activityId) continue;
+        for (final a in act.ownActions) {
+          if (a.id == aid) return (carrier: act.name, description: null, work: BlockWork(a, const [], const []));
+        }
+      }
+    }
+    return null;
+  }
+
   Widget _row(ScheduleBlock b) {
+    final work = _workOf(b);
+    final open = work != null && _open.contains(b.id);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: open ? kBActive : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _rowHead(b, work == null ? null : open),
+        if (open) _details(b, work),
+      ]),
+    );
+  }
+
+  Widget _details(ScheduleBlock b, ({String carrier, String? description, BlockWork work}) w) {
+    final focus = w.work.focus;
+    final desc = w.description?.trim() ?? '';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(122, 0, 12, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(w.carrier, style: const TextStyle(fontSize: 12, color: kBText3)),
+        if (desc.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(desc,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: kBText4, height: 1.35)),
+        ],
+        const SizedBox(height: 10),
+        if (focus == null)
+          const Text('Aucune action ouverte sur cette tâche.',
+              style: TextStyle(fontSize: 12.5, color: kBText3))
+        else
+          _action(focus, primary: true),
+        for (final a in w.work.open) ...[const SizedBox(height: 8), _action(a)],
+        if (w.work.done.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('${w.work.done.length} déjà faite${w.work.done.length > 1 ? 's' : ''}',
+              style: const TextStyle(fontSize: 12, color: kBText4)),
+        ],
+        const SizedBox(height: 10),
+        InkWell(
+          borderRadius: BorderRadius.circular(6),
+          onTap: () => _edit(b),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 2),
+            child: Text('Modifier le bloc',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: kBPrimary)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _action(TaskAction a, {bool primary = false}) {
+    final est = a.estimatedMin;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(a.done ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+              size: 15, color: a.done ? kBPrimary : (primary ? kBText2 : kBText4)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(a.title,
+              style: TextStyle(
+                  fontSize: primary ? 13.5 : 12.5,
+                  fontWeight: primary ? FontWeight.w700 : FontWeight.w500,
+                  color: a.done ? kBText3 : (primary ? kBText : kBText2))),
+        ),
+        if (est != null) ...[
+          const SizedBox(width: 8),
+          Text(fmtMin(est), style: const TextStyle(fontSize: 11.5, color: kBText4)),
+        ],
+      ]),
+      for (final c in a.checklist)
+        Padding(
+          padding: const EdgeInsets.only(left: 23, top: 4),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(c.done ? Icons.check_rounded : Icons.circle_outlined,
+                  size: 12, color: c.done ? kBPrimary : kBText4),
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(c.title,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: c.done ? kBText4 : kBText2,
+                      decoration: c.done ? TextDecoration.lineThrough : null)),
+            ),
+          ]),
+        ),
+    ]);
+  }
+
+  /// [expanded] null = bloc sans contenu (tap = modifier), sinon tap = déplier.
+  Widget _rowHead(ScheduleBlock b, bool? expanded) {
     final color = kBCategoryColor[b.category] ?? kBText3;
     final mirror = b.gcalEventId != null;
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => _edit(b),
+      onTap: expanded == null
+          ? () => _edit(b)
+          : () => setState(() => expanded ? _open.remove(b.id) : _open.add(b.id)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
         child: Row(children: [
@@ -236,6 +388,13 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
           const SizedBox(width: 10),
           Text(fmtMin(b.durationMin),
               style: const TextStyle(fontSize: 12, color: kBText3)),
+          SizedBox(
+            width: 22,
+            child: expanded == null
+                ? null
+                : Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    size: 18, color: kBText3),
+          ),
         ]),
       ),
     );
