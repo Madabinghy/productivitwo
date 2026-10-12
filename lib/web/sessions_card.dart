@@ -20,6 +20,9 @@ class SessionsCard extends StatelessWidget {
   final List<Domain> domains;
   final FirestoreSync sync;
   final VoidCallback onChanged;
+  // Accordéon de la colonne de droite (Aujourd'hui) : replié = en-tête seul.
+  final bool folded;
+  final VoidCallback? onToggleFold;
   const SessionsCard({
     super.key,
     required this.date,
@@ -30,6 +33,8 @@ class SessionsCard extends StatelessWidget {
     required this.domains,
     required this.sync,
     required this.onChanged,
+    this.folded = false,
+    this.onToggleFold,
   });
 
   DateTime get _day => DateTime.parse(date);
@@ -64,27 +69,40 @@ class SessionsCard extends StatelessWidget {
     final list = _ofDay;
     final total = list.fold<int>(0, (n, s) => n + s.duration.inMinutes);
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      padding: folded ? const EdgeInsets.fromLTRB(20, 14, 20, 14) : const EdgeInsets.fromLTRB(20, 16, 20, 12),
       decoration: BoxDecoration(
         color: kBSurface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: kBLine),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Text('CHRONOS DU JOUR',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
-          const Spacer(),
-          Text(list.isEmpty ? '—' : '${list.length} · ${fmtMin(total)}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kBText3)),
-        ]),
-        const SizedBox(height: 6),
-        if (list.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 10),
-            child: Text('Aucun chrono aujourd\'hui.', style: TextStyle(fontSize: 13, color: kBText3)),
-          ),
-        for (final s in list) _row(context, s),
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onToggleFold,
+          child: Row(children: [
+            const Text('CHRONOS DU JOUR',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBText3)),
+            const Spacer(),
+            Text(list.isEmpty ? '—' : '${list.length} · ${fmtMin(total)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: kBText3)),
+            if (onToggleFold != null) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: folded ? 'Déplier' : 'Replier',
+                child: Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
+              ),
+            ],
+          ]),
+        ),
+        if (!folded) ...[
+          const SizedBox(height: 6),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Text('Aucun chrono aujourd\'hui.', style: TextStyle(fontSize: 13, color: kBText3)),
+            ),
+          for (final s in list) _row(context, s),
+        ],
       ]),
     );
   }
