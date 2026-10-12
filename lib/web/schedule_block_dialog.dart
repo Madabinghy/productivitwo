@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show canCancelBlock, kSkipUnavailable;
 import 'package:productivitwo_v1/web/desktop_dialog.dart';
+import 'package:productivitwo_v1/web/duration_chooser.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
 /// Éditeur de bloc du programme, version desktop (refonte web § 2.3 « Modifier »).
@@ -39,7 +39,7 @@ class _ScheduleBlockDialog extends StatefulWidget {
 class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
   late final TextEditingController _title;
   late final TextEditingController _start;
-  late final TextEditingController _duration;
+  late int _durationMin;
   late String _category;
 
   @override
@@ -47,7 +47,7 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     super.initState();
     _title = TextEditingController(text: widget.block.title);
     _start = TextEditingController(text: widget.block.startTime);
-    _duration = TextEditingController(text: '${widget.block.durationMin}');
+    _durationMin = widget.block.durationMin > 0 ? widget.block.durationMin : 30;
     _category = widget.block.category;
   }
 
@@ -55,7 +55,6 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
   void dispose() {
     _title.dispose();
     _start.dispose();
-    _duration.dispose();
     super.dispose();
   }
 
@@ -67,17 +66,15 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     return null;
   }
 
-  String? get _durationError {
-    final d = int.tryParse(_duration.text.trim());
-    if (d == null || d <= 0) return 'Minutes > 0';
-    if (d > 12 * 60) return '12 h max';
-    return null;
+  /// « · fin 15:30 » d'après le début saisi et la durée choisie.
+  String? get _endLabel {
+    if (_startError != null) return null;
+    final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(_start.text.trim())!;
+    final end = (int.parse(m.group(1)!) * 60 + int.parse(m.group(2)!) + _durationMin) % (24 * 60);
+    return ' · fin ${(end ~/ 60).toString().padLeft(2, '0')}:${(end % 60).toString().padLeft(2, '0')}';
   }
 
-  bool get _valid =>
-      _title.text.trim().isNotEmpty &&
-      _startError == null &&
-      _durationError == null;
+  bool get _valid => _title.text.trim().isNotEmpty && _startError == null;
 
   ScheduleBlock _result({String? status}) {
     final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(_start.text.trim())!;
@@ -85,7 +82,7 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
     b.title = _title.text.trim();
     b.startTime =
         '${m.group(1)!.padLeft(2, '0')}:${m.group(2)}';
-    b.durationMin = int.parse(_duration.text.trim());
+    b.durationMin = _durationMin;
     b.category = _category;
     if (status != null) b.status = status;
     return b;
@@ -142,21 +139,14 @@ class _ScheduleBlockDialogState extends State<_ScheduleBlockDialog> {
                 ),
               ),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: TextField(
-                controller: _duration,
-                onChanged: (_) => setState(() {}),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                style: const TextStyle(color: kBText, fontFeatures: [FontFeature.tabularFigures()]),
-                decoration: InputDecoration(
-                  labelText: 'Durée (min)',
-                  errorText: _duration.text.isEmpty ? null : _durationError,
-                ),
-              ),
-            ),
           ]),
+          const SizedBox(height: 14),
+          Text('Durée${_endLabel ?? ''}', style: const TextStyle(fontSize: 12, color: kBText3)),
+          const SizedBox(height: 4),
+          DurationChooser(
+            value: _durationMin,
+            onChanged: (v) => setState(() => _durationMin = v ?? 5),
+          ),
           const SizedBox(height: 18),
           Wrap(spacing: 8, children: [
             for (final (id, label) in _kCategories)
