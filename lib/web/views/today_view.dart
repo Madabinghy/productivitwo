@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -25,6 +27,7 @@ import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
@@ -127,6 +130,12 @@ class TodayViewState extends State<TodayView> {
   // lui-même, son tap ne doit pas le rouvrir aussitôt.
   String? _closedId;
   DateTime? _closedAt;
+  // Zoom VERTICAL de la frise (1 = la journée tient dans la hauteur) :
+  // Ctrl / ⌘ + molette ou pincement autour du curseur, boutons − / +.
+  // Mémorisé dans le navigateur.
+  double _zoom = 1;
+  static const _kZoomMin = 1.0, _kZoomMax = 8.0, _kZoomKey = 'today_timeline_zoom';
+  double _tlPpm = 1, _tlStartMin = 0;
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
   // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
@@ -142,6 +151,10 @@ class TodayViewState extends State<TodayView> {
   void initState() {
     super.initState();
     _today = ymdOf(DateTime.now());
+    SharedPreferences.getInstance().then((prefs) {
+      final z = prefs.getDouble(_kZoomKey);
+      if (z != null && mounted) setState(() => _zoom = z.clamp(_kZoomMin, _kZoomMax));
+    }).catchError((_) {});
     _subscribe();
     _loadLogic();
     // Horloge : chrono, ligne « maintenant » et changement de jour.
@@ -1608,6 +1621,73 @@ class TodayViewState extends State<TodayView> {
 
   // ── PROGRAMME DU JOUR : frise horaire ───────────────────────────────────────
 
+  /// Zoome la frise de [factor] en gardant la minute sous [anchorY] (position
+  /// dans la zone visible ; null = milieu) au même endroit.
+  void _zoomBy(double factor, {double? anchorY}) {
+    final next = (_zoom * factor).clamp(_kZoomMin, _kZoomMax);
+    if (next == _zoom) return;
+    final ctrl = _timelineCtrl;
+    if (ctrl.hasClients) {
+      final ay = anchorY ?? ctrl.position.viewportDimension / 2;
+      final minute = (ctrl.offset + ay - 4) / _tlPpm + _tlStartMin;
+      final newPpm = _tlPpm * next / _zoom;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !ctrl.hasClients) return;
+        final target = (minute - _tlStartMin) * newPpm + 4 - ay;
+        ctrl.jumpTo(target.clamp(0.0, ctrl.position.maxScrollExtent));
+      });
+    }
+    setState(() => _zoom = next);
+    SharedPreferences.getInstance().then((p) => p.setDouble(_kZoomKey, next)).catchError((_) => false);
+  }
+
+  void _onTimelineSignal(PointerSignalEvent e) {
+    if (e is PointerScaleEvent) {
+      _zoomBy(e.scale, anchorY: e.localPosition.dy);
+      return;
+    }
+    if (e is! PointerScrollEvent) return;
+    final keys = HardwareKeyboard.instance;
+    if (!keys.isControlPressed && !keys.isMetaPressed) return;
+    GestureBinding.instance.pointerSignalResolver.register(e, (ev) {
+      final dy = (ev as PointerScrollEvent).scrollDelta.dy;
+      if (dy == 0) return;
+      _zoomBy(dy < 0 ? 1.15 : 1 / 1.15, anchorY: ev.localPosition.dy);
+    });
+  }
+
+  Widget _zoomControls() {
+    Widget btn(IconData icon, String tip, VoidCallback? onTap) => IconButton(
+          tooltip: tip,
+          onPressed: onTap,
+          icon: Icon(icon, size: 16),
+          color: kBText2,
+          disabledColor: kBText4,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
+        );
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      btn(Icons.remove_rounded, 'Dézoomer (Ctrl / ⌘ + molette)',
+          _zoom > _kZoomMin ? () => _zoomBy(1 / 1.4) : null),
+      if (_zoom > _kZoomMin)
+        Tooltip(
+          message: 'Revenir à la journée entière',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _zoomBy(_kZoomMin / _zoom),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Text('×${_zoom.toStringAsFixed(_zoom < 10 ? 1 : 0)}',
+                  style: const TextStyle(fontSize: 11.5, color: kBText3, fontFeatures: _tabular)),
+            ),
+          ),
+        ),
+      btn(Icons.add_rounded, 'Zoomer (Ctrl / ⌘ + molette)',
+          _zoom < _kZoomMax ? () => _zoomBy(1.4) : null),
+    ]);
+  }
+
   Widget _daySwitch() {
     Widget seg(String label, bool on, VoidCallback onTap) => InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -1646,6 +1726,8 @@ class TodayViewState extends State<TodayView> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           _daySwitch(),
+          const SizedBox(width: 10),
+          _zoomControls(),
           const Spacer(),
           if (!_tomorrow && asideLabel(asideBlocks(_allBlocks)) != null) ...[
             _asideLink(),
@@ -1692,10 +1774,16 @@ class TodayViewState extends State<TodayView> {
     final range = (endH - startH) * 60;
     // Échelle : remplit la hauteur dispo, mais jamais sous 0,75 px/min (un
     // bloc de 30 min doit rester lisible) — au-delà, la frise défile.
-    final ppm = timelinePxPerMin(height - 8, range);
+    // Zoom vertical : multiplie l'échelle (jamais en dessous de la journée
+    // entière).
+    final ppm = timelinePxPerMin(height - 8, range) * _zoom;
     final total = range * ppm + 8;
+    _tlPpm = ppm;
+    _tlStartMin = startH * 60.0;
 
     double y(int min) => (min - startH * 60) * ppm + 4;
+    // Assez zoomé : repères à la demi-heure (et au quart d'heure).
+    final step = ppm * 15 >= 28 ? 15 : (ppm * 30 >= 36 ? 30 : 60);
 
     final now = _nowMin;
     final showNow = !_tomorrow && now >= startH * 60 && now <= endH * 60;
@@ -1717,6 +1805,21 @@ class TodayViewState extends State<TodayView> {
             top: y(h * 60),
             child: Container(height: 1, color: const Color(0x0DFFFFFF)),
           ),
+          if (step < 60 && h < endH)
+            for (var m = step; m < 60; m += step) ...[
+              Positioned(
+                left: 8,
+                top: y(h * 60 + m) - 6,
+                child: Text(':${m.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 10, color: kBText4, fontFeatures: _tabular)),
+              ),
+              Positioned(
+                left: 56,
+                right: 0,
+                top: y(h * 60 + m),
+                child: Container(height: 1, color: const Color(0x07FFFFFF)),
+              ),
+            ],
         ],
         for (final b in blocks)
           Positioned(
@@ -1770,7 +1873,10 @@ class TodayViewState extends State<TodayView> {
         });
       }
     }
-    return SingleChildScrollView(controller: _timelineCtrl, child: stack);
+    return Listener(
+      onPointerSignal: _onTimelineSignal,
+      child: SingleChildScrollView(controller: _timelineCtrl, child: stack),
+    );
   }
 
   /// Action visée par le bloc en cours + sa checklist cochable (micro-actions
