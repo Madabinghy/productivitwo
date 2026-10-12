@@ -113,8 +113,11 @@ frise revient après la disposition active).
 programme · concrètement » (`_agendaCard` : blocs à venir dépliables, étapes de l'action visée cochables, actions
 possibles d'une activité, +1 de routine, « Définir la prochaine action ») sous MAINTENANT ; ligne concrète dans les
 blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routinesCard`, logique `utils/routines_today.dart`).
-Lien **« Demain »** dans l'en-tête du programme : dialog `web/tomorrow_schedule_dialog.dart` (programme du lendemain, ‹ ›
-jours suivants, ajouter / modifier via `showScheduleBlockDialog`, « Préparer avec Claude » = `planDayPrompt`).
+Frise **« Aujourd'hui | Demain »** (`_daySwitch`, `_cardDate` / `_cardBlocks`) : demain dans la même frise, sans trait
+« maintenant », ni coche, ni chrono ; Modifier / Ajouter / « Préparer avec Claude » (`planDayPrompt`) agissent sur demain.
+**Clic sur un bloc à contenu = ouvert sur place** (`_detailCard`, frise et liste) : « Projet › Tâche », action visée et ses
+étapes cochables (`blockWork`), autres actions ouvertes, « Ouvrir le projet » / « Modifier le bloc » / « Bloc terminé ».
+Bouton « Demain → » à côté de la date = dialog `web/tomorrow_schedule_dialog.dart` (‹ › jours suivants, blocs dépliables).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; menu ⋯ d'une ligne : **Terminer le projet** (`status:'done'`, confirmation s'il
 reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.

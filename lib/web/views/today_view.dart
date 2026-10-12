@@ -9,7 +9,9 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/focus_context.dart';
+import 'package:productivitwo_v1/utils/block_work.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -23,6 +25,7 @@ import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
 // chrono) · PROGRAMME DU JOUR (frise horaire à l'échelle) · CETTE SEMAINE
@@ -113,6 +116,13 @@ class TodayViewState extends State<TodayView> {
   bool _busy = false;
   // Mode « Modifier » de la frise : chaque bloc s'ouvre dans l'éditeur.
   bool _editing = false;
+  // Frise « Aujourd'hui | Demain » : le programme du lendemain dans la même
+  // frise (sans trait « maintenant », ni coche, ni chrono).
+  bool _tomorrow = false;
+  List<ScheduleBlock> _tomorrowBlocks = [];
+  StreamSubscription<DailySchedule?>? _tomorrowSub;
+  // Bloc ouvert sur place (contenu cochable), dans la frise ou la liste.
+  String? _detailId;
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
   // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
@@ -136,6 +146,9 @@ class TodayViewState extends State<TodayView> {
       final t = ymdOf(DateTime.now());
       if (t != _today) {
         _today = t;
+        _tomorrow = false;
+        _tomorrowSub?.cancel();
+        _tomorrowSub = null;
         _scheduleSub?.cancel();
         _scheduleSub = widget.sync.streamDailySchedule(_today).listen(_onSchedule);
         _scrollNowPending = true;
@@ -220,6 +233,7 @@ class TodayViewState extends State<TodayView> {
     _scheduleSub?.cancel();
     _sessionsSub?.cancel();
     _hitsSub?.cancel();
+    _tomorrowSub?.cancel();
     _ticker?.cancel();
     _timelineCtrl.dispose();
     super.dispose();
@@ -271,6 +285,65 @@ class TodayViewState extends State<TodayView> {
     if (id == null) return null;
     for (final p in widget.projects) {
       if (p.id == id) return p;
+    }
+    return null;
+  }
+
+  String get _tomorrowKey {
+    final n = DateTime.now();
+    return ymdOf(DateTime(n.year, n.month, n.day + 1));
+  }
+
+  /// Jour affiché par la frise et blocs correspondants.
+  String get _cardDate => _tomorrow ? _tomorrowKey : _today;
+  List<ScheduleBlock> get _cardBlocks => _tomorrow ? _tomorrowBlocks : _blocks;
+
+  void _setTomorrow(bool v) {
+    if (v == _tomorrow) return;
+    _tomorrowSub?.cancel();
+    _tomorrowSub = null;
+    setState(() {
+      _tomorrow = v;
+      _detailId = null;
+      _editing = false;
+      if (!v) _scrollNowPending = true;
+    });
+    if (!v) return;
+    final key = _tomorrowKey;
+    _tomorrowSub = widget.sync.streamDailySchedule(key).listen((s) {
+      if (!mounted) return;
+      final blocks = (s?.blocks.where((b) => b.status != 'deleted' && b.status != 'skipped').toList() ??
+          [])
+        ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      final day = DateTime.tryParse(key);
+      if (day != null) linkMirrorsToSessions(blocks, widget.projects, day);
+      setState(() => _tomorrowBlocks = blocks);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _timelineCtrl.hasClients) _timelineCtrl.jumpTo(0);
+    });
+  }
+
+  Future<void> _askClaudeTomorrow() async {
+    final ok = await launchUrl(
+        claudeNewUri(planDayPrompt(date: _tomorrowKey, blocks: _tomorrowBlocks)),
+        mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Impossible d\'ouvrir Claude')));
+    }
+  }
+
+  /// Tâche (et son projet) visée par un bloc, cherchée par id dans tous les
+  /// projets (bloc posé depuis la vue fusionnée d'un dossier).
+  ({Project project, ProjectTask task})? _taskOf(ScheduleBlock b) {
+    final tid = b.taskId;
+    if (tid == null || tid.isEmpty) return null;
+    final own = _project(b.projectId);
+    for (final p in [if (own != null) own, ...widget.projects]) {
+      for (final t in p.tasks) {
+        if (t.id == tid) return (project: p, task: t);
+      }
     }
     return null;
   }
@@ -437,6 +510,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   Future<void> _editBlock(ScheduleBlock b) async {
+    final date = _cardDate;
     final updated = await showScheduleBlockDialog(context, block: b);
     if (updated == null || !mounted) return;
     // Soft-delete : retiré de la frise tout de suite, le flux confirmera.
@@ -444,24 +518,26 @@ class TodayViewState extends State<TodayView> {
     setState(() {
       if (updated.status == 'deleted' || cancelled) _blocks.remove(updated);
     });
-    await widget.sync.upsertScheduleBlock(_today, updated);
+    await widget.sync.upsertScheduleBlock(date, updated);
     if (cancelled && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('« ${updated.title} » annulé — il sort du programme'),
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
           label: 'Annuler',
-          onPressed: () => widget.sync.setBlockCancelled(_today, updated.id, false),
+          onPressed: () => widget.sync.setBlockCancelled(date, updated.id, false),
         ),
       ));
     }
   }
 
   Future<void> _addBlock() async {
-    // Nouveau bloc au prochain quart d'heure, après la fin du dernier bloc.
+    // Nouveau bloc au prochain quart d'heure, après la fin du dernier bloc
+    // (demain : à partir de 8 h).
+    final date = _cardDate;
     final n = DateTime.now();
-    var start = n.hour * 60 + n.minute;
-    for (final b in _blocks) {
+    var start = _tomorrow ? 8 * 60 : n.hour * 60 + n.minute;
+    for (final b in _cardBlocks) {
       start = math.max(start, blockEndMin(b));
     }
     start = math.min(((start + 14) ~/ 15) * 15, 23 * 60 + 45);
@@ -476,7 +552,7 @@ class TodayViewState extends State<TodayView> {
       ),
     );
     if (created == null || !mounted) return;
-    await widget.sync.upsertScheduleBlock(_today, created);
+    await widget.sync.upsertScheduleBlock(date, created);
   }
 
   Future<void> _finishBlock(ScheduleBlock b) async {
@@ -1406,7 +1482,7 @@ class TodayViewState extends State<TodayView> {
             : fmtMin(b.durationMin);
     final frac = current ? ((_nowMin - blockStartMin(b)) / b.durationMin).clamp(0.0, 1.0) : 0.0;
 
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
         color: current ? kBActive : Colors.transparent,
@@ -1416,9 +1492,7 @@ class TodayViewState extends State<TodayView> {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: project != null && !_editing
-              ? () => widget.onOpenProject(project, taskId: b.taskId)
-              : () => _editBlock(b),
+          onTap: _blockTap(b, project),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1474,6 +1548,11 @@ class TodayViewState extends State<TodayView> {
         ),
       ),
     );
+    if (_detailId != b.id) return row;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      row,
+      Padding(padding: const EdgeInsets.only(bottom: 8), child: _detailCard(b)),
+    ]);
   }
 
   Widget _dayGlance() {
@@ -1525,13 +1604,46 @@ class TodayViewState extends State<TodayView> {
 
   // ── PROGRAMME DU JOUR : frise horaire ───────────────────────────────────────
 
+  Widget _daySwitch() {
+    Widget seg(String label, bool on, VoidCallback onTap) => InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: on ? kBActive : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: on ? kBPrimary.withOpacity(.45) : Colors.transparent),
+            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .8,
+                    color: on ? kBText : kBText3)),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        border: Border.all(color: kBLine),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        seg('AUJOURD\'HUI', !_tomorrow, () => _setTomorrow(false)),
+        seg('DEMAIN', _tomorrow, () => _setTomorrow(true)),
+      ]),
+    );
+  }
+
   Widget _timelineCard() {
     return _card(
       padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Expanded(child: _label('PROGRAMME DU JOUR')),
-          if (asideLabel(asideBlocks(_allBlocks)) != null) ...[
+          _daySwitch(),
+          const Spacer(),
+          if (!_tomorrow && asideLabel(asideBlocks(_allBlocks)) != null) ...[
             _asideLink(),
             const SizedBox(width: 14),
           ],
@@ -1539,19 +1651,23 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
-          _textLink('Demain', _openTomorrow),
-          const SizedBox(width: 14),
+          if (_tomorrow) ...[
+            _textLink('Préparer avec Claude', _askClaudeTomorrow),
+            const SizedBox(width: 14),
+          ],
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
         ]),
         const SizedBox(height: 14),
         Expanded(
-          child: _blocks.isEmpty
+          child: _cardBlocks.isEmpty
               ? Center(
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Text(
-                      'Aucun programme — demande à Claude de planifier ta journée.',
-                      style: TextStyle(fontSize: 13, color: kBText3),
+                    Text(
+                      _tomorrow
+                          ? 'Rien de prévu demain — ajoute des blocs ou prépare la journée avec Claude.'
+                          : 'Aucun programme — demande à Claude de planifier ta journée.',
+                      style: const TextStyle(fontSize: 13, color: kBText3),
                     ),
                     const SizedBox(height: 12),
                     _pillButton('Ajouter un bloc', onTap: _addBlock),
@@ -1564,7 +1680,11 @@ class TodayViewState extends State<TodayView> {
   }
 
   Widget _timeline(double height) {
-    final (:startH, :endH) = timelineHours(_blocks, _nowMin);
+    final blocks = _cardBlocks;
+    final ref = _tomorrow
+        ? (blocks.isEmpty ? 8 * 60 : blockStartMin(blocks.first))
+        : _nowMin;
+    final (:startH, :endH) = timelineHours(blocks, ref);
     final range = (endH - startH) * 60;
     // Échelle : remplit la hauteur dispo, mais jamais sous 0,75 px/min (un
     // bloc de 30 min doit rester lisible) — au-delà, la frise défile.
@@ -1574,7 +1694,7 @@ class TodayViewState extends State<TodayView> {
     double y(int min) => (min - startH * 60) * ppm + 4;
 
     final now = _nowMin;
-    final showNow = now >= startH * 60 && now <= endH * 60;
+    final showNow = !_tomorrow && now >= startH * 60 && now <= endH * 60;
 
     final stack = SizedBox(
       height: total,
@@ -1594,7 +1714,7 @@ class TodayViewState extends State<TodayView> {
             child: Container(height: 1, color: const Color(0x0DFFFFFF)),
           ),
         ],
-        for (final b in _blocks)
+        for (final b in blocks)
           Positioned(
             left: 56,
             right: 0,
@@ -1617,6 +1737,14 @@ class TodayViewState extends State<TodayView> {
                 Expanded(child: Container(height: 1.5, color: kBAlert)),
               ]),
             ),
+          ),
+        // Bloc ouvert sur place : son contenu par-dessus la frise.
+        for (final b in blocks.where((b) => b.id == _detailId))
+          Positioned(
+            left: 56,
+            right: 0,
+            top: math.max(0.0, math.min(y(blockStartMin(b)), total - 440)),
+            child: _detailCard(b),
           ),
       ]),
     );
@@ -1698,7 +1826,8 @@ class TodayViewState extends State<TodayView> {
     final done = b.status == 'done';
     final skipped = b.status == 'skipped';
     final now = _nowMin;
-    final current = !done &&
+    final current = !_tomorrow &&
+        !done &&
         !skipped &&
         blockStartMin(b) <= now &&
         now < blockStartMin(b) + b.durationMin;
@@ -1707,9 +1836,9 @@ class TodayViewState extends State<TodayView> {
 
     final check = InkWell(
       borderRadius: BorderRadius.circular(20),
-      onTap: () => _toggleDone(b),
+      onTap: _tomorrow ? null : () => _toggleDone(b),
       child: Tooltip(
-        message: done ? 'Annuler' : 'Marquer comme fait',
+        message: _tomorrow ? 'Demain' : (done ? 'Annuler' : 'Marquer comme fait'),
         child: Padding(
           padding: const EdgeInsets.all(2),
           child: Icon(
@@ -1752,11 +1881,9 @@ class TodayViewState extends State<TodayView> {
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        // Bloc de projet → Gantt sur la tâche ; autre bloc (ou mode
-        // « Modifier ») → éditeur.
-        onTap: project != null && !_editing
-            ? () => widget.onOpenProject(project, taskId: b.taskId)
-            : () => _editBlock(b),
+        // Bloc à contenu → ouvert sur place (étapes cochables) ; projet sans
+        // contenu → la fiche projet ; autre bloc (ou mode « Modifier ») → éditeur.
+        onTap: _blockTap(b, project),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: compact ? 0 : 8),
           child: compact
@@ -1792,11 +1919,11 @@ class TodayViewState extends State<TodayView> {
                             ),
                           ),
                         // Le concret du bloc : prochaine étape / action visée.
-                        if (h > 84 && !done && !skipped && _blockHint(b) != null)
+                        if (h > 84 && !done && !skipped && _blockHint(b, forTomorrow: _tomorrow) != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              _blockHint(b)!,
+                              _blockHint(b, forTomorrow: _tomorrow)!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12, color: kBText2),
@@ -1811,6 +1938,155 @@ class TodayViewState extends State<TodayView> {
         ),
       ),
     );
+  }
+
+  // ── BLOC OUVERT SUR PLACE ──────────────────────────────────────────────────
+  // Clic sur un bloc de la frise (ou de la liste) : ce qu'il donne à faire
+  // s'affiche dans le programme, cochable, sans passer par la fiche projet.
+
+  bool _hasDetail(ScheduleBlock b) =>
+      _taskOf(b) != null ||
+      _blockSteps(b) != null ||
+      _ownActionsFor(b).isNotEmpty ||
+      (!_tomorrow && _routineOf(b) != null);
+
+  VoidCallback _blockTap(ScheduleBlock b, Project? project) {
+    if (_editing) return () => _editBlock(b);
+    if (_hasDetail(b)) {
+      return () => setState(() => _detailId = _detailId == b.id ? null : b.id);
+    }
+    if (project != null) return () => widget.onOpenProject(project, taskId: b.taskId);
+    return () => _editBlock(b);
+  }
+
+  Widget _detailCard(ScheduleBlock b) {
+    final pt = _taskOf(b);
+    final project = pt?.project ?? _project(b.projectId);
+    return Material(
+      color: kBRaised,
+      elevation: 10,
+      shadowColor: Colors.black,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: kBPrimary.withOpacity(.35)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 440),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(14, 8, 8, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Text('${b.startTime} → ${_clockOf(blockEndMin(b))}',
+                  style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(b.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: kBText)),
+              ),
+              IconButton(
+                tooltip: 'Fermer',
+                icon: const Icon(Icons.close_rounded, size: 18),
+                color: kBText3,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _detailId = null),
+              ),
+            ]),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (pt != null) ...[
+                  Text('${pt.project.title} › ${pt.task.title}',
+                      style: const TextStyle(fontSize: 12, color: kBText3)),
+                  const SizedBox(height: 10),
+                  ..._taskWork(pt.project, pt.task, b),
+                ] else
+                  _agendaContent(b),
+                const SizedBox(height: 12),
+                Wrap(spacing: 16, runSpacing: 6, children: [
+                  if (project != null)
+                    _textLink('Ouvrir le projet', () {
+                      setState(() => _detailId = null);
+                      widget.onOpenProject(project, taskId: b.taskId);
+                    }),
+                  _textLink('Modifier le bloc', () => _editBlock(b)),
+                  if (!_tomorrow)
+                    _textLink(b.status == 'done' ? 'Rouvrir le bloc' : 'Bloc terminé',
+                        () => _toggleDone(b)),
+                ]),
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Action visée en avant (étapes cochables, ajout), autres actions ouvertes
+  /// avec leurs étapes, nombre de faites — même découpage que l'écran bloc
+  /// mobile (`blockWork`).
+  List<Widget> _taskWork(Project p, ProjectTask t, ScheduleBlock b) {
+    final w = blockWork(t, b.actionId);
+    return [
+      if (w.focus == null)
+        const Text('Aucune action ouverte sur cette tâche.',
+            style: TextStyle(fontSize: 12.5, color: kBText3))
+      else
+        _workAction(p, w.focus!, primary: true),
+      for (final a in w.open) ...[const SizedBox(height: 10), _workAction(p, a)],
+      if (w.done.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Text('${w.done.length} déjà faite${w.done.length > 1 ? 's' : ''}',
+            style: const TextStyle(fontSize: 12, color: kBText4)),
+      ],
+    ];
+  }
+
+  Widget _workAction(Project p, TaskAction a, {bool primary = false}) {
+    final steps = (action: a, save: () => widget.sync.patchActionOf(p, a));
+    final badge = checklistBadge(a);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () async {
+          setState(() => setActionDone(a, !a.done));
+          await steps.save();
+        },
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 16, color: a.done ? kBPrimaryDark : (primary ? kBText2 : kBText3)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(a.title,
+                style: TextStyle(
+                    fontSize: primary ? 13.5 : 13,
+                    fontWeight: primary ? FontWeight.w700 : FontWeight.w500,
+                    color: a.done ? kBText3 : (primary ? kBText : kBText2),
+                    decoration: a.done ? TextDecoration.lineThrough : null,
+                    decorationColor: kBText3)),
+          ),
+          if (a.estimatedMin != null) ...[
+            const SizedBox(width: 8),
+            Text(fmtMin(a.estimatedMin!), style: const TextStyle(fontSize: 11.5, color: kBText4)),
+          ],
+          if (badge != null) ...[const SizedBox(width: 8), badge],
+        ]),
+      ),
+      if (a.checklist.isNotEmpty || primary)
+        Padding(
+          padding: const EdgeInsets.only(left: 18, top: 4),
+          child: ChecklistEditor(
+            items: a.checklist,
+            dense: true,
+            onToggle: (c, v) => _toggleStep(steps, c, v),
+            onAdd: primary ? (title) => _addStep(steps, title) : null,
+          ),
+        ),
+    ]);
   }
 
   // ── AU PROGRAMME · CONCRÈTEMENT ─────────────────────────────────────────────
@@ -1833,7 +2109,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   /// Une ligne « concrète » pour un bloc (frise et carte repliée), ou null.
-  String? _blockHint(ScheduleBlock b) {
+  String? _blockHint(ScheduleBlock b, {bool forTomorrow = false}) {
     final steps = _blockSteps(b);
     if (steps != null) {
       final a = steps.action;
@@ -1849,6 +2125,7 @@ class TodayViewState extends State<TodayView> {
     }
     final routine = _routineOf(b);
     if (routine != null) {
+      if (forTomorrow) return null;
       final r = routinesForToday([routine], _hits, DateTime.now()).firstOrNull;
       return r == null ? null : 'Routine · ${r.progressLabel}';
     }
