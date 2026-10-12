@@ -203,4 +203,19 @@ void main() {
     expect(blocks.last['status'], 'done');
     expect(settleBlocksByWork(blocks, actions: {'x': false}, nowIso: 'N'), isFalse);
   });
+
+  test('overlapColumns : chevauchements côte à côte, groupes indépendants', () {
+    ScheduleBlock b(String id, String start, int dur) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id);
+    final c = overlapColumns([
+      b('a', '09:00', 60),
+      b('b', '09:30', 60),
+      b('c', '10:00', 30), // a fini à 10:00 : reprend la colonne 0
+      b('d', '12:00', 30), // seul
+    ]);
+    expect(c['a'], (col: 0, cols: 2));
+    expect(c['b'], (col: 1, cols: 2));
+    expect(c['c'], (col: 0, cols: 2));
+    expect(c['d'], (col: 0, cols: 1));
+  });
 }

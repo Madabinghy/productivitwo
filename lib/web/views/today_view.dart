@@ -1759,13 +1759,13 @@ class TodayViewState extends State<TodayView> {
                     _pillButton('Ajouter un bloc', onTap: _addBlock),
                   ]),
                 )
-              : LayoutBuilder(builder: (ctx, box) => _timeline(box.maxHeight)),
+              : LayoutBuilder(builder: (ctx, box) => _timeline(box.maxHeight, box.maxWidth)),
         ),
       ]),
     );
   }
 
-  Widget _timeline(double height) {
+  Widget _timeline(double height, double width) {
     final blocks = _cardBlocks;
     final ref = _tomorrow
         ? (blocks.isEmpty ? 8 * 60 : blockStartMin(blocks.first))
@@ -1788,6 +1788,8 @@ class TodayViewState extends State<TodayView> {
     final now = _nowMin;
     final showNow = !_tomorrow && now >= startH * 60 && now <= endH * 60;
 
+    final lanes = overlapColumns(blocks);
+    final laneW = math.max(0.0, width - 56);
     final stack = SizedBox(
       height: total,
       child: Stack(clipBehavior: Clip.none, children: [
@@ -1821,10 +1823,11 @@ class TodayViewState extends State<TodayView> {
               ),
             ],
         ],
+        // Blocs qui se chevauchent : côte à côte.
         for (final b in blocks)
           Positioned(
-            left: 56,
-            right: 0,
+            left: 56 + laneW * (lanes[b.id]?.col ?? 0) / (lanes[b.id]?.cols ?? 1),
+            width: laneW / (lanes[b.id]?.cols ?? 1) - ((lanes[b.id]?.cols ?? 1) > 1 ? 4 : 0),
             top: y(blockStartMin(b)) + 1,
             height: math.max(b.durationMin * ppm - 3, 20),
             child: _timelineBlock(b, b.durationMin * ppm - 3),
