@@ -644,10 +644,18 @@ class TodayViewState extends State<TodayView> {
         Text(summary,
             style: const TextStyle(fontSize: 13, color: kBText3, fontFeatures: _tabular)),
       ]),
+      const SizedBox(width: 20),
+      Tooltip(
+        message: 'Voir et préparer le programme de demain',
+        child: _pillButton('Demain →', height: 34, onTap: _openTomorrow),
+      ),
       const SizedBox(width: 24),
       Expanded(child: Align(alignment: Alignment.centerRight, child: _orionBanner())),
     ]);
   }
+
+  void _openTomorrow() => showTomorrowScheduleDialog(context, widget.sync,
+      projects: widget.projects, activities: widget.activities);
 
   Widget _orionBanner() {
     return ValueListenableBuilder<List<AssistantMessageData>>(
@@ -1355,10 +1363,7 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
-          _textLink(
-              'Demain',
-              () => showTomorrowScheduleDialog(context, widget.sync,
-                  projects: widget.projects, activities: widget.activities)),
+          _textLink('Demain', _openTomorrow),
           const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
@@ -1534,10 +1539,7 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
-          _textLink(
-              'Demain',
-              () => showTomorrowScheduleDialog(context, widget.sync,
-                  projects: widget.projects, activities: widget.activities)),
+          _textLink('Demain', _openTomorrow),
           const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
