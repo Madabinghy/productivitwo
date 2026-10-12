@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/web/checklist_widget.dart';
+import 'package:productivitwo_v1/web/duration_chooser.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 
 // Dialogs CRUD des actions (ex-WebActionsView), partagés par l'onglet Actions.
@@ -25,7 +26,7 @@ Future<bool> showEditActionDialog(
   final selected = Set<String>.of(action.allContexts);
   final all = [...available, ...selected.where((c) => !available.contains(c))];
   final titleCtrl = TextEditingController(text: action.title);
-  final estCtrl = TextEditingController(text: action.estimatedMin?.toString() ?? '');
+  int? est = action.estimatedMin;
   // Brouillon de checklist : la règle d'achèvement s'applique à l'enregistrement.
   final draft = TaskAction(
     id: action.id,
@@ -56,13 +57,16 @@ Future<bool> showEditActionDialog(
                     const InputDecoration(labelText: 'Titre', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: estCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: 'Durée estimée (min, optionnel)',
-                    border: OutlineInputBorder(),
-                    isDense: true),
+              Text('Durée estimée',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.55))),
+              const SizedBox(height: 4),
+              DurationChooser(
+                value: est,
+                allowNone: true,
+                noneLabel: 'Non estimée',
+                onChanged: (v) => setLocal(() => est = v),
               ),
               const SizedBox(height: 12),
               Text('Où / avec quoi cette action est-elle réalisable ?',
@@ -128,9 +132,7 @@ Future<bool> showEditActionDialog(
     ),
   );
   final newTitle = titleCtrl.text.trim();
-  final estRaw = estCtrl.text.trim();
   titleCtrl.dispose();
-  estCtrl.dispose();
   if (result == null) return false;
   if (result == 'up' || result == 'down') {
     if (project != null && task != null) {
@@ -151,8 +153,7 @@ Future<bool> showEditActionDialog(
   } else {
     if (newTitle.isNotEmpty) action.title = newTitle;
     action.setContexts(selected.toList());
-    final est = int.tryParse(estRaw);
-    action.estimatedMin = est != null && est > 0 ? est : null;
+    action.estimatedMin = est != null && est! > 0 ? est : null;
     action.checklist
       ..clear()
       ..addAll(draft.checklist);

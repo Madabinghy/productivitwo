@@ -138,6 +138,13 @@ class TodayViewState extends State<TodayView> {
   double _tlPpm = 1, _tlStartMin = 0;
   // Survol d'un créneau vide de la frise : fantôme « + HH:MM » (clic = bloc).
   int? _hoverMin;
+  // Bloc survolé : bouton « + » pour poser un bloc en parallèle.
+  String? _hoverBlockId;
+  // Glisser un bloc (déplacer) ou tirer son bord bas (durée), au pas de 5 min.
+  String? _dragId;
+  double _dragDy = 0;
+  bool _dragResize = false;
+  static const _kDragSnap = 5;
   // Modules de la colonne de droite repliés (accordéon), mémorisés.
   Set<String> _folded = {};
   static const _kFoldedKey = 'today_side_folded';
@@ -557,7 +564,7 @@ class TodayViewState extends State<TodayView> {
 
   /// Nouveau bloc : à [at] (clic dans la frise), sinon au prochain quart
   /// d'heure après la fin du dernier bloc (demain : à partir de 8 h).
-  Future<void> _addBlock({int? at}) async {
+  Future<void> _addBlock({int? at, int duration = 30}) async {
     final date = _cardDate;
     var start = at;
     if (start == null) {
@@ -574,7 +581,7 @@ class TodayViewState extends State<TodayView> {
       block: ScheduleBlock(
         startTime:
             '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}',
-        durationMin: 30,
+        durationMin: duration,
         title: '',
       ),
     );
@@ -1698,6 +1705,81 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
+  // ── Glisser-déposer dans la frise ──────────────────────────────────────────
+  // Un miroir Google Agenda se déplace dans l'agenda, pas ici.
+  bool _canDrag(ScheduleBlock b) => b.gcalEventId == null && _detailId == null;
+
+  int _dragDelta(double ppm) => ((_dragDy / ppm) / _kDragSnap).round() * _kDragSnap;
+
+  int _dragStart(ScheduleBlock b, double ppm) {
+    final base = blockStartMin(b);
+    if (_dragId != b.id || _dragResize) return base;
+    return (base + _dragDelta(ppm)).clamp(0, 24 * 60 - b.durationMin).toInt();
+  }
+
+  int _dragDuration(ScheduleBlock b, double ppm) {
+    if (_dragId != b.id || !_dragResize) return b.durationMin;
+    return (b.durationMin + _dragDelta(ppm)).clamp(_kDragSnap, 24 * 60 - blockStartMin(b)).toInt();
+  }
+
+  void _dragBegin(ScheduleBlock b, {required bool resize}) => setState(() {
+        _dragId = b.id;
+        _dragDy = 0;
+        _dragResize = resize;
+        _hoverMin = null;
+      });
+
+  Future<void> _dragCommit(ScheduleBlock b, double ppm) async {
+    final start = _dragStart(b, ppm), dur = _dragDuration(b, ppm);
+    final resize = _dragResize;
+    setState(() => _dragId = null);
+    final oldStart = b.startTime, oldDur = b.durationMin;
+    if (start == blockStartMin(b) && dur == oldDur) return;
+    final date = _cardDate;
+    setState(() {
+      b.startTime = '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}';
+      b.durationMin = dur;
+    });
+    await widget.sync.upsertScheduleBlock(date, b);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(resize
+            ? '« ${b.title} » : ${fmtMin(dur)}, fin ${_clockOf(start + dur)}'
+            : '« ${b.title} » déplacé à ${_clockOf(start)}'),
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () async {
+            setState(() {
+              b.startTime = oldStart;
+              b.durationMin = oldDur;
+            });
+            await widget.sync.upsertScheduleBlock(date, b);
+          },
+        ),
+      ));
+  }
+
+  /// « + » au survol d'un bloc : nouveau bloc à la même heure et de même
+  /// durée, posé côte à côte (`overlapColumns`).
+  Widget _parallelAddButton(ScheduleBlock b) => Tooltip(
+        message: 'Ajouter un bloc en parallèle',
+        child: Material(
+          color: kBPrimary,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => _addBlock(at: blockStartMin(b), duration: b.durationMin),
+            child: const Padding(
+              padding: EdgeInsets.all(3),
+              child: Icon(Icons.add_rounded, size: 16, color: kBBg),
+            ),
+          ),
+        ),
+      );
+
   Widget _daySwitch() {
     Widget seg(String label, bool on, VoidCallback onTap) => InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -1884,14 +1966,78 @@ class TodayViewState extends State<TodayView> {
             ],
         ],
         // Blocs qui se chevauchent : côte à côte.
-        for (final b in blocks)
+        for (final b in blocks) ...[
           Positioned(
             left: 56 + laneW * (lanes[b.id]?.col ?? 0) / (lanes[b.id]?.cols ?? 1),
             width: laneW / (lanes[b.id]?.cols ?? 1) - ((lanes[b.id]?.cols ?? 1) > 1 ? 4 : 0),
-            top: y(blockStartMin(b)) + 1,
-            height: math.max(b.durationMin * ppm - 3, 20),
-            child: _timelineBlock(b, b.durationMin * ppm - 3),
+            top: y(_dragStart(b, ppm)) + 1,
+            height: math.max(_dragDuration(b, ppm) * ppm - 3, 20),
+            child: MouseRegion(
+              cursor: _canDrag(b) ? SystemMouseCursors.grab : MouseCursor.defer,
+              onEnter: (_) => setState(() => _hoverBlockId = b.id),
+              onExit: (_) {
+                if (_hoverBlockId == b.id) setState(() => _hoverBlockId = null);
+              },
+              child: Stack(fit: StackFit.expand, children: [
+                GestureDetector(
+                  onVerticalDragStart: _canDrag(b) ? (_) => _dragBegin(b, resize: false) : null,
+                  onVerticalDragUpdate: _canDrag(b) ? (d) => setState(() => _dragDy += d.delta.dy) : null,
+                  onVerticalDragEnd: _canDrag(b) ? (_) => _dragCommit(b, ppm) : null,
+                  onVerticalDragCancel: _canDrag(b) ? () => setState(() => _dragId = null) : null,
+                  child: _timelineBlock(b, _dragDuration(b, ppm) * ppm - 3),
+                ),
+                // Bord bas : tirer pour changer la durée.
+                if (_canDrag(b))
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 7,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.resizeRow,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onVerticalDragStart: (_) => _dragBegin(b, resize: true),
+                        onVerticalDragUpdate: (d) => setState(() => _dragDy += d.delta.dy),
+                        onVerticalDragEnd: (_) => _dragCommit(b, ppm),
+                        onVerticalDragCancel: () => setState(() => _dragId = null),
+                      ),
+                    ),
+                  ),
+                if (_dragId == null && _hoverBlockId == b.id && !_editing && _detailId == null)
+                  Positioned(
+                    right: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Align(
+                      alignment: b.durationMin * ppm > 60 ? Alignment.topRight : Alignment.centerRight,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: b.durationMin * ppm > 60 ? 6 : 0),
+                        child: _parallelAddButton(b),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
           ),
+          // Pendant le glisser : heures d'arrivée au-dessus du bloc.
+          if (_dragId == b.id)
+            Positioned(
+              left: 56 + laneW * (lanes[b.id]?.col ?? 0) / (lanes[b.id]?.cols ?? 1),
+              top: math.max(0.0, y(_dragStart(b, ppm)) - 20),
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(color: kBPrimary, borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                      '${_clockOf(_dragStart(b, ppm))} → ${_clockOf(_dragStart(b, ppm) + _dragDuration(b, ppm))}'
+                      ' · ${fmtMin(_dragDuration(b, ppm))}',
+                      style: const TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.w700, color: kBBg, fontFeatures: _tabular)),
+                ),
+              ),
+            ),
+        ],
         if (showNow)
           Positioned(
             left: 48,
