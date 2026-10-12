@@ -158,3 +158,23 @@ List<ClaudeAutomation> claudeAutomations({required bool gcalNative}) {
     ),
   ];
 }
+
+/// Depuis « Demain » (Aujourd'hui web) : préparer la journée de [date] le
+/// soir. plan_day pour le contexte, programme existant gardé (fill).
+String planDayPrompt({required String date, required List<ScheduleBlock> blocks}) {
+  final live = blocks.where((b) => b.status != 'deleted' && b.status != 'skipped').toList()
+    ..sort((a, b) => a.startTime.compareTo(b.startTime));
+  final gcal = live
+      .where((b) => b.gcalEventId != null)
+      .map((b) => '${b.title} ${b.startTime} → ${_hm(blockEndMin(b))}')
+      .toList();
+  final mine = live.where((b) => b.gcalEventId == null).length;
+  final agenda = gcal.isEmpty
+      ? 'Pas de rendez-vous Google Agenda ce jour-là.'
+      : 'Rendez-vous Google Agenda à protéger : ${gcal.join(' ; ')}.';
+  final existing = mine == 0
+      ? ''
+      : ' J\'ai déjà posé $mine bloc${mine > 1 ? 's' : ''} : garde-${mine > 1 ? 'les' : 'le'} et remplis les trous (schedule_day mode "fill").';
+  return 'Prépare ma journée du $date avec Productivitwo : appelle plan_day(date: "$date"). '
+      '$agenda$existing Propose d\'abord, puis applique avec schedule_day si je valide.';
+}
