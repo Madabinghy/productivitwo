@@ -182,4 +182,25 @@ void main() {
     expect(blocks[3].activityId, isNull);
     expect(blocks[4].activityId, isNull);
   });
+
+  test('settleBlocksByWork : le bloc suit l\'action visée, sinon sa tâche', () {
+    final blocks = <Map<String, dynamic>>[
+      {'id': 'a', 'status': 'pending', 'taskId': 't1', 'actionId': 'x'},
+      {'id': 'b', 'status': 'pending', 'taskId': 't2'},
+      {'id': 'c', 'status': 'pending', 'actionId': 'x', 'noAutoWin': true},
+      {'id': 'd', 'status': 'pending', 'taskId': 't1', 'actionId': 'y'},
+      {'id': 'e', 'status': 'skipped', 'actionId': 'x'},
+    ];
+    expect(settleBlocksByWork(blocks,
+        actions: {'x': true, 'y': false}, tasks: {'t1': false, 't2': true}, nowIso: 'N'), isTrue);
+    expect(blocks.map((b) => b['status']).toList(), ['done', 'done', 'pending', 'pending', 'skipped']);
+    expect(blocks[0]['doneBy'], 'action');
+    // Rouvrir l'action décoche le bloc coché par elle, pas un bloc coché à la main.
+    blocks.add({'id': 'f', 'status': 'done', 'actionId': 'x'});
+    expect(settleBlocksByWork(blocks, actions: {'x': false}, nowIso: 'N'), isTrue);
+    expect(blocks[0]['status'], 'pending');
+    expect(blocks[0].containsKey('doneBy'), isFalse);
+    expect(blocks.last['status'], 'done');
+    expect(settleBlocksByWork(blocks, actions: {'x': false}, nowIso: 'N'), isFalse);
+  });
 }
