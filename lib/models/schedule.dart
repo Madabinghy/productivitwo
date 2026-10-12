@@ -46,6 +46,9 @@ class ScheduleBlock {
   // L'utilisateur a DÉCOCHÉ ce bloc à la main : le passage automatique en
   // « fait » (temps loggué / routine atteinte) ne le recoche plus jamais.
   bool noAutoWin;
+  // "action" = coché parce que l'action (ou la tâche) visée a été faite ;
+  // la rouvrir le décoche. Absent = coché à la main ou par l'automatisme.
+  String? doneBy;
   List<String> reminders; // dates ISO des rappels programmés (max 2 pour un défi)
   // ── Préparation la veille ──────────────────────────────────────────────────
   // Absents = bloc normal (rétrocompatible). kind:"prep" = mini-bloc « préparer
@@ -102,6 +105,7 @@ class ScheduleBlock {
     this.doneAt,
     this.challenge = false,
     this.noAutoWin = false,
+    this.doneBy,
     List<String>? reminders,
     this.kind = 'normal',
     this.prepForDate,
@@ -132,6 +136,7 @@ class ScheduleBlock {
         'doneAt': doneAt?.toIso8601String(),
         'challenge': challenge,
         'noAutoWin': noAutoWin,
+        if (doneBy != null) 'doneBy': doneBy,
         'reminders': reminders,
         'kind': kind,
         'prepForDate': prepForDate,
@@ -159,6 +164,7 @@ class ScheduleBlock {
         doneAt: _parseDateOrNull(j['doneAt']),
         challenge: j['challenge'] == true,
         noAutoWin: j['noAutoWin'] == true,
+        doneBy: j['doneBy'] as String?,
         reminders: (j['reminders'] as List?)?.map((e) => e.toString()).toList(),
         kind: j['kind'] ?? 'normal',
         prepForDate: j['prepForDate'],

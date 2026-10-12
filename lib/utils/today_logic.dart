@@ -524,3 +524,35 @@ class BlockTransitionWatcher {
     return cur;
   }
 }
+
+/// Un bloc du jour suit l'action qu'il vise (sinon sa tâche, s'il n'en vise
+/// aucune) : faite ⇒ bloc fait (`doneBy: "action"`), rouverte ⇒ un bloc coché
+/// ainsi redevient à faire. Un bloc décoché à la main (`noAutoWin`) ou coché à
+/// la main n'est jamais touché. Modifie [blocks] en place ; true si changé.
+bool settleBlocksByWork(
+  List<Map<String, dynamic>> blocks, {
+  Map<String, bool> actions = const {},
+  Map<String, bool> tasks = const {},
+  required String nowIso,
+}) {
+  var changed = false;
+  for (final b in blocks) {
+    final aid = (b['actionId'] as String?) ?? '';
+    final tid = (b['taskId'] as String?) ?? '';
+    final bool? done = aid.isNotEmpty ? actions[aid] : (tid.isNotEmpty ? tasks[tid] : null);
+    if (done == null) continue;
+    final status = b['status'] ?? 'pending';
+    if (done && status == 'pending' && b['noAutoWin'] != true) {
+      b['status'] = 'done';
+      b['doneAt'] = nowIso;
+      b['doneBy'] = 'action';
+      changed = true;
+    } else if (!done && status == 'done' && b['doneBy'] == 'action') {
+      b['status'] = 'pending';
+      b.remove('doneAt');
+      b.remove('doneBy');
+      changed = true;
+    }
+  }
+  return changed;
+}

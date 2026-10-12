@@ -18,7 +18,9 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
-import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, kSkipUnavailable, mirrorKey;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/today_logic.dart'
+    show blockStartMin, kSkipUnavailable, mirrorKey, settleBlocksByWork;
 import 'package:productivitwo_v1/utils/week_planner.dart' show carrySlot, minToClock;
 import 'package:productivitwo_v1/utils/project_patch.dart';
 import 'package:productivitwo_v1/utils/project_merge.dart';
@@ -1192,6 +1194,7 @@ class FirestoreSync {
   /// appareil, autre onglet) est conservé. Voir `utils/project_merge.dart`.
   Future<void> saveProject(Project project) async {
     if (uid == null) return;
+    unawaited(_settleTodayBlocksOf(project.tasks));
     // Dossier affiché en vue fusionnée : ses « phases » sont les sous-projets
     // et ses tâches leur appartiennent — on enregistre la fiche sans eux et on
     // répartit les tâches.
@@ -1251,6 +1254,7 @@ class FirestoreSync {
   /// resté ouvert effaçait les modifications faites ailleurs.
   Future<void> saveProjectTasks(String projectId, List<ProjectTask> tasks) async {
     if (uid == null) return;
+    unawaited(_settleTodayBlocksOf(tasks));
     final known = knownTaskIdsOf(tasks);
     final byId = {for (final t in tasks) t.id: t};
     final merged = mergedFolderFor(projectId);
@@ -1306,6 +1310,35 @@ class FirestoreSync {
     }
   }
 
+  /// Coche (ou décoche) les blocs du programme du jour qui visent une action /
+  /// tâche de [tasks] selon son état (`settleBlocksByWork`) : « Action faite »
+  /// depuis n'importe quel écran coche aussi le bloc prévu pour elle.
+  Future<void> _settleTodayBlocksOf(Iterable<ProjectTask> tasks) => _settleTodayBlocks(
+        actions: {for (final t in tasks) for (final a in t.actions) a.id: a.done},
+        tasks: {for (final t in tasks) t.id: t.status == 'done'},
+      );
+
+  Future<void> _settleTodayBlocks({
+    Map<String, bool> actions = const {},
+    Map<String, bool> tasks = const {},
+  }) async {
+    if (uid == null || (actions.isEmpty && tasks.isEmpty)) return;
+    try {
+      final ref = _db.doc('users/$uid/daily_schedules/${ymdOf(DateTime.now())}');
+      final snap = await ref.get();
+      if (!snap.exists) return;
+      final blocks = ((snap.data() as Map)['blocks'] as List? ?? const [])
+          .map((x) => Map<String, dynamic>.from(x as Map))
+          .toList();
+      if (settleBlocksByWork(blocks,
+          actions: actions, tasks: tasks, nowIso: DateTime.now().toIso8601String())) {
+        await ref.update({'blocks': blocks});
+      }
+    } catch (e) {
+      DevLogger.instance.log('blocs du jour non synchronisés ($e)', tag: 'sync');
+    }
+  }
+
   /// Document qui porte réellement [taskId] : le sous-projet d'origine quand
   /// [projectId] est un dossier affiché en vue fusionnée.
   String _taskDocId(String projectId, String taskId) =>
@@ -1317,6 +1350,7 @@ class FirestoreSync {
   /// copie locale (perte de données « 6e — Mathématiques », 2026-10).
   Future<void> patchTaskAction(String projectId, String taskId, TaskAction action) async {
     if (uid == null) return;
+    unawaited(_settleTodayBlocks(actions: {action.id: action.done}));
     final ref = _col('projects').doc(_taskDocId(projectId, taskId));
     final json = action.toJson();
     await _db.runTransaction((tx) async {
@@ -1343,6 +1377,7 @@ class FirestoreSync {
   /// estimation…) dans le projet tel qu'il est sur le serveur.
   Future<void> patchTaskFields(String projectId, ProjectTask task, List<String> keys) async {
     if (uid == null) return;
+    if (keys.contains('status')) unawaited(_settleTodayBlocksOf([task]));
     final ref = _col('projects').doc(_taskDocId(projectId, task.id));
     final all = task.toJson();
     final fields = {for (final k in keys) if (k != 'phaseId') k: all[k]};
@@ -3360,6 +3395,7 @@ class FirestoreSync {
         if (status == 'done') b['doneAt'] = DateTime.now().toIso8601String();
         if (manual && status == 'pending') b['noAutoWin'] = true;
         if (manual && status == 'done') b['noAutoWin'] = false;
+        if (manual) b.remove('doneBy');
         break;
       }
     }
