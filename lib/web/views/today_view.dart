@@ -123,6 +123,10 @@ class TodayViewState extends State<TodayView> {
   StreamSubscription<DailySchedule?>? _tomorrowSub;
   // Bloc ouvert sur place (contenu cochable), dans la frise ou la liste.
   String? _detailId;
+  // Fermé par un clic hors de la carte : si ce clic tombait sur le bloc
+  // lui-même, son tap ne doit pas le rouvrir aussitôt.
+  String? _closedId;
+  DateTime? _closedAt;
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
   // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
@@ -1953,7 +1957,14 @@ class TodayViewState extends State<TodayView> {
   VoidCallback _blockTap(ScheduleBlock b, Project? project) {
     if (_editing) return () => _editBlock(b);
     if (_hasDetail(b)) {
-      return () => setState(() => _detailId = _detailId == b.id ? null : b.id);
+      return () {
+        final justClosed = _closedId == b.id &&
+            _closedAt != null &&
+            DateTime.now().difference(_closedAt!) < const Duration(milliseconds: 800);
+        _closedId = null;
+        if (justClosed) return;
+        setState(() => _detailId = _detailId == b.id ? null : b.id);
+      };
     }
     if (project != null) return () => widget.onOpenProject(project, taskId: b.taskId);
     return () => _editBlock(b);
@@ -1962,6 +1973,20 @@ class TodayViewState extends State<TodayView> {
   Widget _detailCard(ScheduleBlock b) {
     final pt = _taskOf(b);
     final project = pt?.project ?? _project(b.projectId);
+    // Clic ailleurs = fermer (la croix reste).
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_detailId != b.id) return;
+        _closedId = b.id;
+        _closedAt = DateTime.now();
+        setState(() => _detailId = null);
+      },
+      child: _detailCardBody(b, pt, project),
+    );
+  }
+
+  Widget _detailCardBody(
+      ScheduleBlock b, ({Project project, ProjectTask task})? pt, Project? project) {
     return Material(
       color: kBRaised,
       elevation: 10,
