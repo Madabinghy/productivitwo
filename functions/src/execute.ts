@@ -113,7 +113,9 @@ async function checkRateLimit(
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TASK_STATUSES  = new Set(["pending", "done", "skipped"]);
-const PROJECT_STATUSES = new Set(["active", "archived", "completed"]);
+// "done" = « Terminer le projet » de l'app (liste « Terminés ») ; "completed"
+// (ancien libellé de l'outil) y est ramené.
+const PROJECT_STATUSES = new Set(["active", "archived", "done", "completed"]);
 
 function assertDate(value: unknown, field: string): void {
   if (typeof value !== "string" || !DATE_RE.test(value))
@@ -1306,13 +1308,13 @@ async function executeUpdateProject(
   const title = updates.title ?? (snap.data()?.title ?? projectId);
 
   if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
-    return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, completed`;
+    return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, done`;
 
   const patch: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
   if (updates.domainId    !== undefined) patch.domainId    = updates.domainId;
   if (updates.title       !== undefined) patch.title       = clampStr(updates.title, 200, "title");
   if (updates.description !== undefined) patch.description = clampStr(updates.description, 5000, "description");
-  if (updates.status      !== undefined) patch.status      = updates.status;
+  if (updates.status      !== undefined) patch.status      = updates.status === "completed" ? "done" : updates.status;
   if (updates.parentProjectId !== undefined) patch.parentProjectId = updates.parentProjectId || null;
   if (phasesPatch !== undefined) patch.phases = phasesPatch;
 
@@ -1508,7 +1510,7 @@ async function executeListProjects(uid: string): Promise<string> {
     const status = String(d.status ?? "active");
     const badge = status !== "active"
       ? ` · ${{ archived: "ARCHIVÉ", draft: "BROUILLON",
-                completed: "TERMINÉ" }[status] ?? status.toUpperCase()}`
+                completed: "TERMINÉ", done: "TERMINÉ" }[status] ?? status.toUpperCase()}`
       : d.paused === true ? " · EN PAUSE" : "";
     return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
   });

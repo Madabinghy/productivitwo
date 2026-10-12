@@ -166,7 +166,9 @@ async function checkRateLimit(uid, key, maxPerHour) {
 // ── Validation helpers ────────────────────────────────────────────────────────
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TASK_STATUSES = new Set(["pending", "done", "skipped"]);
-const PROJECT_STATUSES = new Set(["active", "archived", "completed"]);
+// "done" = « Terminer le projet » de l'app (liste « Terminés ») ; "completed"
+// (ancien libellé de l'outil) y est ramené.
+const PROJECT_STATUSES = new Set(["active", "archived", "done", "completed"]);
 function assertDate(value, field) {
     if (typeof value !== "string" || !DATE_RE.test(value))
         throw new Error(`${field} : format attendu YYYY-MM-DD, reçu "${value}"`);
@@ -1193,7 +1195,7 @@ async function executeUpdateProject(uid, projectId, updates) {
     }
     const title = (_e = updates.title) !== null && _e !== void 0 ? _e : ((_g = (_f = snap.data()) === null || _f === void 0 ? void 0 : _f.title) !== null && _g !== void 0 ? _g : projectId);
     if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
-        return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, completed`;
+        return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, done`;
     const patch = { updatedAt: db_1.FieldValue.serverTimestamp() };
     if (updates.domainId !== undefined)
         patch.domainId = updates.domainId;
@@ -1202,7 +1204,7 @@ async function executeUpdateProject(uid, projectId, updates) {
     if (updates.description !== undefined)
         patch.description = clampStr(updates.description, 5000, "description");
     if (updates.status !== undefined)
-        patch.status = updates.status;
+        patch.status = updates.status === "completed" ? "done" : updates.status;
     if (updates.parentProjectId !== undefined)
         patch.parentProjectId = updates.parentProjectId || null;
     if (phasesPatch !== undefined)
@@ -1377,7 +1379,7 @@ async function executeListProjects(uid) {
         const status = String((_a = d.status) !== null && _a !== void 0 ? _a : "active");
         const badge = status !== "active"
             ? ` · ${(_b = { archived: "ARCHIVÉ", draft: "BROUILLON",
-                completed: "TERMINÉ" }[status]) !== null && _b !== void 0 ? _b : status.toUpperCase()}`
+                completed: "TERMINÉ", done: "TERMINÉ" }[status]) !== null && _b !== void 0 ? _b : status.toUpperCase()}`
             : d.paused === true ? " · EN PAUSE" : "";
         return `• [${d.id}] ${d.title} (${start} → ${end}, ${taskCount} tâche(s)${domain}${badge})`;
     });
