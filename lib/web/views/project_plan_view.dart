@@ -85,7 +85,7 @@ class ProjectPlanView extends StatefulWidget {
 
 class _ProjectPlanViewState extends State<ProjectPlanView> {
   late ProjectPlanTab _tab;
-  bool _hideDone = false;
+  bool _hideDone = true;
   final Set<String> _expanded = {};
   bool _phasesInit = false;
   final Map<String, List<ScheduleBlock>> _byDay = {};
@@ -124,10 +124,10 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
   @override
   void initState() {
     super.initState();
-    // Toujours le plan d'action, même à l'ouverture ciblée sur une tâche
-    // (depuis Aujourd'hui, Cette semaine…) : sa phase est dépliée par
-    // `_initExpanded`. Le Gantt reste à un clic (décision 2026-10).
-    _tab = ProjectPlanTab.plan;
+    // Clic sur un projet : la Vision (Gantt) d'abord (essai 2026-10).
+    // Ouverture ciblée sur une tâche (depuis Aujourd'hui, Cette semaine, un
+    // bloc…) : le plan d'action, phase de la tâche dépliée (`_initExpanded`).
+    _tab = widget.targetTaskId == null ? ProjectPlanTab.vision : ProjectPlanTab.plan;
     _syncMerged();
     for (final d in _weekDays) {
       final key = ymdOf(d);
