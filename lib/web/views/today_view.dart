@@ -138,6 +138,8 @@ class TodayViewState extends State<TodayView> {
   double _tlPpm = 1, _tlStartMin = 0;
   // Survol d'un créneau vide de la frise : fantôme « + HH:MM » (clic = bloc).
   int? _hoverMin;
+  // Bloc survolé : bouton « + » pour poser un bloc en parallèle.
+  String? _hoverBlockId;
   // Modules de la colonne de droite repliés (accordéon), mémorisés.
   Set<String> _folded = {};
   static const _kFoldedKey = 'today_side_folded';
@@ -557,7 +559,7 @@ class TodayViewState extends State<TodayView> {
 
   /// Nouveau bloc : à [at] (clic dans la frise), sinon au prochain quart
   /// d'heure après la fin du dernier bloc (demain : à partir de 8 h).
-  Future<void> _addBlock({int? at}) async {
+  Future<void> _addBlock({int? at, int duration = 30}) async {
     final date = _cardDate;
     var start = at;
     if (start == null) {
@@ -574,7 +576,7 @@ class TodayViewState extends State<TodayView> {
       block: ScheduleBlock(
         startTime:
             '${(start ~/ 60).toString().padLeft(2, '0')}:${(start % 60).toString().padLeft(2, '0')}',
-        durationMin: 30,
+        durationMin: duration,
         title: '',
       ),
     );
@@ -1698,6 +1700,24 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
+  /// « + » au survol d'un bloc : nouveau bloc à la même heure et de même
+  /// durée, posé côte à côte (`overlapColumns`).
+  Widget _parallelAddButton(ScheduleBlock b) => Tooltip(
+        message: 'Ajouter un bloc en parallèle',
+        child: Material(
+          color: kBPrimary,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => _addBlock(at: blockStartMin(b), duration: b.durationMin),
+            child: const Padding(
+              padding: EdgeInsets.all(3),
+              child: Icon(Icons.add_rounded, size: 16, color: kBBg),
+            ),
+          ),
+        ),
+      );
+
   Widget _daySwitch() {
     Widget seg(String label, bool on, VoidCallback onTap) => InkWell(
           borderRadius: BorderRadius.circular(999),
@@ -1890,7 +1910,28 @@ class TodayViewState extends State<TodayView> {
             width: laneW / (lanes[b.id]?.cols ?? 1) - ((lanes[b.id]?.cols ?? 1) > 1 ? 4 : 0),
             top: y(blockStartMin(b)) + 1,
             height: math.max(b.durationMin * ppm - 3, 20),
-            child: _timelineBlock(b, b.durationMin * ppm - 3),
+            child: MouseRegion(
+              onEnter: (_) => setState(() => _hoverBlockId = b.id),
+              onExit: (_) {
+                if (_hoverBlockId == b.id) setState(() => _hoverBlockId = null);
+              },
+              child: Stack(fit: StackFit.expand, children: [
+                _timelineBlock(b, b.durationMin * ppm - 3),
+                if (_hoverBlockId == b.id && !_editing && _detailId == null)
+                  Positioned(
+                    right: 4,
+                    top: 0,
+                    bottom: 0,
+                    child: Align(
+                      alignment: b.durationMin * ppm > 60 ? Alignment.topRight : Alignment.centerRight,
+                      child: Padding(
+                        padding: EdgeInsets.only(top: b.durationMin * ppm > 60 ? 6 : 0),
+                        child: _parallelAddButton(b),
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
           ),
         if (showNow)
           Positioned(

@@ -116,7 +116,8 @@ blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routine
 Frise **« Aujourd'hui | Demain »** (`_daySwitch`, `_cardDate` / `_cardBlocks`) : demain dans la même frise, sans trait
 « maintenant », ni coche, ni chrono ; **zoom vertical** ×1 → ×8 (`_zoomBy` : Ctrl/⌘ + molette ou pincement autour du curseur,
 boutons − / +, repères :30 / :15 quand on zoome, mémorisé en SharedPreferences) ; **clic sur un créneau vide = nouveau bloc** à ce quart
-d'heure (fantôme « + HH:MM » au survol, `_addBlock(at:)`) ; blocs qui se chevauchent côte à côte (`overlapColumns`) ; Modifier / Ajouter / « Préparer avec Claude » (`planDayPrompt`) agissent sur demain.
+d'heure (fantôme « + HH:MM » au survol, `_addBlock(at:)`) ; **« + » au survol d'un bloc** = bloc en parallèle (même heure,
+même durée) ; blocs qui se chevauchent côte à côte (`overlapColumns`) ; Modifier / Ajouter / « Préparer avec Claude » (`planDayPrompt`) agissent sur demain.
 **Clic sur un bloc à contenu = ouvert sur place** (`_detailCard`, frise et liste) : « Projet › Tâche », action visée et ses
 étapes cochables (`blockWork`), autres actions ouvertes, « Ouvrir le projet » / « Modifier le bloc » / « Bloc terminé ».
 Modules de la colonne de droite **repliables en accordéon** (Routines, Chronos, À traiter, Cette semaine, Échéances ;
