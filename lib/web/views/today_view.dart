@@ -136,6 +136,8 @@ class TodayViewState extends State<TodayView> {
   double _zoom = 1;
   static const _kZoomMin = 1.0, _kZoomMax = 8.0, _kZoomKey = 'today_timeline_zoom';
   double _tlPpm = 1, _tlStartMin = 0;
+  // Survol d'un créneau vide de la frise : fantôme « + HH:MM » (clic = bloc).
+  int? _hoverMin;
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
   // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
@@ -548,16 +550,19 @@ class TodayViewState extends State<TodayView> {
     }
   }
 
-  Future<void> _addBlock() async {
-    // Nouveau bloc au prochain quart d'heure, après la fin du dernier bloc
-    // (demain : à partir de 8 h).
+  /// Nouveau bloc : à [at] (clic dans la frise), sinon au prochain quart
+  /// d'heure après la fin du dernier bloc (demain : à partir de 8 h).
+  Future<void> _addBlock({int? at}) async {
     final date = _cardDate;
-    final n = DateTime.now();
-    var start = _tomorrow ? 8 * 60 : n.hour * 60 + n.minute;
-    for (final b in _cardBlocks) {
-      start = math.max(start, blockEndMin(b));
+    var start = at;
+    if (start == null) {
+      final n = DateTime.now();
+      start = _tomorrow ? 8 * 60 : n.hour * 60 + n.minute;
+      for (final b in _cardBlocks) {
+        start = math.max(start!, blockEndMin(b));
+      }
+      start = math.min(((start! + 14) ~/ 15) * 15, 23 * 60 + 45);
     }
-    start = math.min(((start + 14) ~/ 15) * 15, 23 * 60 + 45);
     final created = await showScheduleBlockDialog(
       context,
       isNew: true,
@@ -1790,9 +1795,59 @@ class TodayViewState extends State<TodayView> {
 
     final lanes = overlapColumns(blocks);
     final laneW = math.max(0.0, width - 56);
+    // Créneau (quart d'heure) sous le pointeur, pour ajouter un bloc au clic.
+    int slotAt(double dy) =>
+        ((((dy - 4) / ppm + startH * 60) ~/ 15) * 15).clamp(startH * 60, endH * 60 - 15).toInt();
+    final hover = _detailId == null ? _hoverMin : null;
     final stack = SizedBox(
       height: total,
       child: Stack(clipBehavior: Clip.none, children: [
+        // Fond cliquable : un clic sur un créneau vide crée un bloc à cette
+        // heure (sauf juste après avoir refermé un bloc ouvert).
+        Positioned.fill(
+          left: 56,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onHover: (e) {
+              final m = slotAt(e.localPosition.dy);
+              if (m != _hoverMin) setState(() => _hoverMin = m);
+            },
+            onExit: (_) {
+              if (_hoverMin != null) setState(() => _hoverMin = null);
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (e) {
+                final closed = _closedAt != null &&
+                    DateTime.now().difference(_closedAt!) < const Duration(milliseconds: 800);
+                if (closed || _detailId != null) return;
+                _addBlock(at: slotAt(e.localPosition.dy));
+              },
+            ),
+          ),
+        ),
+        if (hover != null)
+          Positioned(
+            left: 56,
+            right: 0,
+            top: y(hover) + 1,
+            height: math.max(30 * ppm - 3, 20),
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  color: kBPrimary.withOpacity(.06),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: kBPrimary.withOpacity(.35)),
+                ),
+                child: Text('+ ${_clockOf(hover)}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: kBPrimary,
+                        fontFeatures: _tabular)),
+              ),
+            ),
+          ),
         for (var h = startH; h <= endH; h++) ...[
           Positioned(
             left: 0,
