@@ -136,6 +136,11 @@ class TodayViewState extends State<TodayView> {
   double _zoom = 1;
   static const _kZoomMin = 1.0, _kZoomMax = 8.0, _kZoomKey = 'today_timeline_zoom';
   double _tlPpm = 1, _tlStartMin = 0;
+  // Survol d'un créneau vide de la frise : fantôme « + HH:MM » (clic = bloc).
+  int? _hoverMin;
+  // Modules de la colonne de droite repliés (accordéon), mémorisés.
+  Set<String> _folded = {};
+  static const _kFoldedKey = 'today_side_folded';
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
   // est affichée — à l'arrivée sur l'onglet, au premier programme chargé, au
@@ -154,6 +159,8 @@ class TodayViewState extends State<TodayView> {
     SharedPreferences.getInstance().then((prefs) {
       final z = prefs.getDouble(_kZoomKey);
       if (z != null && mounted) setState(() => _zoom = z.clamp(_kZoomMin, _kZoomMax));
+      final f = prefs.getStringList(_kFoldedKey);
+      if (f != null && mounted) setState(() => _folded = f.toSet());
     }).catchError((_) {});
     _subscribe();
     _loadLogic();
@@ -548,16 +555,19 @@ class TodayViewState extends State<TodayView> {
     }
   }
 
-  Future<void> _addBlock() async {
-    // Nouveau bloc au prochain quart d'heure, après la fin du dernier bloc
-    // (demain : à partir de 8 h).
+  /// Nouveau bloc : à [at] (clic dans la frise), sinon au prochain quart
+  /// d'heure après la fin du dernier bloc (demain : à partir de 8 h).
+  Future<void> _addBlock({int? at}) async {
     final date = _cardDate;
-    final n = DateTime.now();
-    var start = _tomorrow ? 8 * 60 : n.hour * 60 + n.minute;
-    for (final b in _cardBlocks) {
-      start = math.max(start, blockEndMin(b));
+    var start = at;
+    if (start == null) {
+      final n = DateTime.now();
+      start = _tomorrow ? 8 * 60 : n.hour * 60 + n.minute;
+      for (final b in _cardBlocks) {
+        start = math.max(start!, blockEndMin(b));
+      }
+      start = math.min(((start! + 14) ~/ 15) * 15, 23 * 60 + 45);
     }
-    start = math.min(((start + 14) ~/ 15) * 15, 23 * 60 + 45);
     final created = await showScheduleBlockDialog(
       context,
       isNew: true,
@@ -1790,9 +1800,59 @@ class TodayViewState extends State<TodayView> {
 
     final lanes = overlapColumns(blocks);
     final laneW = math.max(0.0, width - 56);
+    // Créneau (quart d'heure) sous le pointeur, pour ajouter un bloc au clic.
+    int slotAt(double dy) =>
+        ((((dy - 4) / ppm + startH * 60) ~/ 15) * 15).clamp(startH * 60, endH * 60 - 15).toInt();
+    final hover = _detailId == null ? _hoverMin : null;
     final stack = SizedBox(
       height: total,
       child: Stack(clipBehavior: Clip.none, children: [
+        // Fond cliquable : un clic sur un créneau vide crée un bloc à cette
+        // heure (sauf juste après avoir refermé un bloc ouvert).
+        Positioned.fill(
+          left: 56,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onHover: (e) {
+              final m = slotAt(e.localPosition.dy);
+              if (m != _hoverMin) setState(() => _hoverMin = m);
+            },
+            onExit: (_) {
+              if (_hoverMin != null) setState(() => _hoverMin = null);
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (e) {
+                final closed = _closedAt != null &&
+                    DateTime.now().difference(_closedAt!) < const Duration(milliseconds: 800);
+                if (closed || _detailId != null) return;
+                _addBlock(at: slotAt(e.localPosition.dy));
+              },
+            ),
+          ),
+        ),
+        if (hover != null)
+          Positioned(
+            left: 56,
+            right: 0,
+            top: y(hover) + 1,
+            height: math.max(30 * ppm - 3, 20),
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                alignment: Alignment.centerLeft,
+                decoration: BoxDecoration(
+                  color: kBPrimary.withOpacity(.06),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: kBPrimary.withOpacity(.35)),
+                ),
+                child: Text('+ ${_clockOf(hover)}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: kBPrimary,
+                        fontFeatures: _tabular)),
+              ),
+            ),
+          ),
         for (var h = startH; h <= endH; h++) ...[
           Positioned(
             left: 0,
@@ -2561,14 +2621,16 @@ class TodayViewState extends State<TodayView> {
     final todo = list.where((r) => !r.reached).toList();
     final shown = _routinesAll ? list : todo.take(cap).toList();
     final hidden = list.length - shown.length;
+    final folded = _isFolded('routines');
     return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+      padding: folded ? _kFoldedPadding : const EdgeInsets.fromLTRB(20, 18, 20, 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
+        _foldHeader('routines', Row(children: [
           Expanded(child: _label('ROUTINES DU JOUR')),
           Text('$reached / ${list.length} atteinte${reached > 1 ? 's' : ''}',
               style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
-        ]),
+        ])),
+        if (!folded) ...[
         const SizedBox(height: 10),
         if (shown.isEmpty)
           const Padding(
@@ -2620,11 +2682,40 @@ class TodayViewState extends State<TodayView> {
             child: _textLink(_routinesAll ? 'Réduire' : 'Voir toutes ($hidden de plus)',
                 () => setState(() => _routinesAll = !_routinesAll)),
           ),
+        ],
       ]),
     );
   }
 
   /// Colonne de droite : (contenu des blocs) + routines + semaine.
+  bool _isFolded(String key) => _folded.contains(key);
+
+  void _toggleFold(String key) {
+    setState(() => _folded.contains(key) ? _folded.remove(key) : _folded.add(key));
+    final list = _folded.toList();
+    SharedPreferences.getInstance().then((p) => p.setStringList(_kFoldedKey, list)).catchError((_) => false);
+  }
+
+  /// En-tête d'un module repliable : toute la ligne replie / déplie (les
+  /// liens qu'elle contient gardent leur action), chevron à droite.
+  Widget _foldHeader(String key, Widget header) {
+    final folded = _isFolded(key);
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _toggleFold(key),
+      child: Row(children: [
+        Expanded(child: header),
+        const SizedBox(width: 6),
+        Tooltip(
+          message: folded ? 'Déplier' : 'Replier',
+          child: Icon(folded ? Icons.expand_more : Icons.expand_less, size: 18, color: kBText4),
+        ),
+      ]),
+    );
+  }
+
+  static const _kFoldedPadding = EdgeInsets.fromLTRB(20, 14, 20, 14);
+
   Widget _sideColumn({bool withAgenda = false}) =>
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (withAgenda) ...[_agendaCard(), const SizedBox(height: 18)],
@@ -2643,6 +2734,8 @@ class TodayViewState extends State<TodayView> {
           onChanged: () {
             if (mounted) setState(() {});
           },
+          folded: _isFolded('chronos'),
+          onToggleFold: () => _toggleFold('chronos'),
         ),
         const SizedBox(height: 18),
         _weekColumn(),
@@ -2678,16 +2771,18 @@ class TodayViewState extends State<TodayView> {
     pairs.sort((a, b) => a.task.endDate!.compareTo(b.task.endDate!));
     final shown = pairs.take(5).toList();
 
+    final folded = _isFolded('overdue');
     return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      padding: folded ? _kFoldedPadding : const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
+        _foldHeader('overdue', Row(children: [
           Expanded(
             child: _label(pairs.isEmpty ? 'À TRAITER' : 'À TRAITER · ${pairs.length}',
                 color: pairs.isEmpty ? kBText3 : kBAlert),
           ),
           if (pairs.isNotEmpty) _textLink('Replanifier', widget.onOpenWeek),
-        ]),
+        ])),
+        if (!folded) ...[
         const SizedBox(height: 12),
         if (pairs.isEmpty)
           const Text('Rien en retard.', style: TextStyle(fontSize: 13, color: kBText3))
@@ -2706,6 +2801,7 @@ class TodayViewState extends State<TodayView> {
             child: Text('+ ${pairs.length - shown.length} autres',
                 style: const TextStyle(fontSize: 12, color: kBText3)),
           ),
+        ],
       ]),
     );
   }
@@ -2720,10 +2816,12 @@ class TodayViewState extends State<TodayView> {
     }
     final domains = widget.domains.where((d) => !d.deleted && byDomain.containsKey(d.id));
 
+    final folded = _isFolded('week');
     return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      padding: folded ? _kFoldedPadding : const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _label('CETTE SEMAINE · 7 JOURS'),
+        _foldHeader('week', _label('CETTE SEMAINE · 7 JOURS')),
+        if (!folded) ...[
         const SizedBox(height: 12),
         if (domains.isEmpty)
           const Text('Aucun engagement hebdo pour l\'instant.',
@@ -2760,6 +2858,7 @@ class TodayViewState extends State<TodayView> {
                 ),
               ]),
             ),
+        ],
       ]),
     );
   }
@@ -2777,19 +2876,22 @@ class TodayViewState extends State<TodayView> {
       ..sort((a, b) => a.endDate!.compareTo(b.endDate!));
     final shown = upcoming.take(3).toList();
 
+    final folded = _isFolded('deadlines');
     return _card(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      padding: folded ? _kFoldedPadding : const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
+        _foldHeader('deadlines', Row(children: [
           Expanded(child: _label('PROCHAINES ÉCHÉANCES')),
           _textLink('Projets', widget.onOpenProjects),
-        ]),
+        ])),
+        if (!folded) ...[
         const SizedBox(height: 12),
         if (shown.isEmpty)
           const Text('Aucune échéance de projet.',
               style: TextStyle(fontSize: 13, color: kBText3))
         else
           for (final p in shown) _projectRow(p, today),
+        ],
       ]),
     );
   }

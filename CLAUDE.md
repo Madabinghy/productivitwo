@@ -115,9 +115,12 @@ possibles d'une activité, +1 de routine, « Définir la prochaine action ») so
 blocs hauts de la frise (`_blockHint`) ; carte « Routines du jour » (`_routinesCard`, logique `utils/routines_today.dart`).
 Frise **« Aujourd'hui | Demain »** (`_daySwitch`, `_cardDate` / `_cardBlocks`) : demain dans la même frise, sans trait
 « maintenant », ni coche, ni chrono ; **zoom vertical** ×1 → ×8 (`_zoomBy` : Ctrl/⌘ + molette ou pincement autour du curseur,
-boutons − / +, repères :30 / :15 quand on zoome, mémorisé en SharedPreferences) ; Modifier / Ajouter / « Préparer avec Claude » (`planDayPrompt`) agissent sur demain.
+boutons − / +, repères :30 / :15 quand on zoome, mémorisé en SharedPreferences) ; **clic sur un créneau vide = nouveau bloc** à ce quart
+d'heure (fantôme « + HH:MM » au survol, `_addBlock(at:)`) ; blocs qui se chevauchent côte à côte (`overlapColumns`) ; Modifier / Ajouter / « Préparer avec Claude » (`planDayPrompt`) agissent sur demain.
 **Clic sur un bloc à contenu = ouvert sur place** (`_detailCard`, frise et liste) : « Projet › Tâche », action visée et ses
 étapes cochables (`blockWork`), autres actions ouvertes, « Ouvrir le projet » / « Modifier le bloc » / « Bloc terminé ».
+Modules de la colonne de droite **repliables en accordéon** (Routines, Chronos, À traiter, Cette semaine, Échéances ;
+`_foldHeader`, état mémorisé `today_side_folded` en SharedPreferences).
 Bouton « Demain → » à côté de la date = dialog `web/tomorrow_schedule_dialog.dart` (‹ › jours suivants, blocs dépliables).
 Projets (lot 4) = tableau `views/projects_view.dart` + `lib/utils/project_health.dart` (état calculé,
 prochaine action, 7 jours) ; menu ⋯ d'une ligne : **Terminer le projet** (`status:'done'`, confirmation s'il
