@@ -118,8 +118,8 @@ prochaine action, 7 jours) ; menu ⋯ d'une ligne : **Terminer le projet** (`sta
 reste des tâches ouvertes) → liste « Terminés · n » (Rouvrir / Archiver) ; « Définir la prochaine action » partagé dans `web/quick_add_action_dialog.dart`.
 Fiche projet (lot 5) = `views/project_plan_view.dart`, onglets **Vision · Plan d'action · Réalisation** (2026-10, du
 plus large au plus fin : Vision = Gantt, Plan d'action = tâches + actions, Réalisation = étapes des actions), hébergée
-dans le shell ; **s'ouvre toujours sur Plan d'action**, y compris depuis un bloc ou une
-action (`targetTaskId` → phase de la tâche dépliée) ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
+dans le shell ; **s'ouvre sur Vision** au clic sur un projet (essai 2026-10), sur **Plan d'action** quand elle vise
+une tâche (bloc, action : `targetTaskId` → phase de la tâche dépliée) ; « Masquer le fait » actif par défaut ; « Nouvelle tâche » partagé dans `web/add_task_dialog.dart`, visionneuse de
 documents dans `web/document_viewer_dialog.dart`. L'onglet **Document** (`ProjectDocView`, playbook Markdown) a été
 **retiré** en 2026-10 au profit de **Réalisation** (`views/project_checklists_view.dart`, handoff
 `docs/specs/checklists-2026-10/README.md`) : plan phases → tâches → actions à gauche, espace de travail de l'action à
