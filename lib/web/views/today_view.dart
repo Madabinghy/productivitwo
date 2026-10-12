@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/web/checklist_widget.dart';
 import 'package:productivitwo_v1/web/document_viewer_dialog.dart';
 import 'package:productivitwo_v1/web/focus_band.dart';
 import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
+import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
@@ -1354,6 +1355,8 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
+          _textLink('Demain', () => showTomorrowScheduleDialog(context, widget.sync)),
+          const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
         ]),
@@ -1528,6 +1531,8 @@ class TodayViewState extends State<TodayView> {
             _textLink('+ Ajouter un bloc', _addBlock),
             const SizedBox(width: 14),
           ],
+          _textLink('Demain', () => showTomorrowScheduleDialog(context, widget.sync)),
+          const SizedBox(width: 14),
           _textLink(_editing ? 'Terminé' : 'Modifier',
               () => setState(() => _editing = !_editing)),
         ]),

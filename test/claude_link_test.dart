@@ -69,4 +69,18 @@ void automationTests() {
     expect(p, contains('« Fiche S3 » (BTS SIO, échéance 01/10)'));
     expect(p, contains('schedule_day'));
   });
+
+  test('planDayPrompt : plan_day sur la date, agenda protégé, blocs posés gardés', () {
+    final p = planDayPrompt(date: '2026-10-13', blocks: [
+      ScheduleBlock(startTime: '08:00', durationMin: 120, title: 'Cours', gcalEventId: 'g1'),
+      ScheduleBlock(startTime: '14:00', durationMin: 60, title: 'Compta'),
+      ScheduleBlock(startTime: '16:00', durationMin: 30, title: 'Vieux', status: 'deleted'),
+    ]);
+    expect(p, contains('plan_day(date: "2026-10-13")'));
+    expect(p, contains('Cours 08:00 → 10:00'));
+    expect(p, contains('1 bloc : garde-le et'));
+    expect(p, isNot(contains('Vieux')));
+    expect(planDayPrompt(date: '2026-10-13', blocks: const []),
+        contains('Pas de rendez-vous Google Agenda'));
+  });
 }
