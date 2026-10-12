@@ -556,3 +556,43 @@ bool settleBlocksByWork(
   }
   return changed;
 }
+
+/// Frise : blocs qui se chevauchent posés côte à côte. Pour chaque bloc,
+/// sa colonne et le nombre de colonnes de son groupe (blocs reliés par des
+/// chevauchements). Un bloc seul = (0, 1).
+Map<String, ({int col, int cols})> overlapColumns(List<ScheduleBlock> blocks) {
+  final sorted = [...blocks]..sort((a, b) {
+      final c = blockStartMin(a).compareTo(blockStartMin(b));
+      return c != 0 ? c : blockEndMin(b).compareTo(blockEndMin(a));
+    });
+  final out = <String, ({int col, int cols})>{};
+  var group = <ScheduleBlock>[];
+  var colOf = <String, int>{};
+  var colEnds = <int>[];
+  var groupEnd = -1;
+  void flush() {
+    for (final b in group) {
+      out[b.id] = (col: colOf[b.id]!, cols: colEnds.length);
+    }
+    group = [];
+    colOf = {};
+    colEnds = [];
+  }
+
+  for (final b in sorted) {
+    final start = blockStartMin(b);
+    if (group.isNotEmpty && start >= groupEnd) flush();
+    var col = colEnds.indexWhere((end) => end <= start);
+    if (col < 0) {
+      col = colEnds.length;
+      colEnds.add(blockEndMin(b));
+    } else {
+      colEnds[col] = blockEndMin(b);
+    }
+    colOf[b.id] = col;
+    group.add(b);
+    groupEnd = group.length == 1 ? blockEndMin(b) : math.max(groupEnd, blockEndMin(b));
+  }
+  flush();
+  return out;
+}
