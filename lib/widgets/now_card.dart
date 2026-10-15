@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
+import 'package:productivitwo_v1/utils/chain.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
@@ -36,6 +37,9 @@ class NowCard extends StatefulWidget {
   /// Écran Focus plein écran (PR 3 Focus) : la carte entière s'ouvre quand un
   /// chrono tourne ; null = pas d'écran.
   final VoidCallback? onOpenFocus;
+  /// Mode « Enchaîner » (2026-10) : dérouler la file du jour une chose à la
+  /// fois ; null = pas de bouton.
+  final VoidCallback? onChain;
 
   const NowCard({
     super.key,
@@ -54,6 +58,7 @@ class NowCard extends StatefulWidget {
     this.onOpenActivities,
     this.onChallenge,
     this.onOpenFocus,
+    this.onChain,
   });
 
   @override
@@ -443,6 +448,25 @@ class _NowCardState extends State<NowCard> {
         ]),
         const SizedBox(height: 14),
         Row(children: buttons),
+        if ((widget.onChain != null && b != null ? _chainHint() : null) case final hint?) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                widget.onChain!();
+              },
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: pal.primary, side: BorderSide(color: pal.primary.withOpacity(.45))),
+              icon: const Icon(Icons.playlist_play_rounded, size: 20),
+              label: Text(hint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ],
         if (session != null) ...[
           const SizedBox(height: 6),
           InkWell(
@@ -469,6 +493,22 @@ class _NowCardState extends State<NowCard> {
         ],
       ]),
     );
+  }
+
+  /// « Enchaîner · 6 choses jusqu'à 18:00 » ; null si la file est vide.
+  String? _chainHint() {
+    final items = buildChain(
+      blocks: _blocks,
+      projects: widget.logic.currentProjects,
+      activities: widget.logic.state.activities,
+      hits: widget.logic.state.habitHits,
+      now: DateTime.now(),
+    );
+    if (items.isEmpty) return null;
+    final end = chainEndMin(items)!;
+    final routines = items.where((i) => i.kind == ChainKind.routine).length;
+    return 'Enchaîner · ${items.length} chose${items.length > 1 ? 's' : ''} jusqu\'à ${_clock(end)}'
+        '${routines > 0 ? ' · $routines routine${routines > 1 ? 's' : ''}' : ''}';
   }
 
   Widget _header(NowPalette pal, String? right, {bool chevron = false}) => Row(children: [

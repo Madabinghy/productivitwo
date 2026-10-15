@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/morning_three.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
+import 'package:productivitwo_v1/widgets/chain_screen.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -793,6 +794,17 @@ class TodayViewState extends State<TodayView> {
                     onOpenRoutines: widget.onOpenRoutines,
                     onOpenActivities: widget.onOpenActivities,
                     onChallenge: widget.onChallenge,
+                    onChain: widget.onStopTimer == null
+                        ? null
+                        : () => showChainScreen(
+                              context,
+                              logic: widget.logic,
+                              sync: FirestoreSync(),
+                              date: _schedDate,
+                              onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                              onStopTimer: widget.onStopTimer!,
+                              onOpenSource: widget.onOpenSource,
+                            ),
                     onOpenFocus: widget.onStopTimer == null
                         ? null
                         : () => showFocusScreen(
