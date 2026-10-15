@@ -43,6 +43,7 @@ dependencies:
   file_selector: ^1.0.3 # restauration : choisir un fichier .json
   alarm: ^5.4.1
   google_fonts: ^6.2.1 # refonte Soft Pop : Fredoka (UI) + Space Mono (chiffres)
+  wakelock_plus: ^1.4.0 # mode Enchaîner : l'écran reste allumé
 
 
 dev_dependencies:

@@ -363,7 +363,8 @@ carte « Fait ») ; `orderChain` (« Plus tard » = fin de file, « Pas aujourd'
 affiché (`onLaunch` du bloc à l'entrée, arrêt à sa sortie) ; bloc épuisé → `updateBlockStatus done` + écran de
 transition (« Commencer », « Attendre HH:MM » / « Souffler 5 min » → reprise auto, « Sortir ») ; bloc qui déborde →
 bandeau « Décaler la suite de N min » (`overrunMin`, `shiftFollowing` : jamais un miroir agenda) / « Laisser » ; « Sortir »
-ou file vide → récap (faits, chrono, reste à faire avec « Caser demain »). Complément d'Aujourd'hui, pas un remplacement.
+ou file vide → récap (faits, chrono, reste à faire avec « Caser demain ») ; l'écran reste allumé (`wakelock_plus`).
+Complément d'Aujourd'hui, pas un remplacement.
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien

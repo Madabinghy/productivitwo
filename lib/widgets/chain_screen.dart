@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Mode « Enchaîner » (2026-10) : une seule chose à l'écran, celle à faire
 /// maintenant ; « Fait » amène la suivante. La file vient du programme du
@@ -94,6 +95,8 @@ class _ChainScreenState extends State<_ChainScreen> {
   void initState() {
     super.initState();
     _startedAt = DateTime.now();
+    // L'écran reste allumé pendant la session (téléphone posé à côté).
+    WakelockPlus.enable().catchError((_) {});
     logic.addListener(_onLogic);
     _sub = widget.sync.streamDailySchedule(widget.date).listen((s) {
       if (!mounted) return;
@@ -127,6 +130,7 @@ class _ChainScreenState extends State<_ChainScreen> {
 
   @override
   void dispose() {
+    WakelockPlus.disable().catchError((_) {});
     logic.removeListener(_onLogic);
     _sub?.cancel();
     _tick?.cancel();
