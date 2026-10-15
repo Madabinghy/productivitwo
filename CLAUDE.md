@@ -353,6 +353,17 @@ les n demain »** (`blocksToCarry` / `showCarryCard`, annulable via `undoReportT
 `upsertScheduleBlock` d'un miroir avec activité sans tâche retient `data/meta.mirrorActivities {mirrorKey(titre):
 activityId}`, appliqué EN MÉMOIRE aux miroirs libres au chargement (`applyMirrorMemory`, après `linkMirrorsToSessions`
 — la séance prime).
+**Mode « Enchaîner »** (mobile, 2026-10, lot 1 ; proposition validée : file jusqu'à la fin du programme, débordement
+= on laisse tourner et on propose, routines par accroche au lot 2) : bouton « Enchaîner · n choses jusqu'à HH:MM » sur
+la carte MAINTENANT → `widgets/chain_screen.dart`, plein écran, une seule chose à la fois. File = logique pure
+`utils/chain.dart` (`buildChain` : blocs à faire dont la fin n'est pas passée, dans l'ordre ; bloc de tâche → action
+visée puis autres actions ouvertes, une **étape de checklist par écran**, dernière étape = action faite ; bloc de routine
+→ carte « +1 » (sautée si la routine est atteinte) ; bloc de séance → « Ouvrir la séance » ; rendez-vous / bloc perso →
+carte « Fait ») ; `orderChain` (« Plus tard » = fin de file, « Pas aujourd'hui » = écarté). Le **chrono suit** le bloc
+affiché (`onLaunch` du bloc à l'entrée, arrêt à sa sortie) ; bloc épuisé → `updateBlockStatus done` + écran de
+transition (« Commencer », « Attendre HH:MM » / « Souffler 5 min » → reprise auto, « Sortir ») ; bloc qui déborde →
+bandeau « Décaler la suite de N min » (`overrunMin`, `shiftFollowing` : jamais un miroir agenda) / « Laisser » ; « Sortir »
+ou file vide → récap (faits, chrono, reste à faire avec « Caser demain »). Complément d'Aujourd'hui, pas un remplacement.
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien
