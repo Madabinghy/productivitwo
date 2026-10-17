@@ -65,6 +65,10 @@ class Activity {
   /// Code point d'une icône Material Icons (optionnel).
   int? iconCode;
 
+  /// Rang manuel d'une routine dans son moment (vue Routines, 2026-10) ;
+  /// null = pas encore ordonnée (après les ordonnées, par nom).
+  int? routineOrder;
+
   bool deleted;
   bool todayFlag; // priorité du jour (routines)
 
@@ -106,6 +110,7 @@ class Activity {
     this.linkedActivityId,
     this.order = 0,
     this.iconCode,
+    this.routineOrder,
     this.deleted = false,
     this.todayFlag = false,
     this.timerMin,
@@ -148,6 +153,7 @@ class Activity {
         'lastTuneAt': lastTuneAt?.toIso8601String(),
         'order': order,
         'iconCode': iconCode,
+        'routineOrder': routineOrder,
         'deleted': deleted,
         'todayFlag': todayFlag,
         'timerMin': timerMin,
@@ -199,6 +205,7 @@ class Activity {
       lastTuneAt: _parseDateOrNull(j['lastTuneAt']),
       order: (j['order'] as num?)?.toInt() ?? 0,
       iconCode: (j['iconCode'] as num?)?.toInt(),
+      routineOrder: (j['routineOrder'] as num?)?.toInt(),
       deleted: j['deleted'] as bool? ?? false,
       todayFlag: j['todayFlag'] as bool? ?? false,
       timerMin: (j['timerMin'] as num?)?.toInt(),

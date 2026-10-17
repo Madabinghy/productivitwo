@@ -3206,6 +3206,17 @@ extension TodayLogic on AppLogic {
     onChange();
   }
 
+  /// Vue Routines : reports du jour routine → moment (« Cet après-midi »).
+  Map<String, String> routinePushed(String ymd) => {
+        for (final e in state.routinePushedByYmd[ymd] ?? const <String>[])
+          if (e.contains(':')) e.substring(0, e.indexOf(':')): e.substring(e.indexOf(':') + 1),
+      };
+
+  void setRoutinePushed(String ymd, Map<String, String> pushed) {
+    state.routinePushedByYmd[ymd] = [for (final e in pushed.entries) '${e.key}:${e.value}'];
+    onChange();
+  }
+
   void setSortTodayByDashboard(bool v) {
     state.sortTodayByDashboard = v;
     onChange();
