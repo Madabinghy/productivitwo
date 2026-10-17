@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Mode « Enchaîner » (2026-10) : une seule chose à l'écran, celle à faire
@@ -147,6 +148,9 @@ class _ChainScreenState extends State<_ChainScreen> {
       activities: logic.state.activities,
       hits: logic.state.habitHits,
       now: now,
+      pushed: _pushed,
+      deferred: _routineDeferred,
+      dismissed: _routineDismissed,
     );
     return orderChain(items, deferred: _deferred, dismissed: _dismissed);
   }
@@ -179,8 +183,12 @@ class _ChainScreenState extends State<_ChainScreen> {
         (cur == null || cur.block.id != _enteredBlockId) &&
         !_deferred.any((k) => k.startsWith('$_enteredBlockId/'))) {
       final finished = _blocks.where((b) => b.id == _enteredBlockId).firstOrNull;
-      if (finished != null) _finishBlock(finished);
-      return;
+      if (finished != null) {
+        _finishBlock(finished);
+        return;
+      }
+      // Bloc fabriqué (routines accrochées) : pas de transition, on enchaîne.
+      _enteredBlockId = null;
     }
     if (cur != null && _between == null && cur.block.id != _enteredBlockId) {
       _enterBlock(cur);
@@ -244,7 +252,7 @@ class _ChainScreenState extends State<_ChainScreen> {
             await _saveAction(i);
             break;
           case ChainKind.routine:
-            logic.incHabit(i.activity!.id, 1, DateTime.now());
+            routinePlus(logic, i.activity!);
             setState(() => _dismissed.add(i.key));
             break;
           case ChainKind.session:
@@ -265,9 +273,19 @@ class _ChainScreenState extends State<_ChainScreen> {
   }
 
   void _dismiss(ChainItem i) {
+    // Routine « pas aujourd'hui » : écartée pour la journée partout (vue
+    // Routines comprise), pas seulement dans cette session.
+    if (i.kind == ChainKind.routine && i.activity != null) {
+      final ymd = yyyymmdd(DateTime.now());
+      logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(i.activity!.id));
+    }
     setState(() => _dismissed.add(i.key));
     _afterChange();
   }
+
+  Map<String, String> get _pushed => logic.routinePushed(yyyymmdd(DateTime.now()));
+  List<String> get _routineDeferred => logic.state.nowSkippedByYmd[yyyymmdd(DateTime.now())] ?? const [];
+  Set<String> get _routineDismissed => logic.nowDoneSet(yyyymmdd(DateTime.now()));
 
   void _pause() {
     widget.onStopTimer();

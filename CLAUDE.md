@@ -385,8 +385,13 @@ vue), « Suivante » selon le compteur (rien : inactif · partiel : « Garder 1 
 total ; écran de fin « Matin terminé · n sur total » + gardées / reportées + « La suite : à 11 h 30 (midi) » ; écran
 allumé. **Organiser** (lot 3, `widgets/routines_organize_screen.dart`, bouton de la vue) : par moment (6 sections, appui
 long + glisser vers une autre section = change `timeContext`, ▲▼ = `routineOrder` renuméroté 0..n-1 dans le moment) ou par
-domaine (chip du moment sur chaque ligne → rangée des 6 moments) ; écrit via `saveActivity`. À venir : accroches du mode
-Enchaîner général (routines du moment quand la file y entre, « toute la journée » entre deux blocs).
+domaine (chip du moment sur chaque ligne → rangée des 6 moments) ; écrit via `saveActivity`.
+**Un seul Enchaîner** (2026-10) : `buildChain` accroche les routines à la file du programme (`anchorRoutines`, défaut true) —
+en tête, la file du moment courant (restées + moment courant, ordre de la vue Routines) ; à l'entrée de chaque moment
+suivant (premier bloc qui y commence), ses routines ; après chaque bloc de travail (tâche / action), UNE routine « toute la
+journée » non atteinte, à tour de rôle. Portées par des blocs fabriqués (`~morning`, `~<blockId>`, `ChainItem.synthetic` :
+ni transition ni écriture) ; une routine déjà posée en bloc n'est pas accrochée en plus ; même état du jour que la vue
+Routines (`pushed` / `deferred` / `dismissed`, « Pas aujourd'hui » depuis la file écrit `nowDoneByYmd`).
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien

@@ -503,6 +503,9 @@ class _NowCardState extends State<NowCard> {
       activities: widget.logic.state.activities,
       hits: widget.logic.state.habitHits,
       now: DateTime.now(),
+      pushed: widget.logic.routinePushed(yyyymmdd(DateTime.now())),
+      deferred: widget.logic.state.nowSkippedByYmd[yyyymmdd(DateTime.now())] ?? const [],
+      dismissed: widget.logic.nowDoneSet(yyyymmdd(DateTime.now())),
     );
     if (items.isEmpty) return null;
     final end = chainEndMin(items)!;
