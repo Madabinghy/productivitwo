@@ -383,7 +383,10 @@ une routine par écran, compteur − x / y + sur place (`routinePlus` / `routine
 vue), « Suivante » selon le compteur (rien : inactif · partiel : « Garder 1 / 2 » · atteinte : « Cible atteinte »),
 « Pas maintenant ▾ » (fin de file / report à un moment plus tard), « Pas aujourd'hui » ; progression = routines traitées /
 total ; écran de fin « Matin terminé · n sur total » + gardées / reportées + « La suite : à 11 h 30 (midi) » ; écran
-allumé. À venir : lot 3 « Organiser » (glisser entre moments, ▲▼, par domaine) et les accroches du mode Enchaîner général.
+allumé. **Organiser** (lot 3, `widgets/routines_organize_screen.dart`, bouton de la vue) : par moment (6 sections, appui
+long + glisser vers une autre section = change `timeContext`, ▲▼ = `routineOrder` renuméroté 0..n-1 dans le moment) ou par
+domaine (chip du moment sur chaque ligne → rangée des 6 moments) ; écrit via `saveActivity`. À venir : accroches du mode
+Enchaîner général (routines du moment quand la file y entre, « toute la journée » entre deux blocs).
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien
