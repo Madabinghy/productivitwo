@@ -127,6 +127,11 @@ class _ActionsViewState extends State<ActionsView> {
   List<ScheduleBlock> _todayBlocks = const [];
   final _captureCtrl = TextEditingController();
   final _captureFocus = FocusNode();
+  // Recherche (loupe de l'en-tête) : filtre en direct, les sections restent.
+  bool _searchOpen = false;
+  final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
+  String get _query => _searchCtrl.text.trim();
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -183,6 +188,8 @@ class _ActionsViewState extends State<ActionsView> {
     _schedSub?.cancel();
     _captureCtrl.dispose();
     _captureFocus.dispose();
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -1102,13 +1109,18 @@ class _ActionsViewState extends State<ActionsView> {
       // Client disparu (archivé, fusionné) : le filtre tombe tout seul.
       _clientFilter = null;
     }
-    bool passes(_Entry e) =>
+    bool passesFilters(_Entry e) =>
         inDomain(_domainOf(e)) &&
         _inClient(e.project) &&
         passesContexts(e.action, active) &&
         passesTime(e.action, _time);
+    bool matches(_Entry e) =>
+        matchesQuery(_query, [e.action.title, e.task?.title, e.project?.title, e.activity?.name]);
+    bool passes(_Entry e) => passesFilters(e) && matches(e);
     final passing = all.where(passes).toList();
-    final hiddenByFilters = all.length - passing.length;
+    // La recherche n'est pas un « filtre » : le compte des masquées ne la
+    // compte pas (son état vide a son propre message).
+    final hiddenByFilters = all.where((e) => !passesFilters(e)).length;
     // Tâche pas encore commencée → « À venir » (sauf action déjà au programme
     // du jour : on l'a décidé, elle reste devant).
     final today0 = _day(DateTime.now());
@@ -1118,8 +1130,9 @@ class _ActionsViewState extends State<ActionsView> {
     final shown = passing.where((e) => !upcoming(e)).toList();
     final upcomingEntries = passing.where(upcoming).toList()
       ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
-    final needNextShown =
-        needingNext.where((p) => inDomain(p.domainId) && _inClient(p)).toList();
+    final needNextShown = needingNext
+        .where((p) => inDomain(p.domainId) && _inClient(p) && matchesQuery(_query, [p.title]))
+        .toList();
     // « J'ai 15 min » et rien ne passe : la plus proche du créneau parmi celles
     // que seul le temps écarte.
     final nearest = _time == null
@@ -1130,6 +1143,7 @@ class _ActionsViewState extends State<ActionsView> {
                     inDomain(_domainOf(e)) &&
                     _inClient(e.project) &&
                     passesContexts(e.action, active) &&
+                    matches(e) &&
                     !upcoming(e))
                 .map((e) => e.action),
             _time!);
@@ -1161,6 +1175,13 @@ class _ActionsViewState extends State<ActionsView> {
             const Spacer(),
             IconButton(
               visualDensity: VisualDensity.compact,
+              tooltip: 'Rechercher',
+              icon: Icon(Icons.search,
+                  color: _searchOpen || _query.isNotEmpty ? cs.primary : cs.onSurface.withOpacity(.6), size: 22),
+              onPressed: _searchOpen ? _closeSearch : _openSearch,
+            ),
+            IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
               icon: Icon(_byProject ? Icons.schedule_outlined : Icons.folder_outlined,
                   color: cs.onSurface.withOpacity(.6), size: 22),
@@ -1187,6 +1208,7 @@ class _ActionsViewState extends State<ActionsView> {
             ),
           ]),
           const SizedBox(height: 6),
+          if (_searchOpen) ...[_searchField(cs), const SizedBox(height: 8)],
           _captureField(cs),
           const SizedBox(height: 10),
           _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
@@ -1204,6 +1226,18 @@ class _ActionsViewState extends State<ActionsView> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45)),
                 ),
+              ),
+            )
+          else if (shown.isEmpty && needNextShown.isEmpty && upcomingEntries.isEmpty && _query.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 32),
+              child: Center(
+                child: Column(children: [
+                  Text('Aucune action pour « $_query ».',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45))),
+                  TextButton(onPressed: _closeSearch, child: const Text('Effacer la recherche')),
+                ]),
               ),
             )
           else if (shown.isEmpty && needNextShown.isEmpty && upcomingEntries.isNotEmpty)
@@ -1263,6 +1297,58 @@ class _ActionsViewState extends State<ActionsView> {
           ..._doneSection(cs),
         ],
       ),
+    );
+  }
+
+  // ── Recherche ──────────────────────────────────────────────────────────────
+
+  void _openSearch() {
+    setState(() => _searchOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _searchFocus.requestFocus();
+    });
+  }
+
+  void _closeSearch() {
+    _searchCtrl.clear();
+    _searchFocus.unfocus();
+    setState(() => _searchOpen = false);
+  }
+
+  Widget _searchField(ColorScheme cs) {
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.primary.withOpacity(.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withOpacity(.35)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(children: [
+        Icon(Icons.search, size: 18, color: cs.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _searchCtrl,
+            focusNode: _searchFocus,
+            textInputAction: TextInputAction.search,
+            style: const TextStyle(fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Rechercher une action, une tâche, un projet…',
+              hintStyle: TextStyle(fontSize: 13.5, color: cs.onSurface.withOpacity(.4)),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Fermer la recherche',
+          icon: Icon(Icons.close, size: 18, color: cs.onSurface.withOpacity(.6)),
+          visualDensity: VisualDensity.compact,
+          onPressed: _closeSearch,
+        ),
+      ]),
     );
   }
 
