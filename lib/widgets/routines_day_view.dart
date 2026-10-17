@@ -583,9 +583,11 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                    // Nom en entier (plus de troncature : « Repas équilibré
-                    // sans grignot… » ne disait rien), la ligne s'étire.
+                    // Une seule ligne : le compte et le ▶ passent SOUS − / +,
+                    // ce qui rend ~90 px au nom.
                     Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w600,
@@ -599,37 +601,55 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 ),
               ),
             ),
-            if (_linkedOf(a) case final linked?)
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () => _toggleChrono(linked),
-                  child: Icon(_isRunning(linked) ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                      size: 22, color: _isRunning(linked) ? kBAttention : kRoutineAccent),
-                ),
-              ),
-            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 || (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > 0)
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Text(
-                    (done ? '✓ ' : '') +
-                        (s.todo.dayTarget != null
-                            ? '${s.todo.dayDone} / ${s.todo.dayTarget}'
-                            : '${s.todo.weekDone} / ${s.todo.weekTarget}'),
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: done ? kRoutineAccent : pal.text3,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-              ),
-            _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
-            const SizedBox(width: 6),
-            _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
+            _rowControls(pal, s, a, done: done, n: n),
           ]),
         ),
       ),
+    );
+  }
+
+  /// Colonne de droite d'une ligne : − / + en haut ; dessous, centrés sous les
+  /// boutons, le compte « ✓ 2 / 3 » et le ▶ de l'activité liée (■ si elle
+  /// tourne). Largeur fixe = celle des deux boutons.
+  Widget _rowControls(NowPalette pal, RoutineSlot s, Activity a, {required bool done, required int n}) {
+    final linked = _linkedOf(a);
+    final target = s.todo.dayTarget ?? s.todo.weekTarget;
+    final count = s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone;
+    final showCount = target > 1 || count > 0;
+    return SizedBox(
+      width: 94,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
+          const SizedBox(width: 6),
+          _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
+        ]),
+        if (showCount || linked != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 1, bottom: 2),
+            child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (showCount)
+                Text((done ? '✓ ' : '') + '$count / $target',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: done ? kRoutineAccent : pal.text3,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
+              if (showCount && linked != null) const SizedBox(width: 6),
+              if (linked != null)
+                SizedBox(
+                  width: 28,
+                  height: 24,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => _toggleChrono(linked),
+                    child: Icon(_isRunning(linked) ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                        size: 20, color: _isRunning(linked) ? kBAttention : kRoutineAccent),
+                  ),
+                ),
+            ]),
+          ),
+      ]),
     );
   }
 }
