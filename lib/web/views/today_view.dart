@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -78,6 +79,8 @@ class TodayView extends StatefulWidget {
   final void Function(Project project, {String? taskId}) onOpenProject;
   final VoidCallback onOpenProjects;
   final VoidCallback onOpenWeek;
+  /// Heure de bascule de la journée vécue (`data/meta.dayStartMin`).
+  final int dayStartMin;
 
   const TodayView({
     super.key,
@@ -90,6 +93,7 @@ class TodayView extends StatefulWidget {
     required this.onOpenProject,
     required this.onOpenProjects,
     required this.onOpenWeek,
+    this.dayStartMin = kDefaultDayStartMin,
   });
 
   @override
@@ -162,7 +166,7 @@ class TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
-    _today = ymdOf(DateTime.now());
+    _today = livedProgramYmd(DateTime.now(), widget.dayStartMin);
     SharedPreferences.getInstance().then((prefs) {
       final z = prefs.getDouble(_kZoomKey);
       if (z != null && mounted) setState(() => _zoom = z.clamp(_kZoomMin, _kZoomMax));
@@ -174,7 +178,8 @@ class TodayViewState extends State<TodayView> {
     // Horloge : chrono, ligne « maintenant » et changement de jour.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      final t = ymdOf(DateTime.now());
+      // Journée vécue : le jour change à l'heure de bascule, pas à minuit.
+      final t = livedProgramYmd(DateTime.now(), widget.dayStartMin);
       if (t != _today) {
         _today = t;
         _tomorrow = false;
@@ -281,10 +286,12 @@ class TodayViewState extends State<TodayView> {
     return last;
   }
 
-  int get _nowMin {
-    final n = DateTime.now();
-    return n.hour * 60 + n.minute;
-  }
+  /// Minute vécue : après minuit, on continue la veille (00:30 → 24 h 30) pour
+  /// se comparer aux blocs du programme vécu (Sommeil 22:00 → 05:00 en cours).
+  int get _nowMin => livedNowMin(DateTime.now(), widget.dayStartMin);
+
+  /// Date (jour seul) de la journée vécue.
+  DateTime get _livedToday => livedDate(DateTime.now(), widget.dayStartMin);
 
   ({ScheduleBlock block, bool current})? get _focusBlock =>
       focusBlock(_blocks, _nowMin);
@@ -320,10 +327,7 @@ class TodayViewState extends State<TodayView> {
     return null;
   }
 
-  String get _tomorrowKey {
-    final n = DateTime.now();
-    return ymdOf(DateTime(n.year, n.month, n.day + 1));
-  }
+  String get _tomorrowKey => ymdOf(_livedToday.add(const Duration(days: 1)));
 
   /// Jour affiché par la frise et blocs correspondants.
   String get _cardDate => _tomorrow ? _tomorrowKey : _today;
@@ -609,8 +613,7 @@ class TodayViewState extends State<TodayView> {
       }
     }
     if (act == null || !act.isHabit) return;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     _hit.add(block.id);
     final tgt = logic.activeHabitTarget(act);
     if (tgt > 0 && logic.habitValueOn(id, today) >= tgt) return;
@@ -736,7 +739,7 @@ class TodayViewState extends State<TodayView> {
 
   // En-tête : date + résumé, bandeau ORION à droite.
   Widget _header() {
-    final now = DateTime.now();
+    final now = _livedToday;
     final title = '${_kDays[now.weekday - 1]} ${now.day} ${_kMonths[now.month - 1]}';
     final done = _blocks.where((b) => b.status == 'done').length;
     final remaining = remainingPlannedMin(_blocks, _nowMin);
@@ -765,7 +768,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   void _openTomorrow() => showTomorrowScheduleDialog(context, widget.sync,
-      projects: widget.projects, activities: widget.activities);
+      projects: widget.projects, activities: widget.activities, dayStartMin: widget.dayStartMin);
 
   Widget _orionBanner() {
     return ValueListenableBuilder<List<AssistantMessageData>>(
@@ -865,7 +868,7 @@ class TodayViewState extends State<TodayView> {
         totalMin = onBlock ? b.durationMin : math.max(elapsed.inMinutes, 1);
       } else if (b != null && isCurrent) {
         final n = DateTime.now();
-        final start = DateTime(n.year, n.month, n.day).add(Duration(minutes: blockStartMin(b)));
+        final start = _livedToday.add(Duration(minutes: blockStartMin(b)));
         elapsed = n.difference(start);
         totalMin = b.durationMin;
       } else {
@@ -1280,8 +1283,7 @@ class TodayViewState extends State<TodayView> {
 
   Widget _contextPanel(ScheduleBlock b, Session open) {
     final act = _activityOf(open.activityId);
-    final now = DateTime.now();
-    final day0 = DateTime(now.year, now.month, now.day);
+    final day0 = _livedToday;
     final day1 = day0.add(const Duration(days: 1));
     final monday = day0.subtract(Duration(days: day0.weekday - 1));
     final todayMin = _minutesOn(open.activityId, day0, day1);
@@ -1433,8 +1435,7 @@ class TodayViewState extends State<TodayView> {
 
   String _dayLabel(DateTime d) {
     const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     final diff = today.difference(DateTime(d.year, d.month, d.day)).inDays;
     if (diff == 0) return 'aujourd\'hui';
     if (diff == 1) return 'hier';
@@ -2466,7 +2467,7 @@ class TodayViewState extends State<TodayView> {
     final routine = _routineOf(b);
     if (routine != null) {
       if (forTomorrow) return null;
-      final r = routinesForToday([routine], _hits, DateTime.now()).firstOrNull;
+      final r = routinesForToday([routine], _hits, DateTime.now(), dayStartMin: widget.dayStartMin).firstOrNull;
       return r == null ? null : 'Routine · ${r.progressLabel}';
     }
     if (_project(b.projectId) != null) return 'Aucune action définie';
@@ -2703,7 +2704,7 @@ class TodayViewState extends State<TodayView> {
     }
     final routine = _routineOf(b);
     if (routine != null) {
-      final r = routinesForToday([routine], _hits, DateTime.now()).firstOrNull;
+      final r = routinesForToday([routine], _hits, DateTime.now(), dayStartMin: widget.dayStartMin).firstOrNull;
       return Row(children: [
         Expanded(
           child: Text(r?.progressLabel ?? routine.name,
@@ -2735,8 +2736,7 @@ class TodayViewState extends State<TodayView> {
       ));
       return;
     }
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     void persist() {
       final key = yyyymmdd(today);
       for (final h in logic.state.habitProgress) {
@@ -2760,7 +2760,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   Widget _routinesCard() {
-    final list = routinesForToday(widget.activities, _hits, DateTime.now());
+    final list = routinesForToday(widget.activities, _hits, DateTime.now(), dayStartMin: widget.dayStartMin);
     if (list.isEmpty) return const SizedBox.shrink();
     final reached = list.where((r) => r.reached).length;
     const cap = 5;
@@ -2900,8 +2900,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   Widget _overdueCard() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     final pairs = <({ProjectTask task, Project project})>[];
     for (final p in widget.projects) {
       if (p.status == 'archived' || p.paused) continue;
@@ -3010,8 +3009,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   Widget _deadlinesCard() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     final upcoming = widget.projects
         .where((p) =>
             p.status == 'active' &&

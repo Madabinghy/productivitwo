@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/claude_link.dart';
@@ -79,6 +80,7 @@ class WeekView extends StatefulWidget {
   final List<Domain> domains;
   final FirestoreSync sync;
   final void Function(Project project, {String? taskId}) onOpenProject;
+  final int dayStartMin;
 
   const WeekView({
     super.key,
@@ -86,6 +88,7 @@ class WeekView extends StatefulWidget {
     required this.domains,
     required this.sync,
     required this.onOpenProject,
+    this.dayStartMin = kDefaultDayStartMin,
   });
 
   @override
@@ -109,14 +112,14 @@ class _WeekViewState extends State<WeekView> {
   bool _dragResize = false;
   double _dragDx = 0;
 
-  DateTime get _today => dateOnly(DateTime.now());
+  DateTime get _today => livedDate(DateTime.now(), widget.dayStartMin);
   List<DateTime> get _dates => windowDates(_start, _days);
   List<ScheduleBlock> get _allBlocks => [for (final l in _byDay.values) ...l];
 
   @override
   void initState() {
     super.initState();
-    _start = weekStart(DateTime.now());
+    _start = weekStart(livedDate(DateTime.now(), widget.dayStartMin));
     _loadPrefs();
     _subscribe();
     widget.sync.fetchWeekCapacity().then((c) {

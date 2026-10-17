@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount;
@@ -85,6 +86,10 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   List<AssistantMessageData> _assistantMessages = [];
   StreamSubscription<List<Project>>? _projectsSub;
   StreamSubscription<bool>? _autoPlanSub;
+  // Journée vécue (`data/meta.dayStartMin`, défaut 5 h) : les vues basculent
+  // à cette heure, pas à minuit — comme le mobile.
+  StreamSubscription<Map<String, dynamic>>? _metaSub;
+  int _dayStartMin = kDefaultDayStartMin;
   bool? _autoPlan;
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
   // (sonde coachApi — 403 pour tout le monde d'autre).
@@ -114,6 +119,10 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     _projectsSub = _sync.streamProjects().listen((projects) {
       if (mounted) setState(() => _projects = projects);
     });
+    _metaSub = _sync.streamMetaDoc().listen((m) {
+      final v = parseDayStartMin(m['dayStartMin']);
+      if (v != _dayStartMin && mounted) setState(() => _dayStartMin = v);
+    });
     _autoPlanSub = _sync.streamAutoPlan().listen((v) {
       if (mounted) setState(() => _autoPlan = v);
     });
@@ -123,6 +132,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   void dispose() {
     _projectsSub?.cancel();
     _autoPlanSub?.cancel();
+    _metaSub?.cancel();
     _authSub?.cancel();
     super.dispose();
   }
@@ -352,12 +362,14 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               onOpenProject: _openProjectInShell,
               onOpenProjects: () => _go(WebTab.projects),
               onOpenWeek: () => _go(WebTab.week),
+              dayStartMin: _dayStartMin,
             ),
             WeekView(
               projects: _projects,
               domains: _domains,
               sync: _sync,
               onOpenProject: _openProjectInShell,
+              dayStartMin: _dayStartMin,
             ),
             ProjectsView(
               projects: _projects,
@@ -369,6 +381,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               sync: _sync,
               onRefresh: _load,
               onOpenProject: _openProjectInShell,
+              dayStartMin: _dayStartMin,
             ),
             ActionsView(
               projects: _projects,
@@ -377,6 +390,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               sync: _sync,
               onRefresh: _load,
               onOpenProject: _openProjectInShell,
+              dayStartMin: _dayStartMin,
             ),
             LibraryView(
               key: ValueKey('library/${_libraryProjectId ?? ''}'),
