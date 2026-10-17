@@ -48,7 +48,8 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   Étiquettes partagées `actionDueLabel` / `shortDateFr`. **Planificateur de semaine** (`week_planner.dart`, 2026-10) :
   `WeekTask.due` = échéance effective la plus proche des actions ouvertes (sinon la tâche), `overdue` par action, une tâche
   hors fenêtre entre si une action y a sa propre échéance (`actionsDueInWindow`, « ⚑ n » dans la ligne) ; tri, groupe
-  « En retard » et prompt Claude sur `due`. **Reste** : prochaine action de la santé de projet sur la tâche.
+  « En retard » et prompt Claude sur `due`. **Prochaine action** (`nextAction`, `project_health.dart`) = l'action ouverte
+  à l'échéance effective la plus proche (sans date → ordre Gantt, après les datées) : Projets, tête des groupes d'Actions.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre
