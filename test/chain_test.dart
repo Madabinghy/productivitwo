@@ -53,6 +53,10 @@ void main() {
     expect(chain[3].timed, isFalse);
     expect(chain[4].timed, isFalse);
     expect(chainEndMin(chain), 12 * 60 + 30);
+    expect(chainEndMin([
+      ChainItem(kind: ChainKind.routine, block: ScheduleBlock(id: '~evening', startTime: '19:00', durationMin: 600, title: 'r', category: 'routine')),
+      ChainItem(kind: ChainKind.block, block: ScheduleBlock(id: 'b', startTime: '21:00', durationMin: 60, title: 'b', category: 'personal')),
+    ]), 22 * 60);
     expect(chainEndLabel(12 * 60 + 30), '12:30');
     expect(chainEndLabel(29 * 60), '05:00 demain');
   });

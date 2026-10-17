@@ -23,7 +23,15 @@ class Moment {
 
   /// Les quatre moments horaires, dans l'ordre de la journée.
   bool get timed => startMin >= 0;
+
+  /// Même moment avec d'autres bornes (réglage utilisateur).
+  Moment withWindow(int s, int e) => Moment(key, label, of, thisOne, momentWindowLabel(s, e), s, e);
 }
+
+/// « 19 h → 5 h » (une fin après minuit s'affiche sur le cadran).
+String momentWindowLabel(int s, int e) => '${_hLabel(s)} → ${_hLabel(e % (24 * 60))}';
+String _hLabel(int min) =>
+    min % 60 == 0 ? '${min ~/ 60} h' : '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
 
 const kMomentMorning = 'morning';
 const kMomentMidday = 'midday';
@@ -36,7 +44,7 @@ const kMoments = <Moment>[
   Moment(kMomentMorning, 'Matin', 'du matin', 'ce matin', '5 h 30 → 11 h', 5 * 60 + 30, 11 * 60),
   Moment(kMomentMidday, 'Midi', 'du midi', 'ce midi', '11 h 30 → 14 h', 11 * 60 + 30, 14 * 60),
   Moment(kMomentAfternoon, 'Après-midi', 'de l\'après-midi', 'cet après-midi', '14 h → 19 h', 14 * 60, 19 * 60),
-  Moment(kMomentEvening, 'Soir', 'du soir', 'ce soir', '19 h → 23 h 30', 19 * 60, 23 * 60 + 30),
+  Moment(kMomentEvening, 'Soir', 'du soir', 'ce soir', '19 h → 5 h', 19 * 60, 24 * 60 + kDefaultDayStartMin),
   Moment(kMomentAllDay, 'Toute la journée', 'de la journée', 'aujourd\'hui', '', -1, -1),
   Moment(kMomentAny, 'Libre', 'libres', 'aujourd\'hui', 'sans moment', -1, -1),
 ];
@@ -44,6 +52,63 @@ const kMoments = <Moment>[
 Moment momentOf(String key) => kMoments.firstWhere((m) => m.key == key, orElse: () => kMoments.last);
 
 List<Moment> get kTimedMoments => kMoments.where((m) => m.timed).toList();
+
+/// Fin maximale d'un moment : midi le lendemain (le Soir d'un travailleur de
+/// nuit peut finir à 10 h).
+const int kMomentEndMax = 36 * 60;
+
+/// Les quatre moments horaires RÉGLÉS : bornes de `data/meta.momentWindows`
+/// (clé → (début, fin), minutes ; fin > 24 h = le lendemain) sur les défauts.
+/// Sans réglage, le Soir court jusqu'au début de la journée vécue
+/// (`dayStartMin`, 5 h par défaut) : la nuit appartient au soir.
+List<Moment> timedMomentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) => [
+      for (final m in kTimedMoments)
+        if (windows[m.key] case final w?)
+          m.withWindow(w.$1, w.$2)
+        else if (m.key == kMomentEvening)
+          m.withWindow(m.startMin, 24 * 60 + dayStartMin)
+        else
+          m,
+    ];
+
+/// Les six moments (horaires réglés + toute la journée + libre), pour les vues.
+List<Moment> momentsWith(Map<String, (int, int)> windows, {int dayStartMin = kDefaultDayStartMin}) => [
+      ...timedMomentsWith(windows, dayStartMin: dayStartMin),
+      ...kMoments.where((m) => !m.timed),
+    ];
+
+/// Lit `data/meta.momentWindows` : `{morning: {start, end}, …}` ; une entrée
+/// incohérente est ignorée (retour au défaut pour ce moment).
+Map<String, (int, int)> parseMomentWindows(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, (int, int)>{};
+  for (final m in kTimedMoments) {
+    final v = raw[m.key];
+    if (v is! Map) continue;
+    final s = (v['start'] as num?)?.toInt(), e = (v['end'] as num?)?.toInt();
+    if (s == null || e == null || s < 0 || s >= 24 * 60 || e <= s || e > kMomentEndMax) continue;
+    out[m.key] = (s, e);
+  }
+  return out;
+}
+
+Map<String, Map<String, int>> momentWindowsToJson(Map<String, (int, int)> windows) =>
+    {for (final e in windows.entries) e.key: {'start': e.value.$1, 'end': e.value.$2}};
+
+/// Cohérence des quatre moments réglés : chaque début avant sa fin, et les
+/// moments dans l'ordre sans chevauchement (des creux sont permis). Null = ok,
+/// sinon le message à afficher.
+String? validateMoments(List<Moment> timed) {
+  for (final m in timed) {
+    if (m.endMin <= m.startMin) return 'Le ${m.label.toLowerCase()} finit avant de commencer.';
+    if (m.endMin > kMomentEndMax) return 'Le ${m.label.toLowerCase()} ne peut pas finir après midi le lendemain.';
+  }
+  for (var i = 1; i < timed.length; i++) {
+    final a = timed[i - 1], b = timed[i];
+    if (b.startMin < a.endMin) return 'Le ${b.label.toLowerCase()} commence avant la fin du ${a.label.toLowerCase()}.';
+  }
+  return null;
+}
 
 /// Case de [a] : `timeContext` effectif ramené aux six moments
 /// (repas → midi, journée → toute la journée, rien → libre).
@@ -67,19 +132,21 @@ String momentKeyOf(Activity a) {
 
 /// Moment courant : celui dont la plage contient [nowMin] ; dans un creux,
 /// le prochain ; après le soir, le soir ; avant le matin, le matin.
-Moment currentMoment(int nowMin) {
-  for (final m in kTimedMoments) {
+Moment currentMoment(int nowMin, [List<Moment>? moments]) {
+  final ms = moments ?? kTimedMoments;
+  for (final m in ms) {
     if (nowMin >= m.startMin && nowMin < m.endMin) return m;
   }
-  for (final m in kTimedMoments) {
+  for (final m in ms) {
     if (nowMin < m.startMin) return m;
   }
-  return kTimedMoments.last;
+  return ms.last;
 }
 
-Moment? nextMomentAfter(Moment m) {
-  final i = kTimedMoments.indexWhere((x) => x.key == m.key);
-  return i < 0 || i + 1 >= kTimedMoments.length ? null : kTimedMoments[i + 1];
+Moment? nextMomentAfter(Moment m, [List<Moment>? moments]) {
+  final ms = moments ?? kTimedMoments;
+  final i = ms.indexWhere((x) => x.key == m.key);
+  return i < 0 || i + 1 >= ms.length ? null : ms[i + 1];
 }
 
 /// Une routine dans la journée : son moment du jour (reporté ou d'origine),
@@ -103,7 +170,11 @@ class RoutineDay {
   final List<RoutineSlot> slots;
   final List<String> deferred;
   final Set<String> dismissed;
-  const RoutineDay(this.current, this.slots, this.deferred, this.dismissed);
+  /// Les quatre moments horaires en vigueur (réglés) ; vide = défauts.
+  final List<Moment> moments;
+  const RoutineDay(this.current, this.slots, this.deferred, this.dismissed, {this.moments = const []});
+
+  List<Moment> get timed => moments.isEmpty ? kTimedMoments : moments;
 
   List<RoutineSlot> of(String momentKey) => slots.where((s) => s.moment == momentKey).toList();
 
@@ -119,7 +190,7 @@ class RoutineDay {
 
   /// Routines d'un moment PASSÉ non atteintes et non écartées (« restées »).
   List<RoutineSlot> leftoversBefore(Moment m) => [
-        for (final past in kTimedMoments.where((x) => x.endMin <= m.startMin))
+        for (final past in timed.where((x) => x.endMin <= m.startMin))
           ...of(past.key).where((s) => !s.reached && !dismissed.contains(s.id)),
       ];
 
@@ -146,7 +217,7 @@ class RoutineDay {
 
   /// Moments plus tard dans la journée où reporter une routine de la file.
   List<Moment> get laterMoments =>
-      kTimedMoments.where((m) => m.startMin >= current.endMin).toList();
+      timed.where((m) => m.startMin >= current.endMin).toList();
 
   /// « Routines · 5 / 18 · 3 à faire ce matin · 1 restée du matin ».
   String get shortLine {
@@ -157,7 +228,7 @@ class RoutineDay {
     var s = 'Routines · ${all.done} / ${all.total}';
     if (own > 0) s += ' · $own à faire ${current.thisOne}';
     if (left > 0) {
-      final from = kTimedMoments.firstWhere((m) => of(m.key).any((x) => !x.reached && !dismissed.contains(x.id)),
+      final from = timed.firstWhere((m) => of(m.key).any((x) => !x.reached && !dismissed.contains(x.id)),
           orElse: () => current);
       s += ' · $left restée${left > 1 ? 's' : ''} ${from.of}';
     }
@@ -185,14 +256,16 @@ RoutineDay buildRoutineDay({
   List<String> deferred = const [],
   Set<String> dismissed = const {},
   int dayStartMin = kDefaultDayStartMin,
+  List<Moment>? moments,
 }) {
+  final ms = moments ?? timedMomentsWith(const {}, dayStartMin: dayStartMin);
   // Journée vécue : avant la bascule, le moment courant reste « ce soir ».
   final nowMin = livedNowMin(now, dayStartMin);
-  final current = currentMoment(nowMin);
+  final current = currentMoment(nowMin, ms);
   final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin);
   final slots = <RoutineSlot>[
     for (final t in todos)
       RoutineSlot(t, momentKeyOf(t.activity), pushed[t.activity.id] ?? momentKeyOf(t.activity)),
   ]..sort(_cmpSlots);
-  return RoutineDay(current, slots, deferred, dismissed);
+  return RoutineDay(current, slots, deferred, dismissed, moments: ms);
 }

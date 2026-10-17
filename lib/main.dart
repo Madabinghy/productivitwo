@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
+import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
@@ -2002,15 +2004,21 @@ class _AppRootState extends State<AppRoot>
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
   late AppLogic logic;
-  StreamSubscription<int>? _dayStartSub;
+  StreamSubscription<Map<String, dynamic>>? _dayStartSub;
 
-  /// Suit `data/meta.dayStartMin` (journée vécue des routines) : posé sur
-  /// AppLogic, les vues se recalculent via onChange.
+  /// Suit `data/meta` pour la journée vécue des routines (`dayStartMin`) et
+  /// les bornes des moments (`momentWindows`) : posés sur AppLogic, les vues
+  /// se recalculent via onChange.
   void _bindDayStart() {
     _dayStartSub?.cancel();
-    _dayStartSub = _sync.streamDayStartMin().listen((v) {
-      if (logic.dayStartMin == v) return;
-      logic.dayStartMin = v;
+    _dayStartSub = _sync.streamMetaDoc().listen((m) {
+      final start = parseDayStartMin(m['dayStartMin']);
+      final windows = parseMomentWindows(m['momentWindows']);
+      final same = logic.dayStartMin == start &&
+          momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString();
+      if (same) return;
+      logic.dayStartMin = start;
+      logic.momentWindows = windows;
       logic.onChange();
     });
   }
@@ -5760,6 +5768,15 @@ class _AppRootState extends State<AppRoot>
                     },
                   );
                 },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.wb_twilight_outlined),
+                title: const Text('Moments de la journée'),
+                subtitle: Text(logic.moments.map((m) => '${m.label} ${m.window}').join(' · '),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showMomentsEditor(context, logic: logic, sync: _sync),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

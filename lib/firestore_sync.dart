@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart' show momentWindowsToJson;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/intervention_builder.dart';
@@ -2998,6 +2999,12 @@ class FirestoreSync {
   Future<void> setDayStartMin(int min) async {
     if (uid == null) return;
     await _meta().set({'dayStartMin': parseDayStartMin(min)}, SetOptions(merge: true));
+  }
+
+  /// Bornes des moments (`data/meta.momentWindows`) ; {} = retour aux défauts.
+  Future<void> saveMomentWindows(Map<String, (int, int)> windows) async {
+    if (uid == null) return;
+    await _meta().set({'momentWindows': momentWindowsToJson(windows)}, SetOptions(merge: true));
   }
 
   Future<void> setAutoPlan(bool enabled) async {

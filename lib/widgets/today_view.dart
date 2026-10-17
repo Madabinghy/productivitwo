@@ -1068,6 +1068,7 @@ class TodayViewState extends State<TodayView> {
       deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
       dismissed: widget.logic.nowDoneSet(ymd),
       dayStartMin: widget.logic.dayStartMin,
+      moments: widget.logic.moments,
     );
     if (day.slots.isEmpty) return const SizedBox.shrink();
     final dark = cs.brightness == Brightness.dark;

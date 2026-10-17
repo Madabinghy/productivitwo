@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -76,6 +78,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
         deferred: logic.state.nowSkippedByYmd[_ymd] ?? const [],
         dismissed: logic.nowDoneSet(_ymd),
         dayStartMin: logic.dayStartMin,
+        moments: logic.moments,
       );
 
   // ── Gestes ──────────────────────────────────────────────────────────────────
@@ -244,7 +247,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ),
       ]),
       const SizedBox(height: 10),
-      for (final m in kMoments) ...[
+      for (final m in logic.allMoments) ...[
         if (day.of(m.key).isNotEmpty || m.timed) _momentSection(pal, day, m),
         const SizedBox(height: 10),
       ],
@@ -302,7 +305,12 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             child: Text('ROUTINE DU MOMENT',
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
           ),
-          _pill('${cur.label} · ${cur.window}'),
+          // Tap = régler les bornes des moments.
+          InkWell(
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
+            child: _pill('${cur.label} · ${cur.window}'),
+          ),
         ]),
         const SizedBox(height: 14),
         Row(children: [
@@ -461,7 +469,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   String _nextLabel(Moment cur) {
-    final n = nextMomentAfter(cur);
+    final n = nextMomentAfter(cur, logic.moments);
     if (n == null) return 'La suite : demain matin.';
     return 'La suite : à ${n.window.split(' → ').first} (${n.label.toLowerCase()}).';
   }

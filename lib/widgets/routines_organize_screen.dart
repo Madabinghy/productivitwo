@@ -202,7 +202,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
   // ── Par moment ──────────────────────────────────────────────────────────────
 
   List<Widget> _momentSections(NowPalette pal) => [
-        for (final m in kMoments) ...[
+        for (final m in logic.allMoments) ...[
           DragTarget<Activity>(
             onWillAcceptWithDetails: (d) {
               final ok = momentKeyOf(d.data) != m.key;
@@ -399,7 +399,7 @@ class _OrganizeScreenState extends State<_OrganizeScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(30, 8, 0, 6),
             child: Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final m in kMoments)
+              for (final m in logic.allMoments)
                 SizedBox(
                   height: 34,
                   child: m.key == key

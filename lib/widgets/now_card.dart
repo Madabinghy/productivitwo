@@ -510,6 +510,7 @@ class _NowCardState extends State<NowCard> {
       deferred: widget.logic.state.nowSkippedByYmd[widget.logic.livedYmdNow] ?? const [],
       dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
       dayStartMin: widget.logic.dayStartMin,
+      moments: widget.logic.moments,
     );
     if (items.isEmpty) return null;
     final end = chainEndMin(items)!;

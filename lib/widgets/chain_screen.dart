@@ -158,6 +158,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       deferred: _routineDeferred,
       dismissed: _routineDismissed,
           dayStartMin: logic.dayStartMin,
+          moments: logic.moments,
     );
     var list = orderChain(items, deferred: _deferred, dismissed: _dismissed);
     final h = _held;

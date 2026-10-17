@@ -51,6 +51,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
         deferred: logic.state.nowSkippedByYmd[_ymd] ?? const [],
         dismissed: logic.nowDoneSet(_ymd),
         dayStartMin: logic.dayStartMin,
+        moments: logic.moments,
       );
 
   @override
@@ -394,7 +395,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
       );
 
   Widget _end(NowPalette pal) {
-    final n = nextMomentAfter(_moment);
+    final n = nextMomentAfter(_moment, logic.moments);
     final parts = <String>[
       if (_kept > 0) '$_kept gardée${_kept > 1 ? 's' : ''} en cours',
       if (_pushedLater > 0) '$_pushedLater reportée${_pushedLater > 1 ? 's' : ''} plus tard',

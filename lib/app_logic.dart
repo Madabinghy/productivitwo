@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
@@ -276,6 +277,15 @@ class AppLogic {
   /// Clé `YYYYMMDD` de la journée vécue en cours — état du jour des routines
   /// (« pas maintenant », « pas aujourd'hui », reports).
   String get livedYmdNow => livedYmd(DateTime.now(), dayStartMin);
+
+  /// Bornes réglées des moments (`data/meta.momentWindows`) ; vide = défauts.
+  Map<String, (int, int)> momentWindows = const {};
+
+  /// Les quatre moments horaires en vigueur (Soir → début de journée par défaut).
+  List<Moment> get moments => timedMomentsWith(momentWindows, dayStartMin: dayStartMin);
+
+  /// Les six moments, pour les vues qui listent aussi « Toute la journée » et « Libre ».
+  List<Moment> get allMoments => momentsWith(momentWindows, dayStartMin: dayStartMin);
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
