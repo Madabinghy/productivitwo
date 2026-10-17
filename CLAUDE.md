@@ -45,8 +45,10 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   tuiles et feuille d'action sur l'échéance effective (« ⚑ » = échéance propre), bouton « Échéance » de la feuille
   (demain · fin de semaine · date · retirer, `_pickDueDate`) ; web — badge « ⚑ éch. … » sur la ligne, champ « Échéance
   propre » du dialog d'édition, filtre « En retard » PAR ACTION (`entryFilter` de `projectActionGroups`, `_entryOk`).
-  Étiquettes partagées `actionDueLabel` / `shortDateFr`. **Reste** : planificateur de semaine et prochaine action de la
-  santé de projet raisonnent toujours sur la tâche.
+  Étiquettes partagées `actionDueLabel` / `shortDateFr`. **Planificateur de semaine** (`week_planner.dart`, 2026-10) :
+  `WeekTask.due` = échéance effective la plus proche des actions ouvertes (sinon la tâche), `overdue` par action, une tâche
+  hors fenêtre entre si une action y a sa propre échéance (`actionsDueInWindow`, « ⚑ n » dans la ligne) ; tri, groupe
+  « En retard » et prompt Claude sur `due`. **Reste** : prochaine action de la santé de projet sur la tâche.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre

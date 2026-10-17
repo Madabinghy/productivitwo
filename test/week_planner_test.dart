@@ -28,6 +28,44 @@ Project _proj(String id, List<ProjectTask> tasks,
         paused: paused);
 
 void main() {
+  group('Date par action dans le planificateur (2026-10)', () {
+    final today = DateTime(2026, 10, 14); // mercredi
+    final monday = DateTime(2026, 10, 12);
+    ProjectTask withActions(String id, String start, String? end, List<TaskAction> actions) => ProjectTask(
+        id: id, title: id, startDate: DateTime.parse(start),
+        endDate: end == null ? null : DateTime.parse(end), actions: actions);
+
+    test('une tâche hors fenêtre entre si une action y a sa propre échéance ; due = celle-ci', () {
+      final t = withActions('t', '2026-11-02', '2026-11-20',
+          [TaskAction(title: 'a', dueDate: DateTime(2026, 10, 16)), TaskAction(title: 'b')]);
+      final w = weekTasks(projects: [_proj('p', [t])], monday: monday, scheduled: const [], today: today);
+      expect(w.map((x) => x.task.id).toList(), ['t']);
+      expect(w.single.due, DateTime(2026, 10, 16));
+      expect(w.single.actionsDueInWindow, 1);
+      expect(w.single.overdue, isFalse);
+    });
+
+    test('une action en retard met la tâche en retard, même si la tâche est dans les temps', () {
+      final t = withActions('t', '2026-10-12', '2026-10-30',
+          [TaskAction(title: 'a', dueDate: DateTime(2026, 10, 13)), TaskAction(title: 'b')]);
+      final w = weekTasks(projects: [_proj('p', [t])], monday: monday, scheduled: const [], today: today);
+      expect(w.single.overdue, isTrue);
+      expect(w.single.due, DateTime(2026, 10, 13));
+      // Action faite → plus de retard, la date de la tâche fait foi.
+      t.actions.first.done = true;
+      final w2 = weekTasks(projects: [_proj('p', [t])], monday: monday, scheduled: const [], today: today);
+      expect(w2.single.overdue, isFalse);
+      expect(w2.single.due, DateTime(2026, 10, 30));
+    });
+
+    test('tasksToPlace trie par échéance effective', () {
+      final a = withActions('a', '2026-10-12', '2026-10-30', [TaskAction(title: 'x', dueDate: DateTime(2026, 10, 15))]);
+      final b = withActions('b', '2026-10-12', '2026-10-17', const []);
+      final w = weekTasks(projects: [_proj('p', [b, a])], monday: monday, scheduled: const [], today: today);
+      expect(tasksToPlace(w).map((x) => x.task.id).toList(), ['a', 'b']);
+    });
+  });
+
   _activeDayTests();
   _windowTests();
   final monday = DateTime(2026, 9, 28); // lundi
