@@ -57,6 +57,16 @@ void main() {
     expect(chainEndLabel(29 * 60), '05:00 demain');
   });
 
+  test('shiftFollowing : un bloc qui passe minuit ne recule jamais en arrière', () {
+    final work = ScheduleBlock(id: 'w', startTime: '21:00', durationMin: 60, title: 'Travail', category: 'project');
+    final sleep = ScheduleBlock(id: 's', startTime: '23:30', durationMin: 330, title: 'Sommeil', category: 'personal');
+    final late = ScheduleBlock(id: 'l', startTime: '22:00', durationMin: 30, title: 'Lecture', category: 'personal');
+    final changed = shiftFollowing([work, sleep, late], work, 30);
+    expect(changed.map((b) => b.id).toList(), ['l']);
+    expect(late.startTime, '22:30');
+    expect(sleep.startTime, '23:30');
+  });
+
   test('orderChain : écartés retirés, reportés en fin dans l\'ordre du report', () {
     final blocks = [_b('b1', '09:00', 90, projectId: 'p', taskId: 't', actionId: 'a1'), _b('b2', '11:00', 20, activityId: 'w')];
     final chain = buildChain(blocks: blocks, projects: [project], activities: [water], hits: const [], now: now);

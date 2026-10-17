@@ -495,7 +495,8 @@ class _ChainScreenState extends State<_ChainScreen> {
     final b = i.block;
     final nowMin = _nowMin;
     final start = blockStartMin(b), end = blockEndMin(b);
-    final over = overrunMin(b, nowMin);
+    // Une routine accrochée à un moment (~soir) n'a pas d'heure à dépasser.
+    final over = i.synthetic ? 0 : overrunMin(b, nowMin);
     final session = _openSession;
     final onBlock = session != null && logic.sessionOnBlock(session, b);
     final elapsed = onBlock ? DateTime.now().difference(session.startAt) : null;
