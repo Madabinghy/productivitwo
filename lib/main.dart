@@ -10,6 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
+import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
 import 'package:productivitwo_v1/utils/claude_link.dart';
@@ -2001,6 +2004,24 @@ class _AppRootState extends State<AppRoot>
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
   late AppLogic logic;
+  StreamSubscription<Map<String, dynamic>>? _dayStartSub;
+
+  /// Suit `data/meta` pour la journée vécue des routines (`dayStartMin`) et
+  /// les bornes des moments (`momentWindows`) : posés sur AppLogic, les vues
+  /// se recalculent via onChange.
+  void _bindDayStart() {
+    _dayStartSub?.cancel();
+    _dayStartSub = _sync.streamMetaDoc().listen((m) {
+      final start = parseDayStartMin(m['dayStartMin']);
+      final windows = parseMomentWindows(m['momentWindows']);
+      final same = logic.dayStartMin == start &&
+          momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString();
+      if (same) return;
+      logic.dayStartMin = start;
+      logic.momentWindows = windows;
+      logic.onChange();
+    });
+  }
   String? selectedDomainId;
   TimeScope scope = TimeScope.day;
   Timer? _heartbeat;
@@ -2097,6 +2118,7 @@ class _AppRootState extends State<AppRoot>
           if (mounted) setState(() {
             _state = s;
             logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
+            _bindDayStart();
             _syncStatus = '⚠️';
           });
         }
@@ -2276,6 +2298,7 @@ class _AppRootState extends State<AppRoot>
           if (mounted) setState(() {
             _state = s;
             logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
+            _bindDayStart();
           });
         }
       }
@@ -2389,6 +2412,7 @@ class _AppRootState extends State<AppRoot>
     setState(() {
       _state = s;
       logic = AppLogic(_state!, _saveAndRefresh)..sync = _sync;
+            _bindDayStart();
 
       // Fuseau vécu → fait serveur (agenda, proposition, assistant).
       _sync.setDeviceTimezone().catchError((_) {});
@@ -5703,6 +5727,56 @@ class _AppRootState extends State<AppRoot>
                   value: snap.data == true,
                   onChanged: (v) => _sync.setAutoPlan(v),
                 ),
+              ),
+              // Journée vécue des routines : avant cette heure, on est encore
+              // « hier » (compte, moment courant, reports). Travail de nuit →
+              // 8 h ou 10 h.
+              StreamBuilder<int>(
+                stream: _sync.streamDayStartMin(),
+                builder: (ctx, snap) {
+                  final v = snap.data ?? logic.dayStartMin;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.bedtime_outlined),
+                    title: const Text('La journée commence à'),
+                    subtitle: Text('${dayStartLabel(v)} · avant, les routines et les moments restent sur la veille'),
+                    trailing: Text(dayStartLabel(v),
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                    onTap: () async {
+                      final picked = await showModalBottomSheet<int>(
+                        context: ctx,
+                        showDragHandle: true,
+                        builder: (c) => SafeArea(
+                          child: ListView(shrinkWrap: true, padding: const EdgeInsets.only(bottom: 12), children: [
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                              child: Text('La journée commence à',
+                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            ),
+                            for (var h = 0; h <= 12; h++)
+                              ListTile(
+                                title: Text(h == 0 ? 'Minuit' : '$h h'),
+                                subtitle: h == 5 ? const Text('par défaut') : null,
+                                trailing: v == h * 60 ? const Icon(Icons.check, size: 18) : null,
+                                onTap: () => Navigator.pop(c, h * 60),
+                              ),
+                          ]),
+                        ),
+                      );
+                      if (picked == null) return;
+                      await _sync.setDayStartMin(picked);
+                    },
+                  );
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.wb_twilight_outlined),
+                title: const Text('Moments de la journée'),
+                subtitle: Text(logic.moments.map((m) => '${m.label} ${m.window}').join(' · '),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => showMomentsEditor(context, logic: logic, sync: _sync),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

@@ -15,6 +15,33 @@ void main() {
     expect(currentMoment(3 * 60).key, kMomentMorning);
   });
 
+  test('buildRoutineDay à 00:30 : journée vécue → moment courant = Soir, pas Matin', () {
+    final d = buildRoutineDay(activities: [_r('a', 'Pompes')], hits: const [], now: DateTime(2026, 10, 17, 0, 30));
+    expect(d.current.key, kMomentEvening);
+    final d0 = buildRoutineDay(
+        activities: [_r('a', 'Pompes')], hits: const [], now: DateTime(2026, 10, 17, 0, 30), dayStartMin: 0);
+    expect(d0.current.key, kMomentMorning);
+  });
+
+  test('moments réglés : Soir → début de journée par défaut, bornes de meta, validation', () {
+    final d = timedMomentsWith(const {});
+    expect(d.last.key, kMomentEvening);
+    expect(d.last.endMin, 24 * 60 + 5 * 60);
+    expect(d.last.window, '19 h → 5 h');
+    expect(timedMomentsWith(const {}, dayStartMin: 10 * 60).last.window, '19 h → 10 h');
+    final w = parseMomentWindows({'evening': {'start': 20 * 60, 'end': 26 * 60}, 'midday': {'start': 5, 'end': 3}});
+    expect(w.keys.toList(), ['evening']);
+    final custom = timedMomentsWith(w);
+    expect(custom.last.window, '20 h → 2 h');
+    expect(currentMoment(19 * 60 + 30, custom).key, kMomentEvening); // creux 19 h → 20 h → suivant
+    expect(currentMoment(25 * 60, custom).key, kMomentEvening);
+    expect(validateMoments(custom), isNull);
+    expect(validateMoments(timedMomentsWith({'midday': (10 * 60, 14 * 60)})), contains('midi'));
+    expect(momentWindowsToJson(w), {'evening': {'start': 20 * 60, 'end': 26 * 60}});
+    expect(buildRoutineDay(activities: [_r('a', 'Pompes')], hits: const [], now: DateTime(2026, 10, 17, 23, 45))
+        .timed.last.endMin, 24 * 60 + 5 * 60);
+  });
+
   test('momentKeyOf : réglage, archétype du nom, repas → midi, rien → libre', () {
     expect(momentKeyOf(_r('a', 'Lecture', ctx: 'evening')), kMomentEvening);
     expect(momentKeyOf(_r('b', 'Hygiène du soir')), kMomentEvening);

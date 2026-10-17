@@ -157,6 +157,8 @@ class _ChainScreenState extends State<_ChainScreen> {
       pushed: _pushed,
       deferred: _routineDeferred,
       dismissed: _routineDismissed,
+          dayStartMin: logic.dayStartMin,
+          moments: logic.moments,
     );
     var list = orderChain(items, deferred: _deferred, dismissed: _dismissed);
     final h = _held;
@@ -288,16 +290,16 @@ class _ChainScreenState extends State<_ChainScreen> {
     // Routine « pas aujourd'hui » : écartée pour la journée partout (vue
     // Routines comprise), pas seulement dans cette session.
     if (i.kind == ChainKind.routine && i.activity != null) {
-      final ymd = yyyymmdd(DateTime.now());
+      final ymd = logic.livedYmdNow;
       logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(i.activity!.id));
     }
     setState(() => _dismissed.add(i.key));
     _afterChange();
   }
 
-  Map<String, String> get _pushed => logic.routinePushed(yyyymmdd(DateTime.now()));
-  List<String> get _routineDeferred => logic.state.nowSkippedByYmd[yyyymmdd(DateTime.now())] ?? const [];
-  Set<String> get _routineDismissed => logic.nowDoneSet(yyyymmdd(DateTime.now()));
+  Map<String, String> get _pushed => logic.routinePushed(logic.livedYmdNow);
+  List<String> get _routineDeferred => logic.state.nowSkippedByYmd[logic.livedYmdNow] ?? const [];
+  Set<String> get _routineDismissed => logic.nowDoneSet(logic.livedYmdNow);
 
   void _pause() {
     widget.onStopTimer();
@@ -536,7 +538,7 @@ class _ChainScreenState extends State<_ChainScreen> {
     }
     final kindColor = i.kind == ChainKind.routine ? kRoutineAccent : null;
     final routine = i.kind == ChainKind.routine
-        ? routinesForToday([i.activity!], logic.state.habitHits, DateTime.now()).firstOrNull
+        ? routinesForToday([i.activity!], logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin).firstOrNull
         : null;
 
     return Padding(
@@ -684,7 +686,7 @@ class _ChainScreenState extends State<_ChainScreen> {
           ]),
         ];
       case ChainKind.routine:
-        final r = routinesForToday([i.activity!], logic.state.habitHits, DateTime.now()).firstOrNull;
+        final r = routinesForToday([i.activity!], logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin).firstOrNull;
         final count = r == null ? 0 : (r.dayTarget != null ? r.dayDone : r.weekDone);
         final target = r == null ? 0 : (r.dayTarget ?? r.weekTarget);
         final reached = r?.reached ?? false;

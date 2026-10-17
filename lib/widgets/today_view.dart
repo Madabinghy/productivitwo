@@ -1059,7 +1059,7 @@ class TodayViewState extends State<TodayView> {
 
   /// « Routines · 5 / 18 · 3 à faire ce matin → » : ouvre le segment Routines.
   Widget _routinesLine(ColorScheme cs) {
-    final ymd = yyyymmdd(DateTime.now());
+    final ymd = widget.logic.livedYmdNow;
     final day = buildRoutineDay(
       activities: widget.logic.state.activeActivities,
       hits: widget.logic.state.habitHits,
@@ -1067,6 +1067,8 @@ class TodayViewState extends State<TodayView> {
       pushed: widget.logic.routinePushed(ymd),
       deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
       dismissed: widget.logic.nowDoneSet(ymd),
+      dayStartMin: widget.logic.dayStartMin,
+      moments: widget.logic.moments,
     );
     if (day.slots.isEmpty) return const SizedBox.shrink();
     final dark = cs.brightness == Brightness.dark;

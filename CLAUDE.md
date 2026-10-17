@@ -389,6 +389,16 @@ moment courant, « Pas maintenant » en fin ; `countOf`, `leftoverCountOf`, `lat
 maintenant » = `nowSkippedByYmd` (ordre = ordre du report), « Pas aujourd'hui » = `nowDoneByYmd`, report à un moment =
 `AppState.routinePushedByYmd` (`"id:moment"`, `AppLogic.routinePushed` / `setRoutinePushed`) — le `timeContext` n'est
 jamais modifié par ces gestes. Ordre manuel dans un moment = `Activity.routineOrder` (null = après, par nom).
+**Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
+5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
+`FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
+(`buildRoutineDay` → avant la bascule on est encore « ce soir »), clés d'état du jour (`AppLogic.livedYmdNow` pour « pas
+maintenant » / « pas aujourd'hui » / reports), `incHabit` sur `livedDate`. Le programme du jour reste sur la date
+calendaire. Le web utilise le défaut 5 h (réglage non lu). **Moments réglables** : bornes dans `data/meta.momentWindows`
+(`timedMomentsWith`, `parseMomentWindows`, `validateMoments` ; `AppLogic.moments` / `allMoments`, `RoutineDay.moments`) ;
+sans réglage le **Soir court de 19 h au début de journée** (5 h) — la nuit appartient au soir. Éditeur
+`widgets/moments_editor_sheet.dart` (pastille « Soir · 19 h → 5 h » de la carte du moment, Paramètres « Moments de la
+journée »). `routine_context.dart` (fenêtres des `timeContext`, devinettes) n'est pas réglé.
 **Enchaîner les routines** (lot 2, `widgets/routine_chain_screen.dart`, bouton de la carte du moment) : la file du moment
 une routine par écran, compteur − x / y + sur place (`routinePlus` / `routineMinus` / `routineTodayCount`, partagés avec la
 vue), « Suivante » selon le compteur (rien : inactif · partiel : « Garder 1 / 2 » · atteinte : « Cible atteinte »),
