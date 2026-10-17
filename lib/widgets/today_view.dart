@@ -26,6 +26,7 @@ import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart';
+import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -792,6 +793,7 @@ class TodayViewState extends State<TodayView> {
                     child: RoutinesDayView(
                       logic: widget.logic,
                       onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
+                      onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
                     ),
                   )
                 else ...[
