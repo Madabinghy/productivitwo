@@ -24,6 +24,43 @@ bool passesTime(TaskAction a, TimeBucket? bucket) {
   };
 }
 
+/// « 15 min » · « 1 h » · « plus d'1 h ».
+String timeBucketLabel(TimeBucket b) => switch (b) {
+      TimeBucket.quarter => '15 min',
+      TimeBucket.hour => '1 h',
+      TimeBucket.more => 'plus d\'1 h',
+    };
+
+/// Avec « J'ai … » actif, on cherche ce qui rentre dans le creux : les actions
+/// estimées d'abord, de la plus courte à la plus longue ; celles sans
+/// estimation (qui passent toujours le filtre) après, dans leur ordre
+/// d'origine. Tri stable.
+List<T> sortedByEstimate<T>(Iterable<T> items, int? Function(T) estimateOf) {
+  final indexed = items.indexed.toList();
+  indexed.sort((x, y) {
+    final ex = estimateOf(x.$2), ey = estimateOf(y.$2);
+    if (ex != null && ey != null && ex != ey) return ex.compareTo(ey);
+    if (ex == null && ey != null) return 1;
+    if (ex != null && ey == null) return -1;
+    return x.$1.compareTo(y.$1);
+  });
+  return [for (final r in indexed) r.$2];
+}
+
+/// Quand rien ne passe « J'ai … » : l'action la plus proche du créneau parmi
+/// celles qui le ratent — la plus courte au-delà de 15 min / 1 h, la plus
+/// longue en deçà pour « plus d'1 h ». null si aucune n'est estimée.
+({TaskAction action, int min})? nearestOutsideBucket(Iterable<TaskAction> missed, TimeBucket b) {
+  ({TaskAction action, int min})? best;
+  for (final a in missed) {
+    final est = a.estimatedMin;
+    if (est == null || passesTime(a, b)) continue;
+    final better = best == null || (b == TimeBucket.more ? est > best.min : est < best.min);
+    if (better) best = (action: a, min: est);
+  }
+  return best;
+}
+
 /// Contextes connus : défauts + tous ceux rencontrés sur les actions ouvertes.
 List<String> knownContexts(List<Project> projects, List<Activity> activities) {
   final seen = <String>{...kDefaultGtdContexts};
