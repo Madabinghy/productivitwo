@@ -572,10 +572,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                    // Une seule ligne : le compte et le ▶ passent SOUS − / +,
-                    // ce qui rend ~90 px au nom.
+                    // Nom sur trois lignes au plus : le compte vit dans l'anneau
+                    // et le ▶ dans l'icône, la ligne ne porte que − / + à droite.
                     Text(a.name,
-                        maxLines: 1,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 14.5,
