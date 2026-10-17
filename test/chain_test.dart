@@ -53,6 +53,8 @@ void main() {
     expect(chain[3].timed, isFalse);
     expect(chain[4].timed, isFalse);
     expect(chainEndMin(chain), 12 * 60 + 30);
+    expect(chainEndLabel(12 * 60 + 30), '12:30');
+    expect(chainEndLabel(29 * 60), '05:00 demain');
   });
 
   test('orderChain : écartés retirés, reportés en fin dans l\'ordre du report', () {

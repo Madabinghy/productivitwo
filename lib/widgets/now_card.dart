@@ -510,7 +510,7 @@ class _NowCardState extends State<NowCard> {
     if (items.isEmpty) return null;
     final end = chainEndMin(items)!;
     final routines = items.where((i) => i.kind == ChainKind.routine).length;
-    return 'Enchaîner · ${items.length} chose${items.length > 1 ? 's' : ''} jusqu\'à ${_clock(end)}'
+    return 'Enchaîner · ${items.length} chose${items.length > 1 ? 's' : ''} jusqu\'à ${chainEndLabel(end)}'
         '${routines > 0 ? ' · $routines routine${routines > 1 ? 's' : ''}' : ''}';
   }
 

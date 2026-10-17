@@ -264,6 +264,14 @@ List<ChainItem> orderChain(List<ChainItem> items,
 int? chainEndMin(List<ChainItem> items) =>
     items.isEmpty ? null : items.map((i) => blockEndMin(i.block)).reduce(math.max);
 
+/// « 18:00 », ou « 05:00 demain » quand le dernier bloc passe minuit
+/// (Sommeil 23:30 → 05:00 donnait « 29:00 »).
+String chainEndLabel(int endMin) {
+  final m = endMin % (24 * 60);
+  final hm = '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  return endMin >= 24 * 60 ? '$hm demain' : hm;
+}
+
 /// Dépassement d'un bloc, arrondi au quart d'heure supérieur (0 = à l'heure).
 int overrunMin(ScheduleBlock b, int nowMin) {
   final over = nowMin - blockEndMin(b);
