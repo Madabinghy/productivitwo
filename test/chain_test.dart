@@ -72,4 +72,41 @@ void main() {
     final changed = shiftFollowing(blocks, cur, 15);
     expect(changed.map((b) => '${b.id}@${b.startTime}').toList(), ['b2@10:15', 'b3@11:15']);
   });
+
+  test('routines accrochées : moment courant en tête, moments suivants à l\'entrée, toute la journée après un bloc de travail', () {
+    Activity h(String id, String name, {String? ctx, int t = 1}) =>
+        Activity(id: id, domainId: 'd', name: name, type: 'habit', habitFreq: HabitFreq.daily, habitTarget: t, timeContext: ctx);
+    final acts = [
+      h('lou', 'Louanges', ctx: 'morning'),
+      h('rep', 'Repas', ctx: 'midday'),
+      h('eau', 'Eau', ctx: 'allday', t: 6),
+      h('pom', 'Pompes', ctx: 'allday'),
+      h('soir', 'Hygiène du soir'), // archétype soir
+    ];
+    final blocks = [
+      _b('b1', '09:00', 90, projectId: 'p', taskId: 't', actionId: 'a2'),
+      _b('b2', '14:00', 60, projectId: 'p', taskId: 't', actionId: 'a2'),
+      _b('g', '16:00', 30, gcal: 'x'),
+    ];
+    final chain = buildChain(blocks: blocks, projects: [project], activities: acts, hits: const [], now: now);
+    expect(chain.map((i) => '${i.kind.name}:${i.title}').toList(), [
+      'routine:Louanges',
+      'action:Rédiger', 'step:Kahoot', 'step:Reporté', 'routine:Eau',
+      'routine:Repas',
+      'action:Rédiger', 'step:Kahoot', 'step:Reporté', 'routine:Pompes',
+      'block:g',
+      'routine:Hygiène du soir',
+    ]);
+    expect(chain.first.synthetic, isTrue);
+    expect(chain.first.block.title, 'Routines du matin');
+    expect(chain[4].block.title, 'Après « b1 »');
+    // Routine déjà au programme → pas d'accroche en plus ; écartée → absente.
+    final chain2 = buildChain(
+        blocks: [...blocks, _b('r', '10:45', 10, activityId: 'rep')],
+        projects: [project], activities: acts, hits: const [], now: now, dismissed: {'lou'});
+    expect(chain2.where((i) => i.kind == ChainKind.routine && i.activity?.id == 'rep').length, 1);
+    expect(chain2.any((i) => i.activity?.id == 'lou'), isFalse);
+    // Sans accroche : seulement le programme.
+    expect(buildChain(blocks: blocks, projects: [project], activities: acts, hits: const [], now: now, anchorRoutines: false).length, 7);
+  });
 }

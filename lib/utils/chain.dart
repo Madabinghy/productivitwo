@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_work.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 
@@ -39,7 +40,11 @@ class ChainItem {
   });
 
   /// Identité stable d'un écran (reports « plus tard », écartés).
-  String get key => '${block.id}/${action?.id ?? ''}/${step?.id ?? ''}';
+  String get key => '${block.id}/${activity?.id ?? ''}/${action?.id ?? ''}/${step?.id ?? ''}';
+
+  /// Bloc fabriqué pour porter une routine accrochée (moment, entre deux
+  /// blocs) : n'existe pas dans le programme — ni transition, ni écriture.
+  bool get synthetic => block.id.startsWith(kSyntheticPrefix);
 
   String get title =>
       step?.title ?? action?.title ?? activity?.name ?? block.title;
@@ -145,14 +150,39 @@ List<ChainItem> chainItemsOf(
   return [ChainItem(kind: ChainKind.block, block: b, activity: act)];
 }
 
+const kSyntheticPrefix = '~';
+
+ScheduleBlock _momentBlock(Moment m, String title) => ScheduleBlock(
+      id: '$kSyntheticPrefix${m.key}',
+      startTime: '${(m.startMin ~/ 60).toString().padLeft(2, '0')}:${(m.startMin % 60).toString().padLeft(2, '0')}',
+      durationMin: m.endMin - m.startMin,
+      title: title,
+      category: 'routine',
+    );
+
+ChainItem _anchored(ScheduleBlock holder, RoutineSlot s) =>
+    ChainItem(kind: ChainKind.routine, block: holder, activity: s.activity);
+
 /// La file complète : blocs à faire (ni faits, ni sautés, ni supprimés) dont
-/// la fin n'est pas passée, du bloc en cours à la fin du programme.
+/// la fin n'est pas passée, du bloc en cours à la fin du programme — et les
+/// **routines accrochées** (lot 2 du mode Enchaîner, 2026-10) : en tête, la
+/// file du moment courant (restées des moments passés puis routines du
+/// moment, ordre de la vue Routines) ; quand la file entre dans un moment
+/// suivant (premier bloc qui y commence), les routines de ce moment ; après
+/// chaque bloc de travail (tâche ou action), UNE routine « toute la journée »
+/// pas encore atteinte, à tour de rôle. Une routine déjà posée en bloc dans
+/// le programme n'est pas accrochée en plus. [pushed] / [deferred] /
+/// [dismissed] = état du jour de la vue Routines.
 List<ChainItem> buildChain({
   required List<ScheduleBlock> blocks,
   required List<Project> projects,
   required List<Activity> activities,
   required List<HabitHit> hits,
   required DateTime now,
+  bool anchorRoutines = true,
+  Map<String, String> pushed = const {},
+  List<String> deferred = const [],
+  Set<String> dismissed = const {},
 }) {
   final nowMin = now.hour * 60 + now.minute;
   final live = blocks
@@ -162,10 +192,57 @@ List<ChainItem> buildChain({
       final c = blockStartMin(a).compareTo(blockStartMin(b));
       return c != 0 ? c : a.id.compareTo(b.id);
     });
-  return [
-    for (final b in live)
-      ...chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now),
-  ];
+  List<ChainItem> itemsOf(ScheduleBlock b) =>
+      chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now);
+  if (!anchorRoutines) return [for (final b in live) ...itemsOf(b)];
+
+  final day = buildRoutineDay(
+      activities: activities, hits: hits, now: now, pushed: pushed, deferred: deferred, dismissed: dismissed);
+  // Routines déjà au programme : pas d'accroche en plus.
+  final inProgram = {for (final b in live) if (b.activityId != null) b.activityId!};
+  final out = <ChainItem>[];
+  final cur = day.current;
+  final queue = day.queue.where((s) => !inProgram.contains(s.id)).toList();
+  // Blocs déjà en cours avant le moment courant (nuit, bloc à cheval) :
+  // d'abord, tels quels.
+  final early = live.where((b) => blockStartMin(b) < cur.startMin).toList();
+  for (final b in early) {
+    out.addAll(itemsOf(b));
+  }
+  final rest = live.where((b) => blockStartMin(b) >= cur.startMin).toList();
+  final moments = kTimedMoments.where((m) => m.startMin >= cur.startMin).toList();
+  final allday = day.of(kMomentAllDay).where((s) => !s.reached && !dismissed.contains(s.id) && !inProgram.contains(s.id)).toList();
+  var alldayIdx = 0;
+  void afterWork(ScheduleBlock b) {
+    if (allday.isEmpty || (b.taskId == null && b.actionId == null)) return;
+    final s = allday[alldayIdx % allday.length];
+    alldayIdx++;
+    final holder = ScheduleBlock(
+        id: '$kSyntheticPrefix${b.id}', startTime: b.startTime, durationMin: b.durationMin, title: 'Après « ${b.title} »', category: 'routine');
+    out.add(_anchored(holder, s));
+  }
+
+  for (var i = 0; i < moments.length; i++) {
+    final m = moments[i];
+    final next = i + 1 < moments.length ? moments[i + 1] : null;
+    final slots = m.key == cur.key
+        ? queue
+        : day.of(m.key).where((s) => !s.reached && !dismissed.contains(s.id) && !inProgram.contains(s.id)).toList();
+    final holder = _momentBlock(m, 'Routines ${m.of}');
+    for (final s in slots) {
+      out.add(_anchored(holder, s));
+    }
+    final inMoment = rest.where((b) {
+      final st = blockStartMin(b);
+      return st >= m.startMin && (next == null || st < next.startMin);
+    });
+    for (final b in inMoment) {
+      final items = itemsOf(b);
+      out.addAll(items);
+      if (items.isNotEmpty) afterWork(b);
+    }
+  }
+  return out;
 }
 
 /// Ordre d'affichage : les écrans écartés (« pas aujourd'hui », routine déjà
