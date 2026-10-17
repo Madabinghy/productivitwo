@@ -556,14 +556,19 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
               ]),
             ),
-            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 ||
-                (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > (s.todo.dayTarget ?? s.todo.weekTarget))
+            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 || (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: Text(
-                    s.todo.dayTarget != null ? '${s.todo.dayDone}/${s.todo.dayTarget}' : '${s.todo.weekDone}/${s.todo.weekTarget}',
+                    (done ? '✓ ' : '') +
+                        (s.todo.dayTarget != null
+                            ? '${s.todo.dayDone} / ${s.todo.dayTarget}'
+                            : '${s.todo.weekDone} / ${s.todo.weekTarget}'),
                     style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: done ? kRoutineAccent : pal.text3,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
               ),
             _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
             const SizedBox(width: 6),
