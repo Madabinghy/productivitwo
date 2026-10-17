@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart'
     show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
+import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -598,6 +599,8 @@ class _ChainScreenState extends State<_ChainScreen> {
                       color: kindColor),
                 ),
                 if (routine != null) _routineCounter(pal, i.activity!, routine),
+                const SizedBox(height: 14),
+                RoutineChronoPill(logic: logic, routine: i.activity!, centered: true, onChanged: () => setState(() {})),
               ],
               const SizedBox(height: 22),
               if (i.context != null)

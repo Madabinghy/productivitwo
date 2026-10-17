@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
+import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart'
     show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
@@ -287,6 +288,10 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
                       style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
                 ),
               ]),
+              const SizedBox(height: 14),
+              // Chrono de la routine sans sortir : passer à la suivante et
+              // lancer son activité enchaîne les chronos.
+              RoutineChronoPill(logic: logic, routine: a, centered: true, onChanged: () => setState(() {})),
             ]),
           ),
         ),

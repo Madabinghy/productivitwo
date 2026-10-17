@@ -7,7 +7,8 @@ import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show pickLinkedActivity, showRoutineSheet;
+import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -127,12 +128,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     }
     logic.onChange();
     setState(() {});
-  }
-
-  Future<void> _link(Activity a) async {
-    if (!await pickLinkedActivity(context, st: logic.state, act: a)) return;
-    logic.onChange();
-    if (mounted) setState(() {});
   }
 
   Future<void> _openSheet(Activity a) async {
@@ -363,7 +358,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             color: first.reached ? kRoutineAccent : pal.text3,
                             fontFeatures: const [FontFeature.tabularFigures()])),
                     const SizedBox(height: 8),
-                    _chronoLine(pal, first.activity),
+                    RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {})),
                   ]),
           ),
         ]),
@@ -453,57 +448,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ],
         ],
       ]),
-    );
-  }
-
-  /// « ▶ Lecture » (chrono sur l'activité liée, « ■ Arrêter » si déjà dessus)
-  /// ou « Lier une activité » quand la routine n'en a pas.
-  Widget _chronoLine(NowPalette pal, Activity a) {
-    final linked = _linkedOf(a);
-    if (linked == null) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => _link(a),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.add_link, size: 15, color: pal.text3),
-              const SizedBox(width: 5),
-              Text('Lier une activité', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: pal.text3)),
-            ]),
-          ),
-        ),
-      );
-    }
-    final running = _isRunning(linked);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Material(
-        color: running ? kBAttention.withOpacity(.16) : kRoutineAccent.withOpacity(.14),
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => _toggleChrono(linked),
-          onLongPress: () => _link(a),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                  size: 16, color: running ? kBAttention : kRoutineAccent),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(running ? 'Arrêter · ${linked.name}' : linked.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12.5, fontWeight: FontWeight.w700, color: running ? kBAttention : kRoutineAccent)),
-              ),
-            ]),
-          ),
-        ),
-      ),
     );
   }
 
