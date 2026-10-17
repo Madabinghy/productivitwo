@@ -96,6 +96,23 @@ void main() {
       expect(overdueActionCount([p], today), 1);
     });
 
+    test('projectActionGroups entryFilter : « En retard » par action', () {
+      final p = _p('p', [
+        _t('t', '2026-10-01', [_a('late', due: DateTime(2026, 10, 10)), _a('ok')]),
+      ]);
+      final g = projectActionGroups([p],
+          filter: _all, entryFilter: (t, a) => isOverdueAction(a, t, today));
+      expect(g.single.entries.map((e) => e.action.title).toList(), ['late']);
+    });
+
+    test('actionDueLabel / shortDateFr', () {
+      expect(actionDueLabel(DateTime(2026, 10, 13), today), '−3 j');
+      expect(actionDueLabel(DateTime(2026, 10, 16, 9), today), "aujourd'hui");
+      expect(actionDueLabel(DateTime(2026, 10, 17), today), 'demain');
+      expect(actionDueLabel(DateTime(2026, 10, 25), today), 'éch. 25 oct.');
+      expect(shortDateFr(DateTime(2027, 1, 3), today: today), '3 janv. 2027');
+    });
+
     test('toJson / from : dueDate en YYYY-MM-DD, null conservé', () {
       final a = _a('x', due: DateTime(2026, 10, 5, 18, 30));
       expect(a.toJson()['dueDate'], '2026-10-05');

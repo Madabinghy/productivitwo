@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/actions_logic.dart' show shortDateFr;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -27,6 +28,8 @@ Future<bool> showEditActionDialog(
   final all = [...available, ...selected.where((c) => !available.contains(c))];
   final titleCtrl = TextEditingController(text: action.title);
   int? est = action.estimatedMin;
+  DateTime? due = action.dueDate;
+  final taskDue = task?.endDate;
   // Brouillon de checklist : la règle d'achèvement s'applique à l'enregistrement.
   final draft = TaskAction(
     id: action.id,
@@ -68,6 +71,40 @@ Future<bool> showEditActionDialog(
                 noneLabel: 'Non estimée',
                 onChanged: (v) => setLocal(() => est = v),
               ),
+              const SizedBox(height: 12),
+              Text('Échéance propre',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.55))),
+              const SizedBox(height: 4),
+              Row(children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.flag_outlined, size: 16),
+                  label: Text(due != null
+                      ? shortDateFr(due!)
+                      : taskDue != null
+                          ? 'Celle de la tâche (${shortDateFr(taskDue)})'
+                          : 'Aucune'),
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: due ?? taskDue ?? now,
+                      firstDate: now.subtract(const Duration(days: 365)),
+                      lastDate: now.add(const Duration(days: 365 * 3)),
+                      locale: const Locale('fr'),
+                    );
+                    if (d != null) setLocal(() => due = DateTime(d.year, d.month, d.day));
+                  },
+                ),
+                if (due != null)
+                  IconButton(
+                    tooltip: 'Retirer (la date de la tâche fait foi)',
+                    icon: const Icon(Icons.close, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setLocal(() => due = null),
+                  ),
+              ]),
               const SizedBox(height: 12),
               Text('Où / avec quoi cette action est-elle réalisable ?',
                   style: TextStyle(
@@ -154,6 +191,7 @@ Future<bool> showEditActionDialog(
     if (newTitle.isNotEmpty) action.title = newTitle;
     action.setContexts(selected.toList());
     action.estimatedMin = est != null && est! > 0 ? est : null;
+    action.dueDate = due;
     action.checklist
       ..clear()
       ..addAll(draft.checklist);

@@ -127,9 +127,12 @@ class ProjectActions {
 List<ProjectActions> projectActionGroups(
   List<Project> projects, {
   required bool Function(TaskAction) filter,
-  /// Filtre sur la tâche porteuse (ex. « En retard » = échéance dépassée) ;
+  /// Filtre sur la tâche porteuse (ex. tâche pas encore commencée) ;
   /// null = toutes.
   bool Function(ProjectTask)? taskFilter,
+  /// Filtre sur le couple tâche + action (ex. « En retard » PAR ACTION, via
+  /// l'échéance effective) ; null = toutes.
+  bool Function(ProjectTask, TaskAction)? entryFilter,
   ActionsSort sort = ActionsSort.dueDate,
   List<String> domainOrder = const [],
   /// Date du prochain jalon / séance d'un projet (tri `milestone`) ; null = aucun.
@@ -140,7 +143,10 @@ List<ProjectActions> projectActionGroups(
     if (p.status != 'active' || p.paused) continue;
     final entries = <({ProjectTask task, TaskAction action})>[];
     final next = nextAction(p);
-    if (next != null && filter(next.action) && (taskFilter?.call(next.task) ?? true)) {
+    if (next != null &&
+        filter(next.action) &&
+        (taskFilter?.call(next.task) ?? true) &&
+        (entryFilter?.call(next.task, next.action) ?? true)) {
       entries.add(next);
     }
     for (final t in ganttOrder(p)) {
@@ -148,6 +154,7 @@ List<ProjectActions> projectActionGroups(
       if (taskFilter != null && !taskFilter(t)) continue;
       for (final a in t.actions) {
         if (a.done || !filter(a)) continue;
+        if (entryFilter != null && !entryFilter(t, a)) continue;
         if (next != null && a.id == next.action.id) continue;
         entries.add((task: t, action: a));
       }
@@ -309,6 +316,24 @@ bool isOverdueAction(TaskAction a, ProjectTask? t, DateTime today) {
   if (t != null && (t.status == 'done' || t.status == 'skipped')) return false;
   final due = effectiveDueDate(a, t);
   return due != null && due.isBefore(_dayOnly(today));
+}
+
+const _kMonthsFr = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+
+/// « 7 oct. » (« 7 oct. 2027 » si l'année diffère de [today]).
+String shortDateFr(DateTime d, {DateTime? today}) {
+  final y = (today ?? DateTime.now()).year;
+  return '${d.day} ${_kMonthsFr[d.month - 1]}${d.year == y ? '' : ' ${d.year}'}';
+}
+
+/// Étiquette d'échéance d'une action : « −3 j » (dépassée), « aujourd'hui »,
+/// « demain », sinon « éch. 7 oct. ». [due] et [today] au jour.
+String actionDueLabel(DateTime due, DateTime today) {
+  final d = _dayOnly(due).difference(_dayOnly(today)).inDays;
+  if (d < 0) return '−${-d} j';
+  if (d == 0) return "aujourd'hui";
+  if (d == 1) return 'demain';
+  return 'éch. ${shortDateFr(due, today: today)}';
 }
 
 /// Actions EN RETARD des projets vivants (`isOverdueAction`). Même règle que
