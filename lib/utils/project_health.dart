@@ -64,16 +64,29 @@ List<ProjectTask> overdueTasks(Project p, DateTime today) {
   return [for (final t in p.tasks) if (isTaskOverdue(t, d)) t];
 }
 
-/// Prochaine action : première `TaskAction` non faite de la première tâche
-/// non faite (ordre Gantt). Null si aucune action ouverte.
+/// Prochaine action : l'action ouverte à l'échéance EFFECTIVE la plus proche
+/// (la sienne si posée — date par action, 2026-10 — sinon celle de sa tâche) ;
+/// à égalité, ou sans aucune date, la première dans l'ordre Gantt (tâches par
+/// date de début, actions dans l'ordre de la tâche). Null si aucune action
+/// ouverte. Les actions sans date passent après les datées.
 ({ProjectTask task, TaskAction action})? nextAction(Project p) {
+  ({ProjectTask task, TaskAction action})? best;
+  DateTime? bestDue;
   for (final t in ganttOrder(p)) {
     if (t.status == 'done' || t.status == 'skipped') continue;
     for (final a in t.actions) {
-      if (!a.done) return (task: t, action: a);
+      if (a.done) continue;
+      final raw = a.dueDate ?? t.endDate;
+      final due = raw == null ? null : _day(raw);
+      final better = best == null ||
+          (due != null && (bestDue == null || due.isBefore(bestDue)));
+      if (better) {
+        best = (task: t, action: a);
+        bestDue = due;
+      }
     }
   }
-  return null;
+  return best;
 }
 
 bool _sessionOfProject(Session s, Project p, Set<String> taskIds) =>

@@ -99,6 +99,34 @@ void main() {
     expect(nextAction(_proj([_task('t', '2026-09-05')])), isNull);
   });
 
+  test('nextAction : l\'échéance effective la plus proche prime sur l\'ordre Gantt', () {
+    // La tâche la plus ancienne finit fin novembre ; une action datée au 20 oct.
+    // dans une tâche plus tardive, et une tâche à l'échéance plus proche.
+    final p = _proj([
+      _task('old', '2026-09-05', end: '2026-11-30', actions: [TaskAction(title: 'vieille')]),
+      _task('soon', '2026-10-01', end: '2026-10-25', actions: [TaskAction(title: 'bientôt')]),
+      _task('later', '2026-11-02', end: '2026-11-20', actions: [
+        TaskAction(title: 'datée', dueDate: DateTime(2026, 10, 20)),
+        TaskAction(title: 'sans date propre'),
+      ]),
+    ]);
+    expect(nextAction(p)!.action.title, 'datée');
+    p.tasks[2].actions.first.done = true;
+    expect(nextAction(p)!.action.title, 'bientôt');
+    // Tâches sans date : ordre Gantt, comme avant.
+    final q = _proj([
+      _task('b', '2026-09-20', actions: [TaskAction(title: 'b1')]),
+      _task('a', '2026-09-05', actions: [TaskAction(title: 'a1')]),
+    ]);
+    expect(nextAction(q)!.action.title, 'a1');
+    // Une action datée passe avant une sans date, même plus tard dans le Gantt.
+    final r = _proj([
+      _task('nodate', '2026-09-05', actions: [TaskAction(title: 'n1')]),
+      _task('dated', '2026-09-20', actions: [TaskAction(title: 'd1', dueDate: DateTime(2026, 12, 1))]),
+    ]);
+    expect(nextAction(r)!.action.title, 'd1');
+  });
+
   test('minutesLast7Days : par tâche ou activité liée, tronqué à 7 jours', () {
     final p = _proj([_task('t1', '2026-09-01')], linked: 'act');
     final sessions = [
