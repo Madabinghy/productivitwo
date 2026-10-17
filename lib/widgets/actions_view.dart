@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/widgets/capture_triage_sheet.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
@@ -125,6 +126,9 @@ class _ActionsViewState extends State<ActionsView> {
   // Programme du jour : points « planifiée aujourd'hui » + section Maintenant.
   StreamSubscription<DailySchedule?>? _schedSub;
   List<ScheduleBlock> _todayBlocks = const [];
+  // Captures en attente (boîte d'entrée) : ligne « n captures à trier ».
+  List<CaptureItem> _pendingCaptures = const [];
+  StreamSubscription<List<CaptureItem>>? _captureSub;
   final _captureCtrl = TextEditingController();
   final _captureFocus = FocusNode();
   // Recherche (loupe de l'en-tête) : filtre en direct, les sections restent.
@@ -159,6 +163,14 @@ class _ActionsViewState extends State<ActionsView> {
     await prefs.setBool(_kByProjectPrefKey, v);
   }
 
+  void _subscribeCaptures() {
+    _captureSub?.cancel();
+    _captureSub = _sync.streamCaptures().listen((items) {
+      if (!mounted) return;
+      setState(() => _pendingCaptures = items.where((i) => i.status == 'pending').toList());
+    });
+  }
+
   void _subscribeToday() {
     _schedSub?.cancel();
     _schedSub = _sync.streamDailySchedule(widget.logic.livedTodayYmd).listen((sch) {
@@ -179,12 +191,14 @@ class _ActionsViewState extends State<ActionsView> {
     _loadClientFilter();
     _loadPrefs();
     _subscribeToday();
+    _subscribeCaptures();
   }
 
   @override
   void dispose() {
     widget.logic.removeListener(_onLogicChange);
     _schedSub?.cancel();
+    _captureSub?.cancel();
     _captureCtrl.dispose();
     _captureFocus.dispose();
     _searchCtrl.dispose();
@@ -320,25 +334,9 @@ class _ActionsViewState extends State<ActionsView> {
   /// Tâche-réceptacle des actions ajoutées au fil de l'eau : id stable,
   /// invisible dans la liste (seules les actions s'affichent), visible dans
   /// la fiche projet/Gantt comme n'importe quelle tâche.
-  static const _flowTaskId = 'gtd-flow';
+  static const _flowTaskId = kFlowTaskId;
 
-  ProjectTask _flowTask(Project p) {
-    final existing = p.tasks.firstWhereOrNull((t) => t.id == _flowTaskId);
-    if (existing != null) {
-      // Réactivée si elle avait été close (toutes actions faites).
-      if (existing.status != 'pending') existing.status = 'pending';
-      return existing;
-    }
-    final t = ProjectTask(
-      id: _flowTaskId,
-      title: 'Au fil de l\'eau',
-      startDate: DateTime.now(),
-      // endDate null → triée en dernier : les tâches datées gardent la
-      // priorité d'urgence (coach/ORION).
-    );
-    p.tasks.add(t);
-    return t;
-  }
+  ProjectTask _flowTask(Project p) => flowTaskOf(p);
 
   /// Dialog rapide titre + contextes → action directement dans le projet.
   /// CHAÎNABLE : « Ajouter » enregistre, vide le champ et garde le dialog
@@ -1210,6 +1208,7 @@ class _ActionsViewState extends State<ActionsView> {
           const SizedBox(height: 6),
           if (_searchOpen) ...[_searchField(cs), const SizedBox(height: 8)],
           _captureField(cs),
+          if (_pendingCaptures.isNotEmpty) ...[const SizedBox(height: 6), _triageRow(cs)],
           const SizedBox(height: 10),
           _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
           const SizedBox(height: 6),
@@ -1349,6 +1348,33 @@ class _ActionsViewState extends State<ActionsView> {
           onPressed: _closeSearch,
         ),
       ]),
+    );
+  }
+
+  // ── Captures à trier → actions ─────────────────────────────────────────────
+
+  /// « 3 captures à trier → » : ouvre le tri une par une (projet › tâche ou
+  /// activité), ferme la boucle GTD dans l'onglet.
+  Widget _triageRow(ColorScheme cs) {
+    final n = _pendingCaptures.length;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => showCaptureTriageSheet(context,
+          logic: widget.logic, sync: _sync, items: _pendingCaptures, onChanged: () {
+        if (mounted) setState(() {});
+      }),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Row(children: [
+          Icon(Icons.lightbulb_outline, size: 16, color: Colors.amber.shade600),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('$n capture${n > 1 ? 's' : ''} à trier en action${n > 1 ? 's' : ''}',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: cs.onSurface.withOpacity(.75))),
+          ),
+          Icon(Icons.chevron_right, size: 18, color: cs.onSurface.withOpacity(.45)),
+        ]),
+      ),
     );
   }
 

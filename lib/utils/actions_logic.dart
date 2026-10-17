@@ -87,6 +87,22 @@ bool matchesQuery(String query, Iterable<String?> fields) {
   return words.every(hay.contains);
 }
 
+/// Tâche « Au fil de l'eau » d'un projet : porte les actions posées sans
+/// tâche précise (« Prochaine action », tri des captures). Créée au besoin,
+/// réactivée si elle avait été close ; sans échéance → triée en dernier.
+const String kFlowTaskId = 'gtd-flow';
+
+ProjectTask flowTaskOf(Project p) {
+  final existing = p.tasks.where((t) => t.id == kFlowTaskId).firstOrNull;
+  if (existing != null) {
+    if (existing.status != 'pending') existing.status = 'pending';
+    return existing;
+  }
+  final t = ProjectTask(id: kFlowTaskId, title: 'Au fil de l\'eau', startDate: DateTime.now());
+  p.tasks.add(t);
+  return t;
+}
+
 /// Contextes connus : défauts + tous ceux rencontrés sur les actions ouvertes.
 List<String> knownContexts(List<Project> projects, List<Activity> activities) {
   final seen = <String>{...kDefaultGtdContexts};
