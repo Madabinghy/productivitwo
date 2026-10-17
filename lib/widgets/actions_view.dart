@@ -1161,14 +1161,20 @@ class _ActionsViewState extends State<ActionsView> {
             if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
                 case final fl?) ...[
               const SizedBox(width: 10),
-              Tooltip(
-                message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
-                    'Sert à corriger vos estimations.',
-                child: Text(fl,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(.45))),
+              // Flexible : le libellé cède la place aux trois boutons de
+              // droite (overflow constaté sur iPhone 14).
+              Flexible(
+                child: Tooltip(
+                  message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
+                      'Sert à corriger vos estimations.',
+                  child: Text(fl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface.withOpacity(.45))),
+                ),
               ),
             ],
             const Spacer(),
