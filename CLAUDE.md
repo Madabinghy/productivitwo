@@ -377,8 +377,13 @@ libre) ; `currentMoment` (creux → suivant) ; `buildRoutineDay` → `RoutineDay
 moment courant, « Pas maintenant » en fin ; `countOf`, `leftoverCountOf`, `laterMoments`). État du jour : « Pas
 maintenant » = `nowSkippedByYmd` (ordre = ordre du report), « Pas aujourd'hui » = `nowDoneByYmd`, report à un moment =
 `AppState.routinePushedByYmd` (`"id:moment"`, `AppLogic.routinePushed` / `setRoutinePushed`) — le `timeContext` n'est
-jamais modifié par ces gestes. Ordre manuel dans un moment = `Activity.routineOrder` (null = après, par nom). À venir :
-lot 2 « Enchaîner les routines » (+ accroches du mode Enchaîner), lot 3 « Organiser » (glisser entre moments, par domaine).
+jamais modifié par ces gestes. Ordre manuel dans un moment = `Activity.routineOrder` (null = après, par nom).
+**Enchaîner les routines** (lot 2, `widgets/routine_chain_screen.dart`, bouton de la carte du moment) : la file du moment
+une routine par écran, compteur − x / y + sur place (`routinePlus` / `routineMinus` / `routineTodayCount`, partagés avec la
+vue), « Suivante » selon le compteur (rien : inactif · partiel : « Garder 1 / 2 » · atteinte : « Cible atteinte »),
+« Pas maintenant ▾ » (fin de file / report à un moment plus tard), « Pas aujourd'hui » ; progression = routines traitées /
+total ; écran de fin « Matin terminé · n sur total » + gardées / reportées + « La suite : à 11 h 30 (midi) » ; écran
+allumé. À venir : lot 3 « Organiser » (glisser entre moments, ▲▼, par domaine) et les accroches du mode Enchaîner général.
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien

@@ -11,6 +11,34 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
 
+/// Occurrences d'aujourd'hui (depuis minuit) d'une routine.
+int routineTodayCount(AppLogic logic, Activity a) {
+  final n = DateTime.now();
+  final midnight = DateTime(n.year, n.month, n.day);
+  return logic.state.habitHits.where((h) => h.habitId == a.id && !h.ts.isBefore(midnight)).length;
+}
+
+/// −1 : même règle que « Le meilleur à faire » — le dernier incrément
+/// enregistré saute (compteur ET hit), sur la journée vécue de ce hit.
+/// Retourne false s'il n'y avait rien à retirer.
+bool routineMinus(AppLogic logic, Activity a) {
+  final hits = logic.state.habitHits.where((h) => h.habitId == a.id).toList()..sort((x, y) => x.ts.compareTo(y.ts));
+  if (hits.isEmpty) return false;
+  final t = hits.last.ts;
+  final lived = t.hour * 60 + t.minute < 5 * 60 ? t.subtract(const Duration(days: 1)) : t;
+  logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
+  return true;
+}
+
+/// +1 : incrémente et sort la routine des « Pas maintenant » du jour.
+void routinePlus(AppLogic logic, Activity a) {
+  logic.incHabit(a.id, 1, DateTime.now());
+  final ymd = yyyymmdd(DateTime.now());
+  if (logic.nowSkippedSet(ymd).contains(a.id)) {
+    logic.setNowSkipped(ymd, logic.nowSkippedSet(ymd)..remove(a.id));
+  }
+}
+
 /// Segment « Routines » d'Aujourd'hui : la journée vue par les routines —
 /// carte « Routine du moment » (+1 / −1 / Pas maintenant ▾), puis la journée
 /// par moments (moment courant ouvert, les autres repliés, « Toute la
@@ -49,31 +77,17 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
 
   void _plus(Activity a) {
     HapticFeedback.lightImpact();
-    logic.incHabit(a.id, 1, DateTime.now());
-    final ymd = _ymd;
-    if (logic.nowSkippedSet(ymd).contains(a.id)) {
-      logic.setNowSkipped(ymd, logic.nowSkippedSet(ymd)..remove(a.id));
-    }
+    routinePlus(logic, a);
     setState(() {});
   }
 
-  /// Même règle que « Le meilleur à faire » : le dernier incrément enregistré
-  /// saute (compteur ET hit), sur la journée vécue de ce hit.
   void _minus(Activity a) {
-    final hits = logic.state.habitHits.where((h) => h.habitId == a.id).toList()..sort((x, y) => x.ts.compareTo(y.ts));
-    if (hits.isEmpty) return;
-    final t = hits.last.ts;
-    final lived = t.hour * 60 + t.minute < 5 * 60 ? t.subtract(const Duration(days: 1)) : t;
+    if (!routineMinus(logic, a)) return;
     HapticFeedback.selectionClick();
-    logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
     setState(() {});
   }
 
-  int _todayCount(Activity a) {
-    final n = DateTime.now();
-    final midnight = DateTime(n.year, n.month, n.day);
-    return logic.state.habitHits.where((h) => h.habitId == a.id && !h.ts.isBefore(midnight)).length;
-  }
+  int _todayCount(Activity a) => routineTodayCount(logic, a);
 
   /// Coche : atteint la cible d'un coup ; déjà atteinte : remet à zéro.
   void _toggleReach(RoutineSlot s) {

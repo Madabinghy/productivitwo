@@ -24,6 +24,7 @@ import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -788,7 +789,10 @@ class TodayViewState extends State<TodayView> {
                 if (!_showTomorrow && _routinesSegment)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
-                    child: RoutinesDayView(logic: widget.logic),
+                    child: RoutinesDayView(
+                      logic: widget.logic,
+                      onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
+                    ),
                   )
                 else ...[
                 if (!_showTomorrow) ...[
