@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
+import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
+import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart'
     show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -98,12 +100,16 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
     list.add(s.id);
     logic.setNowSkipped(ymd, list.toSet());
     logic.state.nowSkippedByYmd[ymd] = list;
+    // Restée d'un moment passé : rattachée au moment courant (même règle que
+    // la vue Routines), elle quitte sa section d'origine pour la journée.
+    final moved = momentOf(s.moment).timed && s.moment != _moment.key;
+    if (moved) logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[s.id] = _moment.key);
     setState(() {
       _ids.remove(s.id);
       _ids.add(s.id);
       _laterMenu = false;
     });
-    _toast('Reculée en fin de file : ${s.activity.name}');
+    _toast(moved ? 'Reculée à ${_moment.thisOne} : ${s.activity.name}' : 'Reculée en fin de file : ${s.activity.name}');
   }
 
   void _pushTo(RoutineSlot s, Moment m) {
@@ -241,6 +247,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bar(pal),
+      RunningChronoBar(logic: logic),
       const SizedBox(height: 6),
       Row(children: [
         Container(
@@ -285,6 +292,10 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
                       style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
                 ),
               ]),
+              const SizedBox(height: 14),
+              // Chrono de la routine sans sortir : passer à la suivante et
+              // lancer son activité enchaîne les chronos.
+              RoutineChronoPill(logic: logic, routine: a, centered: true, onChanged: () => setState(() {})),
             ]),
           ),
         ),
@@ -391,6 +402,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bar(pal),
+      RunningChronoBar(logic: logic),
       const Spacer(),
       Center(
         child: Container(

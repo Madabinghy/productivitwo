@@ -7,7 +7,8 @@ import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show pickLinkedActivity, showRoutineSheet;
+import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -129,12 +130,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     setState(() {});
   }
 
-  Future<void> _link(Activity a) async {
-    if (!await pickLinkedActivity(context, st: logic.state, act: a)) return;
-    logic.onChange();
-    if (mounted) setState(() {});
-  }
-
   Future<void> _openSheet(Activity a) async {
     await showRoutineSheet(context, logic: logic, habitId: a.id, day: DateTime.now(),
         onSaved: () {
@@ -167,11 +162,18 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     list.add(a.id);
     logic.setNowSkipped(ymd, list.toSet());
     logic.state.nowSkippedByYmd[ymd] = list; // l'ordre du report compte
+    // Restée d'un moment passé (« restée du midi ») : « plus tard ce soir »
+    // la rattache aussi au moment courant, sinon elle resterait listée dans
+    // Midi alors qu'on vient de décider de la faire ce soir.
+    final day = _day();
+    final slot = day.slots.where((s) => s.id == a.id).firstOrNull;
+    final moved = slot != null && momentOf(slot.moment).timed && slot.moment != day.current.key;
+    if (moved) logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[a.id] = day.current.key);
     setState(() {
       _laterMenu = false;
       _held = null;
     });
-    _toast('Reculée en fin de file : ${a.name}');
+    _toast(moved ? 'Reculée à ${day.current.thisOne} : ${a.name}' : 'Reculée en fin de file : ${a.name}');
   }
 
   void _pushTo(Activity a, Moment m) {
@@ -363,7 +365,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             color: first.reached ? kRoutineAccent : pal.text3,
                             fontFeatures: const [FontFeature.tabularFigures()])),
                     const SizedBox(height: 8),
-                    _chronoLine(pal, first.activity),
+                    RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {})),
                   ]),
           ),
         ]),
@@ -453,57 +455,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ],
         ],
       ]),
-    );
-  }
-
-  /// « ▶ Lecture » (chrono sur l'activité liée, « ■ Arrêter » si déjà dessus)
-  /// ou « Lier une activité » quand la routine n'en a pas.
-  Widget _chronoLine(NowPalette pal, Activity a) {
-    final linked = _linkedOf(a);
-    if (linked == null) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => _link(a),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.add_link, size: 15, color: pal.text3),
-              const SizedBox(width: 5),
-              Text('Lier une activité', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: pal.text3)),
-            ]),
-          ),
-        ),
-      );
-    }
-    final running = _isRunning(linked);
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Material(
-        color: running ? kBAttention.withOpacity(.16) : kRoutineAccent.withOpacity(.14),
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: () => _toggleChrono(linked),
-          onLongPress: () => _link(a),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                  size: 16, color: running ? kBAttention : kRoutineAccent),
-              const SizedBox(width: 4),
-              Flexible(
-                child: Text(running ? 'Arrêter · ${linked.name}' : linked.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 12.5, fontWeight: FontWeight.w700, color: running ? kBAttention : kRoutineAccent)),
-              ),
-            ]),
-          ),
-        ),
-      ),
     );
   }
 
@@ -616,21 +567,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () => _toggleReach(s),
-                child: Center(
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: done ? kRoutineAccent : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: done ? null : Border.all(color: pal.text4, width: 1.5),
-                    ),
-                    child: done ? const Icon(Icons.check_rounded, size: 14, color: kBBg) : null,
-                  ),
-                ),
+                child: Center(child: _ringCheck(pal, s, done: done)),
               ),
             ),
-            _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent),
+            _rowLauncher(pal, a, done: done),
             const SizedBox(width: 10),
             Expanded(
               child: InkWell(
@@ -639,8 +579,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    // Nom sur trois lignes au plus : le compte vit dans l'anneau
+                    // et le ▶ dans l'icône, la ligne ne porte que − / + à droite.
                     Text(a.name,
-                        maxLines: 1,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 14.5,
@@ -655,35 +597,72 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 ),
               ),
             ),
-            if (_linkedOf(a) case final linked?)
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: () => _toggleChrono(linked),
-                  child: Icon(_isRunning(linked) ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                      size: 22, color: _isRunning(linked) ? kBAttention : kRoutineAccent),
-                ),
-              ),
-            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 || (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > 0)
-              Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: Text(
-                    (done ? '✓ ' : '') +
-                        (s.todo.dayTarget != null
-                            ? '${s.todo.dayDone} / ${s.todo.dayTarget}'
-                            : '${s.todo.weekDone} / ${s.todo.weekTarget}'),
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: done ? kRoutineAccent : pal.text3,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-              ),
             _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
             const SizedBox(width: 6),
             _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
           ]),
+        ),
+      ),
+    );
+  }
+
+  /// Coche d'une ligne = anneau de progression (comme la carte du moment) :
+  /// se remplit avec les occurrences, « 2/3 » au centre quand la cible dépasse
+  /// 1 ; atteinte = disque plein avec ✓, ou le compte « 7/1 » quand on a
+  /// dépassé (la série de pompes reste lisible).
+  Widget _ringCheck(NowPalette pal, RoutineSlot s, {required bool done}) {
+    final target = s.todo.dayTarget ?? s.todo.weekTarget;
+    final count = s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone;
+    final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
+    final over = count > target;
+    final String? center = done ? (over ? '$count/$target' : null) : (target > 1 && count > 0 ? '$count/$target' : null);
+    const size = 30.0;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(alignment: Alignment.center, children: [
+        if (done)
+          Container(decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle))
+        else
+          CustomPaint(
+            size: const Size(size, size),
+            painter: RingPainter(
+                progress: progress, color: kRoutineAccent, stroke: 2.5, trackColor: pal.track, cap: StrokeCap.round),
+          ),
+        if (center != null)
+          Text(center,
+              style: TextStyle(
+                  fontSize: center.length > 3 ? 8 : 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: done ? kBBg : pal.text2,
+                  fontFeatures: const [FontFeature.tabularFigures()]))
+        else if (done)
+          const Icon(Icons.check_rounded, size: 16, color: kBBg),
+      ]),
+    );
+  }
+
+  /// Icône de la routine ; avec une activité liée, elle devient le lanceur :
+  /// ▶ dans un rond orange (■ rouge si le chrono tourne dessus), appui long =
+  /// changer l'activité via la fiche.
+  Widget _rowLauncher(NowPalette pal, Activity a, {required bool done}) {
+    final linked = _linkedOf(a);
+    if (linked == null) {
+      return SizedBox(width: 32, child: Center(child: _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent)));
+    }
+    final running = _isRunning(linked);
+    final color = running ? kBAttention : kRoutineAccent;
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Material(
+        color: color.withOpacity(running ? .18 : .14),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => _toggleChrono(linked),
+          onLongPress: () => _openSheet(a),
+          child: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 19, color: color),
         ),
       ),
     );
