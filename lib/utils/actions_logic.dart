@@ -61,6 +61,32 @@ List<T> sortedByEstimate<T>(Iterable<T> items, int? Function(T) estimateOf) {
   return best;
 }
 
+const _kFold = {
+  'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a', 'ã': 'a', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+  'î': 'i', 'ï': 'i', 'í': 'i', 'ô': 'o', 'ö': 'o', 'ó': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ú': 'u',
+  'ç': 'c', 'ÿ': 'y', 'ñ': 'n', 'œ': 'oe', 'æ': 'ae', '’': "'",
+};
+
+/// Minuscules sans accents, pour la recherche (« Dévis » trouve « devis »).
+String foldForSearch(String s) {
+  final b = StringBuffer();
+  for (final r in s.toLowerCase().runes) {
+    final ch = String.fromCharCode(r);
+    b.write(_kFold[ch] ?? ch);
+  }
+  return b.toString();
+}
+
+/// Recherche de l'onglet Actions : chaque mot de la requête doit apparaître
+/// dans l'un des champs (titre de l'action, tâche, projet, activité). Requête
+/// vide = tout passe.
+bool matchesQuery(String query, Iterable<String?> fields) {
+  final words = foldForSearch(query).split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return true;
+  final hay = fields.whereType<String>().map(foldForSearch).join(' \u0000 ');
+  return words.every(hay.contains);
+}
+
 /// Contextes connus : défauts + tous ceux rencontrés sur les actions ouvertes.
 List<String> knownContexts(List<Project> projects, List<Activity> activities) {
   final seen = <String>{...kDefaultGtdContexts};

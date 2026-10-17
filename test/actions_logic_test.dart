@@ -55,6 +55,16 @@ void main() {
     expect(nearestOutsideBucket([_a('sans'), _a('10', est: 10)], TimeBucket.quarter), isNull);
   });
 
+  test('matchesQuery : accents et casse ignorés, tous les mots, sur n\'importe quel champ', () {
+    expect(matchesQuery('', ['x']), isTrue);
+    expect(matchesQuery('  ', ['x']), isTrue);
+    expect(matchesQuery('Dévis', ['Relire le devis', null]), isTrue);
+    expect(matchesQuery('devis dupont', ['Relire le devis', 'Dossier Dupont']), isTrue);
+    expect(matchesQuery('devis martin', ['Relire le devis', 'Dossier Dupont']), isFalse);
+    expect(matchesQuery('ecole', ['6e — École des Mathématiques']), isTrue);
+    expect(matchesQuery('oeuvre', ['Œuvre']), isTrue);
+  });
+
   test('timeBucketLabel', () {
     expect(timeBucketLabel(TimeBucket.quarter), '15 min');
     expect(timeBucketLabel(TimeBucket.more), "plus d'1 h");
