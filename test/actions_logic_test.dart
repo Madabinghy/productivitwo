@@ -121,6 +121,17 @@ void main() {
     });
   });
 
+  test('flowTaskOf : créée une fois, réactivée si close', () {
+    final p = _p('p', [_t('t', '2026-10-01', [])]);
+    final f = flowTaskOf(p);
+    expect(f.id, kFlowTaskId);
+    expect(p.tasks.length, 2);
+    f.status = 'done';
+    expect(identical(flowTaskOf(p), f), isTrue);
+    expect(f.status, 'pending');
+    expect(p.tasks.length, 2);
+  });
+
   test('timeBucketLabel', () {
     expect(timeBucketLabel(TimeBucket.quarter), '15 min');
     expect(timeBucketLabel(TimeBucket.more), "plus d'1 h");

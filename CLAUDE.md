@@ -25,7 +25,10 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   `lib/widgets/actions_view.dart`) : jamais vide, groupée par urgence (Maintenant · Aujourd'hui · En retard · Cette
   semaine · par projet · simples) ou par projet, filtres optionnels J'ai / Je suis / Domaine (le contexte ne verrouille
   plus), tap = feuille d'action (étapes `StepsSection`, chrono, caser, fait), glisser droite = fait / gauche = caser
-  demain, capture rapide → boîte d'entrée. Même logique pure que le web (`utils/actions_logic.dart`).
+  demain, capture rapide → boîte d'entrée, et **« n captures à trier en actions »** (2026-10,
+  `widgets/capture_triage_sheet.dart`) : une capture à la fois, titre retouchable, destination projet › tâche (« Au fil de
+  l'eau » = `flowTaskOf`, `utils/actions_logic.dart`) ou activité-temps ; la capture passe `processed` avec la trace
+  « → action … ». Même logique pure que le web (`utils/actions_logic.dart`).
   Chaque carte porte au-dessus du titre « Projet › Tâche » (la tâche seule en vue par projet) ; la feuille d'action
   affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué).
   **À venir** (2026-10, mobile et web) : une action dont la TÂCHE n'a pas encore commencé (`startDate` > aujourd'hui,
