@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef, timeContextsWith;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
@@ -295,6 +296,11 @@ class AppLogic {
 
   /// Les six moments, pour les vues qui listent aussi « Toute la journée » et « Libre ».
   List<Moment> get allMoments => momentsWith(momentWindows, dayStartMin: dayStartMin);
+
+  /// Contextes horaires des routines alignés sur les moments réglés (coach,
+  /// renégociation) — les clés des moments sont celles des contextes.
+  Map<String, TimeContextDef> get timeContexts =>
+      timeContextsWith({for (final m in moments) m.key: (m.startMin, m.endMin)});
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier

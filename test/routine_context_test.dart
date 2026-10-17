@@ -11,6 +11,28 @@ Activity _r(String name, {String? timeContext}) => Activity(
     timeContext: timeContext);
 
 void main() {
+  group('contextes alignés sur les moments réglés (2026-10)', () {
+    test('timeContextsWith : bornes données, fenêtre qui passe minuit, ancre', () {
+      final c = timeContextsWith({'evening': (19 * 60, 29 * 60), 'morning': (9 * 60, 12 * 60)});
+      expect(c['evening']!.allows(30), isTrue); // 00:30 = encore le soir
+      expect(c['evening']!.allows(4 * 60 + 59), isTrue);
+      expect(c['evening']!.allows(5 * 60), isFalse);
+      expect(c['evening']!.allows(18 * 60), isFalse);
+      expect(c['evening']!.anchorMin, 21 * 60); // l'ancre par défaut reste dans la fenêtre
+      expect(c['morning']!.allows(8 * 60), isFalse);
+      expect(c['morning']!.anchorMin, 9 * 60 + 60); // 7 h 30 hors fenêtre → début + span/3 (60)
+      expect(c['midday'], same(kTimeContexts['midday'])); // non réglé = défaut
+      expect(c['meal'], same(kTimeContexts['meal']));
+    });
+
+    test('effTimeContextOf lit les contextes fournis', () {
+      final c = timeContextsWith({'evening': (19 * 60, 29 * 60)});
+      expect(effTimeContextOf(_r('Hygiène du soir'))!.allows(30), isFalse); // défauts : 23 h 30
+      expect(effTimeContextOf(_r('Hygiène du soir'), contexts: c)!.allows(30), isTrue);
+      expect(effTimeContextOf(_r('x', timeContext: 'evening'), contexts: c)!.allows(30), isTrue);
+    });
+  });
+
   group('catalogue d\'archétypes (accents/casse repliés)', () {
     test('les évidences matchent, le doute ne matche pas', () {
       expect(routineArchetype('Hygiène du soir')!.contextKey, 'evening');

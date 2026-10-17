@@ -33,9 +33,33 @@ class TimeContextDef {
     if (windows.isEmpty) return true;
     for (final (a, b) in windows) {
       if (minuteOfDay >= a && minuteOfDay < b) return true;
+      // Fenêtre qui passe minuit (Soir 19 h → 5 h) : 00:30 = 24 h 30.
+      if (b > 24 * 60 && minuteOfDay + 24 * 60 < b) return true;
     }
     return false;
   }
+
+  TimeContextDef withWindow(int start, int end) {
+    // Heure de pose : la défaut si elle reste dans la fenêtre, sinon un peu
+    // après le début (jamais la borne elle-même).
+    final span = end - start;
+    final anchor = anchorMin >= start && anchorMin < end ? anchorMin : start + (span ~/ 3 < 90 ? span ~/ 3 : 90);
+    return TimeContextDef(key, label, [(start, end)], anchor);
+  }
+}
+
+/// Contextes horaires alignés sur les MOMENTS réglés par l'utilisateur
+/// (`data/meta.momentWindows`, Soir jusqu'au début de journée) : les quatre
+/// clés matin / midi / après-midi / soir prennent les bornes données ; repas,
+/// journée, toute la journée et libre gardent leurs fenêtres. Sert au coach
+/// (« faisable maintenant ») et à la renégociation (heure proposée).
+Map<String, TimeContextDef> timeContextsWith(Map<String, (int, int)> windows) {
+  final out = <String, TimeContextDef>{};
+  for (final e in kTimeContexts.entries) {
+    final w = windows[e.key];
+    out[e.key] = w == null ? e.value : e.value.withWindow(w.$1, w.$2);
+  }
+  return out;
 }
 
 const kTimeContexts = <String, TimeContextDef>{
@@ -101,13 +125,14 @@ RoutineArchetype? routineArchetype(String name) {
 /// Contexte effectif : override utilisateur d'abord, archétype sinon, null si
 /// rien — voir la préséance en tête de fichier. (L'heure MESURÉE est arbitrée
 /// par les consommateurs : le réel bat toujours le catalogue.)
-TimeContextDef? effTimeContextOf(Activity a) {
+TimeContextDef? effTimeContextOf(Activity a, {Map<String, TimeContextDef>? contexts}) {
+  final defs = contexts ?? kTimeContexts;
   final overrideKey = a.timeContext;
-  if (overrideKey != null && kTimeContexts.containsKey(overrideKey)) {
-    return kTimeContexts[overrideKey];
+  if (overrideKey != null && defs.containsKey(overrideKey)) {
+    return defs[overrideKey];
   }
   final arch = routineArchetype(a.name);
-  return arch != null ? kTimeContexts[arch.contextKey] : null;
+  return arch != null ? defs[arch.contextKey] : null;
 }
 
 /// La méta-intention de la routine (« clore la journée proprement ») — à citer

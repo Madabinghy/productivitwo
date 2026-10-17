@@ -408,7 +408,10 @@ minuit). Le web reste sur la date calendaire. Le web utilise le défaut 5 h (ré
 (`timedMomentsWith`, `parseMomentWindows`, `validateMoments` ; `AppLogic.moments` / `allMoments`, `RoutineDay.moments`) ;
 sans réglage le **Soir court de 19 h au début de journée** (5 h) — la nuit appartient au soir. Éditeur
 `widgets/moments_editor_sheet.dart` (pastille « Soir · 19 h → 5 h » de la carte du moment, Paramètres « Moments de la
-journée »). `routine_context.dart` (fenêtres des `timeContext`, devinettes) n'est pas réglé.
+journée »). Les contextes horaires des routines (`routine_context.dart`) suivent ces moments via
+`AppLogic.timeContexts` (`timeContextsWith`, `effTimeContextOf(contexts:)`, `allows` gère une fenêtre qui passe minuit) :
+coach « faisable maintenant » (`computeCoachMoment(timeContexts:)`) et heure proposée par la renégociation. La fiche
+routine garde les libellés par défaut (choix du contexte).
 **Enchaîner les routines** (lot 2, `widgets/routine_chain_screen.dart`, bouton de la carte du moment) : la file du moment
 une routine par écran, compteur − x / y + sur place (`routinePlus` / `routineMinus` / `routineTodayCount`, partagés avec la
 vue), « Suivante » selon le compteur (rien : inactif · partiel : « Garder 1 / 2 » · atteinte : « Cible atteinte »),

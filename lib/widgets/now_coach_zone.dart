@@ -128,7 +128,8 @@ class _NowCoachZoneState extends State<NowCoachZone> {
   Widget _coachCard(DateTime now) {
     final moment = computeCoachMoment(now, st, widget.schedule, st.sessions,
         driftSnoozed: _driftSnoozeUntil != null && now.isBefore(_driftSnoozeUntil!),
-        challenge: _challengeProposal(now));
+        challenge: _challengeProposal(now),
+        timeContexts: logic.timeContexts);
     if (moment.hidden) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 16),

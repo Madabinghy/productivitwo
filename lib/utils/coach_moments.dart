@@ -94,6 +94,9 @@ CoachMoment computeCoachMoment(
   List<Session> recentSessions, {
   bool driftSnoozed = false,
   ChallengeProposal? challenge,
+  /// Contextes horaires alignés sur les moments réglés (`AppLogic.timeContexts`) ;
+  /// null = défauts.
+  Map<String, TimeContextDef>? timeContexts,
 }) {
   final minutes = now.hour * 60 + now.minute;
   if (minutes < 5 * 60) return CoachMoment.none; // nuit
@@ -119,7 +122,7 @@ CoachMoment computeCoachMoment(
       : null;
 
   // Événement 1 — un chrono vient de finir (≤ 10 min) : « Et ensuite ? ».
-  final chain = _chainMoment(now, st, blocks, recentSessions, challenge: chal);
+  final chain = _chainMoment(now, st, blocks, recentSessions, challenge: chal, timeContexts: timeContexts);
   if (chain != null) return chain;
 
   // Événement 2 — un bloc posé dérive (> 45 min, 0 min logguée). Pas avant
@@ -233,7 +236,7 @@ ScheduleBlock _challengeBlock(ChallengeProposal c) => ScheduleBlock(
 
 CoachMoment? _chainMoment(DateTime now, AppState st,
     List<ScheduleBlock> blocks, List<Session> sessions,
-    {ChallengeProposal? challenge}) {
+    {ChallengeProposal? challenge, Map<String, TimeContextDef>? timeContexts}) {
   Session? last;
   for (final s in sessions) {
     if (s.endAt == null) {
@@ -312,7 +315,7 @@ CoachMoment? _chainMoment(DateTime now, AppState st,
         CoachActionKind.challengeAccept,
         block: _challengeBlock(chal)));
   } else {
-    final f = gapFillers(now, st, gap, blocks: blocks).firstOrNull;
+    final f = gapFillers(now, st, gap, blocks: blocks, timeContexts: timeContexts).firstOrNull;
     if (f != null) {
       proposal = _fillerText(f, hasNext: next != null);
       actions.add(_fillerAction(now, f));
@@ -502,7 +505,7 @@ class GapFiller {
 /// [blocks] : une routine déjà posée en bloc pending aujourd'hui est écartée
 /// aussi — le programme la porte déjà.
 List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
-    {List<ScheduleBlock> blocks = const [], int max = 2}) {
+    {List<ScheduleBlock> blocks = const [], int max = 2, Map<String, TimeContextDef>? timeContexts}) {
   final nowMin = now.hour * 60 + now.minute;
   final planned = {
     for (final b in blocks)
@@ -529,7 +532,7 @@ List<GapFiller> gapFillers(DateTime now, AppState st, int gapMin,
     if (dist != null && dist > 240) continue;
     // Sans historique MESURÉ, le méta-contexte tranche : « Hygiène du soir »
     // n'est pas un combleur de 10 h du matin (le réel, lui, bat le catalogue).
-    if (tm == null && !(effTimeContextOf(a)?.allows(nowMin) ?? true)) continue;
+    if (tm == null && !(effTimeContextOf(a, contexts: timeContexts)?.allows(nowMin) ?? true)) continue;
     entries.add((
       f: GapFiller(
           routine: a,
