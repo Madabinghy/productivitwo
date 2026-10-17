@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show pickLinkedActivity, showRoutineSheet;
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -103,6 +104,44 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   }
 
   int _todayCount(Activity a) => routineTodayCount(logic, a);
+
+  // ── Activité liée : chrono et liaison sans quitter Aujourd'hui ─────────────
+
+  Activity? _linkedOf(Activity a) {
+    final id = (a.linkedActivityId ?? '').trim();
+    if (id.isEmpty) return null;
+    return logic.state.activeActivities.where((x) => x.id == id).firstOrNull;
+  }
+
+  bool _isRunning(Activity linked) => logic.runningActivity()?.id == linked.id;
+
+  /// ▶ = chrono libre sur l'activité liée (arrête l'éventuel chrono en cours) ;
+  /// déjà dessus = stop.
+  void _toggleChrono(Activity linked) {
+    HapticFeedback.lightImpact();
+    if (_isRunning(linked)) {
+      logic.stopActive();
+    } else {
+      if (logic.runningActivity() != null) logic.stopActive();
+      logic.start(linked.id);
+    }
+    logic.onChange();
+    setState(() {});
+  }
+
+  Future<void> _link(Activity a) async {
+    if (!await pickLinkedActivity(context, st: logic.state, act: a)) return;
+    logic.onChange();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openSheet(Activity a) async {
+    await showRoutineSheet(context, logic: logic, habitId: a.id, day: DateTime.now(),
+        onSaved: () {
+      if (mounted) setState(() {});
+    });
+    if (mounted) setState(() {});
+  }
 
   /// Coche : atteint la cible d'un coup ; déjà atteinte : remet à zéro.
   void _toggleReach(RoutineSlot s) {
@@ -323,6 +362,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             fontWeight: first.reached ? FontWeight.w700 : null,
                             color: first.reached ? kRoutineAccent : pal.text3,
                             fontFeatures: const [FontFeature.tabularFigures()])),
+                    const SizedBox(height: 8),
+                    _chronoLine(pal, first.activity),
                   ]),
           ),
         ]),
@@ -412,6 +453,57 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ],
         ],
       ]),
+    );
+  }
+
+  /// « ▶ Lecture » (chrono sur l'activité liée, « ■ Arrêter » si déjà dessus)
+  /// ou « Lier une activité » quand la routine n'en a pas.
+  Widget _chronoLine(NowPalette pal, Activity a) {
+    final linked = _linkedOf(a);
+    if (linked == null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => _link(a),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 3),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.add_link, size: 15, color: pal.text3),
+              const SizedBox(width: 5),
+              Text('Lier une activité', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: pal.text3)),
+            ]),
+          ),
+        ),
+      );
+    }
+    final running = _isRunning(linked);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: running ? kBAttention.withOpacity(.16) : kRoutineAccent.withOpacity(.14),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: () => _toggleChrono(linked),
+          onLongPress: () => _link(a),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                  size: 16, color: running ? kBAttention : kRoutineAccent),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(running ? 'Arrêter · ${linked.name}' : linked.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700, color: running ? kBAttention : kRoutineAccent)),
+              ),
+            ]),
+          ),
+        ),
+      ),
     );
   }
 
@@ -541,21 +633,39 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(a.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: done ? pal.text3 : pal.text,
-                        decoration: done ? TextDecoration.lineThrough : null,
-                        decorationColor: pal.text3)),
-                if (s.pushed)
-                  Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
-                if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
-              ]),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => _openSheet(a),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            color: done ? pal.text3 : pal.text,
+                            decoration: done ? TextDecoration.lineThrough : null,
+                            decorationColor: pal.text3)),
+                    if (s.pushed)
+                      Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
+                    if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
+                  ]),
+                ),
+              ),
             ),
+            if (_linkedOf(a) case final linked?)
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => _toggleChrono(linked),
+                  child: Icon(_isRunning(linked) ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                      size: 22, color: _isRunning(linked) ? kBAttention : kRoutineAccent),
+                ),
+              ),
             if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 || (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 6),

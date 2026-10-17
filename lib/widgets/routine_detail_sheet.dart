@@ -76,58 +76,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
 
   /// Lier / changer / délier l'activité temps de la routine. « Aucune » délie.
   Future<void> _pickLinkedActivity() async {
-    final acts = st.activities
-        .where((a) =>
-            !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-    final sameDomain = acts.where((a) => a.domainId == act.domainId).toList();
-    final list = sameDomain.isNotEmpty ? sameDomain : acts;
-    final currentId = (act.linkedActivityId ?? '').trim();
-
-    final picked = await showModalBottomSheet<String?>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.only(bottom: 16),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Text('Activité liée',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.block),
-              title: const Text('Aucune'),
-              trailing:
-                  currentId.isEmpty ? const Icon(Icons.check, size: 18) : null,
-              onTap: () => Navigator.pop(ctx, '__none__'),
-            ),
-            if (list.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text('Aucune activité temps disponible.',
-                    style: TextStyle(fontStyle: FontStyle.italic)),
-              ),
-            for (final a in list)
-              ListTile(
-                leading: const Icon(Icons.timer_outlined),
-                title: Text(a.name),
-                trailing:
-                    currentId == a.id ? const Icon(Icons.check, size: 18) : null,
-                onTap: () => Navigator.pop(ctx, a.id),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (picked == null) return; // sheet fermé sans choix
-    act.linkedActivityId = picked == '__none__' ? null : picked;
-    // Le minuteur survit au déliage : sans activité liée, le décompte tourne
-    // sur la routine elle-même (micro-routines).
-    _applySetting();
+    if (await pickLinkedActivity(context, st: st, act: act)) _applySetting();
   }
 
   Future<void> _rename() async {
@@ -936,4 +885,62 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     act.stepUpdatedWeek = null;
     _applySetting();
   }
+}
+
+/// Sélecteur « Activité liée » d'une routine (fiche routine, segment Routines
+/// d'Aujourd'hui) : activités temps du même domaine d'abord, sinon toutes ;
+/// « Aucune » délie. Mute `act.linkedActivityId` et retourne true si choisi
+/// (à l'appelant de propager : `logic.onChange()`).
+Future<bool> pickLinkedActivity(BuildContext context, {required AppState st, required Activity act}) async {
+  final acts = st.activities
+      .where((a) => !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
+      .toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+  final sameDomain = acts.where((a) => a.domainId == act.domainId).toList();
+  final list = sameDomain.isNotEmpty ? sameDomain : acts;
+  final currentId = (act.linkedActivityId ?? '').trim();
+
+  final picked = await showModalBottomSheet<String?>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 16),
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+            child: Text('Activité liée',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.block),
+            title: const Text('Aucune'),
+            trailing:
+                currentId.isEmpty ? const Icon(Icons.check, size: 18) : null,
+            onTap: () => Navigator.pop(ctx, '__none__'),
+          ),
+          if (list.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text('Aucune activité temps disponible.',
+                  style: TextStyle(fontStyle: FontStyle.italic)),
+            ),
+          for (final a in list)
+            ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: Text(a.name),
+              trailing:
+                  currentId == a.id ? const Icon(Icons.check, size: 18) : null,
+              onTap: () => Navigator.pop(ctx, a.id),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (picked == null) return false; // sheet fermé sans choix
+  act.linkedActivityId = picked == '__none__' ? null : picked;
+  // Le minuteur survit au déliage : sans activité liée, le décompte tourne
+  // sur la routine elle-même (micro-routines).
+  return true;
 }

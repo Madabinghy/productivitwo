@@ -3319,7 +3319,12 @@ class _AppRootState extends State<AppRoot>
     showModalBottomSheet<void>(
       context: ctx,
       showDragHandle: true,
+      // En-tête + 4 choix dépassent la hauteur par défaut d'une feuille sur
+      // iPhone : feuille haute et défilante (constaté : overflow sur 14).
+      isScrollControlled: true,
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .85),
       builder: (sheetCtx) => SafeArea(
+        child: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           // En-tête : ce qu'on associe à quoi, lisible d'un coup d'œil —
           // CHRONO (activité, pastille primaire) et BLOC (titre, pastille à la
@@ -3417,6 +3422,7 @@ class _AppRootState extends State<AppRoot>
           ],
           const SizedBox(height: 8),
         ]),
+        ),
       ),
     );
   }

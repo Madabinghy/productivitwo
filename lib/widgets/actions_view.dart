@@ -1158,32 +1158,22 @@ class _ActionsViewState extends State<ActionsView> {
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface.withOpacity(.35))),
             // Facteur réel / estimé (médiane des actions faites chronométrées).
-            if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
-                case final fl?) ...[
-              const SizedBox(width: 10),
-              Tooltip(
-                message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
-                    'Sert à corriger vos estimations.',
-                child: Text(fl,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(.45))),
-              ),
-            ],
             const Spacer(),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
               icon: Icon(_byProject ? Icons.schedule_outlined : Icons.folder_outlined,
                   color: cs.onSurface.withOpacity(.6), size: 22),
               onPressed: () => _setByProject(!_byProject),
             ),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: 'Contextes : je suis… + gestion',
               icon: Icon(Icons.alternate_email, color: cs.primary, size: 24),
               onPressed: _showContextManager,
             ),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: 'Créer une action ou un projet',
               icon: Icon(Icons.add_circle, color: cs.primary, size: 26),
               onPressed: () => showCreateActionOrProjectSheet(
@@ -1367,6 +1357,24 @@ class _ActionsViewState extends State<ActionsView> {
             (TimeBucket.more, 'Plus'),
           ]) ...[
             chip(t, _time == b, () => _setTime(_time == b ? null : b)),
+            const SizedBox(width: 6),
+          ],
+          // Facteur réel / estimé (médiane des actions faites chronométrées),
+          // à côté des créneaux qu'il sert à corriger ; la ligne défile, donc
+          // le libellé complet tient toujours (l'en-tête, lui, débordait).
+          if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
+              case final fl?) ...[
+            const SizedBox(width: 2),
+            Tooltip(
+              message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
+                  'Sert à corriger vos estimations.',
+              child: Text(fl,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.45))),
+            ),
             const SizedBox(width: 6),
           ],
           if (contexts.isNotEmpty) ...[
