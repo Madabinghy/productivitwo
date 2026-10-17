@@ -41,6 +41,25 @@ void main() {
     expect(passesTime(_a('x', est: 30), null), isTrue);
   });
 
+  test('sortedByEstimate : estimées de la plus courte à la plus longue, non estimées après, stable', () {
+    final l = [_a('sans1'), _a('long', est: 90), _a('court', est: 10), _a('sans2'), _a('moyen', est: 10)];
+    expect(sortedByEstimate(l, (a) => a.estimatedMin).map((a) => a.title).toList(),
+        ['court', 'moyen', 'long', 'sans1', 'sans2']);
+  });
+
+  test('nearestOutsideBucket : la plus courte au-delà du créneau, la plus longue en deçà pour « plus »', () {
+    final l = [_a('sans'), _a('20', est: 20), _a('45', est: 45), _a('90', est: 90), _a('10', est: 10)];
+    expect(nearestOutsideBucket(l, TimeBucket.quarter)?.action.title, '20');
+    expect(nearestOutsideBucket(l, TimeBucket.hour)?.action.title, '90');
+    expect(nearestOutsideBucket(l, TimeBucket.more)?.action.title, '45');
+    expect(nearestOutsideBucket([_a('sans'), _a('10', est: 10)], TimeBucket.quarter), isNull);
+  });
+
+  test('timeBucketLabel', () {
+    expect(timeBucketLabel(TimeBucket.quarter), '15 min');
+    expect(timeBucketLabel(TimeBucket.more), "plus d'1 h");
+  });
+
   test('knownContexts : défauts puis contextes rencontrés, triés, sans doublon', () {
     final projects = [_p('p', [_t('t', '2026-09-01', [_a('a', ctx: ['@zoo', '@maison'])])])];
     final acts = [

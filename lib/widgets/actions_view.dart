@@ -1120,6 +1120,24 @@ class _ActionsViewState extends State<ActionsView> {
       ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
     final needNextShown =
         needingNext.where((p) => inDomain(p.domainId) && _inClient(p)).toList();
+    // « J'ai 15 min » et rien ne passe : la plus proche du créneau parmi celles
+    // que seul le temps écarte.
+    final nearest = _time == null
+        ? null
+        : nearestOutsideBucket(
+            all
+                .where((e) =>
+                    inDomain(_domainOf(e)) &&
+                    _inClient(e.project) &&
+                    passesContexts(e.action, active) &&
+                    !upcoming(e))
+                .map((e) => e.action),
+            _time!);
+    final wider = switch (_time) {
+      TimeBucket.quarter => TimeBucket.hour,
+      TimeBucket.hour => TimeBucket.more,
+      _ => null,
+    };
 
     return SafeArea(
       child: ListView(
@@ -1212,17 +1230,36 @@ class _ActionsViewState extends State<ActionsView> {
               padding: const EdgeInsets.only(top: 32),
               child: Center(
                 child: Column(children: [
-                  Text('Rien ne passe les filtres ($hiddenByFilters masquée${hiddenByFilters > 1 ? 's' : ''}).',
+                  Text(
+                      _time == null
+                          ? 'Rien ne passe les filtres ($hiddenByFilters masquée${hiddenByFilters > 1 ? 's' : ''}).'
+                          : 'Rien de ${timeBucketLabel(_time!)} ici.',
                       textAlign: TextAlign.center,
                       style: TextStyle(fontSize: 14, color: cs.onSurface.withOpacity(.45))),
-                  TextButton(
-                    onPressed: () {
-                      _state.nowContexts.clear();
-                      widget.logic.onChange();
-                      _setTime(null);
-                    },
-                    child: const Text('Tout afficher'),
-                  ),
+                  if (nearest != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+                      child: Text(
+                          '${_time == TimeBucket.more ? 'La plus longue' : 'La plus courte'} fait '
+                          '${fmtMin(nearest.min)} : « ${nearest.action.title} ».',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.6))),
+                    ),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    if (wider != null && nearest != null && passesTime(nearest.action, wider))
+                      TextButton(
+                        onPressed: () => _setTime(wider),
+                        child: Text('J\'ai ${timeBucketLabel(wider)}'),
+                      ),
+                    TextButton(
+                      onPressed: () {
+                        _state.nowContexts.clear();
+                        widget.logic.onChange();
+                        _setTime(null);
+                      },
+                      child: const Text('Tout afficher'),
+                    ),
+                  ]),
                 ]),
               ),
             )
@@ -1466,7 +1503,7 @@ class _ActionsViewState extends State<ActionsView> {
     }
     if (nowEntries.isNotEmpty) {
       out.add(_sectionLabel(cs, nowLabel, Icons.bolt_outlined, color: cs.primary));
-      for (final e in nowEntries) {
+      for (final e in _byEst(nowEntries)) {
         used.add(e.action.id);
         out.add(_entryTile(cs, e, showHolder: true, planned: todayIds.contains(e.action.id)));
       }
@@ -1487,7 +1524,7 @@ class _ActionsViewState extends State<ActionsView> {
     final arrived = take((e) => e.task != null && startsToday(e.task!, today));
     if (todayList.isNotEmpty) {
       out.add(_sectionLabel(cs, "AUJOURD'HUI · AU PROGRAMME", Icons.today_outlined));
-      for (final e in todayList) {
+      for (final e in _byEst(todayList)) {
         out.add(_entryTile(cs, e, showHolder: true, planned: true));
       }
       out.add(const SizedBox(height: 8));
@@ -1495,7 +1532,7 @@ class _ActionsViewState extends State<ActionsView> {
 
     if (arrived.isNotEmpty) {
       out.add(_sectionLabel(cs, "ARRIVÉES AUJOURD'HUI", Icons.fiber_new_outlined, color: _newColor));
-      for (final e in arrived) {
+      for (final e in _byEst(arrived)) {
         out.add(_entryTile(cs, e, showHolder: true));
       }
       out.add(const SizedBox(height: 8));
@@ -1505,7 +1542,7 @@ class _ActionsViewState extends State<ActionsView> {
       ..sort((a, b) => _dueOf(a)!.compareTo(_dueOf(b)!));
     if (late.isNotEmpty) {
       out.add(_sectionLabel(cs, 'EN RETARD', Icons.warning_amber_rounded, color: cs.error));
-      for (final e in late) {
+      for (final e in _byEst(late)) {
         out.add(_entryTile(cs, e, showHolder: true));
       }
       out.add(const SizedBox(height: 8));
@@ -1515,7 +1552,7 @@ class _ActionsViewState extends State<ActionsView> {
       ..sort((a, b) => _dueOf(a)!.compareTo(_dueOf(b)!));
     if (week.isNotEmpty) {
       out.add(_sectionLabel(cs, 'CETTE SEMAINE', Icons.date_range_outlined));
-      for (final e in week) {
+      for (final e in _byEst(week)) {
         out.add(_entryTile(cs, e, showHolder: true));
       }
       out.add(const SizedBox(height: 8));
@@ -1539,7 +1576,7 @@ class _ActionsViewState extends State<ActionsView> {
         final needs = needNext.any((p) => p.id == g.project.id);
         if ((entries == null || entries.isEmpty) && !needs) continue;
         out.add(_projectHeader(cs, g.project));
-        for (final e in entries ?? const <_Entry>[]) {
+        for (final e in _byEst(entries ?? const <_Entry>[])) {
           out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
         }
         if (needs) out.add(_defineTile(cs, g.project));
@@ -1552,7 +1589,7 @@ class _ActionsViewState extends State<ActionsView> {
         final entries = restOwn[act.id];
         if (entries == null) continue;
         out.add(_activityLabel(cs, act));
-        for (final e in entries) {
+        for (final e in _byEst(entries)) {
           out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
         }
       }
@@ -1574,11 +1611,16 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
+  /// « J'ai … » actif : chaque section se lit de la plus courte à la plus
+  /// longue (les non estimées en fin) ; sinon l'ordre de la section.
+  List<_Entry> _byEst(List<_Entry> l) =>
+      _time == null ? l : sortedByEstimate(l, (e) => e.action.estimatedMin);
+
   List<Widget> _byProjectSections(ColorScheme cs, List<_Entry> shown, List<Project> needNext) {
     final todayIds = _todayActionIds;
     final out = <Widget>[];
     for (final g in _projectGroups()) {
-      final entries = shown.where((e) => e.project?.id == g.project.id).toList();
+      final entries = _byEst(shown.where((e) => e.project?.id == g.project.id).toList());
       final needs = needNext.any((p) => p.id == g.project.id);
       if (entries.isEmpty && !needs) continue;
       out.add(_projectHeader(cs, g.project));
@@ -1592,7 +1634,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (own.isNotEmpty) {
       out.add(_sectionLabel(cs, 'ACTIONS SIMPLES', Icons.flash_on_outlined, color: cs.tertiary));
       for (final act in _state.activeActivities) {
-        final entries = own.where((e) => e.activity!.id == act.id).toList();
+        final entries = _byEst(own.where((e) => e.activity!.id == act.id).toList());
         if (entries.isEmpty) continue;
         out.add(_activityLabel(cs, act));
         for (final e in entries) {
