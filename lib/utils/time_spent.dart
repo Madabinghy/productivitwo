@@ -55,6 +55,12 @@ String? estimateFactorLabel(double? factor) {
   return 'Réel ≈ $s× l\'estimé';
 }
 
+/// Forme courte pour un en-tête étroit (mobile) : « réel ≈ 1,3× ».
+String? estimateFactorShortLabel(double? factor) {
+  if (factor == null) return null;
+  return 'réel ≈ ${factor.toStringAsFixed(1).replaceAll('.', ',')}×';
+}
+
 /// « 35 min passées » + dépassement éventuel de l'estimation.
 ({String label, bool over})? spentLabel(int spentMin, int? estimatedMin, String Function(int) fmt) {
   if (spentMin <= 0) return null;

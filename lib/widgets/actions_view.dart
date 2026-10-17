@@ -1158,7 +1158,7 @@ class _ActionsViewState extends State<ActionsView> {
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface.withOpacity(.35))),
             // Facteur réel / estimé (médiane des actions faites chronométrées).
-            if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
+            if (estimateFactorShortLabel(estimateFactor(widget.logic.currentProjects, _spent))
                 case final fl?) ...[
               const SizedBox(width: 10),
               // Flexible : le libellé cède la place aux trois boutons de
@@ -1179,17 +1179,20 @@ class _ActionsViewState extends State<ActionsView> {
             ],
             const Spacer(),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
               icon: Icon(_byProject ? Icons.schedule_outlined : Icons.folder_outlined,
                   color: cs.onSurface.withOpacity(.6), size: 22),
               onPressed: () => _setByProject(!_byProject),
             ),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: 'Contextes : je suis… + gestion',
               icon: Icon(Icons.alternate_email, color: cs.primary, size: 24),
               onPressed: _showContextManager,
             ),
             IconButton(
+              visualDensity: VisualDensity.compact,
               tooltip: 'Créer une action ou un projet',
               icon: Icon(Icons.add_circle, color: cs.primary, size: 26),
               onPressed: () => showCreateActionOrProjectSheet(
