@@ -90,6 +90,9 @@ class _ChainScreenState extends State<_ChainScreen> {
   bool _paused = false;
   bool _summary = false;
   bool _busy = false;
+  // Routine affichée : la file la retire dès que la cible est atteinte (un +1
+  // sur une cible à 1), on la garde en tête jusqu'à « Suivante ».
+  ChainItem? _held;
 
   AppLogic get logic => widget.logic;
 
@@ -153,7 +156,16 @@ class _ChainScreenState extends State<_ChainScreen> {
       deferred: _routineDeferred,
       dismissed: _routineDismissed,
     );
-    return orderChain(items, deferred: _deferred, dismissed: _dismissed);
+    var list = orderChain(items, deferred: _deferred, dismissed: _dismissed);
+    final h = _held;
+    if (h != null &&
+        !_dismissed.contains(h.key) &&
+        !_deferred.contains(h.key) &&
+        !list.any((x) => x.key == h.key)) {
+      list = [h, ...list];
+    }
+    _held = list.firstOrNull?.kind == ChainKind.routine ? list.first : null;
+    return list;
   }
 
   Session? get _openSession {
