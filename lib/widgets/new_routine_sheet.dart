@@ -33,6 +33,7 @@ Future<NewRoutineResult?> showNewRoutineSheet(
   return showModalBottomSheet<NewRoutineResult>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     showDragHandle: true,
     builder: (_) => _NewRoutineSheet(logic: logic),
   );
@@ -121,7 +122,9 @@ class _NewRoutineSheetState extends State<_NewRoutineSheet> {
     final canSubmit =
         _nameCtrl.text.trim().isNotEmpty && _domainId != null;
 
-    return Padding(
+    // Défilante : avec le clavier ouvert (nom en focus), la colonne dépassait
+    // et le bouton « Ajouter » débordait (constaté sur iPhone 14).
+    return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
           16, 8, 16, 16 + MediaQuery.of(context).viewInsets.bottom),
       child: Column(
