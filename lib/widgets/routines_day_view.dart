@@ -583,9 +583,9 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    // Nom en entier (plus de troncature : « Repas équilibré
+                    // sans grignot… » ne disait rien), la ligne s'étire.
                     Text(a.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.w600,
