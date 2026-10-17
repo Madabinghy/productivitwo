@@ -33,7 +33,14 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   date de début avec « dès demain / dès jeu. 15 oct. / dès le 2 nov. » (`upcomingActions`, `upcomingLabel`,
   `utils/actions_logic.dart`) ; toujours cochable. Exception mobile : action au programme du jour = reste devant. Web :
   `_taskFilter` exclut toujours les tâches à venir ; un projet dont tout est à venir affiche « Prochaine action dès … »
-  au lieu de « Définir la prochaine action ». Pas (encore) de date par action : c'est la date de la tâche qui fait foi.
+  au lieu de « Définir la prochaine action ».
+  **Date par action** (2026-10, lot 1 = modèle + MCP + logique pure, rien de visible) : `TaskAction.dueDate` (jour, optionnel,
+  `YYYY-MM-DD` en base) ; l'échéance EFFECTIVE d'une action = `effectiveDueDate(a, task)` (la sienne, sinon celle de la
+  tâche ; `isOverdueAction`, `overdueActionCount` par action) — ne jamais lire `dueDate` ou `task.endDate` seuls. MCP :
+  `dueDate` sur les objets action de `push_gantt` / `add_task` / `update_task` (préservée au re-push par titre) et
+  `add_activity_action`, `update_action {dueDate | clearDueDate}` (`action_patch.ts`). **Lot 2 (à faire)** : affichage
+  « éch. » et édition dans la feuille d'action mobile / dialogs web, sections En retard / Cette semaine / À venir sur
+  l'échéance effective, planificateur de semaine, prochaine action de la santé de projet.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre

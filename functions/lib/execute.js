@@ -213,10 +213,11 @@ function pickTask(t) {
         const ctxs = Array.isArray(o.contexts) ? o.contexts.filter((c) => typeof c === "string")
             : typeof o.context === "string" ? [o.context] : [];
         const est = (_b = (_a = estimatedMinOrUndefined(o.estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(o.title, ctxs)) !== null && _b !== void 0 ? _b : undefined;
-        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        const due = actionDueDate(o.dueDate, "action.dueDate");
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
@@ -264,6 +265,14 @@ function normalizeChecklist(raw) {
 function estimatedMinOrUndefined(raw) {
     const n = typeof raw === "number" ? raw : Number(raw);
     return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+// Échéance PROPRE d'une action (YYYY-MM-DD) ; "" / null / absent = aucune (la
+// date de la tâche fait foi). Format invalide = erreur nommant le champ.
+function actionDueDate(raw, field) {
+    if (raw === undefined || raw === null || raw === "")
+        return undefined;
+    assertDate(raw, field);
+    return raw;
 }
 function pickProject(p) {
     var _a, _b;
@@ -535,7 +544,7 @@ async function executeGetUserContext(uid) {
             .filter((a) => (a === null || a === void 0 ? void 0 : a.done) !== true)
             .map((a) => {
             var _a;
-            return (Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
+            return (Object.assign(Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, (typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
         });
         return Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
@@ -1566,13 +1575,14 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         context: (_h = a.context) !== null && _h !== void 0 ? _h : null,
                         contexts: Array.isArray(a.contexts) ? a.contexts : [],
                         estimatedMin: (_j = estimatedMinOrUndefined(a.estimatedMin)) !== null && _j !== void 0 ? _j : null,
+                        dueDate: typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null,
                         checklist: Array.isArray(a.checklist)
                             ? a.checklist : [],
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1592,10 +1602,14 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         ? obj === null || obj === void 0 ? void 0 : obj.contexts
                         : (_h = previous === null || previous === void 0 ? void 0 : previous.contexts) !== null && _h !== void 0 ? _h : [],
                     estimatedMin: (_l = (_j = estimatedMinOrUndefined(obj === null || obj === void 0 ? void 0 : obj.estimatedMin)) !== null && _j !== void 0 ? _j : previous === null || previous === void 0 ? void 0 : previous.estimatedMin) !== null && _l !== void 0 ? _l : (0, default_estimates_1.defaultEstimateFor)(title, Array.isArray(obj === null || obj === void 0 ? void 0 : obj.contexts) ? obj.contexts : []),
+                    // Échéance propre fournie (null / "" = effacer) ; sinon celle conservée.
+                    dueDate: obj && "dueDate" in obj
+                        ? ((_m = actionDueDate(obj.dueDate, "action.dueDate")) !== null && _m !== void 0 ? _m : null)
+                        : (_o = previous === null || previous === void 0 ? void 0 : previous.dueDate) !== null && _o !== void 0 ? _o : null,
                     // Checklist fournie → normalisée ; sinon celle de l'action conservée.
                     checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
                         ? normalizeChecklist(obj.checklist)
-                        : (_m = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _m !== void 0 ? _m : [],
+                        : (_p = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _p !== void 0 ? _p : [],
                 });
             });
         }
@@ -1856,6 +1870,10 @@ async function executeUpdateAction(uid, args) {
         patch.estimatedMin = null;
     else if (args.estimatedMin !== undefined)
         patch.estimatedMin = args.estimatedMin;
+    if (args.clearDueDate === true)
+        patch.dueDate = null;
+    else if (args.dueDate !== undefined)
+        patch.dueDate = args.dueDate;
     if (args.done !== undefined)
         patch.done = args.done;
     if (args.linkedActivityId !== undefined) {
@@ -2064,10 +2082,11 @@ async function executeManageContexts(uid, args) {
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin) {
+async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin, dueDate) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
+    const due = actionDueDate(dueDate, "dueDate");
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -2078,11 +2097,11 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
+    const action = withBothContexts(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
         var _a;
         const est = (_a = estimatedMinOrUndefined(estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(title, [...(Array.isArray(contexts) ? contexts : []), context !== null && context !== void 0 ? context : ""]);
         return est !== undefined && est !== null ? { estimatedMin: est } : {};
-    })()));
+    })()), (due !== undefined ? { dueDate: due } : {})));
     own.push(action);
     await ref.update({ ownActions: own });
     const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
@@ -2608,6 +2627,8 @@ async function executePlanDay(uid, args) {
         `     regroupe en séquences ADJACENTES les blocs dont les actions partagent le même contexte`,
         `     (toutes les courses ensemble, tout l'@ordinateur d'affilée…) pour éviter les allers-retours`,
         `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
+        `   → ÉCHÉANCES : une action peut porter sa propre dueDate (YYYY-MM-DD), qui PRIME sur la date de sa tâche —`,
+        `     programme d'abord ce qui échoit le plus tôt ; une date connue sans dueDate → update_action {dueDate}.`,
         `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
         `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
         `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,

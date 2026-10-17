@@ -293,17 +293,33 @@ bool isOverdueTask(ProjectTask t, DateTime today) {
   return due.isBefore(d);
 }
 
-/// Actions EN RETARD : ouvertes, dans une tâche ouverte (ni faite ni annulée)
-/// d'un projet vivant, dont l'échéance de la tâche est avant [today]. Même
-/// règle que le groupe « En retard » d'Actions (mobile et web) — alimente la
-/// pastille de l'onglet Actions.
+/// Échéance EFFECTIVE d'une action (2026-10) : la sienne si posée
+/// (`TaskAction.dueDate`), sinon celle de sa tâche. Jour seul ; null = aucune.
+/// C'est LE lecteur de l'échéance d'une action : ne jamais lire `dueDate` ou
+/// `task.endDate` seuls pour décider d'un retard.
+DateTime? effectiveDueDate(TaskAction a, ProjectTask? t) {
+  final d = a.dueDate ?? t?.endDate;
+  return d == null ? null : _dayOnly(d);
+}
+
+/// Action EN RETARD : ouverte, dans une tâche ouverte (ni faite ni annulée),
+/// dont l'échéance effective est avant [today].
+bool isOverdueAction(TaskAction a, ProjectTask? t, DateTime today) {
+  if (a.done) return false;
+  if (t != null && (t.status == 'done' || t.status == 'skipped')) return false;
+  final due = effectiveDueDate(a, t);
+  return due != null && due.isBefore(_dayOnly(today));
+}
+
+/// Actions EN RETARD des projets vivants (`isOverdueAction`). Même règle que
+/// le groupe « En retard » d'Actions (mobile et web) — alimente la pastille de
+/// l'onglet Actions.
 int overdueActionCount(List<Project> projects, DateTime today) {
   var n = 0;
   for (final p in projects) {
     if (p.status != 'active' || p.paused) continue;
     for (final t in p.tasks) {
-      if (!isOverdueTask(t, today)) continue;
-      n += t.actions.where((a) => !a.done).length;
+      n += t.actions.where((a) => isOverdueAction(a, t, today)).length;
     }
   }
   return n;

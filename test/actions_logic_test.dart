@@ -2,8 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
 
-TaskAction _a(String title, {List<String>? ctx, int? est, bool done = false, String? linked}) =>
-    TaskAction(title: title, contexts: ctx, estimatedMin: est, done: done, linkedActivityId: linked);
+TaskAction _a(String title, {List<String>? ctx, int? est, bool done = false, String? linked, DateTime? due}) =>
+    TaskAction(title: title, contexts: ctx, estimatedMin: est, done: done, linkedActivityId: linked, dueDate: due);
 
 ProjectTask _t(String id, String start, List<TaskAction> actions, {String status = 'pending'}) =>
     ProjectTask(id: id, title: id, startDate: DateTime.parse(start), actions: actions, status: status);
@@ -63,6 +63,45 @@ void main() {
     expect(matchesQuery('devis martin', ['Relire le devis', 'Dossier Dupont']), isFalse);
     expect(matchesQuery('ecole', ['6e — École des Mathématiques']), isTrue);
     expect(matchesQuery('oeuvre', ['Œuvre']), isTrue);
+  });
+
+  group('Échéance par action (dueDate, 2026-10)', () {
+    final today = DateTime(2026, 10, 16);
+    final t = ProjectTask(id: 't', title: 't', startDate: DateTime(2026, 10, 1), endDate: DateTime(2026, 10, 20, 23, 59));
+
+    test('effectiveDueDate : la sienne, sinon celle de la tâche, jour seul ; sans rien = null', () {
+      expect(effectiveDueDate(_a('x', due: DateTime(2026, 10, 10, 15)), t), DateTime(2026, 10, 10));
+      expect(effectiveDueDate(_a('x'), t), DateTime(2026, 10, 20));
+      expect(effectiveDueDate(_a('x'), ProjectTask(id: 'u', title: 'u', startDate: DateTime(2026, 10, 1))), isNull);
+      expect(effectiveDueDate(_a('x'), null), isNull);
+    });
+
+    test('isOverdueAction : échéance propre passée dans une tâche encore dans les temps', () {
+      expect(isOverdueAction(_a('x', due: DateTime(2026, 10, 15)), t, today), isTrue);
+      expect(isOverdueAction(_a('x', due: DateTime(2026, 10, 16)), t, today), isFalse);
+      expect(isOverdueAction(_a('x'), t, today), isFalse);
+      expect(isOverdueAction(_a('x', due: DateTime(2026, 10, 15), done: true), t, today), isFalse);
+      final late = ProjectTask(id: 'l', title: 'l', startDate: DateTime(2026, 10, 1), endDate: DateTime(2026, 10, 10));
+      expect(isOverdueAction(_a('x'), late, today), isTrue);
+      // Une échéance propre plus tard que la tâche repousse le retard.
+      expect(isOverdueAction(_a('x', due: DateTime(2026, 10, 30)), late, today), isFalse);
+      expect(isOverdueAction(_a('x'), ProjectTask(id: 'd', title: 'd', startDate: DateTime(2026, 10, 1),
+          endDate: DateTime(2026, 10, 10), status: 'done'), today), isFalse);
+    });
+
+    test('overdueActionCount : par action, pas par tâche', () {
+      final p = _p('p', [
+        _t('ok', '2026-10-01', [_a('a', due: DateTime(2026, 10, 10)), _a('b')]),
+      ]);
+      expect(overdueActionCount([p], today), 1);
+    });
+
+    test('toJson / from : dueDate en YYYY-MM-DD, null conservé', () {
+      final a = _a('x', due: DateTime(2026, 10, 5, 18, 30));
+      expect(a.toJson()['dueDate'], '2026-10-05');
+      expect(TaskAction.from(a.toJson()).dueDate, DateTime(2026, 10, 5));
+      expect(TaskAction.from(_a('y').toJson()).dueDate, isNull);
+    });
   });
 
   test('timeBucketLabel', () {
