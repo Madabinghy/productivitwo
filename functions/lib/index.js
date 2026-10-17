@@ -1826,7 +1826,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeLinkActionToActivity)(uid, args.projectId, args.taskId, args.actionId, args.activityId);
                 }
                 else if (toolName === "add_activity_action") {
-                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin);
+                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin, args.dueDate);
                 }
                 else if (toolName === "list_sessions") {
                     text = await (0, execute_1.executeListSessions)(uid, {
@@ -1867,6 +1867,8 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         removeContexts: args.removeContexts,
                         estimatedMin: args.estimatedMin,
                         clearEstimate: args.clearEstimate,
+                        dueDate: args.dueDate,
+                        clearDueDate: args.clearDueDate,
                         linkedActivityId: args.linkedActivityId,
                         done: args.done,
                         delete: args.delete,

@@ -1852,6 +1852,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.context as string | undefined,
             args.contexts as string[] | undefined,
             args.estimatedMin as number | undefined,
+            args.dueDate as string | undefined,
           );
         } else if (toolName === "list_sessions") {
           text = await executeListSessions(uid, {
@@ -1888,6 +1889,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             removeContexts: args.removeContexts as string[] | undefined,
             estimatedMin: args.estimatedMin as number | undefined,
             clearEstimate: args.clearEstimate as boolean | undefined,
+            dueDate: args.dueDate as string | undefined,
+            clearDueDate: args.clearDueDate as boolean | undefined,
             linkedActivityId: args.linkedActivityId as string | undefined,
             done: args.done as boolean | undefined,
             delete: args.delete as boolean | undefined,

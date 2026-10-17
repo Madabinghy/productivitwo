@@ -68,6 +68,9 @@ class TaskAction {
   // contextes (@ordinateur ET @bureau). `context` reste le principal (1er).
   List<String> contexts;
   int? estimatedMin; // durée estimée ; null = passe tous les filtres « J'ai… »
+  // Échéance PROPRE de l'action (jour, 2026-10) ; null = celle de la tâche fait
+  // foi. Lire via `effectiveDueDate` (utils/actions_logic.dart), jamais seule.
+  DateTime? dueDate;
   List<ChecklistItem> checklist; // micro-actions ; vide = pas de checklist
 
   TaskAction({
@@ -80,6 +83,7 @@ class TaskAction {
     this.context,
     List<String>? contexts,
     this.estimatedMin,
+    this.dueDate,
     List<ChecklistItem>? checklist,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
@@ -117,6 +121,7 @@ class TaskAction {
         'context': context,
         'contexts': contexts,
         'estimatedMin': estimatedMin,
+        'dueDate': dueDate == null ? null : _actionYmd(dueDate!),
         'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
@@ -141,10 +146,16 @@ class TaskAction {
       context: multi.isNotEmpty ? multi.first : null,
       contexts: multi,
       estimatedMin: _parseEstimatedMin(j['estimatedMin']),
+      dueDate: _parseDateOrNull(j['dueDate']),
       checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
     );
   }
 }
+
+/// `YYYY-MM-DD` : l'échéance d'une action est un jour, pas un instant (même
+/// forme que les dates du MCP).
+String _actionYmd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 //
 // Ces modèles sont indépendants de AppState : ils sont chargés à la demande

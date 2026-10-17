@@ -10,6 +10,7 @@ export type ActionPatch = {
   addContexts?: string[];
   removeContexts?: string[];
   estimatedMin?: number | null; // null = effacer
+  dueDate?: string | null;      // échéance propre YYYY-MM-DD ; null / "" = retour à la date de la tâche
   linkedActivityId?: string | null; // null = délier (actions de projet)
   done?: boolean;
 };
@@ -62,6 +63,19 @@ export function applyActionPatch(
       if (n !== cur) {
         changes.push(`estimation ${cur === null ? "—" : `${cur} min`} → ${n === null ? "—" : `${n} min`}`);
         a = { ...a, estimatedMin: n };
+      }
+    }
+  }
+
+  if (patch.dueDate !== undefined) {
+    const v = patch.dueDate === null || patch.dueDate.trim() === "" ? null : patch.dueDate.trim();
+    if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      changes.push(`échéance ignorée (YYYY-MM-DD attendu, reçu « ${v} »)`);
+    } else {
+      const cur = typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null;
+      if (v !== cur) {
+        changes.push(`échéance ${cur ?? "— (celle de la tâche)"} → ${v ?? "— (celle de la tâche)"}`);
+        a = { ...a, dueDate: v };
       }
     }
   }

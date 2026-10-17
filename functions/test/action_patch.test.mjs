@@ -54,3 +54,18 @@ test("fait : doneAt posé, checklist cochée ; rouvrir garde les étapes", () =>
   assert.deepEqual(r2.action.checklist.map((c) => c.done), [true, true]);
   assert.deepEqual(applyActionPatch(base, { done: false }, NOW).changes, []);
 });
+
+test("échéance propre : pose, efface ('' ou null), rejette un format invalide, inchangée ignorée", () => {
+  const r = applyActionPatch(base, { dueDate: "2026-10-20" }, NOW);
+  assert.equal(r.action.dueDate, "2026-10-20");
+  assert.equal(r.changes.length, 1);
+  const r2 = applyActionPatch(r.action, { dueDate: "2026-10-20" }, NOW);
+  assert.deepEqual(r2.changes, []);
+  const r3 = applyActionPatch(r.action, { dueDate: "" }, NOW);
+  assert.equal(r3.action.dueDate, null);
+  const r4 = applyActionPatch(r.action, { dueDate: null }, NOW);
+  assert.equal(r4.action.dueDate, null);
+  const r5 = applyActionPatch(base, { dueDate: "20/10/2026" }, NOW);
+  assert.equal(r5.action.dueDate, undefined);
+  assert.match(r5.changes[0], /ignorée/);
+});

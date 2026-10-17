@@ -24,6 +24,12 @@ const TASK_ACTION_ITEM_SCHEMA = {
           type: "integer",
           description: "Durée estimée en minutes (optionnel).",
         },
+        dueDate: {
+          type: "string",
+          description:
+            "Échéance PROPRE de l'action (YYYY-MM-DD, optionnel) ; absente = la date de la tâche fait foi. " +
+            "Prime sur la tâche pour « En retard » / « Cette semaine ».",
+        },
         checklist: {
           type: "array",
           description:
@@ -799,7 +805,7 @@ const PUSH_GANTT_MCP_TOOL = {
                   items: TASK_ACTION_ITEM_SCHEMA,
                   description:
                     "Sous-actions opérationnelles — string simple, OU objet " +
-                    "{ title, linkedActivityId?, contexts?, estimatedMin? } pour lier l'action à une " +
+                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour lier l'action à une " +
                     "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -875,7 +881,7 @@ const ADD_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Sous-actions opérationnelles — string simple, OU objet " +
-          "{ title, linkedActivityId?, contexts?, estimatedMin? } pour lier l'action à une " +
+          "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour lier l'action à une " +
           "activité-temps (chrono ciblé) dès la création. " +
           "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
           "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -918,7 +924,7 @@ const UPDATE_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
-          "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin? } pour poser le lien chrono.",
+          "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour poser le lien chrono.",
       },
     },
   },
@@ -1167,8 +1173,10 @@ const UPDATE_ACTION_TOOL = {
     "Modifie UNE action existante sans toucher au reste : action propre d'une activité (activityId + actionId, " +
     "ids via get_user_context) ou sous-action d'une tâche de projet (projectId + taskId + actionId, ids via get_project). " +
     "Champs modifiables : title, contexts (remplace tout ; [] = aucun), addContexts / removeContexts (ajuste sans " +
-    "tout réécrire), estimatedMin (clearEstimate=true pour effacer), linkedActivityId (sous-action de projet ; '' pour " +
-    "délier), done (true coche aussi toutes les étapes de la checklist), delete=true pour supprimer l'action. " +
+    "tout réécrire), estimatedMin (clearEstimate=true pour effacer), dueDate (échéance PROPRE de l'action, YYYY-MM-DD, " +
+    "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), linkedActivityId " +
+    "(sous-action de projet ; '' pour délier), done (true coche aussi toutes les étapes de la checklist), delete=true " +
+    "pour supprimer l'action. " +
     "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions).",
   inputSchema: {
     type: "object",
@@ -1184,6 +1192,8 @@ const UPDATE_ACTION_TOOL = {
       removeContexts:   { type: "array", items: { type: "string" } },
       estimatedMin:     { type: "integer", description: "Durée estimée en minutes" },
       clearEstimate:    { type: "boolean", description: "Efface l'estimation" },
+      dueDate:          { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD) ; '' pour effacer" },
+      clearDueDate:     { type: "boolean", description: "Efface l'échéance propre (la date de la tâche fait foi à nouveau)" },
       linkedActivityId: { type: "string", description: "Activité-temps liée (chrono ciblé) ; '' pour délier. Sous-actions de projet uniquement" },
       done:             { type: "boolean" },
       delete:           { type: "boolean", description: "Supprime l'action" },
@@ -1196,7 +1206,7 @@ const UPDATE_ACTIONS_TOOL = {
   description:
     "Lot de retouches d'actions en UN appel (B4 : ne compte qu'une fois dans le rate limit). updates[] = 1 à 50 " +
     "entrées avec les mêmes champs qu'update_action (activityId | projectId + taskId, actionId, title, contexts, " +
-    "addContexts, removeContexts, estimatedMin, clearEstimate, linkedActivityId, done, delete). Les entrées sont " +
+    "addContexts, removeContexts, estimatedMin, clearEstimate, dueDate, clearDueDate, linkedActivityId, done, delete). Les entrées sont " +
     "appliquées dans l'ordre ; une erreur n'arrête pas le lot. Idéal pour poser des estimations ou des contextes en série.",
   inputSchema: {
     type: "object",
@@ -1220,6 +1230,8 @@ const UPDATE_ACTIONS_TOOL = {
             removeContexts: { type: "array", items: { type: "string" } },
             estimatedMin: { type: "integer" },
             clearEstimate: { type: "boolean" },
+            dueDate: { type: "string" },
+            clearDueDate: { type: "boolean" },
             linkedActivityId: { type: "string" },
             done: { type: "boolean" },
             delete: { type: "boolean" },
@@ -1288,6 +1300,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
       context:    { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
       contexts:   { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
       estimatedMin: { type: "integer", description: "Durée estimée en minutes (voir estimate_accuracy pour calibrer)" },
+      dueDate:    { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD, optionnel)" },
     },
   },
 };

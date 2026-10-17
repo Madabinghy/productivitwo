@@ -56,6 +56,19 @@ function applyActionPatch(action, patch, nowIso = new Date().toISOString()) {
             }
         }
     }
+    if (patch.dueDate !== undefined) {
+        const v = patch.dueDate === null || patch.dueDate.trim() === "" ? null : patch.dueDate.trim();
+        if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            changes.push(`échéance ignorée (YYYY-MM-DD attendu, reçu « ${v} »)`);
+        }
+        else {
+            const cur = typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null;
+            if (v !== cur) {
+                changes.push(`échéance ${cur !== null && cur !== void 0 ? cur : "— (celle de la tâche)"} → ${v !== null && v !== void 0 ? v : "— (celle de la tâche)"}`);
+                a = Object.assign(Object.assign({}, a), { dueDate: v });
+            }
+        }
+    }
     if (patch.linkedActivityId !== undefined) {
         const v = patch.linkedActivityId && patch.linkedActivityId.trim() ? patch.linkedActivityId.trim() : null;
         const cur = typeof a.linkedActivityId === "string" && a.linkedActivityId ? a.linkedActivityId : null;

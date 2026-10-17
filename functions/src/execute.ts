@@ -167,6 +167,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
     const ctxs = Array.isArray(o.contexts) ? o.contexts.filter((c) => typeof c === "string")
       : typeof o.context === "string" ? [o.context] : [];
     const est = estimatedMinOrUndefined(o.estimatedMin) ?? defaultEstimateFor(o.title, ctxs) ?? undefined;
+    const due = actionDueDate(o.dueDate, "action.dueDate");
     return withBothContexts({
       id: typeof o.id === "string" ? o.id : uuidv4(),
       title: typeof o.title === "string" ? o.title : String(o.title ?? ""),
@@ -180,6 +181,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
       ...(Array.isArray(o.contexts)
         ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
       ...(est !== undefined ? { estimatedMin: est } : {}),
+      ...(due !== undefined ? { dueDate: due } : {}),
       ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
     });
   });
@@ -242,6 +244,14 @@ function normalizeChecklist(raw: unknown[]): Array<Record<string, unknown>> {
 function estimatedMinOrUndefined(raw: unknown): number | undefined {
   const n = typeof raw === "number" ? raw : Number(raw);
   return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+// Échéance PROPRE d'une action (YYYY-MM-DD) ; "" / null / absent = aucune (la
+// date de la tâche fait foi). Format invalide = erreur nommant le champ.
+function actionDueDate(raw: unknown, field: string): string | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  assertDate(raw, field);
+  return raw as string;
 }
 
 function pickProject(p: ProjectPayload): Record<string, unknown> {
@@ -559,6 +569,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
         title: a.title,
         done: false,
         estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
+        ...(typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {}),
         ...(contextsOf(a).length > 0 ? { contexts: contextsOf(a) } : {}),
       }));
     return {
@@ -1719,7 +1730,7 @@ async function executeUpdateTask(
       const oldByTitle: Record<string, {
         done: boolean; doneAt: string | null; id?: string;
         linkedActivityId: string | null; context: string | null;
-        contexts: string[]; estimatedMin: number | null;
+        contexts: string[]; estimatedMin: number | null; dueDate: string | null;
         checklist: Array<Record<string, unknown>>;
       }> = {};
       for (const a of oldActions) {
@@ -1733,6 +1744,7 @@ async function executeUpdateTask(
             context: (a.context as string) ?? null,
             contexts: Array.isArray(a.contexts) ? (a.contexts as string[]) : [],
             estimatedMin: estimatedMinOrUndefined(a.estimatedMin) ?? null,
+            dueDate: typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null,
             checklist: Array.isArray(a.checklist)
               ? (a.checklist as Array<Record<string, unknown>>) : [],
           };
@@ -1762,6 +1774,10 @@ async function executeUpdateTask(
           estimatedMin: estimatedMinOrUndefined(obj?.estimatedMin)
             ?? previous?.estimatedMin
             ?? defaultEstimateFor(title, Array.isArray(obj?.contexts) ? (obj!.contexts as unknown[]) : []),
+          // Échéance propre fournie (null / "" = effacer) ; sinon celle conservée.
+          dueDate: obj && "dueDate" in obj
+            ? (actionDueDate(obj.dueDate, "action.dueDate") ?? null)
+            : previous?.dueDate ?? null,
           // Checklist fournie → normalisée ; sinon celle de l'action conservée.
           checklist: Array.isArray(obj?.checklist)
             ? normalizeChecklist(obj!.checklist as unknown[])
@@ -2027,7 +2043,8 @@ async function planDayTimeBlock(uid: string): Promise<string[]> {
 type UpdateActionArgs = {
   activityId?: string; projectId?: string; taskId?: string; actionId: string;
   title?: string; contexts?: string[]; addContexts?: string[]; removeContexts?: string[];
-  estimatedMin?: number; clearEstimate?: boolean; linkedActivityId?: string;
+  estimatedMin?: number; clearEstimate?: boolean; dueDate?: string; clearDueDate?: boolean;
+  linkedActivityId?: string;
   done?: boolean; delete?: boolean;
 };
 
@@ -2064,6 +2081,8 @@ async function executeUpdateAction(uid: string, args: UpdateActionArgs): Promise
   if (args.removeContexts !== undefined) patch.removeContexts = args.removeContexts;
   if (args.clearEstimate === true) patch.estimatedMin = null;
   else if (args.estimatedMin !== undefined) patch.estimatedMin = args.estimatedMin;
+  if (args.clearDueDate === true) patch.dueDate = null;
+  else if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
   if (args.done !== undefined) patch.done = args.done;
   if (args.linkedActivityId !== undefined) {
     if (own) return "linkedActivityId ne s'applique qu'aux sous-actions de projet (une action propre est déjà portée par son activité).";
@@ -2274,9 +2293,11 @@ async function executeAddActivityAction(
   title: string,
   context?: string | null,
   contexts?: string[] | null,
-  estimatedMin?: number | null
+  estimatedMin?: number | null,
+  dueDate?: string | null
 ): Promise<string> {
   if (!title?.trim()) return "Titre de l'action requis.";
+  const due = actionDueDate(dueDate, "dueDate");
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
   const snap = await ref.get();
   if (!snap.exists) return `Activité introuvable : ${activityId}`;
@@ -2300,6 +2321,7 @@ async function executeAddActivityAction(
         ?? defaultEstimateFor(title, [...(Array.isArray(contexts) ? contexts : []), context ?? ""]);
       return est !== undefined && est !== null ? { estimatedMin: est } : {};
     })(),
+    ...(due !== undefined ? { dueDate: due } : {}),
   });
   own.push(action);
   await ref.update({ ownActions: own });
@@ -2877,6 +2899,8 @@ async function executePlanDay(
     `     regroupe en séquences ADJACENTES les blocs dont les actions partagent le même contexte`,
     `     (toutes les courses ensemble, tout l'@ordinateur d'affilée…) pour éviter les allers-retours`,
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
+    `   → ÉCHÉANCES : une action peut porter sa propre dueDate (YYYY-MM-DD), qui PRIME sur la date de sa tâche —`,
+    `     programme d'abord ce qui échoit le plus tôt ; une date connue sans dueDate → update_action {dueDate}.`,
     `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
     `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
     `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
