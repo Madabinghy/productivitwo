@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, isOverdueAction;
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_capacity.dart';
@@ -22,14 +23,24 @@ DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 class WeekTask {
   final ProjectTask task;
   final Project project;
-  final bool overdue; // échéance dépassée, non faite
+  final bool overdue; // échéance EFFECTIVE dépassée (tâche ou action), non faite
   final int plannedBlocks; // blocs de la semaine liés à la tâche
+  /// Échéance effective la plus proche parmi les actions ouvertes (la leur si
+  /// posée, sinon celle de la tâche) ; null = celle de la tâche.
+  final DateTime? dueDate;
+  /// Actions ouvertes dont l'échéance PROPRE tombe dans la fenêtre.
+  final int actionsDueInWindow;
   const WeekTask({
     required this.task,
     required this.project,
     required this.overdue,
     required this.plannedBlocks,
+    this.dueDate,
+    this.actionsDueInWindow = 0,
   });
+
+  /// Date qui fait foi pour trier, grouper et compter le retard.
+  DateTime get due => dueDate ?? dateOnly(task.endDate ?? task.startDate);
 
   bool get done => task.status == 'done';
   bool get planned => plannedBlocks > 0;
@@ -43,8 +54,10 @@ List<DateTime> windowDates(DateTime start, int days) =>
     [for (var i = 0; i < days; i++) dateOnly(start).add(Duration(days: i))];
 
 /// Tâches qui chevauchent la fenêtre [start]..[start+days-1], ou en retard
-/// (échéance < aujourd'hui, non faite), des projets actifs non en pause.
-/// [scheduled] = blocs (non supprimés) de tous les jours de la fenêtre.
+/// (échéance effective < aujourd'hui, non faite), ou dont une action ouverte
+/// a sa propre échéance dans la fenêtre (date par action, 2026-10), des
+/// projets actifs non en pause. [scheduled] = blocs (non supprimés) de tous
+/// les jours de la fenêtre.
 List<WeekTask> windowTasks({
   required List<Project> projects,
   required DateTime start,
@@ -67,14 +80,29 @@ List<WeekTask> windowTasks({
       if (t.status == 'skipped') continue;
       final end = dateOnly(t.endDate ?? t.startDate);
       final s = dateOnly(t.startDate);
-      final overdue = t.status != 'done' && end.isBefore(dateOnly(today));
-      final overlaps = !s.isAfter(last) && !end.isBefore(first);
+      final open = t.actions.where((a) => !a.done).toList();
+      // Échéance effective la plus proche : une action datée plus tôt que sa
+      // tâche avance la date qui fait foi.
+      var due = end;
+      for (final a in open) {
+        final d = effectiveDueDate(a, t);
+        if (d != null && d.isBefore(due)) due = d;
+      }
+      final overdue = t.status != 'done' &&
+          (end.isBefore(dateOnly(today)) || open.any((a) => isOverdueAction(a, t, today)));
+      final dueInWindow = open.where((a) {
+        final d = a.dueDate == null ? null : dateOnly(a.dueDate!);
+        return d != null && !d.isBefore(first) && !d.isAfter(last);
+      }).length;
+      final overlaps = (!s.isAfter(last) && !end.isBefore(first)) || dueInWindow > 0;
       if (!overlaps && !overdue) continue;
       out.add(WeekTask(
         task: t,
         project: p,
         overdue: overdue,
         plannedBlocks: blocksByTask[t.id] ?? 0,
+        dueDate: due == end ? null : due,
+        actionsDueInWindow: dueInWindow,
       ));
     }
   }
@@ -95,9 +123,7 @@ List<WeekTask> tasksToPlace(List<WeekTask> tasks) {
   final list = tasks.where((t) => t.toPlace).toList()
     ..sort((a, b) {
       if (a.overdue != b.overdue) return a.overdue ? -1 : 1;
-      final ea = a.task.endDate ?? a.task.startDate;
-      final eb = b.task.endDate ?? b.task.startDate;
-      return ea.compareTo(eb);
+      return a.due.compareTo(b.due);
     });
   return list;
 }

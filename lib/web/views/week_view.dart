@@ -513,7 +513,7 @@ class _WeekViewState extends State<WeekView> {
     final overdue = [
       for (final wt in _tasks)
         if (wt.overdue && !wt.done)
-          (task: wt.task.title, project: wt.project.title, due: dateOnly(wt.task.endDate ?? wt.task.startDate)),
+          (task: wt.task.title, project: wt.project.title, due: wt.due),
     ]..sort((a, b) => a.due.compareTo(b.due));
     final prompt = planWeekPrompt(
         start: _start, days: _days, overdue: overdue.take(8).toList(), capacityMin: _capacity);
@@ -653,7 +653,7 @@ class _WeekViewState extends State<WeekView> {
     for (final e in byDomain.entries) {
       e.value.sort((a, b) {
         final c = e.key == _kLateGroup
-            ? dateOnly(a.task.endDate ?? a.task.startDate).compareTo(dateOnly(b.task.endDate ?? b.task.startDate))
+            ? a.due.compareTo(b.due)
             : a.task.startDate.compareTo(b.task.startDate);
         return c != 0 ? c : a.task.title.compareTo(b.task.title);
       });
@@ -813,7 +813,7 @@ class _WeekViewState extends State<WeekView> {
       planned += plannedMinForTask(t.task, _allBlocks);
     }
     final oldest = late && tasks.isNotEmpty
-        ? dateOnly(tasks.first.task.endDate ?? tasks.first.task.startDate)
+        ? tasks.first.due
         : null;
     final name = late ? 'En retard' : (d?.name ?? 'Sans domaine');
     final meta = late
@@ -851,7 +851,7 @@ class _WeekViewState extends State<WeekView> {
     final blocks = _blocksOfTask(t.id);
     final remaining = remainingToPlaceMin(t, _allBlocks);
     final openActions = t.actions.where((a) => !a.done).length;
-    final overdueDays = wt.overdue ? _today.difference(dateOnly(t.endDate ?? t.startDate)).inDays : 0;
+    final overdueDays = wt.overdue ? _today.difference(wt.due).inDays : 0;
 
     return SizedBox(
       height: _kRowH,
@@ -896,7 +896,8 @@ class _WeekViewState extends State<WeekView> {
                   Text('${t.actions.length - openActions}/${t.actions.length}',
                       style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: _tabular)),
                 const SizedBox(height: 2),
-                Text(_taskMeta(t),
+                // « ⚑ 2 » = actions à échéance propre dans la fenêtre.
+                Text('${_taskMeta(t)}${wt.actionsDueInWindow > 0 && !wt.done ? ' · ⚑ ${wt.actionsDueInWindow}' : ''}',
                     style: const TextStyle(fontSize: 10.5, color: kBText4, fontFeatures: _tabular)),
               ]),
             ]),
