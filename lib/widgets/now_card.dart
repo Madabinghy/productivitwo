@@ -450,21 +450,24 @@ class _NowCardState extends State<NowCard> {
         Row(children: buttons),
         if ((widget.onChain != null && b != null ? _chainHint() : null) case final hint?) ...[
           const SizedBox(height: 8),
-          SizedBox(
-            height: 44,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                widget.onChain!();
-              },
-              style: OutlinedButton.styleFrom(
-                  foregroundColor: pal.primary, side: BorderSide(color: pal.primary.withOpacity(.45))),
-              icon: const Icon(Icons.playlist_play_rounded, size: 20),
-              label: Text(hint,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
-            ),
+          // Hauteur libre : « … jusqu'à 05:00 demain · 1 routine » tient sur
+          // deux lignes plutôt que d'être tronqué.
+          OutlinedButton.icon(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              widget.onChain!();
+            },
+            style: OutlinedButton.styleFrom(
+                foregroundColor: pal.primary,
+                side: BorderSide(color: pal.primary.withOpacity(.45)),
+                minimumSize: const Size.fromHeight(44),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+            icon: const Icon(Icons.playlist_play_rounded, size: 20),
+            label: Text(hint,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, height: 1.2)),
           ),
         ],
         if (session != null) ...[
