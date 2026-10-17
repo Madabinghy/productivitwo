@@ -60,6 +60,9 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   // Sections dépliées à la main (null = défaut : le moment courant).
   final Map<String, bool> _open = {};
   bool _laterMenu = false;
+  // Routine gardée dans la carte une fois sa cible atteinte (série de +1 :
+  // « Pompes » cible 1, dix pompes d'affilée), jusqu'à « Suivante ».
+  String? _held;
 
   AppLogic get logic => widget.logic;
   String get _ymd => yyyymmdd(DateTime.now());
@@ -75,10 +78,22 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
 
   // ── Gestes ──────────────────────────────────────────────────────────────────
 
-  void _plus(Activity a) {
+  void _plus(Activity a, {bool hold = false}) {
     HapticFeedback.lightImpact();
     routinePlus(logic, a);
-    setState(() {});
+    setState(() {
+      if (hold) _held = a.id;
+    });
+  }
+
+  /// La routine gardée reste en carte tant qu'elle a au moins une occurrence
+  /// aujourd'hui (nouveau jour, −1 jusqu'à zéro ou écartée = relâchée).
+  RoutineSlot? _heldSlot(RoutineDay day) {
+    final id = _held;
+    if (id == null) return null;
+    final s = day.slots.where((x) => x.id == id).firstOrNull;
+    if (s == null || day.dismissed.contains(id) || _todayCount(s.activity) == 0) return null;
+    return s;
   }
 
   void _minus(Activity a) {
@@ -113,7 +128,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     list.add(a.id);
     logic.setNowSkipped(ymd, list.toSet());
     logic.state.nowSkippedByYmd[ymd] = list; // l'ordre du report compte
-    setState(() => _laterMenu = false);
+    setState(() {
+      _laterMenu = false;
+      _held = null;
+    });
     _toast('Reculée en fin de file : ${a.name}');
   }
 
@@ -121,14 +139,20 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final ymd = _ymd;
     final pushed = logic.routinePushed(ymd)..[a.id] = m.key;
     logic.setRoutinePushed(ymd, pushed);
-    setState(() => _laterMenu = false);
+    setState(() {
+      _laterMenu = false;
+      _held = null;
+    });
     _toast('Reportée à ${m.thisOne} : ${a.name}');
   }
 
   void _dismiss(Activity a) {
     final ymd = _ymd;
     logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
-    setState(() => _laterMenu = false);
+    setState(() {
+      _laterMenu = false;
+      _held = null;
+    });
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
@@ -216,7 +240,9 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   Widget _momentCard(NowPalette pal, RoutineDay day) {
     final cur = day.current;
     final q = day.queue;
-    final first = q.firstOrNull;
+    final heldSlot = _heldSlot(day);
+    final first = heldSlot ?? q.firstOrNull;
+    final held = heldSlot != null && heldSlot.reached;
     final c = day.countOf(cur.key);
     final progress = c.total == 0 ? 0.0 : (c.done / c.total).clamp(0.0, 1.0);
     final todayN = first == null ? 0 : _todayCount(first.activity);
@@ -291,8 +317,12 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                       ),
                     ]),
                     const SizedBox(height: 4),
-                    Text(first.todo.progressLabel,
-                        style: TextStyle(fontSize: 12.5, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                    Text(first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
+                        style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: first.reached ? FontWeight.w700 : null,
+                            color: first.reached ? kRoutineAccent : pal.text3,
+                            fontFeatures: const [FontFeature.tabularFigures()])),
                   ]),
           ),
         ]),
@@ -308,7 +338,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                       foregroundColor: kBBg,
                       shape: const StadiumBorder(),
                       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                  onPressed: () => _plus(first.activity),
+                  onPressed: () => _plus(first.activity, hold: true),
                   child: const Text('+1'),
                 ),
               ),
@@ -318,25 +348,43 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               _round(pal, '−1', () => _minus(first.activity), size: 54),
             ],
             const SizedBox(width: 8),
-            SizedBox(
-              height: 54,
-              child: Material(
-                color: _laterMenu ? pal.track : pal.chip,
-                borderRadius: BorderRadius.circular(999),
-                child: InkWell(
+            if (held)
+              SizedBox(
+                height: 54,
+                child: OutlinedButton(
+                  onPressed: () => setState(() {
+                    _held = null;
+                    _laterMenu = false;
+                  }),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: kRoutineAccent,
+                      side: BorderSide(color: kRoutineAccent.withOpacity(.5)),
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                  child: const Text('Suivante'),
+                ),
+              )
+            else
+              SizedBox(
+                height: 54,
+                child: Material(
+                  color: _laterMenu ? pal.track : pal.chip,
                   borderRadius: BorderRadius.circular(999),
-                  onTap: () => setState(() => _laterMenu = !_laterMenu),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      Text('Pas maintenant', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: pal.text)),
-                      const SizedBox(width: 4),
-                      Icon(_laterMenu ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text2),
-                    ]),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => setState(() => _laterMenu = !_laterMenu),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text('Pas maintenant', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: pal.text)),
+                        const SizedBox(width: 4),
+                        Icon(_laterMenu ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text2),
+                      ]),
+                    ),
                   ),
                 ),
               ),
-            ),
           ]),
           if (_laterMenu) ...[
             const SizedBox(height: 10),
@@ -508,13 +556,19 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
               ]),
             ),
-            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1)
+            if ((s.todo.dayTarget ?? s.todo.weekTarget) > 1 || (s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone) > 0)
               Padding(
                 padding: const EdgeInsets.only(right: 6),
                 child: Text(
-                    s.todo.dayTarget != null ? '${s.todo.dayDone}/${s.todo.dayTarget}' : '${s.todo.weekDone}/${s.todo.weekTarget}',
+                    (done ? '✓ ' : '') +
+                        (s.todo.dayTarget != null
+                            ? '${s.todo.dayDone} / ${s.todo.dayTarget}'
+                            : '${s.todo.weekDone} / ${s.todo.weekTarget}'),
                     style: TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: done ? kRoutineAccent : pal.text3,
+                        fontFeatures: const [FontFeature.tabularFigures()])),
               ),
             _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
             const SizedBox(width: 6),
