@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
@@ -183,10 +184,12 @@ RoutineDay buildRoutineDay({
   Map<String, String> pushed = const {},
   List<String> deferred = const [],
   Set<String> dismissed = const {},
+  int dayStartMin = kDefaultDayStartMin,
 }) {
-  final nowMin = now.hour * 60 + now.minute;
+  // Journée vécue : avant la bascule, le moment courant reste « ce soir ».
+  final nowMin = livedNowMin(now, dayStartMin);
   final current = currentMoment(nowMin);
-  final todos = routinesForToday(activities, hits, now);
+  final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin);
   final slots = <RoutineSlot>[
     for (final t in todos)
       RoutineSlot(t, momentKeyOf(t.activity), pushed[t.activity.id] ?? momentKeyOf(t.activity)),

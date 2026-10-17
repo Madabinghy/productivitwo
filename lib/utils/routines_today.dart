@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 
@@ -33,8 +34,10 @@ class RoutineToDo {
 /// Ordre : non atteintes (les plus avancées d'abord : elles se bouclent vite),
 /// puis atteintes. À égalité, ordre alphabétique.
 List<RoutineToDo> routinesForToday(
-    List<Activity> activities, List<HabitHit> hits, DateTime now) {
-  final midnight = DateTime(now.year, now.month, now.day);
+    List<Activity> activities, List<HabitHit> hits, DateTime now,
+    {int dayStartMin = kDefaultDayStartMin}) {
+  // « Aujourd'hui » = depuis le début de la journée vécue, pas minuit.
+  final midnight = livedDayStart(now, dayStartMin);
   final out = <RoutineToDo>[];
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq == HabitFreq.monthly) continue;

@@ -6,6 +6,16 @@ Activity _r(String id, HabitFreq f, {int target = 1, bool deleted = false}) => A
     id: id, name: id, domainId: 'd', type: 'habit', habitFreq: f, habitTarget: target, deleted: deleted);
 
 void main() {
+  test('routinesForToday : un hit à 1 h du matin compte pour la journée vécue de la veille', () {
+    final a = _r('p', HabitFreq.daily, target: 1);
+    final hit = HabitHit(habitId: 'p', ts: DateTime(2026, 10, 17, 1, 0));
+    // À 2 h, même journée vécue que le hit → 1/1.
+    expect(routinesForToday([a], [hit], DateTime(2026, 10, 17, 2, 0)).single.dayDone, 1);
+    // À 9 h, nouvelle journée vécue → 0/1 ; bascule à minuit → toujours 1/1.
+    expect(routinesForToday([a], [hit], DateTime(2026, 10, 17, 9, 0)).single.dayDone, 0);
+    expect(routinesForToday([a], [hit], DateTime(2026, 10, 17, 9, 0), dayStartMin: 0).single.dayDone, 1);
+  });
+
   final now = DateTime(2026, 10, 5, 15);
   HabitHit hit(String id, DateTime ts) => HabitHit(habitId: id, ts: ts);
 

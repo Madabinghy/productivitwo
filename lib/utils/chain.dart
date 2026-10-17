@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_work.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
@@ -115,6 +116,7 @@ List<ChainItem> chainItemsOf(
   required List<Activity> activities,
   required List<HabitHit> hits,
   required DateTime now,
+  int dayStartMin = kDefaultDayStartMin,
 }) {
   final task = _taskOf(b, projects);
   if (task != null) {
@@ -136,7 +138,7 @@ List<ChainItem> chainItemsOf(
   }
   final act = b.activityId == null ? null : activities.where((a) => a.id == b.activityId).firstOrNull;
   if (act != null && act.isHabit) {
-    final r = routinesForToday([act], hits, now).firstOrNull;
+    final r = routinesForToday([act], hits, now, dayStartMin: dayStartMin).firstOrNull;
     if (r != null && r.reached) return const [];
     return [ChainItem(kind: ChainKind.routine, block: b, activity: act)];
   }
@@ -183,6 +185,7 @@ List<ChainItem> buildChain({
   Map<String, String> pushed = const {},
   List<String> deferred = const [],
   Set<String> dismissed = const {},
+  int dayStartMin = kDefaultDayStartMin,
 }) {
   final nowMin = now.hour * 60 + now.minute;
   final live = blocks
@@ -193,11 +196,12 @@ List<ChainItem> buildChain({
       return c != 0 ? c : a.id.compareTo(b.id);
     });
   List<ChainItem> itemsOf(ScheduleBlock b) =>
-      chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now);
+      chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now, dayStartMin: dayStartMin);
   if (!anchorRoutines) return [for (final b in live) ...itemsOf(b)];
 
   final day = buildRoutineDay(
-      activities: activities, hits: hits, now: now, pushed: pushed, deferred: deferred, dismissed: dismissed);
+      activities: activities, hits: hits, now: now, pushed: pushed, deferred: deferred, dismissed: dismissed,
+      dayStartMin: dayStartMin);
   // Routines déjà au programme : pas d'accroche en plus.
   final inProgram = {for (final b in live) if (b.activityId != null) b.activityId!};
   final out = <ChainItem>[];

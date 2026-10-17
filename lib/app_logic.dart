@@ -6,6 +6,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
@@ -267,6 +268,14 @@ class AppLogic {
   /// Accès Firestore pour les écritures autoritatives d'or (posé après
   /// construction dans main.dart). Null tant que non configuré.
   FirestoreSync? sync;
+
+  /// Heure de bascule de la journée vécue des routines (`data/meta.dayStartMin`,
+  /// défaut 5 h ; alimenté par `FirestoreSync.streamDayStartMin` dans main.dart).
+  int dayStartMin = kDefaultDayStartMin;
+
+  /// Clé `YYYYMMDD` de la journée vécue en cours — état du jour des routines
+  /// (« pas maintenant », « pas aujourd'hui », reports).
+  String get livedYmdNow => livedYmd(DateTime.now(), dayStartMin);
 
   String? nowHabitId; // habitId actuellement affichée dans Maintenant (routine)
   String? _checkYmd; // pour reset journalier
@@ -1599,10 +1608,7 @@ class AppLogic {
       HabitHit? last;
       for (final h in state.habitHits) {
         if (h.habitId != activityId) continue;
-        final t = h.ts.hour * 60 + h.ts.minute < 5 * 60
-            ? h.ts.subtract(const Duration(days: 1))
-            : h.ts;
-        if (yyyymmdd(DateTime(t.year, t.month, t.day)) != key) continue;
+        if (livedYmd(h.ts, dayStartMin) != key) continue;
         if (last == null || h.ts.isAfter(last.ts)) last = h;
       }
       if (last == null) return;

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -13,11 +14,11 @@ import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRou
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
 
-/// Occurrences d'aujourd'hui (depuis minuit) d'une routine.
+/// Occurrences d'aujourd'hui (depuis le début de la journée VÉCUE : 5 h par
+/// défaut, réglable) d'une routine.
 int routineTodayCount(AppLogic logic, Activity a) {
-  final n = DateTime.now();
-  final midnight = DateTime(n.year, n.month, n.day);
-  return logic.state.habitHits.where((h) => h.habitId == a.id && !h.ts.isBefore(midnight)).length;
+  final start = livedDayStart(DateTime.now(), logic.dayStartMin);
+  return logic.state.habitHits.where((h) => h.habitId == a.id && !h.ts.isBefore(start)).length;
 }
 
 /// −1 : même règle que « Le meilleur à faire » — le dernier incrément
@@ -26,16 +27,14 @@ int routineTodayCount(AppLogic logic, Activity a) {
 bool routineMinus(AppLogic logic, Activity a) {
   final hits = logic.state.habitHits.where((h) => h.habitId == a.id).toList()..sort((x, y) => x.ts.compareTo(y.ts));
   if (hits.isEmpty) return false;
-  final t = hits.last.ts;
-  final lived = t.hour * 60 + t.minute < 5 * 60 ? t.subtract(const Duration(days: 1)) : t;
-  logic.incHabit(a.id, -1, DateTime(lived.year, lived.month, lived.day));
+  logic.incHabit(a.id, -1, livedDate(hits.last.ts, logic.dayStartMin));
   return true;
 }
 
 /// +1 : incrémente et sort la routine des « Pas maintenant » du jour.
 void routinePlus(AppLogic logic, Activity a) {
-  logic.incHabit(a.id, 1, DateTime.now());
-  final ymd = yyyymmdd(DateTime.now());
+  logic.incHabit(a.id, 1, livedDate(DateTime.now(), logic.dayStartMin));
+  final ymd = logic.livedYmdNow;
   if (logic.nowSkippedSet(ymd).contains(a.id)) {
     logic.setNowSkipped(ymd, logic.nowSkippedSet(ymd)..remove(a.id));
   }
@@ -67,7 +66,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   String? _held;
 
   AppLogic get logic => widget.logic;
-  String get _ymd => yyyymmdd(DateTime.now());
+  String get _ymd => logic.livedYmdNow;
 
   RoutineDay _day() => buildRoutineDay(
         activities: logic.state.activeActivities,
@@ -76,6 +75,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
         pushed: logic.routinePushed(_ymd),
         deferred: logic.state.nowSkippedByYmd[_ymd] ?? const [],
         dismissed: logic.nowDoneSet(_ymd),
+        dayStartMin: logic.dayStartMin,
       );
 
   // ── Gestes ──────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final missing = s.todo.dayTarget != null ? s.todo.dayTarget! - s.todo.dayDone : s.todo.weekTarget - s.todo.weekDone;
     HapticFeedback.lightImpact();
     for (var i = 0; i < (missing < 1 ? 1 : missing); i++) {
-      logic.incHabit(a.id, 1, DateTime.now());
+      logic.incHabit(a.id, 1, livedDate(DateTime.now(), logic.dayStartMin));
     }
     setState(() {});
   }

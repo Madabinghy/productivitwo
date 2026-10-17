@@ -15,6 +15,14 @@ void main() {
     expect(currentMoment(3 * 60).key, kMomentMorning);
   });
 
+  test('buildRoutineDay à 00:30 : journée vécue → moment courant = Soir, pas Matin', () {
+    final d = buildRoutineDay(activities: [_r('a', 'Pompes')], hits: const [], now: DateTime(2026, 10, 17, 0, 30));
+    expect(d.current.key, kMomentEvening);
+    final d0 = buildRoutineDay(
+        activities: [_r('a', 'Pompes')], hits: const [], now: DateTime(2026, 10, 17, 0, 30), dayStartMin: 0);
+    expect(d0.current.key, kMomentMorning);
+  });
+
   test('momentKeyOf : réglage, archétype du nom, repas → midi, rien → libre', () {
     expect(momentKeyOf(_r('a', 'Lecture', ctx: 'evening')), kMomentEvening);
     expect(momentKeyOf(_r('b', 'Hygiène du soir')), kMomentEvening);

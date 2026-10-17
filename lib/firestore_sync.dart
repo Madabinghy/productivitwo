@@ -10,6 +10,7 @@ import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/folder_merge.dart';
@@ -2983,6 +2984,20 @@ class FirestoreSync {
       final data = snap.data() as Map<String, dynamic>?;
       return data?['autoPlan'] == true;
     });
+  }
+
+  /// Heure de bascule de la journée vécue des routines (`data/meta.dayStartMin`).
+  Stream<int> streamDayStartMin() {
+    if (uid == null) return Stream.value(kDefaultDayStartMin);
+    return _meta().snapshots().map((snap) {
+      final data = snap.data() as Map<String, dynamic>?;
+      return parseDayStartMin(data?['dayStartMin']);
+    });
+  }
+
+  Future<void> setDayStartMin(int min) async {
+    if (uid == null) return;
+    await _meta().set({'dayStartMin': parseDayStartMin(min)}, SetOptions(merge: true));
   }
 
   Future<void> setAutoPlan(bool enabled) async {

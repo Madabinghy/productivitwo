@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
-import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -42,7 +41,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
   bool _laterMenu = false;
 
   AppLogic get logic => widget.logic;
-  String get _ymd => yyyymmdd(DateTime.now());
+  String get _ymd => logic.livedYmdNow;
 
   RoutineDay _day() => buildRoutineDay(
         activities: logic.state.activeActivities,
@@ -51,6 +50,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
         pushed: logic.routinePushed(_ymd),
         deferred: logic.state.nowSkippedByYmd[_ymd] ?? const [],
         dismissed: logic.nowDoneSet(_ymd),
+        dayStartMin: logic.dayStartMin,
       );
 
   @override
