@@ -100,12 +100,16 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
     list.add(s.id);
     logic.setNowSkipped(ymd, list.toSet());
     logic.state.nowSkippedByYmd[ymd] = list;
+    // Restée d'un moment passé : rattachée au moment courant (même règle que
+    // la vue Routines), elle quitte sa section d'origine pour la journée.
+    final moved = momentOf(s.moment).timed && s.moment != _moment.key;
+    if (moved) logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[s.id] = _moment.key);
     setState(() {
       _ids.remove(s.id);
       _ids.add(s.id);
       _laterMenu = false;
     });
-    _toast('Reculée en fin de file : ${s.activity.name}');
+    _toast(moved ? 'Reculée à ${_moment.thisOne} : ${s.activity.name}' : 'Reculée en fin de file : ${s.activity.name}');
   }
 
   void _pushTo(RoutineSlot s, Moment m) {

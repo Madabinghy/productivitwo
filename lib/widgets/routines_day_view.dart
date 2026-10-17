@@ -162,11 +162,18 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     list.add(a.id);
     logic.setNowSkipped(ymd, list.toSet());
     logic.state.nowSkippedByYmd[ymd] = list; // l'ordre du report compte
+    // Restée d'un moment passé (« restée du midi ») : « plus tard ce soir »
+    // la rattache aussi au moment courant, sinon elle resterait listée dans
+    // Midi alors qu'on vient de décider de la faire ce soir.
+    final day = _day();
+    final slot = day.slots.where((s) => s.id == a.id).firstOrNull;
+    final moved = slot != null && momentOf(slot.moment).timed && slot.moment != day.current.key;
+    if (moved) logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[a.id] = day.current.key);
     setState(() {
       _laterMenu = false;
       _held = null;
     });
-    _toast('Reculée en fin de file : ${a.name}');
+    _toast(moved ? 'Reculée à ${day.current.thisOne} : ${a.name}' : 'Reculée en fin de file : ${a.name}');
   }
 
   void _pushTo(Activity a, Moment m) {
