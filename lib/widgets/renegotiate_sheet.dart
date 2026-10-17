@@ -180,7 +180,7 @@ class _RenegotiateSheetState extends State<_RenegotiateSheet> {
     // tranche HORS fenêtre n'est jamais une option — « Hygiène du soir à
     // midi » contredit la nature de la routine (constaté sur build).
     final act = _routine();
-    final ctx = act != null ? effTimeContextOf(act) : null;
+    final ctx = act != null ? effTimeContextOf(act, contexts: widget.logic.timeContexts) : null;
     final alts =
         d.alternatives.where((a) => contextAllowsBucket(ctx, a.bucket)).toList();
     final alt = alts.isNotEmpty ? alts.first : null;
