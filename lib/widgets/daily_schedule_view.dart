@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -108,12 +109,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
 
   /// La vue peut afficher une autre date (planif de demain) : les effets de
   /// bord « jour courant » (todayBlocks, auto-coche) ne valent qu'aujourd'hui.
-  bool get _isToday {
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    return widget.date == today;
-  }
+  /// Journée vécue : jusqu'à la bascule (5 h par défaut), « aujourd'hui » est
+  /// le programme de la veille.
+  bool get _isToday => widget.logic.isLivedToday(widget.date);
 
   Timer? _nowTick;
 
@@ -236,7 +234,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   void _maybeSyncProjectBlocks() {
     if (!mounted) return;
     final now = DateTime.now();
-    final nowMin = now.hour * 60 + now.minute;
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
     for (final b in _schedule?.blocks ?? const <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
           b.projectId == null ||
@@ -368,12 +366,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// Appelé en post-frame depuis build (FocusView rebuild quand on logge).
   void _maybeAutoWin() {
     if (!mounted) return;
+    if (!_isToday) return;
     final now = DateTime.now();
-    final todayStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    if (widget.date != todayStr) return;
-    final dayStart = DateTime(now.year, now.month, now.day);
-    final nowMin = now.hour * 60 + now.minute;
+    final dayStart = livedDayStart(now, widget.logic.dayStartMin);
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
     for (final b in _schedule?.blocks ?? <ScheduleBlock>[]) {
       if (b.status != 'pending' ||
           b.activityId == null ||
@@ -553,7 +549,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             // chronologique — on voit d'un coup d'œil ce qui est derrière et
             // ce qui vient. Aujourd'hui uniquement (demain n'a pas de présent).
             final now = DateTime.now();
-            final nowMin = now.hour * 60 + now.minute;
+            final nowMin = livedNowMin(now, widget.logic.dayStartMin);
             int toMin(String hm) =>
                 (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
                 (int.tryParse(hm.substring(3, 5)) ?? 0);
@@ -601,8 +597,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             ]);
           }),
         if (_isToday)
-          if (blocksToCarry(visible, DateTime.now().hour * 60 + DateTime.now().minute) case final carry
-              when showCarryCard(carry, DateTime.now().hour * 60 + DateTime.now().minute))
+          if (blocksToCarry(visible, widget.logic.livedNowMinNow) case final carry
+              when showCarryCard(carry, widget.logic.livedNowMinNow))
             _carryCard(cs, carry),
         if (asideLabel(aside) != null) _asideRow(cs, aside),
         if (bare) _addRow(cs),
@@ -838,7 +834,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     ];
     if (_isToday) {
       final now = DateTime.now();
-      final dayStart = DateTime(now.year, now.month, now.day);
+      final dayStart = livedDayStart(now, widget.logic.dayStartMin);
       final loggedMin = widget.logic.totalForRange(dayStart, now).inMinutes;
       parts.add(TextSpan(text: '  ·  '));
       parts.add(TextSpan(
@@ -909,7 +905,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Bloc en cours (aujourd'hui, pending, créneau contenant l'heure) :
     // fond + bordure primaire, heure en primaire, coche cerclée de primaire.
     final now = DateTime.now();
-    final nowMin = now.hour * 60 + now.minute;
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
     int toMin(String hm) =>
         (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
     final startMin = toMin(block.startTime);
@@ -920,7 +916,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Réel loggué du jour sur la source du bloc — visible même en vue liste.
     final int loggedMin;
     if (_isToday) {
-      final dayStart = DateTime(now.year, now.month, now.day);
+      final dayStart = livedDayStart(now, widget.logic.dayStartMin);
       final w = blockLogWindow(block, _schedule?.blocks ?? const []);
       loggedMin = _loggedMinFor(block, dayStart.add(Duration(minutes: w.start)),
           dayStart.add(Duration(minutes: w.end)));
@@ -1168,7 +1164,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     const red = Color(0xFFE53935);
     const redSoft = Color(0x1FE53935);
     final total = block.durationMin;
-    final nowMin = now.hour * 60 + now.minute;
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
     final elapsed = (nowMin - startMin).clamp(0, total);
     final frac = total <= 0 ? 0.0 : elapsed / total;
     final remaining = total - elapsed;

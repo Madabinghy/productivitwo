@@ -32,6 +32,13 @@ DateTime livedDayStart(DateTime now, int dayStartMin) =>
 /// Clé `YYYYMMDD` de la journée vécue (état du jour des routines).
 String livedYmd(DateTime now, int dayStartMin) => yyyymmdd(livedDate(now, dayStartMin));
 
+/// Clé `YYYY-MM-DD` du PROGRAMME de la journée vécue (`daily_schedules`) :
+/// jusqu'à la bascule, « aujourd'hui » reste le programme de la veille.
+String livedProgramYmd(DateTime now, int dayStartMin) => ymdDashOf(livedDate(now, dayStartMin));
+
+String ymdDashOf(DateTime d) =>
+    '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 /// Minutes depuis minuit de la journée vécue : avant la bascule, on continue
 /// la veille (00:30 avec bascule à 5 h → 24 h 30), ce qui garde le moment
 /// courant sur « ce soir » (`currentMoment`).

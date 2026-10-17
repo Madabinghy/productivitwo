@@ -161,8 +161,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   void _subscribeToday() {
     _schedSub?.cancel();
-    final now = DateTime.now();
-    _schedSub = _sync.streamDailySchedule(_ymdOf(now)).listen((sch) {
+    _schedSub = _sync.streamDailySchedule(widget.logic.livedTodayYmd).listen((sch) {
       if (!mounted) return;
       setState(() => _todayBlocks =
           sch?.blocks.where((b) => b.status != 'deleted').toList() ?? const []);
@@ -1564,7 +1563,7 @@ class _ActionsViewState extends State<ActionsView> {
       ColorScheme cs, List<_Entry> shown, List<_Entry> all, List<Project> needNext) {
     final today = _day(DateTime.now());
     final weekEnd = today.add(const Duration(days: 7));
-    final nowMin = DateTime.now().hour * 60 + DateTime.now().minute;
+    final nowMin = widget.logic.livedNowMinNow;
     final todayIds = _todayActionIds;
     final used = <String>{};
     final out = <Widget>[];

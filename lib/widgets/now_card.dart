@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -236,7 +237,7 @@ class _NowCardState extends State<NowCard> {
     act ??= routineForBlockTitle(b.title, widget.logic.state.activities);
     if (act == null || !act.isHabit) return;
     final now = DateTime.now();
-    final day = DateTime(now.year, now.month, now.day);
+    final day = livedDate(now, widget.logic.dayStartMin);
     _routineHit.add(b.id);
     final tgt = widget.logic.activeHabitTarget(act);
     if (tgt > 0 && widget.logic.habitValueOn(act.id, day) >= tgt) return;
@@ -255,7 +256,7 @@ class _NowCardState extends State<NowCard> {
   Widget build(BuildContext context) {
     final pal = NowPalette.of(context);
     final now = DateTime.now();
-    final nowMin = now.hour * 60 + now.minute;
+    final nowMin = widget.logic.livedNowMinNow;
     final focus = focusBlock(_blocks, nowMin);
     final session = _openSession;
     final running = session == null ? null : widget.logic.runningActivity();

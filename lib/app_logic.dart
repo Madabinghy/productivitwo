@@ -278,6 +278,15 @@ class AppLogic {
   /// (« pas maintenant », « pas aujourd'hui », reports).
   String get livedYmdNow => livedYmd(DateTime.now(), dayStartMin);
 
+  /// Journée vécue côté PROGRAMME (lot 2, 2026-10) : jusqu'à la bascule,
+  /// « aujourd'hui » est le programme de la veille et l'heure courante continue
+  /// la veille (00:30 → 24 h 30) pour se comparer à ses blocs (Sommeil 22:00 →
+  /// 05:00 est « en cours »). Les docs `daily_schedules` restent par date.
+  DateTime get livedToday => livedDate(DateTime.now(), dayStartMin);
+  String get livedTodayYmd => livedProgramYmd(DateTime.now(), dayStartMin);
+  int get livedNowMinNow => livedNowMin(DateTime.now(), dayStartMin);
+  bool isLivedToday(String ymd) => ymd == livedTodayYmd;
+
   /// Bornes réglées des moments (`data/meta.momentWindows`) ; vide = défauts.
   Map<String, (int, int)> momentWindows = const {};
 
@@ -1037,9 +1046,8 @@ class AppLogic {
     //    à 13 h 55) — sur une AUTRE source → l'UI propose (pas d'écriture ici).
     final hook = onSessionOffBlock;
     if (hook != null) {
-      final n = DateTime.now();
       final live = todayBlocks.where((b) => b.status != 'deleted').toList();
-      final target = blockToAttachAt(live, n.hour * 60 + n.minute)?.block;
+      final target = blockToAttachAt(live, livedNowMinNow)?.block;
       if (target != null && !sessionOnBlock(session, target)) {
         blockWatcher.markAsked(session, target);
         hook(session, target);
@@ -1062,7 +1070,6 @@ class AppLogic {
   final blockWatcher = BlockTransitionWatcher();
 
   void tickBlockTransition() {
-    final n = DateTime.now();
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;
     for (final s in state.sessions) {
@@ -1070,7 +1077,7 @@ class AppLogic {
       if (open == null || s.startAt.isAfter(open.startAt)) open = s;
     }
     final b = blockWatcher.tick(
-        blocks: live, nowMin: n.hour * 60 + n.minute, open: open, matches: sessionOnBlock);
+        blocks: live, nowMin: livedNowMinNow, open: open, matches: sessionOnBlock);
     final hook = onSessionOffBlock;
     if (b != null && open != null && hook != null) hook(open, b);
   }

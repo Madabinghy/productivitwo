@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_work.dart';
@@ -24,6 +25,7 @@ Future<void> showBlockWorkScreen(
   VoidCallback? onStartTimer,
   VoidCallback? onOpenTask,
   Future<void> Function()? onBlockDone,
+  int dayStartMin = kDefaultDayStartMin,
 }) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
@@ -32,6 +34,7 @@ Future<void> showBlockWorkScreen(
       task: task,
       block: block,
       isToday: isToday,
+      dayStartMin: dayStartMin,
       sync: sync ?? FirestoreSync(),
       onStartTimer: onStartTimer,
       onOpenTask: onOpenTask,
@@ -45,6 +48,7 @@ class _BlockWorkScreen extends StatefulWidget {
   final ProjectTask task;
   final ScheduleBlock block;
   final bool isToday;
+  final int dayStartMin;
   final FirestoreSync sync;
   final VoidCallback? onStartTimer;
   final VoidCallback? onOpenTask;
@@ -54,6 +58,7 @@ class _BlockWorkScreen extends StatefulWidget {
     required this.task,
     required this.block,
     required this.isToday,
+    this.dayStartMin = kDefaultDayStartMin,
     required this.sync,
     this.onStartTimer,
     this.onOpenTask,
@@ -153,8 +158,7 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
     final b = widget.block;
     final w = blockWork(task, _focusId);
     final focus = w.focus;
-    final n = DateTime.now();
-    final nowMin = n.hour * 60 + n.minute;
+    final nowMin = livedNowMin(DateTime.now(), widget.dayStartMin);
     final start = blockStartMin(b), end = blockEndMin(b);
     final live = widget.isToday && start <= nowMin && nowMin < end;
     final stepsDone = focus?.checklist.where((c) => c.done).length ?? 0;

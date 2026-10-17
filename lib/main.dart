@@ -19,7 +19,6 @@ import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/block_work_screen.dart';
-import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/widgets/alarm_ringtone_sheet.dart';
 import 'package:productivitwo_v1/widgets/filters_sheet.dart';
 import 'package:productivitwo_v1/widgets/claude_automation_sheet.dart';
@@ -2985,13 +2984,14 @@ class _AppRootState extends State<AppRoot>
             task: task,
             block: block,
             isToday: isToday,
+            dayStartMin: logic.dayStartMin,
             sync: _sync,
             onStartTimer: isToday && block.status == 'pending'
                 ? () => _launchScheduledBlock(block, goToNow: false)
                 : null,
             onOpenTask: openTask,
             onBlockDone: isToday
-                ? () => _sync.updateBlockStatus(ymdOf(DateTime.now()), block.id, 'done', manual: true)
+                ? () => _sync.updateBlockStatus(logic.livedTodayYmd, block.id, 'done', manual: true)
                 : null);
         return;
       }
@@ -3329,10 +3329,9 @@ class _AppRootState extends State<AppRoot>
     final end = blockEndMin(block);
     final endLabel =
         '${(end ~/ 60).toString().padLeft(2, '0')}:${(end % 60).toString().padLeft(2, '0')}';
-    final n0 = DateTime.now();
     // Bloc pas encore commencé (anticipation ≤ 15 min) : on ne propose que
     // le rattachement — décaler ou réorganiser n'a pas de sens avant l'heure.
-    final upcoming = blockStartMin(block) > n0.hour * 60 + n0.minute;
+    final upcoming = blockStartMin(block) > logic.livedNowMinNow;
     final blockProject =
         logic.currentProjects.firstWhereOrNull((p) => p.id == block.projectId);
     final blockAct =
@@ -3412,7 +3411,7 @@ class _AppRootState extends State<AppRoot>
             onTap: () async {
               Navigator.pop(sheetCtx);
               final n = DateTime.now();
-              final start = shiftedStartAfter(n.hour * 60 + n.minute, block.durationMin);
+              final start = shiftedStartAfter(logic.livedNowMinNow, block.durationMin);
               if (start == null) return;
               block.startTime = start;
               final ymd =
@@ -4008,9 +4007,7 @@ class _AppRootState extends State<AppRoot>
     // une date FUTURE : changer de date = un report. Le bloc du jour passe en
     // sauté « reporté » — la trace reste (barré, check-in, stats d'hygiène),
     // le coach arrête de relancer, rien ne disparaît en silence.
-    final now0 = DateTime.now();
-    final todayYmd0 =
-        '${now0.year}-${now0.month.toString().padLeft(2, '0')}-${now0.day.toString().padLeft(2, '0')}';
+    final todayYmd0 = logic.livedTodayYmd;
     if (ymd != todayYmd0) {
       final sync = FirestoreSync();
       final todaySched = await sync.fetchDailySchedule(todayYmd0);
