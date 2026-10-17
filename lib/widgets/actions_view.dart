@@ -249,7 +249,8 @@ class _ActionsViewState extends State<ActionsView> {
   static const _newColor = Color(0xFF6FA8FF);
 
   /// Échéance de l'entrée (tâche porteuse), à minuit ; null pour une action simple.
-  DateTime? _dueOf(_Entry e) => e.task?.endDate == null ? null : _day(e.task!.endDate!);
+  /// Échéance effective : celle de l'action si posée, sinon celle de la tâche.
+  DateTime? _dueOf(_Entry e) => effectiveDueDate(e.action, e.task);
 
   /// Actions VALIDÉES (projets — tous statuts — + actions simples), les plus
   /// récentes d'abord : retrouver ce qui a été fait, et décocher au besoin.
@@ -1941,14 +1942,80 @@ class _ActionsViewState extends State<ActionsView> {
 
   // ── Tuile d'action : glisser → fait / caser demain, tap → feuille ──────────
 
-  String _dueLabel(DateTime due, DateTime today) {
-    final d = due.difference(today).inDays;
-    if (d < 0) return '−${-d} j';
-    if (d == 0) return "aujourd'hui";
-    if (d == 1) return 'demain';
-    const m = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-               'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    return 'éch. ${due.day} ${m[due.month - 1]}';
+  String _dueLabel(DateTime due, DateTime today) => actionDueLabel(due, today);
+
+  /// Échéance PROPRE de l'action (2026-10) : demain · fin de semaine · une date
+  /// · retirer (la date de la tâche fait foi à nouveau). Persistée comme le
+  /// reste de la feuille (`_persistEntry`).
+  Future<void> _pickDueDate(_Entry e) async {
+    final a = e.action;
+    final today = _day(DateTime.now());
+    final taskDue = e.task?.endDate == null ? null : _day(e.task!.endDate!);
+    final toSunday = 7 - today.weekday;
+    final endOfWeek = today.add(Duration(days: toSunday == 0 ? 7 : toSunday));
+    const clear = '__clear__';
+    final picked = await showModalBottomSheet<Object>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        final cs = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: ListView(shrinkWrap: true, padding: const EdgeInsets.only(bottom: 12), children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Échéance de l\'action', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(
+                    taskDue == null
+                        ? 'Sans échéance propre, l\'action n\'a pas de date.'
+                        : 'Sans échéance propre, c\'est celle de la tâche : ${shortDateFr(taskDue)}.',
+                    style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
+              ]),
+            ),
+            ListTile(
+              leading: const Icon(Icons.wb_sunny_outlined),
+              title: const Text('Demain'),
+              subtitle: Text(shortDateFr(today.add(const Duration(days: 1)))),
+              onTap: () => Navigator.pop(ctx, today.add(const Duration(days: 1))),
+            ),
+            ListTile(
+              leading: const Icon(Icons.date_range_outlined),
+              title: const Text('Fin de semaine'),
+              subtitle: Text('dimanche ${shortDateFr(endOfWeek)}'),
+              onTap: () => Navigator.pop(ctx, endOfWeek),
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_month_outlined),
+              title: const Text('Choisir une date…'),
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: ctx,
+                  initialDate: a.dueDate ?? taskDue ?? today,
+                  firstDate: today.subtract(const Duration(days: 365)),
+                  lastDate: today.add(const Duration(days: 365 * 3)),
+                  locale: const Locale('fr'),
+                );
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx, d);
+              },
+            ),
+            if (a.dueDate != null)
+              ListTile(
+                leading: Icon(Icons.flag_outlined, color: cs.error),
+                title: Text('Retirer l\'échéance propre', style: TextStyle(color: cs.error)),
+                subtitle: Text(taskDue == null ? 'plus de date' : 'retour à celle de la tâche : ${shortDateFr(taskDue)}'),
+                onTap: () => Navigator.pop(ctx, clear),
+              ),
+          ]),
+        );
+      },
+    );
+    if (picked == null) return;
+    a.dueDate = picked == clear ? null : _day(picked as DateTime);
+    await _persistEntry(e);
+    if (mounted) setState(() {});
   }
 
   Widget _entryTile(ColorScheme cs, _Entry e,
@@ -1998,7 +2065,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (due != null) {
       sep();
       meta.add(TextSpan(
-          text: _dueLabel(due, today),
+          text: (a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
           style: TextStyle(
               color: late ? cs.error : cs.onSurface.withOpacity(.55),
               fontWeight: late ? FontWeight.w700 : FontWeight.w500)));
@@ -2231,7 +2298,8 @@ class _ActionsViewState extends State<ActionsView> {
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
               if (due != null)
-                pill(_dueLabel(due, today), color: due.isBefore(today) ? cs.error : null),
+                pill((a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
+                    color: due.isBefore(today) ? cs.error : null),
               if (a.estimatedMin != null) pill('≈ ${fmtMin(a.estimatedMin!)}'),
               if (spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin) case final sp?)
                 pill(sp.label, color: sp.over ? cs.error : null),
@@ -2294,6 +2362,14 @@ class _ActionsViewState extends State<ActionsView> {
                 },
                 icon: const Icon(Icons.event_outlined, size: 18),
                 label: const Text('Caser'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  await _pickDueDate(e);
+                  refresh();
+                },
+                icon: const Icon(Icons.flag_outlined, size: 18),
+                label: Text(a.dueDate == null ? 'Échéance' : _dueLabel(_day(a.dueDate!), today)),
               ),
               OutlinedButton.icon(
                 onPressed: () {

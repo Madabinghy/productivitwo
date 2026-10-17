@@ -57,18 +57,21 @@ class _ActionsViewState extends State<ActionsView> {
   // Filtre actif : projets sans action correspondante masqués, sauf demande.
   bool _showUnmatched = false;
   bool _showUpcoming = false;
-  // « En retard » : seules les actions d'une tâche à l'échéance dépassée
-  // (`isOverdueTask`) ; les actions simples n'ont pas d'échéance → masquées.
+  // « En retard » : PAR ACTION, sur l'échéance effective (la sienne, sinon
+  // celle de la tâche — `isOverdueAction`) ; les actions simples n'ont pas
+  // d'échéance de tâche → seules celles datées peuvent être en retard.
   bool _overdue = false;
   bool get _filtering => _contexts.isNotEmpty || _time != null || _overdue;
   /// Tâche retenue : jamais une tâche pas encore commencée (elle va dans
-  /// « À venir ») ; avec « En retard », seulement les tâches en retard.
+  /// « À venir »).
   bool Function(ProjectTask) get _taskFilter {
     final now = DateTime.now();
-    return _overdue
-        ? (t) => isOverdueTask(t, now) && !isUpcomingTask(t, now)
-        : (t) => !isUpcomingTask(t, now);
+    return (t) => !isUpcomingTask(t, now);
   }
+
+  /// Couple tâche + action retenu : avec « En retard », l'échéance effective
+  /// de l'action est dépassée.
+  bool _entryOk(ProjectTask t, TaskAction a) => !_overdue || isOverdueAction(a, t, DateTime.now());
   String? _domainId;
   // « Pour… » : projet racine (client) ; null = tous.
   String? _clientId;
@@ -176,7 +179,7 @@ class _ActionsViewState extends State<ActionsView> {
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         if (!_taskFilter(t)) continue;
-        n += t.actions.where((a) => !a.done && _filter(a)).length;
+        n += t.actions.where((a) => !a.done && _filter(a) && _entryOk(t, a)).length;
       }
     }
     return n;
@@ -213,7 +216,7 @@ class _ActionsViewState extends State<ActionsView> {
       for (final t in p.tasks) {
         if (t.status == 'done' || t.status == 'skipped') continue;
         if (!_taskFilter(t)) continue;
-        n += t.actions.where((a) => !a.done && _filter(a)).length;
+        n += t.actions.where((a) => !a.done && _filter(a) && _entryOk(t, a)).length;
       }
     }
     for (final act in widget.activities) {
@@ -515,7 +518,7 @@ class _ActionsViewState extends State<ActionsView> {
     final now = open == null
         ? const <({TaskAction action, Project? project, ProjectTask? task, Activity? activity})>[]
         : possibleNow(_domainProjects, _domainActivities, open.activityId, filter: _filter)
-            .where((x) => x.task == null || _taskFilter(x.task!))
+            .where((x) => x.task == null || (_taskFilter(x.task!) && _entryOk(x.task!, x.action)))
             .toList();
     // « J'ai 20 min » + tri par échéance → d'abord ce qui sert la séance la
     // plus proche (brief 2.4) ; le tri explicite « Prochaine séance » fait pareil.
@@ -525,6 +528,7 @@ class _ActionsViewState extends State<ActionsView> {
     final allGroups = projectActionGroups(_domainProjects,
         filter: _filter,
         taskFilter: _taskFilter,
+        entryFilter: _entryOk,
         sort: effectiveSort,
         domainOrder: [for (final d in widget.domains) d.id],
         urgencyOf: (p) => nextInterventionOf(p, today)?.date);
@@ -900,6 +904,16 @@ class _ActionsViewState extends State<ActionsView> {
             if (a.estimatedMin != null) ...[
               const SizedBox(width: 6),
               _badge('${a.estimatedMin} min', kBText4),
+            ],
+            if (a.dueDate != null) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Échéance propre de l\'action (prime sur la tâche)',
+                child: _badge('⚑ ${actionDueLabel(a.dueDate!, DateTime.now())}',
+                    a.dueDate!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day))
+                        ? kBAttention
+                        : kBText3),
+              ),
             ],
             if (a.checklist.isNotEmpty) ...[
               const SizedBox(width: 6),

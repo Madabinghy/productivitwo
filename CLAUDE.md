@@ -38,9 +38,12 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   `YYYY-MM-DD` en base) ; l'échéance EFFECTIVE d'une action = `effectiveDueDate(a, task)` (la sienne, sinon celle de la
   tâche ; `isOverdueAction`, `overdueActionCount` par action) — ne jamais lire `dueDate` ou `task.endDate` seuls. MCP :
   `dueDate` sur les objets action de `push_gantt` / `add_task` / `update_task` (préservée au re-push par titre) et
-  `add_activity_action`, `update_action {dueDate | clearDueDate}` (`action_patch.ts`). **Lot 2 (à faire)** : affichage
-  « éch. » et édition dans la feuille d'action mobile / dialogs web, sections En retard / Cette semaine / À venir sur
-  l'échéance effective, planificateur de semaine, prochaine action de la santé de projet.
+  `add_activity_action`, `update_action {dueDate | clearDueDate}` (`action_patch.ts`). **Lot 2 (livré)** : mobile —
+  tuiles et feuille d'action sur l'échéance effective (« ⚑ » = échéance propre), bouton « Échéance » de la feuille
+  (demain · fin de semaine · date · retirer, `_pickDueDate`) ; web — badge « ⚑ éch. … » sur la ligne, champ « Échéance
+  propre » du dialog d'édition, filtre « En retard » PAR ACTION (`entryFilter` de `projectActionGroups`, `_entryOk`).
+  Étiquettes partagées `actionDueLabel` / `shortDateFr`. **Reste** : planificateur de semaine et prochaine action de la
+  santé de projet raisonnent toujours sur la tâche.
   **Dossiers / clients** (2026-10) : un projet racine sans tâche dont d'autres projets dépendent (`parentProjectId`) est un
   *dossier* (`isFolderProject`, `rootProjectOf`, `clientRoots`, `groupByFolder` dans `utils/actions_logic.dart`). Web :
   vue fusionnée (`utils/folder_merge.dart`, Vision/Plan d'action/Réalisation) + regroupement dans Projets + filtre
