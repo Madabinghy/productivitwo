@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -36,6 +37,7 @@ class ActionsView extends StatefulWidget {
   final FirestoreSync sync;
   final VoidCallback onRefresh;
   final void Function(Project project, {String? taskId}) onOpenProject;
+  final int dayStartMin;
 
   const ActionsView({
     super.key,
@@ -45,6 +47,7 @@ class ActionsView extends StatefulWidget {
     required this.sync,
     required this.onRefresh,
     required this.onOpenProject,
+    this.dayStartMin = kDefaultDayStartMin,
   });
 
   @override
@@ -65,13 +68,16 @@ class _ActionsViewState extends State<ActionsView> {
   /// Tâche retenue : jamais une tâche pas encore commencée (elle va dans
   /// « À venir »).
   bool Function(ProjectTask) get _taskFilter {
-    final now = DateTime.now();
+    final now = _livedToday;
     return (t) => !isUpcomingTask(t, now);
   }
 
+  /// Journée vécue (jour seul) : « aujourd'hui » bascule à l'heure réglée.
+  DateTime get _livedToday => livedDate(DateTime.now(), widget.dayStartMin);
+
   /// Couple tâche + action retenu : avec « En retard », l'échéance effective
   /// de l'action est dépassée.
-  bool _entryOk(ProjectTask t, TaskAction a) => !_overdue || isOverdueAction(a, t, DateTime.now());
+  bool _entryOk(ProjectTask t, TaskAction a) => !_overdue || isOverdueAction(a, t, _livedToday);
   String? _domainId;
   // « Pour… » : projet racine (client) ; null = tous.
   String? _clientId;
@@ -97,7 +103,7 @@ class _ActionsViewState extends State<ActionsView> {
     _hitsSub = widget.sync.streamHabitHits().listen((h) {
       if (mounted) setState(() => _hits = h);
     });
-    _scheduleSub = widget.sync.streamDailySchedule(ymdOf(DateTime.now())).listen((s) {
+    _scheduleSub = widget.sync.streamDailySchedule(livedProgramYmd(DateTime.now(), widget.dayStartMin)).listen((s) {
       if (mounted) {
         setState(() => _todayBlocks =
             s?.blocks.where((b) => b.status != 'deleted').toList() ?? []);
@@ -273,8 +279,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (logic == null) return;
     final act = logic.state.activities.where((a) => a.id == activityId).firstOrNull;
     if (act == null || !act.isHabit) return;
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = _livedToday;
     final tgt = logic.activeHabitTarget(act);
     if (tgt > 0 && logic.habitValueOn(activityId, today) >= tgt) return;
     logic.incHabit(activityId, 1, today);
@@ -522,7 +527,7 @@ class _ActionsViewState extends State<ActionsView> {
             .toList();
     // « J'ai 20 min » + tri par échéance → d'abord ce qui sert la séance la
     // plus proche (brief 2.4) ; le tri explicite « Prochaine séance » fait pareil.
-    final today = DateTime.now();
+    final today = _livedToday;
     final effectiveSort =
         _time != null && _sort == ActionsSort.dueDate ? ActionsSort.milestone : _sort;
     final allGroups = projectActionGroups(_domainProjects,
@@ -707,14 +712,14 @@ class _ActionsViewState extends State<ActionsView> {
   /// Projet dont les actions ouvertes sont toutes à venir : date de la
   /// première et nombre — pas de « Définir la prochaine action » trompeur.
   ({DateTime start, int count})? _nextUpcomingOf(Project p) {
-    final u = upcomingActions([p], filter: _filter, today: DateTime.now());
+    final u = upcomingActions([p], filter: _filter, today: _livedToday);
     return u.isEmpty ? null : (start: u.first.task.startDate, count: u.length);
   }
 
   Widget _projectGroup(ProjectActions g) {
     final p = g.project;
     final color = domainColor(p.domainId, widget.domains) ?? kBText4;
-    final today = DateTime.now();
+    final today = _livedToday;
     final expanded = _expanded.contains(p.id);
     final shown = expanded ? g.entries : g.entries.take(3).toList();
     final hidden = g.entries.length - shown.length;
@@ -765,7 +770,7 @@ class _ActionsViewState extends State<ActionsView> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 2, 0, 8),
           child: Text(
-              'Prochaine action ${upcomingLabel(next.start, DateTime.now())} · '
+              'Prochaine action ${upcomingLabel(next.start, _livedToday)} · '
               '${next.count} à venir',
               style: const TextStyle(fontSize: 12.5, color: kBText3)),
         )
@@ -909,8 +914,8 @@ class _ActionsViewState extends State<ActionsView> {
               const SizedBox(width: 6),
               Tooltip(
                 message: 'Échéance propre de l\'action (prime sur la tâche)',
-                child: _badge('⚑ ${actionDueLabel(a.dueDate!, DateTime.now())}',
-                    a.dueDate!.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day))
+                child: _badge('⚑ ${actionDueLabel(a.dueDate!, _livedToday)}',
+                    a.dueDate!.isBefore(_livedToday)
                         ? kBAttention
                         : kBText3),
               ),

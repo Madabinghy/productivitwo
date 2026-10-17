@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_work.dart';
@@ -28,11 +29,12 @@ Future<void> showTomorrowScheduleDialog(
   FirestoreSync sync, {
   List<Project> projects = const [],
   List<Activity> activities = const [],
+  int dayStartMin = kDefaultDayStartMin,
 }) =>
     showDesktopDialog<void>(context,
         maxWidth: 660,
-        builder: (_) =>
-            _TomorrowScheduleDialog(sync: sync, projects: projects, activities: activities));
+        builder: (_) => _TomorrowScheduleDialog(
+            sync: sync, projects: projects, activities: activities, dayStartMin: dayStartMin));
 
 const _kMonths = [
   'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
@@ -41,10 +43,11 @@ const _kMonths = [
 
 class _TomorrowScheduleDialog extends StatefulWidget {
   final FirestoreSync sync;
+  final int dayStartMin;
   final List<Project> projects;
   final List<Activity> activities;
   const _TomorrowScheduleDialog(
-      {required this.sync, required this.projects, required this.activities});
+      {required this.sync, this.dayStartMin = kDefaultDayStartMin, required this.projects, required this.activities});
 
   @override
   State<_TomorrowScheduleDialog> createState() => _TomorrowScheduleDialogState();
@@ -57,10 +60,8 @@ class _TomorrowScheduleDialogState extends State<_TomorrowScheduleDialog> {
   DayWindow _window = kDefaultDayWindow;
   final Set<String> _open = {};
 
-  DateTime get _day {
-    final n = DateTime.now();
-    return DateTime(n.year, n.month, n.day + _offset);
-  }
+  // « Demain » = le lendemain de la journée VÉCUE (à 0 h 30, encore la veille).
+  DateTime get _day => livedDate(DateTime.now(), widget.dayStartMin).add(Duration(days: _offset));
 
   String get _date => ymdOf(_day);
 

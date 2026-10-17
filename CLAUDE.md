@@ -404,7 +404,9 @@ calendaire côté STOCKAGE, mais le mobile le lit sur la journée vécue (lot 2,
 `livedTodayYmd` (programme « d'aujourd'hui » = la veille jusqu'à la bascule : Aujourd'hui, Demain, Actions « au
 programme », MAINTENANT, Enchaîner, écran bloc) et `livedNowMinNow` (00:30 → 24 h 30, pour que Sommeil 22:00 → 05:00
 soit « en cours » : bloc courant, auto-coche, « Caser demain », trait « maintenant » — masqué dans la frise après
-minuit). Le web reste sur la date calendaire. Le web utilise le défaut 5 h (réglage non lu). **Moments réglables** : bornes dans `data/meta.momentWindows`
+minuit). **Web** (2026-10) : le shell suit `data/meta.dayStartMin` (`streamMetaDoc`) et passe `dayStartMin` à Aujourd'hui
+(date du flux, minute vécue, Demain, routines, cartes retard / échéances), Cette semaine, Projets et Actions ; les moments
+réglés ne sont pas lus par le web (pas d'UI moments). **Moments réglables** : bornes dans `data/meta.momentWindows`
 (`timedMomentsWith`, `parseMomentWindows`, `validateMoments` ; `AppLogic.moments` / `allMoments`, `RoutineDay.moments`) ;
 sans réglage le **Soir court de 19 h au début de journée** (5 h) — la nuit appartient au soir. Éditeur
 `widgets/moments_editor_sheet.dart` (pastille « Soir · 19 h → 5 h » de la carte du moment, Paramètres « Moments de la

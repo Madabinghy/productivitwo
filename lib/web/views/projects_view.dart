@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -51,6 +52,7 @@ class ProjectsView extends StatefulWidget {
   final FirestoreSync sync;
   final VoidCallback onRefresh;
   final void Function(Project project, {String? taskId}) onOpenProject;
+  final int dayStartMin;
 
   const ProjectsView({
     super.key,
@@ -63,6 +65,7 @@ class ProjectsView extends StatefulWidget {
     required this.sync,
     required this.onRefresh,
     required this.onOpenProject,
+    this.dayStartMin = kDefaultDayStartMin,
   });
 
   @override
@@ -82,12 +85,12 @@ class _ProjectsViewState extends State<ProjectsView> {
   final Map<String, List<ScheduleBlock>> _byDay = {};
   final List<StreamSubscription<DailySchedule?>> _subs = [];
 
-  DateTime get _today => dateOnly(DateTime.now());
+  DateTime get _today => livedDate(DateTime.now(), widget.dayStartMin);
 
   @override
   void initState() {
     super.initState();
-    for (final d in weekDates(weekStart(DateTime.now()))) {
+    for (final d in weekDates(weekStart(_today))) {
       final key = ymdOf(d);
       _subs.add(widget.sync.streamDailySchedule(key).listen((s) {
         if (!mounted) return;
@@ -135,7 +138,7 @@ class _ProjectsViewState extends State<ProjectsView> {
         .where((p) => projectMatches(p, _query))
         .toList();
     if (_mode == _Mode.active) {
-      final now = DateTime.now();
+      final now = _today;
       final rank = {
         for (final p in filtered)
           p.id: switch (projectHealth(_display(p), widget.recentSessions, now).kind) {
@@ -297,7 +300,7 @@ class _ProjectsViewState extends State<ProjectsView> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = _today;
     final active = _active;
     final atRisk = active
         .where((p) => projectHealth(p, widget.recentSessions, now).kind != HealthKind.onTrack &&
