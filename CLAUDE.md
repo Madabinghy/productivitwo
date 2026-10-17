@@ -358,7 +358,7 @@ activityId}`, appliqué EN MÉMOIRE aux miroirs libres au chargement (`applyMirr
 la carte MAINTENANT → `widgets/chain_screen.dart`, plein écran, une seule chose à la fois. File = logique pure
 `utils/chain.dart` (`buildChain` : blocs à faire dont la fin n'est pas passée, dans l'ordre ; bloc de tâche → action
 visée puis autres actions ouvertes, une **étape de checklist par écran**, dernière étape = action faite ; bloc de routine
-→ carte « +1 » (sautée si la routine est atteinte) ; bloc de séance → « Ouvrir la séance » ; rendez-vous / bloc perso →
+→ carte compteur − x / y + (plusieurs +1 possibles avant « suivante », sautée si la routine est atteinte) ; bloc de séance → « Ouvrir la séance » ; rendez-vous / bloc perso →
 carte « Fait ») ; `orderChain` (« Plus tard » = fin de file, « Pas aujourd'hui » = écarté). Le **chrono suit** le bloc
 affiché (`onLaunch` du bloc à l'entrée, arrêt à sa sortie) ; bloc épuisé → `updateBlockStatus done` + écran de
 transition (« Commencer », « Attendre HH:MM » / « Souffler 5 min » → reprise auto, « Sortir ») ; bloc qui déborde →

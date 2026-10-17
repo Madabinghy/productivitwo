@@ -14,7 +14,8 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart'
+    show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Mode « Enchaîner » (2026-10) : une seule chose à l'écran, celle à faire
@@ -252,9 +253,6 @@ class _ChainScreenState extends State<_ChainScreen> {
             await _saveAction(i);
             break;
           case ChainKind.routine:
-            routinePlus(logic, i.activity!);
-            setState(() => _dismissed.add(i.key));
-            break;
           case ChainKind.session:
           case ChainKind.block:
             setState(() => _dismissed.add(i.key));
@@ -382,6 +380,58 @@ class _ChainScreenState extends State<_ChainScreen> {
                 fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: color ?? pal.primary)),
       );
 
+  /// Compteur − x / y + sur place (même geste que l'Enchaîner routines) : on
+  /// peut faire plusieurs +1 avant de passer à la suite — une cible à 1 ne
+  /// coupe plus la série.
+  Widget _routineCounter(NowPalette pal, Activity a, RoutineToDo r) {
+    final todayN = routineTodayCount(logic, a);
+    final dayTarget = r.dayTarget;
+    final count = dayTarget != null ? r.dayDone : r.weekDone;
+    final target = dayTarget ?? r.weekTarget;
+    return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+      _round(pal, '−', todayN > 0 || (dayTarget == null && r.weekDone > 0)
+          ? () {
+              if (routineMinus(logic, a)) HapticFeedback.selectionClick();
+              setState(() {});
+            }
+          : null),
+      const SizedBox(width: 28),
+      Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('$count / $target',
+            style: TextStyle(
+                fontSize: 34, fontWeight: FontWeight.w800, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
+        Text(dayTarget != null ? 'AUJOURD\'HUI' : 'CETTE SEMAINE',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
+      ]),
+      const SizedBox(width: 28),
+      _round(pal, '+', () {
+        HapticFeedback.lightImpact();
+        routinePlus(logic, a);
+        setState(() {});
+      }, bg: kRoutineAccent, fg: kBBg),
+    ]);
+  }
+
+  Widget _round(NowPalette pal, String label, VoidCallback? onTap, {Color? bg, Color? fg}) => SizedBox(
+        width: 56,
+        height: 56,
+        child: Material(
+          color: onTap == null ? pal.chip : (bg ?? pal.chip),
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: Center(
+              child: Text(label,
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: onTap == null ? Colors.white.withOpacity(.18) : (fg ?? pal.text2))),
+            ),
+          ),
+        ),
+      );
+
   Widget _primary(String label, VoidCallback onTap, {IconData? icon, Color? color}) => SizedBox(
         height: 56,
         child: FilledButton.icon(
@@ -469,7 +519,7 @@ class _ChainScreenState extends State<_ChainScreen> {
         kindLabel = b.gcalEventId != null ? 'Rendez-vous' : 'Bloc';
         break;
     }
-    final kindColor = i.kind == ChainKind.routine ? const Color(0xFFE07B39) : null;
+    final kindColor = i.kind == ChainKind.routine ? kRoutineAccent : null;
     final routine = i.kind == ChainKind.routine
         ? routinesForToday([i.activity!], logic.state.habitHits, DateTime.now()).firstOrNull
         : null;
@@ -523,11 +573,18 @@ class _ChainScreenState extends State<_ChainScreen> {
                     ]),
                   ]),
                 )
-              else
+              else ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  child: Icon(Icons.repeat_rounded, size: 56, color: kindColor),
+                  padding: const EdgeInsets.only(top: 6, bottom: 14),
+                  child: Icon(
+                      i.activity!.iconCode != null
+                          ? IconData(i.activity!.iconCode!, fontFamily: 'MaterialIcons')
+                          : Icons.repeat_rounded,
+                      size: 56,
+                      color: kindColor),
                 ),
+                if (routine != null) _routineCounter(pal, i.activity!, routine),
+              ],
               const SizedBox(height: 22),
               if (i.context != null)
                 Text(i.context!,
@@ -539,13 +596,6 @@ class _ChainScreenState extends State<_ChainScreen> {
               Text(i.title,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.2, color: pal.text)),
-              if (routine != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(routine.progressLabel,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
-                ),
               if (i.kind == ChainKind.step && i.action!.estimatedMin != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -616,8 +666,24 @@ class _ChainScreenState extends State<_ChainScreen> {
           ]),
         ];
       case ChainKind.routine:
+        final r = routinesForToday([i.activity!], logic.state.habitHits, DateTime.now()).firstOrNull;
+        final count = r == null ? 0 : (r.dayTarget != null ? r.dayDone : r.weekDone);
+        final target = r == null ? 0 : (r.dayTarget ?? r.weekTarget);
+        final reached = r?.reached ?? false;
         return [
-          _primary('+1 — c\'est fait', () => _done(i), icon: Icons.add_rounded, color: const Color(0xFFE07B39)),
+          if (reached)
+            _primary('Cible atteinte — suivante', () => _done(i), color: kRoutineAccent)
+          else if (count > 0)
+            _primary('Garder $count / $target — suivante', () => _done(i),
+                icon: Icons.arrow_forward_rounded, color: kRoutineAccent.withOpacity(.55))
+          else
+            SizedBox(
+              height: 56,
+              child: OutlinedButton(
+                onPressed: null,
+                child: Text('Suivante', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Colors.white.withOpacity(.22))),
+              ),
+            ),
           const SizedBox(height: 8),
           Row(children: [
             _secondary('Pas maintenant', () => _later(i)),
