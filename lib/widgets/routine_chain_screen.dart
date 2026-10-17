@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
+import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart'
     show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -241,6 +242,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bar(pal),
+      RunningChronoBar(logic: logic),
       const SizedBox(height: 6),
       Row(children: [
         Container(
@@ -391,6 +393,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       _bar(pal),
+      RunningChronoBar(logic: logic),
       const Spacer(),
       Center(
         child: Container(

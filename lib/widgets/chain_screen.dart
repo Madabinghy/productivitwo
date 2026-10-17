@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart'
     show kRoutineAccent, routineMinus, routinePlus, routineTodayCount;
+import 'package:productivitwo_v1/widgets/running_chrono_bar.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Mode « Enchaîner » (2026-10) : une seule chose à l'écran, celle à faire
@@ -540,6 +541,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _progress(pal),
+        RunningChronoBar(logic: logic),
         const SizedBox(height: 6),
         Row(children: [
           _chip(pal, kindLabel, color: kindColor),
@@ -736,6 +738,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _progress(pal),
+        RunningChronoBar(logic: logic),
         const Spacer(),
         Icon(Icons.check_circle_rounded, size: 56, color: pal.primary),
         const SizedBox(height: 14),
