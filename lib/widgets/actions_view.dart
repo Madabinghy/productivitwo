@@ -1158,25 +1158,6 @@ class _ActionsViewState extends State<ActionsView> {
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface.withOpacity(.35))),
             // Facteur réel / estimé (médiane des actions faites chronométrées).
-            if (estimateFactorShortLabel(estimateFactor(widget.logic.currentProjects, _spent))
-                case final fl?) ...[
-              const SizedBox(width: 10),
-              // Flexible : le libellé cède la place aux trois boutons de
-              // droite (overflow constaté sur iPhone 14).
-              Flexible(
-                child: Tooltip(
-                  message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
-                      'Sert à corriger vos estimations.',
-                  child: Text(fl,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface.withOpacity(.45))),
-                ),
-              ),
-            ],
             const Spacer(),
             IconButton(
               visualDensity: VisualDensity.compact,
@@ -1376,6 +1357,24 @@ class _ActionsViewState extends State<ActionsView> {
             (TimeBucket.more, 'Plus'),
           ]) ...[
             chip(t, _time == b, () => _setTime(_time == b ? null : b)),
+            const SizedBox(width: 6),
+          ],
+          // Facteur réel / estimé (médiane des actions faites chronométrées),
+          // à côté des créneaux qu'il sert à corriger ; la ligne défile, donc
+          // le libellé complet tient toujours (l'en-tête, lui, débordait).
+          if (estimateFactorLabel(estimateFactor(widget.logic.currentProjects, _spent))
+              case final fl?) ...[
+            const SizedBox(width: 2),
+            Tooltip(
+              message: 'Médiane du temps réel sur le temps estimé, actions faites avec chrono ciblé. '
+                  'Sert à corriger vos estimations.',
+              child: Text(fl,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurface.withOpacity(.45))),
+            ),
             const SizedBox(width: 6),
           ],
           if (contexts.isNotEmpty) ...[
