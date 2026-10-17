@@ -10,6 +10,11 @@ void main() {
     expect(livedDate(DateTime(2026, 10, 17, 0, 30), 0), DateTime(2026, 10, 17)); // minuit = calendaire
   });
 
+  test('livedProgramYmd : clé du programme de la journée vécue', () {
+    expect(livedProgramYmd(DateTime(2026, 10, 17, 0, 30), 5 * 60), '2026-10-16');
+    expect(livedProgramYmd(DateTime(2026, 10, 17, 6, 0), 5 * 60), '2026-10-17');
+  });
+
   test('livedDayStart / livedNowMin', () {
     expect(livedDayStart(DateTime(2026, 10, 17, 0, 30), 5 * 60), DateTime(2026, 10, 16, 5));
     expect(livedDayStart(DateTime(2026, 10, 17, 23, 0), 5 * 60), DateTime(2026, 10, 17, 5));

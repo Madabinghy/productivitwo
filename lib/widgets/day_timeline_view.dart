@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -78,12 +79,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
   // Séances réutilisables — proposées par le picker d'ajout (« Séance · X »).
   List<SessionTemplate> _templates = const [];
 
-  bool get _isToday {
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    return widget.date == today;
-  }
+  /// Journée vécue (voir `AppLogic.livedToday`).
+  bool get _isToday => widget.logic.isLivedToday(widget.date);
 
   @override
   void initState() {
@@ -846,7 +843,9 @@ class _DayTimelineViewState extends State<DayTimelineView> {
         .where((b) => b.status != 'deleted' && b.status != 'skipped')
         .toList();
     final now = DateTime.now();
-    final nowMin = now.hour * 60 + now.minute;
+    // Minute vécue : après minuit, au-delà de 24 h (le trait sort de la frise,
+    // on ne le dessine plus).
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
 
     // Auto-scroll vers « maintenant » à la première ouverture VISIBLE du
     // jour (le build hors écran de l'IndexedStack ne compte pas).
@@ -936,7 +935,7 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                   for (final e in laid.where((e) => e.b.id == _selectedId))
                     _blockWidget(cs, e, laneW),
                   // Trait « maintenant ».
-                  if (_isToday)
+                  if (_isToday && nowMin < 24 * 60)
                     Positioned(
                       key: _nowKey,
                       top: nowMin / 60 * _hourH + 5,

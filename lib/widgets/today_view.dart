@@ -139,7 +139,7 @@ class TodayViewState extends State<TodayView> {
     // minuit → le stream bascule sur le nouveau jour.
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
-      if (_ymd(DateTime.now()) != _schedDate) _subscribeSchedule();
+      if (widget.logic.livedTodayYmd != _schedDate) _subscribeSchedule();
       if (!_showTomorrow) setState(() {});
     });
   }
@@ -160,7 +160,7 @@ class TodayViewState extends State<TodayView> {
 
   void _subscribeSchedule() {
     _schedSub?.cancel();
-    _schedDate = _ymd(DateTime.now());
+    _schedDate = widget.logic.livedTodayYmd;
     _tabOpens.clear();
     _schedSub = FirestoreSync().streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
@@ -500,7 +500,7 @@ class TodayViewState extends State<TodayView> {
   /// rouvre la planification depuis maintenant (étape « tes blocs d'abord »
   /// incluse, cache ignoré : les contraintes viennent de changer).
   Future<void> _replanToday() async {
-    final today = _ymd(DateTime.now());
+    final today = widget.logic.livedTodayYmd;
     final sync = FirestoreSync();
     final sched = await sync.fetchDailySchedule(today);
     final pending = (sched?.blocks ?? const <ScheduleBlock>[])
@@ -700,10 +700,9 @@ class TodayViewState extends State<TodayView> {
     if (_syncing) return;
     setState(() => _syncing = true);
     final sync = FirestoreSync();
-    final now = DateTime.now();
     var ok = false;
     String? reason;
-    for (final d in [now, now.add(const Duration(days: 1))]) {
+    for (final d in [widget.logic.livedToday, widget.logic.livedToday.add(const Duration(days: 1))]) {
       final r = await gcalSyncDay(sync, _ymd(d));
       if (r?['ok'] == true) ok = true;
       reason ??= r?['reason'] as String?;
@@ -763,8 +762,10 @@ class TodayViewState extends State<TodayView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final date =
-        _showTomorrow ? _ymd(now.add(const Duration(days: 1))) : _ymd(now);
+    // Journée vécue : avant la bascule (5 h), « aujourd'hui » = la veille.
+    final date = _showTomorrow
+        ? _ymd(widget.logic.livedToday.add(const Duration(days: 1)))
+        : widget.logic.livedTodayYmd;
     final dark = cs.brightness == Brightness.dark;
     final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.6);
     final link = dark ? kBPrimary : cs.primary;
@@ -968,14 +969,14 @@ class TodayViewState extends State<TodayView> {
   /// En-tête (§ 3.1) : « Lundi 28 » + « 3 / 9 blocs · 6 h 15 restantes », à
   /// droite Chrono libre et ORION (44 px).
   Widget _header(ColorScheme cs, DateTime now, Color text3) {
-    final day = _showTomorrow ? now.add(const Duration(days: 1)) : now;
+    final day = _showTomorrow ? widget.logic.livedToday.add(const Duration(days: 1)) : widget.logic.livedToday;
     final name = _kDays[day.weekday - 1];
     final title = _showTomorrow
         ? 'Demain · ${name[0].toUpperCase()}${name.substring(1)} ${day.day}'
         : '${name[0].toUpperCase()}${name.substring(1)} ${day.day}';
     final live = _liveBlocks;
     final done = live.where((b) => b.status == 'done').length;
-    final nowMin = now.hour * 60 + now.minute;
+    final nowMin = widget.logic.livedNowMinNow;
     final remaining = remainingPlannedMin(live, nowMin);
     final sub = _showTomorrow
         ? 'Prépare la journée de demain'

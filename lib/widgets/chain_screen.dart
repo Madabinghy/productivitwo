@@ -181,10 +181,8 @@ class _ChainScreenState extends State<_ChainScreen> {
     return last;
   }
 
-  int get _nowMin {
-    final n = DateTime.now();
-    return n.hour * 60 + n.minute;
-  }
+  /// Minute vécue : après minuit, la file de la veille continue (24 h 30).
+  int get _nowMin => logic.livedNowMinNow;
 
   String _clock(int min) =>
       '${((min ~/ 60) % 24).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
