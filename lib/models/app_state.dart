@@ -29,6 +29,10 @@ class AppState {
   Map<String, String> habitPinnedActivity;
   Map<String, List<String>> nowSkippedByYmd;
   Map<String, List<String>> nowDoneByYmd; // ids "pas aujourd'hui / ok"
+  // Vue Routines (2026-10) : routines reportées à un moment plus tard DANS la
+  // journée — ymd -> ["routineId:momentKey", …]. Le moment de la routine
+  // (timeContext) n'est pas touché.
+  Map<String, List<String>> routinePushedByYmd;
   Map<String, List<String>>
       habitChecklistByHabitId; // habitId -> ["item1","item2"]
 
@@ -298,6 +302,7 @@ class AppState {
     // ✅ NOUVEAU
     Map<String, List<String>>? nowSkippedByYmd,
     Map<String, List<String>>? nowDoneByYmd,
+    Map<String, List<String>>? routinePushedByYmd,
     Map<String, Map<String, List<int>>>? habitChecklistDone,
     List<ActivityLog>? activityLogs,
     FilterState? filters,
@@ -320,6 +325,7 @@ class AppState {
         // ✅ NOUVEAU
         nowSkippedByYmd = nowSkippedByYmd ?? <String, List<String>>{},
         nowDoneByYmd = nowDoneByYmd ?? <String, List<String>>{},
+        routinePushedByYmd = routinePushedByYmd ?? <String, List<String>>{},
         habitChecklistDone =
             habitChecklistDone ?? <String, Map<String, List<int>>>{},
         activityLogs = activityLogs ?? <ActivityLog>[],
@@ -386,6 +392,7 @@ class AppState {
         // ✅ NOW TAB
         'nowSkippedByYmd': nowSkippedByYmd,
         'nowDoneByYmd': nowDoneByYmd,
+        'routinePushedByYmd': routinePushedByYmd,
         'habitChecklistByHabitId': habitChecklistByHabitId,
         'habitChecklistDone': habitChecklistDone,
         'activityLogs': activityLogs.map((e) => e.toJson()).toList(),
@@ -541,6 +548,7 @@ class AppState {
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),
       nowDoneByYmd: _mapSL(j['nowDoneByYmd']),
+      routinePushedByYmd: _mapSL(j['routinePushedByYmd']),
       habitChecklistByHabitId: _mapSL(j['habitChecklistByHabitId']),
       habitChecklistDone: _mapSMapListInt(j['habitChecklistDone']),
       filters: FilterState.from(j['filters']),

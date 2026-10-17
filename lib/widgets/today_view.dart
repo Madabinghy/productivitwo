@@ -12,7 +12,6 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
-import 'package:productivitwo_v1/widgets/best_to_do_card.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
@@ -23,7 +22,9 @@ import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
+import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -99,6 +100,9 @@ class TodayViewState extends State<TodayView> {
   // DÉFAUT (demande user) — donne la journée d'un coup d'œil et se coche vite.
   // Le choix est persisté par appareil : l'app rouvre dans la dernière vue.
   static const _timelinePrefKey = 'today_view_timeline';
+  // Segment Actions · Routines en tête (2026-10) ; persisté.
+  static const _segmentPrefKey = 'today_view_segment_routines';
+  bool _routinesSegment = false;
   bool _timeline = false;
   bool _syncing = false;
   // Scroll de la page — la jauge-minimap saute la timeline à l'heure tapée.
@@ -113,6 +117,8 @@ class TodayViewState extends State<TodayView> {
       if (saved != null && mounted && saved != _timeline) {
         setState(() => _timeline = saved);
       }
+      final seg = p.getBool(_segmentPrefKey);
+      if (seg != null && mounted) setState(() => _routinesSegment = seg);
       final snooze = p.getString(_kDayGoalUpSnooze);
       final morning = p.getString(_kMorningDismissed);
       if (mounted) {
@@ -776,6 +782,16 @@ class TodayViewState extends State<TodayView> {
               children: [
                 _header(cs, now, text3),
                 if (!_showTomorrow) ...[
+                  const SizedBox(height: 14),
+                  _segmentBar(cs),
+                ],
+                if (!_showTomorrow && _routinesSegment)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: RoutinesDayView(logic: widget.logic),
+                  )
+                else ...[
+                if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
                   if (_morningCard(cs, now, text3) case final card?) card,
                   const SizedBox(height: 16),
@@ -896,9 +912,9 @@ class TodayViewState extends State<TodayView> {
                     ),
                   ),
                 ] else ...[
-                  // « Le meilleur à faire » : les routines à rattraper,
-                  // actionnables sur place (+1 / −1 / passer) — ex-Maintenant.
-                  BestToDoCard(logic: widget.logic, onStartTimed: widget.onStartTimed),
+                  // Routines : une ligne courte vers le segment Routines (la
+                  // liste complète y vit ; ex-« Le meilleur à faire »).
+                  _routinesLine(cs),
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)
@@ -930,6 +946,7 @@ class TodayViewState extends State<TodayView> {
                       ),
                     ),
                   ]),
+                ],
                 ],
               ],
             ),
@@ -978,6 +995,103 @@ class TodayViewState extends State<TodayView> {
           () => OrionScreen.show(context, FirestoreSync()),
           accent: true),
     ]);
+  }
+
+  void _setSegment(bool routines) {
+    if (routines == _routinesSegment) return;
+    HapticFeedback.selectionClick();
+    setState(() => _routinesSegment = routines);
+    SharedPreferences.getInstance().then((p) => p.setBool(_segmentPrefKey, routines));
+  }
+
+  /// Pilule « Actions · Routines » (handoff Segment Routines, 2026-10).
+  Widget _segmentBar(ColorScheme cs) {
+    final dark = cs.brightness == Brightness.dark;
+    Widget seg(String label, bool on, Color accent, VoidCallback onTap) => Expanded(
+          child: SizedBox(
+            height: 44,
+            child: Material(
+              color: on ? (dark ? kBRaised : cs.surfaceContainerHighest) : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onTap,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: on ? accent.withOpacity(.4) : Colors.transparent),
+                  ),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    if (on) ...[
+                      Container(width: 7, height: 7, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: on ? cs.onSurface : cs.onSurface.withOpacity(.55))),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: dark ? kBSurface : cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: dark ? const Color(0x0FFFFFFF) : cs.outlineVariant.withOpacity(.4)),
+      ),
+      child: Row(children: [
+        seg('Actions', !_routinesSegment, dark ? kBPrimary : cs.primary, () => _setSegment(false)),
+        seg('Routines', _routinesSegment, kRoutineAccent, () => _setSegment(true)),
+      ]),
+    );
+  }
+
+  /// « Routines · 5 / 18 · 3 à faire ce matin → » : ouvre le segment Routines.
+  Widget _routinesLine(ColorScheme cs) {
+    final ymd = yyyymmdd(DateTime.now());
+    final day = buildRoutineDay(
+      activities: widget.logic.state.activeActivities,
+      hits: widget.logic.state.habitHits,
+      now: DateTime.now(),
+      pushed: widget.logic.routinePushed(ymd),
+      deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
+      dismissed: widget.logic.nowDoneSet(ymd),
+    );
+    if (day.slots.isEmpty) return const SizedBox.shrink();
+    final dark = cs.brightness == Brightness.dark;
+    return Material(
+      color: dark ? kBSurface : cs.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _setSegment(true),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 52),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: kRoutineAccent.withOpacity(.3)),
+          ),
+          child: Row(children: [
+            Container(width: 7, height: 7, decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(day.shortLine,
+                  maxLines: 2,
+                  style: TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface, fontFeatures: const [FontFeature.tabularFigures()])),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_forward_rounded, size: 18, color: kRoutineAccent),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _roundBtn(ColorScheme cs, IconData icon, String tooltip, VoidCallback onTap,

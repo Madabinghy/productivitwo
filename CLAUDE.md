@@ -365,6 +365,20 @@ transition (« Commencer », « Attendre HH:MM » / « Souffler 5 min » → rep
 bandeau « Décaler la suite de N min » (`overrunMin`, `shiftFollowing` : jamais un miroir agenda) / « Laisser » ; « Sortir »
 ou file vide → récap (faits, chrono, reste à faire avec « Caser demain ») ; l'écran reste allumé (`wakelock_plus`).
 Complément d'Aujourd'hui, pas un remplacement.
+**Segment « Actions · Routines »** (mobile, 2026-10, handoff Claude Design « Segment Routines Aujourd'hui », lot 1) :
+pilule en tête d'Aujourd'hui (`_segmentBar`, persistée `today_view_segment_routines`). Actions = l'onglet tel quel, où
+« Le meilleur à faire » est remplacé par la ligne courte « Routines · 5 / 18 · 3 à faire ce matin → » (`_routinesLine`,
+`RoutineDay.shortLine`). Routines = `widgets/routines_day_view.dart` : carte « Routine du moment » (anneau x / y du moment,
++1, −1 si ≥ 1 occurrence, « Pas maintenant ▾ » → plus tard dans le moment / report à un moment plus tard / pas
+aujourd'hui) puis « La journée par moments » (moment courant ouvert, « Toute la journée » toujours ouverte, lignes coche /
+−1 / +1). Logique pure `utils/routine_moments.dart` : le **moment** d'une routine = son `timeContext` effectif
+(`effTimeContextOf`, réglé ou deviné) ramené à six cases (`momentKeyOf` : repas → midi, journée → toute la journée, rien →
+libre) ; `currentMoment` (creux → suivant) ; `buildRoutineDay` → `RoutineDay` (`queue` = restées des moments passés puis
+moment courant, « Pas maintenant » en fin ; `countOf`, `leftoverCountOf`, `laterMoments`). État du jour : « Pas
+maintenant » = `nowSkippedByYmd` (ordre = ordre du report), « Pas aujourd'hui » = `nowDoneByYmd`, report à un moment =
+`AppState.routinePushedByYmd` (`"id:moment"`, `AppLogic.routinePushed` / `setRoutinePushed`) — le `timeContext` n'est
+jamais modifié par ces gestes. Ordre manuel dans un moment = `Activity.routineOrder` (null = après, par nom). À venir :
+lot 2 « Enchaîner les routines » (+ accroches du mode Enchaîner), lot 3 « Organiser » (glisser entre moments, par domaine).
 Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, long press → réordonner.
 
 **Lien session ↔ bloc** (`lib/utils/today_logic.dart`) : une `Session` ne pointe PAS vers un bloc, le lien
