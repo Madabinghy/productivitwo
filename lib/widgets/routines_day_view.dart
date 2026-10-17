@@ -560,21 +560,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               child: InkWell(
                 customBorder: const CircleBorder(),
                 onTap: () => _toggleReach(s),
-                child: Center(
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: done ? kRoutineAccent : Colors.transparent,
-                      shape: BoxShape.circle,
-                      border: done ? null : Border.all(color: pal.text4, width: 1.5),
-                    ),
-                    child: done ? const Icon(Icons.check_rounded, size: 14, color: kBBg) : null,
-                  ),
-                ),
+                child: Center(child: _ringCheck(pal, s, done: done)),
               ),
             ),
-            _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent),
+            _rowLauncher(pal, a, done: done),
             const SizedBox(width: 10),
             Expanded(
               child: InkWell(
@@ -601,55 +590,74 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 ),
               ),
             ),
-            _rowControls(pal, s, a, done: done, n: n),
+            _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
+            const SizedBox(width: 6),
+            _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
           ]),
         ),
       ),
     );
   }
 
-  /// Colonne de droite d'une ligne : − / + en haut ; dessous, centrés sous les
-  /// boutons, le compte « ✓ 2 / 3 » et le ▶ de l'activité liée (■ si elle
-  /// tourne). Largeur fixe = celle des deux boutons.
-  Widget _rowControls(NowPalette pal, RoutineSlot s, Activity a, {required bool done, required int n}) {
-    final linked = _linkedOf(a);
+  /// Coche d'une ligne = anneau de progression (comme la carte du moment) :
+  /// se remplit avec les occurrences, « 2/3 » au centre quand la cible dépasse
+  /// 1 ; atteinte = disque plein avec ✓, ou le compte « 7/1 » quand on a
+  /// dépassé (la série de pompes reste lisible).
+  Widget _ringCheck(NowPalette pal, RoutineSlot s, {required bool done}) {
     final target = s.todo.dayTarget ?? s.todo.weekTarget;
     final count = s.todo.dayTarget != null ? s.todo.dayDone : s.todo.weekDone;
-    final showCount = target > 1 || count > 0;
+    final progress = target <= 0 ? 0.0 : (count / target).clamp(0.0, 1.0).toDouble();
+    final over = count > target;
+    final String? center = done ? (over ? '$count/$target' : null) : (target > 1 && count > 0 ? '$count/$target' : null);
+    const size = 30.0;
     return SizedBox(
-      width: 94,
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.center, children: [
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
-          const SizedBox(width: 6),
-          _round(pal, '+', () => _plus(a), bg: kRoutineAccent.withOpacity(.14), fg: kRoutineAccent),
-        ]),
-        if (showCount || linked != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 1, bottom: 2),
-            child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-              if (showCount)
-                Text((done ? '✓ ' : '') + '$count / $target',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: done ? kRoutineAccent : pal.text3,
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-              if (showCount && linked != null) const SizedBox(width: 6),
-              if (linked != null)
-                SizedBox(
-                  width: 28,
-                  height: 24,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _toggleChrono(linked),
-                    child: Icon(_isRunning(linked) ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                        size: 20, color: _isRunning(linked) ? kBAttention : kRoutineAccent),
-                  ),
-                ),
-            ]),
+      width: size,
+      height: size,
+      child: Stack(alignment: Alignment.center, children: [
+        if (done)
+          Container(decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle))
+        else
+          CustomPaint(
+            size: const Size(size, size),
+            painter: RingPainter(
+                progress: progress, color: kRoutineAccent, stroke: 2.5, trackColor: pal.track, cap: StrokeCap.round),
           ),
+        if (center != null)
+          Text(center,
+              style: TextStyle(
+                  fontSize: center.length > 3 ? 8 : 9.5,
+                  fontWeight: FontWeight.w800,
+                  color: done ? kBBg : pal.text2,
+                  fontFeatures: const [FontFeature.tabularFigures()]))
+        else if (done)
+          const Icon(Icons.check_rounded, size: 16, color: kBBg),
       ]),
+    );
+  }
+
+  /// Icône de la routine ; avec une activité liée, elle devient le lanceur :
+  /// ▶ dans un rond orange (■ rouge si le chrono tourne dessus), appui long =
+  /// changer l'activité via la fiche.
+  Widget _rowLauncher(NowPalette pal, Activity a, {required bool done}) {
+    final linked = _linkedOf(a);
+    if (linked == null) {
+      return SizedBox(width: 32, child: Center(child: _icon(a, size: 20, color: done ? pal.text4 : kRoutineAccent)));
+    }
+    final running = _isRunning(linked);
+    final color = running ? kBAttention : kRoutineAccent;
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Material(
+        color: color.withOpacity(running ? .18 : .14),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => _toggleChrono(linked),
+          onLongPress: () => _openSheet(a),
+          child: Icon(running ? Icons.stop_rounded : Icons.play_arrow_rounded, size: 19, color: color),
+        ),
+      ),
     );
   }
 }
