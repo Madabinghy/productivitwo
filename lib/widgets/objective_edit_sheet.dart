@@ -96,6 +96,12 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
   late final TextEditingController _descCtrl;
   late final TextEditingController _kpiCtrl;
   late final TextEditingController _horizonCtrl;
+  // Métrique chiffrée (trajectoire) — optionnelle, à côté du KPI texte.
+  late final TextEditingController _mLabelCtrl;
+  late final TextEditingController _mUnitCtrl;
+  late final TextEditingController _mStartCtrl;
+  late final TextEditingController _mTargetCtrl;
+  late int _checkInEvery;
   String? _domainId;
   DateTime? _startDate;
   DateTime? _endDate;
@@ -117,6 +123,12 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
     _descCtrl = TextEditingController(text: e?.description ?? '');
     _kpiCtrl = TextEditingController(text: e?.kpiTarget ?? '');
     _horizonCtrl = TextEditingController(text: e?.horizonLabel ?? '');
+    final m = e?.metric;
+    _mLabelCtrl = TextEditingController(text: m?.label ?? '');
+    _mUnitCtrl = TextEditingController(text: m?.unit ?? '');
+    _mStartCtrl = TextEditingController(text: m == null ? '' : _num(m.startValue));
+    _mTargetCtrl = TextEditingController(text: m == null ? '' : _num(m.targetValue));
+    _checkInEvery = e?.checkInEvery ?? 7;
     _domainId = e?.domainId;
     _startDate = e?.startDate;
     _endDate = e?.endDate;
@@ -137,12 +149,34 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
     _descCtrl.dispose();
     _kpiCtrl.dispose();
     _horizonCtrl.dispose();
+    _mLabelCtrl.dispose();
+    _mUnitCtrl.dispose();
+    _mStartCtrl.dispose();
+    _mTargetCtrl.dispose();
     super.dispose();
   }
 
+  static String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  static double? _parseNum(String s) => double.tryParse(s.trim().replaceAll(',', '.').replaceAll(' ', ''));
+
+  /// Métrique saisie : cible requise, libellé = KPI si vide. null = aucune.
+  ObjectiveMetric? get _metric {
+    final target = _parseNum(_mTargetCtrl.text);
+    if (target == null) return null;
+    final label = _mLabelCtrl.text.trim().isEmpty ? _kpiCtrl.text.trim() : _mLabelCtrl.text.trim();
+    return ObjectiveMetric(
+      label: label,
+      unit: _mUnitCtrl.text.trim().isEmpty ? null : _mUnitCtrl.text.trim(),
+      startValue: _parseNum(_mStartCtrl.text) ?? 0,
+      targetValue: target,
+    );
+  }
+
+  bool get _metricIncomplete => _mTargetCtrl.text.trim().isNotEmpty && _parseNum(_mTargetCtrl.text) == null;
+
   // ── Validations par étape (le SMART guidé) ─────────────────────────────────
   bool get _step1Ok => _titleCtrl.text.trim().isNotEmpty;
-  bool get _step2Ok => _kpiCtrl.text.trim().isNotEmpty;
+  bool get _step2Ok => _kpiCtrl.text.trim().isNotEmpty && !_metricIncomplete;
   bool get _step3Ok => _horizonCtrl.text.trim().isNotEmpty || _endDate != null;
   bool get _step4Ok =>
       _timeCommitments.isNotEmpty ||
@@ -167,6 +201,9 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
           _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
       domainId: _domainId,
       kpiTarget: _kpiCtrl.text.trim(),
+      metric: _metric,
+      readings: e?.readings,
+      checkInEvery: _checkInEvery,
       horizonLabel:
           _horizonCtrl.text.trim().isEmpty ? null : _horizonCtrl.text.trim(),
       startDate: _startDate ?? e?.startDate ?? DateTime.now(),
@@ -318,6 +355,70 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
           ),
           _hint(context,
               'Mesurable : un chiffre + une unité. Comment sauras-tu que c\'est atteint ?'),
+          const SizedBox(height: 18),
+          Text('TRAJECTOIRE (optionnel)',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: .8,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.5))),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              flex: 3,
+              child: TextField(
+                controller: _mLabelCtrl,
+                decoration: _dec(context, label: 'Ce qu\'on mesure', hint: 'Ex : Clients payants'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: TextField(
+                controller: _mUnitCtrl,
+                decoration: _dec(context, label: 'Unité', hint: '€, kg…'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _mStartCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: _dec(context, label: 'Aujourd\'hui', hint: '0'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.arrow_forward, size: 18)),
+            Expanded(
+              child: TextField(
+                controller: _mTargetCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+                decoration: _dec(context, label: 'Cible', hint: '100'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ]),
+          if (_metricIncomplete)
+            _hint(context, 'La cible doit être un nombre.')
+          else if (_metric != null) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('Relevé tous les', style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurface.withOpacity(.7))),
+              for (final d in const [3, 7, 14, 30])
+                ChoiceChip(
+                  label: Text(d == 7 ? '7 j (semaine)' : d == 30 ? '30 j (mois)' : '$d j'),
+                  selected: _checkInEvery == d,
+                  onSelected: (_) => setState(() => _checkInEvery = d),
+                ),
+            ]),
+            _hint(context,
+                'La fiche tracera la ligne « où je devrais en être » entre la valeur d\'aujourd\'hui et la cible, et te demandera un relevé à ce rythme.'),
+          ] else
+            _hint(context, 'Donne la version chiffrée du KPI pour suivre la trajectoire (valeur d\'aujourd\'hui → cible).'),
         ],
       );
 
