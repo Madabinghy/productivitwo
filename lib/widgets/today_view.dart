@@ -795,6 +795,7 @@ class TodayViewState extends State<TodayView> {
                       logic: widget.logic,
                       onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
                       onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
+                      onStartTimed: widget.onStartTimed,
                     ),
                   )
                 else ...[

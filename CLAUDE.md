@@ -387,7 +387,9 @@ pilule en tête d'Aujourd'hui (`_segmentBar`, persistée `today_view_segment_rou
 `RoutineDay.shortLine`). Routines = `widgets/routines_day_view.dart` : carte « Routine du moment » (anneau x / y du moment,
 +1, −1 si ≥ 1 occurrence, « Pas maintenant ▾ » → plus tard dans le moment / report à un moment plus tard / pas
 aujourd'hui ; cible atteinte par le +1 de la carte = la routine **reste en carte** (`_held`, série « Pompes » cible 1 → « ✓ 7 / 1
-aujourd'hui »), « Suivante » passe à la file ; les lignes affichent « 7/1 » dès qu'on dépasse la cible) puis « La journée par moments » (moment courant ouvert, « Toute la journée » toujours ouverte, lignes coche /
+aujourd'hui »), « Suivante » passe à la file ; les lignes affichent « 7/1 » dès qu'on dépasse la cible ; à côté de la pilule
+chrono : ⏱ minuteur (`timerMin` réglé = décompte direct, sinon choix de durée mémorisé ; via `onStartTimed`, routine cochée à
+la fin) et réglages = `showRoutineSheet`) puis « La journée par moments » (moment courant ouvert, « Toute la journée » toujours ouverte, lignes coche /
 −1 / +1). Logique pure `utils/routine_moments.dart` : le **moment** d'une routine = son `timeContext` effectif
 (`effTimeContextOf`, réglé ou deviné) ramené à six cases (`momentKeyOf` : repas → midi, journée → toute la journée, rien →
 libre) ; `currentMoment` (creux → suivant) ; `buildRoutineDay` → `RoutineDay` (`queue` = restées des moments passés puis
