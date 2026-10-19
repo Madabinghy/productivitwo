@@ -539,6 +539,19 @@ Secrets : toute comparaison passe par `secretsMatch()` (temps constant) — jama
 
 Après modification : `npm run build` dans `functions/`, puis `firebase deploy --only functions`.
 
+**Trajectoire des objectifs** (2026-10, lot 1 = modèle + MCP + logique pure, rien de visible) : `StrategicObjective.metric
+{label, unit, startValue, targetValue}` (version chiffrée de `kpiTarget`, qui reste le texte), `readings[] {id, date
+YYYY-MM-DD, value, note}` (un par jour, le dernier remplace), `checkInEvery` (jours, défaut 7). Logique pure
+`lib/utils/objective_trajectory.dart` ↔ `functions/src/objective_trajectory.ts` (**garder alignés**) : MOYENS = minutes
+cumulées sur les activités engagées depuis le début (`startDate`, sinon `createdAt`) vs Σ `weeklyMin` × semaines écoulées ;
+RÉSULTAT = dernier relevé vs droite `startValue → targetValue` sur [start, end] ; statut ≥ 110 % ahead · ≥ 85 % onTrack ·
+sinon behind ; `readingDue` = dernier relevé (ou début) ≥ `checkInEvery` j. La jauge hebdo (`objective_progress.dart`) ne
+change pas. MCP : `save_objective {metric | null, checkInEvery}`, `log_objective_reading(objectiveId, value, date?, note?)`,
+`list_objectives` → `trajectory` + 12 derniers `readings`, résumé compact (`get_user_context`, `plan_day`) → `metric`
+avec dernier relevé + `readingDue`, `weekly_review` (donc `plan_week` étape 0) liste les relevés dus. Lots suivants :
+fiche objectif mobile (barre temps attendu / fait, graphe `fl_chart` attendu vs relevés, « Noter un relevé »), carte
+« Relevé de la semaine » dans Objectifs et Aujourd'hui.
+
 **Interventions** (2026-10, handoff `docs/specs/interventions-2026-10/README.md`) : séance datée portée par le projet
 (`Project.interventions[]`, `ProjectIntervention`) ; ses trois tâches 📝 / 🎯 / ✅ sont des `ProjectTask` taguées
 `interventionId` + `interventionRole`. Outils `add_intervention` (génère les trois tâches depuis un modèle),

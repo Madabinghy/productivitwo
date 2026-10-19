@@ -74,6 +74,7 @@ exports.executeAddEvent = executeAddEvent;
 exports.executeSaveDomainDefinition = executeSaveDomainDefinition;
 exports.executeListObjectives = executeListObjectives;
 exports.executeSaveObjective = executeSaveObjective;
+exports.executeLogObjectiveReading = executeLogObjectiveReading;
 exports.executeUpdateScheduleBlock = executeUpdateScheduleBlock;
 exports.executeComputeTimeBudget = executeComputeTimeBudget;
 exports.executePlanDay = executePlanDay;
@@ -103,6 +104,7 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const weekly_report_1 = require("./weekly_report");
 const objectives_1 = require("./objectives");
+const objective_trajectory_1 = require("./objective_trajectory");
 // ── Date helpers ──────────────────────────────────────────────────────────────
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
 function todayInParis(d = new Date()) {
@@ -292,6 +294,7 @@ function pickProject(p) {
     return Object.assign(Object.assign(Object.assign(Object.assign({ title, startDate: p.startDate }, (description !== undefined ? { description } : {})), (p.endDate !== undefined ? { endDate: p.endDate } : {})), (p.domainId !== undefined ? { domainId: p.domainId } : {})), { phases: pickedPhases, tasks: (0, phase_resolve_1.resolvePhaseIds)(pickedPhases, tasks.map((t) => pickTask(t))).tasks });
 }
 function pickStrategicObjective(so) {
+    var _a;
     const title = clampStr(so.title, 200, "strategicObjective.title");
     const description = so.description !== undefined
         ? clampStr(so.description, 5000, "strategicObjective.description") : undefined;
@@ -307,7 +310,32 @@ function pickStrategicObjective(so) {
     if (status !== undefined && !["active", "done", "archived"].includes(status)) {
         throw new Error(`strategicObjective.status invalide : ${status}`);
     }
-    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ title }, (description !== undefined ? { description } : {})), (so.domainId !== undefined ? { domainId: so.domainId } : {})), (so.kpiTarget !== undefined ? { kpiTarget: so.kpiTarget } : {})), (so.horizonLabel !== undefined ? { horizonLabel: so.horizonLabel } : {})), (so.startDate !== undefined ? { startDate: so.startDate } : {})), (so.endDate !== undefined ? { endDate: so.endDate } : {})), (status !== undefined ? { status } : {})), (timeCommitments !== undefined ? { timeCommitments } : {})), (routineCommitments !== undefined ? { routineCommitments } : {}));
+    let metric;
+    if (so.metric === null)
+        metric = null;
+    else if (so.metric !== undefined) {
+        const m = so.metric;
+        const target = Number(m === null || m === void 0 ? void 0 : m.targetValue);
+        if (!Number.isFinite(target))
+            throw new Error("strategicObjective.metric.targetValue requis (nombre)");
+        const start = (m === null || m === void 0 ? void 0 : m.startValue) === undefined ? 0 : Number(m.startValue);
+        if (!Number.isFinite(start))
+            throw new Error("strategicObjective.metric.startValue invalide");
+        metric = {
+            label: clampStr((_a = m === null || m === void 0 ? void 0 : m.label) !== null && _a !== void 0 ? _a : "", 80, "strategicObjective.metric.label"),
+            unit: (m === null || m === void 0 ? void 0 : m.unit) !== undefined && m.unit !== null ? clampStr(m.unit, 20, "strategicObjective.metric.unit") : null,
+            startValue: start,
+            targetValue: target,
+        };
+    }
+    let checkInEvery;
+    if (so.checkInEvery !== undefined) {
+        checkInEvery = Math.round(Number(so.checkInEvery));
+        if (!Number.isFinite(checkInEvery) || checkInEvery < 1 || checkInEvery > 90) {
+            throw new Error("strategicObjective.checkInEvery invalide (attendu 1..90 jours)");
+        }
+    }
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ title }, (metric !== undefined ? { metric } : {})), (checkInEvery !== undefined ? { checkInEvery } : {})), (description !== undefined ? { description } : {})), (so.domainId !== undefined ? { domainId: so.domainId } : {})), (so.kpiTarget !== undefined ? { kpiTarget: so.kpiTarget } : {})), (so.horizonLabel !== undefined ? { horizonLabel: so.horizonLabel } : {})), (so.startDate !== undefined ? { startDate: so.startDate } : {})), (so.endDate !== undefined ? { endDate: so.endDate } : {})), (status !== undefined ? { status } : {})), (timeCommitments !== undefined ? { timeCommitments } : {})), (routineCommitments !== undefined ? { routineCommitments } : {}));
 }
 function pickTimeCommitments(raw) {
     if (!Array.isArray(raw))
@@ -3428,10 +3456,28 @@ async function loadAuditProjects(uid) {
  *  non faites, projets inactifs avec séances à venir, projets sans séance à
  *  14 jours, doublons, triplets non migrés. Ne modifie rien. */
 async function executeWeeklyReview(uid, args = {}) {
-    const projects = await loadAuditProjects(uid);
     const today = todayInParis();
+    const [projects, objSnap] = await Promise.all([
+        loadAuditProjects(uid),
+        db_1.db.collection(`users/${uid}/strategic_objectives`).get(),
+    ]);
     const findings = (0, project_audit_1.auditProjects)(projects, today, { horizonDays: args.horizonDays });
-    return (0, project_audit_1.formatFindings)(findings, today);
+    const due = objSnap.docs
+        .map((d) => { var _a; return (Object.assign(Object.assign({}, d.data()), { id: (_a = d.data().id) !== null && _a !== void 0 ? _a : d.id })); })
+        .filter((o) => (0, objective_trajectory_1.isReadingDue)(o, (0, objective_trajectory_1.objectiveStartYmd)(o, today, ymdOrNull), today))
+        .map((o) => {
+        var _a, _b;
+        const m = (0, objective_trajectory_1.parseMetric)(o.metric);
+        const last = (0, objective_trajectory_1.latestReading)((0, objective_trajectory_1.parseReadings)(o.readings));
+        return {
+            title: String((_a = o.title) !== null && _a !== void 0 ? _a : ""), id: String(o.id), label: m.label, unit: (_b = m.unit) !== null && _b !== void 0 ? _b : null,
+            daysSince: last ? Math.round((new Date(`${today}T12:00:00Z`).getTime() - new Date(`${last.date}T12:00:00Z`).getTime()) / 86400000) : null,
+            every: Math.max(1, Math.round(Number(o.checkInEvery) || 7)),
+        };
+    });
+    const txt = (0, project_audit_1.formatFindings)(findings, today);
+    const dueTxt = (0, objective_trajectory_1.formatReadingsDue)(due);
+    return dueTxt ? `${txt}\n\n${dueTxt}` : txt;
 }
 /** B5 : séances à venir d'un projet qu'on archive — à signaler, pas à taire. */
 async function upcomingWarning(uid, projectId, data) {
@@ -3717,15 +3763,48 @@ async function executeSaveDomainDefinition(uid, args) {
         parts.push(`FINALISÉ — je m'en servirai chaque jour`);
     return parts.join(" · ");
 }
+/** YYYY-MM-DD (Paris) d'un Timestamp / Date / ISO, sinon null. */
+function ymdOrNull(v) {
+    try {
+        const d = v instanceof Date ? v
+            : typeof v === "string" ? new Date(v)
+                : v && typeof v.toDate === "function" ? v.toDate()
+                    : null;
+        if (!d || isNaN(d.getTime()))
+            return null;
+        return todayInParis(d);
+    }
+    catch (_a) {
+        return null;
+    }
+}
+/** Minutes vivantes par activité depuis `sinceIso` (sessions tronquées au début). */
+function minutesByActivitySince(docs, sinceMs, nowMs) {
+    var _a;
+    const out = new Map();
+    for (const d of docs) {
+        const v = d.data();
+        const start = new Date(String(v.startAt)).getTime();
+        const end = v.endAt ? new Date(String(v.endAt)).getTime() : nowMs;
+        if (!Number.isFinite(start) || !Number.isFinite(end))
+            continue;
+        const from = Math.max(start, sinceMs);
+        const to = Math.min(end, nowMs);
+        const mins = Math.round((to - from) / 60000);
+        if (mins <= 0)
+            continue;
+        const id = String((_a = v.activityId) !== null && _a !== void 0 ? _a : "");
+        out.set(id, (out.get(id) || 0) + mins);
+    }
+    return out;
+}
 async function executeListObjectives(uid) {
     const now = new Date();
     const todayStr = todayInParis(now);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const [objectivesSnap, activitiesSnap, sessionsSnap, habitHitsSnap] = await Promise.all([
+    const [objectivesSnap, activitiesSnap, habitHitsSnap] = await Promise.all([
         db_1.db.collection(`users/${uid}/strategic_objectives`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
-        db_1.db.collection(`users/${uid}/sessions`)
-            .where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
         // ts = chaîne ISO (voir get_user_context) — jamais un Timestamp.
         db_1.db.collection(`users/${uid}/habitHits`)
             .where("ts", ">=", sevenDaysAgo.toISOString()).get(),
@@ -3736,18 +3815,83 @@ async function executeListObjectives(uid) {
     if (active.length === 0) {
         return "Aucun objectif stratégique actif. Propose une session de définition (prompt definir-objectif) ou save_objective directement.";
     }
-    const summaries = (0, objectives_1.summarizeObjectives)(active, activitiesSnap.docs.map((d) => d.data()), (0, sessions_audit_1.liveSessionDocs)(sessionsSnap).map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr);
-    // Détail complet (description, dates, projets) + progression compacte
+    // Sessions depuis le début le plus ancien (borné à 1 an) : la trajectoire
+    // des moyens cumule depuis le début de chaque objectif, pas depuis lundi.
+    const starts = new Map(active.map((o) => [String(o.id), (0, objective_trajectory_1.objectiveStartYmd)(o, todayStr, ymdOrNull)]));
+    const yearAgo = todayInParis(new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000));
+    const earliest = [...starts.values(), todayStr].reduce((a, b) => (a < b ? a : b));
+    const sinceYmd = earliest < yearAgo ? yearAgo : earliest;
+    const sessionsSnap = await db_1.db.collection(`users/${uid}/sessions`)
+        .where("startAt", ">=", `${sinceYmd}T00:00:00.000Z`).get();
+    const live = (0, sessions_audit_1.liveSessionDocs)(sessionsSnap);
+    const summaries = (0, objectives_1.summarizeObjectives)(active, activitiesSnap.docs.map((d) => d.data()), live.map((d) => d.data()), habitHitsSnap.docs.map((d) => d.data()), todayStr);
+    // Détail complet (description, dates, projets) + progression compacte + trajectoire
     const byId = new Map(active.map((o) => [String(o.id), o]));
     const result = summaries.map((s) => {
-        var _a, _b, _c;
-        const raw = byId.get(s.id);
-        return Object.assign(Object.assign({}, s), { description: (_a = raw === null || raw === void 0 ? void 0 : raw.description) !== null && _a !== void 0 ? _a : null, domainId: (_b = raw === null || raw === void 0 ? void 0 : raw.domainId) !== null && _b !== void 0 ? _b : null, startDate: (_c = raw === null || raw === void 0 ? void 0 : raw.startDate) !== null && _c !== void 0 ? _c : null, projectIds: Array.isArray(raw === null || raw === void 0 ? void 0 : raw.projectIds) ? raw === null || raw === void 0 ? void 0 : raw.projectIds : [] });
+        var _a, _b, _c, _d, _e;
+        const raw = (_a = byId.get(s.id)) !== null && _a !== void 0 ? _a : {};
+        const startYmd = (_b = starts.get(s.id)) !== null && _b !== void 0 ? _b : todayStr;
+        const startMs = new Date(`${startYmd}T00:00:00+02:00`).getTime();
+        const trajectory = (0, objective_trajectory_1.summarizeTrajectory)(raw, startYmd, minutesByActivitySince(live, startMs, now.getTime()), todayStr);
+        const readings = (0, objective_trajectory_1.parseReadings)(raw.readings);
+        return Object.assign(Object.assign({}, s), { description: (_c = raw.description) !== null && _c !== void 0 ? _c : null, domainId: (_d = raw.domainId) !== null && _d !== void 0 ? _d : null, startDate: (_e = raw.startDate) !== null && _e !== void 0 ? _e : null, projectIds: Array.isArray(raw.projectIds) ? raw.projectIds : [], trajectory, readings: readings.slice(-12) });
     });
-    return JSON.stringify({ today: todayStr, objectives: result }, null, 2);
+    const due = result.filter((r) => r.trajectory.readingDue);
+    return JSON.stringify({
+        today: todayStr,
+        _hint: due.length
+            ? `${due.length} relevé(s) de métrique attendu(s) : demande la valeur du jour et appelle log_objective_reading.`
+            : "trajectory.means = minutes engagées cumulées vs attendues ; trajectory.result = dernier relevé vs valeur attendue aujourd'hui.",
+        objectives: result,
+    }, null, 2);
+}
+async function executeLogObjectiveReading(uid, args) {
+    var _a, _b;
+    const id = String((_a = args.objectiveId) !== null && _a !== void 0 ? _a : "").trim();
+    if (!id)
+        return "objectiveId requis.";
+    const value = Number(args.value);
+    if (!Number.isFinite(value))
+        return "value requis (nombre).";
+    const todayStr = todayInParis();
+    const date = (_b = args.date) !== null && _b !== void 0 ? _b : todayStr;
+    try {
+        assertDate(date, "date");
+    }
+    catch (e) {
+        return `❌ ${e.message}`;
+    }
+    if (date > todayStr)
+        return `❌ date dans le futur (${date}) : un relevé se note le jour même ou après coup.`;
+    const note = args.note !== undefined ? clampStr(args.note, 300, "note") : undefined;
+    const ref = db_1.db.collection(`users/${uid}/strategic_objectives`).doc(id);
+    const snap = await ref.get();
+    if (!snap.exists)
+        return `❌ Objectif introuvable : ${id} (ids via list_objectives).`;
+    const o = Object.assign(Object.assign({}, snap.data()), { id });
+    const metric = (0, objective_trajectory_1.parseMetric)(o.metric);
+    if (!metric) {
+        return `❌ « ${o.title} » n'a pas de métrique chiffrée. Pose-la d'abord : save_objective(objectiveId:"${id}", title:"${o.title}", metric:{label, unit?, startValue, targetValue}).`;
+    }
+    const readings = (0, objective_trajectory_1.upsertReading)((0, objective_trajectory_1.parseReadings)(o.readings), {
+        id: (0, uuid_1.v4)(), date, value, note: note !== null && note !== void 0 ? note : null, createdAt: new Date().toISOString(),
+    });
+    await ref.set({ readings, updatedAt: db_1.FieldValue.serverTimestamp() }, { merge: true });
+    const startYmd = (0, objective_trajectory_1.objectiveStartYmd)(o, todayStr, ymdOrNull);
+    const t = (0, objective_trajectory_1.summarizeTrajectory)(Object.assign(Object.assign({}, o), { readings }), startYmd, new Map(), todayStr);
+    const r = t.result;
+    const unit = metric.unit ? ` ${metric.unit}` : "";
+    const status = r.status === "ahead" ? "en avance" : r.status === "onTrack" ? "sur la trajectoire" : r.status === "behind" ? "en retard" : "—";
+    const parts = [
+        `✅ Relevé noté : « ${o.title} » — ${metric.label} = ${value}${unit} le ${date}`,
+        `attendu aujourd'hui ${r.expectedValue}${unit} (cible ${metric.targetValue}${unit}${t.end ? ` au ${t.end}` : ""})`,
+        `${status}${r.delta ? ` (${r.delta > 0 ? "+" : ""}${r.delta}${unit})` : ""}`,
+        `${readings.length} relevé(s) au total`,
+    ];
+    return parts.join(" · ");
 }
 async function executeSaveObjective(uid, args) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p;
     if (!((_a = args.title) === null || _a === void 0 ? void 0 : _a.trim()))
         return "title requis.";
     const col = db_1.db.collection(`users/${uid}/strategic_objectives`);
@@ -3829,13 +3973,17 @@ async function executeSaveObjective(uid, args) {
     ];
     if (args.kpiTarget)
         parts.push(`KPI : ${args.kpiTarget}`);
+    if (args.metric)
+        parts.push(`métrique : ${args.metric.label} ${(_h = args.metric.startValue) !== null && _h !== void 0 ? _h : 0} → ${args.metric.targetValue}${args.metric.unit ? ` ${args.metric.unit}` : ""} (relevé tous les ${(_j = args.checkInEvery) !== null && _j !== void 0 ? _j : 7} j via log_objective_reading)`);
+    else if (args.metric === null)
+        parts.push(`métrique retirée`);
     if (args.endDate || args.horizonLabel)
-        parts.push(`échéance : ${(_h = args.endDate) !== null && _h !== void 0 ? _h : args.horizonLabel}`);
-    if ((_j = args.timeCommitments) === null || _j === void 0 ? void 0 : _j.length)
+        parts.push(`échéance : ${(_l = args.endDate) !== null && _l !== void 0 ? _l : args.horizonLabel}`);
+    if ((_m = args.timeCommitments) === null || _m === void 0 ? void 0 : _m.length)
         parts.push(`${args.timeCommitments.length} engagement(s) temps`);
-    if ((_l = args.routineCommitments) === null || _l === void 0 ? void 0 : _l.length)
+    if ((_o = args.routineCommitments) === null || _o === void 0 ? void 0 : _o.length)
         parts.push(`${args.routineCommitments.length} routine(s) suivie(s)`);
-    if ((_m = args.projectIds) === null || _m === void 0 ? void 0 : _m.length)
+    if ((_p = args.projectIds) === null || _p === void 0 ? void 0 : _p.length)
         parts.push(`${args.projectIds.length} projet(s) lié(s)`);
     if (args.status === "archived")
         parts.push(`ARCHIVÉ`);

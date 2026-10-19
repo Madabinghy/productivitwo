@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.summarizeObjectives = summarizeObjectives;
 const weekly_report_1 = require("./weekly_report");
+const objective_trajectory_1 = require("./objective_trajectory");
 function parisDayOf(v) {
     try {
         let d = null;
@@ -70,7 +71,7 @@ function summarizeObjectives(objectives, activities, sessions, habitHits, todayS
         hitsSinceMonday.set(id, (hitsSinceMonday.get(id) || 0) + 1);
     }
     return objectives.map((o) => {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e, _f, _g;
         const commitments = [];
         const pcts = [];
         const timeCommitments = Array.isArray(o.timeCommitments) ? o.timeCommitments : [];
@@ -111,9 +112,16 @@ function summarizeObjectives(objectives, activities, sessions, habitHits, todayS
             daysLeft = Math.round((new Date(`${endDate}T12:00:00Z`).getTime() -
                 new Date(`${todayStr}T12:00:00Z`).getTime()) / 86400000);
         }
+        const m = (0, objective_trajectory_1.parseMetric)(o.metric);
+        const last = m ? (0, objective_trajectory_1.latestReading)((0, objective_trajectory_1.parseReadings)(o.readings)) : null;
+        const metric = m ? {
+            label: m.label, unit: (_e = m.unit) !== null && _e !== void 0 ? _e : null, startValue: m.startValue, targetValue: m.targetValue,
+            latestValue: last ? last.value : null, latestDate: last ? last.date : null,
+            readingDue: (0, objective_trajectory_1.isReadingDue)(o, (0, objective_trajectory_1.objectiveStartYmd)(o, todayStr, parisDayOf), todayStr),
+        } : null;
         return {
-            id: String((_e = o.id) !== null && _e !== void 0 ? _e : ""),
-            title: String((_f = o.title) !== null && _f !== void 0 ? _f : ""),
+            id: String((_f = o.id) !== null && _f !== void 0 ? _f : ""),
+            title: String((_g = o.title) !== null && _g !== void 0 ? _g : ""),
             kpiTarget: typeof o.kpiTarget === "string" ? o.kpiTarget : null,
             horizonLabel: typeof o.horizonLabel === "string" ? o.horizonLabel : null,
             endDate,
@@ -122,6 +130,7 @@ function summarizeObjectives(objectives, activities, sessions, habitHits, todayS
                 ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 100)
                 : null,
             commitments,
+            metric,
         };
     });
 }

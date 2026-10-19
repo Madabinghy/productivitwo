@@ -531,12 +531,78 @@ class ObjectiveRoutineCommitment {
       ObjectiveRoutineCommitment(activityId: j['activityId'] ?? '');
 }
 
+/// Métrique chiffrée d'un objectif : `startValue` au `startDate`, `targetValue`
+/// à l'`endDate`. La direction se déduit (cible < départ = on fait baisser).
+/// `kpiTarget` (texte libre) reste l'affichage lisible.
+class ObjectiveMetric {
+  String label; // ex: "Clients payants"
+  String? unit; // ex: "€", "clients", "kg"
+  double startValue;
+  double targetValue;
+
+  ObjectiveMetric({required this.label, this.unit, this.startValue = 0, required this.targetValue});
+
+  bool get decreasing => targetValue < startValue;
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'unit': unit,
+        'startValue': startValue,
+        'targetValue': targetValue,
+      };
+
+  static ObjectiveMetric? fromOrNull(dynamic j) {
+    if (j is! Map) return null;
+    final target = (j['targetValue'] as num?)?.toDouble();
+    if (target == null) return null;
+    return ObjectiveMetric(
+      label: (j['label'] ?? '').toString(),
+      unit: j['unit'] as String?,
+      startValue: (j['startValue'] as num?)?.toDouble() ?? 0,
+      targetValue: target,
+    );
+  }
+}
+
+/// Relevé de la métrique (un point de la courbe réelle). `date` = jour
+/// `YYYY-MM-DD` ; deux relevés le même jour : le dernier écrit gagne.
+class ObjectiveReading {
+  String id;
+  String date;
+  double value;
+  String? note;
+  DateTime createdAt;
+
+  ObjectiveReading({String? id, required this.date, required this.value, this.note, DateTime? createdAt})
+      : id = id ?? _uuid.v4(),
+        createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'date': date,
+        'value': value,
+        if (note != null && note!.isNotEmpty) 'note': note,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  static ObjectiveReading from(Map j) => ObjectiveReading(
+        id: j['id'] as String?,
+        date: (j['date'] ?? '').toString(),
+        value: (j['value'] as num?)?.toDouble() ?? 0,
+        note: j['note'] as String?,
+        createdAt: _parseDate(j['createdAt']),
+      );
+}
+
 class StrategicObjective {
   String id;
   String title;
   String? description;
   String? domainId;
   String? kpiTarget; // ex: "100 payants · MRR 500€"
+  ObjectiveMetric? metric; // version chiffrée de kpiTarget (trajectoire)
+  List<ObjectiveReading> readings; // relevés de la métrique, du plus ancien au plus récent
+  int checkInEvery; // jours entre deux relevés attendus (défaut 7)
   String? horizonLabel; // ex: "3 mois", "Q2 2026"
   DateTime? startDate;
   DateTime? endDate;
@@ -553,6 +619,9 @@ class StrategicObjective {
     this.description,
     this.domainId,
     this.kpiTarget,
+    this.metric,
+    List<ObjectiveReading>? readings,
+    this.checkInEvery = 7,
     this.horizonLabel,
     this.startDate,
     this.endDate,
@@ -564,6 +633,7 @@ class StrategicObjective {
     this.updatedAt,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
+        readings = readings ?? [],
         projectIds = projectIds ?? [],
         timeCommitments = timeCommitments ?? [],
         routineCommitments = routineCommitments ?? [];
@@ -574,6 +644,9 @@ class StrategicObjective {
         'description': description,
         'domainId': domainId,
         'kpiTarget': kpiTarget,
+        'metric': metric?.toJson(),
+        'readings': readings.map((r) => r.toJson()).toList(),
+        'checkInEvery': checkInEvery,
         'horizonLabel': horizonLabel,
         'startDate': startDate?.toIso8601String(),
         'endDate': endDate?.toIso8601String(),
@@ -592,6 +665,13 @@ class StrategicObjective {
         description: j['description'],
         domainId: j['domainId'],
         kpiTarget: j['kpiTarget'],
+        metric: ObjectiveMetric.fromOrNull(j['metric']),
+        readings: ((j['readings'] as List?) ?? const [])
+            .whereType<Map>()
+            .map(ObjectiveReading.from)
+            .toList()
+          ..sort((a, b) => a.date.compareTo(b.date)),
+        checkInEvery: (j['checkInEvery'] as num?)?.toInt() ?? 7,
         horizonLabel: j['horizonLabel'],
         startDate: _parseDateOrNull(j['startDate']),
         endDate: _parseDateOrNull(j['endDate']),

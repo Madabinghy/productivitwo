@@ -33,7 +33,7 @@ import {
   GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
   GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
   SAVE_DOMAIN_DEFINITION_TOOL,
-  LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
+  LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL, LOG_OBJECTIVE_READING_TOOL,
   PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
@@ -65,7 +65,7 @@ import {
   executeLogRoutineHit, executeMarkBlockDone, executeUpdateBlock,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
-  executeListObjectives, executeSaveObjective,
+  executeListObjectives, executeSaveObjective, executeLogObjectiveReading,
   executePlanDay, executePlanWeek, executeSyncCalendar,
   executeProposeChange,
   executeGenerateWeeklyReport,
@@ -1667,7 +1667,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             GET_ASSISTANT_MESSAGES_TOOL, DELETE_ASSISTANT_MESSAGE_TOOL,
             GET_DAY_SCHEDULE_TOOL, SCHEDULE_DAY_TOOL, ADD_PREP_BLOCK_TOOL, ADD_EVENT_TOOL,
             SAVE_DOMAIN_DEFINITION_TOOL,
-            LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL,
+            LIST_OBJECTIVES_TOOL, SAVE_OBJECTIVE_TOOL, LOG_OBJECTIVE_READING_TOOL,
             PLAN_DAY_TOOL, PLAN_WEEK_TOOL, SYNC_CALENDAR_TOOL,
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
@@ -1793,6 +1793,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeListObjectives(uid);
         } else if (toolName === "save_objective") {
           text = await executeSaveObjective(uid, args as Parameters<typeof executeSaveObjective>[1]);
+        } else if (toolName === "log_objective_reading") {
+          text = await executeLogObjectiveReading(uid, args as Parameters<typeof executeLogObjectiveReading>[1]);
         } else if (toolName === "list_session_templates") {
           text = await executeListSessionTemplates(uid);
         } else if (toolName === "create_session_template") {
