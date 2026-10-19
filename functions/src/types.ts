@@ -68,6 +68,10 @@ export interface StrategicObjectivePayload {
   // et routines suivies (leur cible vit sur habitFreq/habitTarget).
   timeCommitments?: Array<{ activityId: string; weeklyMin: number }>;
   routineCommitments?: Array<{ activityId: string }>;
+  // Métrique chiffrée (trajectoire) : startValue au début, targetValue à
+  // l'échéance ; kpiTarget reste le texte lisible. null = retirer.
+  metric?: { label: string; unit?: string; startValue?: number; targetValue: number } | null;
+  checkInEvery?: number; // jours entre deux relevés attendus (défaut 7)
 }
 
 export interface PushGanttBody {

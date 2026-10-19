@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -1545,8 +1545,28 @@ exports.LIST_OBJECTIVES_TOOL = {
         "le résultat visé (kpiTarget), l'horizon, et l'avancement de chaque engagement opérationnel " +
         "(minutes loggées vs engagement temps hebdo, hits vs cible de routine, onTrack). " +
         "Appelle-le au début d'une session de définition/révision d'objectifs, ou quand l'utilisateur " +
-        "demande « où j'en suis sur mes objectifs ».",
+        "demande « où j'en suis sur mes objectifs ». Chaque objectif porte aussi sa TRAJECTOIRE : " +
+        "trajectory.means (minutes engagées cumulées depuis le début vs attendues à ce jour, totalMin sur l'horizon) " +
+        "et trajectory.result (dernier relevé de la métrique vs valeur attendue aujourd'hui sur la droite " +
+        "startValue → targetValue, delta signé, status ahead/onTrack/behind) ; readingDue = un relevé est attendu.",
     inputSchema: { type: "object", properties: {} },
+};
+exports.LOG_OBJECTIVE_READING_TOOL = {
+    name: "log_objective_reading",
+    description: "Note un RELEVÉ de la métrique chiffrée d'un objectif (un point de la courbe réelle : « 42 clients au 19/10 »). " +
+        "Exige que l'objectif ait une metric (save_objective). Un seul relevé par jour (le dernier remplace). " +
+        "Retourne la valeur attendue aujourd'hui et l'écart. À proposer quand list_objectives / weekly_review / " +
+        "plan_week signalent readingDue, ou dès que l'utilisateur cite un chiffre de résultat.",
+    inputSchema: {
+        type: "object",
+        required: ["objectiveId", "value"],
+        properties: {
+            objectiveId: { type: "string", description: "id de l'objectif (list_objectives)" },
+            value: { type: "number", description: "valeur mesurée, dans l'unité de la métrique" },
+            date: { type: "string", description: "YYYY-MM-DD du relevé (défaut : aujourd'hui ; jamais dans le futur)" },
+            note: { type: "string", description: "contexte court, ex: 'après le webinaire'" },
+        },
+    },
 };
 exports.SAVE_OBJECTIVE_TOOL = {
     name: "save_objective",
@@ -1572,6 +1592,18 @@ exports.SAVE_OBJECTIVE_TOOL = {
             startDate: { type: "string", description: "YYYY-MM-DD — début de l'objectif" },
             endDate: { type: "string", description: "YYYY-MM-DD — échéance" },
             status: { type: "string", enum: ["active", "done", "archived"], description: "archived = suppression soft ; done = objectif atteint" },
+            metric: {
+                type: "object",
+                description: "version CHIFFRÉE de kpiTarget pour suivre la trajectoire : startValue au début (startDate), targetValue à l'échéance (endDate). Propose-la dès que le KPI est un nombre (clients, €, kg, pages…). null = retirer",
+                properties: {
+                    label: { type: "string", description: "ce qu'on mesure, ex: 'Clients payants', 'MRR'" },
+                    unit: { type: "string", description: "unité courte, ex: 'clients', '€', 'kg'" },
+                    startValue: { type: "number", description: "valeur au début de l'objectif (défaut 0)" },
+                    targetValue: { type: "number", description: "valeur visée à l'échéance (peut être < startValue : on fait baisser)" },
+                },
+                required: ["label", "targetValue"],
+            },
+            checkInEvery: { type: "integer", description: "jours entre deux relevés attendus (défaut 7 ; 1..90)" },
             projectIds: { type: "array", items: { type: "string" }, description: "projets Gantt rattachés (arrayUnion — n'enlève jamais)" },
             timeCommitments: {
                 type: "array",

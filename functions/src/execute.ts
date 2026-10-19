@@ -30,6 +30,10 @@ import { createHash } from "crypto";
 import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayload } from "./types";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { summarizeObjectives } from "./objectives";
+import {
+  summarizeTrajectory, objectiveStartYmd, isReadingDue, parseMetric, parseReadings, upsertReading, latestReading,
+  formatReadingsDue,
+} from "./objective_trajectory";
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -290,8 +294,32 @@ function pickStrategicObjective(so: StrategicObjectivePayload): Record<string, u
   if (status !== undefined && !["active", "done", "archived"].includes(status)) {
     throw new Error(`strategicObjective.status invalide : ${status}`);
   }
+  let metric: Record<string, unknown> | null | undefined;
+  if (so.metric === null) metric = null;
+  else if (so.metric !== undefined) {
+    const m = so.metric;
+    const target = Number(m?.targetValue);
+    if (!Number.isFinite(target)) throw new Error("strategicObjective.metric.targetValue requis (nombre)");
+    const start = m?.startValue === undefined ? 0 : Number(m.startValue);
+    if (!Number.isFinite(start)) throw new Error("strategicObjective.metric.startValue invalide");
+    metric = {
+      label: clampStr(m?.label ?? "", 80, "strategicObjective.metric.label"),
+      unit: m?.unit !== undefined && m.unit !== null ? clampStr(m.unit, 20, "strategicObjective.metric.unit") : null,
+      startValue: start,
+      targetValue: target,
+    };
+  }
+  let checkInEvery: number | undefined;
+  if (so.checkInEvery !== undefined) {
+    checkInEvery = Math.round(Number(so.checkInEvery));
+    if (!Number.isFinite(checkInEvery) || checkInEvery < 1 || checkInEvery > 90) {
+      throw new Error("strategicObjective.checkInEvery invalide (attendu 1..90 jours)");
+    }
+  }
   return {
     title,
+    ...(metric             !== undefined ? { metric }                   : {}),
+    ...(checkInEvery       !== undefined ? { checkInEvery }             : {}),
     ...(description       !== undefined ? { description }              : {}),
     ...(so.domainId       !== undefined ? { domainId: so.domainId }    : {}),
     ...(so.kpiTarget      !== undefined ? { kpiTarget: so.kpiTarget }  : {}),
@@ -3740,10 +3768,27 @@ async function loadAuditProjects(uid: string): Promise<AuditProject[]> {
  *  non faites, projets inactifs avec séances à venir, projets sans séance à
  *  14 jours, doublons, triplets non migrés. Ne modifie rien. */
 async function executeWeeklyReview(uid: string, args: { horizonDays?: number } = {}): Promise<string> {
-  const projects = await loadAuditProjects(uid);
   const today = todayInParis();
+  const [projects, objSnap] = await Promise.all([
+    loadAuditProjects(uid),
+    db.collection(`users/${uid}/strategic_objectives`).get(),
+  ]);
   const findings = auditProjects(projects, today, { horizonDays: args.horizonDays });
-  return formatFindings(findings, today);
+  const due = objSnap.docs
+    .map((d): Record<string, unknown> => ({ ...d.data(), id: d.data().id ?? d.id }))
+    .filter((o) => isReadingDue(o, objectiveStartYmd(o, today, ymdOrNull), today))
+    .map((o) => {
+      const m = parseMetric(o.metric)!;
+      const last = latestReading(parseReadings(o.readings));
+      return {
+        title: String(o.title ?? ""), id: String(o.id), label: m.label, unit: m.unit ?? null,
+        daysSince: last ? Math.round((new Date(`${today}T12:00:00Z`).getTime() - new Date(`${last.date}T12:00:00Z`).getTime()) / 86400000) : null,
+        every: Math.max(1, Math.round(Number(o.checkInEvery) || 7)),
+      };
+    });
+  const txt = formatFindings(findings, today);
+  const dueTxt = formatReadingsDue(due);
+  return dueTxt ? `${txt}\n\n${dueTxt}` : txt;
 }
 
 /** B5 : séances à venir d'un projet qu'on archive — à signaler, pas à taire. */
@@ -4059,16 +4104,44 @@ async function executeSaveDomainDefinition(
   return parts.join(" · ");
 }
 
+/** YYYY-MM-DD (Paris) d'un Timestamp / Date / ISO, sinon null. */
+function ymdOrNull(v: unknown): string | null {
+  try {
+    const d = v instanceof Date ? v
+      : typeof v === "string" ? new Date(v)
+      : v && typeof (v as { toDate?: () => Date }).toDate === "function" ? (v as { toDate: () => Date }).toDate()
+      : null;
+    if (!d || isNaN(d.getTime())) return null;
+    return todayInParis(d);
+  } catch { return null; }
+}
+
+/** Minutes vivantes par activité depuis `sinceIso` (sessions tronquées au début). */
+function minutesByActivitySince(docs: Array<{ data: () => Record<string, unknown> }>, sinceMs: number, nowMs: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const d of docs) {
+    const v = d.data();
+    const start = new Date(String(v.startAt)).getTime();
+    const end = v.endAt ? new Date(String(v.endAt)).getTime() : nowMs;
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const from = Math.max(start, sinceMs);
+    const to = Math.min(end, nowMs);
+    const mins = Math.round((to - from) / 60000);
+    if (mins <= 0) continue;
+    const id = String(v.activityId ?? "");
+    out.set(id, (out.get(id) || 0) + mins);
+  }
+  return out;
+}
+
 async function executeListObjectives(uid: string): Promise<string> {
   const now = new Date();
   const todayStr = todayInParis(now);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [objectivesSnap, activitiesSnap, sessionsSnap, habitHitsSnap] = await Promise.all([
+  const [objectivesSnap, activitiesSnap, habitHitsSnap] = await Promise.all([
     db.collection(`users/${uid}/strategic_objectives`).get(),
     db.collection(`users/${uid}/activities`).get(),
-    db.collection(`users/${uid}/sessions`)
-      .where("startAt", ">=", sevenDaysAgo.toISOString()).get(),
     // ts = chaîne ISO (voir get_user_context) — jamais un Timestamp.
     db.collection(`users/${uid}/habitHits`)
       .where("ts", ">=", sevenDaysAgo.toISOString()).get(),
@@ -4081,27 +4154,91 @@ async function executeListObjectives(uid: string): Promise<string> {
     return "Aucun objectif stratégique actif. Propose une session de définition (prompt definir-objectif) ou save_objective directement.";
   }
 
+  // Sessions depuis le début le plus ancien (borné à 1 an) : la trajectoire
+  // des moyens cumule depuis le début de chaque objectif, pas depuis lundi.
+  const starts = new Map(active.map((o) => [String(o.id), objectiveStartYmd(o, todayStr, ymdOrNull)]));
+  const yearAgo = todayInParis(new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000));
+  const earliest = [...starts.values(), todayStr].reduce((a, b) => (a < b ? a : b));
+  const sinceYmd = earliest < yearAgo ? yearAgo : earliest;
+  const sessionsSnap = await db.collection(`users/${uid}/sessions`)
+    .where("startAt", ">=", `${sinceYmd}T00:00:00.000Z`).get();
+  const live = liveSessionDocs(sessionsSnap);
+
   const summaries = summarizeObjectives(
     active,
     activitiesSnap.docs.map((d) => d.data()),
-    liveSessionDocs(sessionsSnap).map((d) => d.data()),
+    live.map((d) => d.data()),
     habitHitsSnap.docs.map((d) => d.data()),
     todayStr
   );
 
-  // Détail complet (description, dates, projets) + progression compacte
+  // Détail complet (description, dates, projets) + progression compacte + trajectoire
   const byId = new Map(active.map((o) => [String(o.id), o]));
   const result = summaries.map((s) => {
-    const raw = byId.get(s.id);
+    const raw = byId.get(s.id) ?? {};
+    const startYmd = starts.get(s.id) ?? todayStr;
+    const startMs = new Date(`${startYmd}T00:00:00+02:00`).getTime();
+    const trajectory = summarizeTrajectory(raw, startYmd, minutesByActivitySince(live, startMs, now.getTime()), todayStr);
+    const readings = parseReadings(raw.readings);
     return {
       ...s,
-      description: raw?.description ?? null,
-      domainId: raw?.domainId ?? null,
-      startDate: raw?.startDate ?? null,
-      projectIds: Array.isArray(raw?.projectIds) ? raw?.projectIds : [],
+      description: raw.description ?? null,
+      domainId: raw.domainId ?? null,
+      startDate: raw.startDate ?? null,
+      projectIds: Array.isArray(raw.projectIds) ? raw.projectIds : [],
+      trajectory,
+      readings: readings.slice(-12),
     };
   });
-  return JSON.stringify({ today: todayStr, objectives: result }, null, 2);
+  const due = result.filter((r) => r.trajectory.readingDue);
+  return JSON.stringify({
+    today: todayStr,
+    _hint: due.length
+      ? `${due.length} relevé(s) de métrique attendu(s) : demande la valeur du jour et appelle log_objective_reading.`
+      : "trajectory.means = minutes engagées cumulées vs attendues ; trajectory.result = dernier relevé vs valeur attendue aujourd'hui.",
+    objectives: result,
+  }, null, 2);
+}
+
+async function executeLogObjectiveReading(
+  uid: string,
+  args: { objectiveId: string; value: number; date?: string; note?: string }
+): Promise<string> {
+  const id = String(args.objectiveId ?? "").trim();
+  if (!id) return "objectiveId requis.";
+  const value = Number(args.value);
+  if (!Number.isFinite(value)) return "value requis (nombre).";
+  const todayStr = todayInParis();
+  const date = args.date ?? todayStr;
+  try { assertDate(date, "date"); } catch (e) { return `❌ ${(e as Error).message}`; }
+  if (date > todayStr) return `❌ date dans le futur (${date}) : un relevé se note le jour même ou après coup.`;
+  const note = args.note !== undefined ? clampStr(args.note, 300, "note") : undefined;
+
+  const ref = db.collection(`users/${uid}/strategic_objectives`).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return `❌ Objectif introuvable : ${id} (ids via list_objectives).`;
+  const o = { ...snap.data(), id } as Record<string, unknown>;
+  const metric = parseMetric(o.metric);
+  if (!metric) {
+    return `❌ « ${o.title} » n'a pas de métrique chiffrée. Pose-la d'abord : save_objective(objectiveId:"${id}", title:"${o.title}", metric:{label, unit?, startValue, targetValue}).`;
+  }
+  const readings = upsertReading(parseReadings(o.readings), {
+    id: uuidv4(), date, value, note: note ?? null, createdAt: new Date().toISOString(),
+  });
+  await ref.set({ readings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+  const startYmd = objectiveStartYmd(o, todayStr, ymdOrNull);
+  const t = summarizeTrajectory({ ...o, readings }, startYmd, new Map(), todayStr);
+  const r = t.result!;
+  const unit = metric.unit ? ` ${metric.unit}` : "";
+  const status = r.status === "ahead" ? "en avance" : r.status === "onTrack" ? "sur la trajectoire" : r.status === "behind" ? "en retard" : "—";
+  const parts = [
+    `✅ Relevé noté : « ${o.title} » — ${metric.label} = ${value}${unit} le ${date}`,
+    `attendu aujourd'hui ${r.expectedValue}${unit} (cible ${metric.targetValue}${unit}${t.end ? ` au ${t.end}` : ""})`,
+    `${status}${r.delta ? ` (${r.delta > 0 ? "+" : ""}${r.delta}${unit})` : ""}`,
+    `${readings.length} relevé(s) au total`,
+  ];
+  return parts.join(" · ");
 }
 
 async function executeSaveObjective(
@@ -4185,6 +4322,8 @@ async function executeSaveObjective(
     `✅ Objectif « ${args.title.trim()} » ${exists ? "mis à jour" : "créé"} (id: ${docId})`,
   ];
   if (args.kpiTarget) parts.push(`KPI : ${args.kpiTarget}`);
+  if (args.metric) parts.push(`métrique : ${args.metric.label} ${args.metric.startValue ?? 0} → ${args.metric.targetValue}${args.metric.unit ? ` ${args.metric.unit}` : ""} (relevé tous les ${args.checkInEvery ?? 7} j via log_objective_reading)`);
+  else if (args.metric === null) parts.push(`métrique retirée`);
   if (args.endDate || args.horizonLabel) parts.push(`échéance : ${args.endDate ?? args.horizonLabel}`);
   if (args.timeCommitments?.length) parts.push(`${args.timeCommitments.length} engagement(s) temps`);
   if (args.routineCommitments?.length) parts.push(`${args.routineCommitments.length} routine(s) suivie(s)`);
@@ -4541,6 +4680,7 @@ export {
   executeSaveDomainDefinition,
   executeListObjectives,
   executeSaveObjective,
+  executeLogObjectiveReading,
   executeUpdateScheduleBlock,
   executeComputeTimeBudget,
   executePlanDay,

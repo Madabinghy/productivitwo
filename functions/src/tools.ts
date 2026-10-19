@@ -1692,8 +1692,30 @@ export const LIST_OBJECTIVES_TOOL = {
     "le résultat visé (kpiTarget), l'horizon, et l'avancement de chaque engagement opérationnel " +
     "(minutes loggées vs engagement temps hebdo, hits vs cible de routine, onTrack). " +
     "Appelle-le au début d'une session de définition/révision d'objectifs, ou quand l'utilisateur " +
-    "demande « où j'en suis sur mes objectifs ».",
+    "demande « où j'en suis sur mes objectifs ». Chaque objectif porte aussi sa TRAJECTOIRE : " +
+    "trajectory.means (minutes engagées cumulées depuis le début vs attendues à ce jour, totalMin sur l'horizon) " +
+    "et trajectory.result (dernier relevé de la métrique vs valeur attendue aujourd'hui sur la droite " +
+    "startValue → targetValue, delta signé, status ahead/onTrack/behind) ; readingDue = un relevé est attendu.",
   inputSchema: { type: "object", properties: {} },
+};
+
+export const LOG_OBJECTIVE_READING_TOOL = {
+  name: "log_objective_reading",
+  description:
+    "Note un RELEVÉ de la métrique chiffrée d'un objectif (un point de la courbe réelle : « 42 clients au 19/10 »). " +
+    "Exige que l'objectif ait une metric (save_objective). Un seul relevé par jour (le dernier remplace). " +
+    "Retourne la valeur attendue aujourd'hui et l'écart. À proposer quand list_objectives / weekly_review / " +
+    "plan_week signalent readingDue, ou dès que l'utilisateur cite un chiffre de résultat.",
+  inputSchema: {
+    type: "object",
+    required: ["objectiveId", "value"],
+    properties: {
+      objectiveId: { type: "string", description: "id de l'objectif (list_objectives)" },
+      value:       { type: "number", description: "valeur mesurée, dans l'unité de la métrique" },
+      date:        { type: "string", description: "YYYY-MM-DD du relevé (défaut : aujourd'hui ; jamais dans le futur)" },
+      note:        { type: "string", description: "contexte court, ex: 'après le webinaire'" },
+    },
+  },
 };
 
 export const SAVE_OBJECTIVE_TOOL = {
@@ -1721,6 +1743,18 @@ export const SAVE_OBJECTIVE_TOOL = {
       startDate:    { type: "string", description: "YYYY-MM-DD — début de l'objectif" },
       endDate:      { type: "string", description: "YYYY-MM-DD — échéance" },
       status:       { type: "string", enum: ["active", "done", "archived"], description: "archived = suppression soft ; done = objectif atteint" },
+      metric: {
+        type: "object",
+        description: "version CHIFFRÉE de kpiTarget pour suivre la trajectoire : startValue au début (startDate), targetValue à l'échéance (endDate). Propose-la dès que le KPI est un nombre (clients, €, kg, pages…). null = retirer",
+        properties: {
+          label:       { type: "string", description: "ce qu'on mesure, ex: 'Clients payants', 'MRR'" },
+          unit:        { type: "string", description: "unité courte, ex: 'clients', '€', 'kg'" },
+          startValue:  { type: "number", description: "valeur au début de l'objectif (défaut 0)" },
+          targetValue: { type: "number", description: "valeur visée à l'échéance (peut être < startValue : on fait baisser)" },
+        },
+        required: ["label", "targetValue"],
+      },
+      checkInEvery: { type: "integer", description: "jours entre deux relevés attendus (défaut 7 ; 1..90)" },
       projectIds:   { type: "array", items: { type: "string" }, description: "projets Gantt rattachés (arrayUnion — n'enlève jamais)" },
       timeCommitments: {
         type: "array",

@@ -1,4 +1,5 @@
 import { mondayOf } from "./weekly_report";
+import { parseMetric, parseReadings, latestReading, isReadingDue, objectiveStartYmd } from "./objective_trajectory";
 
 // ── Objectifs stratégiques : résumé compact + progression hebdo ───────────────
 // Définition partagée avec lib/utils/objective_progress.dart (même sémantique) :
@@ -25,6 +26,10 @@ export interface ObjectiveSummary {
   daysLeft: number | null;
   weekPercent: number | null; // % moyen des engagements sur la semaine (null si aucun)
   commitments: ObjectiveCommitmentSummary[];
+  // Métrique chiffrée (si posée) : dernier relevé et relevé attendu — sans
+  // sessions longues, la trajectoire complète est dans list_objectives.
+  metric: { label: string; unit: string | null; startValue: number; targetValue: number;
+    latestValue: number | null; latestDate: string | null; readingDue: boolean } | null;
 }
 
 function parisDayOf(v: unknown): string | null {
@@ -143,6 +148,14 @@ export function summarizeObjectives(
       );
     }
 
+    const m = parseMetric(o.metric);
+    const last = m ? latestReading(parseReadings(o.readings)) : null;
+    const metric = m ? {
+      label: m.label, unit: m.unit ?? null, startValue: m.startValue, targetValue: m.targetValue,
+      latestValue: last ? last.value : null, latestDate: last ? last.date : null,
+      readingDue: isReadingDue(o, objectiveStartYmd(o, todayStr, parisDayOf), todayStr),
+    } : null;
+
     return {
       id: String(o.id ?? ""),
       title: String(o.title ?? ""),
@@ -154,6 +167,7 @@ export function summarizeObjectives(
         ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 100)
         : null,
       commitments,
+      metric,
     };
   });
 }
