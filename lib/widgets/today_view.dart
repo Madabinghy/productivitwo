@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/widgets/objective_readings_card.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
@@ -923,6 +924,12 @@ class TodayViewState extends State<TodayView> {
                   // Routines : une ligne courte vers le segment Routines (la
                   // liste complète y vit ; ex-« Le meilleur à faire »).
                   _routinesLine(cs),
+                  // Relevé de métrique d'objectif attendu : saisie en place.
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: ObjectiveReadingsCard(
+                        logic: widget.logic, sync: FirestoreSync(), projects: widget.logic.currentProjects),
+                  ),
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)

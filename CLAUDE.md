@@ -554,8 +554,11 @@ engagements, « Depuis le début · temps investi » (barre fait / total, repèr
 « Résultat » (graphe `fl_chart` : droite attendue pointillée, relevés, cible, trait aujourd'hui ; « Noter un relevé » =
 valeur + date + note, `upsertReading`), Atteint / Archiver / Éditer ; les sessions sont relues depuis le début de
 l'objectif (`fetchRecentSessions`). L'édition (`objective_edit_sheet.dart`, étape Mesurable) pose la métrique
-(libellé, unité, aujourd'hui → cible) et le rythme de relevé (3 / 7 / 14 / 30 j) et conserve les relevés. Lot 3 à venir :
-carte « Relevé de la semaine » dans Objectifs et Aujourd'hui.
+(libellé, unité, aujourd'hui → cible) et le rythme de relevé (3 / 7 / 14 / 30 j) et conserve les relevés. **Lot 3 (livré)** :
+carte « Relevé de la semaine · n » (`widgets/objective_readings_card.dart`, en tête d'Objectifs et sous la ligne Routines
+d'Aujourd'hui, segment Actions) : objectifs dont un relevé est dû (`isReadingDue`), saisie en place (valeur + ✓ →
+`upsertReading`, SnackBar avance / retard), tap sur le titre = fiche ; invisible quand rien n'est dû. Pas de notification
+en plus : le rappel côté Claude passe par `weekly_review` / `plan_week`.
 
 **Interventions** (2026-10, handoff `docs/specs/interventions-2026-10/README.md`) : séance datée portée par le projet
 (`Project.interventions[]`, `ProjectIntervention`) ; ses trois tâches 📝 / 🎯 / ✅ sont des `ProjectTask` taguées
