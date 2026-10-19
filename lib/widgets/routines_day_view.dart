@@ -53,7 +53,10 @@ class RoutinesDayView extends StatefulWidget {
   final AppLogic logic;
   final VoidCallback? onOrganize;
   final void Function(RoutineDay day)? onChain;
-  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain});
+  /// ⏱ de la carte du moment : chrono ciblé + décompte, routine cochée à la
+  /// fin (même branchement que l'ancien « Le meilleur à faire »).
+  final void Function(Activity routine, int minutes)? onStartTimed;
+  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain, this.onStartTimed});
 
   @override
   State<RoutinesDayView> createState() => _RoutinesDayViewState();
@@ -131,6 +134,41 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     }
     logic.onChange();
     setState(() {});
+  }
+
+  /// ⏱ : durée réglée → décompte tout de suite ; sinon on choisit une durée,
+  /// mémorisée comme minuteur préféré de la routine (réglable dans sa fiche).
+  Future<void> _timer(Activity a) async {
+    final cb = widget.onStartTimed;
+    if (cb == null) return;
+    final set = a.timerMin ?? 0;
+    if (set > 0) {
+      cb(a, set);
+      return;
+    }
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('Minuteur pour « ${a.name} »', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text('La routine se coche toute seule à la fin. Durée mémorisée pour la prochaine fois.',
+                style: TextStyle(fontSize: 12.5, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 14),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final m in const [1, 2, 5, 10, 15, 20, 30, 45])
+                ActionChip(label: Text('$m min'), onPressed: () => Navigator.pop(ctx, m)),
+            ]),
+          ]),
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    logic.setActivityTimerMin(a.id, picked);
+    cb(a, picked);
   }
 
   Future<void> _openSheet(Activity a) async {
@@ -373,7 +411,20 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             color: first.reached ? kRoutineAccent : pal.text3,
                             fontFeatures: const [FontFeature.tabularFigures()])),
                     const SizedBox(height: 8),
-                    RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {})),
+                    Row(children: [
+                      Flexible(
+                          child: RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {}))),
+                      if (widget.onStartTimed != null) ...[
+                        const SizedBox(width: 6),
+                        _miniRound(pal, Icons.timer_outlined,
+                            tooltip: (first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
+                            badge: (first.activity.timerMin ?? 0) > 0 ? '${first.activity.timerMin}' : null,
+                            onTap: () => _timer(first.activity)),
+                      ],
+                      const SizedBox(width: 6),
+                      _miniRound(pal, Icons.tune_rounded,
+                          tooltip: 'Réglages de la routine', onTap: () => _openSheet(first.activity)),
+                    ]),
                   ]),
           ),
         ]),
@@ -467,6 +518,39 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  /// Petit bouton rond à icône à côté de la pilule chrono (⏱, réglages) ;
+  /// `badge` = durée du minuteur réglée.
+  Widget _miniRound(NowPalette pal, IconData icon, {required String tooltip, required VoidCallback onTap, String? badge}) =>
+      Tooltip(
+        message: tooltip,
+        child: SizedBox(
+          width: 34,
+          height: 34,
+          child: Material(
+            color: pal.chip,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: Stack(alignment: Alignment.center, children: [
+                Icon(icon, size: 17, color: pal.text2),
+                if (badge != null)
+                  Positioned(
+                    right: 1,
+                    bottom: 1,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                      decoration: BoxDecoration(color: kRoutineAccent, borderRadius: BorderRadius.circular(5)),
+                      child: Text(badge,
+                          style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: kBBg, height: 1.2)),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   String _nextLabel(Moment cur) {
     final n = nextMomentAfter(cur, logic.moments);
