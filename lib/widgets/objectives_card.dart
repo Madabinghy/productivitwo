@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
+import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart';
 
 /// Carte « Objectifs » de l'onglet Accueil : un rang par objectif actif avec
 /// sa jauge de progression hebdo (engagements temps + routines, données déjà
@@ -78,140 +79,15 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     if (saved != null) _load();
   }
 
-  Future<void> _setStatus(StrategicObjective o, String status) async {
-    o.status = status;
-    o.updatedAt = DateTime.now();
-    await widget.sync.saveStrategicObjective(o);
-    if (mounted) Navigator.pop(context); // ferme la sheet détail
-    _load();
-  }
-
-  void _showDetail(StrategicObjective o) {
-    final cs = Theme.of(context).colorScheme;
-    final progress = _progressOf(o);
-    showModalBottomSheet(
-      context: context,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.flag, size: 18, color: _accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(o.title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
-                ),
-              ],
-            ),
-            if (o.kpiTarget != null && o.kpiTarget!.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('🎯 ${o.kpiTarget}',
-                    style: TextStyle(
-                        fontSize: 13, color: cs.onSurface.withOpacity(.6))),
-              ),
-            if (o.horizonLabel != null || progress.daysLeft != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  [
-                    if (o.horizonLabel != null) o.horizonLabel!,
-                    if (progress.daysLeft != null)
-                      '${progress.daysLeft} j restants',
-                  ].join(' · '),
-                  style: TextStyle(
-                      fontSize: 12.5, color: cs.onSurface.withOpacity(.5)),
-                ),
-              ),
-            const SizedBox(height: 14),
-            if (progress.items.isEmpty)
-              Text('Aucun engagement — édite l\'objectif pour en ajouter.',
-                  style: TextStyle(
-                      fontSize: 13, color: cs.onSurface.withOpacity(.5)))
-            else
-              for (final c in progress.items)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            c.type == 'time'
-                                ? Icons.timer_outlined
-                                : Icons.loop,
-                            size: 14,
-                            color: cs.onSurface.withOpacity(.5),
-                          ),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(c.name,
-                                style: const TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                          Text(
-                            c.type == 'time'
-                                ? '${c.done}/${c.target} min'
-                                : '${c.done}/${c.target} ×',
-                            style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: c.onTrack
-                                    ? const Color(0xFF43A047)
-                                    : const Color(0xFFEF6C00)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: c.pct,
-                          minHeight: 5,
-                          backgroundColor: cs.onSurface.withOpacity(.08),
-                          valueColor: AlwaysStoppedAnimation<Color>(c.onTrack
-                              ? const Color(0xFF43A047)
-                              : const Color(0xFFEF6C00)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => _setStatus(o, 'done'),
-                  child: const Text('Atteint 🎉'),
-                ),
-                TextButton(
-                  onPressed: () => _setStatus(o, 'archived'),
-                  child: const Text('Archiver'),
-                ),
-                const Spacer(),
-                FilledButton.tonal(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _edit(o);
-                  },
-                  child: const Text('Éditer'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+  Future<void> _showDetail(StrategicObjective o) async {
+    final changed = await showObjectiveTrajectorySheet(
+      context,
+      logic: widget.logic,
+      sync: widget.sync,
+      objective: o,
+      projects: widget.projects,
     );
+    if (changed) _load();
   }
 
   @override

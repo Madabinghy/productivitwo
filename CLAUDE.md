@@ -548,9 +548,14 @@ RÉSULTAT = dernier relevé vs droite `startValue → targetValue` sur [start, e
 sinon behind ; `readingDue` = dernier relevé (ou début) ≥ `checkInEvery` j. La jauge hebdo (`objective_progress.dart`) ne
 change pas. MCP : `save_objective {metric | null, checkInEvery}`, `log_objective_reading(objectiveId, value, date?, note?)`,
 `list_objectives` → `trajectory` + 12 derniers `readings`, résumé compact (`get_user_context`, `plan_day`) → `metric`
-avec dernier relevé + `readingDue`, `weekly_review` (donc `plan_week` étape 0) liste les relevés dus. Lots suivants :
-fiche objectif mobile (barre temps attendu / fait, graphe `fl_chart` attendu vs relevés, « Noter un relevé »), carte
-« Relevé de la semaine » dans Objectifs et Aujourd'hui.
+avec dernier relevé + `readingDue`, `weekly_review` (donc `plan_week` étape 0) liste les relevés dus. **Lot 2 (livré)** :
+fiche objectif mobile `widgets/objective_trajectory_sheet.dart` (tap sur un objectif dans Objectifs) = jauge hebdo des
+engagements, « Depuis le début · temps investi » (barre fait / total, repère « attendu aujourd'hui », avance / retard),
+« Résultat » (graphe `fl_chart` : droite attendue pointillée, relevés, cible, trait aujourd'hui ; « Noter un relevé » =
+valeur + date + note, `upsertReading`), Atteint / Archiver / Éditer ; les sessions sont relues depuis le début de
+l'objectif (`fetchRecentSessions`). L'édition (`objective_edit_sheet.dart`, étape Mesurable) pose la métrique
+(libellé, unité, aujourd'hui → cible) et le rythme de relevé (3 / 7 / 14 / 30 j) et conserve les relevés. Lot 3 à venir :
+carte « Relevé de la semaine » dans Objectifs et Aujourd'hui.
 
 **Interventions** (2026-10, handoff `docs/specs/interventions-2026-10/README.md`) : séance datée portée par le projet
 (`Project.interventions[]`, `ProjectIntervention`) ; ses trois tâches 📝 / 🎯 / ✅ sont des `ProjectTask` taguées
