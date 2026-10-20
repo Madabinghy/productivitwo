@@ -223,11 +223,13 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
                 children: [
                   _header(cs),
                   const SizedBox(height: 18),
-                  _weekSection(cs),
+                  // Le graphique d'abord (demande user 2026-10) : le résultat
+                  // est ce qu'on vient voir, les jauges de moyens suivent.
+                  _resultSection(cs),
                   const SizedBox(height: 18),
                   _meansSection(cs),
                   const SizedBox(height: 18),
-                  _resultSection(cs),
+                  _weekSection(cs),
                   const SizedBox(height: 18),
                   Row(children: [
                     TextButton(onPressed: () => _setStatus('done'), child: const Text('Atteint 🎉')),
