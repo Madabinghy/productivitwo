@@ -61,7 +61,7 @@ class ObjectiveTrajectory {
   final double? timePct; // 0..1 temps écoulé sur l'horizon (null sans échéance)
   final MeansTrajectory means;
   final ResultTrajectory? result;
-  final int? daysSinceReading; // null = aucun relevé
+  final int? daysSinceReading; // depuis le dernier relevé, sinon depuis le départ ; null = pas de métrique
   final bool readingDue;
   const ObjectiveTrajectory({
     required this.start,
@@ -193,10 +193,15 @@ ObjectiveTrajectory computeObjectiveTrajectory(StrategicObjective o, List<Sessio
     );
   }
 
+  // Le départ (valeur « aujourd'hui » de la métrique) compte comme première
+  // saisie : sans relevé, l'ancienneté se mesure depuis le début (même
+  // référence qu'`isReadingDue`).
   int? since;
   if (last != null) {
     final d = DateTime.tryParse(last.date);
     if (d != null) since = _day(now).difference(_day(d)).inDays;
+  } else if (m != null) {
+    since = _day(now).difference(_day(start)).inDays;
   }
 
   return ObjectiveTrajectory(
