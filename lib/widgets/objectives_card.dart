@@ -105,10 +105,10 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
             ),
           ),
           Positioned(
-            left: (w * expPct - 1).clamp(0.0, w - 2),
-            top: 0,
-            bottom: 0,
-            child: Container(width: 2, color: cs.onSurface.withOpacity(.75)),
+            left: (w * expPct - 0.75).clamp(0.0, w - 1.5),
+            top: 2,
+            bottom: 2,
+            child: Container(width: 1.5, color: cs.onSurface.withOpacity(.4)),
           ),
         ]),
       );

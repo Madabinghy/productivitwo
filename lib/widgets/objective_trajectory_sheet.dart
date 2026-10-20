@@ -346,11 +346,12 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
                   valueColor: AlwaysStoppedAnimation<Color>(c.onTrack ? _good : _warn)),
             ),
           ),
+          // Repère discret, pour ne pas charger la liste.
           Positioned(
-            left: (w * weekElapsed.clamp(0.0, 1.0) - 1).clamp(0.0, w - 2),
-            top: 0,
-            bottom: 0,
-            child: Container(width: 2, color: cs.onSurface.withOpacity(.75)),
+            left: (w * weekElapsed.clamp(0.0, 1.0) - 0.75).clamp(0.0, w - 1.5),
+            top: 2,
+            bottom: 2,
+            child: Container(width: 1.5, color: cs.onSurface.withOpacity(.4)),
           ),
         ]),
       );
@@ -394,12 +395,12 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
                     valueColor: AlwaysStoppedAnimation<Color>(color)),
               ),
             ),
-            // Repère « attendu aujourd'hui »
+            // Repère « attendu aujourd'hui », même style discret que les jauges hebdo
             Positioned(
-              left: (w * expPct - 1).clamp(0.0, w - 2),
-              top: 0,
-              bottom: 0,
-              child: Container(width: 2, color: cs.onSurface.withOpacity(.75)),
+              left: (w * expPct - 0.75).clamp(0.0, w - 1.5),
+              top: 3,
+              bottom: 3,
+              child: Container(width: 1.5, color: cs.onSurface.withOpacity(.4)),
             ),
           ]),
         );
