@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart';
 
@@ -34,6 +38,9 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
   // d'un bloc entier = saccade au scroll (constaté sur build). Rendu
   // immédiat depuis le cache, rafraîchi silencieusement derrière.
   static List<StrategicObjective>? _cache;
+  // Sessions depuis le début le plus ancien des objectifs (le temps investi
+  // cumule depuis le début, pas depuis lundi) ; l'état local sert d'abord.
+  static List<Session>? _sessionsCache;
 
   List<StrategicObjective> _objectives = [];
   bool _loaded = false;
@@ -56,6 +63,55 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     setState(() {
       _objectives = all.where((o) => o.status == 'active').toList();
       _loaded = true;
+    });
+    final active = _objectives;
+    if (active.isEmpty) return;
+    final now = DateTime.now();
+    final earliest = active.map(objectiveStart).reduce((a, b) => a.isBefore(b) ? a : b);
+    final days = now.difference(earliest).inDays.clamp(1, 365);
+    try {
+      final list = await widget.sync.fetchRecentSessions(days + 1);
+      if (!mounted || list.isEmpty) return;
+      _sessionsCache = list;
+      setState(() {});
+    } catch (_) {}
+  }
+
+  ObjectiveTrajectory _trajectoryOf(StrategicObjective o) =>
+      computeObjectiveTrajectory(o, _sessionsCache ?? widget.logic.state.sessions, DateTime.now());
+
+  /// Barre « temps investi » : fait sur le total de l'horizon (sinon sur
+  /// l'attendu du jour), repère vertical = attendu aujourd'hui.
+  Widget _meansBar(ColorScheme cs, MeansTrajectory m) {
+    final color = m.status == TrajectoryStatus.behind ? const Color(0xFFEF6C00) : _accent;
+    final total = m.totalMin > 0 ? m.totalMin : math.max(m.expectedMin, m.doneMin);
+    final donePct = total <= 0 ? 0.0 : (m.doneMin / total).clamp(0.0, 1.0);
+    final expPct = total <= 0 ? 0.0 : (m.expectedMin / total).clamp(0.0, 1.0);
+    return LayoutBuilder(builder: (_, box) {
+      final w = box.maxWidth;
+      return SizedBox(
+        height: 16,
+        child: Stack(children: [
+          Positioned.fill(
+            top: 5,
+            bottom: 5,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                  value: donePct,
+                  minHeight: 6,
+                  backgroundColor: cs.onSurface.withOpacity(.08),
+                  valueColor: AlwaysStoppedAnimation<Color>(color)),
+            ),
+          ),
+          Positioned(
+            left: (w * expPct - 1).clamp(0.0, w - 2),
+            top: 0,
+            bottom: 0,
+            child: Container(width: 2, color: cs.onSurface.withOpacity(.75)),
+          ),
+        ]),
+      );
     });
   }
 
@@ -152,6 +208,12 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
                     child: Builder(builder: (_) {
                       final progress = _progressOf(o);
                       final pct = progress.weekPercent;
+                      // Temps investi depuis le début (repère = attendu
+                      // aujourd'hui) quand il y a des engagements de temps ;
+                      // sinon la jauge hebdo d'avant.
+                      final means = o.timeCommitments.isEmpty ? null : _trajectoryOf(o).means;
+                      final diff = means == null ? 0 : means.doneMin - means.expectedMin;
+                      final warn = const Color(0xFFEF6C00);
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -164,7 +226,18 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
                                         fontSize: 13.5,
                                         fontWeight: FontWeight.w600)),
                               ),
-                              if (pct != null)
+                              if (means != null)
+                                Text(
+                                    means.expectedMin <= 0
+                                        ? fmtMin(means.doneMin)
+                                        : diff >= 0
+                                            ? '+${fmtMin(diff)}'
+                                            : '−${fmtMin(-diff)}',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: means.status == TrajectoryStatus.behind ? warn : _accent.withOpacity(.9)))
+                              else if (pct != null)
                                 Text('${(pct * 100).round()}%',
                                     style: TextStyle(
                                         fontSize: 12,
@@ -173,7 +246,9 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
                             ],
                           ),
                           const SizedBox(height: 4),
-                          if (pct != null)
+                          if (means != null)
+                            _meansBar(cs, means)
+                          else if (pct != null)
                             ClipRRect(
                               borderRadius: BorderRadius.circular(3),
                               child: LinearProgressIndicator(
@@ -184,6 +259,16 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
                                 valueColor:
                                     const AlwaysStoppedAnimation<Color>(
                                         _accent),
+                              ),
+                            ),
+                          if (means != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                '${fmtMin(means.doneMin)} investies · attendu ${fmtMin(means.expectedMin)}'
+                                '${means.totalMin > 0 ? ' · ${fmtMin(means.totalMin)} au total' : ''}',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5)),
                               ),
                             ),
                           if (o.kpiTarget != null &&

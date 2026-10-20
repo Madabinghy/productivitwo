@@ -557,7 +557,10 @@ l'objectif (`fetchRecentSessions`). L'édition (`objective_edit_sheet.dart`, ét
 (libellé, unité, aujourd'hui → cible) et le rythme de relevé (3 / 7 / 14 / 30 j) et conserve les relevés. **Lot 3 (livré)** :
 carte « Relevé de la semaine · n » (`widgets/objective_readings_card.dart`, en tête d'Objectifs et sous la ligne Routines
 d'Aujourd'hui, segment Actions) : objectifs dont un relevé est dû (`isReadingDue`), saisie en place (valeur + ✓ →
-`upsertReading`, SnackBar avance / retard), tap sur le titre = fiche ; invisible quand rien n'est dû. Pas de notification
+`upsertReading`, SnackBar avance / retard), tap sur le titre = fiche ; invisible quand rien n'est dû. La liste d'Objectifs
+(`objectives_card.dart`) montre par objectif la **barre « temps investi »** (fait / total de l'horizon, repère vertical =
+attendu aujourd'hui, écart « +1h05 / −2h18 » à droite ; sessions relues depuis le début le plus ancien) dès qu'il a un
+engagement de temps, la jauge hebdo sinon. Pas de notification
 en plus : le rappel côté Claude passe par `weekly_review` / `plan_week`.
 
 **Interventions** (2026-10, handoff `docs/specs/interventions-2026-10/README.md`) : séance datée portée par le projet
