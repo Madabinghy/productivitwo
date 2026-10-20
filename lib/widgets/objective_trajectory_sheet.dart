@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show ymdDashOf;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
 
@@ -445,7 +446,7 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
       const SizedBox(height: 8),
       Text(
         r.latestValue == null
-            ? 'Aucun relevé · attendu aujourd\'hui ${_withUnit(r.expectedValue)} · cible ${_withUnit(m.targetValue)}'
+            ? 'Départ ${_withUnit(m.startValue)} le ${_dateFrYmd(ymdDashOf(t.start))} · attendu aujourd\'hui ${_withUnit(r.expectedValue)} · cible ${_withUnit(m.targetValue)}'
             : '${_withUnit(r.latestValue!)} le ${_dateFrYmd(r.latestDate!)} · attendu ${_withUnit(r.expectedValue)} · cible ${_withUnit(m.targetValue)}',
         style: TextStyle(fontSize: 12.5, color: cs.onSurface.withOpacity(.6)),
       ),
@@ -456,39 +457,49 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
         ),
       if (t.daysSinceReading != null)
         Text(
-          t.readingDue
-              ? 'Dernier relevé il y a ${t.daysSinceReading} j — un nouveau est attendu (tous les ${o.checkInEvery} j).'
-              : 'Dernier relevé il y a ${t.daysSinceReading} j · prochain dans ${o.checkInEvery - t.daysSinceReading!} j.',
+          () {
+            final what = r.latestValue == null ? 'Départ' : 'Dernier relevé';
+            return t.readingDue
+                ? '$what il y a ${t.daysSinceReading} j — un relevé est attendu (tous les ${o.checkInEvery} j).'
+                : '$what il y a ${t.daysSinceReading} j · prochain relevé dans ${o.checkInEvery - t.daysSinceReading!} j.';
+          }(),
           style: TextStyle(fontSize: 12, color: t.readingDue ? _warn : cs.onSurface.withOpacity(.5)),
         ),
       const SizedBox(height: 10),
+      // Orange = un relevé est dû (même code couleur que la ligne ci-dessus).
       SizedBox(
         height: 46,
         child: FilledButton.icon(
-          style: FilledButton.styleFrom(backgroundColor: t.readingDue || r.latestValue == null ? _accent : null),
+          style: FilledButton.styleFrom(backgroundColor: t.readingDue ? _warn : _accent),
           onPressed: _addReading,
           icon: const Icon(Icons.add_chart, size: 18),
           label: const Text('Noter un relevé'),
         ),
       ),
-      if (o.readings.length > 1) ...[
-        const SizedBox(height: 10),
-        for (final rd in o.readings.reversed.take(5))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(children: [
-              Text(_dateFrYmd(rd.date), style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
-              const SizedBox(width: 10),
-              Text(_withUnit(rd.value), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
-              if (rd.note != null) ...[
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(rd.note!,
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5)))),
-              ],
-            ]),
-          ),
-      ],
+      const SizedBox(height: 10),
+      // Saisies : les 5 derniers relevés, puis le départ (première saisie).
+      for (final rd in o.readings.reversed.take(5))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Row(children: [
+            Text(_dateFrYmd(rd.date), style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+            const SizedBox(width: 10),
+            Text(_withUnit(rd.value), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+            if (rd.note != null) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                  child: Text(rd.note!,
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5)))),
+            ],
+          ]),
+        ),
+      Row(children: [
+        Text(_dateFrYmd(ymdDashOf(t.start)), style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
+        const SizedBox(width: 10),
+        Text(_withUnit(m.startValue), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _warn)),
+        const SizedBox(width: 8),
+        Text('départ', style: TextStyle(fontSize: 12, color: _warn.withOpacity(.8))),
+      ]),
     ]);
   }
 
@@ -505,7 +516,9 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
     final expected = t.end == null
         ? [FlSpot(0, m.startValue), FlSpot(maxX, m.startValue)]
         : [FlSpot(0, m.startValue), FlSpot(maxX, m.targetValue)];
+    // Le départ est la première saisie : la courbe du réel part de là.
     final actual = [
+      FlSpot(0, m.startValue),
       for (final r in o.readings)
         if (DateTime.tryParse(r.date) case final d?) FlSpot(x(d).clamp(0.0, maxX), r.value),
     ];
@@ -594,10 +607,13 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
               color: actualColor,
               barWidth: 2.5,
               isCurved: false,
+              // Le point de départ (index 0) en orange, plus gros : c'est de
+              // là qu'on part — les relevés suivent dans la couleur du réel.
               dotData: FlDotData(
                 show: true,
-                getDotPainter: (_, __, ___, ____) =>
-                    FlDotCirclePainter(radius: 3, color: actualColor, strokeWidth: 0),
+                getDotPainter: (_, __, ___, index) => index == 0
+                    ? FlDotCirclePainter(radius: 4.5, color: _warn, strokeWidth: 1.5, strokeColor: cs.surface)
+                    : FlDotCirclePainter(radius: 3, color: actualColor, strokeWidth: 0),
               ),
               belowBarData: BarAreaData(show: true, color: actualColor.withOpacity(.08)),
             ),

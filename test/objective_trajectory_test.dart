@@ -18,6 +18,18 @@ Session _s(String id, DateTime start, int min, {String act = 'a1'}) =>
     Session(id: id, activityId: act, startAt: start, endAt: start.add(Duration(minutes: min)));
 
 void main() {
+  test('sans relevé, l\'ancienneté se compte depuis le départ (première saisie)', () {
+    final o = _obj(metric: ObjectiveMetric(label: 'clients', startValue: 10, targetValue: 100));
+    final t = computeObjectiveTrajectory(o, const [], DateTime(2026, 10, 9));
+    expect(t.daysSinceReading, 8);
+    expect(t.readingDue, isTrue);
+    expect(t.result!.latestValue, isNull);
+    final t2 = computeObjectiveTrajectory(o, const [], DateTime(2026, 10, 3));
+    expect(t2.daysSinceReading, 2);
+    expect(t2.readingDue, isFalse);
+    expect(computeObjectiveTrajectory(_obj(), const [], DateTime(2026, 10, 9)).daysSinceReading, isNull);
+  });
+
   test('moyens : attendu linéaire, fait = minutes des activités engagées depuis le début', () {
     final o = _obj();
     final now = DateTime(2026, 10, 15, 12); // 2 semaines

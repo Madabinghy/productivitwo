@@ -212,7 +212,8 @@ export function summarizeTrajectory(
     timePct,
     means,
     result,
-    daysSinceReading: last ? daysBetween(last.date, todayStr) : null,
+    // Le départ compte comme première saisie : sans relevé, depuis le début.
+    daysSinceReading: last ? daysBetween(last.date, todayStr) : metric ? daysBetween(startYmd, todayStr) : null,
     readingDue: isReadingDue(o, startYmd, todayStr),
     checkInEvery: Math.max(1, Math.round(Number(o.checkInEvery) || 7)),
   };
