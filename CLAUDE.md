@@ -785,6 +785,10 @@ actions: [
 
 ## Backlog mémorisé (demandes user, à faire plus tard)
 
+- **Objectifs archivés** (noté 2026-10-21) : « Archiver » dans la fiche objectif est la seule suppression (soft, sans
+  confirmation) et aucun écran ne liste les archivés. À faire : liste « Archivés · n » repliée en bas de l'onglet Objectifs
+  avec « Réactiver », et une confirmation sur « Archiver ».
+
 - **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
   dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
   restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
