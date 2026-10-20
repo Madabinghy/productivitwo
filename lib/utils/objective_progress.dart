@@ -30,12 +30,14 @@ class CommitmentProgress {
 
 class ObjectiveProgress {
   final double? weekPercent; // 0..1 — moyenne des engagements (null si aucun)
+  final double weekElapsed; // 0..1 — part de la semaine écoulée (lundi = 1/7), repère « attendu »
   final double? horizonPct; // 0..1 — temps écoulé sur [startDate, endDate]
   final int? daysLeft; // jours restants avant endDate
   final List<CommitmentProgress> items;
 
   ObjectiveProgress({
     required this.weekPercent,
+    required this.weekElapsed,
     required this.horizonPct,
     required this.daysLeft,
     required this.items,
@@ -64,7 +66,8 @@ ObjectiveProgress computeObjectiveProgress(
   DateTime now,
 ) {
   final monday = mondayOf(now);
-  final prorate = (now.weekday / 7) * 0.7;
+  final weekElapsed = now.weekday / 7;
+  final prorate = weekElapsed * 0.7;
   final actById = {for (final a in activities) a.id: a};
 
   // Minutes loggées depuis lundi, par activité
@@ -135,6 +138,7 @@ ObjectiveProgress computeObjectiveProgress(
 
   return ObjectiveProgress(
     weekPercent: weekPercent,
+    weekElapsed: weekElapsed,
     horizonPct: horizonPct,
     daysLeft: daysLeft,
     items: items,

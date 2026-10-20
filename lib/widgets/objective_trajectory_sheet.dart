@@ -320,17 +320,41 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: c.onTrack ? _good : _warn)),
               ]),
               const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                    value: c.pct,
-                    minHeight: 5,
-                    backgroundColor: cs.onSurface.withOpacity(.08),
-                    valueColor: AlwaysStoppedAnimation<Color>(c.onTrack ? _good : _warn)),
-              ),
+              _weekBar(cs, c, w.weekElapsed),
             ]),
           ),
     ]);
+  }
+
+  /// Jauge hebdo d'un engagement, repère vertical = part de la semaine
+  /// écoulée (l'attendu à ce jour), comme la barre de la liste.
+  Widget _weekBar(ColorScheme cs, CommitmentProgress c, double weekElapsed) {
+    return LayoutBuilder(builder: (_, box) {
+      final w = box.maxWidth;
+      return SizedBox(
+        height: 15,
+        child: Stack(children: [
+          Positioned.fill(
+            top: 5,
+            bottom: 5,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                  value: c.pct,
+                  minHeight: 5,
+                  backgroundColor: cs.onSurface.withOpacity(.08),
+                  valueColor: AlwaysStoppedAnimation<Color>(c.onTrack ? _good : _warn)),
+            ),
+          ),
+          Positioned(
+            left: (w * weekElapsed.clamp(0.0, 1.0) - 1).clamp(0.0, w - 2),
+            top: 0,
+            bottom: 0,
+            child: Container(width: 2, color: cs.onSurface.withOpacity(.75)),
+          ),
+        ]),
+      );
+    });
   }
 
   // ── Moyens cumulés : temps fait vs attendu à ce jour ───────────────────────
