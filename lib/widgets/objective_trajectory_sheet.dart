@@ -612,7 +612,7 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
               dotData: FlDotData(
                 show: true,
                 getDotPainter: (_, __, ___, index) => index == 0
-                    ? FlDotCirclePainter(radius: 4.5, color: _warn, strokeWidth: 1.5, strokeColor: cs.surface)
+                    ? FlDotCirclePainter(radius: 4, color: _warn, strokeWidth: 1.5, strokeColor: cs.surface)
                     : FlDotCirclePainter(radius: 3, color: actualColor, strokeWidth: 0),
               ),
               belowBarData: BarAreaData(show: true, color: actualColor.withOpacity(.08)),
