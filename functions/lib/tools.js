@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
 exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
+const title_style_1 = require("./title_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
 // les contextes GTD — même effet que link_action_to_activity, en un seul appel.
@@ -31,6 +32,11 @@ const TASK_ACTION_ITEM_SCHEMA = {
                     type: "string",
                     description: "Échéance PROPRE de l'action (YYYY-MM-DD, optionnel) ; absente = la date de la tâche fait foi. " +
                         "Prime sur la tâche pour « En retard » / « Cette semaine ».",
+                },
+                note: {
+                    type: "string",
+                    description: "DÉTAIL de l'action (affiché au tap, jamais dans la liste) : consignes, quantités, fichiers, " +
+                        "contraintes, rappels. C'est ICI que va tout ce qui alourdissait le titre.",
                 },
                 checklist: {
                     type: "array",
@@ -717,7 +723,7 @@ const PUSH_GANTT_MCP_TOOL = {
     name: "push_gantt",
     description: "Crée ou met à jour un projet Gantt dans Productivitwo. " +
         "Pour modifier un projet existant, fournis son id (obtenu via list_projects + get_project) " +
-        "avec le contenu complet mis à jour. Pour créer un nouveau projet, omets l'id.",
+        "avec le contenu complet mis à jour. Pour créer un nouveau projet, omets l'id." + " " + title_style_1.WRITING_RULES,
     inputSchema: {
         type: "object",
         required: ["project"],
@@ -765,7 +771,7 @@ const PUSH_GANTT_MCP_TOOL = {
                                     type: "array",
                                     items: TASK_ACTION_ITEM_SCHEMA,
                                     description: "Sous-actions opérationnelles — string simple, OU objet " +
-                                        "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour lier l'action à une " +
+                                        "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
                                         "activité-temps (chrono ciblé) dès la création. " +
                                         "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                                         "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -815,7 +821,7 @@ const ADD_TASK_TOOL = {
     name: "add_task",
     description: "Ajoute une seule tâche à un projet Gantt existant sans réécrire tout le projet. " +
         "Utilise list_projects + get_project pour obtenir projectId et les phaseId. " +
-        "Préférer cet outil à push_gantt quand on ajoute une tâche isolée.",
+        "Préférer cet outil à push_gantt quand on ajoute une tâche isolée." + " " + title_style_1.WRITING_RULES,
     inputSchema: {
         type: "object",
         required: ["projectId", "title", "startDate"],
@@ -835,7 +841,7 @@ const ADD_TASK_TOOL = {
                 type: "array",
                 items: TASK_ACTION_ITEM_SCHEMA,
                 description: "Sous-actions opérationnelles — string simple, OU objet " +
-                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour lier l'action à une " +
+                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
                     "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -852,7 +858,7 @@ const UPDATE_TASK_TOOL = {
     name: "update_task",
     description: "Modifie les champs d'une tâche Gantt existante (titre, dates, actions, phase…). " +
         "Ne modifie que les champs fournis, laisse les autres inchangés. " +
-        "Utilise list_projects + get_project pour obtenir projectId et taskId.",
+        "Utilise list_projects + get_project pour obtenir projectId et taskId." + " " + title_style_1.WRITING_RULES,
     inputSchema: {
         type: "object",
         required: ["projectId", "taskId"],
@@ -876,7 +882,7 @@ const UPDATE_TASK_TOOL = {
                 type: "array",
                 items: TASK_ACTION_ITEM_SCHEMA,
                 description: "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
-                    "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate? } pour poser le lien chrono.",
+                    "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour poser le lien chrono.",
             },
         },
     },
@@ -1115,8 +1121,9 @@ const UPDATE_ACTION_TOOL = {
         "tout réécrire), estimatedMin (clearEstimate=true pour effacer), dueDate (échéance PROPRE de l'action, YYYY-MM-DD, " +
         "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), linkedActivityId " +
         "(sous-action de projet ; '' pour délier), done (true coche aussi toutes les étapes de la checklist), delete=true " +
-        "pour supprimer l'action. " +
-        "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions).",
+        "pour supprimer l'action, note (détail affiché au tap ; clearNote=true pour effacer). " +
+        "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions). " +
+        title_style_1.WRITING_RULES,
     inputSchema: {
         type: "object",
         required: ["actionId"],
@@ -1133,6 +1140,8 @@ const UPDATE_ACTION_TOOL = {
             clearEstimate: { type: "boolean", description: "Efface l'estimation" },
             dueDate: { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD) ; '' pour effacer" },
             clearDueDate: { type: "boolean", description: "Efface l'échéance propre (la date de la tâche fait foi à nouveau)" },
+            note: { type: "string", description: "Détail de l'action (consignes, fichiers, contraintes) — affiché au tap, jamais dans la liste" },
+            clearNote: { type: "boolean", description: "Efface le détail" },
             linkedActivityId: { type: "string", description: "Activité-temps liée (chrono ciblé) ; '' pour délier. Sous-actions de projet uniquement" },
             done: { type: "boolean" },
             delete: { type: "boolean", description: "Supprime l'action" },
@@ -1167,6 +1176,8 @@ const UPDATE_ACTIONS_TOOL = {
                         addContexts: { type: "array", items: { type: "string" } },
                         removeContexts: { type: "array", items: { type: "string" } },
                         estimatedMin: { type: "integer" },
+                        note: { type: "string" },
+                        clearNote: { type: "boolean" },
                         clearEstimate: { type: "boolean" },
                         dueDate: { type: "string" },
                         clearDueDate: { type: "boolean" },
@@ -1225,7 +1236,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
     description: "Crée une action PROPRE sur une activité-temps : une sous-action qui appartient directement à " +
         "l'activité (sans tâche/projet). Utile pour matérialiser une action récurrente ou ponctuelle liée " +
         "à une activité, puis la PROGRAMMER via schedule_day (activityId + actionId retourné). " +
-        "N'utilise PAS cet outil pour une action qui relève d'un projet Gantt (utilise add_task/update_task).",
+        "N'utilise PAS cet outil pour une action qui relève d'un projet Gantt (utilise add_task/update_task). " + title_style_1.WRITING_RULES,
     inputSchema: {
         type: "object",
         required: ["activityId", "title"],
@@ -1236,6 +1247,7 @@ const ADD_ACTIVITY_ACTION_TOOL = {
             contexts: { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
             estimatedMin: { type: "integer", description: "Durée estimée en minutes (voir estimate_accuracy pour calibrer)" },
             dueDate: { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD, optionnel)" },
+            note: { type: "string", description: "Détail de l'action (consignes, fichiers) — affiché au tap, jamais dans la liste" },
         },
     },
 };
@@ -1437,7 +1449,10 @@ exports.GET_DAY_SCHEDULE_TOOL = {
 exports.SCHEDULE_DAY_TOOL = {
     name: "schedule_day",
     description: "Génère ou remplace le programme horaire d'une journée dans Productivitwo. " +
-        "Chaque bloc est un créneau horaire avec une action concrète. " +
+        "Chaque bloc est un créneau horaire avec une action concrète. Titre de bloc = verbe + objet " +
+        "(≤ 8 mots, sans code ni parenthèse : « Corriger les contrôles », pas « ✍️ Corriger le contrôle " +
+        "additions (coef. 2, sans ligue) + saisir les notes ») — le bloc est lié par taskId / actionId, " +
+        "l'app affiche le reste. " +
         "⚠️ Ne JAMAIS recréer un rendez-vous Google Agenda déjà présent comme bloc 📅 : il serait écarté. " +
         "⚠️ Pour la date du JOUR, ne JAMAIS créer de blocs à des heures déjà passées " +
         "(planifie à partir de l'heure actuelle) ; les blocs passés existants restent intacts. " +

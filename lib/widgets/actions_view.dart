@@ -2331,6 +2331,19 @@ class _ActionsViewState extends State<ActionsView> {
               for (final c in a.allContexts) pill(c, color: cs.primary),
               if (_todayActionIds.contains(a.id)) pill("au programme aujourd'hui", color: cs.primary),
             ]),
+            if (a.note != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                decoration: BoxDecoration(
+                  color: cs.surfaceVariant.withOpacity(.35),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: SelectableText(a.note!,
+                    style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withOpacity(.8))),
+              ),
+            ],
             const SizedBox(height: 14),
             Text('ÉTAPES',
                 style: TextStyle(

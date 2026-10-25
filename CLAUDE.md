@@ -571,6 +571,17 @@ précédent » de la séance suivante), `manage_intervention_templates` (`data/m
 `migrate_interventions` (triplets existants → natif, appariement temporel par jalon, dryRun), `delete_intervention` (détache par défaut), `update_task {interventionId, interventionRole}` (rattacher / détacher ; rôle principal unique, `extra` = secondaire), `update_intervention {mergeFrom}` (fusion), `plan_prep` (prépa dans les trous : veille au soir d'abord, impression sur place collée à la séance ; `apply:false` = proposition ; logique pure `functions/src/prep_planner.ts` ; bouton web « Planifier la prépa avec Claude » sur la 📝 dans Réalisation), `weekly_review` (revue des orphelins, ne modifie rien ; logique pure `functions/src/project_audit.ts` ; étape 0 de `plan_week` ; `archive_project` avertit des séances à venir, `push_gantt` signale un doublon probable). Logique pure `functions/src/interventions.ts` ; côté app
 `lib/utils/interventions.dart` (natif d'abord, repli convention émojis + `groupLabel`) alimente le radar « Cette semaine » (web `projects_view.dart`, mobile `widgets/week_radar_card.dart` en tête de Projets). Mobile : écran « séance en cours » `widgets/session_player_screen.dart` (étape en cours, heure prévue, bilan → prépa suivante), ouvert depuis le jalon (fiche projet), le ▶ du radar ou un bloc du programme visant un jalon de séance.
 
+**Titres lisibles + détail d'action** (A + B, 2026-10) : diagnostic = Claude écrivait des titres « cahier des charges »
+(codes, coefs, consignes, parenthèses) affichés tels quels dans Aujourd'hui. Règle : **un titre = verbe + objet, ≤ 8 mots,
+sans code ni parenthèse** ; le détail va dans **`TaskAction.note`** (nouveau, optionnel, ≤ 2000 car. ; affiché au tap dans
+la feuille d'action mobile, l'écran bloc et l'espace Réalisation web, édité dans le dialog d'action web) ou
+`ProjectTask.description` ; pas d'emoji / date dans le titre d'une tâche de séance (la structure les porte). Côté MCP :
+`WRITING_RULES` (`functions/src/title_style.ts`) dans les descriptions de `push_gantt` / `add_task` / `update_task` /
+`update_action` / `add_activity_action` / `schedule_day` ; `note` accepté sur les objets action (`normalizeTasks`),
+`update_action {note | clearNote}` (`action_patch.ts`), `add_activity_action {note}` ; `checkTitle` / `titleAdvice` ajoutent
+« ✍️ Titres à alléger » (4 lignes max) à la réponse des outils — **jamais de réécriture automatique**. Suite possible (D) :
+blocs de 30 min minimum et fusion des actions consécutives d'une même tâche dans `plan_day`.
+
 **Estimations par défaut** (2.4, 2026-10) : une action créée sans `estimatedMin` en reçoit une d'après son verbe / objet
 (`functions/src/default_estimates.ts` côté MCP, `lib/utils/default_estimate.dart` côté app — **garder alignés**).
 `ActionsSort.milestone` trie les projets par prochaine séance (`urgencyOf`), automatique avec un filtre « J'ai … ».

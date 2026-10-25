@@ -27,6 +27,7 @@ Future<bool> showEditActionDialog(
   final selected = Set<String>.of(action.allContexts);
   final all = [...available, ...selected.where((c) => !available.contains(c))];
   final titleCtrl = TextEditingController(text: action.title);
+  final noteCtrl = TextEditingController(text: action.note ?? '');
   int? est = action.estimatedMin;
   DateTime? due = action.dueDate;
   final taskDue = task?.endDate;
@@ -58,6 +59,17 @@ Future<bool> showEditActionDialog(
                 textCapitalization: TextCapitalization.sentences,
                 decoration:
                     const InputDecoration(labelText: 'Titre', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: noteCtrl,
+                minLines: 2,
+                maxLines: 6,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                    labelText: 'Détail (consignes, fichiers, contraintes)',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               Text('Durée estimée',
@@ -169,7 +181,9 @@ Future<bool> showEditActionDialog(
     ),
   );
   final newTitle = titleCtrl.text.trim();
+  final newNote = noteCtrl.text.trim();
   titleCtrl.dispose();
+  noteCtrl.dispose();
   if (result == null) return false;
   if (result == 'up' || result == 'down') {
     if (project != null && task != null) {
@@ -191,6 +205,7 @@ Future<bool> showEditActionDialog(
     if (newTitle.isNotEmpty) action.title = newTitle;
     action.setContexts(selected.toList());
     action.estimatedMin = est != null && est! > 0 ? est : null;
+    action.note = newNote.isEmpty ? null : newNote;
     action.dueDate = due;
     action.checklist
       ..clear()

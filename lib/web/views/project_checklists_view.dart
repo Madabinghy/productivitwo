@@ -523,6 +523,19 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
             if (linked != null) _pill('⏱ ${linked.name}', kBPrimary),
             if (a.done && a.doneAt != null) _pill('Faite le ${_dmy(a.doneAt!)}', kBPrimaryDark),
           ]),
+          if (a.note != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+              decoration: BoxDecoration(
+                color: kBRaised,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: kBLine),
+              ),
+              child: SelectableText(a.note!, style: const TextStyle(fontSize: 13.5, height: 1.45, color: kBText2)),
+            ),
+          ],
           const SizedBox(height: 18),
           ..._interventionCards(e),
           // Progression

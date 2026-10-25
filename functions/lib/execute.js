@@ -104,6 +104,7 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const weekly_report_1 = require("./weekly_report");
 const objectives_1 = require("./objectives");
+const title_style_1 = require("./title_style");
 const objective_trajectory_1 = require("./objective_trajectory");
 // ── Date helpers ──────────────────────────────────────────────────────────────
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
@@ -216,10 +217,10 @@ function pickTask(t) {
             : typeof o.context === "string" ? [o.context] : [];
         const est = (_b = (_a = estimatedMinOrUndefined(o.estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(o.title, ctxs)) !== null && _b !== void 0 ? _b : undefined;
         const due = actionDueDate(o.dueDate, "action.dueDate");
-        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
@@ -264,6 +265,16 @@ function normalizeChecklist(raw) {
 }
 // Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
 // type inattendu = « pas d'estimation », l'app applique son défaut).
+/** Détail d'une action (`note`, B 2026-10) : le « cahier des charges » que le
+ *  titre ne doit plus porter. Chaîne vide / null = pas de note (undefined). */
+function noteOrUndefined(raw) {
+    if (raw === null)
+        return null;
+    if (typeof raw !== "string")
+        return undefined;
+    const t = raw.trim();
+    return t ? t.slice(0, 2000) : null;
+}
 function estimatedMinOrUndefined(raw) {
     const n = typeof raw === "number" ? raw : Number(raw);
     return Number.isInteger(n) && n > 0 ? n : undefined;
@@ -1436,7 +1447,7 @@ async function executePushGantt(uid, input,
 // user vient de le demander, un draft invisible dans activeProjects avait
 // été pris pour un bug (test connecteur 2026-09).
 opts) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const { project, strategicObjective } = input;
     let pickedProject;
     let pickedSO;
@@ -1475,7 +1486,7 @@ opts) {
                     `Si c'est le même projet, fusionne (déplace les tâches puis archive_project) ou rattache l'un à l'autre (update_project parentProjectId).\n`;
             }
         }
-        catch ( /* la détection ne doit jamais bloquer la création */_d) { /* la détection ne doit jamais bloquer la création */ }
+        catch ( /* la détection ne doit jamais bloquer la création */_e) { /* la détection ne doit jamais bloquer la création */ }
     }
     const pickedPhaseIds = new Set(((_a = pickedProject.phases) !== null && _a !== void 0 ? _a : []).map((p) => String(p.id)));
     const unphased = ((_b = pickedProject.tasks) !== null && _b !== void 0 ? _b : [])
@@ -1494,15 +1505,22 @@ opts) {
         ? ""
         : `• statut : ${(opts === null || opts === void 0 ? void 0 : opts.draftOnCreate)
             ? "brouillon (à valider dans l'app)" : "actif"}\n`;
+    const styleAdvice = (0, title_style_1.titleAdvice)(((_d = pickedProject.tasks) !== null && _d !== void 0 ? _d : []).flatMap((t) => {
+        var _a, _b, _c;
+        return [
+            { title: String((_a = t.title) !== null && _a !== void 0 ? _a : ""), kind: "task", interventionRole: (_b = t.interventionRole) !== null && _b !== void 0 ? _b : null },
+            ...(((_c = t.actions) !== null && _c !== void 0 ? _c : []).map((a) => { var _a; return ({ title: String((_a = a.title) !== null && _a !== void 0 ? _a : ""), kind: "action" }); })),
+        ];
+    }));
     return (`✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
         verboseWarning + phaseWarning + dupWarning +
         `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
         statusLine +
         `• Voir sur : https://app.productivitwo.com\n` +
-        `• projectId : ${projectId}`);
+        `• projectId : ${projectId}` + styleAdvice);
 }
 async function executeAddTask(uid, projectId, task) {
-    var _a;
+    var _a, _b, _c, _d;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1526,10 +1544,14 @@ async function executeAddTask(uid, projectId, task) {
         tasks: db_1.FieldValue.arrayUnion(newTask),
         updatedAt: db_1.FieldValue.serverTimestamp(),
     });
-    return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}`;
+    const styleAdvice = (0, title_style_1.titleAdvice)([
+        { title: String((_b = newTask.title) !== null && _b !== void 0 ? _b : ""), kind: "task", interventionRole: (_c = newTask.interventionRole) !== null && _c !== void 0 ? _c : null },
+        ...(((_d = newTask.actions) !== null && _d !== void 0 ? _d : []).map((a) => { var _a; return ({ title: String((_a = a.title) !== null && _a !== void 0 ? _a : ""), kind: "action" }); })),
+    ]);
+    return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}${styleAdvice}`;
 }
 async function executeUpdateTask(uid, projectId, taskId, updates) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p;
     const ref = db_1.db.collection(`users/${uid}/projects`).doc(projectId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -1660,7 +1682,11 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
         return `❌ Mise à jour invalide : ${e instanceof Error ? e.message : String(e)}`;
     }
     await ref.update({ tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
-    return `✅ Tâche "${tasks[idx].title}" mise à jour.${interventionNote}`;
+    const styleAdvice = (0, title_style_1.titleAdvice)([
+        { title: String((_m = tasks[idx].title) !== null && _m !== void 0 ? _m : ""), kind: "task", interventionRole: (_o = tasks[idx].interventionRole) !== null && _o !== void 0 ? _o : null },
+        ...(((_p = tasks[idx].actions) !== null && _p !== void 0 ? _p : []).map((a) => { var _a; return ({ title: String((_a = a.title) !== null && _a !== void 0 ? _a : ""), kind: "action" }); })),
+    ]);
+    return `✅ Tâche "${tasks[idx].title}" mise à jour.${interventionNote}${styleAdvice}`;
 }
 async function executeMarkActionDone(uid, projectId, taskId, actionId, done) {
     var _a, _b;
@@ -1902,6 +1928,10 @@ async function executeUpdateAction(uid, args) {
         patch.dueDate = null;
     else if (args.dueDate !== undefined)
         patch.dueDate = args.dueDate;
+    if (args.clearNote === true)
+        patch.note = null;
+    else if (args.note !== undefined)
+        patch.note = args.note;
     if (args.done !== undefined)
         patch.done = args.done;
     if (args.linkedActivityId !== undefined) {
@@ -1918,9 +1948,10 @@ async function executeUpdateAction(uid, args) {
             return `L'activité "${(_a = actData.name) !== null && _a !== void 0 ? _a : patch.linkedActivityId}" n'est pas une activité-temps.`;
     }
     const sanitize = (v) => JSON.parse(JSON.stringify(v, (_k, x) => x && typeof x === "object" && typeof x.toDate === "function" ? x.toDate().toISOString() : x));
-    const summary = (title, changes, holder) => changes.length
+    const summary = (title, changes, holder) => (changes.length
         ? `✏️ « ${title} » (${holder}) : ${changes.join(" · ")}.`
-        : `« ${title} » (${holder}) : rien à changer.`;
+        : `« ${title} » (${holder}) : rien à changer.`) +
+        (patch.title !== undefined ? (0, title_style_1.titleAdvice)([{ title: patch.title, kind: "action" }]) : "");
     if (own) {
         const ref = db_1.db.collection(`users/${uid}/activities`).doc(args.activityId);
         const snap = await ref.get();
@@ -2110,11 +2141,12 @@ async function executeManageContexts(uid, args) {
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin, dueDate) {
+async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin, dueDate, note) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
     const due = actionDueDate(dueDate, "dueDate");
+    const cleanNote = noteOrUndefined(note);
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
     if (!snap.exists)
@@ -2125,17 +2157,17 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
+    const action = withBothContexts(Object.assign(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
         var _a;
         const est = (_a = estimatedMinOrUndefined(estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(title, [...(Array.isArray(contexts) ? contexts : []), context !== null && context !== void 0 ? context : ""]);
         return est !== undefined && est !== null ? { estimatedMin: est } : {};
-    })()), (due !== undefined ? { dueDate: due } : {})));
+    })()), (due !== undefined ? { dueDate: due } : {})), (cleanNote ? { note: cleanNote } : {})));
     own.push(action);
     await ref.update({ ownActions: own });
     const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
         ? ` Estimation par défaut : ${action.estimatedMin} min (${(0, default_estimates_1.defaultEstimateLabel)(title, Array.isArray(contexts) ? contexts : [])}).`
         : "";
-    return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+    return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).${(0, title_style_1.titleAdvice)([{ title: action.title, kind: "action" }])}`;
 }
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;

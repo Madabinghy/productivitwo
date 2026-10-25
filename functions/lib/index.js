@@ -1829,7 +1829,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                     text = await (0, execute_1.executeLinkActionToActivity)(uid, args.projectId, args.taskId, args.actionId, args.activityId);
                 }
                 else if (toolName === "add_activity_action") {
-                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin, args.dueDate);
+                    text = await (0, execute_1.executeAddActivityAction)(uid, args.activityId, args.title, args.context, args.contexts, args.estimatedMin, args.dueDate, args.note);
                 }
                 else if (toolName === "list_sessions") {
                     text = await (0, execute_1.executeListSessions)(uid, {

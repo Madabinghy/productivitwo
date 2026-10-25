@@ -11,6 +11,7 @@ export type ActionPatch = {
   removeContexts?: string[];
   estimatedMin?: number | null; // null = effacer
   dueDate?: string | null;      // échéance propre YYYY-MM-DD ; null / "" = retour à la date de la tâche
+  note?: string | null;         // détail de l'action (B 2026-10) ; null / "" = effacer
   linkedActivityId?: string | null; // null = délier (actions de projet)
   done?: boolean;
 };
@@ -64,6 +65,15 @@ export function applyActionPatch(
         changes.push(`estimation ${cur === null ? "—" : `${cur} min`} → ${n === null ? "—" : `${n} min`}`);
         a = { ...a, estimatedMin: n };
       }
+    }
+  }
+
+  if (patch.note !== undefined) {
+    const v = patch.note === null ? null : patch.note.trim().slice(0, 2000) || null;
+    const cur = typeof a.note === "string" && a.note.trim() ? a.note : null;
+    if (v !== cur) {
+      changes.push(v === null ? "détail effacé" : cur === null ? "détail ajouté" : "détail modifié");
+      a = { ...a, note: v };
     }
   }
 

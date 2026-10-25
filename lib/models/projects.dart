@@ -71,6 +71,9 @@ class TaskAction {
   // Échéance PROPRE de l'action (jour, 2026-10) ; null = celle de la tâche fait
   // foi. Lire via `effectiveDueDate` (utils/actions_logic.dart), jamais seule.
   DateTime? dueDate;
+  // Détail de l'action (B, 2026-10) : consignes, fichiers, contraintes — tout
+  // ce que le titre ne doit plus porter. Affiché au tap, jamais dans la liste.
+  String? note;
   List<ChecklistItem> checklist; // micro-actions ; vide = pas de checklist
 
   TaskAction({
@@ -84,6 +87,7 @@ class TaskAction {
     List<String>? contexts,
     this.estimatedMin,
     this.dueDate,
+    this.note,
     List<ChecklistItem>? checklist,
   })  : id = id ?? _uuid.v4(),
         createdAt = createdAt ?? DateTime.now(),
@@ -122,6 +126,7 @@ class TaskAction {
         'contexts': contexts,
         'estimatedMin': estimatedMin,
         'dueDate': dueDate == null ? null : _actionYmd(dueDate!),
+        if (note != null && note!.trim().isNotEmpty) 'note': note,
         'checklist': checklist.map((c) => c.toJson()).toList(),
       };
 
@@ -147,6 +152,7 @@ class TaskAction {
       contexts: multi,
       estimatedMin: _parseEstimatedMin(j['estimatedMin']),
       dueDate: _parseDateOrNull(j['dueDate']),
+      note: (j['note'] is String && (j['note'] as String).trim().isNotEmpty) ? j['note'] as String : null,
       checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
     );
   }

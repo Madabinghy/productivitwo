@@ -30,6 +30,7 @@ import { createHash } from "crypto";
 import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayload } from "./types";
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { summarizeObjectives } from "./objectives";
+import { titleAdvice } from "./title_style";
 import {
   summarizeTrajectory, objectiveStartYmd, isReadingDue, parseMetric, parseReadings, upsertReading, latestReading,
   formatReadingsDue,
@@ -186,6 +187,7 @@ function pickTask(t: Record<string, unknown>): Record<string, unknown> {
         ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {}),
       ...(est !== undefined ? { estimatedMin: est } : {}),
       ...(due !== undefined ? { dueDate: due } : {}),
+      ...(noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {}),
       ...(Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {}),
     });
   });
@@ -245,6 +247,15 @@ function normalizeChecklist(raw: unknown[]): Array<Record<string, unknown>> {
 
 // Durée estimée en minutes : entier > 0, sinon undefined (absent/0/négatif/
 // type inattendu = « pas d'estimation », l'app applique son défaut).
+/** Détail d'une action (`note`, B 2026-10) : le « cahier des charges » que le
+ *  titre ne doit plus porter. Chaîne vide / null = pas de note (undefined). */
+function noteOrUndefined(raw: unknown): string | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== "string") return undefined;
+  const t = raw.trim();
+  return t ? t.slice(0, 2000) : null;
+}
+
 function estimatedMinOrUndefined(raw: unknown): number | undefined {
   const n = typeof raw === "number" ? raw : Number(raw);
   return Number.isInteger(n) && n > 0 ? n : undefined;
@@ -1656,13 +1667,18 @@ async function executePushGantt(
     ? ""
     : `• statut : ${opts?.draftOnCreate
         ? "brouillon (à valider dans l'app)" : "actif"}\n`;
+  const styleAdvice = titleAdvice(
+    ((pickedProject.tasks as Array<Record<string, unknown>>) ?? []).flatMap((t) => [
+      { title: String(t.title ?? ""), kind: "task" as const, interventionRole: (t.interventionRole as string | undefined) ?? null },
+      ...(((t.actions as Array<Record<string, unknown>>) ?? []).map((a) => ({ title: String(a.title ?? ""), kind: "action" as const }))),
+    ]));
   return (
     `✅ Projet "${project.title}" ${isUpdate ? "mis à jour" : "créé"} dans Productivitwo !\n` +
     verboseWarning + phaseWarning + dupWarning +
     `• ${(project.tasks || []).length} tâche(s) · ${(project.phases || []).length} phase(s)\n` +
     statusLine +
     `• Voir sur : https://app.productivitwo.com\n` +
-    `• projectId : ${projectId}`
+    `• projectId : ${projectId}` + styleAdvice
   );
 }
 
@@ -1695,7 +1711,11 @@ async function executeAddTask(
     tasks: FieldValue.arrayUnion(newTask),
     updatedAt: FieldValue.serverTimestamp(),
   });
-  return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}`;
+  const styleAdvice = titleAdvice([
+    { title: String(newTask.title ?? ""), kind: "task", interventionRole: (newTask.interventionRole as string | undefined) ?? null },
+    ...(((newTask.actions as Array<Record<string, unknown>>) ?? []).map((a) => ({ title: String(a.title ?? ""), kind: "action" as const }))),
+  ]);
+  return `✅ Tâche "${newTask.title}" ajoutée au projet (id: ${newTask.id}).${phaseNote}${styleAdvice}`;
 }
 
 async function executeUpdateTask(
@@ -1833,7 +1853,11 @@ async function executeUpdateTask(
   }
 
   await ref.update({ tasks, updatedAt: FieldValue.serverTimestamp() });
-  return `✅ Tâche "${tasks[idx].title}" mise à jour.${interventionNote}`;
+  const styleAdvice = titleAdvice([
+    { title: String(tasks[idx].title ?? ""), kind: "task", interventionRole: (tasks[idx].interventionRole as string | undefined) ?? null },
+    ...(((tasks[idx].actions as Array<Record<string, unknown>>) ?? []).map((a) => ({ title: String(a.title ?? ""), kind: "action" as const }))),
+  ]);
+  return `✅ Tâche "${tasks[idx].title}" mise à jour.${interventionNote}${styleAdvice}`;
 }
 
 async function executeMarkActionDone(
@@ -2072,6 +2096,7 @@ type UpdateActionArgs = {
   activityId?: string; projectId?: string; taskId?: string; actionId: string;
   title?: string; contexts?: string[]; addContexts?: string[]; removeContexts?: string[];
   estimatedMin?: number; clearEstimate?: boolean; dueDate?: string; clearDueDate?: boolean;
+  note?: string; clearNote?: boolean;
   linkedActivityId?: string;
   done?: boolean; delete?: boolean;
 };
@@ -2111,6 +2136,8 @@ async function executeUpdateAction(uid: string, args: UpdateActionArgs): Promise
   else if (args.estimatedMin !== undefined) patch.estimatedMin = args.estimatedMin;
   if (args.clearDueDate === true) patch.dueDate = null;
   else if (args.dueDate !== undefined) patch.dueDate = args.dueDate;
+  if (args.clearNote === true) patch.note = null;
+  else if (args.note !== undefined) patch.note = args.note;
   if (args.done !== undefined) patch.done = args.done;
   if (args.linkedActivityId !== undefined) {
     if (own) return "linkedActivityId ne s'applique qu'aux sous-actions de projet (une action propre est déjà portée par son activité).";
@@ -2125,9 +2152,10 @@ async function executeUpdateAction(uid: string, args: UpdateActionArgs): Promise
   const sanitize = (v: unknown) => JSON.parse(JSON.stringify(v, (_k, x) =>
     x && typeof x === "object" && typeof x.toDate === "function" ? x.toDate().toISOString() : x));
   const summary = (title: string, changes: string[], holder: string) =>
-    changes.length
+    (changes.length
       ? `✏️ « ${title} » (${holder}) : ${changes.join(" · ")}.`
-      : `« ${title} » (${holder}) : rien à changer.`;
+      : `« ${title} » (${holder}) : rien à changer.`) +
+    (patch.title !== undefined ? titleAdvice([{ title: patch.title, kind: "action" }]) : "");
 
   if (own) {
     const ref = db.collection(`users/${uid}/activities`).doc(args.activityId as string);
@@ -2322,10 +2350,12 @@ async function executeAddActivityAction(
   context?: string | null,
   contexts?: string[] | null,
   estimatedMin?: number | null,
-  dueDate?: string | null
+  dueDate?: string | null,
+  note?: string | null
 ): Promise<string> {
   if (!title?.trim()) return "Titre de l'action requis.";
   const due = actionDueDate(dueDate, "dueDate");
+  const cleanNote = noteOrUndefined(note);
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
   const snap = await ref.get();
   if (!snap.exists) return `Activité introuvable : ${activityId}`;
@@ -2350,6 +2380,7 @@ async function executeAddActivityAction(
       return est !== undefined && est !== null ? { estimatedMin: est } : {};
     })(),
     ...(due !== undefined ? { dueDate: due } : {}),
+    ...(cleanNote ? { note: cleanNote } : {}),
   });
   own.push(action);
   await ref.update({ ownActions: own });
@@ -2357,7 +2388,7 @@ async function executeAddActivityAction(
   const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
     ? ` Estimation par défaut : ${action.estimatedMin} min (${defaultEstimateLabel(title, Array.isArray(contexts) ? contexts : [])}).`
     : "";
-  return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).`;
+  return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).${titleAdvice([{ title: action.title as string, kind: "action" }])}`;
 }
 
 async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {
