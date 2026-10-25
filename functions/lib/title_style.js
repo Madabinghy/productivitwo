@@ -1,0 +1,65 @@
+"use strict";
+// ── Règles d'écriture des titres (A, 2026-10) ────────────────────────────────
+// Diagnostic : Claude écrit des titres « cahier des charges » (codes, coefs,
+// consignes d'impression, parenthèses) pensés pour un Claude futur, et l'app les
+// affiche tels quels dans Aujourd'hui. Un titre doit se lire au moment de
+// FAIRE : verbe + objet, dans les mots de l'utilisateur. Le détail va dans
+// `note` (action) ou `description` (tâche). Ce module ne réécrit jamais un
+// titre : il signale, l'appelant décide.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WRITING_RULES = exports.TITLE_MAX = void 0;
+exports.checkTitle = checkTitle;
+exports.titleAdvice = titleAdvice;
+exports.TITLE_MAX = 80;
+/** Texte partagé par les descriptions d'outils (push_gantt, add_task,
+ *  update_task, update_action, add_activity_action, schedule_day). */
+exports.WRITING_RULES = "RÈGLES D'ÉCRITURE (l'utilisateur lit ces titres dans l'app, pas toi) : " +
+    "un titre = verbe + objet, dans ses mots, ≤ 8 mots, sans parenthèse ni code (pas de « 1.B.1 », " +
+    "« coef. 2 », « recto verso ×19 », « CM1.2 : »). Tout le détail utile (consignes, quantités, fichiers, " +
+    "contraintes, rappels à toi-même) va dans `note` pour une action, `description` pour une tâche — " +
+    "jamais dans le titre. Pas d'emoji ni de date dans le titre d'une tâche de séance (prep / session / " +
+    "closure) : l'app les affiche depuis la structure. Une chose n'a qu'UNE maison : pas de tâche " +
+    "« Corriger… » si une action « Corriger… » existe déjà dans la prépa.";
+const ROLE_EMOJI = /^(📝|🎯|✅|🏁|✍️)\s*/u;
+const SPEC_TOKENS = /(\bcoef\.?\s*\d|\brecto\s*verso\b|×\s*\d+|\bx\s*\d+\b|\b\d+\.[A-Z]\.?\d*\b|\bp\.\s*\d+|\bex\.?\s*\d|\bCM[12]\b\s*[:.]|\(\s*\d+\s*(pages?|min)\b)/iu;
+function checkTitle(title, opts = { kind: "action" }) {
+    var _a;
+    const t = (title !== null && title !== void 0 ? title : "").trim();
+    const warnings = [];
+    let suggested;
+    if (!t)
+        return { warnings };
+    if (t.length > exports.TITLE_MAX) {
+        warnings.push(`titre long (${t.length} car.) : garde verbe + objet, mets le détail dans ${opts.kind === "task" ? "description" : "note"}`);
+    }
+    const parens = ((_a = t.match(/\(/g)) !== null && _a !== void 0 ? _a : []).length;
+    if (parens >= 1 && t.length > 50) {
+        warnings.push("parenthèses dans le titre : les précisions vont dans le détail");
+    }
+    if (SPEC_TOKENS.test(t)) {
+        warnings.push("codes / consignes dans le titre (coef., p., ×n, 1.B.1…) : à déplacer dans le détail");
+    }
+    if (opts.interventionRole && ROLE_EMOJI.test(t)) {
+        suggested = t.replace(ROLE_EMOJI, "");
+        warnings.push(`emoji de rôle en double : la séance (${opts.interventionRole}) l'affiche déjà`);
+    }
+    const words = t.split(/\s+/).length;
+    if (words > 14)
+        warnings.push(`${words} mots : un titre se dit en une respiration`);
+    return { warnings, suggested };
+}
+/** Une ligne d'avertissement pour la réponse d'un outil, ou "" si rien. */
+function titleAdvice(items) {
+    const rows = [];
+    for (const it of items) {
+        const c = checkTitle(it.title, { kind: it.kind, interventionRole: it.interventionRole });
+        if (c.warnings.length)
+            rows.push(`• « ${it.title.length > 60 ? `${it.title.slice(0, 57)}…` : it.title} » — ${c.warnings[0]}`);
+        if (rows.length >= 4)
+            break;
+    }
+    if (!rows.length)
+        return "";
+    return `\n✍️ Titres à alléger (règle : verbe + objet, détail dans note / description) :\n${rows.join("\n")}`;
+}
+//# sourceMappingURL=title_style.js.map

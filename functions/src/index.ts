@@ -1855,6 +1855,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.contexts as string[] | undefined,
             args.estimatedMin as number | undefined,
             args.dueDate as string | undefined,
+            args.note as string | undefined,
           );
         } else if (toolName === "list_sessions") {
           text = await executeListSessions(uid, {

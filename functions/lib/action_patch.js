@@ -56,6 +56,14 @@ function applyActionPatch(action, patch, nowIso = new Date().toISOString()) {
             }
         }
     }
+    if (patch.note !== undefined) {
+        const v = patch.note === null ? null : patch.note.trim().slice(0, 2000) || null;
+        const cur = typeof a.note === "string" && a.note.trim() ? a.note : null;
+        if (v !== cur) {
+            changes.push(v === null ? "détail effacé" : cur === null ? "détail ajouté" : "détail modifié");
+            a = Object.assign(Object.assign({}, a), { note: v });
+        }
+    }
     if (patch.dueDate !== undefined) {
         const v = patch.dueDate === null || patch.dueDate.trim() === "" ? null : patch.dueDate.trim();
         if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {

@@ -258,6 +258,12 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
                         onPressed: () => _mutate(() => setActionDone(focus, !focus.done)),
                       ),
                     ]),
+                    if (focus.note != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Text(focus.note!,
+                            style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withOpacity(.7))),
+                      ),
                     if (stepsTotal > 0)
                       Padding(
                         padding: const EdgeInsets.only(top: 2, bottom: 8),
