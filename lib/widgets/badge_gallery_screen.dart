@@ -64,6 +64,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         objectives: results[2] as List<StrategicObjective>,
         sessions: st.sessions,
         moodMarks: st.moodMarks,
+        chainRuns: st.chainRuns,
         now: now,
         dayStartMin: widget.logic.dayStartMin,
       );

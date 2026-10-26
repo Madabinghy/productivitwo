@@ -26,6 +26,7 @@ class AppState {
   // ✅ Habits context (associations)
   List<HabitHit> habitHits;
   List<MoodMark> moodMarks; // pointages d'état (élan / effort / humeur), `mood_marks`
+  List<ChainRun> chainRuns; // sessions d'Enchaîner (badges), `chain_runs`
   List<Redemption> redemptions; // crédits de reconquête (jeu, ≠ relevé factuel)
   Map<String, String> habitPinnedActivity;
   Map<String, List<String>> nowSkippedByYmd;
@@ -214,6 +215,7 @@ class AppState {
     this.lastPrepYmd,
     List<HabitHit>? habitHits,
     List<MoodMark>? moodMarks,
+    List<ChainRun>? chainRuns,
     List<Redemption>? redemptions,
     Map<String, String>? habitPinnedActivity,
     Map<String, List<String>>? habitChecklistByHabitId,
@@ -321,6 +323,7 @@ class AppState {
         focusTodayIds = focusTodayIds ?? <String>[],
         habitHits = habitHits ?? <HabitHit>[],
         moodMarks = moodMarks ?? <MoodMark>[],
+        chainRuns = chainRuns ?? <ChainRun>[],
         redemptions = redemptions ?? <Redemption>[],
         habitPinnedActivity = habitPinnedActivity ?? <String, String>{},
         habitChecklistByHabitId =
@@ -390,6 +393,7 @@ class AppState {
         // ✅ persist
         'habitHits': habitHits.map((e) => e.toJson()).toList(),
         'moodMarks': moodMarks.map((e) => e.toJson()).toList(),
+        'chainRuns': chainRuns.map((e) => e.toJson()).toList(),
         'redemptions': redemptions.map((e) => e.toJson()).toList(),
         'habitPinnedActivity': habitPinnedActivity,
 
@@ -549,6 +553,7 @@ class AppState {
       onboardingDone: (j['onboardingDone'] as bool?) ?? false,
       habitHits: _list(j['habitHits'], (e) => HabitHit.from(e)),
       moodMarks: _list(j['moodMarks'], (e) => MoodMark.from(e)),
+      chainRuns: _list(j['chainRuns'], (e) => ChainRun.from(e)),
       redemptions: _list(j['redemptions'], (e) => Redemption.from(e)),
       habitPinnedActivity: _mapSS(j['habitPinnedActivity']),
       nowSkippedByYmd: _mapSL(j['nowSkippedByYmd']),

@@ -62,6 +62,7 @@ class BadgeCenter extends ChangeNotifier {
       objectives: _objectives,
       sessions: st.sessions,
       moodMarks: st.moodMarks,
+      chainRuns: st.chainRuns,
       now: DateTime.now(),
       dayStartMin: logic.dayStartMin,
     );

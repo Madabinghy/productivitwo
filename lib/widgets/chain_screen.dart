@@ -95,6 +95,12 @@ class _ChainScreenState extends State<_ChainScreen> {
   bool _paused = false;
   bool _summary = false;
   bool _busy = false;
+  // Session d'Enchaîner (badges, 2026-10) : premier bloc réel de la file au
+  // départ, dernier bloc réel épuisé, sortie avant la fin, écrite une fois au récap.
+  String? _firstBlockId;
+  String? _lastBlockId;
+  bool _exited = false;
+  bool _recorded = false;
   // Routine affichée : la file la retire dès que la cible est atteinte (un +1
   // sur une cible à 1), on la garde en tête jusqu'à « Suivante ».
   ChainItem? _held;
@@ -118,7 +124,9 @@ class _ChainScreenState extends State<_ChainScreen> {
         _blocks = blocks;
         if (!_loaded) {
           _loaded = true;
-          _totalAtStart = _ordered().length;
+          final first = _ordered();
+          _totalAtStart = first.length;
+          _firstBlockId = first.where((i) => !i.synthetic).firstOrNull?.block.id;
         }
       });
       _afterChange();
@@ -276,6 +284,7 @@ class _ChainScreenState extends State<_ChainScreen> {
             break;
         }
         _doneCount++;
+        if (!i.synthetic) _lastBlockId = i.block.id;
         _afterChange();
       });
 
@@ -352,6 +361,7 @@ class _ChainScreenState extends State<_ChainScreen> {
     final items = _ordered();
     final cur = items.firstOrNull;
     final showSummary = _summary || (_loaded && cur == null && _between == null);
+    if (showSummary && !_recorded) WidgetsBinding.instance.addPostFrameCallback((_) => _recordRun());
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -383,7 +393,10 @@ class _ChainScreenState extends State<_ChainScreen> {
       IconButton(
         tooltip: 'Sortir',
         icon: Icon(Icons.close_rounded, color: pal.text3),
-        onPressed: () => setState(() => _summary = true),
+        onPressed: () => setState(() {
+          _exited = true;
+          _summary = true;
+        }),
       ),
     ]);
   }
@@ -840,12 +853,41 @@ class _ChainScreenState extends State<_ChainScreen> {
             else
               _secondary('Souffler 5 min', () => _waitFor(DateTime.now().add(const Duration(minutes: 5)))),
             const SizedBox(width: 8),
-            _secondary('Sortir', () => setState(() => _summary = true)),
+            _secondary('Sortir', () => setState(() {
+              _exited = true;
+              _summary = true;
+            })),
           ]),
         ] else
           _primary('Voir le récap', () => setState(() => _summary = true), icon: Icons.flag_rounded),
       ]),
     );
+  }
+
+  /// Écrit la session une fois le récap atteint : menée au bout si la file
+  /// s'est vidée (pas « Sortir »), « plein jour » si elle va du premier au
+  /// dernier bloc du programme (blocs à faire ou faits, miroirs compris).
+  void _recordRun() {
+    if (_recorded || !mounted) return;
+    _recorded = true;
+    final program = _blocks
+        .where((b) => (b.status == 'pending' || b.status == 'done') && b.kind == 'normal')
+        .toList()
+      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final run = ChainRun(
+      date: widget.date,
+      startedAt: _startedAt,
+      endedAt: DateTime.now(),
+      doneCount: _doneCount,
+      total: _totalAtStart,
+      completed: !_exited,
+      firstBlockId: _firstBlockId,
+      lastBlockId: _lastBlockId,
+      programFirstBlockId: program.firstOrNull?.id,
+      programLastBlockId: program.lastOrNull?.id,
+    );
+    logic.recordChainRun(run);
+    widget.sync.saveChainRun(run);
   }
 
   Widget _summaryView(NowPalette pal, List<ChainItem> remaining) {

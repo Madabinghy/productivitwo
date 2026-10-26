@@ -484,6 +484,7 @@ BadgeDeck computeBadges({
   required List<Session> sessions,
   required DateTime now,
   List<MoodMark> moodMarks = const [],
+  List<ChainRun> chainRuns = const [],
   int dayStartMin = kDefaultDayStartMin,
 }) {
   final out = <BadgeState>[];
@@ -686,18 +687,27 @@ BadgeDeck computeBadges({
     tierDates: [for (final t in kBarometerTiers) t <= disc.elanMarkDates.length ? _day(disc.elanMarkDates[t - 1]) : null],
     facts: [('Pointages d\u2019élan', '${disc.elanMarkDates.length}'), if (disc.elanMarkDates.isNotEmpty) ('Le premier', _fmtDate(disc.elanMarkDates.first))],
   ));
-  // Enchaîner : pas encore de donnée source (sessions menées au bout).
-  for (final (id, name, symbol, tiers, label, unit, unitLong) in [
-    ('enchaineur', 'Enchaîneur', 'chain', const [10], '×10', 'sessions', 'sessions'),
-    ('plein-jour', 'Plein jour', 'sunrise', const [1], 'Plein', '', ''),
-  ]) {
-    out.add(BadgeState(
-      def: BadgeDef(id: id, family: BadgeFamily.chain, name: name, symbol: symbol, tiers: tiers, label: label, unit: unit, unitLong: unitLong, measured: false),
-      level: 0,
-      value: 0,
-      facts: const [('Mesure', 'pas encore disponible')],
-    ));
-  }
+  // Enchaîner : sessions menées au bout (récap atteint, file vide) et journées entières.
+  final completedRuns = chainRuns.where((r) => r.completed).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  final fullDays = completedRuns.where((r) => r.fullDay).toList();
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'enchaineur', family: BadgeFamily.chain, name: 'Enchaîneur', symbol: 'chain', tiers: [10], label: '×10', unit: 'sessions', unitLong: 'sessions'),
+    level: completedRuns.length >= 10 ? 1 : 0,
+    value: completedRuns.length,
+    tierDates: [completedRuns.length >= 10 ? _day(completedRuns[9].endedAt) : null],
+    facts: [
+      ('Sessions menées au bout', '${completedRuns.length}'),
+      ('Sessions commencées', '${chainRuns.length}'),
+      if (completedRuns.isNotEmpty) ('La dernière', _fmtDate(completedRuns.last.endedAt)),
+    ],
+  ));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'plein-jour', family: BadgeFamily.chain, name: 'Plein jour', symbol: 'sunrise', tiers: [1], label: 'Plein'),
+    level: fullDays.isEmpty ? 0 : 1,
+    value: fullDays.length,
+    tierDates: [fullDays.isEmpty ? null : _day(fullDays.first.endedAt)],
+    facts: [('Journées entières enchaînées', '${fullDays.length}'), if (fullDays.isNotEmpty) ('La première', _fmtDate(fullDays.first.endedAt))],
+  ));
 
   // Actions accomplies : une ligne à paliers.
   final doneAt = <DateTime>[];
