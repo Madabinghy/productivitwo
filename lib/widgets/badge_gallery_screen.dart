@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
@@ -15,7 +16,11 @@ import 'package:productivitwo_v1/widgets/badge_painter.dart';
 class BadgeGalleryScreen extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  const BadgeGalleryScreen({super.key, required this.logic, required this.sync});
+  /// Deck partagé (lot 3) : évite de relire 400 programmes à chaque ouverture.
+  final BadgeCenter? center;
+  /// Aperçu du gabarit et des niveaux en tête (Paramètres) ; faux = le deck seul.
+  final bool showSamples;
+  const BadgeGalleryScreen({super.key, required this.logic, required this.sync, this.center, this.showSamples = true});
 
   @override
   State<BadgeGalleryScreen> createState() => _BadgeGalleryScreenState();
@@ -32,6 +37,16 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   }
 
   Future<void> _load() async {
+    final c = widget.center;
+    if (c != null) {
+      try {
+        final d = await c.load();
+        if (mounted) setState(() => _deck = d);
+      } catch (e) {
+        if (mounted) setState(() => _error = '$e');
+      }
+      return;
+    }
     try {
       final now = DateTime.now();
       final from = ymdOf(now.subtract(const Duration(days: 400)));
@@ -66,17 +81,19 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       appBar: AppBar(
         backgroundColor: kBBar,
         foregroundColor: kBText,
-        title: const Text('Badges · aperçu'),
+        title: Text(widget.showSamples ? 'Badges · aperçu' : 'Badges'),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 48),
         children: [
-          _kicker('LE GABARIT · 150 / 72 / 40 PX'),
-          _sampleRow(),
-          const SizedBox(height: 20),
-          _kicker('LES NIVEAUX'),
-          _levelsRow(),
-          const SizedBox(height: 28),
+          if (widget.showSamples) ...[
+            _kicker('LE GABARIT · 150 / 72 / 40 PX'),
+            _sampleRow(),
+            const SizedBox(height: 20),
+            _kicker('LES NIVEAUX'),
+            _levelsRow(),
+            const SizedBox(height: 28),
+          ],
           if (_error != null)
             Text('Impossible de lire les données : $_error', style: const TextStyle(color: kBAlert))
           else if (deck == null)

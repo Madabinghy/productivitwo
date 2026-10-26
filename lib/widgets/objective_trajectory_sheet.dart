@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -229,6 +230,15 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
                   _resultSection(cs),
                   const SizedBox(height: 18),
                   _meansSection(cs),
+                  const SizedBox(height: 18),
+                  _title(cs, 'BADGES DE L\'OBJECTIF'),
+                  const SizedBox(height: 8),
+                  ObjectiveBadgeLines(
+                    objective: o,
+                    sessions: _sessions ?? widget.logic.state.sessions,
+                    marks: widget.logic.state.moodMarks,
+                    accent: _accent,
+                  ),
                   const SizedBox(height: 18),
                   _weekSection(cs),
                   const SizedBox(height: 18),

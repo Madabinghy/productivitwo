@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
+import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -36,6 +40,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// préparer la journée suivante (planif du lendemain).
 class TodayView extends StatefulWidget {
   final AppLogic logic;
+  final BadgeCenter? badges; // lot 3 : signal « Badge obtenu », une fois
   // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
   final void Function(ScheduleBlock block)? onLaunch;
   // Tap sur un bloc issu d'une source → ouvre sa fiche (tâche/routine/activité).
@@ -66,6 +71,7 @@ class TodayView extends StatefulWidget {
   const TodayView(
       {super.key,
       required this.logic,
+    this.badges,
       this.onLaunch,
       this.onOpenSource,
       this.visible = true,
@@ -108,6 +114,8 @@ class TodayViewState extends State<TodayView> {
   bool _routinesSegment = false;
   bool _timeline = false;
   bool _syncing = false;
+  // Badges obtenus depuis la dernière ouverture (lot 3) : montrés une fois.
+  List<BadgeState> _badgeSignals = const [];
   // Scroll de la page — la jauge-minimap saute la timeline à l'heure tapée.
   final _scroll = ScrollController();
   Timer? _gaugeTick;
@@ -115,6 +123,7 @@ class TodayViewState extends State<TodayView> {
   @override
   void initState() {
     super.initState();
+    _loadBadgeSignals();
     SharedPreferences.getInstance().then((p) {
       final saved = p.getBool(_timelinePrefKey);
       if (saved != null && mounted && saved != _timeline) {
@@ -842,6 +851,23 @@ class TodayViewState extends State<TodayView> {
                               onOpenSource: widget.onOpenSource,
                             ),
                   ),
+                  if (_badgeSignals.isNotEmpty)
+                    UnlockSignalCard(
+                      badges: _badgeSignals,
+                      onView: () {
+                        setState(() => _badgeSignals = const []);
+                        final bc = widget.badges;
+                        if (bc != null) {
+                          Navigator.of(context).push(MaterialPageRoute<void>(
+                              builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: bc.sync, center: bc, showSamples: false)));
+                        }
+                      },
+                      onClose: () => setState(() => _badgeSignals = const []),
+                      surface: kBSurface,
+                      text: kBText,
+                      text3: kBText3,
+                      accent: kBPrimary,
+                    ),
                   NowCoachZone(
                     logic: widget.logic,
                     schedule: _schedule,
@@ -1067,6 +1093,18 @@ class TodayViewState extends State<TodayView> {
   }
 
   /// « Routines · 5 / 18 · 3 à faire ce matin → » : ouvre le segment Routines.
+  /// Déblocages à signaler : calculés à l'ouverture de l'onglet, marqués vus
+  /// aussitôt (le signal ne revient jamais), affichés jusqu'au « × » / « Voir ».
+  Future<void> _loadBadgeSignals() async {
+    final bc = widget.badges;
+    if (bc == null) return;
+    try {
+      final d = await bc.load();
+      final s = await bc.takeSignals(d);
+      if (mounted && s.isNotEmpty) setState(() => _badgeSignals = s);
+    } catch (_) {}
+  }
+
   Widget _routinesLine(ColorScheme cs) {
     final ymd = widget.logic.livedYmdNow;
     final day = buildRoutineDay(
