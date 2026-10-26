@@ -1673,6 +1673,12 @@ class AppLogic {
     return mark;
   }
 
+  /// Enregistre une session d'Enchaîner (récap atteint) pour les badges.
+  void recordChainRun(ChainRun r) {
+    state.chainRuns.add(r);
+    onChange();
+  }
+
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 
