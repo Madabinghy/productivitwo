@@ -166,10 +166,17 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text.rich(TextSpan(children: [
-            TextSpan(text: '${deck.acquired}', style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kBadgeBrass, height: 1)),
-            TextSpan(text: ' sur ${deck.total}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: kBText3)),
-          ])),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text.rich(TextSpan(children: [
+              TextSpan(text: '${deck.acquired}', style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w800, color: kBadgeBrass, height: 1)),
+              TextSpan(text: ' sur ${deck.total}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: kBText3)),
+            ])),
+            if (deck.series.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_seriesLine(deck), style: const TextStyle(fontSize: 12, color: kBText3)),
+              ),
+          ]),
           const Spacer(),
           if (last != null)
             Container(
@@ -189,11 +196,17 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     );
   }
 
+  String _seriesLine(BadgeDeck deck) {
+    final n = deck.series.length;
+    return '$n série${n > 1 ? 's' : ''} de routine · ${deck.seriesRunning} en cours · hors compteur';
+  }
+
   Widget _family(BadgeDeck deck, BadgeFamily f) {
     final badges = deck.ofFamily(f);
     if (badges.isEmpty) return const SizedBox.shrink();
     final got = badges.fold(0, (s, b) => s + b.paliersDone);
     final all = badges.fold(0, (s, b) => s + b.paliersTotal);
+    final count = f == BadgeFamily.routines ? '${deck.seriesRunning} en cours' : '$got / $all';
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -204,7 +217,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             Text(badgeFamilyLabel(f).toUpperCase(),
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBText3)),
             const Spacer(),
-            Text('$got / $all', style: const TextStyle(fontSize: 13, color: kBText4)),
+            Text(count, style: const TextStyle(fontSize: 13, color: kBText4)),
           ]),
         ),
         const SizedBox(height: 12),
