@@ -10,10 +10,10 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 /// badge en progression (l'ensemble réduit à 84 %). Même tracé dans les deux
 /// états : le verrouillé est la silhouette de l'acquis.
 
-const kBadgeOlive100 = Color(0xFF6E7F46);
-const kBadgeOlive300 = Color(0xFF55653A);
-const kBadgeOlive500 = Color(0xFF3E4A28);
-const kBadgeKhaki = Color(0xFFB8A86A);
+const kBadgeOlive100 = Color(0xFF8A9D5C);
+const kBadgeOlive300 = Color(0xFF5E7040);
+const kBadgeOlive500 = Color(0xFF4A5A2F);
+const kBadgeKhaki = Color(0xFFC9B978);
 const kBadgeKhakiDark = Color(0xFF8E8150);
 const kBadgeBrass = Color(0xFFD4B35A);
 const kBadgeBrassDark = Color(0xFFA8863A);
@@ -147,8 +147,8 @@ class BadgePainter extends CustomPainter {
           _shieldInner,
           Paint()
             ..style = PaintingStyle.stroke
-            ..strokeWidth = 1
-            ..color = kBadgeBrassDark.withValues(alpha: .9));
+            ..strokeWidth = 1.4
+            ..color = kBadgeBrass.withValues(alpha: .85));
     }
 
     // Couche 2 : symbole.
