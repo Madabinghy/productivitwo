@@ -471,21 +471,8 @@ class TodayViewState extends State<TodayView> {
             ],
           ]),
         ),
-        if (streak > 0) ...[
-          const SizedBox(width: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-            decoration: BoxDecoration(
-                color: won ? primary.withOpacity(.18) : track,
-                borderRadius: BorderRadius.circular(999)),
-            child: Text('🔥 $streak j',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: won ? primary : cs.onSurface.withOpacity(.75),
-                    fontFeatures: const [FontFeature.tabularFigures()])),
-          ),
-        ],
+        // (La pilule « 🔥 n j » a été retirée en 2026-10 : les badges Journée
+        // parfaite / Semaine solide tiennent le compte des journées réussies.)
       ]),
         if (upRow != null) upRow,
       ]),

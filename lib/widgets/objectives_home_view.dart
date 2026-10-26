@@ -9,8 +9,6 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
-import 'package:productivitwo_v1/widgets/time_report_card.dart';
-import 'package:productivitwo_v1/widgets/today_logged_pie.dart';
 import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
 /// Onglet OBJECTIFS (remplace l'Accueil) — la pyramide des 3 horizons :
@@ -401,102 +399,6 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
     );
   }
 
-  // ── SUR 30 JOURS ────────────────────────────────────────────────────────────
-
-  List<({DateTime date, String title, String project})> _upcomingMilestones() {
-    final now = DateTime.now();
-    final horizon = now.add(const Duration(days: 30));
-    final out = <({DateTime date, String title, String project})>[];
-    for (final p in widget.projects) {
-      if (p.status != 'active') continue;
-      for (final t in p.tasks) {
-        if (!t.isMilestone || t.status == 'done' || t.status == 'skipped') {
-          continue;
-        }
-        final d = t.endDate ?? t.startDate;
-        if (d.isBefore(now) || d.isAfter(horizon)) continue;
-        out.add((date: d, title: t.title, project: p.title));
-      }
-    }
-    out.sort((a, b) => a.date.compareTo(b.date));
-    return out;
-  }
-
-  Widget _monthSection(ColorScheme cs) {
-    final st = widget.logic.state;
-    final weeks =
-        fourWeekTrend(activities: st.activities, hits: st.habitHits);
-    final milestones = _upcomingMilestones();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            for (var i = 0; i < weeks.length; i++) ...[
-              Expanded(
-                child: Column(children: [
-                  Container(
-                    height: 36,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: palierColor(weeks[i].pct).withOpacity(.2),
-                      borderRadius: BorderRadius.circular(9),
-                      border: Border.all(color: palierColor(weeks[i].pct)),
-                    ),
-                    child: Text('${weeks[i].pct} %',
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            fontFeatures: [FontFeature.tabularFigures()])),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(weeks[i].label,
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: cs.onSurface.withOpacity(.45))),
-                ]),
-              ),
-              if (i < weeks.length - 1) const SizedBox(width: 6),
-            ],
-          ]),
-          if (milestones.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text('JALONS À VENIR',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                    color: cs.onSurface.withOpacity(.4))),
-            const SizedBox(height: 6),
-            for (final m in milestones.take(5))
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(children: [
-                  Icon(Icons.flag, size: 13, color: cs.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                      '${m.date.day.toString().padLeft(2, '0')}/${m.date.month.toString().padLeft(2, '0')}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface.withOpacity(.7))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text('${m.title} — ${m.project}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13)),
-                  ),
-                ]),
-              ),
-          ],
-        ],
-      ),
-    );
-  }
 
   // ── Build ───────────────────────────────────────────────────────────────────
 
@@ -549,21 +451,9 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
               logic: widget.logic,
               sync: widget.sync,
               projects: widget.projects),
-          // Les stats de temps de l'ancien Accueil, remises en pleine vue :
-          // heatmap par domaine + 12 semaines (le sous-menu les étouffait).
-          _horizon(cs, 'LE TEMPS'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: AccueilTimeStats(logic: widget.logic),
-          ),
-          _horizon(cs, 'SUR 30 JOURS'),
-          _monthSection(cs),
-          // Camembert du temps loggué aujourd'hui — déplacé depuis Maintenant
-          // (l'onglet d'action reste léger, la lecture vit ici).
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TodayLoggedPie(logic: widget.logic),
-          ),
+          // Allègement 2026-10 : « Le temps », « Sur 30 jours » et le camembert
+          // du jour sont partis dans Stats (Objectifs = s'engager, Stats = comprendre).
+          const SizedBox(height: 8),
         ],
       ),
     );

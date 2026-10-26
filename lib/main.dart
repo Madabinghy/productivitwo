@@ -58,6 +58,7 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
+import 'package:productivitwo_v1/widgets/today_logged_pie.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/web/web_app_stub.dart'
@@ -6908,6 +6909,16 @@ class _AppRootState extends State<AppRoot>
         ..._buildDomainListLive(context, now),
         // Compteur global de retards (version neutre du compteur de nuisibles
         // du jeu — mêmes données, présentation productivité).
+        // Lecture du temps (venue d'Objectifs, allègement 2026-10) : heatmap par
+        // domaine, 12 semaines, camembert du jour.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: AccueilTimeStats(logic: logic),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TodayLoggedPie(logic: logic),
+        ),
         PestCounterCard(logic: logic),
         const SizedBox(height: 32),
         ];
