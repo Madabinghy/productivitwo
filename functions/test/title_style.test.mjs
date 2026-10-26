@@ -18,10 +18,10 @@ test("titre cahier des charges : long, parenthèses, codes", () => {
   assert.ok(d.warnings.some((w) => w.includes("codes")));
 });
 
-test("emoji de rôle en double sur une tâche de séance → suggestion sans emoji", () => {
-  const c = checkTitle("📝 Préparer — Séance du 12 oct : contrôle additions", { kind: "task", interventionRole: "prep" });
-  assert.ok(c.warnings.some((w) => w.includes("emoji de rôle")));
-  assert.equal(c.suggested, "Préparer — Séance du 12 oct : contrôle additions");
+test("tâche de séance : l'emoji de rôle est toléré, le titre nu est suggéré", () => {
+  const c = checkTitle("📝 Préparer — Séance du 12 oct", { kind: "task", interventionRole: "prep" });
+  assert.deepEqual(c.warnings, []);
+  assert.equal(c.suggested, "Préparer — Séance du 12 oct");
   assert.equal(checkTitle("📝 Préparer la séance", { kind: "task" }).suggested, undefined);
 });
 

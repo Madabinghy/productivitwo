@@ -110,6 +110,7 @@ const crypto_1 = require("crypto");
 const weekly_report_1 = require("./weekly_report");
 const objectives_1 = require("./objectives");
 const title_style_1 = require("./title_style");
+const block_style_1 = require("./block_style");
 const objective_trajectory_1 = require("./objective_trajectory");
 // ── Date helpers ──────────────────────────────────────────────────────────────
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
@@ -2799,6 +2800,11 @@ async function executePlanDay(uid, args) {
         `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
         `   → ÉCHÉANCES : une action peut porter sa propre dueDate (YYYY-MM-DD), qui PRIME sur la date de sa tâche —`,
         `     programme d'abord ce qui échoit le plus tôt ; une date connue sans dueDate → update_action {dueDate}.`,
+        `   → BLOCS : 30 min minimum pour un bloc de travail ; les actions consécutives d'une même tâche`,
+        `     vont dans UN SEUL bloc nommé par la tâche (actionId = la première, l'écran bloc enchaîne les`,
+        `     suivantes). Pas un bloc par action. Routines, pauses, prep et rendez-vous gardent leur durée.`,
+        `   → TITRES de bloc : verbe + objet, ≤ 8 mots, sans code ni parenthèse (le bloc est lié par`,
+        `     taskId / actionId, l'app affiche le reste).`,
         `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
         `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
         `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
@@ -3211,7 +3217,8 @@ async function executeScheduleDay(uid, date, blocks, opts = {}) {
     const head = fill
         ? `✅ Programme du ${date} complété — ${newBlocks.length} bloc(s) ajouté(s), ${prevBlocks.length} existant(s) conservé(s)`
         : `✅ Programme du ${date} enregistré — ${newBlocks.length} bloc(s)${livedNote}`;
-    return `${head}\n${lines.join("\n")}${skipped}${clashed}`;
+    const hashed = (0, block_style_1.blockAdvice)(newBlocks);
+    return `${head}\n${lines.join("\n")}${skipped}${clashed}${hashed}`;
 }
 const sanitizeTasks = (raw) => {
     var _a;

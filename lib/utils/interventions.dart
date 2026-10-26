@@ -15,9 +15,12 @@ bool _startsWithAny(String s, List<String> prefixes) {
   return prefixes.any(t.startsWith);
 }
 
-bool isMilestoneTask(ProjectTask t) => t.isMilestone || _startsWithAny(t.title, ['🎯', '🏁']);
-bool isPrepTask(ProjectTask t) => _startsWithAny(t.title, ['📝']);
-bool isClosureTask(ProjectTask t) => _startsWithAny(t.title, ['✅']);
+// Natif d'abord (`interventionRole`), repli sur la convention émojis pour les
+// projets jamais migrés — un titre sans émoji ne perd plus son rôle (A, 2026-10).
+bool isMilestoneTask(ProjectTask t) =>
+    t.isMilestone || t.interventionRole == 'session' || _startsWithAny(t.title, ['🎯', '🏁']);
+bool isPrepTask(ProjectTask t) => t.interventionRole == 'prep' || _startsWithAny(t.title, ['📝']);
+bool isClosureTask(ProjectTask t) => t.interventionRole == 'closure' || _startsWithAny(t.title, ['✅']);
 
 /// Action d'impression : contexte @impression ou verbe « Imprimer ».
 bool isPrintAction(TaskAction a) =>

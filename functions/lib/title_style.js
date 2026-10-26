@@ -17,9 +17,10 @@ exports.WRITING_RULES = "RÈGLES D'ÉCRITURE (l'utilisateur lit ces titres dans 
     "un titre = verbe + objet, dans ses mots, ≤ 8 mots, sans parenthèse ni code (pas de « 1.B.1 », " +
     "« coef. 2 », « recto verso ×19 », « CM1.2 : »). Tout le détail utile (consignes, quantités, fichiers, " +
     "contraintes, rappels à toi-même) va dans `note` pour une action, `description` pour une tâche — " +
-    "jamais dans le titre. Pas d'emoji ni de date dans le titre d'une tâche de séance (prep / session / " +
-    "closure) : l'app les affiche depuis la structure. Une chose n'a qu'UNE maison : pas de tâche " +
-    "« Corriger… » si une action « Corriger… » existe déjà dans la prépa.";
+    "jamais dans le titre. Tâche de séance : garde la forme courte « 📝 Préparer — Séance du 12 oct » / " +
+    "« 🎯 Lun 12 oct — <thème en 3 mots> » / « ✅ Clôturer — Séance du 12 oct », le contenu détaillé dans " +
+    "description. Une chose n'a qu'UNE maison : pas de tâche « Corriger… » si une action « Corriger… » " +
+    "existe déjà dans la prépa.";
 const ROLE_EMOJI = /^(📝|🎯|✅|🏁|✍️)\s*/u;
 const SPEC_TOKENS = /(\bcoef\.?\s*\d|\brecto\s*verso\b|×\s*\d+|\bx\s*\d+\b|\b\d+\.[A-Z]\.?\d*\b|\bp\.\s*\d+|\bex\.?\s*\d|\bCM[12]\b\s*[:.]|\(\s*\d+\s*(pages?|min)\b)/iu;
 function checkTitle(title, opts = { kind: "action" }) {
@@ -39,10 +40,10 @@ function checkTitle(title, opts = { kind: "action" }) {
     if (SPEC_TOKENS.test(t)) {
         warnings.push("codes / consignes dans le titre (coef., p., ×n, 1.B.1…) : à déplacer dans le détail");
     }
-    if (opts.interventionRole && ROLE_EMOJI.test(t)) {
+    // Tâche de séance : l'émoji de rôle reste le repère visuel de l'app (pas encore
+    // rendu depuis la structure) ; on vérifie seulement la longueur du titre nu.
+    if (opts.interventionRole && ROLE_EMOJI.test(t))
         suggested = t.replace(ROLE_EMOJI, "");
-        warnings.push(`emoji de rôle en double : la séance (${opts.interventionRole}) l'affiche déjà`);
-    }
     const words = t.split(/\s+/).length;
     if (words > 14)
         warnings.push(`${words} mots : un titre se dit en une respiration`);

@@ -1,4 +1,5 @@
 import { WRITING_RULES } from "./title_style";
+import { BLOCK_RULES } from "./block_style";
 
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
@@ -1653,7 +1654,7 @@ export const SCHEDULE_DAY_TOOL = {
     "Chaque bloc est un créneau horaire avec une action concrète. Titre de bloc = verbe + objet " +
     "(≤ 8 mots, sans code ni parenthèse : « Corriger les contrôles », pas « ✍️ Corriger le contrôle " +
     "additions (coef. 2, sans ligue) + saisir les notes ») — le bloc est lié par taskId / actionId, " +
-    "l'app affiche le reste. " +
+    "l'app affiche le reste. " + BLOCK_RULES + " " +
     "⚠️ Ne JAMAIS recréer un rendez-vous Google Agenda déjà présent comme bloc 📅 : il serait écarté. " +
     "⚠️ Pour la date du JOUR, ne JAMAIS créer de blocs à des heures déjà passées " +
     "(planifie à partir de l'heure actuelle) ; les blocs passés existants restent intacts. " +
