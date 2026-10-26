@@ -47,6 +47,9 @@ class _Coachee {
   int get domainCount =>
       ((fiche['sharing'] as Map?)?['domainCount'] as num?)?.toInt() ?? 0;
   bool get detail => (fiche['sharing'] as Map?)?['granularity'] == 'detail';
+  bool get stateShared => (fiche['sharing'] as Map?)?['state'] == true || dash?['stateShared'] == true;
+  Map<String, dynamic>? get badges => dash?['badges'] is Map ? Map<String, dynamic>.from(dash!['badges'] as Map) : null;
+  Map<String, dynamic>? get elan => dash?['elan'] is Map ? Map<String, dynamic>.from(dash!['elan'] as Map) : null;
 
   List<Map<String, dynamic>> get engagements =>
       ((dash?['engagements'] as List?) ?? [])
@@ -865,6 +868,28 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
           ),
       ],
 
+      // Badges (des faits) et, si partagé, l'état de la semaine.
+      if (c.badges != null) ...[
+        sectionLabel('SES BADGES'),
+        _factCard(cs, [
+          '${c.badges!['acquired']} / ${c.badges!['total']} paliers'
+              '${c.badges!['lastObtained'] != null ? ' · dernier obtenu : ${c.badges!['lastObtained']}' : ''}',
+          for (final h in (c.badges!['hunts'] as List? ?? const [])) '🎯 En chasse : $h',
+          for (final n in (c.badges!['closeToTier'] as List? ?? const [])) 'Proche : $n',
+        ]),
+      ],
+      sectionLabel('SON ÉTAT — 7 DERNIERS JOURS'),
+      if (!c.stateShared)
+        _factCard(cs, const ['Non partagé : il voit ce qu\u2019il a fait, pas ses états. Le coaché peut l\u2019ouvrir depuis « Mon coach ».'], muted: true)
+      else if (c.elan == null || c.elan!['summary'] == null)
+        _factCard(cs, const ['Partagé, mais aucun pointage d\u2019élan cette semaine.'], muted: true)
+      else
+        _factCard(cs, [
+          '${c.elan!['summary']}',
+          if (c.elan!['discipline'] != null)
+            'Face à la flemme : ${c.elan!['lowWindowsWon']} / ${c.elan!['lowWindows']} fenêtres où une chose a été faite quand même.',
+        ]),
+
       // Ton mot : l'app ne l'écrit jamais à ta place.
       sectionLabel('TON MOT'),
       Row(children: [
@@ -938,6 +963,22 @@ class _CoachConsoleScreenState extends State<CoachConsoleScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: column);
   }
+
+  Widget _factCard(ColorScheme cs, List<String> lines, {bool muted = false}) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withOpacity(.12)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final l in lines)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(l, style: TextStyle(fontSize: 13, height: 1.35, color: cs.onSurface.withOpacity(muted ? .5 : .85))),
+            ),
+        ]),
+      );
 
   Widget _engagementCard(ColorScheme cs, Map<String, dynamic> e) {
     final id = e['id'].toString();

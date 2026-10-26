@@ -13,6 +13,7 @@ exports.validateHunt = validateHunt;
 exports.huntLines = huntLines;
 exports.badgesSummary = badgesSummary;
 exports.formatBadgeList = formatBadgeList;
+exports.badgesForCoach = badgesForCoach;
 exports.MAX_BADGE_HUNTS = 3;
 exports.FAMILY_LABELS = {
     routines: "Séries de routine",
@@ -54,6 +55,7 @@ function parseItem(raw) {
         nextTarget: typeof r.nextTarget === "number" ? r.nextTarget : null,
         obtained: typeof r.obtained === "string" ? r.obtained : null,
         measured: r.measured !== false,
+        domainId: typeof r.domainId === "string" ? r.domainId : null,
     };
 }
 function parseHunts(raw) {
@@ -156,5 +158,12 @@ function formatBadgeList(snap, hunts) {
         }
     }
     return lines.join("\n");
+}
+/** Vue coach : les badges de série dont la routine n'est pas dans un domaine partagé sont retirés
+ *  (minimisation) ; le compteur affiché ne compte pas les séries, il reste tel quel. */
+function badgesForCoach(snap, sharedDomains) {
+    if (!snap)
+        return null;
+    return Object.assign(Object.assign({}, snap), { badges: snap.badges.filter((b) => b.family !== "routines" || (b.domainId != null && sharedDomains.has(b.domainId))) });
 }
 //# sourceMappingURL=badges_mcp.js.map
