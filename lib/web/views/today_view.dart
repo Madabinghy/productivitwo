@@ -2987,7 +2987,7 @@ class TodayViewState extends State<TodayView> {
     final now = DateTime.now();
     final ymd = livedProgramYmd(now, widget.dayStartMin);
     final bucket = elanBucket(livedNowMin(now, widget.dayStartMin));
-    if (!elanDue(_moodMarks, ymd, bucket, _elanSkipped)) return null;
+    if (!elanPromptDue(_moodMarks, ymd, bucket, _elanSkipped)) return null;
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: ElanRow(

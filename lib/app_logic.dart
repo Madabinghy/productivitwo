@@ -276,6 +276,10 @@ class AppLogic implements HuntStore {
   /// défaut 5 h ; alimenté par `FirestoreSync.streamDayStartMin` dans main.dart).
   int dayStartMin = kDefaultDayStartMin;
 
+  /// « Ton élan, là ? » à chaque moment (matin, après-midi, soir) plutôt
+  /// qu'une fois par jour (`data/meta.elanPromptsAll`, défaut faux).
+  bool elanPromptsAll = false;
+
   /// Clé `YYYYMMDD` de la journée vécue en cours — état du jour des routines
   /// (« pas maintenant », « pas aujourd'hui », reports).
   String get livedYmdNow => livedYmd(DateTime.now(), dayStartMin);

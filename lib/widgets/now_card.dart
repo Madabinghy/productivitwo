@@ -513,7 +513,7 @@ class _NowCardState extends State<NowCard> {
     final logic = widget.logic;
     final ymd = livedProgramYmd(DateTime.now(), logic.dayStartMin);
     final bucket = elanBucket(logic.livedNowMinNow);
-    if (!elanDue(logic.state.moodMarks, ymd, bucket, logic.elanSkipped)) return null;
+    if (!elanPromptDue(logic.state.moodMarks, ymd, bucket, logic.elanSkipped, allMoments: logic.elanPromptsAll)) return null;
     return ElanRow(
       value: 0,
       context: 'avant ' + b.title,

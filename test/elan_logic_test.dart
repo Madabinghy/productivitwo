@@ -117,4 +117,11 @@ void main() {
     expect(deck2.byId('maree-haute')!.level, 1);
     expect(deck2.byId('maree-haute')!.value, 7);
   });
+  test('question d\'élan : une fois par jour par défaut, une fois par créneau sur demande', () {
+    final marks = [elan(DateTime(2026, 10, 26, 8), 2)];
+    expect(elanPromptDue(marks, '2026-10-26', 'aprem', {}), isFalse, reason: 'déjà pointé ce jour');
+    expect(elanPromptDue(marks, '2026-10-26', 'aprem', {}, allMoments: true), isTrue);
+    expect(elanPromptDue(const [], '2026-10-26', 'soir', {'2026-10-26:matin'}), isFalse, reason: 'passé ce jour');
+    expect(elanPromptDue(const [], '2026-10-26', 'soir', {'2026-10-25:matin'}), isTrue);
+  });
 }
