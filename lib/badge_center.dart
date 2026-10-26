@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,6 +68,13 @@ class BadgeCenter extends ChangeNotifier {
       dayStartMin: logic.dayStartMin,
     );
     deck = d;
+    // Chasses attrapées : le palier visé est atteint → sortent de la chasse,
+    // et le signal d'Aujourd'hui dira « Badge visé obtenu ».
+    final caught = caughtHunts(logic.badgeHunts, d);
+    if (caught.isNotEmpty) {
+      logic.caughtHuntBadgeIds.addAll(caught.map((v) => v.badge.def.id));
+      logic.stopHunts(caught.map((v) => v.badge.def.id));
+    }
     notifyListeners();
     return d;
   }

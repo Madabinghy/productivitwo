@@ -823,6 +823,17 @@ class TodayViewState extends State<TodayView> {
                       onLaunch: widget.onNowLaunch ?? widget.onLaunch,
                       onOpenSource: widget.onOpenSource,
                       onOpenTask: widget.onOpenTask,
+                      badges: widget.badges,
+                      onChain: widget.onStopTimer == null
+                          ? null
+                          : () => showChainScreen(
+                                context,
+                                logic: widget.logic,
+                                sync: widget.sync!,
+                                date: _schedDate,
+                                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                                onStopTimer: widget.onStopTimer!,
+                              ),
                     ),
                   )
                 else ...[
@@ -871,6 +882,7 @@ class TodayViewState extends State<TodayView> {
                   if (_badgeSignals.isNotEmpty)
                     UnlockSignalCard(
                       badges: _badgeSignals,
+                      hunted: widget.logic.caughtHuntBadgeIds,
                       onView: () {
                         setState(() => _badgeSignals = const []);
                         final bc = widget.badges;

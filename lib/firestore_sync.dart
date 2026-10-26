@@ -3027,6 +3027,12 @@ class FirestoreSync {
     await _meta().set({'momentWindows': momentWindowsToJson(windows)}, SetOptions(merge: true));
   }
 
+  /// Chasses aux badges (`data/meta.badgeHunts`, lot A 2026-10).
+  Future<void> setBadgeHunts(List<Map<String, dynamic>> hunts) async {
+    if (uid == null) return;
+    await _meta().set({'badgeHunts': hunts}, SetOptions(merge: true));
+  }
+
   Future<void> setAutoPlan(bool enabled) async {
     if (uid == null) return;
     await _meta().set(

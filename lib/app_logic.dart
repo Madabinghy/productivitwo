@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/gold_engine.dart';
@@ -1671,6 +1672,29 @@ class AppLogic {
     state.moodMarks.add(mark);
     onChange();
     return mark;
+  }
+
+  // ── Chasse aux badges (lot A, 2026-10) ────────────────────────────────────
+  /// Chasses en cours (`data/meta.badgeHunts`, alimentées par le flux meta).
+  List<BadgeHunt> badgeHunts = const [];
+  /// Badges visés attrapés depuis le lancement : le signal d'Aujourd'hui les
+  /// annonce « Badge visé obtenu » au lieu de « Badge obtenu ».
+  final Set<String> caughtHuntBadgeIds = {};
+
+  Future<void> huntBadge(BadgeHunt h) async {
+    final list = [...badgeHunts.where((x) => x.badgeId != h.badgeId), h];
+    if (list.length > kMaxBadgeHunts) return;
+    badgeHunts = list;
+    onChange();
+    await (sync ?? FirestoreSync()).setBadgeHunts(list.map((x) => x.toJson()).toList());
+  }
+
+  Future<void> stopHunts(Iterable<String> badgeIds) async {
+    final ids = badgeIds.toSet();
+    if (!badgeHunts.any((x) => ids.contains(x.badgeId))) return;
+    badgeHunts = badgeHunts.where((x) => !ids.contains(x.badgeId)).toList();
+    onChange();
+    await (sync ?? FirestoreSync()).setBadgeHunts(badgeHunts.map((x) => x.toJson()).toList());
   }
 
   /// Enregistre une session d'Enchaîner (récap atteint) pour les badges.

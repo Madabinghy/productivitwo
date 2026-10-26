@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart' show scoreDay, routineReachedDays, fmtInt;
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
+import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -21,6 +27,8 @@ class ObjectivesDayView extends StatefulWidget {
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onOpenSource;
   final void Function(Project project, ProjectTask task)? onOpenTask;
+  final BadgeCenter? badges; // chasse aux badges : carte « Badges visés »
+  final VoidCallback? onChain;
   const ObjectivesDayView({
     super.key,
     required this.logic,
@@ -29,6 +37,8 @@ class ObjectivesDayView extends StatefulWidget {
     this.onLaunch,
     this.onOpenSource,
     this.onOpenTask,
+    this.badges,
+    this.onChain,
   });
 
   @override
@@ -49,12 +59,15 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       _loaded = true;
     }
     widget.logic.addListener(_onLogic);
+    widget.badges?.addListener(_onLogic);
+    widget.badges?.load();
     _load();
   }
 
   @override
   void dispose() {
     widget.logic.removeListener(_onLogic);
+    widget.badges?.removeListener(_onLogic);
     super.dispose();
   }
 
@@ -95,10 +108,12 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
     if (!_loaded) {
       return const Padding(padding: EdgeInsets.symmetric(vertical: 32), child: Center(child: CircularProgressIndicator()));
     }
+    final huntsCard = _huntsCard(cs, dark, text3, now);
     if (days.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
         child: Column(children: [
+          if (huntsCard != null) ...[huntsCard, const SizedBox(height: 16)],
           Icon(Icons.flag_outlined, size: 36, color: text3),
           const SizedBox(height: 10),
           Text('Aucun objectif en cours.', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface)),
@@ -117,12 +132,96 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
           style: TextStyle(fontSize: 13, height: 1.35, color: text3),
         ),
       ),
+      if (huntsCard != null) huntsCard,
       for (final d in days) _objectiveCard(cs, dark, text3, d, now),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
         child: Text('Ce qui ne sert aucun objectif reste dans Actions et Routines.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: text3)),
       ),
     ]);
+  }
+
+  /// « Badges visés » : chaque chasse avec le levier du jour et, quand il
+  /// existe, le geste direct (+1 sur la routine, lancer Enchaîner).
+  Widget? _huntsCard(ColorScheme cs, bool dark, Color text3, DateTime now) {
+    final bc = widget.badges;
+    final deck = bc?.deck;
+    if (bc == null || deck == null) return null;
+    final views = huntViews(widget.logic.badgeHunts, deck).where((v) => !v.caught).toList();
+    if (views.isEmpty) return null;
+    final st = widget.logic.state;
+    final today = widget.logic.livedToday;
+    final reachedByRoutine = {
+      for (final a in st.activeActivities)
+        if (a.isHabit && a.habitFreq == HabitFreq.daily) a.id: routineReachedDays(a, st.habitHits, dayStartMin: widget.logic.dayStartMin),
+    };
+    final todayScore = scoreDay(today, activities: st.activeActivities, reachedDaysByRoutine: reachedByRoutine,
+        schedule: DailySchedule(date: objectivesDayKey(today), generatedBy: 'app', generatedAt: now, blocks: widget.blocks));
+    final todayYmd = objectivesDayKey(today);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: dark ? kBSurface : cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kBadgeBrassDark.withValues(alpha: .6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.gps_fixed, size: 15, color: kBadgeBrass),
+          const SizedBox(width: 8),
+          Text('Badges visés', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: cs.onSurface)),
+          const Spacer(),
+          Text('${views.length} / $kMaxBadgeHunts', style: TextStyle(fontSize: 12.5, color: text3)),
+        ]),
+        for (final v in views) _huntRow(cs, text3, v, now, todayScore: todayScore, reachedByRoutine: reachedByRoutine, todayYmd: todayYmd),
+      ]),
+    );
+  }
+
+  Widget _huntRow(ColorScheme cs, Color text3, HuntView v, DateTime now, {required dynamic todayScore, required Map<String, Set<String>> reachedByRoutine, required String todayYmd}) {
+    final b = v.badge;
+    final routineId = b.def.subjectId;
+    final todayReached = routineId != null && (reachedByRoutine[routineId]?.contains(todayYmd) ?? false);
+    final readingDue = b.def.id == 'releve-fidele' && _objectives.any((o) => isReadingDue(o, now));
+    final lever = v.lever(
+      todayReached: todayReached,
+      readingDue: readingDue,
+      todayRoutinesDue: todayScore.routinesDue as int,
+      todayRoutinesReached: todayScore.routinesReached as int,
+      todayBlocks: todayScore.blocks as int,
+      todayBlocksDone: todayScore.blocksDone as int,
+    );
+    Widget? action;
+    if (lever.kind == LeverKind.routine && routineId != null && !todayReached) {
+      final a = widget.logic.state.activeActivities.where((x) => x.id == routineId).firstOrNull;
+      if (a != null) action = IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlus(widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary));
+    } else if (lever.kind == LeverKind.chain && widget.onChain != null) {
+      action = IconButton(visualDensity: VisualDensity.compact, tooltip: 'Enchaîner', onPressed: widget.onChain, icon: Icon(Icons.playlist_play_rounded, color: cs.primary));
+    }
+    return InkWell(
+      onTap: () => showBadgeSheet(context, b, logic: widget.logic),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(children: [
+          BadgeView(state: b, size: 44),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${b.def.name} · ${fmtInt(v.tierValue)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
+              Text(v.paceLabel(now), style: TextStyle(fontSize: 12, color: text3)),
+              if (lever.text.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(lever.text, style: TextStyle(fontSize: 12.5, color: todayReached ? kPalierGreen : cs.onSurface.withValues(alpha: .8))),
+                ),
+            ]),
+          ),
+          if (action != null) action,
+        ]),
+      ),
+    );
   }
 
   Widget _objectiveCard(ColorScheme cs, bool dark, Color text3, ObjectiveDay d, DateTime now) {

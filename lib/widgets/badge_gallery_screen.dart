@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
 
 /// Aperçu des badges (lot 1) : le gabarit aux trois tailles, puis le deck
 /// calculé sur les VRAIES données de la personne (routines, programmes des
@@ -105,6 +106,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             )
           else ...[
             _deckHeader(deck),
+            _huntsSection(deck),
             for (final f in BadgeFamily.values) _family(deck, f),
             const SizedBox(height: 16),
             const Text('Un badge est un fait : il reste acquis. Ton coach les voit en lecture seule.',
@@ -208,6 +210,52 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     return '$n série${n > 1 ? 's' : ''} de routine, ${deck.seriesRunning} en cours\nhors compteur';
   }
 
+  /// « EN CHASSE · n » : les badges visés, leur palier et le rythme.
+  Widget _huntsSection(BadgeDeck deck) {
+    final views = huntViews(widget.logic.badgeHunts, deck).where((v) => !v.caught).toList();
+    if (views.isEmpty) return const SizedBox.shrink();
+    final now = DateTime.now();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          child: Row(children: [
+            const Icon(Icons.gps_fixed, size: 14, color: kBadgeBrass),
+            const SizedBox(width: 6),
+            const Text('EN CHASSE', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBadgeBrass)),
+            const Spacer(),
+            Text('${views.length} / $kMaxBadgeHunts', style: const TextStyle(fontSize: 13, color: kBText4)),
+          ]),
+        ),
+        for (final v in views)
+          InkWell(
+            onTap: () => _showFacts(v.badge),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(children: [
+                BadgeView(state: v.badge, size: 48),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${v.badge.def.name} · palier ${fmtInt(v.tierValue)}${v.badge.def.unit.isEmpty ? '' : ' ${v.badge.def.unit}'}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                    Text(v.paceLabel(now), style: const TextStyle(fontSize: 12.5, color: kBText3)),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(value: v.progress, minHeight: 6, backgroundColor: kBadgeGaugeTrack, valueColor: const AlwaysStoppedAnimation<Color>(kBadgeGaugeFill)),
+                    ),
+                  ]),
+                ),
+                const Icon(Icons.chevron_right, color: kBText4),
+              ]),
+            ),
+          ),
+      ]),
+    );
+  }
+
   Widget _family(BadgeDeck deck, BadgeFamily f) {
     final badges = deck.ofFamily(f);
     if (badges.isEmpty) return const SizedBox.shrink();
@@ -269,7 +317,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
 
   String _shortDate(DateTime d) => _shortDateOf(d);
 
-  void _showFacts(BadgeState b) => showBadgeSheet(context, b);
+  void _showFacts(BadgeState b) => showBadgeSheet(context, b, logic: widget.logic);
 }
 
 String _numOf(num v) => v is int || v == v.roundToDouble() ? fmtInt(v) : v.toStringAsFixed(1).replaceAll('.', ',');
@@ -282,7 +330,7 @@ String _shortDateOf(DateTime d) {
 /// La fiche d'un badge : badge, mesure, « à quoi ça correspond », paliers,
 /// « Où j'en suis », « Comment l'obtenir », faits. Ouverte depuis le deck, la
 /// rangée d'Objectifs et les routines d'Aujourd'hui.
-Future<void> showBadgeSheet(BuildContext context, BadgeState b) {
+Future<void> showBadgeSheet(BuildContext context, BadgeState b, {AppLogic? logic}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
@@ -292,7 +340,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b) {
       expand: false,
       initialChildSize: .9,
       maxChildSize: .95,
-      builder: (ctx, scroll) => ListView(
+      builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setSheet) => ListView(
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
@@ -313,6 +361,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b) {
           const SizedBox(height: 10),
           Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
         ],
+        if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
           Wrap(spacing: 6, children: [
@@ -379,6 +428,118 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b) {
         const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
       ],
       ),
+      ),
     ),
+  );
+}
+
+/// La chasse : « Viser ce palier » (palier et date facultative), ou l'état de
+/// la chasse en cours avec « Ne plus viser ». Trois chasses au plus.
+Widget _huntBlock(BuildContext ctx, AppLogic logic, BadgeState b, VoidCallback refresh) {
+  final hunt = logic.badgeHunts.where((h) => h.badgeId == b.def.id).firstOrNull;
+  final now = DateTime.now();
+  if (hunt != null) {
+    final v = HuntView(hunt: hunt, badge: b, tierValue: b.def.tiers[(hunt.tier - 1).clamp(0, b.def.tiers.length - 1)]);
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(color: kBRaised, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBadgeBrassDark.withValues(alpha: .6))),
+        child: Row(children: [
+          const Icon(Icons.gps_fixed, size: 18, color: kBadgeBrass),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Visé · palier ${fmtInt(v.tierValue)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kBText)),
+              Text(v.paceLabel(now), style: const TextStyle(fontSize: 12.5, color: kBText3)),
+            ]),
+          ),
+          TextButton(
+            onPressed: () async {
+              await logic.stopHunts([b.def.id]);
+              refresh();
+            },
+            child: const Text('Ne plus viser', style: TextStyle(color: kBText3)),
+          ),
+        ]),
+      ),
+    );
+  }
+  final full = logic.badgeHunts.length >= kMaxBadgeHunts;
+  return Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: Column(children: [
+      OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(foregroundColor: kBadgeBrass, side: const BorderSide(color: kBadgeBrassDark), minimumSize: const Size.fromHeight(44)),
+        onPressed: full ? null : () async {
+          final picked = await _pickHunt(ctx, b);
+          if (picked == null) return;
+          await logic.huntBadge(newHunt(b, picked.tier, now, targetDate: picked.date));
+          refresh();
+        },
+        icon: const Icon(Icons.gps_fixed, size: 18),
+        label: Text(b.def.tiers.length > 1 ? 'Viser le palier ${fmtInt(b.nextTarget ?? b.def.tiers.last)}' : 'Viser ce badge'),
+      ),
+      if (full) const Padding(padding: EdgeInsets.only(top: 6), child: Text('Trois chasses au plus : termine ou retire-en une.', style: TextStyle(fontSize: 12, color: kBText4))),
+    ]),
+  );
+}
+
+Future<({int tier, DateTime? date})?> _pickHunt(BuildContext ctx, BadgeState b) {
+  var tier = b.level + 1;
+  DateTime? date;
+  return showModalBottomSheet<({int tier, DateTime? date})>(
+    context: ctx,
+    backgroundColor: kBSurface,
+    showDragHandle: true,
+    builder: (c) => StatefulBuilder(builder: (c, setS) {
+      final choices = [for (var i = b.level; i < b.def.tiers.length; i++) i + 1];
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Viser « ${b.def.name} »', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBText)),
+          const SizedBox(height: 4),
+          const Text('Une intention, pas une obligation : rien ne se perd si la date passe.', style: TextStyle(fontSize: 12.5, color: kBText3)),
+          if (choices.length > 1) ...[
+            const SizedBox(height: 14),
+            const Text('PALIER', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, children: [
+              for (final t in choices)
+                ChoiceChip(
+                  label: Text('${fmtInt(b.def.tiers[t - 1])}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}'),
+                  selected: tier == t,
+                  onSelected: (_) => setS(() => tier = t),
+                ),
+            ]),
+          ],
+          const SizedBox(height: 14),
+          const Text('D\u2019ICI', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, children: [
+            ChoiceChip(label: const Text('Sans date'), selected: date == null, onSelected: (_) => setS(() => date = null)),
+            for (final (l, d) in [('2 semaines', 14), ('1 mois', 30), ('3 mois', 90)])
+              ChoiceChip(
+                label: Text(l),
+                selected: date != null && date!.difference(DateTime.now()).inDays == d - 1 || (date != null && date!.difference(DateTime.now()).inDays == d),
+                onSelected: (_) => setS(() => date = DateTime.now().add(Duration(days: d))),
+              ),
+            ActionChip(
+              label: Text(date == null ? 'Choisir…' : ymdOf(date!)),
+              onPressed: () async {
+                final p = await showDatePicker(context: c, initialDate: date ?? DateTime.now().add(const Duration(days: 14)), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
+                if (p != null) setS(() => date = p);
+              },
+            ),
+          ]),
+          const SizedBox(height: 18),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: kBadgeBrass, foregroundColor: kBadgeRibbonInk, minimumSize: const Size.fromHeight(46)),
+            onPressed: () => Navigator.of(c).pop((tier: tier, date: date)),
+            child: const Text('Viser', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ]),
+      );
+    }),
   );
 }
