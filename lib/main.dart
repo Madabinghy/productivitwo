@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
@@ -5786,6 +5787,17 @@ class _AppRootState extends State<AppRoot>
                   Navigator.pop(sheetCtx);
                   _showNotificationsSheet(context);
                 },
+              ),
+              // Badges (lot 1, 2026-10) : aperçu du gabarit et du deck calculé
+              // sur les vraies données — pas encore d'onglet ni de signal.
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.military_tech_outlined),
+                title: const Text('Badges · aperçu'),
+                subtitle: const Text('Le deck calculé sur tes routines, journées, objectifs et actions'),
+                trailing: const Icon(Icons.chevron_right, size: 18),
+                onTap: () => Navigator.of(sheetCtx).push(MaterialPageRoute<void>(
+                    builder: (_) => BadgeGalleryScreen(logic: logic, sync: _sync))),
               ),
               // Siri & Raccourcis (iOS uniquement)
               if (!kIsWeb && Platform.isIOS)
