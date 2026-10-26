@@ -87,7 +87,7 @@ class RoutineTiersLine extends StatelessWidget {
         border: Border.all(color: cs.onSurface.withValues(alpha: .08)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        BadgeView(state: state, size: 44),
+        Opacity(opacity: state.acquired ? 1 : .6, child: BadgeView(state: state, size: 48)),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -104,8 +104,8 @@ class RoutineTiersLine extends StatelessWidget {
               for (var i = 0; i < kRoutineTiers.length; i++)
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   _Chevron(
-                    fill: i < level ? kBadgeBrass : Colors.transparent,
-                    stroke: i < level ? kBadgeBrassDark : (i == level ? accent : cs.onSurface.withValues(alpha: .3)),
+                    fill: i < level ? kBadgeChevron : Colors.transparent,
+                    stroke: i < level ? kBadgeChevronDark : (i == level ? accent : cs.onSurface.withValues(alpha: .3)),
                   ),
                   const SizedBox(width: 3),
                   Text('${kRoutineTiers[i]}',
@@ -196,12 +196,12 @@ class ObjectiveBadgeLines extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(children: [
-        BadgeView(state: b, size: 40),
+        Opacity(opacity: b.acquired ? 1 : .6, child: BadgeView(state: b, size: 48)),
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text(name, style: const TextStyle(fontSize: 14)),
+              Text(name, style: TextStyle(fontSize: 14, fontWeight: b.acquired ? FontWeight.w600 : FontWeight.w400)),
               const Spacer(),
               Text(
                 next == null ? '${fmtInt(b.def.tiers.last)} $unit · complet' : '${_n(b.value)} / ${fmtInt(next)} $unit',
@@ -282,7 +282,11 @@ class BadgesRow extends StatelessWidget {
                 if (strip.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   Row(children: [
-                    for (final b in strip) Padding(padding: const EdgeInsets.only(right: 10), child: BadgeView(state: b, size: 40)),
+                    for (final b in strip)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: Opacity(opacity: b.acquired ? 1 : .55, child: BadgeView(state: b, size: 40)),
+                      ),
                   ]),
                 ],
               ]),

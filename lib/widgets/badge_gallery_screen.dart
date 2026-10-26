@@ -174,7 +174,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           if (last != null)
             Container(
               padding: const EdgeInsets.fromLTRB(6, 6, 10, 6),
-              decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+              decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBadgeBrassDark.withValues(alpha: .6))),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 BadgeView(state: last, size: 40),
                 const SizedBox(width: 8),
@@ -224,13 +224,13 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       child: GestureDetector(
         onTap: () => _showFacts(b),
         child: Column(children: [
-          BadgeView(state: b, size: 72),
+          Opacity(opacity: b.acquired ? 1 : .55, child: BadgeView(state: b, size: 72)),
           const SizedBox(height: 4),
           Text(b.def.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, height: 1.25, color: b.acquired ? kBText : kBText2)),
+              style: TextStyle(fontSize: 12, height: 1.25, fontWeight: b.acquired ? FontWeight.w600 : FontWeight.w400, color: b.acquired ? kBText : kBText3)),
           Text(_sub(b), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, color: kBText3)),
         ]),
       ),
