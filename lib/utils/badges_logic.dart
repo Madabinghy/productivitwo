@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
@@ -60,6 +61,10 @@ class BadgeDef {
   });
 
   int get levels => tiers.length;
+
+  /// À quoi correspond le badge, et comment l'obtenir (`badge_texts.dart`).
+  String get what => badgeTexts(id, name: name).what;
+  String get how => badgeTexts(id, name: name).how;
 }
 
 /// L'état d'un badge pour une personne : paliers atteints, mesure courante,
@@ -70,6 +75,8 @@ class BadgeState {
   final num value;
   final List<DateTime?> tierDates;
   final List<(String, String)> facts;
+  /// Graphique d'avancement (bande de cases), null quand rien ne se suit.
+  final BadgeTrack? track;
 
   const BadgeState({
     required this.def,
@@ -77,7 +84,10 @@ class BadgeState {
     required this.value,
     this.tierDates = const [],
     this.facts = const [],
+    this.track,
   });
+
+  BadgeState withTrack(BadgeTrack? t) => BadgeState(def: def, level: level, value: value, tierDates: tierDates, facts: facts, track: t);
 
   bool get acquired => level > 0;
   bool get complete => level >= def.tiers.length;
@@ -107,6 +117,19 @@ class BadgeState {
   /// Texte du ruban : le palier atteint pour une ligne à paliers, sinon le
   /// libellé fixe du badge.
   String get ribbonLabel => def.tiers.length > 5 && level > 0 ? fmtInt(def.tiers[level - 1]) : (def.label ?? '');
+}
+
+/// Une case du graphique d'avancement.
+enum TrackCell { hit, miss, neutral, current, future }
+
+/// Bande de cases de la plus ancienne à la plus récente, avec sa légende.
+class BadgeTrack {
+  final List<TrackCell> cells;
+  final String caption; // « 30 derniers jours · 24 atteints »
+  final String hitLabel; // « atteint », « solide », « sur le plan »…
+  final String missLabel;
+  const BadgeTrack({required this.cells, required this.caption, this.hitLabel = 'atteint', this.missLabel = 'manqué'});
+  int get hits => cells.where((c) => c == TrackCell.hit).length;
 }
 
 class BadgeDeck {
@@ -372,11 +395,11 @@ bool _onPlan(TrajectoryStatus s) => s == TrajectoryStatus.ahead || s == Trajecto
 /// le début, la trajectoire évaluée CE lundi-là (relevés connus à cette date)
 /// a ses moyens et son résultat sur le plan. Retourne (série en cours, plus
 /// longue, lundis des séries).
-({int current, int longest, List<(DateTime, int)> runs}) trajectoryWeeks(
+({int current, int longest, List<(DateTime, int)> runs, Set<String> onPlan}) trajectoryWeeks(
     StrategicObjective o, List<Session> sessions, DateTime now) {
   final hasMeans = o.timeCommitments.isNotEmpty;
   final hasResult = o.metric != null;
-  if (!hasMeans && !hasResult) return (current: 0, longest: 0, runs: const []);
+  if (!hasMeans && !hasResult) return (current: 0, longest: 0, runs: const [], onPlan: const {});
   final start = objectiveStart(o);
   final lastMonday = mondayOf(now);
   final weeks = <String>{};
@@ -403,7 +426,7 @@ bool _onPlan(TrajectoryStatus s) => s == TrajectoryStatus.ahead || s == Trajecto
   final lastIdx = lastMonday.difference(mondayOf(start)).inDays ~/ 7;
   final current = _currentRun(asDays, mondayOf(start).add(Duration(days: lastIdx)));
   final realRuns = runs.map((r) => (mondayOf(start).add(Duration(days: 7 * r.$1.difference(mondayOf(start)).inDays)), r.$2)).toList();
-  return (current: current, longest: longest, runs: realRuns);
+  return (current: current, longest: longest, runs: realRuns, onPlan: weeks);
 }
 
 /// Plus longue suite de relevés sans trou (écart ≤ `checkInEvery` + 1 jour),
@@ -525,6 +548,8 @@ BadgeDeck computeBadges({
   var trajCurrent = 0, trajLongest = 0;
   List<(DateTime, int)> trajRuns = const [];
   String? trajBest;
+  Set<String> trajOnPlan = const {};
+  StrategicObjective? trajObj;
   for (final o in objectives) {
     if (o.status == 'archived') continue;
     final t = trajectoryWeeks(o, sessions, now);
@@ -532,6 +557,8 @@ BadgeDeck computeBadges({
       trajLongest = t.longest;
       trajRuns = t.runs;
       trajBest = o.title;
+      trajOnPlan = t.onPlan;
+      trajObj = o;
     }
     if (t.current > trajCurrent) trajCurrent = t.current;
   }
@@ -549,11 +576,13 @@ BadgeDeck computeBadges({
 
   var readLongest = 0, readCurrent = 0;
   var readDates = List<DateTime?>.filled(kReadingTiers.length, null);
+  StrategicObjective? readObj;
   for (final o in objectives) {
     final f = faithfulReadings(o);
-    if (f.longest > readLongest) {
+    if (f.longest > readLongest || (readObj == null && o.metric != null)) {
       readLongest = f.longest;
       readDates = f.tierDates;
+      readObj = o;
     }
     if (f.current > readCurrent) readCurrent = f.current;
   }
@@ -748,7 +777,134 @@ BadgeDeck computeBadges({
     ));
   }
 
-  return BadgeDeck(out);
+  // ── Graphiques d'avancement ────────────────────────────────────────────────
+  final today = livedDate(now, dayStartMin);
+  List<String> lastDays(int n) => [for (var i = n - 1; i >= 0; i--) ymdOf(today.subtract(Duration(days: i)))];
+  final dayScoreByYmd = {for (final d in days) d.ymd: d};
+  BadgeTrack daysTrack(bool Function(String ymd) hit, {bool Function(String ymd)? neutral, required String what, String hitLabel = 'atteint', String missLabel = 'manqué', int n = 30}) {
+    final ymds = lastDays(n);
+    final cells = <TrackCell>[];
+    for (final y in ymds) {
+      if (y == ymds.last) {
+        cells.add(hit(y) ? TrackCell.hit : TrackCell.current);
+      } else if (neutral != null && neutral(y)) {
+        cells.add(TrackCell.neutral);
+      } else {
+        cells.add(hit(y) ? TrackCell.hit : TrackCell.miss);
+      }
+    }
+    final hits = cells.where((c) => c == TrackCell.hit).length;
+    return BadgeTrack(cells: cells, caption: '$n derniers jours · $hits $what', hitLabel: hitLabel, missLabel: missLabel);
+  }
+  bool solidDay(String y) => dayScoreByYmd[y]?.solidAt(0.8) ?? false;
+  bool neutralDay(String y) => dayScoreByYmd[y]?.neutral ?? true;
+  final lowWonByYmd = <String, bool>{};
+  for (final w in disc.wins) {
+    lowWonByYmd[ymdOf(livedDate(w, dayStartMin))] = true;
+  }
+  final lowByYmd = <String>{for (final m in moodMarks) if (m.lowElan) m.ymd};
+  final actionsByYmd = <String, int>{};
+  for (final t in doneAt) {
+    final y = ymdOf(livedDate(t, dayStartMin));
+    actionsByYmd[y] = (actionsByYmd[y] ?? 0) + 1;
+  }
+
+  BadgeTrack? trackOf(BadgeState b) {
+    final id = b.def.id;
+    if (id.startsWith('serie-')) {
+      final a = routines.where((x) => x.id == b.def.subjectId).firstOrNull;
+      if (a == null) return null;
+      final reached = routineReachedDays(a, habitHits, dayStartMin: dayStartMin);
+      final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
+      return daysTrack(reached.contains, neutral: (y) => first == null || y.compareTo(first) < 0, what: 'jours atteints');
+    }
+    if (id.startsWith('temps-')) {
+      final o = objectives.where((x) => x.id == b.def.subjectId).firstOrNull;
+      if (o == null) return null;
+      final ids = o.timeCommitments.map((c) => c.activityId).toSet();
+      final minByYmd = <String, int>{};
+      for (final s in sessions) {
+        if (s.deleted || !ids.contains(s.activityId)) continue;
+        final y = ymdOf(livedDate(s.startAt, dayStartMin));
+        minByYmd[y] = (minByYmd[y] ?? 0) + ((s.endAt ?? now).difference(s.startAt).inMinutes);
+      }
+      final startY = ymdOf(objectiveStart(o));
+      final t = daysTrack((y) => (minByYmd[y] ?? 0) > 0, neutral: (y) => y.compareTo(startY) < 0, what: 'jours travaillés', hitLabel: 'chrono lancé', missLabel: 'rien');
+      final total = lastDays(30).fold(0, (s, y) => s + (minByYmd[y] ?? 0));
+      return BadgeTrack(cells: t.cells, caption: '${t.caption} · ${(total / 60).toStringAsFixed(1).replaceAll('.', ',')} h', hitLabel: t.hitLabel, missLabel: t.missLabel);
+    }
+    switch (id) {
+      case 'journee-parfaite':
+        return daysTrack((y) => dayScoreByYmd[y]?.perfect ?? false, neutral: neutralDay, what: 'journées parfaites', hitLabel: 'parfaite', missLabel: 'incomplète');
+      case 'semaine-solide':
+      case 'mois-solide':
+      case 'vent-contraire':
+        return daysTrack(solidDay, neutral: neutralDay, what: 'journées solides', hitLabel: 'solide (≥ 80 %)', missLabel: 'sous 80 %');
+      case 'trajectoire':
+        final o = trajObj;
+        if (o == null) return null;
+        final start = mondayOf(objectiveStart(o));
+        final cells = <TrackCell>[];
+        var m = mondayOf(now).subtract(const Duration(days: 7 * 11));
+        for (var i = 0; i < 12; i++) {
+          final y = ymdOf(m);
+          if (!m.isAfter(start)) {
+            cells.add(TrackCell.neutral);
+          } else if (i == 11) {
+            cells.add(TrackCell.current);
+          } else {
+            cells.add(trajOnPlan.contains(y) ? TrackCell.hit : TrackCell.miss);
+          }
+          m = m.add(const Duration(days: 7));
+        }
+        return BadgeTrack(cells: cells, caption: '12 dernières semaines · ${cells.where((c) => c == TrackCell.hit).length} sur le plan · ${o.title}', hitLabel: 'sur le plan', missLabel: 'en retard');
+      case 'releve-fidele':
+        final o = readObj;
+        if (o == null) return null;
+        final every = o.checkInEvery < 1 ? 7 : o.checkInEvery;
+        final start = objectiveStart(o);
+        final dates = o.readings.map((r) => r.date).toSet();
+        final cells = <TrackCell>[];
+        for (var i = 19; i >= 0; i--) {
+          final to = today.subtract(Duration(days: every * i));
+          final from = to.subtract(Duration(days: every - 1));
+          if (to.isBefore(start)) {
+            cells.add(TrackCell.neutral);
+            continue;
+          }
+          var found = false;
+          for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1))) {
+            if (dates.contains(ymdOf(d))) found = true;
+          }
+          cells.add(found ? TrackCell.hit : (i == 0 ? TrackCell.current : TrackCell.miss));
+        }
+        return BadgeTrack(cells: cells, caption: '20 dernières échéances (tous les $every j) · ${cells.where((c) => c == TrackCell.hit).length} relevés · ${o.title}', hitLabel: 'relevé noté', missLabel: 'manqué');
+      case 'actions':
+        final t = daysTrack((y) => (actionsByYmd[y] ?? 0) > 0, what: 'jours avec une action faite', hitLabel: 'action faite', missLabel: 'aucune');
+        final total = lastDays(30).fold(0, (s, y) => s + (actionsByYmd[y] ?? 0));
+        return BadgeTrack(cells: t.cells, caption: '30 derniers jours · $total actions faites', hitLabel: t.hitLabel, missLabel: t.missLabel);
+      case 'malgre-tout':
+        return daysTrack((y) => lowWonByYmd[y] ?? false, neutral: (y) => !lowByYmd.contains(y), what: 'victoires sur la flemme', hitLabel: 'fait malgré la flemme', missLabel: 'flemme, rien de fait');
+      case 'barometre':
+        final pointed = disc.meanByYmd.keys.toSet();
+        final first = pointed.isEmpty ? null : (pointed.toList()..sort()).first;
+        return daysTrack(pointed.contains, neutral: (y) => first == null || y.compareTo(first) < 0, what: 'jours pointés', hitLabel: 'élan pointé', missLabel: 'pas pointé');
+      case 'maree-haute':
+        return daysTrack((y) => (disc.meanByYmd[y] ?? 0) >= 4, neutral: (y) => !disc.meanByYmd.containsKey(y), what: 'jours à élan ≥ 4', hitLabel: 'élan ≥ 4', missLabel: 'élan < 4');
+      case 'enchaineur':
+      case 'plein-jour':
+        final runs = chainRuns.toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+        final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
+        if (last.isEmpty) return null;
+        final full = id == 'plein-jour';
+        final cells = [for (final r in last) (full ? r.fullDay : r.completed) ? TrackCell.hit : TrackCell.miss];
+        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} ${full ? 'journée(s) entière(s)' : 'menée(s) au bout'}', hitLabel: full ? 'journée entière' : 'menée au bout', missLabel: full ? 'partielle' : 'sortie avant la fin');
+      default:
+        return null;
+    }
+  }
+
+  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))]);
 }
 
 int _currentSolidRun(List<DayScore> days) {

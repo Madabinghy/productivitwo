@@ -5,6 +5,9 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show objectiveStart;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+import 'package:productivitwo_v1/widgets/badge_track_view.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/lived_day.dart';
 
 /// Lignes de badges dans les fiches et rangée d'Objectifs (lot 3, design
 /// « Badges Productivitwo », section Écrans) : badge à 40 px avec sa jauge,
@@ -122,10 +125,24 @@ class RoutineTiersLine extends StatelessWidget {
                 style: TextStyle(fontSize: 12.5, color: muted),
               ),
             ],
+            const SizedBox(height: 8),
+            BadgeTrackView(track: _recentTrack(), cell: 10, text3: muted, showLegend: false),
           ]),
         ),
       ]),
     );
+  }
+
+  /// Les 14 derniers jours vécus : atteint, manqué, aujourd'hui en cours.
+  BadgeTrack _recentTrack() {
+    final reached = routineReachedDays(activity, hits, dayStartMin: dayStartMin);
+    final today = livedDate(DateTime.now(), dayStartMin);
+    final cells = <TrackCell>[];
+    for (var i = 13; i >= 0; i--) {
+      final y = ymdOf(today.subtract(Duration(days: i)));
+      cells.add(reached.contains(y) ? TrackCell.hit : (i == 0 ? TrackCell.current : TrackCell.miss));
+    }
+    return BadgeTrack(cells: cells, caption: '14 derniers jours · ${cells.where((c) => c == TrackCell.hit).length} atteints');
   }
 }
 
