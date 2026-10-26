@@ -161,7 +161,9 @@ class TodayViewState extends State<TodayView> {
   bool _dragResize = false;
   static const _kDragSnap = 5;
   // Modules de la colonne de droite repliés (accordéon), mémorisés.
-  Set<String> _folded = {};
+  // Allègement 2026-10 : Badges, Élan et Objectifs du jour repliés par défaut ;
+  // le choix de la personne (SharedPreferences) prime dès qu'il existe.
+  Set<String> _folded = {'badges', 'elan', 'objectives'};
   static const _kFoldedKey = 'today_side_folded';
   late String _today;
   // Frise : défilement automatique vers le trait « maintenant » dès qu'elle
