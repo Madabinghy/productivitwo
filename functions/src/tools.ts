@@ -1336,6 +1336,29 @@ const LOG_ROUTINE_HIT_TOOL = {
   },
 };
 
+const LOG_MOOD_TOOL = {
+  name: "log_mood",
+  description:
+    "Pointe l'ÉTAT de la personne (lot 2 badges) : élan AVANT de faire (1 Flemme · 2 Mou · 3 Moyen · " +
+    "4 En forme · 5 Lancé, un par créneau matin / après-midi / soir du jour vécu, 3 par jour au plus), " +
+    "effort APRÈS un bloc (0 Facile · 1 Juste · 2 Dur, blockId conseillé) ou humeur du jour (0 Bas · " +
+    "1 Neutre · 2 Bon, le soir). Même donnée que les pointages faits dans l'app (collection mood_marks) ; " +
+    "nourrit les cartes « Élan & discipline » et les badges Discipline (victoires sur la flemme). " +
+    "À utiliser quand l'utilisateur DIT son état (« j'ai la flemme », « c'était dur ») — jamais deviné, " +
+    "jamais demandé deux fois de suite. Un nouveau pointage sur le même créneau / bloc / jour remplace l'ancien.",
+  inputSchema: {
+    type: "object",
+    required: ["kind", "value"],
+    properties: {
+      kind: { type: "string", enum: ["elan", "effort", "mood"], description: "elan (avant) · effort (après un bloc) · mood (humeur du jour)" },
+      value: { type: "number", description: "elan 1–5 · effort 0–2 · mood 0–2" },
+      moment: { type: "string", enum: ["matin", "aprem", "soir"], description: "élan seulement ; défaut = créneau de l'heure courante" },
+      blockId: { type: "string", description: "effort : bloc du programme concerné (get_day_schedule) ; élan : bloc qui va commencer (facultatif)" },
+      date: { type: "string", description: "YYYY-MM-DD du jour vécu ; défaut = aujourd'hui" },
+    },
+  },
+};
+
 const MARK_BLOCK_DONE_TOOL = {
   name: "mark_block_done",
   description:
@@ -1509,6 +1532,7 @@ MANAGE_INTERVENTION_TEMPLATES_TOOL,
 MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,
 LOG_ROUTINE_HIT_TOOL,
+LOG_MOOD_TOOL,
 MARK_BLOCK_DONE_TOOL,
 UPDATE_BLOCK_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,

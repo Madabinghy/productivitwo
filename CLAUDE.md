@@ -346,6 +346,12 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   actionId?)` (`""` sur un lien = le retirer ; `status:"skipped"` + `skipReason` ou `delete:true` libèrent le créneau d'un
   bloc passé non fait ; `moveTo {date, startTime}` = déplacement ATOMIQUE (copie à destination, origine tracée
   `movedTo`, refusé si le créneau est occupé) ; le reste du programme est intact)
+- `log_mood(kind: elan|effort|mood, value, moment?, blockId?, date?)` — **pointage d'état** (lot 2 badges, 2026-10) : élan avant
+  (1 Flemme → 5 Lancé, un par créneau matin / aprem / soir du jour vécu), effort après un bloc (0 Facile · 1 Juste · 2 Dur),
+  humeur du jour (0 Bas · 1 Neutre · 2 Bon) → `users/{uid}/mood_marks`, même donnée que l'app (`models/mood.dart`,
+  `AppLogic.logMood`). Seulement quand l'utilisateur DIT son état. `get_user_context` (donc `plan_day`) porte un bloc
+  `elan` : résumé 7 j (élan moyen, pointages, fenêtres de flemme gagnées, taux de discipline, efforts). Logique pure
+  `functions/src/elan.ts` ↔ `lib/utils/elan_logic.dart` (**garder alignés**)
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

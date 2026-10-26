@@ -1626,7 +1626,7 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         tools_1.ADD_INTERVENTION_TOOL, tools_1.UPDATE_INTERVENTION_TOOL, tools_1.DELETE_INTERVENTION_TOOL, tools_1.MANAGE_INTERVENTION_TEMPLATES_TOOL, tools_1.MIGRATE_INTERVENTIONS_TOOL,
                         tools_1.PLAN_PREP_TOOL, tools_1.WEEKLY_REVIEW_TOOL, tools_1.UPDATE_ACTIONS_TOOL,
                         tools_1.ESTIMATE_ACCURACY_TOOL,
-                        tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.MARK_BLOCK_DONE_TOOL, tools_1.UPDATE_BLOCK_TOOL,
+                        tools_1.LOG_ROUTINE_HIT_TOOL, tools_1.LOG_MOOD_TOOL, tools_1.MARK_BLOCK_DONE_TOOL, tools_1.UPDATE_BLOCK_TOOL,
                         tools_1.GENERATE_WEEKLY_REPORT_TOOL,
                         tools_1.LIST_SESSION_TEMPLATES_TOOL, tools_1.CREATE_SESSION_TEMPLATE_TOOL,
                         tools_1.UPDATE_SESSION_TEMPLATE_TOOL,
@@ -1907,6 +1907,15 @@ exports.mcpHandler = (0, https_1.onRequest)({ cors: true, invoker: "public", sec
                         context: args.context,
                         newContext: args.newContext,
                         detach: args.detach,
+                    });
+                }
+                else if (toolName === "log_mood") {
+                    text = await (0, execute_1.executeLogMood)(uid, {
+                        kind: args.kind,
+                        value: args.value,
+                        moment: args.moment,
+                        blockId: args.blockId,
+                        date: args.date,
                     });
                 }
                 else if (toolName === "log_routine_hit") {
