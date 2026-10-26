@@ -113,8 +113,19 @@ class BadgeDeck {
   final List<BadgeState> badges;
   const BadgeDeck(this.badges);
 
-  int get total => badges.fold(0, (s, b) => s + b.paliersTotal);
-  int get acquired => badges.fold(0, (s, b) => s + b.paliersDone);
+  /// Le compteur « n sur N » compte les paliers de toutes les familles SAUF les
+  /// séries de routine (décision 2026-10-26) : un badge par routine gonflait le
+  /// total avec chaque routine créée. Les séries se montrent à part
+  /// (`seriesRunning`).
+  List<BadgeState> get counted => badges.where((b) => b.def.family != BadgeFamily.routines).toList();
+  int get total => counted.fold(0, (s, b) => s + b.paliersTotal);
+  int get acquired => counted.fold(0, (s, b) => s + b.paliersDone);
+
+  List<BadgeState> get series => ofFamily(BadgeFamily.routines);
+  /// Séries de routine en cours (au moins un jour d'affilée).
+  int get seriesRunning => series.where((b) => b.value > 0).length;
+  /// Séries ayant atteint au moins un palier.
+  int get seriesWithTier => series.where((b) => b.acquired).length;
 
   List<BadgeState> ofFamily(BadgeFamily f) => badges.where((b) => b.def.family == f).toList();
 

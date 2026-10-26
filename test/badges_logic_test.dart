@@ -243,6 +243,22 @@ void main() {
       // 1 + 3 + 2 + 1 (objectifs) + 1 + 1 + 1 (journées) + 3 + 1 + 1 + 3 (discipline) + 1 + 1 (enchaîner) + 8 (actions)
       expect(deck.total, 28);
       expect(deck.acquired, 1);
+      // Les séries de routine ne comptent pas dans « n sur N » : elles se montrent à part.
+      final withRoutine = computeBadges(
+        activities: [routine('med')],
+        habitHits: hits('med', DateTime(2026, 10, 16), 10),
+        schedules: const [],
+        projects: [p],
+        objectives: const [],
+        sessions: const [],
+        now: now,
+      );
+      expect(withRoutine.total, 28);
+      // actions 1 + Journée parfaite 1 + Semaine solide 1 (10 jours de routine atteinte, sans bloc) ; la série (palier 2) ne compte pas
+      expect(withRoutine.acquired, 3);
+      expect(withRoutine.series.length, 1);
+      expect(withRoutine.seriesRunning, 1);
+      expect(withRoutine.seriesWithTier, 1);
       expect(deck.lastObtained?.def.id, 'actions');
       expect(deck.ofFamily(BadgeFamily.discipline).every((b) => b.def.measured), isTrue);
       expect(deck.ofFamily(BadgeFamily.chain).every((b) => !b.def.measured), isTrue);

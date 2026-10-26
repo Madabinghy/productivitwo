@@ -276,7 +276,14 @@ class BadgesRow extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(d == null ? '…' : '${d.acquired} / ${d.total}',
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: kBadgeBrass)),
-                  const Spacer(),
+                  if (d != null && d.seriesRunning > 0) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text('· ${d.seriesRunning} série${d.seriesRunning > 1 ? 's' : ''} en cours',
+                          maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .55))),
+                    ),
+                  ] else
+                    const Spacer(),
                   Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)),
                 ]),
                 if (strip.isNotEmpty) ...[
