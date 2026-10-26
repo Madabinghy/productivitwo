@@ -3027,6 +3027,13 @@ class FirestoreSync {
     await _meta().set({'momentWindows': momentWindowsToJson(windows)}, SetOptions(merge: true));
   }
 
+  /// Instantané du deck de badges (`data/badges`, lot B 2026-10) : le serveur
+  /// (list_badges, hunt_badge, get_user_context) le lit au lieu de recalculer.
+  Future<void> saveBadgeSnapshot(Map<String, dynamic> snapshot) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/data/badges').set(snapshot);
+  }
+
   /// Chasses aux badges (`data/meta.badgeHunts`, lot A 2026-10).
   Future<void> setBadgeHunts(List<Map<String, dynamic>> hunts) async {
     if (uid == null) return;

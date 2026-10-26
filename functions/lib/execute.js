@@ -55,6 +55,8 @@ exports.executeLinkActionToActivity = executeLinkActionToActivity;
 exports.executeAddActivityAction = executeAddActivityAction;
 exports.executeLogRoutineHit = executeLogRoutineHit;
 exports.executeLogMood = executeLogMood;
+exports.executeListBadges = executeListBadges;
+exports.executeHuntBadge = executeHuntBadge;
 exports.executeMarkBlockDone = executeMarkBlockDone;
 exports.executeUpdateBlock = executeUpdateBlock;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
@@ -96,6 +98,7 @@ const default_estimates_1 = require("./default_estimates");
 const project_audit_1 = require("./project_audit");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
+const badges_mcp_1 = require("./badges_mcp");
 const elan_1 = require("./elan");
 const task_delete_1 = require("./task_delete");
 const estimates_1 = require("./estimates");
@@ -537,7 +540,7 @@ async function executeGetUserContext(uid) {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const todayStr = todayInParis(now);
-    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap, objectivesSnap, moodSnap, schedWeekSnap, metaSnapCtx] = await Promise.all([
+    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap, objectivesSnap, moodSnap, schedWeekSnap, metaSnapCtx, badgesSnapCtx] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
         // Incréments de routines/habitudes sur 7 jours
@@ -566,6 +569,7 @@ async function executeGetUserContext(uid) {
         db_1.db.collection(`users/${uid}/daily_schedules`)
             .where(admin.firestore.FieldPath.documentId(), ">=", todayInParis(new Date(now.getTime() - 8 * 86400000))).get(),
         db_1.db.doc(`users/${uid}/data/meta`).get(),
+        db_1.db.doc(`users/${uid}/data/badges`).get(),
     ]);
     const autoPlanEnabled = await readAutoPlan(uid);
     const domains = domainsSnap.docs
@@ -757,6 +761,7 @@ async function executeGetUserContext(uid) {
         dayStartMin: dayStartCtx,
     });
     const elanLine = (0, elan_1.formatElanSummary)(elanS);
+    const badges = (0, badges_mcp_1.badgesSummary)(badgesSnapCtx.exists ? (0, badges_mcp_1.parseSnapshot)(badgesSnapCtx.data()) : null, (0, badges_mcp_1.parseHunts)(metaCtx.badgeHunts));
     const elan = elanLine === null
         ? null
         : {
@@ -769,7 +774,7 @@ async function executeGetUserContext(uid) {
             effort: elanS.effort,
             _hint: "Élan bas récurrent le matin ou l'après-midi → propose des blocs courts et concrets à ce créneau ; ne commente jamais l'état, cite le fait (« 5 fois sur 7, fait quand même »).",
         };
-    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled } }), (elan ? { elan } : {})), { domains,
+    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled } }), (elan ? { elan } : {})), (badges ? { badges } : {})), { domains,
         activities,
         objectives,
         activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
@@ -2202,6 +2207,36 @@ async function executeAddActivityAction(uid, activityId, title, context, context
         ? ` Estimation par défaut : ${action.estimatedMin} min (${(0, default_estimates_1.defaultEstimateLabel)(title, Array.isArray(contexts) ? contexts : [])}).`
         : "";
     return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).${(0, title_style_1.titleAdvice)([{ title: action.title, kind: "action" }])}`;
+}
+/** Le deck de badges, depuis l'instantané déposé par l'app. */
+async function executeListBadges(uid) {
+    const [snap, meta] = await Promise.all([db_1.db.doc(`users/${uid}/data/badges`).get(), db_1.db.doc(`users/${uid}/data/meta`).get()]);
+    const hunts = (0, badges_mcp_1.parseHunts)(meta.exists ? meta.data().badgeHunts : []);
+    return (0, badges_mcp_1.formatBadgeList)(snap.exists ? (0, badges_mcp_1.parseSnapshot)(snap.data()) : null, hunts);
+}
+/** Chasse aux badges : viser un palier (set) ou retirer une chasse (remove). */
+async function executeHuntBadge(uid, p) {
+    if (!p.badgeId)
+        return "badgeId requis (list_badges).";
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const [snapDoc, meta] = await Promise.all([db_1.db.doc(`users/${uid}/data/badges`).get(), metaRef.get()]);
+    const hunts = (0, badges_mcp_1.parseHunts)(meta.exists ? meta.data().badgeHunts : []);
+    const snap = snapDoc.exists ? (0, badges_mcp_1.parseSnapshot)(snapDoc.data()) : null;
+    if (p.action === "remove") {
+        const rest = hunts.filter((h) => h.badgeId !== p.badgeId);
+        if (rest.length === hunts.length)
+            return `Aucune chasse sur « ${p.badgeId} ».`;
+        await metaRef.set({ badgeHunts: rest }, { merge: true });
+        return `✓ Chasse retirée. Reste : ${rest.length ? (0, badges_mcp_1.huntLines)(snap, rest).join(" · ") : "aucune"}.`;
+    }
+    if (p.action !== "set")
+        return "action : set ou remove.";
+    const v = (0, badges_mcp_1.validateHunt)(snap, hunts, p.badgeId, p.tier, p.targetDate);
+    if (!v.ok)
+        return v.error;
+    const next = [...hunts.filter((h) => h.badgeId !== p.badgeId), v.hunt];
+    await metaRef.set({ badgeHunts: next }, { merge: true });
+    return `🎯 ${(0, badges_mcp_1.huntLines)(snap, [v.hunt])[0]} — visible dans le deck (« En chasse ») et dans Aujourd'hui → Objectifs (« Badges visés »).`;
 }
 /** Pointage d'état (lot 2) : écrit un MoodMark comme le ferait l'app. */
 async function executeLogMood(uid, p) {
