@@ -34,6 +34,7 @@ import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
+import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
@@ -6866,6 +6867,8 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ),
+        // Élan & discipline (lot 2 badges, 2026-10) : vide tant qu'aucun pointage.
+        ElanStatsCards(logic: logic, sync: _sync),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
           child: Row(

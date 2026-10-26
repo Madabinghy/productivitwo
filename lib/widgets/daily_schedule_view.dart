@@ -17,6 +17,8 @@ import 'package:productivitwo_v1/widgets/domain_naming_sheet.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/widgets/elan_rows.dart';
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -600,6 +602,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           if (blocksToCarry(visible, widget.logic.livedNowMinNow) case final carry
               when showCarryCard(carry, widget.logic.livedNowMinNow))
             _carryCard(cs, carry),
+        if (_isToday)
+          if (_moodRow(cs) case final mood?) mood,
         if (asideLabel(aside) != null) _asideRow(cs, aside),
         if (bare) _addRow(cs),
       ],
@@ -651,6 +655,30 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           },
         ),
       ]),
+    );
+  }
+
+  /// « Ton humeur aujourd'hui ? » (lot 2) : à partir de 18 h vécues, une fois
+  /// par jour, disparaît dès la réponse. Pas de rappel, pas de relance.
+  Widget? _moodRow(ColorScheme cs) {
+    final logic = widget.logic;
+    if (logic.livedNowMinNow < 18 * 60) return null;
+    final ymd = livedProgramYmd(DateTime.now(), logic.dayStartMin);
+    if (moodOfDay(logic.state.moodMarks, ymd) != null || logic.elanSkipped.contains('$ymd:mood')) return null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      child: ChipRow(
+        question: 'Ton humeur aujourd\u2019hui ?',
+        labels: kMoodLabels,
+        value: -1,
+        onPick: (v) => setState(() => logic.logMood(kMoodMood, v)),
+        text: cs.onSurface,
+        text2: cs.onSurface.withValues(alpha: .8),
+        text3: cs.onSurface.withValues(alpha: .55),
+        surface: cs.surfaceContainerHighest.withValues(alpha: .35),
+        raised: cs.surfaceContainerHighest,
+        accent: cs.primary,
+      ),
     );
   }
 

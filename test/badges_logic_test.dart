@@ -244,7 +244,8 @@ void main() {
       expect(deck.total, 28);
       expect(deck.acquired, 1);
       expect(deck.lastObtained?.def.id, 'actions');
-      expect(deck.ofFamily(BadgeFamily.discipline).every((b) => !b.def.measured), isTrue);
+      expect(deck.ofFamily(BadgeFamily.discipline).every((b) => b.def.measured), isTrue);
+      expect(deck.ofFamily(BadgeFamily.chain).every((b) => !b.def.measured), isTrue);
     });
 
     test('un badge simple n\'a pas de jauge, un badge à paliers en a une', () {
