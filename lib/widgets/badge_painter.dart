@@ -24,6 +24,11 @@ const kBadgeLockedSymbol = Color(0xFF3A4F41);
 const kBadgeLockedBand = Color(0xFF16241B);
 const kBadgeGaugeTrack = Color(0xFF1B2A20);
 const kBadgeGaugeFill = Color(0xFF27C48F);
+// Chevrons de niveau atteints : rouge corail, choisi sur planche (2026-10-26)
+// pour trancher sur le ruban khaki à 72 et 40 px ; les chevrons à venir
+// restent un contour d'encre.
+const kBadgeChevron = Color(0xFFE0523F);
+const kBadgeChevronDark = Color(0xFF8C2E22);
 
 /// Un badge dessiné depuis son état : `BadgeView(state: s, size: 72)`.
 class BadgeView extends StatelessWidget {
@@ -58,7 +63,6 @@ class BadgePainter extends CustomPainter {
   final int level;
   final double? progress; // 0..1 → jauge ; null = pas de jauge
   final String label;
-
   const BadgePainter({
     required this.symbol,
     required this.acquired,
@@ -164,20 +168,23 @@ class BadgePainter extends CustomPainter {
           ..strokeJoin = StrokeJoin.round
           ..color = acquired ? kBadgeKhakiDark : kBadgeLockedRim);
     if (pips) {
+      const reachedFill = kBadgeChevron;
+      const reachedStroke = kBadgeChevronDark;
+      final todoStroke = kBadgeRibbonInk.withValues(alpha: .45);
       const w = 9.0, gap = 3.0;
       final total = levels * w + (levels - 1) * gap;
       final x0 = 50 - total / 2 + w / 2;
       for (var i = 0; i < levels; i++) {
         final p = chevron(x0 + i * (w + gap));
         if (i < level) {
-          canvas.drawPath(p, Paint()..color = kBadgeBrass);
+          canvas.drawPath(p, Paint()..color = reachedFill);
           canvas.drawPath(
               p,
               Paint()
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 1.4
                 ..strokeJoin = StrokeJoin.round
-                ..color = kBadgeBrassDark);
+                ..color = reachedStroke);
         } else {
           canvas.drawPath(
               p,
@@ -185,7 +192,7 @@ class BadgePainter extends CustomPainter {
                 ..style = PaintingStyle.stroke
                 ..strokeWidth = 1.4
                 ..strokeJoin = StrokeJoin.round
-                ..color = acquired ? kBadgeKhakiDark : kBadgeLockedSymbol);
+                ..color = acquired ? todoStroke : kBadgeLockedSymbol);
         }
       }
     } else if (acquired && label.isNotEmpty && px >= 96) {

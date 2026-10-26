@@ -104,8 +104,8 @@ class RoutineTiersLine extends StatelessWidget {
               for (var i = 0; i < kRoutineTiers.length; i++)
                 Row(mainAxisSize: MainAxisSize.min, children: [
                   _Chevron(
-                    fill: i < level ? kBadgeBrass : Colors.transparent,
-                    stroke: i < level ? kBadgeBrassDark : (i == level ? accent : cs.onSurface.withValues(alpha: .3)),
+                    fill: i < level ? kBadgeChevron : Colors.transparent,
+                    stroke: i < level ? kBadgeChevronDark : (i == level ? accent : cs.onSurface.withValues(alpha: .3)),
                   ),
                   const SizedBox(width: 3),
                   Text('${kRoutineTiers[i]}',
