@@ -34,6 +34,14 @@ class BadgeHunt {
   }
 }
 
+/// Ce que la fiche d'un badge attend pour viser / retirer une chasse :
+/// AppLogic sur mobile, `WebHuntStore` sur le web.
+abstract class HuntStore {
+  List<BadgeHunt> get hunts;
+  Future<void> hunt(BadgeHunt h);
+  Future<void> stop(Iterable<String> badgeIds);
+}
+
 List<BadgeHunt> parseBadgeHunts(dynamic raw) =>
     raw is List ? raw.map(BadgeHunt.fromOrNull).whereType<BadgeHunt>().toList() : const [];
 

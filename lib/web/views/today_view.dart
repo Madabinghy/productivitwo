@@ -122,6 +122,7 @@ class TodayViewState extends State<TodayView> {
   StreamSubscription<List<MoodMark>>? _moodSub;
   StreamSubscription<List<ChainRun>>? _chainSub;
   final Set<String> _elanSkipped = {};
+  late final WebHuntStore _huntStore = WebHuntStore(widget.sync);
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
   // Carte « Au programme » : blocs dépliés (null = défaut : le premier bloc à
   // contenu est ouvert) et liste complète ou non.
@@ -286,6 +287,7 @@ class TodayViewState extends State<TodayView> {
     _hitsSub?.cancel();
     _moodSub?.cancel();
     _chainSub?.cancel();
+    _huntStore.dispose();
     _tomorrowSub?.cancel();
     _ticker?.cancel();
     _timelineCtrl.dispose();
@@ -2897,6 +2899,8 @@ class TodayViewState extends State<TodayView> {
           dayStartMin: widget.dayStartMin,
           folded: _isFolded('badges'),
           onToggleFold: () => _toggleFold('badges'),
+          huntStore: _huntStore,
+          todayBlocks: _allBlocks,
         ),
         const SizedBox(height: 18),
         if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[

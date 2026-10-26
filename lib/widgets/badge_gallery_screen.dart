@@ -330,7 +330,7 @@ String _shortDateOf(DateTime d) {
 /// La fiche d'un badge : badge, mesure, « à quoi ça correspond », paliers,
 /// « Où j'en suis », « Comment l'obtenir », faits. Ouverte depuis le deck, la
 /// rangée d'Objectifs et les routines d'Aujourd'hui.
-Future<void> showBadgeSheet(BuildContext context, BadgeState b, {AppLogic? logic}) {
+Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
@@ -435,8 +435,8 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {AppLogic? logic
 
 /// La chasse : « Viser ce palier » (palier et date facultative), ou l'état de
 /// la chasse en cours avec « Ne plus viser ». Trois chasses au plus.
-Widget _huntBlock(BuildContext ctx, AppLogic logic, BadgeState b, VoidCallback refresh) {
-  final hunt = logic.badgeHunts.where((h) => h.badgeId == b.def.id).firstOrNull;
+Widget _huntBlock(BuildContext ctx, HuntStore logic, BadgeState b, VoidCallback refresh) {
+  final hunt = logic.hunts.where((h) => h.badgeId == b.def.id).firstOrNull;
   final now = DateTime.now();
   if (hunt != null) {
     final v = HuntView(hunt: hunt, badge: b, tierValue: b.def.tiers[(hunt.tier - 1).clamp(0, b.def.tiers.length - 1)]);
@@ -456,7 +456,7 @@ Widget _huntBlock(BuildContext ctx, AppLogic logic, BadgeState b, VoidCallback r
           ),
           TextButton(
             onPressed: () async {
-              await logic.stopHunts([b.def.id]);
+              await logic.stop([b.def.id]);
               refresh();
             },
             child: const Text('Ne plus viser', style: TextStyle(color: kBText3)),
@@ -465,7 +465,7 @@ Widget _huntBlock(BuildContext ctx, AppLogic logic, BadgeState b, VoidCallback r
       ),
     );
   }
-  final full = logic.badgeHunts.length >= kMaxBadgeHunts;
+  final full = logic.hunts.length >= kMaxBadgeHunts;
   return Padding(
     padding: const EdgeInsets.only(top: 12),
     child: Column(children: [
@@ -474,7 +474,7 @@ Widget _huntBlock(BuildContext ctx, AppLogic logic, BadgeState b, VoidCallback r
         onPressed: full ? null : () async {
           final picked = await _pickHunt(ctx, b);
           if (picked == null) return;
-          await logic.huntBadge(newHunt(b, picked.tier, now, targetDate: picked.date));
+          await logic.hunt(newHunt(b, picked.tier, now, targetDate: picked.date));
           refresh();
         },
         icon: const Icon(Icons.gps_fixed, size: 18),
