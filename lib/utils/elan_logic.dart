@@ -46,6 +46,15 @@ MoodMark? effortOfBlock(List<MoodMark> marks, String blockId) {
 bool elanDue(List<MoodMark> marks, String ymd, String bucket, Set<String> skipped) =>
     elanMarkOf(marks, ymd, bucket) == null && !skipped.contains('$ymd:$bucket');
 
+/// Règle d'affichage de la question (allègement 2026-10) : par défaut UNE fois
+/// par jour vécu (au premier geste, quel que soit le créneau) ; avec
+/// `allMoments` (réglage « à chaque moment »), une fois par créneau.
+bool elanPromptDue(List<MoodMark> marks, String ymd, String bucket, Set<String> skipped, {bool allMoments = false}) {
+  if (allMoments) return elanDue(marks, ymd, bucket, skipped);
+  if (marks.any((m) => m.kind == kMoodElan && m.ymd == ymd)) return false;
+  return !skipped.any((k) => k.startsWith('$ymd:'));
+}
+
 class ElanWindow {
   final MoodMark mark;
   final DateTime end;

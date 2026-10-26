@@ -812,7 +812,7 @@ class _ChainScreenState extends State<_ChainScreen> {
         else
           Text('C\'était le dernier bloc de la file.',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: pal.text3)),
-        if (nb != null && elanDue(logic.state.moodMarks, livedProgramYmd(DateTime.now(), logic.dayStartMin), elanBucket(_nowMin), logic.elanSkipped))
+        if (nb != null && elanPromptDue(logic.state.moodMarks, livedProgramYmd(DateTime.now(), logic.dayStartMin), elanBucket(_nowMin), logic.elanSkipped, allMoments: logic.elanPromptsAll))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: ElanRow(

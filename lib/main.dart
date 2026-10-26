@@ -2019,14 +2019,17 @@ class _AppRootState extends State<AppRoot>
       final start = parseDayStartMin(m['dayStartMin']);
       final windows = parseMomentWindows(m['momentWindows']);
       final hunts = parseBadgeHunts(m['badgeHunts']);
+      final elanAll = m['elanPromptsAll'] == true;
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
           momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString() &&
-          sameHunts;
+          sameHunts &&
+          logic.elanPromptsAll == elanAll;
       if (same) return;
       logic.dayStartMin = start;
       logic.momentWindows = windows;
       logic.badgeHunts = hunts;
+      logic.elanPromptsAll = elanAll;
       logic.onChange();
     });
   }
@@ -5735,6 +5738,24 @@ class _AppRootState extends State<AppRoot>
                   value: snap.data == true,
                   onChanged: (v) => _sync.setAutoPlan(v),
                 ),
+              ),
+              // Élan (allègement 2026-10) : une fois par jour par défaut, à
+              // chaque moment sur demande.
+              StreamBuilder<Map<String, dynamic>>(
+                stream: _sync.streamMetaDoc(),
+                builder: (ctx, snap) {
+                  final all = snap.data?['elanPromptsAll'] == true;
+                  return SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    secondary: const Icon(Icons.mood_outlined),
+                    title: const Text('Élan : demander à chaque moment'),
+                    subtitle: Text(all
+                        ? 'Matin, après-midi et soir · trois pointages par jour'
+                        : 'Une fois par jour, au premier geste · « Ton élan, là ? »'),
+                    value: all,
+                    onChanged: (v) => _sync.setElanPromptsAll(v),
+                  );
+                },
               ),
               // Journée vécue des routines : avant cette heure, on est encore
               // « hier » (compte, moment courant, reports). Travail de nuit →

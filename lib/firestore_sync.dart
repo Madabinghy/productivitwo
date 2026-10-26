@@ -3052,6 +3052,12 @@ class FirestoreSync {
     await _meta().set({'badgeHunts': hunts}, SetOptions(merge: true));
   }
 
+  /// Réglage « Élan : demander à chaque moment » (`data/meta.elanPromptsAll`).
+  Future<void> setElanPromptsAll(bool enabled) async {
+    if (uid == null) return;
+    await _meta().set({'elanPromptsAll': enabled}, SetOptions(merge: true));
+  }
+
   Future<void> setAutoPlan(bool enabled) async {
     if (uid == null) return;
     await _meta().set(

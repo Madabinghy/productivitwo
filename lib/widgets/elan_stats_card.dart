@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet Stats : « Élan & discipline » (la semaine en sept colonnes, un point
 /// par pointage à la hauteur de son élan, « Face à la flemme · 5 / 7 · 71 % »,
@@ -28,10 +29,17 @@ class ElanStatsCards extends StatefulWidget {
 
 class _ElanStatsCardsState extends State<ElanStatsCards> {
   late Future<List<DailySchedule>> _schedules;
+  // Allègement 2026-10 : repliée par défaut, l'en-tête garde les deux chiffres.
+  static const _kFoldKey = 'stats_elan_folded';
+  bool _folded = true;
 
   @override
   void initState() {
     super.initState();
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getBool(_kFoldKey);
+      if (v != null && mounted && v != _folded) setState(() => _folded = v);
+    });
     final now = DateTime.now();
     _schedules = widget.sync.fetchDailySchedulesRange(ymdOf(now.subtract(const Duration(days: 8))), ymdOf(now));
   }
@@ -51,7 +59,40 @@ class _ElanStatsCardsState extends State<ElanStatsCards> {
           now: DateTime.now(),
           dayStartMin: widget.dayStartMin ?? widget.logic!.dayStartMin,
         );
-        return Column(children: [_ElanWeekCard(days: days), _ElanHeatmapCard(days: days)]);
+        final m = elanMetrics(days);
+        final cs = Theme.of(ctx).colorScheme;
+        final pct = m.discipline == null ? null : (m.discipline! * 100).round();
+        return Column(children: [
+          Card(
+            elevation: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () {
+                setState(() => _folded = !_folded);
+                SharedPreferences.getInstance().then((p) => p.setBool(_kFoldKey, _folded));
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+                child: Row(children: [
+                  const Text('Élan & discipline', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${m.count == 0 ? '—' : m.mean.toStringAsFixed(1).replaceAll('.', ',')} / 5 · face à la flemme ${pct == null ? '—' : '${m.lowWon} / ${m.lowCount}'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6)),
+                    ),
+                  ),
+                  Icon(_folded ? Icons.expand_more : Icons.expand_less, size: 20, color: cs.onSurface.withValues(alpha: .5)),
+                ]),
+              ),
+            ),
+          ),
+          if (!_folded) ...[_ElanWeekCard(days: days), _ElanHeatmapCard(days: days)],
+        ]);
       },
     );
   }
