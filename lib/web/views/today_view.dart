@@ -7,6 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/web/badges_web.dart';
+import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
+import 'package:productivitwo_v1/widgets/elan_rows.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -113,6 +117,11 @@ class TodayViewState extends State<TodayView> {
   String? _generatedBy;
   List<Session> _sessions = [];
   List<HabitHit> _hits = [];
+  List<MoodMark> _moodMarks = [];
+  List<ChainRun> _chainRuns = [];
+  StreamSubscription<List<MoodMark>>? _moodSub;
+  StreamSubscription<List<ChainRun>>? _chainSub;
+  final Set<String> _elanSkipped = {};
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
   // Carte « Au programme » : blocs dépliés (null = défaut : le premier bloc à
   // contenu est ouvert) et liste complète ou non.
@@ -231,6 +240,12 @@ class TodayViewState extends State<TodayView> {
     _sessionsSub = widget.sync.streamSessions().listen((s) {
       if (mounted) setState(() => _sessions = s);
     });
+    _moodSub = widget.sync.streamMoodMarks().listen((m) {
+      if (mounted) setState(() => _moodMarks = m);
+    });
+    _chainSub = widget.sync.streamChainRuns().listen((r) {
+      if (mounted) setState(() => _chainRuns = r);
+    });
     _hitsSub = widget.sync.streamHabitHits().listen((h) {
       if (mounted) setState(() => _hits = h);
     });
@@ -269,6 +284,8 @@ class TodayViewState extends State<TodayView> {
     _scheduleSub?.cancel();
     _sessionsSub?.cancel();
     _hitsSub?.cancel();
+    _moodSub?.cancel();
+    _chainSub?.cancel();
     _tomorrowSub?.cancel();
     _ticker?.cancel();
     _timelineCtrl.dispose();
@@ -972,6 +989,7 @@ class TodayViewState extends State<TodayView> {
               textAlign: TextAlign.center,
               style: const TextStyle(
                   fontSize: 18, fontWeight: FontWeight.w600, color: kBText)),
+        if (_elanRow(b, open) case final row?) row,
         const SizedBox(height: 18),
         Row(children: [
           if (open != null) ...[
@@ -2867,6 +2885,24 @@ class TodayViewState extends State<TodayView> {
         if (withAgenda) ...[_agendaCard(), const SizedBox(height: 18)],
         _routinesCard(),
         const SizedBox(height: 18),
+        WebBadgesCard(
+          sync: widget.sync,
+          activities: widget.activities,
+          projects: widget.projects,
+          objectives: widget.objectives,
+          hits: _hits,
+          sessions: _sessions,
+          moodMarks: _moodMarks,
+          chainRuns: _chainRuns,
+          dayStartMin: widget.dayStartMin,
+          folded: _isFolded('badges'),
+          onToggleFold: () => _toggleFold('badges'),
+        ),
+        const SizedBox(height: 18),
+        if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[
+          _elanCard(),
+          const SizedBox(height: 18),
+        ],
         // Chronos du jour : voir, corriger, supprimer, rattacher à un bloc
         // après coup — l'équivalent de la feuille « Dernières 24 h » du mobile.
         SessionsCard(
@@ -2886,6 +2922,56 @@ class TodayViewState extends State<TodayView> {
         const SizedBox(height: 18),
         _weekColumn(),
       ]);
+
+  /// « ÉLAN & DISCIPLINE » : les deux cartes de Stats mobile, sur les flux du web.
+  Widget _elanCard() {
+    final folded = _isFolded('elan');
+    return _card(
+      padding: folded ? _kFoldedPadding : const EdgeInsets.fromLTRB(20, 18, 20, 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _foldHeader('elan', _label('ÉLAN & DISCIPLINE')),
+        if (!folded)
+          Theme(
+            data: Theme.of(context).copyWith(cardTheme: const CardThemeData(color: kBBg, elevation: 0, margin: EdgeInsets.symmetric(vertical: 8))),
+            child: ElanStatsCards(
+              sync: widget.sync,
+              marks: _moodMarks,
+              hits: _hits,
+              activities: widget.activities,
+              dayStartMin: widget.dayStartMin,
+            ),
+          ),
+      ]),
+    );
+  }
+
+  /// « Ton élan, là ? » dans MAINTENANT (web) : une fois par créneau du jour
+  /// vécu, quand un bloc est devant et qu'aucun chrono ne tourne.
+  Widget? _elanRow(ScheduleBlock? b, Session? open) {
+    if (b == null || open != null) return null;
+    final now = DateTime.now();
+    final ymd = livedProgramYmd(now, widget.dayStartMin);
+    final bucket = elanBucket(livedNowMin(now, widget.dayStartMin));
+    if (!elanDue(_moodMarks, ymd, bucket, _elanSkipped)) return null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: ElanRow(
+        value: 0,
+        context: 'avant ${b.title}',
+        onPick: (v) {
+          final m = MoodMark(at: now, ymd: ymd, kind: kMoodElan, value: v, moment: bucket, blockId: b.id, activityId: b.activityId, projectId: b.projectId, taskId: b.taskId, actionId: b.actionId);
+          setState(() => _moodMarks = [..._moodMarks, m]);
+          widget.sync.saveMoodMark(m);
+        },
+        onSkip: () => setState(() => _elanSkipped.add('$ymd:$bucket')),
+        text: kBText,
+        text2: kBText2,
+        text3: kBText3,
+        surface: kBRaised,
+        raised: kBActive,
+      ),
+    );
+  }
 
   // ── CETTE SEMAINE ───────────────────────────────────────────────────────────
 

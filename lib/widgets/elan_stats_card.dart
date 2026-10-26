@@ -12,9 +12,15 @@ import 'package:productivitwo_v1/widgets/elan_rows.dart';
 /// trois chiffres) puis « Quand l'élan est là » (créneau × jour). Les chiffres
 /// disent ce qui a été fait, jamais ce qu'il aurait fallu.
 class ElanStatsCards extends StatefulWidget {
-  final AppLogic logic;
+  final AppLogic? logic;
   final FirestoreSync sync;
-  const ElanStatsCards({super.key, required this.logic, required this.sync});
+  // Web (sans AppLogic) : données passées telles quelles.
+  final List<MoodMark>? marks;
+  final List<HabitHit>? hits;
+  final List<Activity>? activities;
+  final int? dayStartMin;
+  const ElanStatsCards({super.key, this.logic, required this.sync, this.marks, this.hits, this.activities, this.dayStartMin})
+      : assert(logic != null || (marks != null && hits != null && activities != null));
 
   @override
   State<ElanStatsCards> createState() => _ElanStatsCardsState();
@@ -32,7 +38,7 @@ class _ElanStatsCardsState extends State<ElanStatsCards> {
 
   @override
   Widget build(BuildContext context) {
-    final marks = widget.logic.state.moodMarks;
+    final marks = widget.marks ?? widget.logic!.state.moodMarks;
     if (marks.where((m) => m.kind == kMoodElan).isEmpty) return const SizedBox.shrink();
     return FutureBuilder<List<DailySchedule>>(
       future: _schedules,
@@ -40,10 +46,10 @@ class _ElanStatsCardsState extends State<ElanStatsCards> {
         final days = buildElanDays(
           marks: marks,
           schedulesByYmd: {for (final s in snap.data ?? const <DailySchedule>[]) s.date: s},
-          hits: widget.logic.state.habitHits,
-          activities: widget.logic.state.activities,
+          hits: widget.hits ?? widget.logic!.state.habitHits,
+          activities: widget.activities ?? widget.logic!.state.activities,
           now: DateTime.now(),
-          dayStartMin: widget.logic.dayStartMin,
+          dayStartMin: widget.dayStartMin ?? widget.logic!.dayStartMin,
         );
         return Column(children: [_ElanWeekCard(days: days), _ElanHeatmapCard(days: days)]);
       },
