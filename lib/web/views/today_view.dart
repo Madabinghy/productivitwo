@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/badges_web.dart';
+import 'package:productivitwo_v1/web/objectives_web.dart';
 import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -418,6 +419,18 @@ class TodayViewState extends State<TodayView> {
       taskId: b.taskId,
       actionId: b.actionId,
     );
+    setState(() => _sessions = [..._sessions, session]);
+    await widget.sync.saveSession(session);
+  }
+
+  /// Chrono sur une activité sans bloc (module Objectifs du jour).
+  Future<void> _startActivityChrono(String activityId) async {
+    final now = DateTime.now();
+    for (final s in _sessions.where((s) => s.endAt == null)) {
+      s.endAt = now;
+      await widget.sync.saveSession(s);
+    }
+    final session = Session(activityId: activityId, startAt: now);
     setState(() => _sessions = [..._sessions, session]);
     await widget.sync.saveSession(session);
   }
@@ -2901,6 +2914,24 @@ class TodayViewState extends State<TodayView> {
           onToggleFold: () => _toggleFold('badges'),
           huntStore: _huntStore,
           todayBlocks: _allBlocks,
+        ),
+        const SizedBox(height: 18),
+        WebObjectivesCard(
+          objectives: widget.objectives,
+          activities: widget.activities,
+          sessions: _sessions,
+          hits: _hits,
+          blocks: _allBlocks,
+          projects: widget.projects,
+          dayStartMin: widget.dayStartMin,
+          runningActivityId: _openSession?.activityId,
+          folded: _isFolded('objectives'),
+          onToggleFold: () => _toggleFold('objectives'),
+          todayCount: (a) => _hits.where((h) => h.habitId == a.id && ymdOf(livedDate(h.ts, widget.dayStartMin)) == ymdOf(_livedToday)).length,
+          onRoutinePlus: _incRoutine,
+          onStartActivity: _startActivityChrono,
+          onLaunchBlock: _startChrono,
+          onOpenProject: widget.onOpenProject,
         ),
         const SizedBox(height: 18),
         if (_moodMarks.any((m) => m.kind == kMoodElan)) ...[
