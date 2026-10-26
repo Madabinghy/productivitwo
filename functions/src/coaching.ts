@@ -178,13 +178,25 @@ async function buildDashboard(coacheeUid: string, sharing: Sharing): Promise<Jso
   // ── Les 3 chiffres de l'US-2 (console 8a) — disponibles dès "status" ────────
   // Engagements hebdo = routines des domaines partagés (habitFreq 0=daily,
   // 1=weekly ; monthly hors tendance). Cible daily ramenée à la semaine (×7).
+  // « Ma semaine » ne juge que les routines RATTACHÉES à un objectif en cours
+  // (décision 2026-10, même règle que l'app) ; aucune → toutes les routines.
+  const objSnap = await db.collection(`users/${coacheeUid}/strategic_objectives`).get();
+  const engagedIds = new Set<string>();
+  for (const d of objSnap.docs) {
+    const o = d.data();
+    if (o.status !== "active" && o.status !== undefined) continue;
+    for (const c of (Array.isArray(o.routineCommitments) ? o.routineCommitments : []) as Json[]) {
+      if (typeof c.activityId === "string") engagedIds.add(c.activityId);
+    }
+  }
   const habits = actSnap.docs
     .map((d) => d.data())
     .filter((v) =>
       v.deleted !== true &&
       v.type === "habit" &&
       (v.habitFreq === 0 || v.habitFreq === 1) &&
-      sharedDomains.has(String(v.domainId ?? "")));
+      sharedDomains.has(String(v.domainId ?? "")) &&
+      (engagedIds.size === 0 || engagedIds.has(String(v.id ?? ""))));
   const hitsByHabit: Record<string, number[]> = {}; // habitId → timestamps
   for (const d of hitsSnap?.docs ?? []) {
     const v = d.data();

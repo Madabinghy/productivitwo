@@ -807,6 +807,9 @@ actions: [
 
 ## Backlog mémorisé (demandes user, à faire plus tard)
 
+- **« Ma semaine » = routines d'objectifs** (décidé 2026-10-26) : la carte « Ma semaine » (mobile, web, dashboard coach)
+  ne juge que les routines rattachées à un objectif en cours (`engagedRoutineIds`, `utils/engagement_stats.dart`) ; aucune
+  → toutes. Engagement « tenu » dès 80 % de la cible (`kKeptRatio`), pourcentage = moyenne des parts faites.
 - **Objectifs archivés** (noté 2026-10-21) : « Archiver » dans la fiche objectif est la seule suppression (soft, sans
   confirmation) et aucun écran ne liste les archivés. À faire : liste « Archivés · n » repliée en bas de l'onglet Objectifs
   avec « Réactiver », et une confirmation sur « Archiver ».

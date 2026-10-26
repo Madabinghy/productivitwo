@@ -50,4 +50,15 @@ void main() {
     final wed = computeObjectiveProgress(o, [run], sessions, const [], DateTime(2026, 10, 28, 10));
     expect(wed.weekPercent, closeTo(20 / 60, 1e-9), reason: 'mercredi : 60 min attendues');
   });
+  test('routines d\'objectifs seulement : les autres sortent de « Ma semaine » ; aucune → toutes', () {
+    final o = StrategicObjective(title: 'Santé', routineCommitments: [ObjectiveRoutineCommitment(activityId: 'eau')]);
+    final archived = StrategicObjective(title: 'Vieux', status: 'archived', routineCommitments: [ObjectiveRoutineCommitment(activityId: 'autre')]);
+    expect(engagedRoutineIds([o, archived]), {'eau'});
+    expect(engagedRoutineIds([archived]), isNull);
+    final acts = [habit('eau', 6), habit('pompes', 8)];
+    final all = rollingWeekEngagements(activities: acts, hits: const []);
+    expect(all.length, 2);
+    final only = rollingWeekEngagements(activities: acts, hits: const [], onlyIds: engagedRoutineIds([o]));
+    expect(only.map((e) => e.id), ['eau']);
+  });
 }

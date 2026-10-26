@@ -3073,7 +3073,7 @@ class TodayViewState extends State<TodayView> {
   }
 
   Widget _engagementsCard() {
-    final stats = rollingWeekEngagements(activities: widget.activities, hits: _hits);
+    final stats = rollingWeekEngagements(activities: widget.activities, hits: _hits, onlyIds: engagedRoutineIds(widget.objectives));
     final byDomain = <String, ({int done, int target})>{};
     for (final e in stats) {
       final cur = byDomain[e.domainId] ?? (done: 0, target: 0);

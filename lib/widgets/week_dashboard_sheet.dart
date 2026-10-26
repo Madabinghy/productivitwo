@@ -2,6 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/models.dart';
+
+/// Objectifs en cours, relus au plus toutes les 5 min : « Ma semaine » ne compte
+/// que leurs routines engagées (décision 2026-10). Partagé carte / feuille.
+List<StrategicObjective>? _objectivesCache;
+DateTime? _objectivesAt;
+Set<String>? _engagedIds() => _objectivesCache == null ? null : engagedRoutineIds(_objectivesCache!);
+Future<void> _loadObjectives(AppLogic logic, void Function() onDone) async {
+  if (_objectivesAt != null && DateTime.now().difference(_objectivesAt!) < const Duration(minutes: 5)) return;
+  _objectivesAt = DateTime.now();
+  try {
+    _objectivesCache = await (logic.sync ?? FirestoreSync()).fetchStrategicObjectives();
+    onDone();
+  } catch (_) {}
+}
 
 /// « Ma semaine » sur MOBILE — la même lecture que la console coach 8a,
 /// sur ses propres données (transparence : le coaché voit ce que le coach
@@ -12,20 +28,36 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 /// dashboard serveur).
 
 /// Carte compacte pour l'Accueil : chiffre 7 j + mini-tendance, tap → sheet.
-class WeekDashboardCard extends StatelessWidget {
+class WeekDashboardCard extends StatefulWidget {
   final AppLogic logic;
 
   const WeekDashboardCard({super.key, required this.logic});
 
   @override
+  State<WeekDashboardCard> createState() => _WeekDashboardCardState();
+}
+
+class _WeekDashboardCardState extends State<WeekDashboardCard> {
+  AppLogic get logic => widget.logic;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadObjectives(logic, () {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final st = logic.state;
+    final only = _engagedIds();
     final engagements =
-        rollingWeekEngagements(activities: st.activities, hits: st.habitHits);
+        rollingWeekEngagements(activities: st.activities, hits: st.habitHits, onlyIds: only);
     if (engagements.isEmpty) return const SizedBox.shrink();
     final weeks =
-        fourWeekTrend(activities: st.activities, hits: st.habitHits);
+        fourWeekTrend(activities: st.activities, hits: st.habitHits, onlyIds: only);
     final kept = engagements.where((e) => e.kept).length;
     final total = engagements.length;
     final pct = engagementPct(engagements);
@@ -108,10 +140,11 @@ Future<void> showWeekDashboardSheet(BuildContext context, AppLogic logic) {
     builder: (ctx) {
       final cs = Theme.of(ctx).colorScheme;
       final st = logic.state;
+      final only = _engagedIds();
       final engagements = rollingWeekEngagements(
-          activities: st.activities, hits: st.habitHits);
+          activities: st.activities, hits: st.habitHits, onlyIds: only);
       final weeks =
-          fourWeekTrend(activities: st.activities, hits: st.habitHits);
+          fourWeekTrend(activities: st.activities, hits: st.habitHits, onlyIds: only);
       final kept = engagements.where((e) => e.kept).length;
       final total = engagements.length;
       final pct = engagementPct(engagements);

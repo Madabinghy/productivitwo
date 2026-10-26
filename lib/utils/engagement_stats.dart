@@ -49,15 +49,29 @@ String ymdOf(DateTime d) =>
     '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 List<Activity> _weeklyHabits(Iterable<Activity> activities,
-        {Set<String>? domainIds}) =>
+        {Set<String>? domainIds, Set<String>? onlyIds}) =>
     activities
         .where((a) =>
             !a.deleted &&
             a.isHabit &&
             a.habitFreq != null &&
             a.habitFreq != HabitFreq.monthly &&
-            (domainIds == null || domainIds.contains(a.domainId)))
+            (domainIds == null || domainIds.contains(a.domainId)) &&
+            (onlyIds == null || onlyIds.contains(a.id)))
         .toList();
+
+/// « Ma semaine » ne juge que les routines RATTACHÉES à un objectif en cours
+/// (décision 2026-10) : les ids des engagements de routine des objectifs
+/// actifs. Null quand aucun objectif n'en a : on retombe sur toutes les
+/// routines plutôt que sur un vide.
+Set<String>? engagedRoutineIds(Iterable<StrategicObjective> objectives) {
+  final ids = <String>{
+    for (final o in objectives)
+      if (o.status == 'active')
+        for (final c in o.routineCommitments) c.activityId,
+  };
+  return ids.isEmpty ? null : ids;
+}
 
 int _weekTarget(Activity h) {
   final base = h.habitTarget ?? 1;
@@ -88,9 +102,10 @@ List<EngagementStat> weekEngagements({
   required List<HabitHit> hits,
   required DateTime weekStart,
   Set<String>? domainIds,
+  Set<String>? onlyIds,
 }) {
   return [
-    for (final h in _weeklyHabits(activities, domainIds: domainIds))
+    for (final h in _weeklyHabits(activities, domainIds: domainIds, onlyIds: onlyIds))
       EngagementStat(
         id: h.id,
         domainId: h.domainId,
@@ -107,11 +122,12 @@ List<EngagementStat> rollingWeekEngagements({
   required List<Activity> activities,
   required List<HabitHit> hits,
   Set<String>? domainIds,
+  Set<String>? onlyIds,
 }) {
   final now = DateTime.now();
   final from = now.subtract(const Duration(days: 7));
   return [
-    for (final h in _weeklyHabits(activities, domainIds: domainIds))
+    for (final h in _weeklyHabits(activities, domainIds: domainIds, onlyIds: onlyIds))
       EngagementStat(
         id: h.id,
         domainId: h.domainId,
@@ -129,6 +145,7 @@ List<({String label, int pct})> fourWeekTrend({
   required List<Activity> activities,
   required List<HabitHit> hits,
   Set<String>? domainIds,
+  Set<String>? onlyIds,
 }) {
   final monday = mondayOf(DateTime.now());
   final out = <({String label, int pct})>[
@@ -139,11 +156,12 @@ List<({String label, int pct})> fourWeekTrend({
             activities: activities,
             hits: hits,
             weekStart: monday.subtract(Duration(days: 7 * back)),
-            domainIds: domainIds)),
+            domainIds: domainIds,
+            onlyIds: onlyIds)),
       ),
   ];
   final rolling = rollingWeekEngagements(
-      activities: activities, hits: hits, domainIds: domainIds);
+      activities: activities, hits: hits, domainIds: domainIds, onlyIds: onlyIds);
   out.add((label: '7 j', pct: engagementPct(rolling)));
   return out;
 }
