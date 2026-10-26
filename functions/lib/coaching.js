@@ -8,6 +8,9 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
+// Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
+// lib/utils/engagement_stats.dart (kKeptRatio).
+const KEPT_RATIO = 0.8;
 const COACHING_STATUSES = ["prospect", "explo", "actif", "autonome", "termine"];
 const CONSENT_URL = "https://coachconsent-dzos75b65q-uc.a.run.app";
 const coachingRef = (id) => db_1.db.doc(`coaching/${id}`);
@@ -167,27 +170,25 @@ async function buildDashboard(coacheeUid, sharing) {
         const done = doneInRange(String(h.id), rollingFrom, now.getTime() + 1);
         return {
             id: h.id, domainId: (_a = h.domainId) !== null && _a !== void 0 ? _a : null, label: h.name,
-            target, done, kept: done >= target,
+            target, done, kept: done / target >= KEPT_RATIO,
         };
     });
+    // Pourcentage = moyenne des parts faites (crédit partiel), comme l'app.
+    const pctOf = (ratios) => ratios.length === 0 ? 0 : Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100);
     // Tendance : 3 semaines calendaires RÉVOLUES (S-3 → S-1), puis les
     // 7 jours glissants comme dernier bloc — cohérent avec les engagements.
     const weeks = [3, 2, 1].map((back) => {
         const ws = new Date(monday.getTime() - back * 7 * 86400000);
-        const kept = habits.filter((h) => doneInWeek(String(h.id), ws) >= weekTarget(h)).length;
         return {
             startYmd: ws.toISOString().slice(0, 10),
             label: `S-${back}`,
-            pct: habits.length === 0 ? 0 : Math.round((kept / habits.length) * 100),
+            pct: pctOf(habits.map((h) => Math.min(doneInWeek(String(h.id), ws) / weekTarget(h), 1))),
         };
     });
     weeks.push({
         startYmd: new Date(rollingFrom).toISOString().slice(0, 10),
         label: "7 j",
-        pct: habits.length === 0
-            ? 0
-            : Math.round((habits.filter((h) => doneInRange(String(h.id), rollingFrom, now.getTime() + 1) >=
-                weekTarget(h)).length / habits.length) * 100),
+        pct: pctOf(habits.map((h) => Math.min(doneInRange(String(h.id), rollingFrom, now.getTime() + 1) / weekTarget(h), 1))),
     });
     // Dernière activité — périmètre partagé uniquement (minimisation).
     let lastActivityAt = null;

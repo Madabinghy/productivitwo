@@ -28,7 +28,7 @@ class WeekDashboardCard extends StatelessWidget {
         fourWeekTrend(activities: st.activities, hits: st.habitHits);
     final kept = engagements.where((e) => e.kept).length;
     final total = engagements.length;
-    final pct = total == 0 ? 0 : ((kept / total) * 100).round();
+    final pct = engagementPct(engagements);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
@@ -114,7 +114,7 @@ Future<void> showWeekDashboardSheet(BuildContext context, AppLogic logic) {
           fourWeekTrend(activities: st.activities, hits: st.habitHits);
       final kept = engagements.where((e) => e.kept).length;
       final total = engagements.length;
-      final pct = total == 0 ? 0 : ((kept / total) * 100).round();
+      final pct = engagementPct(engagements);
       final delta = weeks.length >= 2
           ? weeks.last.pct - weeks[weeks.length - 2].pct
           : 0;
