@@ -8,6 +8,8 @@ const admin = require("firebase-admin");
 const crypto_1 = require("crypto");
 const db_1 = require("./db");
 const execute_1 = require("./execute");
+const elan_1 = require("./elan");
+const badges_mcp_1 = require("./badges_mcp");
 // Engagement « tenu » dès 80 % de sa cible (crédit partiel, 2026-10) — même règle que
 // lib/utils/engagement_stats.dart (kKeptRatio).
 const KEPT_RATIO = 0.8;
@@ -20,6 +22,7 @@ function sharingOf(data) {
     return {
         domainIds: Array.isArray(s.domainIds) ? s.domainIds.map(String) : [],
         granularity: s.granularity === "detail" ? "detail" : "status",
+        state: s.state === true,
     };
 }
 /** Journal RGPD : chaque transition de consentement/périmètre est horodatée,
@@ -229,9 +232,52 @@ async function buildDashboard(coacheeUid, sharing) {
     const intention = typeof rawIntention === "string" && rawIntention.trim() !== ""
         ? rawIntention.trim()
         : null;
+    // Badges (des faits, périmètre des domaines partagés pour les séries) et,
+    // si la granularité « état » est accordée, l'élan de la semaine.
+    const [badgesDoc, metaDoc] = await Promise.all([
+        db_1.db.doc(`users/${coacheeUid}/data/badges`).get(),
+        db_1.db.doc(`users/${coacheeUid}/data/meta`).get(),
+    ]);
+    const metaData = metaDoc.exists ? metaDoc.data() : {};
+    const badges = (0, badges_mcp_1.badgesSummary)((0, badges_mcp_1.badgesForCoach)(badgesDoc.exists ? (0, badges_mcp_1.parseSnapshot)(badgesDoc.data()) : null, sharedDomains), (0, badges_mcp_1.parseHunts)(metaData.badgeHunts));
+    if (badges)
+        delete badges._hint;
+    let elan = null;
+    if (sharing.state) {
+        const tz = typeof metaData.tzOffsetMin === "number" ? metaData.tzOffsetMin : null;
+        const dayStart = typeof metaData.dayStartMin === "number" ? metaData.dayStartMin : elan_1.DEFAULT_DAY_START_MIN;
+        const fromYmd = new Date(now.getTime() - 8 * 86400000).toISOString().slice(0, 10);
+        const [moodSnap, schedSnapW, hitsSnapW] = await Promise.all([
+            db_1.db.collection(`users/${coacheeUid}/mood_marks`).where("ymd", ">=", fromYmd).get(),
+            db_1.db.collection(`users/${coacheeUid}/daily_schedules`).where(admin.firestore.FieldPath.documentId(), ">=", fromYmd).get(),
+            db_1.db.collection(`users/${coacheeUid}/habitHits`).where("ts", ">=", new Date(now.getTime() - 9 * 86400000).toISOString()).get(),
+        ]);
+        const s = (0, elan_1.elanSummary)({
+            marks: moodSnap.docs.map((d) => d.data()),
+            schedulesByYmd: new Map(schedSnapW.docs.map((d) => [d.id, (d.data().blocks || [])])),
+            hits: hitsSnapW.docs.map((d) => d.data()),
+            activities: actSnap.docs.map((d) => (Object.assign({ id: d.id }, d.data()))),
+            todayYmd: (0, elan_1.livedParts)(now, tz, dayStart).ymd,
+            offsetMin: tz,
+            dayStartMin: dayStart,
+        });
+        const line = (0, elan_1.formatElanSummary)(s);
+        elan = line === null ? { summary: null } : {
+            summary: line,
+            meanElan: s.mean,
+            marks: s.count,
+            lowWindows: s.lowCount,
+            lowWindowsWon: s.lowWon,
+            discipline: s.discipline,
+            days: s.days.map((d) => ({ ymd: d.ymd, marks: d.marks, mood: d.mood })),
+        };
+    }
     return {
         date: ymd,
         granularity: sharing.granularity,
+        stateShared: sharing.state,
+        badges,
+        elan,
         domains,
         activities,
         engagements,
@@ -249,7 +295,7 @@ async function buildDashboard(coacheeUid, sharing) {
 // Texte déterministe prêt à relire/copier avant séance — les chiffres du
 // dashboard + la fiche (notes, prochaine séance). Aucune IA : les faits.
 function buildPresessionReport(fiche, dash) {
-    var _a, _b, _c, _d, _e, _f, _g, _h;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
     const name = (_b = (_a = fiche.name) !== null && _a !== void 0 ? _a : fiche.email) !== null && _b !== void 0 ? _b : "Coaché";
     const today = new Date().toISOString().slice(0, 10);
     const engagements = (_c = dash.engagements) !== null && _c !== void 0 ? _c : [];
@@ -272,8 +318,18 @@ function buildPresessionReport(fiche, dash) {
     if (typeof dash.intention === "string") {
         lines.push(`Intention du jour : « ${dash.intention} »`);
     }
-    const minutes = (_e = dash.weekMinutesByActivity) !== null && _e !== void 0 ? _e : null;
-    const actNames = new Map(((_f = dash.activities) !== null && _f !== void 0 ? _f : []).map((a) => [String(a.id), String(a.name)]));
+    const badges = dash.badges;
+    if (badges) {
+        lines.push(`Badges : ${badges.acquired} / ${badges.total} paliers${badges.lastObtained ? ` · dernier obtenu : ${badges.lastObtained}` : ""}`);
+        const hunts = (_e = badges.hunts) !== null && _e !== void 0 ? _e : [];
+        if (hunts.length)
+            lines.push(`  En chasse : ${hunts.join(" · ")}`);
+    }
+    const elan = dash.elan;
+    if (elan && typeof elan.summary === "string")
+        lines.push(elan.summary);
+    const minutes = (_f = dash.weekMinutesByActivity) !== null && _f !== void 0 ? _f : null;
+    const actNames = new Map(((_g = dash.activities) !== null && _g !== void 0 ? _g : []).map((a) => [String(a.id), String(a.name)]));
     if (minutes != null && Object.keys(minutes).length > 0) {
         const top = Object.entries(minutes)
             .sort((a, b) => b[1] - a[1])
@@ -282,10 +338,10 @@ function buildPresessionReport(fiche, dash) {
         lines.push(`Temps (7 j) : ${top.join(" · ")}`);
     }
     lines.push("");
-    if ((_g = fiche.nextSession) === null || _g === void 0 ? void 0 : _g.trim()) {
+    if ((_h = fiche.nextSession) === null || _h === void 0 ? void 0 : _h.trim()) {
         lines.push(`Prochaine séance : ${fiche.nextSession.trim()}`);
     }
-    if ((_h = fiche.notes) === null || _h === void 0 ? void 0 : _h.trim()) {
+    if ((_j = fiche.notes) === null || _j === void 0 ? void 0 : _j.trim()) {
         lines.push(`Notes de coaching :`);
         lines.push(fiche.notes.trim());
     }
@@ -336,6 +392,7 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                     sharing: {
                         domainCount: sharing.domainIds.length,
                         granularity: sharing.granularity,
+                        state: sharing.state,
                     },
                 };
             });
@@ -658,8 +715,8 @@ exports.coachConsent = (0, https_1.onRequest)({ cors: true, invoker: "public" },
             }
         }
         const prevConsent = String((_e = d.consent) !== null && _e !== void 0 ? _e : "pending");
-        await coachingRef(tok.coachingId).set(Object.assign({ consent: granted ? "granted" : "revoked", consentAt: firestore_1.FieldValue.serverTimestamp() }, (granted ? { sharing: { domainIds: [], granularity: "status" } } : {})), { merge: true });
-        await logConsentEvent(tok.coachingId, granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused", granted ? { domainIds: [], granularity: "status" } : sharingOf(d));
+        await coachingRef(tok.coachingId).set(Object.assign({ consent: granted ? "granted" : "revoked", consentAt: firestore_1.FieldValue.serverTimestamp() }, (granted ? { sharing: { domainIds: [], granularity: "status", state: false } } : {})), { merge: true });
+        await logConsentEvent(tok.coachingId, granted ? "granted" : prevConsent === "granted" ? "revoked" : "refused", granted ? { domainIds: [], granularity: "status", state: false } : sharingOf(d));
         // Lier l'uid si le compte existe déjà (sinon il se liera plus tard).
         try {
             const user = await admin.auth().getUserByEmail(d.email);
@@ -732,7 +789,7 @@ exports.coacheeApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
         res.status(401).json({ error: "Token invalide ou expiré" });
         return;
     }
-    const { action, domainIds, granularity } = req.body;
+    const { action, domainIds, granularity, state } = req.body;
     try {
         const fiche = await coacheeFiche(uid, email);
         if (action === "getLink") {
@@ -766,6 +823,7 @@ exports.coacheeApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, a
             const sharing = {
                 domainIds: [...new Set(wanted.filter((id) => valid.has(id)))],
                 granularity: gran,
+                state: state === true,
             };
             await coachingRef(fiche.id).set({ sharing, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
             await logConsentEvent(fiche.id, "sharing_updated", sharing);

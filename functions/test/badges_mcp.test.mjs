@@ -55,3 +55,15 @@ test("résumé et liste", () => {
   assert.match(txt, /▢ Enchaîneur \[enchaineur\] — pas encore mesuré/);
   assert.equal(badgesSummary(null, []), null);
 });
+
+test("vue coach : les séries hors domaines partagés sont retirées, le reste passe", async () => {
+  const { badgesForCoach } = await import("../lib/badges_mcp.js");
+  const s = parseSnapshot({ acquired: 1, total: 2, badges: [
+    { id: "serie-a", family: "routines", name: "A", level: 1, tiers: [3], value: 3, domainId: "d1" },
+    { id: "serie-b", family: "routines", name: "B", level: 1, tiers: [3], value: 3, domainId: "d2" },
+    { id: "actions", family: "actions", name: "Actions", level: 0, tiers: [10], value: 2 },
+  ] });
+  const v = badgesForCoach(s, new Set(["d1"]));
+  assert.deepEqual(v.badges.map((b) => b.id), ["serie-a", "actions"]);
+  assert.equal(badgesForCoach(null, new Set()), null);
+});

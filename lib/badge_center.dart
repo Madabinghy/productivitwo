@@ -99,6 +99,8 @@ class BadgeCenter extends ChangeNotifier {
           'nextTarget': b.nextTarget,
           'obtained': b.obtained == null ? null : ymdOf(b.obtained!),
           'measured': b.def.measured,
+          if (b.def.family == BadgeFamily.routines)
+            'domainId': logic.state.activities.where((a) => a.id == b.def.subjectId).firstOrNull?.domainId,
         },
     ];
     final body = {'acquired': d.acquired, 'total': d.total, 'badges': badges};

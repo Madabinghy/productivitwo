@@ -63,6 +63,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
   String _consent = 'pending';
   List<String> _domainIds = [];
   String _granularity = 'status';
+  bool _shareState = false; // granularité « état » : élan, effort, humeur
   List<Domain> _domains = [];
 
   @override
@@ -89,6 +90,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
             (sharing['domainIds'] as List?)?.cast<String>() ?? <String>[];
         _granularity =
             sharing['granularity'] == 'detail' ? 'detail' : 'status';
+        _shareState = sharing['state'] == true;
       }
     } catch (e) {
       _error = '$e';
@@ -101,6 +103,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
     final domains = _domains;
     final selected = _domainIds.toSet();
     var granularity = _granularity;
+    var shareState = _shareState;
 
     final saved = await showModalBottomSheet<bool>(
       context: context,
@@ -204,7 +207,26 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
                 granCard('detail', 'Détail',
                     'Statuts + temps par activité + programme du jour.'),
               ]),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
+              Text('MON ÉTAT',
+                  style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: cs.onSurface.withOpacity(.45))),
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: shareState,
+                onChanged: (v) => setLocal(() => shareState = v),
+                title: const Text('Partager mon élan, mes efforts et mon humeur',
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    'Les pointages de la semaine (élan moyen, fois où j\u2019ai fait quand même). '
+                    'Sans ce réglage, il voit mes badges mais pas mes états.',
+                    style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.65))),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -231,6 +253,7 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
         'action': 'updateSharing',
         'domainIds': selected.toList(),
         'granularity': granularity,
+        'state': shareState,
       });
       await _reload();
     } catch (e) {
@@ -333,12 +356,13 @@ class _CoachSpaceScreenState extends State<CoachSpaceScreen> {
                                       'À toi de choisir.'
                                   : 'Il voit : '
                                       '${_domainIds.map((id) => domainNames[id] ?? '…').join(' · ')}\n'
-                                      'Granularité : ${_granularity == 'detail' ? 'détail (temps + programme du jour)' : 'statuts seulement'}.',
+                                      'Granularité : ${_granularity == 'detail' ? 'détail (temps + programme du jour)' : 'statuts seulement'}'
+                                      '${_shareState ? ' · mon état (élan, efforts, humeur) partagé' : ''}.',
                               style: TextStyle(
                                   fontSize: 13,
                                   color: cs.onSurface.withOpacity(.7))),
                           const SizedBox(height: 4),
-                          Text('Il voit ce que tu as fait, pas tes états.',
+                          Text(_shareState ? 'Il voit ce que tu as fait et, cette semaine, comment tu l\u2019as vécu.' : 'Il voit ce que tu as fait, pas tes états.',
                               style: TextStyle(
                                   fontSize: 11.5,
                                   fontStyle: FontStyle.italic,

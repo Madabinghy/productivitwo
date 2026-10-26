@@ -18,6 +18,7 @@ export interface BadgeSnapshotItem {
   nextTarget?: number | null;
   obtained?: string | null; // YYYY-MM-DD du dernier palier
   measured?: boolean;
+  domainId?: string | null; // séries de routine : domaine de la routine (vue coach)
 }
 
 export interface BadgeSnapshot {
@@ -72,6 +73,7 @@ function parseItem(raw: unknown): BadgeSnapshotItem | null {
     nextTarget: typeof r.nextTarget === "number" ? r.nextTarget : null,
     obtained: typeof r.obtained === "string" ? r.obtained : null,
     measured: r.measured !== false,
+    domainId: typeof r.domainId === "string" ? r.domainId : null,
   };
 }
 
@@ -180,4 +182,14 @@ export function formatBadgeList(snap: BadgeSnapshot | null, hunts: BadgeHuntDoc[
     }
   }
   return lines.join("\n");
+}
+
+/** Vue coach : les badges de série dont la routine n'est pas dans un domaine partagé sont retirés
+ *  (minimisation) ; le compteur affiché ne compte pas les séries, il reste tel quel. */
+export function badgesForCoach(snap: BadgeSnapshot | null, sharedDomains: Set<string>): BadgeSnapshot | null {
+  if (!snap) return null;
+  return {
+    ...snap,
+    badges: snap.badges.filter((b) => b.family !== "routines" || (b.domainId != null && sharedDomains.has(b.domainId))),
+  };
 }
