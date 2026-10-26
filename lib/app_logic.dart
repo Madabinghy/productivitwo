@@ -108,7 +108,7 @@ typedef DimScore = ({
   bool isFocus,
 });
 
-class AppLogic {
+class AppLogic implements HuntStore {
   AppState state;
 
   final void Function() _rootOnChange;
@@ -1680,6 +1680,13 @@ class AppLogic {
   /// Badges visés attrapés depuis le lancement : le signal d'Aujourd'hui les
   /// annonce « Badge visé obtenu » au lieu de « Badge obtenu ».
   final Set<String> caughtHuntBadgeIds = {};
+
+  @override
+  List<BadgeHunt> get hunts => badgeHunts;
+  @override
+  Future<void> hunt(BadgeHunt h) => huntBadge(h);
+  @override
+  Future<void> stop(Iterable<String> badgeIds) => stopHunts(badgeIds);
 
   Future<void> huntBadge(BadgeHunt h) async {
     final list = [...badgeHunts.where((x) => x.badgeId != h.badgeId), h];

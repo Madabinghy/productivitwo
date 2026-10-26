@@ -1,11 +1,57 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'dart:async';
+
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+
+/// Chasses sur le web : `data/meta.badgeHunts` suivi en temps réel, écrit par
+/// `setBadgeHunts` (même règle que le mobile : trois au plus).
+class WebHuntStore extends ChangeNotifier implements HuntStore {
+  final FirestoreSync sync;
+  StreamSubscription<Map<String, dynamic>>? _sub;
+  List<BadgeHunt> _hunts = const [];
+  WebHuntStore(this.sync) {
+    _sub = sync.streamMetaDoc().listen((m) {
+      _hunts = parseBadgeHunts(m['badgeHunts']);
+      notifyListeners();
+    });
+  }
+
+  @override
+  List<BadgeHunt> get hunts => _hunts;
+
+  @override
+  Future<void> hunt(BadgeHunt h) async {
+    final list = [..._hunts.where((x) => x.badgeId != h.badgeId), h];
+    if (list.length > kMaxBadgeHunts) return;
+    _hunts = list;
+    notifyListeners();
+    await sync.setBadgeHunts(list.map((x) => x.toJson()).toList());
+  }
+
+  @override
+  Future<void> stop(Iterable<String> badgeIds) async {
+    final ids = badgeIds.toSet();
+    if (!_hunts.any((x) => ids.contains(x.badgeId))) return;
+    _hunts = _hunts.where((x) => !ids.contains(x.badgeId)).toList();
+    notifyListeners();
+    await sync.setBadgeHunts(_hunts.map((x) => x.toJson()).toList());
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+}
 
 /// Badges sur le web (2026-10) : module « BADGES » de la colonne de droite
 /// d'Aujourd'hui (compteur hors séries, séries en cours, bande de six badges,
@@ -24,6 +70,8 @@ class WebBadgesCard extends StatefulWidget {
   final int dayStartMin;
   final bool folded;
   final VoidCallback onToggleFold;
+  final WebHuntStore? huntStore;
+  final List<ScheduleBlock> todayBlocks;
   const WebBadgesCard({
     super.key,
     required this.sync,
@@ -37,6 +85,8 @@ class WebBadgesCard extends StatefulWidget {
     required this.dayStartMin,
     required this.folded,
     required this.onToggleFold,
+    this.huntStore,
+    this.todayBlocks = const [],
   });
 
   @override
@@ -52,7 +102,18 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
   @override
   void initState() {
     super.initState();
+    widget.huntStore?.addListener(_onHunts);
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    widget.huntStore?.removeListener(_onHunts);
+    super.dispose();
+  }
+
+  void _onHunts() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _fetch() async {
@@ -94,6 +155,12 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
     final acquired = all.where((b) => b.acquired).toList()..sort((a, b) => (b.obtained ?? DateTime(2000)).compareTo(a.obtained ?? DateTime(2000)));
     final locked = all.where((b) => !b.acquired && b.showGauge && b.def.measured).toList();
     final strip = [...acquired, ...locked].take(6).toList();
+    final store = widget.huntStore;
+    final views = store == null ? const <HuntView>[] : huntViews(store.hunts, deck);
+    // Chasses attrapées : sortent toutes seules (même règle que BadgeCenter).
+    final caught = views.where((v) => v.caught).map((v) => v.badge.def.id).toList();
+    if (caught.isNotEmpty) store!.stop(caught);
+    final open = views.where((v) => !v.caught).toList();
     return Container(
       padding: widget.folded ? const EdgeInsets.fromLTRB(20, 14, 20, 14) : const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
@@ -125,18 +192,27 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
                   message: b.def.name,
                   child: InkWell(
                     customBorder: const CircleBorder(),
-                    onTap: () => showBadgeSheet(context, b),
+                    onTap: () => showBadgeSheet(context, b, logic: widget.huntStore),
                     child: Opacity(opacity: b.acquired ? 1 : .55, child: BadgeView(state: b, size: 40)),
                   ),
                 ),
               ),
           ]),
+          if (open.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Row(children: [
+              Icon(Icons.gps_fixed, size: 13, color: kBadgeBrass),
+              SizedBox(width: 6),
+              Text('BADGES VISÉS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kBadgeBrass)),
+            ]),
+            for (final v in open) _huntRow(v),
+          ],
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton.icon(
               style: TextButton.styleFrom(foregroundColor: kBPrimary, padding: EdgeInsets.zero),
-              onPressed: () => showWebBadgeDeck(context, deck),
+              onPressed: () => showWebBadgeDeck(context, deck, hunts: widget.huntStore),
               icon: const Icon(Icons.grid_view_rounded, size: 16),
               label: const Text('Voir le deck', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ),
@@ -145,11 +221,46 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
       ]),
     );
   }
+
+  /// Une chasse : badge, palier, rythme, levier du jour (règle du mobile).
+  Widget _huntRow(HuntView v) {
+    final now = DateTime.now();
+    final b = v.badge;
+    final today = livedDate(now, widget.dayStartMin);
+    final todayYmd = ymdOf(today);
+    final reachedByRoutine = {
+      for (final a in widget.activities)
+        if (!a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily) a.id: routineReachedDays(a, widget.hits, dayStartMin: widget.dayStartMin),
+    };
+    final score = scoreDay(today, activities: widget.activities, reachedDaysByRoutine: reachedByRoutine,
+        schedule: DailySchedule(date: todayYmd, generatedBy: 'web', generatedAt: now, blocks: widget.todayBlocks));
+    final todayReached = b.def.subjectId != null && (reachedByRoutine[b.def.subjectId]?.contains(todayYmd) ?? false);
+    final readingDue = b.def.id == 'releve-fidele' && widget.objectives.any((o) => isReadingDue(o, now));
+    final lever = v.lever(todayReached: todayReached, readingDue: readingDue, todayRoutinesDue: score.routinesDue, todayRoutinesReached: score.routinesReached, todayBlocks: score.blocks, todayBlocksDone: score.blocksDone);
+    return InkWell(
+      onTap: () => showBadgeSheet(context, b, logic: widget.huntStore),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          BadgeView(state: b, size: 36),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('${b.def.name} · ${fmtInt(v.tierValue)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'} · ${v.paceLabel(now)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: kBText)),
+              if (lever.text.isNotEmpty) Text(lever.text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: todayReached ? kBPrimary : kBText3)),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
 }
 
 /// Le deck complet en dialog (familles, badges à 72 px, fiche au clic).
-Future<void> showWebBadgeDeck(BuildContext context, BadgeDeck deck) {
+Future<void> showWebBadgeDeck(BuildContext context, BadgeDeck deck, {HuntStore? hunts}) {
   final last = deck.lastObtained;
+  final views = hunts == null ? const <HuntView>[] : huntViews(hunts.hunts, deck).where((v) => !v.caught).toList();
   return showDialog<void>(
     context: context,
     builder: (ctx) => Dialog(
@@ -183,6 +294,33 @@ Future<void> showWebBadgeDeck(BuildContext context, BadgeDeck deck) {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
               children: [
+                if (views.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8, bottom: 6),
+                    child: Row(children: [
+                      Icon(Icons.gps_fixed, size: 13, color: kBadgeBrass),
+                      SizedBox(width: 6),
+                      Text('EN CHASSE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1, color: kBadgeBrass)),
+                    ]),
+                  ),
+                  for (final v in views)
+                    InkWell(
+                      onTap: () => showBadgeSheet(ctx, v.badge, logic: hunts),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Row(children: [
+                          BadgeView(state: v.badge, size: 40),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text('${v.badge.def.name} · palier ${fmtInt(v.tierValue)}${v.badge.def.unit.isEmpty ? '' : ' ${v.badge.def.unit}'}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kBText)),
+                              Text(v.paceLabel(DateTime.now()), style: const TextStyle(fontSize: 12, color: kBText3)),
+                            ]),
+                          ),
+                        ]),
+                      ),
+                    ),
+                ],
                 for (final f in BadgeFamily.values)
                   if (deck.ofFamily(f).isNotEmpty) ...[
                     Padding(
@@ -207,7 +345,7 @@ Future<void> showWebBadgeDeck(BuildContext context, BadgeDeck deck) {
                             width: 104,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(10),
-                              onTap: () => showBadgeSheet(ctx, b),
+                              onTap: () => showBadgeSheet(ctx, b, logic: hunts),
                               child: Column(children: [
                                 Opacity(opacity: b.acquired ? 1 : .55, child: BadgeView(state: b, size: 72)),
                                 const SizedBox(height: 4),
