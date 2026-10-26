@@ -12,6 +12,9 @@ import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
+import 'package:productivitwo_v1/utils/badges_logic.dart' show routineBadge;
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
+import 'package:productivitwo_v1/widgets/badge_painter.dart';
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -663,6 +666,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               ),
             ),
             _rowLauncher(pal, a, done: done),
+            if (a.habitFreq == HabitFreq.daily) ...[
+              const SizedBox(width: 6),
+              _seriesBadge(a),
+            ],
             const SizedBox(width: 10),
             Expanded(
               child: InkWell(
@@ -737,6 +744,20 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   /// Icône de la routine ; avec une activité liée, elle devient le lanceur :
   /// ▶ dans un rond orange (■ rouge si le chrono tourne dessus), appui long =
   /// changer l'activité via la fiche.
+  /// Le badge de série de la routine (36 px) ; tap = sa fiche (paliers, bande
+  /// des 30 derniers jours, comment l'obtenir).
+  Widget _seriesBadge(Activity a) {
+    final b = routineBadge(a, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin);
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: () => showBadgeSheet(context, b),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Opacity(opacity: b.acquired ? 1 : .6, child: BadgeView(state: b, size: 36)),
+      ),
+    );
+  }
+
   Widget _rowLauncher(NowPalette pal, Activity a, {required bool done}) {
     final linked = _linkedOf(a);
     if (linked == null) {

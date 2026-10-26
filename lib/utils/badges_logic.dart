@@ -286,6 +286,40 @@ RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int 
   );
 }
 
+/// Le badge de série d'une routine quotidienne, complet (paliers, faits, bande
+/// des 30 derniers jours) : le deck et la fiche routine / le segment Routines
+/// d'Aujourd'hui l'affichent tel quel.
+BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
+  final s = routineSeries(a, hits, now, dayStartMin: dayStartMin);
+  final reached = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+  final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
+  final today = livedDate(now, dayStartMin);
+  final cells = <TrackCell>[];
+  for (var i = 29; i >= 0; i--) {
+    final y = ymdOf(today.subtract(Duration(days: i)));
+    if (i == 0) {
+      cells.add(reached.contains(y) ? TrackCell.hit : TrackCell.current);
+    } else if (first == null || y.compareTo(first) < 0) {
+      cells.add(TrackCell.neutral);
+    } else {
+      cells.add(reached.contains(y) ? TrackCell.hit : TrackCell.miss);
+    }
+  }
+  final hits30 = cells.where((c) => c == TrackCell.hit).length;
+  return BadgeState(
+    def: BadgeDef(id: 'serie-${a.id}', family: BadgeFamily.routines, name: a.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: a.id),
+    level: _levelOf(kRoutineTiers, s.longest),
+    value: s.current,
+    tierDates: s.tierDates,
+    facts: [
+      ('Série en cours', _plural(s.current, 'jour', 'jours')),
+      ('Série la plus longue', _plural(s.longest, 'jour', 'jours')),
+      if (s.sinceDays > 0) ('Jours atteints sur ${s.sinceDays}', '${s.reachedDays}'),
+    ],
+    track: BadgeTrack(cells: cells, caption: '30 derniers jours · $hits30 jours atteints'),
+  );
+}
+
 // ─── Journées ───────────────────────────────────────────────────────────────
 
 class DayScore {
@@ -516,18 +550,7 @@ BadgeDeck computeBadges({
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   for (final a in routines) {
-    final s = routineSeries(a, habitHits, now, dayStartMin: dayStartMin);
-    out.add(BadgeState(
-      def: BadgeDef(id: 'serie-${a.id}', family: BadgeFamily.routines, name: a.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: a.id),
-      level: _levelOf(kRoutineTiers, s.longest),
-      value: s.current,
-      tierDates: s.tierDates,
-      facts: [
-        ('Série en cours', _plural(s.current, 'jour', 'jours')),
-        ('Série la plus longue', _plural(s.longest, 'jour', 'jours')),
-        if (s.sinceDays > 0) ('Jours atteints sur ${s.sinceDays}', '${s.reachedDays}'),
-      ],
-    ));
+    out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin));
   }
 
   // Objectifs.
@@ -811,13 +834,7 @@ BadgeDeck computeBadges({
 
   BadgeTrack? trackOf(BadgeState b) {
     final id = b.def.id;
-    if (id.startsWith('serie-')) {
-      final a = routines.where((x) => x.id == b.def.subjectId).firstOrNull;
-      if (a == null) return null;
-      final reached = routineReachedDays(a, habitHits, dayStartMin: dayStartMin);
-      final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
-      return daysTrack(reached.contains, neutral: (y) => first == null || y.compareTo(first) < 0, what: 'jours atteints');
-    }
+    if (id.startsWith('serie-')) return b.track; // posé par routineBadge
     if (id.startsWith('temps-')) {
       final o = objectives.where((x) => x.id == b.def.subjectId).firstOrNull;
       if (o == null) return null;

@@ -265,111 +265,120 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     return 'pas encore';
   }
 
-  String _num(num v) => v is int || v == v.roundToDouble() ? fmtInt(v) : v.toStringAsFixed(1).replaceAll('.', ',');
+  String _num(num v) => _numOf(v);
 
-  String _shortDate(DateTime d) {
-    const m = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
-    return '${d.day == 1 ? '1er' : d.day} ${m[d.month - 1]}';
-  }
+  String _shortDate(DateTime d) => _shortDateOf(d);
 
-  void _showFacts(BadgeState b) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: kBSurface,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .9,
-        maxChildSize: .95,
-        builder: (ctx, scroll) => ListView(
-        controller: scroll,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        children: [
-          Center(child: BadgeView(state: b, size: 150)),
+  void _showFacts(BadgeState b) => showBadgeSheet(context, b);
+}
+
+String _numOf(num v) => v is int || v == v.roundToDouble() ? fmtInt(v) : v.toStringAsFixed(1).replaceAll('.', ',');
+
+String _shortDateOf(DateTime d) {
+  const m = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  return '${d.day == 1 ? '1er' : d.day} ${m[d.month - 1]}';
+}
+
+/// La fiche d'un badge : badge, mesure, « à quoi ça correspond », paliers,
+/// « Où j'en suis », « Comment l'obtenir », faits. Ouverte depuis le deck, la
+/// rangée d'Objectifs et les routines d'Aujourd'hui.
+Future<void> showBadgeSheet(BuildContext context, BadgeState b) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: kBSurface,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: .9,
+      maxChildSize: .95,
+      builder: (ctx, scroll) => ListView(
+      controller: scroll,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      children: [
+        Center(child: BadgeView(state: b, size: 150)),
+        const SizedBox(height: 12),
+        Text(badgeFamilyLabel(b.def.family).toUpperCase(),
+            textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
+        Text(b.def.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kBText)),
+        const SizedBox(height: 6),
+        Text(
+          b.showGauge
+              ? '${_numOf(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unitLong}'
+              : (b.acquired && b.obtained != null ? 'Obtenu le ${_shortDateOf(b.obtained!)} ${b.obtained!.year}' : 'Pas encore obtenu'),
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 15, color: kBText),
+        ),
+        if (b.def.what.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
+        ],
+        if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
-          Text(badgeFamilyLabel(b.def.family).toUpperCase(),
-              textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
-          Text(b.def.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kBText)),
-          const SizedBox(height: 6),
-          Text(
-            b.showGauge
-                ? '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unitLong}'
-                : (b.acquired && b.obtained != null ? 'Obtenu le ${_shortDate(b.obtained!)} ${b.obtained!.year}' : 'Pas encore obtenu'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 15, color: kBText),
-          ),
-          if (b.def.what.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
-          ],
-          if (b.def.tiers.length > 1) ...[
-            const SizedBox(height: 12),
-            Wrap(spacing: 6, children: [
-              for (var i = 0; i < b.def.tiers.length; i++)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: i < b.level ? kBRaised : null,
-                    border: Border.all(color: i < b.level ? kBadgeBrassDark : (i == b.level ? kBPrimary : kBadgeLockedRim)),
-                  ),
-                  child: Text('${fmtInt(b.def.tiers[i])}${i < b.level ? ' ✓' : ''}',
-                      style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: i < b.level ? kBadgeBrass : (i == b.level ? kBPrimary : kBText4))),
+          Wrap(spacing: 6, children: [
+            for (var i = 0; i < b.def.tiers.length; i++)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: i < b.level ? kBRaised : null,
+                  border: Border.all(color: i < b.level ? kBadgeBrassDark : (i == b.level ? kBPrimary : kBadgeLockedRim)),
                 ),
-            ]),
-          ],
-          if (b.track case final t?) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('OÙ J\u2019EN SUIS', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
-                const SizedBox(height: 8),
-                BadgeTrackView(track: t, text3: kBText3),
-              ]),
-            ),
-          ],
-          if (b.def.how.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('COMMENT L\u2019OBTENIR', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
-                const SizedBox(height: 6),
-                Text(b.def.how, style: const TextStyle(fontSize: 13.5, height: 1.4, color: kBText2)),
-              ]),
-            ),
-          ],
+                child: Text('${fmtInt(b.def.tiers[i])}${i < b.level ? ' ✓' : ''}',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: i < b.level ? kBadgeBrass : (i == b.level ? kBPrimary : kBText4))),
+              ),
+          ]),
+        ],
+        if (b.track case final t?) ...[
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('SUR TES DONNÉES', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
-              for (final (k, v) in b.facts)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(children: [
-                    Expanded(child: Text(k, style: const TextStyle(fontSize: 14, color: kBText3))),
-                    Text(v, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: kBText)),
-                  ]),
-                ),
+              const Text('OÙ J\u2019EN SUIS', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+              const SizedBox(height: 8),
+              BadgeTrackView(track: t, text3: kBText3),
             ]),
           ),
-          const SizedBox(height: 12),
-          const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
         ],
+        if (b.def.how.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('COMMENT L\u2019OBTENIR', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+              const SizedBox(height: 6),
+              Text(b.def.how, style: const TextStyle(fontSize: 13.5, height: 1.4, color: kBText2)),
+            ]),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('SUR TES DONNÉES', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+            for (final (k, v) in b.facts)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Expanded(child: Text(k, style: const TextStyle(fontSize: 14, color: kBText3))),
+                  Text(v, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: kBText)),
+                ]),
+              ),
+          ]),
         ),
+        const SizedBox(height: 12),
+        const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
+      ],
       ),
-    );
-  }
+    ),
+  );
 }
