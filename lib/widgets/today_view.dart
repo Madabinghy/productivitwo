@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
 import 'package:productivitwo_v1/widgets/badge_lines.dart';
+import 'package:productivitwo_v1/widgets/objectives_day_view.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -40,6 +41,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// préparer la journée suivante (planif du lendemain).
 class TodayView extends StatefulWidget {
   final AppLogic logic;
+  final FirestoreSync? sync; // segment Objectifs (2026-10) : lecture des objectifs
   final BadgeCenter? badges; // lot 3 : signal « Badge obtenu », une fois
   // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
   final void Function(ScheduleBlock block)? onLaunch;
@@ -72,6 +74,7 @@ class TodayView extends StatefulWidget {
       {super.key,
       required this.logic,
     this.badges,
+    this.sync,
       this.onLaunch,
       this.onOpenSource,
       this.visible = true,
@@ -110,8 +113,10 @@ class TodayViewState extends State<TodayView> {
   // Le choix est persisté par appareil : l'app rouvre dans la dernière vue.
   static const _timelinePrefKey = 'today_view_timeline';
   // Segment Actions · Routines en tête (2026-10) ; persisté.
-  static const _segmentPrefKey = 'today_view_segment_routines';
-  bool _routinesSegment = false;
+  // Segment en tête : 'actions' (défaut) · 'routines' · 'objectives' (2026-10).
+  static const _segmentPrefKey = 'today_view_segment';
+  static const _legacySegmentPrefKey = 'today_view_segment_routines';
+  String _segment = 'actions';
   bool _timeline = false;
   bool _syncing = false;
   // Badges obtenus depuis la dernière ouverture (lot 3) : montrés une fois.
@@ -129,8 +134,8 @@ class TodayViewState extends State<TodayView> {
       if (saved != null && mounted && saved != _timeline) {
         setState(() => _timeline = saved);
       }
-      final seg = p.getBool(_segmentPrefKey);
-      if (seg != null && mounted) setState(() => _routinesSegment = seg);
+      final seg = p.getString(_segmentPrefKey) ?? (p.getBool(_legacySegmentPrefKey) == true ? 'routines' : null);
+      if (seg != null && mounted) setState(() => _segment = seg);
       final snooze = p.getString(_kDayGoalUpSnooze);
       final morning = p.getString(_kMorningDismissed);
       if (mounted) {
@@ -798,7 +803,7 @@ class TodayViewState extends State<TodayView> {
                   const SizedBox(height: 14),
                   _segmentBar(cs),
                 ],
-                if (!_showTomorrow && _routinesSegment)
+                if (!_showTomorrow && _segment == 'routines')
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
                     child: RoutinesDayView(
@@ -806,6 +811,18 @@ class TodayViewState extends State<TodayView> {
                       onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
                       onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
                       onStartTimed: widget.onStartTimed,
+                    ),
+                  )
+                else if (!_showTomorrow && _segment == 'objectives' && widget.sync != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: ObjectivesDayView(
+                      logic: widget.logic,
+                      sync: widget.sync!,
+                      blocks: _liveBlocks,
+                      onLaunch: widget.onNowLaunch ?? widget.onLaunch,
+                      onOpenSource: widget.onOpenSource,
+                      onOpenTask: widget.onOpenTask,
                     ),
                   )
                 else ...[
@@ -1038,11 +1055,11 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
-  void _setSegment(bool routines) {
-    if (routines == _routinesSegment) return;
+  void _setSegment(String segment) {
+    if (segment == _segment) return;
     HapticFeedback.selectionClick();
-    setState(() => _routinesSegment = routines);
-    SharedPreferences.getInstance().then((p) => p.setBool(_segmentPrefKey, routines));
+    setState(() => _segment = segment);
+    SharedPreferences.getInstance().then((p) => p.setString(_segmentPrefKey, segment));
   }
 
   /// Pilule « Actions · Routines » (handoff Segment Routines, 2026-10).
@@ -1086,8 +1103,9 @@ class TodayViewState extends State<TodayView> {
         border: Border.all(color: dark ? const Color(0x0FFFFFFF) : cs.outlineVariant.withOpacity(.4)),
       ),
       child: Row(children: [
-        seg('Actions', !_routinesSegment, dark ? kBPrimary : cs.primary, () => _setSegment(false)),
-        seg('Routines', _routinesSegment, kRoutineAccent, () => _setSegment(true)),
+        seg('Actions', _segment == 'actions', dark ? kBPrimary : cs.primary, () => _setSegment('actions')),
+        seg('Routines', _segment == 'routines', kRoutineAccent, () => _setSegment('routines')),
+        seg('Objectifs', _segment == 'objectives', const Color(0xFF00897B), () => _setSegment('objectives')),
       ]),
     );
   }
@@ -1124,7 +1142,7 @@ class TodayViewState extends State<TodayView> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => _setSegment(true),
+        onTap: () => _setSegment('routines'),
         child: Container(
           constraints: const BoxConstraints(minHeight: 52),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

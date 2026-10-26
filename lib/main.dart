@@ -3604,6 +3604,7 @@ class _AppRootState extends State<AppRoot>
             key: _todayKey,
             logic: logic,
             badges: _badges,
+            sync: _sync,
             onLaunch: _launchScheduledBlock,
             onOpenSource: _openBlockSource,
             // L'auto-scroll « maintenant » attend la 1ʳᵉ ouverture VISIBLE
