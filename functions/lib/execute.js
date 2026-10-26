@@ -54,6 +54,7 @@ exports.executeMarkChecklistItem = executeMarkChecklistItem;
 exports.executeLinkActionToActivity = executeLinkActionToActivity;
 exports.executeAddActivityAction = executeAddActivityAction;
 exports.executeLogRoutineHit = executeLogRoutineHit;
+exports.executeLogMood = executeLogMood;
 exports.executeMarkBlockDone = executeMarkBlockDone;
 exports.executeUpdateBlock = executeUpdateBlock;
 exports.executeGetAssistantMessages = executeGetAssistantMessages;
@@ -95,6 +96,7 @@ const default_estimates_1 = require("./default_estimates");
 const project_audit_1 = require("./project_audit");
 const contexts_1 = require("./contexts");
 const action_patch_1 = require("./action_patch");
+const elan_1 = require("./elan");
 const task_delete_1 = require("./task_delete");
 const estimates_1 = require("./estimates");
 const db_1 = require("./db");
@@ -535,7 +537,7 @@ async function executeGetUserContext(uid) {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const todayStr = todayInParis(now);
-    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap, objectivesSnap] = await Promise.all([
+    const [domainsSnap, activitiesSnap, habitHitsSnap, sessionsSnap, projectsSnap, scheduleSnap, inboxSnap, objectivesSnap, moodSnap, schedWeekSnap, metaSnapCtx] = await Promise.all([
         db_1.db.collection(`users/${uid}/domains`).get(),
         db_1.db.collection(`users/${uid}/activities`).get(),
         // Incréments de routines/habitudes sur 7 jours
@@ -558,6 +560,12 @@ async function executeGetUserContext(uid) {
         db_1.db.collection(`users/${uid}/captures`).where("status", "==", "pending").get(),
         // Objectifs stratégiques (filtre actif en code : docs legacy sans champ status)
         db_1.db.collection(`users/${uid}/strategic_objectives`).get(),
+        // Pointages d'état des 8 derniers jours vécus (élan / effort / humeur)
+        db_1.db.collection(`users/${uid}/mood_marks`).where("ymd", ">=", todayInParis(new Date(now.getTime() - 8 * 86400000))).get(),
+        // Programmes des 8 derniers jours (blocs faits dans les fenêtres d'élan)
+        db_1.db.collection(`users/${uid}/daily_schedules`)
+            .where(admin.firestore.FieldPath.documentId(), ">=", todayInParis(new Date(now.getTime() - 8 * 86400000))).get(),
+        db_1.db.doc(`users/${uid}/data/meta`).get(),
     ]);
     const autoPlanEnabled = await readAutoPlan(uid);
     const domains = domainsSnap.docs
@@ -735,7 +743,33 @@ async function executeGetUserContext(uid) {
                 "Ne programme jamais deux messages avec la même condition pour la même période.",
         ],
     };
-    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled }, domains,
+    // Élan de la semaine (lot 2) : résumé compact + ligne prête pour un prompt.
+    const metaCtx = metaSnapCtx.exists ? metaSnapCtx.data() : {};
+    const tzCtx = typeof metaCtx.tzOffsetMin === "number" ? metaCtx.tzOffsetMin : null;
+    const dayStartCtx = typeof metaCtx.dayStartMin === "number" ? metaCtx.dayStartMin : elan_1.DEFAULT_DAY_START_MIN;
+    const elanS = (0, elan_1.elanSummary)({
+        marks: moodSnap.docs.map((d) => d.data()),
+        schedulesByYmd: new Map(schedWeekSnap.docs.map((d) => [d.id, (d.data().blocks || [])])),
+        hits: habitHitsSnap.docs.map((d) => d.data()),
+        activities: activitiesSnap.docs.map((d) => (Object.assign({ id: d.id }, d.data()))),
+        todayYmd: (0, elan_1.livedParts)(now, tzCtx, dayStartCtx).ymd,
+        offsetMin: tzCtx,
+        dayStartMin: dayStartCtx,
+    });
+    const elanLine = (0, elan_1.formatElanSummary)(elanS);
+    const elan = elanLine === null
+        ? null
+        : {
+            summary: elanLine,
+            meanElan: elanS.mean,
+            marks: elanS.count,
+            lowWindows: elanS.lowCount,
+            lowWindowsWon: elanS.lowWon,
+            discipline: elanS.discipline,
+            effort: elanS.effort,
+            _hint: "Élan bas récurrent le matin ou l'après-midi → propose des blocs courts et concrets à ce créneau ; ne commente jamais l'état, cite le fait (« 5 fois sur 7, fait quand même »).",
+        };
+    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled } }), (elan ? { elan } : {})), { domains,
         activities,
         objectives,
         activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
@@ -2168,6 +2202,47 @@ async function executeAddActivityAction(uid, activityId, title, context, context
         ? ` Estimation par défaut : ${action.estimatedMin} min (${(0, default_estimates_1.defaultEstimateLabel)(title, Array.isArray(contexts) ? contexts : [])}).`
         : "";
     return `✅ Action propre "${action.title}" créée sur "${(_a = data.name) !== null && _a !== void 0 ? _a : activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).${(0, title_style_1.titleAdvice)([{ title: action.title, kind: "action" }])}`;
+}
+/** Pointage d'état (lot 2) : écrit un MoodMark comme le ferait l'app. */
+async function executeLogMood(uid, p) {
+    var _a, _b;
+    const kind = p.kind;
+    if (kind !== "elan" && kind !== "effort" && kind !== "mood")
+        return "kind doit valoir elan, effort ou mood.";
+    const value = Number(p.value);
+    if (!(0, elan_1.validMoodValue)(kind, value)) {
+        return kind === "elan" ? "value : 1 (Flemme) à 5 (Lancé)." : "value : 0 (" + (kind === "effort" ? "Facile" : "Bas") + ") à 2 (" + (kind === "effort" ? "Dur" : "Bon") + ").";
+    }
+    const metaSnap = await db_1.db.doc(`users/${uid}/data/meta`).get();
+    const meta = metaSnap.exists ? metaSnap.data() : {};
+    const tz = typeof meta.tzOffsetMin === "number" ? meta.tzOffsetMin : null;
+    const dayStart = typeof meta.dayStartMin === "number" ? meta.dayStartMin : elan_1.DEFAULT_DAY_START_MIN;
+    const now = new Date();
+    const lived = (0, elan_1.livedParts)(now, tz, dayStart);
+    const ymd = p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date) ? p.date : lived.ymd;
+    const moment = kind === "elan" ? (p.moment === "matin" || p.moment === "aprem" || p.moment === "soir" ? p.moment : (0, elan_1.elanBucket)(lived.min)) : undefined;
+    let block = null;
+    if (p.blockId) {
+        const day = await db_1.db.doc(`users/${uid}/daily_schedules/${ymd}`).get();
+        const blocks = day.exists ? (((_a = day.data()) === null || _a === void 0 ? void 0 : _a.blocks) || []) : [];
+        block = (_b = blocks.find((b) => b.id === p.blockId)) !== null && _b !== void 0 ? _b : null;
+        if (!block)
+            return `Bloc ${p.blockId} introuvable dans le programme du ${ymd}.`;
+    }
+    const id = (0, uuid_1.v4)();
+    const doc = { id, at: now.toISOString(), ymd, kind, value };
+    if (moment)
+        doc.moment = moment;
+    if (block) {
+        doc.blockId = block.id;
+        for (const k of ["activityId", "projectId", "taskId", "actionId"])
+            if (block[k])
+                doc[k] = block[k];
+    }
+    await db_1.db.collection(`users/${uid}/mood_marks`).doc(id).set(doc);
+    const label = kind === "elan" ? elan_1.ELAN_LABELS[value] : kind === "effort" ? elan_1.EFFORT_LABELS[value] : elan_1.MOOD_LABELS[value];
+    const what = kind === "elan" ? `Élan « ${label} » (${moment})` : kind === "effort" ? `Effort « ${label} »${block ? " · " + String(block.title) : ""}` : `Humeur « ${label} »`;
+    return `✓ ${what} pointé pour le ${ymd}.`;
 }
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;
