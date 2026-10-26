@@ -931,6 +931,18 @@ class FirestoreSync {
         (snap) => snap.docs.map((d) => HabitHit.from(d.data() as Map)).toList());
   }
 
+  // Temps réel (web) : pointages d'état et sessions d'Enchaîner, pour le deck
+  // de badges et les cartes d'élan de l'app web.
+  Stream<List<MoodMark>> streamMoodMarks() {
+    if (uid == null) return const Stream.empty();
+    return _col('mood_marks').snapshots().map((snap) => snap.docs.map((d) => MoodMark.from(d.data() as Map)).toList());
+  }
+
+  Stream<List<ChainRun>> streamChainRuns() {
+    if (uid == null) return const Stream.empty();
+    return _col('chain_runs').snapshots().map((snap) => snap.docs.map((d) => ChainRun.from(d.data() as Map)).toList());
+  }
+
   // Temps réel : toutes les sessions de temps. Le web s'en sert pour détecter un
   // MINUTEUR EN COURS (session ouverte, endAt == null) lancé depuis le mobile et
   // déclencher la cinématique d'assaut sur l'activité correspondante.
