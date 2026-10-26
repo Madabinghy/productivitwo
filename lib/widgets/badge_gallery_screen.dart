@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+import 'package:productivitwo_v1/widgets/badge_track_view.dart';
 
 /// Aperçu des badges (lot 1) : le gabarit aux trois tailles, puis le deck
 /// calculé sur les VRAIES données de la personne (routines, programmes des
@@ -276,21 +277,32 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       context: context,
       backgroundColor: kBSurface,
       showDragHandle: true,
-      builder: (ctx) => Padding(
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .9,
+        maxChildSize: .95,
+        builder: (ctx, scroll) => ListView(
+        controller: scroll,
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          BadgeView(state: b, size: 150),
+        children: [
+          Center(child: BadgeView(state: b, size: 150)),
           const SizedBox(height: 12),
           Text(badgeFamilyLabel(b.def.family).toUpperCase(),
-              style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
-          Text(b.def.name, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kBText)),
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
+          Text(b.def.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: kBText)),
           const SizedBox(height: 6),
           Text(
             b.showGauge
                 ? '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unitLong}'
                 : (b.acquired && b.obtained != null ? 'Obtenu le ${_shortDate(b.obtained!)} ${b.obtained!.year}' : 'Pas encore obtenu'),
+            textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 15, color: kBText),
           ),
+          if (b.def.what.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
+          ],
           if (b.def.tiers.length > 1) ...[
             const SizedBox(height: 12),
             Wrap(spacing: 6, children: [
@@ -310,6 +322,32 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                 ),
             ]),
           ],
+          if (b.track case final t?) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('OÙ J\u2019EN SUIS', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+                const SizedBox(height: 8),
+                BadgeTrackView(track: t, text3: kBText3),
+              ]),
+            ),
+          ],
+          if (b.def.how.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: kBLine)),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('COMMENT L\u2019OBTENIR', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+                const SizedBox(height: 6),
+                Text(b.def.how, style: const TextStyle(fontSize: 13.5, height: 1.4, color: kBText2)),
+              ]),
+            ),
+          ],
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
@@ -328,8 +366,9 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             ]),
           ),
           const SizedBox(height: 12),
-          const Text('Visible par ton coach · lecture seule', style: TextStyle(fontSize: 12, color: kBText4)),
-        ]),
+          const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
+        ],
+        ),
       ),
     );
   }
