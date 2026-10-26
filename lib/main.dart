@@ -34,6 +34,7 @@ import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/badge_center.dart';
+import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
 import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
@@ -2017,11 +2018,15 @@ class _AppRootState extends State<AppRoot>
     _dayStartSub = _sync.streamMetaDoc().listen((m) {
       final start = parseDayStartMin(m['dayStartMin']);
       final windows = parseMomentWindows(m['momentWindows']);
+      final hunts = parseBadgeHunts(m['badgeHunts']);
+      final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
-          momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString();
+          momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString() &&
+          sameHunts;
       if (same) return;
       logic.dayStartMin = start;
       logic.momentWindows = windows;
+      logic.badgeHunts = hunts;
       logic.onChange();
     });
   }

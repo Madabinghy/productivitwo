@@ -325,12 +325,14 @@ class BadgesRow extends StatelessWidget {
 /// Aujourd'hui : « Badge obtenu · Semaine solide », montré une fois.
 class UnlockSignalCard extends StatelessWidget {
   final List<BadgeState> badges;
+  final Set<String> hunted; // badges qui étaient visés
   final VoidCallback onView;
   final VoidCallback onClose;
   final Color surface, text, text3, accent;
   const UnlockSignalCard({
     super.key,
     required this.badges,
+    this.hunted = const {},
     required this.onView,
     required this.onClose,
     required this.surface,
@@ -363,7 +365,10 @@ class UnlockSignalCard extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(badges.length == 1 ? 'BADGE OBTENU' : '${badges.length} BADGES OBTENUS',
+            Text(
+                badges.any((b) => hunted.contains(b.def.id))
+                    ? (badges.length == 1 ? 'BADGE VISÉ OBTENU' : '${badges.length} BADGES OBTENUS · DONT UN VISÉ')
+                    : (badges.length == 1 ? 'BADGE OBTENU' : '${badges.length} BADGES OBTENUS'),
                 style: const TextStyle(fontSize: 11, letterSpacing: .6, color: kBadgeBrass)),
             Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: text)),
             if (detail.isNotEmpty) Text(detail, style: TextStyle(fontSize: 13, color: text3)),

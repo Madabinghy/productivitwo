@@ -750,7 +750,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final b = routineBadge(a, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin);
     return InkWell(
       customBorder: const CircleBorder(),
-      onTap: () => showBadgeSheet(context, b),
+      onTap: () => showBadgeSheet(context, b, logic: logic),
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Opacity(opacity: b.acquired ? 1 : .6, child: BadgeView(state: b, size: 36)),
