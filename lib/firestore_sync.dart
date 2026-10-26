@@ -258,6 +258,7 @@ class FirestoreSync {
         _pushCollection(st.sessions.map((e) => e.toJson()).toList(), 'sessions'),
         _pushCollection(st.habitProgress.map((e) => e.toJson()).toList(), 'habitProgress'),
         _pushCollection(st.habitHits.map((e) => e.toJson()).toList(), 'habitHits'),
+        _pushCollection(st.moodMarks.map((e) => e.toJson()).toList(), 'mood_marks'),
         _pushCollection(st.redemptions.map((e) => e.toJson()).toList(), 'redemptions'),
         _pushCollection(st.blocks.map((e) => e.toJson()).toList(), 'blocks'),
         _pushCollection(st.earnedBadges.map((e) => e.toJson()).toList(), 'badges'),
@@ -360,6 +361,7 @@ class FirestoreSync {
         _col('blocks').get(),
         _col('badges').get(),
         _col('redemptions').get(),
+        _col('mood_marks').get(),
       ]);
 
       final metaDoc = results[0] as DocumentSnapshot;
@@ -387,6 +389,7 @@ class FirestoreSync {
             .whereType<EarnedBadge>()
             .toList(),
         redemptions: docs(8).map(Redemption.from).toList(),
+        moodMarks: docs(9).map(MoodMark.from).toList(),
         onboardingDone: meta['onboardingDone'] ?? false,
         challengesDone: meta['challengesDone'] ?? 0,
         challengeStreak: meta['challengeStreak'] ?? 0,
@@ -583,6 +586,7 @@ class FirestoreSync {
       }(),
       sessions:      mergeSessions(local.sessions, remote.sessions, DateTime.now()),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
+      moodMarks:     union(local.moodMarks,     remote.moodMarks,     (m) => m.id),
       redemptions:   union(local.redemptions,   remote.redemptions,   (r) => r.id),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
       earnedBadges:  union(local.earnedBadges,  remote.earnedBadges,  (b) => '${b.id.name}_${b.habitId ?? ""}'),
@@ -751,7 +755,7 @@ class FirestoreSync {
     if (uid != null) {
       for (final col in [
         'domains', 'activities', 'sessions', 'habitProgress',
-        'habitHits', 'redemptions', 'dayPlan', 'goals', 'blocks', 'badges',
+        'habitHits', 'mood_marks', 'redemptions', 'dayPlan', 'goals', 'blocks', 'badges',
         'projects', 'strategic_objectives', 'documents', 'api_tokens',
         'captures', 'assistant_messages',
       ]) {
@@ -1153,6 +1157,12 @@ class FirestoreSync {
   Future<void> saveHabitHit(HabitHit h) async {
     if (uid == null) return;
     await _col('habitHits').doc(h.id).set(h.toJson());
+  }
+
+  // Pointage d'état (élan / effort / humeur) : écriture ciblée, comme un hit.
+  Future<void> saveMoodMark(MoodMark m) async {
+    if (uid == null) return;
+    await _col('mood_marks').doc(m.id).set(m.toJson());
   }
 
   // Reconquête : persiste un crédit (registre découplé du relevé factuel).

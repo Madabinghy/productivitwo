@@ -10,7 +10,10 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
 import 'package:productivitwo_v1/utils/routines_today.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
@@ -759,7 +762,20 @@ class _ChainScreenState extends State<_ChainScreen> {
             child: Text('${fmtMin(_betweenMin)} de chrono',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: pal.text3)),
           ),
-        const SizedBox(height: 28),
+        const SizedBox(height: 18),
+        ChipRow(
+          question: 'C\u2019était ?',
+          labels: kEffortLabels,
+          value: effortOfBlock(logic.state.moodMarks, finished.id)?.value ?? -1,
+          onPick: (v) => setState(() => logic.logMood(kMoodEffort, v, block: finished)),
+          text: pal.text,
+          text2: pal.text2,
+          text3: pal.text3,
+          surface: pal.surface,
+          raised: pal.track,
+          accent: pal.primary,
+        ),
+        const SizedBox(height: 10),
         if (nb != null)
           Container(
             padding: const EdgeInsets.all(16),
@@ -783,6 +799,21 @@ class _ChainScreenState extends State<_ChainScreen> {
         else
           Text('C\'était le dernier bloc de la file.',
               textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: pal.text3)),
+        if (nb != null && elanDue(logic.state.moodMarks, livedProgramYmd(DateTime.now(), logic.dayStartMin), elanBucket(_nowMin), logic.elanSkipped))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: ElanRow(
+              value: 0,
+              question: 'Ton élan pour la suite ?',
+              onPick: (v) => setState(() => logic.logMood(kMoodElan, v, moment: elanBucket(_nowMin), block: nb)),
+              onSkip: () => setState(() => logic.elanSkipped.add('${livedProgramYmd(DateTime.now(), logic.dayStartMin)}:${elanBucket(_nowMin)}')),
+              text: pal.text,
+              text2: pal.text2,
+              text3: pal.text3,
+              surface: pal.surface,
+              raised: pal.track,
+            ),
+          ),
         const Spacer(),
         if (nb != null) ...[
           if (_waitUntil case final w?)

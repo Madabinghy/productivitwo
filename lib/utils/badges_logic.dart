@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
@@ -7,8 +8,9 @@ import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 /// données d'exécution. Logique pure, aucune écriture : un badge est un FAIT
 /// recalculé, jamais stocké (rien ne se perd, une série cassée garde son
 /// palier). Design : système « Badges Productivitwo » (gabarit, familles,
-/// règles de texte). Les familles Enchaîner et Discipline n'ont pas encore de
-/// donnée source (`measured: false`) : elles comptent dans le total, à 0.
+/// règles de texte). La famille Enchaîner n'a pas encore de donnée source
+/// (`measured: false`) : elle compte dans le total, à 0. Discipline se mesure
+/// sur les pointages d'élan (`moodMarks`, lot 2, `utils/elan_logic.dart`).
 
 enum BadgeFamily { routines, objectives, days, discipline, chain, actions, time }
 
@@ -470,6 +472,7 @@ BadgeDeck computeBadges({
   required List<StrategicObjective> objectives,
   required List<Session> sessions,
   required DateTime now,
+  List<MoodMark> moodMarks = const [],
   int dayStartMin = kDefaultDayStartMin,
 }) {
   final out = <BadgeState>[];
@@ -590,20 +593,89 @@ BadgeDeck computeBadges({
     ));
   }
 
-  // Discipline et Enchaîner : pas encore de donnée source (élan, sessions d'Enchaîner).
-  for (final (id, name, symbol, tiers, label, unit, unitLong) in [
-    ('malgre-tout', 'Malgré tout', 'anvil', kDisciplineTiers, null, 'victoires', 'victoires sur la flemme'),
-    ('vent-contraire', 'Vent contraire', 'wind', const [1], 'Contre', '', ''),
-    ('maree-haute', 'Marée haute', 'tide', const [7], '7 j', 'j', 'jours'),
-    ('barometre', 'Baromètre', 'barometer', kBarometerTiers, null, 'pointages', 'pointages'),
-  ]) {
-    out.add(BadgeState(
-      def: BadgeDef(id: id, family: BadgeFamily.discipline, name: name, symbol: symbol, tiers: tiers, label: label, unit: unit, unitLong: unitLong, measured: false),
-      level: 0,
-      value: 0,
-      facts: const [('Mesure', 'pas encore disponible')],
-    ));
+  // Discipline : ce que je fais quand l'élan est bas.
+  final disc = disciplineStats(marks: moodMarks, schedules: schedules, hits: habitHits, activities: activities, dayStartMin: dayStartMin);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'malgre-tout', family: BadgeFamily.discipline, name: 'Malgré tout', symbol: 'anvil', tiers: kDisciplineTiers, unit: 'victoires', unitLong: 'victoires sur la flemme'),
+    level: _levelOf(kDisciplineTiers, disc.wins.length),
+    value: disc.wins.length,
+    tierDates: [for (final t in kDisciplineTiers) t <= disc.wins.length ? _day(disc.wins[t - 1]) : null],
+    facts: [
+      ('Victoires sur la flemme', '${disc.wins.length}'),
+      if (disc.wins.isNotEmpty) ('La dernière', _fmtDate(disc.wins.last)),
+      ('Pointages « Flemme » ou « Mou »', '${moodMarks.where((m) => m.lowElan).length}'),
+    ],
+  ));
+  // Vent contraire : une suite de 7 jours solides (critère de Semaine solide) à élan moyen ≤ 2,5.
+  DateTime? ventDate;
+  var ventCurrent = 0;
+  for (final (start, len) in runs80) {
+    for (var i = 0; i + 7 <= len && ventDate == null; i++) {
+      var sum = 0.0, n = 0;
+      for (var d = 0; d < 7; d++) {
+        final m = disc.meanByYmd[ymdOf(start.add(Duration(days: i + d)))];
+        if (m != null) {
+          sum += m;
+          n++;
+        }
+      }
+      if (n >= 3 && sum / n <= 2.5) ventDate = start.add(Duration(days: i + 6));
+    }
   }
+  if (ventDate == null && current80 > 0) {
+    var sum = 0.0, n = 0;
+    final today = livedDate(now, dayStartMin);
+    for (var d = 1; d <= current80 && d <= 7; d++) {
+      final m = disc.meanByYmd[ymdOf(today.subtract(Duration(days: d)))];
+      if (m != null) {
+        sum += m;
+        n++;
+      }
+    }
+    if (n > 0 && sum / n <= 2.5) ventCurrent = current80.clamp(0, 7);
+  }
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'vent-contraire', family: BadgeFamily.discipline, name: 'Vent contraire', symbol: 'wind', tiers: [1], label: 'Contre'),
+    level: ventDate == null ? 0 : 1,
+    value: ventDate == null ? 0 : 1,
+    tierDates: [ventDate],
+    facts: [
+      ('Semaine solide à élan bas', ventDate == null ? 'pas encore' : 'le ${_fmtDate(ventDate)}'),
+      if (ventDate == null && ventCurrent > 0) ('Jours solides à élan bas, en cours', '$ventCurrent / 7'),
+    ],
+  ));
+  // Marée haute : jours pointés d'affilée à élan moyen ≥ 4 (les jours sans pointage sont enjambés).
+  final highDays = disc.meanByYmd.entries.where((e) => e.value >= 4).map((e) => e.key).toList()..sort();
+  final pointed = disc.meanByYmd.keys.toList()..sort();
+  final highRuns = <(DateTime, int)>[];
+  var hStart = '', hLen = 0, hCurrent = 0;
+  for (final ymd in pointed) {
+    if (highDays.contains(ymd)) {
+      if (hLen == 0) hStart = ymd;
+      hLen++;
+    } else {
+      if (hLen > 0) highRuns.add((DateTime.parse(hStart), hLen));
+      hLen = 0;
+    }
+  }
+  if (hLen > 0) highRuns.add((DateTime.parse(hStart), hLen));
+  hCurrent = hLen;
+  final highLongest = highRuns.fold(0, (m, r) => r.$2 > m ? r.$2 : m);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'maree-haute', family: BadgeFamily.discipline, name: 'Marée haute', symbol: 'tide', tiers: [7], unit: 'j', unitLong: 'jours', label: '7 j'),
+    level: highLongest >= 7 ? 1 : 0,
+    value: hCurrent,
+    tierDates: _tierDatesFromRuns([7], highRuns.map((r) => (r.$1, r.$2)).toList()),
+    facts: [('Jours à élan ≥ 4 d\u2019affilée, en cours', '$hCurrent'), ('Plus longue suite', _plural(highLongest, 'jour', 'jours'))],
+  ));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'barometre', family: BadgeFamily.discipline, name: 'Baromètre', symbol: 'barometer', tiers: kBarometerTiers, unit: 'pointages', unitLong: 'pointages'),
+    level: _levelOf(kBarometerTiers, disc.elanMarkDates.length),
+    value: disc.elanMarkDates.length,
+    tierDates: [for (final t in kBarometerTiers) t <= disc.elanMarkDates.length ? _day(disc.elanMarkDates[t - 1]) : null],
+    facts: [('Pointages d\u2019élan', '${disc.elanMarkDates.length}'), if (disc.elanMarkDates.isNotEmpty) ('Le premier', _fmtDate(disc.elanMarkDates.first))],
+  ));
+  // Enchaîner : pas encore de donnée source (sessions menées au bout).
   for (final (id, name, symbol, tiers, label, unit, unitLong) in [
     ('enchaineur', 'Enchaîneur', 'chain', const [10], '×10', 'sessions', 'sessions'),
     ('plein-jour', 'Plein jour', 'sunrise', const [1], 'Plein', '', ''),

@@ -9,7 +9,9 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
@@ -447,6 +449,10 @@ class _NowCardState extends State<NowCard> {
             ]),
           ),
         ]),
+        if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
+          const SizedBox(height: 12),
+          row,
+        ],
         const SizedBox(height: 14),
         Row(children: buttons),
         if ((widget.onChain != null && b != null ? _chainHint() : null) case final hint?) ...[
@@ -496,6 +502,28 @@ class _NowCardState extends State<NowCard> {
             ),
         ],
       ]),
+    );
+  }
+
+  /// « Ton élan, là ? » (lot 2) : une fois par créneau (matin / après-midi /
+  /// soir) du jour vécu, quand un bloc est devant et qu'aucun chrono ne tourne,
+  /// tant que rien n'a été pointé ni passé. Un tap pointe et replie la rangée.
+  Widget? _elanRow(NowPalette pal, ScheduleBlock? b, bool quiet) {
+    if (b == null || !quiet) return null;
+    final logic = widget.logic;
+    final ymd = livedProgramYmd(DateTime.now(), logic.dayStartMin);
+    final bucket = elanBucket(logic.livedNowMinNow);
+    if (!elanDue(logic.state.moodMarks, ymd, bucket, logic.elanSkipped)) return null;
+    return ElanRow(
+      value: 0,
+      context: 'avant ' + b.title,
+      onPick: (v) => logic.logMood(kMoodElan, v, moment: bucket, block: b),
+      onSkip: () => setState(() => logic.elanSkipped.add('$ymd:$bucket')),
+      text: pal.text,
+      text2: pal.text2,
+      text3: pal.text3,
+      surface: pal.chip,
+      raised: pal.track,
     );
   }
 

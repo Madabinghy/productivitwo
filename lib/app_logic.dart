@@ -1641,6 +1641,38 @@ class AppLogic {
     }
   }
 
+  // ── Élan (lot 2 badges, 2026-10) ───────────────────────────────────────────
+  /// Créneaux d'élan passés d'un « × » (jamais redemandés dans la session) :
+  /// « ymd:bucket ». En mémoire seulement : au prochain lancement la question
+  /// peut revenir, sans conséquence.
+  final Set<String> elanSkipped = {};
+
+  /// Pointe l'état : un seul par (jour, créneau) pour l'élan, par bloc pour
+  /// l'effort, par jour pour l'humeur — le nouveau remplace l'ancien.
+  MoodMark logMood(String kind, int value, {String? moment, ScheduleBlock? block}) {
+    final now = DateTime.now();
+    final ymd = livedProgramYmd(now, dayStartMin);
+    state.moodMarks.removeWhere((m) =>
+        m.kind == kind &&
+        m.ymd == ymd &&
+        (kind == kMoodElan ? m.moment == moment : kind == kMoodEffort ? m.blockId == block?.id : true));
+    final mark = MoodMark(
+      at: now,
+      ymd: ymd,
+      kind: kind,
+      value: value,
+      moment: moment,
+      blockId: block?.id,
+      activityId: block?.activityId,
+      projectId: block?.projectId,
+      taskId: block?.taskId,
+      actionId: block?.actionId,
+    );
+    state.moodMarks.add(mark);
+    onChange();
+    return mark;
+  }
+
   void incHabit(String activityId, int delta, DateTime day) {
     final key = yyyymmdd(day);
 

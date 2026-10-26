@@ -10,6 +10,7 @@ part 'models/integrations.dart';
 part 'models/schedule.dart';
 part 'models/session_template.dart';
 part 'models/artifact.dart';
+part 'models/mood.dart';
 part 'models/weekly_report.dart';
 part 'models/world.dart';
 part 'models/redemption.dart';
