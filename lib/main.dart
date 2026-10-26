@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
+import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
 import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
@@ -2001,6 +2002,7 @@ class _AppRootState extends State<AppRoot>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final store = FileStore();
   final _sync = FirestoreSync();
+  late final BadgeCenter _badges = BadgeCenter(logic: logic, sync: _sync);
   String _syncStatus = ''; // '' = en cours, '☁️' = OK, '⚠️' = local
   DateTime _lastGlobalScan = DateTime.fromMillisecondsSinceEpoch(0);
   AppState? _state;
@@ -3601,6 +3603,7 @@ class _AppRootState extends State<AppRoot>
           TodayView(
             key: _todayKey,
             logic: logic,
+            badges: _badges,
             onLaunch: _launchScheduledBlock,
             onOpenSource: _openBlockSource,
             // L'auto-scroll « maintenant » attend la 1ʳᵉ ouverture VISIBLE
@@ -5798,7 +5801,7 @@ class _AppRootState extends State<AppRoot>
                 subtitle: const Text('Le deck calculé sur tes routines, journées, objectifs et actions'),
                 trailing: const Icon(Icons.chevron_right, size: 18),
                 onTap: () => Navigator.of(sheetCtx).push(MaterialPageRoute<void>(
-                    builder: (_) => BadgeGalleryScreen(logic: logic, sync: _sync))),
+                    builder: (_) => BadgeGalleryScreen(logic: logic, sync: _sync, center: _badges))),
               ),
               // Siri & Raccourcis (iOS uniquement)
               if (!kIsWeb && Platform.isIOS)
@@ -6648,6 +6651,7 @@ class _AppRootState extends State<AppRoot>
     return ObjectivesHomeView(
       logic: logic,
       sync: _sync,
+      badges: _badges,
       projects: _dashboardProjects,
       onOpenDashboard: () {
         _tabFadeController.forward(from: 0);

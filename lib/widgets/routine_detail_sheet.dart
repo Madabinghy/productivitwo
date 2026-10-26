@@ -3,6 +3,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
@@ -265,7 +266,19 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               onRingBump: () => setState(() => _ringToken++),
             ),
 
-            // ── Streak ──────────────────────────────────────────────────────
+            // ── Série et paliers (badges, lot 3) ───────────────────────────
+            // Routine quotidienne : la ligne de paliers du système de badges
+            // (série en cours, record, chevrons 3 / 7 / 21 / 66 / 100, élan).
+            if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
+              const SizedBox(height: 10),
+              RoutineTiersLine(
+                activity: act,
+                hits: logic.state.habitHits,
+                marks: logic.state.moodMarks,
+                dayStartMin: logic.dayStartMin,
+                accent: accentColor,
+              ),
+            ] else ...[
             if (currentStreak > 0 || bestStreak > 1) ...[
               const SizedBox(height: 10),
               Container(
@@ -337,90 +350,6 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
               ),
             ],
 
-            // ── Paliers ──────────────────────────────────────────────────────
-            if (logic.effectiveHabitFreq(act) == HabitFreq.daily) ...[
-              const SizedBox(height: 12),
-              Text(
-                'PALIERS',
-                style: TextStyle(
-                  fontSize: 10, fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                  color: cs.onSurface.withOpacity(.35),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6, runSpacing: 6,
-                children: [
-                  MapEntry(3, BadgeId.streak3),
-                  MapEntry(7, BadgeId.streak7),
-                  MapEntry(21, BadgeId.streak21),
-                  MapEntry(66, BadgeId.streak66),
-                  MapEntry(100, BadgeId.streak100),
-                ].map<Widget>((e) {
-                  final days = e.key;
-                  final id = e.value;
-                  final isEarned = logic.state.earnedBadges
-                      .any((b) => b.id == id && b.habitId == habitId);
-                  final meta = badgeMeta(id);
-                  if (isEarned) {
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: accentColor.withOpacity(.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: accentColor.withOpacity(.3)),
-                      ),
-                      child: Text(
-                        '${meta.emoji} ${meta.label}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 12,
-                          color: accentColor,
-                        ),
-                      ),
-                    );
-                  }
-                  final progress = currentStreak.clamp(0, days);
-                  final pct = progress / days;
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withOpacity(.35),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: cs.onSurface.withOpacity(.1)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('${meta.emoji}',
-                            style: const TextStyle(fontSize: 12)),
-                        const SizedBox(width: 5),
-                        Text(
-                          '${days}j',
-                          style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w700,
-                            color: cs.onSurface.withOpacity(pct >= 0.5 ? .7 : .4),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        SizedBox(
-                          width: 32,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(
-                              value: pct.clamp(0.0, 1.0),
-                              minHeight: 4,
-                              backgroundColor: cs.onSurface.withOpacity(.1),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  accentColor.withOpacity(.6)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-              ),
             ],
 
             // ── Activité liée ────────────────────────────────────────────────

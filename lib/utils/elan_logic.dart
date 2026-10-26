@@ -190,3 +190,51 @@ DisciplineStats disciplineStats({
   final dates = marks.where((m) => m.kind == kMoodElan).map((m) => m.at).toList()..sort();
   return DisciplineStats(wins, mean, dates);
 }
+
+/// Élan d'un objet (routine, objectif) : les pointages dont la fenêtre contient
+/// un geste sur cet objet ; `victories` = ceux à élan bas.
+class ElanFacts {
+  final int count;
+  final double? mean;
+  final int victories;
+  const ElanFacts(this.count, this.mean, this.victories);
+}
+
+ElanFacts _factsOf(List<MoodMark> marks, Iterable<DateTime> events, {int dayStartMin = kDefaultDayStartMin}) {
+  final byYmd = <String, List<ElanWindow>>{};
+  var n = 0, sum = 0, low = 0;
+  for (final t in events) {
+    final ymd = ymdOf(livedDate(t, dayStartMin));
+    final ws = byYmd.putIfAbsent(ymd, () => elanWindows(marks, ymd, dayStartMin: dayStartMin));
+    for (final w in ws) {
+      if (!w.contains(t)) continue;
+      n++;
+      sum += w.mark.value;
+      if (w.low) low++;
+      break;
+    }
+  }
+  return ElanFacts(n, n == 0 ? null : sum / n, low);
+}
+
+/// Routine : le hit qui atteint la cible du jour, pour chaque jour atteint.
+ElanFacts routineElanFacts(Activity a, List<MoodMark> marks, List<HabitHit> hits, {int dayStartMin = kDefaultDayStartMin}) {
+  final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
+  final byDay = <String, List<DateTime>>{};
+  for (final h in hits) {
+    if (h.habitId != a.id) continue;
+    byDay.putIfAbsent(ymdOf(livedDate(h.ts, dayStartMin)), () => []).add(h.ts);
+  }
+  final events = <DateTime>[];
+  for (final ts in byDay.values) {
+    ts.sort();
+    if (ts.length >= target) events.add(ts[target - 1]);
+  }
+  return _factsOf(marks, events, dayStartMin: dayStartMin);
+}
+
+/// Objectif : le début de chaque session sur ses activités engagées.
+ElanFacts objectiveElanFacts(StrategicObjective o, List<MoodMark> marks, List<Session> sessions, {int dayStartMin = kDefaultDayStartMin}) {
+  final ids = o.timeCommitments.map((c) => c.activityId).toSet();
+  return _factsOf(marks, sessions.where((s) => !s.deleted && ids.contains(s.activityId)).map((s) => s.startAt), dayStartMin: dayStartMin);
+}

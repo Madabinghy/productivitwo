@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
+import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
@@ -19,6 +22,7 @@ import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 class ObjectivesHomeView extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
+  final BadgeCenter? badges; // lot 3 : rangée « Badges · n / N » → deck
   final List<Project> projects;
   final VoidCallback onOpenDashboard;
   final VoidCallback? onOpenNow; // tap sur le prochain bloc → Maintenant
@@ -27,6 +31,7 @@ class ObjectivesHomeView extends StatefulWidget {
     super.key,
     required this.logic,
     required this.sync,
+    this.badges,
     required this.projects,
     required this.onOpenDashboard,
     this.onOpenNow,
@@ -525,6 +530,12 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
           _horizon(cs, 'CETTE SEMAINE'),
           // Engagements 7 j glissants (tap → détail par domaine).
           WeekDashboardCard(logic: widget.logic),
+          if (widget.badges case final bc?)
+            BadgesRow(
+              center: bc,
+              onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: widget.sync, center: bc, showSamples: false))),
+            ),
           // (« Le meilleur à faire » a déménagé dans Maintenant — actionnable
           // là où on agit : lib/widgets/best_to_do_card.dart.)
           // Objectifs stratégiques : progression hebdo mesurée — l'étage où

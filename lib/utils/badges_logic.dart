@@ -743,3 +743,12 @@ int _currentSolidRun(List<DayScore> days) {
   }
   return n;
 }
+
+/// Clés des paliers acquis (`id#palier`), pour la mémoire des déblocages signalés.
+Set<String> acquiredTierKeys(BadgeDeck d) => {
+      for (final b in d.badges)
+        for (var i = 1; i <= b.paliersDone; i++) '${b.def.id}#$i',
+    };
+
+/// Paliers acquis que `seen` ne connaît pas encore.
+Set<String> newTierKeys(BadgeDeck d, Set<String> seen) => acquiredTierKeys(d).difference(seen);
