@@ -315,7 +315,7 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
       _title(cs, 'CETTE SEMAINE · LES MOYENS',
           trailing: w.weekPercent == null
               ? null
-              : Text('${(w.weekPercent! * 100).round()} %',
+              : Text('${(w.weekPercent! * 100).round()} % du rythme',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _accent))),
       const SizedBox(height: 8),
       if (w.items.isEmpty)

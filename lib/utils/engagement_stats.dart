@@ -21,7 +21,23 @@ class EngagementStat {
     required this.done,
   });
 
-  bool get kept => done >= target;
+  /// Part de la cible faite, plafonnée à 1 (crédit partiel, 2026-10).
+  double get ratio => target <= 0 ? 0 : (done / target).clamp(0.0, 1.0);
+
+  /// Tenu dès [kKeptRatio] de la cible (5 jours sur 7 pour une quotidienne),
+  /// même seuil que la « journée solide » des badges. Avant : tout ou rien.
+  bool get kept => ratio >= kKeptRatio;
+}
+
+/// Seuil « tenu » d'un engagement : 80 % de sa cible.
+const double kKeptRatio = 0.8;
+
+/// Pourcentage d'une liste d'engagements = moyenne des parts faites (0..100),
+/// pas la part des engagements tenus : une routine à 38 / 56 pèse 0,68, pas 0.
+int engagementPct(Iterable<EngagementStat> stats) {
+  final list = stats.toList();
+  if (list.isEmpty) return 0;
+  return ((list.fold<double>(0, (s, e) => s + e.ratio) / list.length) * 100).round();
 }
 
 DateTime mondayOf(DateTime d) {
@@ -114,28 +130,21 @@ List<({String label, int pct})> fourWeekTrend({
   required List<HabitHit> hits,
   Set<String>? domainIds,
 }) {
-  final habits = _weeklyHabits(activities, domainIds: domainIds);
   final monday = mondayOf(DateTime.now());
-  int pctOf(int kept) =>
-      habits.isEmpty ? 0 : ((kept / habits.length) * 100).round();
   final out = <({String label, int pct})>[
     for (var back = 3; back >= 1; back--)
       (
         label: 'S-$back',
-        pct: pctOf(habits
-            .where((h) =>
-                _doneInWeek(h.id, hits,
-                    monday.subtract(Duration(days: 7 * back))) >=
-                _weekTarget(h))
-            .length),
+        pct: engagementPct(weekEngagements(
+            activities: activities,
+            hits: hits,
+            weekStart: monday.subtract(Duration(days: 7 * back)),
+            domainIds: domainIds)),
       ),
   ];
   final rolling = rollingWeekEngagements(
       activities: activities, hits: hits, domainIds: domainIds);
-  out.add((
-    label: '7 j',
-    pct: pctOf(rolling.where((e) => e.kept).length),
-  ));
+  out.add((label: '7 j', pct: engagementPct(rolling)));
   return out;
 }
 

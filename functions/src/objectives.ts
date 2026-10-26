@@ -24,7 +24,7 @@ export interface ObjectiveSummary {
   horizonLabel: string | null;
   endDate: string | null;
   daysLeft: number | null;
-  weekPercent: number | null; // % moyen des engagements sur la semaine (null si aucun)
+  weekPercent: number | null; // % moyen des engagements rapportés à l'attendu à ce jour (null si aucun)
   commitments: ObjectiveCommitmentSummary[];
   // Métrique chiffrée (si posée) : dernier relevé et relevé attendu — sans
   // sessions longues, la trajectoire complète est dans list_objectives.
@@ -73,6 +73,8 @@ export function summarizeObjectives(
   const monday = mondayOf(todayStr);
   const weekday = ((new Date(`${todayStr}T12:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1 = lundi … 7 = dimanche
   const prorate = (weekday / 7) * 0.7;
+  // weekPercent = part de l'ATTENDU À CE JOUR (cible × part de la semaine écoulée), comme l'app.
+  const weekElapsedFrac = weekday / 7;
 
   const activityById = new Map<string, Record<string, unknown>>();
   for (const a of activities) activityById.set(String(a.id), a);
@@ -111,7 +113,7 @@ export function summarizeObjectives(
       const weeklyMin = Math.max(1, Math.round(Number(c.weeklyMin) || 1));
       const a = activityById.get(activityId);
       const done = minSinceMonday.get(activityId) || 0;
-      pcts.push(Math.min(done / weeklyMin, 1));
+      pcts.push(Math.min(done / (weeklyMin * weekElapsedFrac), 1));
       commitments.push({
         type: "time",
         activityId,
@@ -128,7 +130,7 @@ export function summarizeObjectives(
       const a = activityById.get(activityId);
       const weeklyTarget = weeklyRoutineTarget(a?.habitFreq, a?.habitTarget);
       const done = hitsSinceMonday.get(activityId) || 0;
-      pcts.push(Math.min(done / weeklyTarget, 1));
+      pcts.push(Math.min(done / (weeklyTarget * weekElapsedFrac), 1));
       commitments.push({
         type: "routine",
         activityId,

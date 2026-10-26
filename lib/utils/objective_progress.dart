@@ -29,7 +29,10 @@ class CommitmentProgress {
 }
 
 class ObjectiveProgress {
-  final double? weekPercent; // 0..1 — moyenne des engagements (null si aucun)
+  /// 0..1 — moyenne des engagements rapportés à l'ATTENDU À CE JOUR (cible ×
+  /// part de la semaine écoulée, lundi = 1/7), plafonnés à 1 ; null si aucun.
+  /// Avant (2026-10) : rapportés à la cible pleine, donc 0 % chaque lundi.
+  final double? weekPercent;
   final double weekElapsed; // 0..1 — part de la semaine écoulée (lundi = 1/7), repère « attendu »
   final double? horizonPct; // 0..1 — temps écoulé sur [startDate, endDate]
   final int? daysLeft; // jours restants avant endDate
@@ -118,8 +121,10 @@ ObjectiveProgress computeObjectiveProgress(
 
   double? weekPercent;
   if (items.isNotEmpty) {
-    weekPercent =
-        items.map((i) => i.pct).reduce((a, b) => a + b) / items.length;
+    weekPercent = items
+            .map((i) => i.target <= 0 ? 0.0 : (i.done / (i.target * weekElapsed)).clamp(0.0, 1.0))
+            .reduce((a, b) => a + b) /
+        items.length;
   }
 
   double? horizonPct;
