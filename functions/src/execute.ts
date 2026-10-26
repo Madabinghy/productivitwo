@@ -15,6 +15,7 @@ import {
 } from "./contexts";
 import type { ContextUsage } from "./contexts";
 import { applyActionPatch } from "./action_patch";
+import { parseSnapshot, parseHunts, validateHunt, badgesSummary, formatBadgeList, huntLines } from "./badges_mcp";
 import {
   elanBucket, elanSummary, formatElanSummary, livedParts, validMoodValue, DEFAULT_DAY_START_MIN,
   MoodKind, MoodMarkDoc, ELAN_LABELS, EFFORT_LABELS, MOOD_LABELS, BlockLite,
@@ -558,7 +559,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
 
   const [domainsSnap, activitiesSnap,
          habitHitsSnap, sessionsSnap,
-         projectsSnap, scheduleSnap, inboxSnap, objectivesSnap, moodSnap, schedWeekSnap, metaSnapCtx] = await Promise.all([
+         projectsSnap, scheduleSnap, inboxSnap, objectivesSnap, moodSnap, schedWeekSnap, metaSnapCtx, badgesSnapCtx] = await Promise.all([
     db.collection(`users/${uid}/domains`).get(),
     db.collection(`users/${uid}/activities`).get(),
     // Incréments de routines/habitudes sur 7 jours
@@ -587,6 +588,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
     db.collection(`users/${uid}/daily_schedules`)
       .where(admin.firestore.FieldPath.documentId(), ">=", todayInParis(new Date(now.getTime() - 8 * 86_400_000))).get(),
     db.doc(`users/${uid}/data/meta`).get(),
+    db.doc(`users/${uid}/data/badges`).get(),
   ]);
   const autoPlanEnabled = await readAutoPlan(uid);
 
@@ -819,6 +821,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
     dayStartMin: dayStartCtx,
   });
   const elanLine = formatElanSummary(elanS);
+  const badges = badgesSummary(badgesSnapCtx.exists ? parseSnapshot(badgesSnapCtx.data()) : null, parseHunts(metaCtx.badgeHunts));
   const elan = elanLine === null
     ? null
     : {
@@ -838,6 +841,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       today: todayStr,
       autoPlan: { enabled: autoPlanEnabled },
       ...(elan ? { elan } : {}),
+      ...(badges ? { badges } : {}),
       domains,
       activities,
       objectives,
@@ -2427,6 +2431,37 @@ async function executeAddActivityAction(
     ? ` Estimation par défaut : ${action.estimatedMin} min (${defaultEstimateLabel(title, Array.isArray(contexts) ? contexts : [])}).`
     : "";
   return `✅ Action propre "${action.title}" créée sur "${data.name ?? activityId}" (id: ${action.id}).${estNote} Tu peux la programmer via schedule_day (activityId: ${activityId}, actionId: ${action.id}).${titleAdvice([{ title: action.title as string, kind: "action" }])}`;
+}
+
+/** Le deck de badges, depuis l'instantané déposé par l'app. */
+async function executeListBadges(uid: string): Promise<string> {
+  const [snap, meta] = await Promise.all([db.doc(`users/${uid}/data/badges`).get(), db.doc(`users/${uid}/data/meta`).get()]);
+  const hunts = parseHunts(meta.exists ? (meta.data() as Record<string, unknown>).badgeHunts : []);
+  return formatBadgeList(snap.exists ? parseSnapshot(snap.data()) : null, hunts);
+}
+
+/** Chasse aux badges : viser un palier (set) ou retirer une chasse (remove). */
+async function executeHuntBadge(
+  uid: string,
+  p: { action: string; badgeId: string; tier?: number; targetDate?: string }
+): Promise<string> {
+  if (!p.badgeId) return "badgeId requis (list_badges).";
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  const [snapDoc, meta] = await Promise.all([db.doc(`users/${uid}/data/badges`).get(), metaRef.get()]);
+  const hunts = parseHunts(meta.exists ? (meta.data() as Record<string, unknown>).badgeHunts : []);
+  const snap = snapDoc.exists ? parseSnapshot(snapDoc.data()) : null;
+  if (p.action === "remove") {
+    const rest = hunts.filter((h) => h.badgeId !== p.badgeId);
+    if (rest.length === hunts.length) return `Aucune chasse sur « ${p.badgeId} ».`;
+    await metaRef.set({ badgeHunts: rest }, { merge: true });
+    return `✓ Chasse retirée. Reste : ${rest.length ? huntLines(snap, rest).join(" · ") : "aucune"}.`;
+  }
+  if (p.action !== "set") return "action : set ou remove.";
+  const v = validateHunt(snap, hunts, p.badgeId, p.tier, p.targetDate);
+  if (!v.ok) return v.error;
+  const next = [...hunts.filter((h) => h.badgeId !== p.badgeId), v.hunt];
+  await metaRef.set({ badgeHunts: next }, { merge: true });
+  return `🎯 ${huntLines(snap, [v.hunt])[0]} — visible dans le deck (« En chasse ») et dans Aujourd'hui → Objectifs (« Badges visés »).`;
 }
 
 /** Pointage d'état (lot 2) : écrit un MoodMark comme le ferait l'app. */
@@ -4769,6 +4804,8 @@ export {
   executeAddActivityAction,
   executeLogRoutineHit,
   executeLogMood,
+  executeListBadges,
+  executeHuntBadge,
   executeMarkBlockDone,
   executeUpdateBlock,
   executeGetAssistantMessages,

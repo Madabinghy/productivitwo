@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
 const title_style_1 = require("./title_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
 // objet permettant de poser directement le lien chrono (linkedActivityId) et
@@ -1290,6 +1290,34 @@ const LOG_MOOD_TOOL = {
     },
 };
 exports.LOG_MOOD_TOOL = LOG_MOOD_TOOL;
+const LIST_BADGES_TOOL = {
+    name: "list_badges",
+    description: "Le deck de badges de l'utilisateur (calculé par l'app, instantané data/badges) : par famille, chaque badge " +
+        "avec son id, ses paliers, son avancement (« 64 / 66 j »), sa date d'obtention, et les chasses en cours. " +
+        "Un badge est un FAIT (série de routine, journées solides, actions faites, temps investi, élan…) : cite-le, " +
+        "ne le commente pas. Sert à répondre « où j'en suis », à repérer un palier proche et à proposer une chasse (hunt_badge).",
+    inputSchema: { type: "object", properties: {} },
+};
+exports.LIST_BADGES_TOOL = LIST_BADGES_TOOL;
+const HUNT_BADGE_TOOL = {
+    name: "hunt_badge",
+    description: "Chasse aux badges : viser un palier d'un badge (action set) ou retirer une chasse (action remove). " +
+        "Trois chasses au plus ; le palier visé doit rester à atteindre. Une chasse est une INTENTION de l'utilisateur : " +
+        "propose-la quand un palier est proche ou qu'il le demande, n'en pose jamais sans son accord explicite. " +
+        "L'app montre la chasse dans le deck (« En chasse ») et dans Aujourd'hui → Objectifs (« Badges visés », avec le " +
+        "levier du jour). Ids via list_badges.",
+    inputSchema: {
+        type: "object",
+        required: ["action", "badgeId"],
+        properties: {
+            action: { type: "string", enum: ["set", "remove"] },
+            badgeId: { type: "string", description: "id du badge (list_badges)" },
+            tier: { type: "number", description: "palier visé (1-based) ; défaut = le prochain" },
+            targetDate: { type: "string", description: "YYYY-MM-DD, échéance facultative" },
+        },
+    },
+};
+exports.HUNT_BADGE_TOOL = HUNT_BADGE_TOOL;
 const MARK_BLOCK_DONE_TOOL = {
     name: "mark_block_done",
     description: "Marque (ou démarque) un bloc du programme horaire du jour comme fait, sans toucher au reste " +

@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'dart:convert' show jsonEncode;
+
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -27,6 +29,7 @@ class BadgeCenter extends ChangeNotifier {
   List<StrategicObjective> _objectives = const [];
   DateTime? _fetchedAt;
   Future<BadgeDeck>? _inflight;
+  String? _snapshotHash; // dernier instantané envoyé au serveur (évite les écritures identiques)
 
   Future<BadgeDeck> load({bool refresh = false}) {
     final stale = _fetchedAt == null || DateTime.now().difference(_fetchedAt!) > _ttl;
@@ -75,8 +78,34 @@ class BadgeCenter extends ChangeNotifier {
       logic.caughtHuntBadgeIds.addAll(caught.map((v) => v.badge.def.id));
       logic.stopHunts(caught.map((v) => v.badge.def.id));
     }
+    _pushSnapshot(d);
     notifyListeners();
     return d;
+  }
+
+  /// Dépose l'instantané du deck dans `data/badges` quand il change (le MCP
+  /// `list_badges` / `hunt_badge` et le contexte de Claude le lisent).
+  void _pushSnapshot(BadgeDeck d) {
+    final badges = [
+      for (final b in d.badges)
+        {
+          'id': b.def.id,
+          'family': b.def.family.name,
+          'name': b.def.name,
+          'level': b.level,
+          'tiers': b.def.tiers,
+          'value': b.value,
+          'unit': b.def.unit,
+          'nextTarget': b.nextTarget,
+          'obtained': b.obtained == null ? null : ymdOf(b.obtained!),
+          'measured': b.def.measured,
+        },
+    ];
+    final body = {'acquired': d.acquired, 'total': d.total, 'badges': badges};
+    final hash = jsonEncode(body);
+    if (hash == _snapshotHash) return;
+    _snapshotHash = hash;
+    sync.saveBadgeSnapshot({...body, 'updatedAt': DateTime.now().toIso8601String()});
   }
 
   /// Badges dont un palier acquis n'a pas encore été signalé. Marque ces

@@ -352,6 +352,11 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   `AppLogic.logMood`). Seulement quand l'utilisateur DIT son état. `get_user_context` (donc `plan_day`) porte un bloc
   `elan` : résumé 7 j (élan moyen, pointages, fenêtres de flemme gagnées, taux de discipline, efforts). Logique pure
   `functions/src/elan.ts` ↔ `lib/utils/elan_logic.dart` (**garder alignés**)
+- `list_badges()` / `hunt_badge(action: set|remove, badgeId, tier?, targetDate?)` — **badges et chasse** (lot B,
+  2026-10) : le deck est calculé par l'APP (`lib/utils/badges_logic.dart`, `BadgeCenter`) qui dépose un instantané dans
+  `users/{uid}/data/badges` à chaque recalcul ; le serveur ne recalcule rien (`functions/src/badges_mcp.ts`). Chasses dans
+  `data/meta.badgeHunts` (3 max, palier restant, jamais posées sans accord explicite). `get_user_context` porte un bloc
+  `badges` (compteur, dernier obtenu, chasses, paliers proches).
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les

@@ -1359,6 +1359,36 @@ const LOG_MOOD_TOOL = {
   },
 };
 
+const LIST_BADGES_TOOL = {
+  name: "list_badges",
+  description:
+    "Le deck de badges de l'utilisateur (calculé par l'app, instantané data/badges) : par famille, chaque badge " +
+    "avec son id, ses paliers, son avancement (« 64 / 66 j »), sa date d'obtention, et les chasses en cours. " +
+    "Un badge est un FAIT (série de routine, journées solides, actions faites, temps investi, élan…) : cite-le, " +
+    "ne le commente pas. Sert à répondre « où j'en suis », à repérer un palier proche et à proposer une chasse (hunt_badge).",
+  inputSchema: { type: "object", properties: {} },
+};
+
+const HUNT_BADGE_TOOL = {
+  name: "hunt_badge",
+  description:
+    "Chasse aux badges : viser un palier d'un badge (action set) ou retirer une chasse (action remove). " +
+    "Trois chasses au plus ; le palier visé doit rester à atteindre. Une chasse est une INTENTION de l'utilisateur : " +
+    "propose-la quand un palier est proche ou qu'il le demande, n'en pose jamais sans son accord explicite. " +
+    "L'app montre la chasse dans le deck (« En chasse ») et dans Aujourd'hui → Objectifs (« Badges visés », avec le " +
+    "levier du jour). Ids via list_badges.",
+  inputSchema: {
+    type: "object",
+    required: ["action", "badgeId"],
+    properties: {
+      action: { type: "string", enum: ["set", "remove"] },
+      badgeId: { type: "string", description: "id du badge (list_badges)" },
+      tier: { type: "number", description: "palier visé (1-based) ; défaut = le prochain" },
+      targetDate: { type: "string", description: "YYYY-MM-DD, échéance facultative" },
+    },
+  },
+};
+
 const MARK_BLOCK_DONE_TOOL = {
   name: "mark_block_done",
   description:
@@ -1533,6 +1563,8 @@ MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,
 LOG_ROUTINE_HIT_TOOL,
 LOG_MOOD_TOOL,
+LIST_BADGES_TOOL,
+HUNT_BADGE_TOOL,
 MARK_BLOCK_DONE_TOOL,
 UPDATE_BLOCK_TOOL,
 GENERATE_WEEKLY_REPORT_TOOL,
