@@ -590,8 +590,14 @@ la feuille d'action mobile, l'écran bloc et l'espace Réalisation web, édité 
 `WRITING_RULES` (`functions/src/title_style.ts`) dans les descriptions de `push_gantt` / `add_task` / `update_task` /
 `update_action` / `add_activity_action` / `schedule_day` ; `note` accepté sur les objets action (`normalizeTasks`),
 `update_action {note | clearNote}` (`action_patch.ts`), `add_activity_action {note}` ; `checkTitle` / `titleAdvice` ajoutent
-« ✍️ Titres à alléger » (4 lignes max) à la réponse des outils — **jamais de réécriture automatique**. Suite possible (D) :
-blocs de 30 min minimum et fusion des actions consécutives d'une même tâche dans `plan_day`.
+« ✍️ Titres à alléger » (4 lignes max) à la réponse des outils — **jamais de réécriture automatique**. Les tâches de séance
+gardent leur émoji de rôle (📝 / 🎯 / ✅ : repère visuel de l'app) en forme courte « 📝 Préparer — Séance du 12 oct » ;
+`isPrepTask` / `isClosureTask` / `isMilestoneTask` (`utils/interventions.dart`) lisent `interventionRole` d'abord, l'émoji
+en repli. **D (livré)** : `BLOCK_RULES` (`functions/src/block_style.ts`) dans `schedule_day` et le workflow de `plan_day` —
+bloc de travail ≥ 30 min, actions consécutives d'une même tâche = UN bloc nommé par la tâche (`actionId` = la première,
+l'écran bloc enchaîne) ; routines, pauses, prep, rendez-vous exemptés ; `blockAdvice` ajoute « ⏱ Programme haché » à la
+réponse de `schedule_day` (blocs courts, suites fusionnables). Nettoyage de données fait à la main sur « CM — Nombres et
+calculs » (actions ouvertes : titres courts + `note`).
 
 **Estimations par défaut** (2.4, 2026-10) : une action créée sans `estimatedMin` en reçoit une d'après son verbe / objet
 (`functions/src/default_estimates.ts` côté MCP, `lib/utils/default_estimate.dart` côté app — **garder alignés**).
