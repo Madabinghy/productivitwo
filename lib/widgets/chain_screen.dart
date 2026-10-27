@@ -97,6 +97,7 @@ class _ChainScreenState extends State<_ChainScreen> {
   DateTime? _waitUntil;
   // Bloc dont on a lancé le chrono (une fois par entrée dans le bloc).
   String? _enteredBlockId;
+  ChainItem? _entered;
   // Dépassement : blocs pour lesquels on a choisi « Laisser ».
   final Set<String> _overrunIgnored = {};
   bool _paused = false;
@@ -243,8 +244,13 @@ class _ChainScreenState extends State<_ChainScreen> {
         _finishBlock(finished);
         return;
       }
-      // Bloc fabriqué (routines accrochées) : pas de transition, on enchaîne.
+      // Bloc fabriqué (routines accrochées, file d'un objectif) : pas de
+      // transition, on enchaîne — mais un chrono lancé pour lui s'arrête.
+      final e = _entered;
+      final open = _openSession;
+      if (e != null && e.timed && open != null && logic.sessionOnBlock(open, e.block)) logic.stopActive(notify: false);
       _enteredBlockId = null;
+      _entered = null;
     }
     if (cur != null && _between == null && cur.block.id != _enteredBlockId) {
       _enterBlock(cur);
@@ -253,10 +259,17 @@ class _ChainScreenState extends State<_ChainScreen> {
 
   void _enterBlock(ChainItem item) {
     _enteredBlockId = item.block.id;
+    _entered = item;
     _paused = false;
     if (!item.timed) return;
     final open = _openSession;
     if (open != null && logic.sessionOnBlock(open, item.block)) return;
+    // Bloc fabriqué (file d'un objectif) : rien n'est programmé à cette heure,
+    // on ne lance pas le chrono à sa place — bouton « Lancer le chrono ».
+    if (item.synthetic) {
+      _paused = true;
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.onLaunch(item.block);
     });
@@ -270,6 +283,7 @@ class _ChainScreenState extends State<_ChainScreen> {
       _between = b;
       _betweenMin = minutes;
       _enteredBlockId = null;
+      _entered = null;
     });
     if (b.status == 'pending') {
       await widget.sync.updateBlockStatus(widget.date, b.id, 'done', manual: true);
@@ -344,6 +358,15 @@ class _ChainScreenState extends State<_ChainScreen> {
   void _pause() {
     widget.onStopTimer();
     setState(() => _paused = true);
+  }
+
+  /// Pause / Reprendre, ou « Lancer le chrono » quand aucun chrono ne tourne
+  /// sur cet écran (bloc fabriqué entré sans lancement automatique).
+  Widget _chronoButton(ChainItem i) {
+    final s = _openSession;
+    final onBlock = s != null && logic.sessionOnBlock(s, i.block);
+    if (!_paused) return _secondary('Pause', _pause);
+    return _secondary(onBlock ? 'Reprendre' : 'Lancer le chrono', () => _resume(i));
   }
 
   void _resume(ChainItem i) {
@@ -635,7 +658,7 @@ class _ChainScreenState extends State<_ChainScreen> {
                               color: over > 0 ? kBAttention : pal.text3,
                               fontFeatures: const [FontFeature.tabularFigures()])),
                       if (_paused)
-                        Text('en pause', style: TextStyle(fontSize: 11, color: pal.text4)),
+                        Text(onBlock ? 'en pause' : 'chrono à lancer', style: TextStyle(fontSize: 11, color: pal.text4)),
                     ]),
                   ]),
                 )
@@ -720,7 +743,7 @@ class _ChainScreenState extends State<_ChainScreen> {
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
             const SizedBox(width: 8),
-            _secondary(_paused ? 'Reprendre' : 'Pause', () => _paused ? _resume(i) : _pause()),
+            _chronoButton(i),
           ]),
         ];
       case ChainKind.action:
@@ -730,7 +753,7 @@ class _ChainScreenState extends State<_ChainScreen> {
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
             const SizedBox(width: 8),
-            _secondary(_paused ? 'Reprendre' : 'Pause', () => _paused ? _resume(i) : _pause()),
+            _chronoButton(i),
           ]),
         ];
       case ChainKind.routine:
@@ -777,7 +800,7 @@ class _ChainScreenState extends State<_ChainScreen> {
           Row(children: [
             _secondary('Plus tard', () => _later(i)),
             const SizedBox(width: 8),
-            if (i.timed) _secondary(_paused ? 'Reprendre' : 'Pause', () => _paused ? _resume(i) : _pause())
+            if (i.timed) _chronoButton(i)
             else _secondary('Passer', () => _dismiss(i)),
           ]),
         ];
