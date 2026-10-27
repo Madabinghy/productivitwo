@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/objective_day.dart';
 
 void main() {
@@ -51,6 +52,28 @@ void main() {
         ObjectiveTimeToday(activity: act(id), activityId: id, weeklyMin: weeklyMin, doneTodayMin: doneToday, doneWeekMin: doneToday);
     final a = StrategicObjective(title: 'A', createdAt: DateTime(2026, 10, 1));
     final b = StrategicObjective(title: 'B', createdAt: DateTime(2026, 10, 1));
+
+    test('mode : Flemme = la routine engagée avant le chrono ; En forme = le coup en cours devant', () {
+      final coup = StrategicObjective(title: 'Coup', horizon: 'tactical', endDate: DateTime(2026, 10, 30), createdAt: DateTime(2026, 10, 1));
+      final r = act('lecture', type: 'habit');
+      final low = rankObjectiveMoments(
+        [day(a, times: [time('lire')], routines: [r]), day(b, times: [time('ecrire')])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (o) => o.title == 'A' ? .9 : .2, mode: DayMode.low,
+      );
+      expect(low.first.objective.title, 'A');
+      expect(low.first.move.kind, ObjectiveMoveKind.routine);
+      final normal = rankObjectiveMoments(
+        [day(a, times: [time('lire')], routines: [r]), day(b, times: [time('ecrire')])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (o) => o.title == 'A' ? .9 : .2,
+      );
+      expect(normal.first.objective.title, 'B');
+      expect(normal.first.move.kind, ObjectiveMoveKind.time);
+      final high = rankObjectiveMoments(
+        [day(a, times: [time('lire')]), day(coup, times: [time('sprint')])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (o) => o.title == 'A' ? .1 : .9, mode: DayMode.high,
+      );
+      expect(high.first.objective.title, 'Coup');
+    });
 
     test('bloc en cours ou chrono qui tourne = objectif du moment, avant le retard de rythme', () {
       final blk = ScheduleBlock(id: 'k', startTime: '09:30', durationMin: 60, title: 'Écrire', category: 'project', activityId: 'ecrire');

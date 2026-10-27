@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 
 /// Logique pure de l'onglet Actions (refonte web § 5) — testable sans widget.
@@ -542,7 +543,7 @@ List<({Activity activity, List<TaskAction> actions})> ownActionGroups(
 
 typedef ActionEntry = ({TaskAction action, Project? project, ProjectTask? task, Activity? activity});
 
-enum ActionMomentKind { running, block, late, today, next, week, rest }
+enum ActionMomentKind { running, block, late, today, next, week, rest, short, deep }
 
 class ActionMoment {
   final ActionEntry entry;
@@ -564,11 +565,42 @@ ActionMoment? pickActionMoment(
   required DateTime today,
   String? runningActionId,
   ActionEntry? Function(ScheduleBlock b)? entryForBlock,
+  DayMode mode = DayMode.normal,
+  String? focusProjectId,
 }) {
   if (entries.isEmpty) return null;
   final d = _dayOnly(today);
   ActionEntry? byId(String? id) => id == null ? null : entries.where((e) => e.action.id == id).firstOrNull;
   if (byId(runningActionId) case final e?) return ActionMoment(e, ActionMomentKind.running);
+  // Modes et coups (lot 2) : ce qu'on est en train de faire gagne toujours
+  // (chrono, bloc en cours) ; sinon Flemme = la plus courte faisable, étapes
+  // d'abord ; En forme = la plus longue du projet le plus en retard
+  // ([focusProjectId]), sinon la plus longue tout court.
+  if (mode == DayMode.low) {
+    final current = _currentBlock(blocks, nowMin);
+    final cur = current == null ? null : (byId(current.actionId) ?? entryForBlock?.call(current));
+    if (cur != null) return ActionMoment(cur, ActionMomentKind.block, block: current);
+    final pool = entries.where((e) => passesTime(e.action, TimeBucket.quarter)).toList();
+    final list = pool.isEmpty ? entries : pool;
+    ActionEntry? best;
+    int score(ActionEntry e) => (e.action.checklist.any((c) => !c.done) ? 0 : 1000) + (e.action.estimatedMin ?? 45);
+    for (final e in list) {
+      if (best == null || score(e) < score(best)) best = e;
+    }
+    return ActionMoment(best!, ActionMomentKind.short);
+  }
+  if (mode == DayMode.high) {
+    final current = _currentBlock(blocks, nowMin);
+    final cur = current == null ? null : (byId(current.actionId) ?? entryForBlock?.call(current));
+    if (cur != null) return ActionMoment(cur, ActionMomentKind.block, block: current);
+    final inFocus = focusProjectId == null ? const <ActionEntry>[] : entries.where((e) => e.project?.id == focusProjectId).toList();
+    final list = inFocus.isEmpty ? entries : inFocus;
+    ActionEntry? best;
+    for (final e in list) {
+      if (best == null || (e.action.estimatedMin ?? 45) > (best.action.estimatedMin ?? 45)) best = e;
+    }
+    return ActionMoment(best!, ActionMomentKind.deep);
+  }
 
   final live = blocks.where((b) => b.status == 'pending').toList()..sort((a, b) => a.startTime.compareTo(b.startTime));
   ScheduleBlock? current, next;
@@ -616,4 +648,14 @@ ActionMoment? pickActionMoment(
   }
   if (best != null) return ActionMoment(best, ActionMomentKind.week, due: bestDue);
   return ActionMoment(entries.first, ActionMomentKind.rest);
+}
+
+ScheduleBlock? _currentBlock(List<ScheduleBlock> blocks, int nowMin) {
+  for (final b in blocks) {
+    if (b.status != 'pending') continue;
+    final p = b.startTime.split(':');
+    final s = (int.tryParse(p[0]) ?? 0) * 60 + (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+    if (s <= nowMin && nowMin < s + b.durationMin) return b;
+  }
+  return null;
 }

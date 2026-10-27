@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -73,6 +74,8 @@ class TodayView extends StatefulWidget {
   final void Function(Activity activity, int minutes)? onChallengeAccept;
   final Future<void> Function(Activity activity, int minutes)? onChallengeSchedule;
   final void Function(Activity activity, int minutes)? onStartTimed;
+  /// Modes et coups (lot 2) : lancer un bloc avec un minuteur (« 10 min, malgré tout »).
+  final void Function(ScheduleBlock block, int minutes)? onNowLaunchTimed;
 
   const TodayView(
       {super.key,
@@ -96,7 +99,8 @@ class TodayView extends StatefulWidget {
       this.onOpenDayReview,
       this.onChallengeAccept,
       this.onChallengeSchedule,
-      this.onStartTimed});
+      this.onStartTimed,
+      this.onNowLaunchTimed});
 
   @override
   State<TodayView> createState() => TodayViewState();
@@ -820,6 +824,29 @@ class TodayViewState extends State<TodayView> {
                               onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
                               onStopTimer: widget.onStopTimer!,
                               onOpenSource: widget.onOpenSource,
+                            ),
+                    onChainSmall: widget.onStopTimer == null
+                        ? null
+                        : () => showChainScreen(
+                              context,
+                              logic: widget.logic,
+                              sync: FirestoreSync(),
+                              date: _schedDate,
+                              onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                              onStopTimer: widget.onStopTimer!,
+                              onOpenSource: widget.onOpenSource,
+                              small: true,
+                            ),
+                    onLaunchTimed: widget.onNowLaunchTimed,
+                    onDeepWork: (widget.onNowLaunch ?? widget.onLaunch) == null
+                        ? null
+                        : () => showDeepWorkSheet(
+                              context,
+                              logic: widget.logic,
+                              sync: widget.sync ?? FirestoreSync(),
+                              date: _schedDate,
+                              onLaunch: widget.onNowLaunch ?? widget.onLaunch!,
+                              objectives: _objectives,
                             ),
                     onOpenFocus: widget.onStopTimer == null
                         ? null

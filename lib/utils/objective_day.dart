@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_health.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 
@@ -179,6 +180,7 @@ List<ObjectiveMoment> rankObjectiveMoments(
   required int Function(Activity routine) routineCount,
   required double? Function(StrategicObjective o) weekPercent,
   String? runningActivityId,
+  DayMode mode = DayMode.normal,
 }) {
   final out = <({ObjectiveMoment m, int rank, double pct})>[];
   for (final d in days) {
@@ -224,6 +226,9 @@ List<ObjectiveMoment> rankObjectiveMoments(
       move = ObjectiveMove(ObjectiveMoveKind.running, time: d.times.firstWhere((t) => t.activityId == runningActivityId));
     } else if (current != null) {
       move = ObjectiveMove(ObjectiveMoveKind.block, block: current);
+    } else if (mode == DayMode.low && openRoutine != null) {
+      // Flemme : la routine engagée la plus simple avant le chrono.
+      move = ObjectiveMove(ObjectiveMoveKind.routine, routine: openRoutine);
     } else if (behind != null) {
       move = ObjectiveMove(ObjectiveMoveKind.time, time: behind);
     } else if (openRoutine != null) {
@@ -239,7 +244,7 @@ List<ObjectiveMoment> rankObjectiveMoments(
     }
 
     final hasWork = remaining.isNotEmpty;
-    final rank = running || current != null
+    var rank = running || current != null
         ? 0
         : hasWork
             ? 1
@@ -248,6 +253,10 @@ List<ObjectiveMoment> rankObjectiveMoments(
                 : d.nextActions.isNotEmpty
                     ? 3
                     : 4;
+    // En forme : le coup en cours passe devant tout ce qui n'est pas déjà engagé.
+    if (mode == DayMode.high && o.isTactical && rank > 0 && rank < 4) rank = 0;
+    // Flemme : un objectif qui n'a qu'une routine à faire passe devant un chrono.
+    if (mode == DayMode.low && rank == 1 && openRoutine != null) rank = 0;
     out.add((
       m: ObjectiveMoment(day: d, move: move, weekPercent: pct, readingDue: due, remaining: remaining),
       rank: rank,

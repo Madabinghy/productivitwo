@@ -107,7 +107,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 |-----|---------|---------|
 | 0 | Modèle + MCP + logique pure (`horizon`, `restDomains`, `budgetWindowDays`, `set_mode`, `rest_domain`, blocs `plan_day`) | non — **livré** |
 | 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui — **livré** |
-| 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui |
+| 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui — **livré** |
 | 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui |
 | 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui |
 | 5 | Web : mode dans le menu ⋯, chips, section Coups dans Projets / Aujourd'hui | oui |
@@ -150,3 +150,25 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 - **Badges** : « Malgré tout » existait déjà (famille Discipline, victoires en fenêtre de flemme : même règle) ;
   nouveau **« Deep work »** (`deep-work`, Discipline, paliers 3 / 10 / 30 = chronos terminés ≥ 60 min d'affilée,
   `deepWorkSessions`, symbole `focus`).
+
+## Lot 2 — détail (livré)
+
+- **Logique pure** `lib/utils/mode_moves.dart` (tests `test/mode_moves_test.dart`) : `activeCoups`, `deepWorkCandidates`
+  (coup en cours → son projet / prochaine action ou son premier engagement de temps ; puis `projectPick` = projet le plus
+  en retard via `rankProjectMoments` ; puis `objectivePick` = objectif le plus en retard avec engagement de temps via
+  `rankObjectiveMoments` ; une source n'est proposée qu'une fois), `deepWorkBlock` (90 min à partir de maintenant arrondi
+  aux 5 min, sur la source), `smallChain` (« 3 petites choses » : routines, étapes, actions ≤ 10 min).
+- **MAINTENANT** (`now_card.dart`) : Flemme → bouton plein « 10 min, malgré tout » (`onLaunchTimed` → `_launchScheduledBlock`
+  + `_startCountdown(10)` dans `main.dart`) et « n petites choses, malgré tout » (Enchaîner en mode `small`) ; En forme →
+  bouton « Deep work 90 min · sur quoi ? » quand aucun chrono ne tourne.
+- **« Sur quoi ? »** `widgets/deep_work_sheet.dart` (`showDeepWorkSheet`) : candidats radio, premier présélectionné,
+  « Autre… » (projets actifs / activités-temps), confirmation si un chrono tourne sur autre chose, puis
+  `addScheduleBlock` + `onLaunch(bloc)`. Jamais lancé sans geste. La proposition de veille des domaines arrive au lot 3.
+- **Actions** : `pickActionMoment(mode:, focusProjectId:)` — chrono / bloc en cours gagnent toujours ; Flemme = la plus
+  courte faisable (`passesTime quarter`, étapes d'abord, pastille « la plus courte · malgré tout ») ; En forme = la plus
+  longue du projet le plus en retard (`ActionMomentKind.short` / `deep`).
+- **Objectifs** : `rankObjectiveMoments(mode:)` — Flemme : la routine engagée avant le chrono (geste + rang) ; En forme :
+  le coup en cours (`isTactical`) devant, et la carte propose « Bloc de 90 min · à fond » (feuille présélectionnée).
+- **Ma semaine** : sous-ligne préfixée « journée malgré tout · » / « journée à fond · ».
+- Non fait ici : « une seule étape » dans MAINTENANT en Flemme (les étapes restent repliées par défaut), Projets « coup en
+  tête » (lot 3, avec les coups).

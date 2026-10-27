@@ -3641,6 +3641,11 @@ class _AppRootState extends State<AppRoot>
             countdownEndsAt: _countdownEndsAt,
             countdownTotalSec: _countdownTotalSec,
             onNowLaunch: (b) => _launchScheduledBlock(b, goToNow: false),
+            onNowLaunchTimed: (b, m) async {
+              await _launchScheduledBlock(b, goToNow: false);
+              _startCountdown(m, b.title);
+              if (mounted) setState(() {});
+            },
             onStopCountdown: () {
               _cancelCountdown();
               setState(() {});
