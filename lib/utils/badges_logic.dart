@@ -337,7 +337,7 @@ class DayScore {
 }
 
 bool _countsForDay(ScheduleBlock b) =>
-    b.kind == 'normal' && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending');
+    (b.kind == 'normal' || b.kind == 'deepwork') && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending');
 
 /// Score d'un jour vécu : routines quotidiennes dues (créées avant ce jour,
 /// non supprimées) et blocs du programme (hors miroirs d'agenda, sautés,
@@ -740,15 +740,16 @@ BadgeDeck computeBadges({
     tierDates: [for (final t in kBarometerTiers) t <= disc.elanMarkDates.length ? _day(disc.elanMarkDates[t - 1]) : null],
     facts: [('Pointages d\u2019élan', '${disc.elanMarkDates.length}'), if (disc.elanMarkDates.isNotEmpty) ('Le premier', _fmtDate(disc.elanMarkDates.first))],
   ));
-  // Deep work : chronos d'au moins 60 min d'affilée sur une seule source (mode En forme, lot 1 Modes et coups).
-  final deep = deepWorkSessions(sessions);
+  // Deep work (Modes et coups) : un bloc de deep work CHOISI (kind "deepwork", posé par « Deep work 90 min »)
+  // sur lequel le chrono a tenu ≥ 60 min d'affilée. Un chrono long tout seul (Sommeil, séance) ne compte pas.
+  final deep = deepWorkSessions(sessions, schedules);
   out.add(BadgeState(
-    def: const BadgeDef(id: 'deep-work', family: BadgeFamily.discipline, name: 'Deep work', symbol: 'focus', tiers: kDeepWorkTiers, unit: 'blocs', unitLong: 'blocs de 60 min et plus'),
+    def: const BadgeDef(id: 'deep-work', family: BadgeFamily.discipline, name: 'Deep work', symbol: 'focus', tiers: kDeepWorkTiers, unit: 'blocs', unitLong: 'blocs de deep work menés au bout'),
     level: _levelOf(kDeepWorkTiers, deep.length),
     value: deep.length,
     tierDates: [for (final t in kDeepWorkTiers) t <= deep.length ? _day(deep[t - 1]) : null],
     facts: [
-      ('Chronos de 60 min et plus', '${deep.length}'),
+      ('Blocs de deep work menés au bout', '${deep.length}'),
       if (deep.isNotEmpty) ('Le dernier', _fmtDate(deep.last)),
     ],
   ));
@@ -960,14 +961,38 @@ Set<String> acquiredTierKeys(BadgeDeck d) => {
 /// Paliers acquis que `seen` ne connaît pas encore.
 Set<String> newTierKeys(BadgeDeck d, Set<String> seen) => acquiredTierKeys(d).difference(seen);
 
-/// Fins des chronos TERMINÉS d'au moins [minMin] minutes d'affilée (une session =
-/// une source), dans l'ordre. Un deep work au sens du handoff Modes et coups.
-List<DateTime> deepWorkSessions(List<Session> sessions, {int minMin = 60}) {
+/// Blocs de deep work menés au bout : un bloc `kind: "deepwork"` (choisi via
+/// « Deep work 90 min ») sur lequel UN chrono TERMINÉ de la même source a couvert
+/// au moins [minMin] minutes d'affilée dans son créneau. Un par bloc, dans
+/// l'ordre des fins. Un chrono long sans bloc de deep work (Sommeil, séance,
+/// activité libre) ne compte pas : le deep work est un choix, pas une durée.
+List<DateTime> deepWorkSessions(List<Session> sessions, List<DailySchedule> schedules, {int minMin = 60}) {
   final out = <DateTime>[];
-  for (final s in sessions) {
-    final end = s.endAt;
-    if (s.deleted || end == null) continue;
-    if (end.difference(s.startAt).inMinutes >= minMin) out.add(end);
+  for (final sch in schedules) {
+    final day = DateTime.tryParse(sch.date);
+    if (day == null) continue;
+    for (final b in sch.blocks) {
+      if (b.kind != 'deepwork' || b.status == 'deleted') continue;
+      final p = b.startTime.split(':');
+      final startMin = (int.tryParse(p[0]) ?? 0) * 60 + (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+      final from = DateTime(day.year, day.month, day.day).add(Duration(minutes: startMin));
+      final to = from.add(Duration(minutes: b.durationMin));
+      DateTime? reached;
+      for (final s in sessions) {
+        final end = s.endAt;
+        if (s.deleted || end == null) continue;
+        final sameSource = b.taskId != null
+            ? s.taskId == b.taskId
+            : b.activityId != null
+                ? s.activityId == b.activityId
+                : b.actionId != null && s.actionId == b.actionId;
+        if (!sameSource) continue;
+        final a = s.startAt.isAfter(from) ? s.startAt : from;
+        final z = end.isBefore(to) ? end : to;
+        if (z.difference(a).inMinutes >= minMin && (reached == null || z.isBefore(reached))) reached = z;
+      }
+      if (reached != null) out.add(reached);
+    }
   }
   out.sort();
   return out;

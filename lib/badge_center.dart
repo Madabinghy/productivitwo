@@ -120,7 +120,10 @@ class BadgeCenter extends ChangeNotifier {
       await p.setStringList(_seenKey, keys.toList());
       return const [];
     }
-    final seen = stored.toSet();
+    // Un palier qui n'est plus acquis (règle resserrée, donnée corrigée) sort de
+    // la mémoire : s'il revient pour de vrai, il sera signalé à nouveau.
+    final seen = stored.toSet().intersection(keys);
+    if (seen.length != stored.length) await p.setStringList(_seenKey, seen.toList());
     final fresh = newTierKeys(d, seen);
     if (fresh.isEmpty) return const [];
     await p.setStringList(_seenKey, {...seen, ...keys}.toList());
