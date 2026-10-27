@@ -3,9 +3,13 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show scoreDay, routineReachedDays, fmtInt;
+import 'package:productivitwo_v1/utils/chain.dart' show buildObjectiveChain;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
+import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
+import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -29,6 +33,9 @@ class ObjectivesDayView extends StatefulWidget {
   final void Function(Project project, ProjectTask task)? onOpenTask;
   final BadgeCenter? badges; // chasse aux badges : carte « Badges visés »
   final VoidCallback? onChain;
+  /// « Enchaîner » la file d'UN objectif (routines, blocs, temps en retard,
+  /// prochaines actions) depuis la carte Objectif du moment.
+  final void Function(StrategicObjective objective)? onChainObjective;
   const ObjectivesDayView({
     super.key,
     required this.logic,
@@ -39,6 +46,7 @@ class ObjectivesDayView extends StatefulWidget {
     this.onOpenTask,
     this.badges,
     this.onChain,
+    this.onChainObjective,
   });
 
   @override
@@ -49,6 +57,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
   static List<StrategicObjective>? _cache;
   List<StrategicObjective> _objectives = const [];
   bool _loaded = false;
+  int _offset = 0; // « Suivant » sur la carte Objectif du moment
 
   @override
   void initState() {
@@ -123,9 +132,18 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
         ]),
       );
     }
+    final ranked = rankObjectiveMoments(
+      days,
+      nowMin: widget.logic.livedNowMinNow,
+      now: now,
+      routineCount: (a) => routineTodayCount(widget.logic, a),
+      weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
+      runningActivityId: widget.logic.runningActivity()?.id,
+    );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _momentCard(NowPalette.of(context), ranked),
       Padding(
-        padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+        padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
         child: Text(
           'Ce qui sert tes objectifs en cours, aujourd\u2019hui : le temps engagé au rythme du jour, '
           'les routines à cocher, les blocs du programme et la prochaine action de chaque projet.',
@@ -139,6 +157,205 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
         child: Text('Ce qui ne sert aucun objectif reste dans Actions et Routines.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: text3)),
       ),
     ]);
+  }
+
+
+  // ── Objectif du moment ──────────────────────────────────────────────────────
+
+  static const _accent = Color(0xFF00897B);
+
+  Widget _momentCard(NowPalette pal, List<ObjectiveMoment> ranked) {
+    final m = ranked[_offset % ranked.length];
+    final o = m.objective;
+    final pct = m.weekPercent;
+    final pctInt = pct == null ? null : (pct * 100).round();
+    final ring = pct == null ? 0.0 : pct.clamp(0.0, 1.0);
+    final ringColor = pctInt == null ? _accent : palierColor(pctInt);
+    final remaining = [...m.remaining, if (m.readingDue) 'relevé à noter'];
+    final st = widget.logic.state;
+    final chainN = widget.onChainObjective == null
+        ? 0
+        : buildObjectiveChain(m.day,
+                projects: widget.logic.currentProjects,
+                activities: st.activities,
+                hits: st.habitHits,
+                now: DateTime.now(),
+                dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
+                dayStartMin: widget.logic.dayStartMin)
+            .length;
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      decoration: BoxDecoration(
+        color: pal.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _accent.withValues(alpha: .35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(width: 7, height: 7, decoration: const BoxDecoration(color: _accent, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('OBJECTIF DU MOMENT',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
+          ),
+          if (ranked.length > 1)
+            InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => setState(() => _offset = (_offset + 1) % ranked.length),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(color: _accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
+                child: Text('${_offset % ranked.length + 1} / ${ranked.length} · suivant ›',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: _accent)),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          SizedBox(
+            width: 96,
+            height: 96,
+            child: Stack(alignment: Alignment.center, children: [
+              CustomPaint(
+                size: const Size(96, 96),
+                painter: RingPainter(progress: ring, color: ringColor, stroke: 9, trackColor: pal.track, cap: StrokeCap.round),
+              ),
+              Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(pctInt == null ? '—' : '$pctInt %',
+                    style: TextStyle(
+                        fontSize: 19, fontWeight: FontWeight.w700, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
+                Text(pctInt == null ? 'SANS RYTHME' : 'DU RYTHME', style: TextStyle(fontSize: 9.5, letterSpacing: 1.1, color: pal.text3)),
+              ]),
+            ]),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Padding(padding: EdgeInsets.only(top: 2), child: Icon(Icons.flag_rounded, size: 24, color: _accent)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(o.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              if (m.allDone)
+                Text('✓ Tout est fait pour aujourd’hui', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kPalierGreen))
+              else if (remaining.isEmpty)
+                Text(_moveHint(m.move), style: TextStyle(fontSize: 12.5, color: pal.text3))
+              else
+                Text('Reste aujourd’hui : ${remaining.join(' · ')}',
+                    style: TextStyle(fontSize: 12.5, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: _moveButton(pal, m)),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 54,
+            child: OutlinedButton(
+              onPressed: () async {
+                final changed = await showObjectiveTrajectorySheet(context,
+                    logic: widget.logic, sync: widget.sync, objective: o, projects: widget.logic.currentProjects);
+                if (changed) _load();
+              },
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: pal.text2,
+                  side: BorderSide(color: pal.track),
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+              child: const Text('Fiche'),
+            ),
+          ),
+        ]),
+        if (chainN > 0) ...[
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: () => widget.onChainObjective!(o),
+            style: TextButton.styleFrom(foregroundColor: _accent, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            icon: const Icon(Icons.playlist_play_rounded, size: 22),
+            label: Text('Enchaîner · $chainN ${chainN > 1 ? 'choses' : 'chose'} pour cet objectif'),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  String _moveHint(ObjectiveMove mv) => switch (mv.kind) {
+        ObjectiveMoveKind.running => 'Chrono en cours · ${_min(mv.time!.doneTodayMin)} aujourd’hui',
+        ObjectiveMoveKind.nextAction => '${mv.next!.project.title} › ${mv.next!.task.title}',
+        ObjectiveMoveKind.reading => 'Relevé à noter',
+        _ => 'Rien d’engagé pour aujourd’hui',
+      };
+
+  /// Le geste de la carte : un seul bouton, selon ce que la journée demande.
+  Widget _moveButton(NowPalette pal, ObjectiveMoment m) {
+    final mv = m.move;
+    Widget filled(String label, VoidCallback? onTap, {IconData? icon}) => SizedBox(
+          height: 54,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: _accent,
+                foregroundColor: Colors.white,
+                shape: const StadiumBorder(),
+                textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            onPressed: onTap,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 6)],
+              Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
+        );
+    switch (mv.kind) {
+      case ObjectiveMoveKind.running:
+        return SizedBox(
+          height: 54,
+          child: OutlinedButton.icon(
+            onPressed: () => widget.logic.stopActive(),
+            style: OutlinedButton.styleFrom(
+                foregroundColor: _accent,
+                side: BorderSide(color: _accent.withValues(alpha: .5)),
+                shape: const StadiumBorder(),
+                textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            icon: const Icon(Icons.stop_rounded, size: 22),
+            label: Text('Arrêter · ${mv.time!.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        );
+      case ObjectiveMoveKind.block:
+        final b = mv.block!;
+        final launch = widget.onLaunch ?? widget.onOpenSource;
+        return filled('${b.startTime} · ${b.title}', launch == null ? null : () => launch(b), icon: Icons.play_arrow_rounded);
+      case ObjectiveMoveKind.time:
+        final t = mv.time!;
+        return filled('Chrono · ${t.name}', t.activity == null ? null : () => widget.logic.start(t.activityId), icon: Icons.play_arrow_rounded);
+      case ObjectiveMoveKind.routine:
+        final a = mv.routine!;
+        return filled('+1 · ${a.name}', () => routinePlus(widget.logic, a));
+      case ObjectiveMoveKind.reading:
+        return filled('Noter un relevé', () async {
+          final changed = await showObjectiveTrajectorySheet(context,
+              logic: widget.logic, sync: widget.sync, objective: m.objective, projects: widget.logic.currentProjects);
+          if (changed) _load();
+        }, icon: Icons.edit_rounded);
+      case ObjectiveMoveKind.nextAction:
+        final n = mv.next!;
+        return filled(n.action.title, widget.onOpenTask == null ? null : () => widget.onOpenTask!(n.project, n.task), icon: Icons.arrow_forward_rounded);
+      case ObjectiveMoveKind.none:
+        return SizedBox(
+          height: 54,
+          child: Center(
+            child: Text(m.allDone ? 'Rien de plus à faire aujourd’hui' : 'Rien d’engagé pour aujourd’hui',
+                style: TextStyle(fontSize: 13, color: pal.text3)),
+          ),
+        );
+    }
   }
 
   /// « Badges visés » : chaque chasse avec le levier du jour et, quand il

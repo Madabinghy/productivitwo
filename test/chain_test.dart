@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
+import 'package:productivitwo_v1/utils/objective_day.dart';
 
 ScheduleBlock _b(String id, String start, int dur,
         {String? projectId, String? taskId, String? actionId, String? activityId, String? gcal, String status = 'pending'}) =>
@@ -124,5 +125,34 @@ void main() {
     expect(chain2.any((i) => i.activity?.id == 'lou'), isFalse);
     // Sans accroche : seulement le programme.
     expect(buildChain(blocks: blocks, projects: [project], activities: acts, hits: const [], now: now, anchorRoutines: false).length, 7);
+  });
+
+  test('buildObjectiveChain : routines non atteintes, blocs à faire, temps en retard, prochaine action — sans doublon du programme', () {
+    final ecrire = Activity(id: 'e', domainId: 'd', name: 'Écrire', type: 'time', goalMin: 60);
+    final o = StrategicObjective(
+      title: 'Livre',
+      timeCommitments: [ObjectiveTimeCommitment(activityId: 'e', weeklyMin: 140)],
+      routineCommitments: [ObjectiveRoutineCommitment(activityId: 'w'), ObjectiveRoutineCommitment(activityId: 'l')],
+      projectIds: ['p'],
+    );
+    final hits = [HabitHit(habitId: 'l', ts: DateTime(2026, 10, 16, 7))];
+    final day = buildObjectiveDays(
+        objectives: [o], activities: [ecrire, water, lit], sessions: const [], projects: [project],
+        blocks: [_b('old', '07:00', 60, activityId: 'e'), _b('b3', '12:00', 30, gcal: 'g')], now: now).single;
+    final chain = buildObjectiveChain(day, projects: [project], activities: [ecrire, water, lit], hits: hits, now: now);
+    // b3 (miroir agenda sans lien) ne sert pas l'objectif ; seule la prochaine action (a1) entre, pas « Rédiger ».
+    expect(chain.map((i) => '${i.kind.name}:${i.title}').toList(), ['routine:Eau', 'block:Écrire', 'step:Kahoot', 'step:Reporté']);
+    expect(chain.every((i) => i.synthetic), isTrue);
+    expect(chain[1].timed, isTrue);
+    expect(chain[1].block.durationMin, 20); // 140 / 7 attendu, rien de fait
+    expect(chain[2].block.projectId, 'p');
+    expect(chain[2].block.actionId, 'a1');
+    // Déjà au programme : ni la routine ni la tâche ne sont ajoutées en plus ; « pas aujourd'hui » écarte.
+    final day2 = buildObjectiveDays(
+        objectives: [o], activities: [ecrire, water, lit], sessions: const [], projects: [project],
+        blocks: [_b('b1', '09:00', 90, projectId: 'p', taskId: 't', actionId: 'a2'), _b('b2', '11:00', 20, activityId: 'w'), _b('b5', '15:00', 30, activityId: 'e')], now: now).single;
+    final chain2 = buildObjectiveChain(day2, projects: [project], activities: [ecrire, water, lit], hits: hits, now: now, dismissed: {'w'});
+    expect(chain2.map((i) => '${i.kind.name}:${i.title}').toList(), ['action:Rédiger', 'step:Kahoot', 'step:Reporté', 'routine:Eau', 'block:Écrire']);
+    expect(chain2.every((i) => !i.synthetic), isTrue);
   });
 }

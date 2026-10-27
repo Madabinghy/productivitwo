@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_work.dart';
+import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/routines_today.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
@@ -319,4 +320,68 @@ int chainMinutesOn(ScheduleBlock block, List<Session> sessions, DateTime since, 
     total += (s.endAt ?? now).difference(s.startAt).inMinutes;
   }
   return total;
+}
+
+/// « Enchaîner » un OBJECTIF (2026-10, carte Objectif du moment) : la file de
+/// ce qui sert l'objectif aujourd'hui, une chose par écran — ses routines pas
+/// encore atteintes, ses blocs du programme encore à faire, ses engagements de
+/// temps en retard sur le rythme du jour (bloc fabriqué de la durée restante,
+/// le chrono se lance dessus), puis la prochaine action de chacun de ses
+/// projets (étapes une à une). Ce qui est déjà posé en bloc dans le programme
+/// n'est pas ajouté en plus ; les blocs fabriqués (`~obj/…`) ne s'écrivent pas.
+List<ChainItem> buildObjectiveChain(
+  ObjectiveDay day, {
+  required List<Project> projects,
+  required List<Activity> activities,
+  required List<HabitHit> hits,
+  required DateTime now,
+  Set<String> dismissed = const {},
+  int dayStartMin = kDefaultDayStartMin,
+}) {
+  final nowMin = livedNowMin(now, dayStartMin);
+  final hm = '${((nowMin ~/ 60) % 24).toString().padLeft(2, '0')}:${(nowMin % 60).toString().padLeft(2, '0')}';
+  final live = day.blocks.where((b) => b.status == 'pending' && blockEndMin(b) > nowMin).toList()
+    ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
+  final inProgram = {for (final b in live) if (b.activityId != null) b.activityId!};
+  final tasksInProgram = {for (final b in live) if (b.taskId != null) b.taskId!};
+  final out = <ChainItem>[];
+  for (final a in day.routines) {
+    if (dismissed.contains(a.id) || inProgram.contains(a.id)) continue;
+    final r = routinesForToday([a], hits, now, dayStartMin: dayStartMin).firstOrNull;
+    if (r == null || r.reached) continue;
+    out.add(ChainItem(
+      kind: ChainKind.routine,
+      block: ScheduleBlock(id: '${kSyntheticPrefix}obj/${a.id}', startTime: hm, durationMin: 10, title: a.name, category: 'routine', activityId: a.id),
+      activity: a,
+    ));
+  }
+  for (final b in live) {
+    out.addAll(chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now, dayStartMin: dayStartMin));
+  }
+  for (final t in day.times) {
+    final left = t.expectedTodayMin - t.doneTodayMin;
+    if (left <= 0 || inProgram.contains(t.activityId) || t.activity == null) continue;
+    out.add(ChainItem(
+      kind: ChainKind.block,
+      block: ScheduleBlock(id: '${kSyntheticPrefix}obj-time/${t.activityId}', startTime: hm, durationMin: left, title: t.name, category: 'project', activityId: t.activityId),
+      activity: t.activity,
+    ));
+  }
+  for (final n in day.nextActions) {
+    if (tasksInProgram.contains(n.task.id)) continue;
+    final b = ScheduleBlock(
+      id: '${kSyntheticPrefix}obj-task/${n.task.id}',
+      startTime: hm,
+      durationMin: n.action.estimatedMin ?? 45,
+      title: n.task.title,
+      category: 'project',
+      projectId: n.project.id,
+      taskId: n.task.id,
+      actionId: n.action.id,
+    );
+    // Seulement la prochaine action (pas toutes les actions ouvertes de la tâche).
+    out.addAll(chainItemsOf(b, projects: projects, activities: activities, hits: hits, now: now, dayStartMin: dayStartMin)
+        .where((i) => i.action == null || i.action!.id == n.action.id));
+  }
+  return out;
 }

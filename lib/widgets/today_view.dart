@@ -821,6 +821,18 @@ class TodayViewState extends State<TodayView> {
                                 onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
                                 onStopTimer: widget.onStopTimer!,
                               ),
+                      onChainObjective: widget.onStopTimer == null
+                          ? null
+                          : (o) => showChainScreen(
+                                context,
+                                logic: widget.logic,
+                                sync: widget.sync!,
+                                date: _schedDate,
+                                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                                onStopTimer: widget.onStopTimer!,
+                                onOpenSource: widget.onOpenSource,
+                                objective: o,
+                              ),
                     ),
                   )
                 else ...[
