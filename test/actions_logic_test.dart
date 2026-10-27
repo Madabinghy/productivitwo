@@ -376,4 +376,34 @@ void main() {
     final c = stopTargetCandidates([p], const [], 'contenu', today: today, plannedIds: {'a-prevu'});
     expect(c.map((x) => x.action.id).toList(), ['a-prevu', 'a-proche', 'a-loin']);
   });
+
+  test('pickActionMoment : chrono → bloc en cours → retard → programme → prochain bloc → semaine → première', () {
+    final today = DateTime(2026, 10, 27);
+    ActionEntry en(TaskAction a, ProjectTask t) => (action: a, project: null, task: t, activity: null);
+    final late = _a('Retard', due: DateTime(2026, 10, 24));
+    final soon = _a('Bientôt', due: DateTime(2026, 10, 30));
+    final plain = _a('Sans date');
+    final prog = _a('Au programme');
+    final t = _t('t', '2026-10-01', [plain, soon, late, prog]);
+    final entries = [en(plain, t), en(soon, t), en(late, t), en(prog, t)];
+    ScheduleBlock b(String id, String start, int dur, {String? actionId}) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, category: 'project', actionId: actionId);
+    // Chrono en cours sur une action.
+    expect(pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, runningActionId: prog.id)!.kind, ActionMomentKind.running);
+    // Bloc en cours qui vise une action.
+    final m1 = pickActionMoment(entries, blocks: [b('k', '09:30', 60, actionId: prog.id)], nowMin: 600, today: today)!;
+    expect((m1.kind, m1.entry.action.title), (ActionMomentKind.block, 'Au programme'));
+    // Sinon la plus en retard.
+    final m2 = pickActionMoment(entries, blocks: [b('k', '14:00', 60, actionId: prog.id)], nowMin: 600, today: today)!;
+    expect((m2.kind, m2.entry.action.title), (ActionMomentKind.late, 'Retard'));
+    // Sans retard : au programme du jour avant la semaine.
+    final noLate = entries.where((e) => e.action != late).toList();
+    final m3 = pickActionMoment(noLate, blocks: [b('k', '14:00', 60, actionId: prog.id)], nowMin: 600, today: today)!;
+    expect((m3.kind, m3.entry.action.title), (ActionMomentKind.today, 'Au programme'));
+    final m4 = pickActionMoment(noLate, blocks: const [], nowMin: 600, today: today)!;
+    expect((m4.kind, m4.entry.action.title), (ActionMomentKind.week, 'Bientôt'));
+    final m5 = pickActionMoment([en(plain, t)], blocks: const [], nowMin: 600, today: today)!;
+    expect(m5.kind, ActionMomentKind.rest);
+    expect(pickActionMoment(const [], blocks: const [], nowMin: 600, today: today), isNull);
+  });
 }

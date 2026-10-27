@@ -537,3 +537,83 @@ List<({Activity activity, List<TaskAction> actions})> ownActionGroups(
               actions: act.ownActions.where((a) => !a.done && filter(a)).toList(),
             ),
     ];
+
+// ── Action du moment (« une carte, une fiche », lot 2, 2026-10) ──────────────
+
+typedef ActionEntry = ({TaskAction action, Project? project, ProjectTask? task, Activity? activity});
+
+enum ActionMomentKind { running, block, late, today, next, week, rest }
+
+class ActionMoment {
+  final ActionEntry entry;
+  final ActionMomentKind kind;
+  final ScheduleBlock? block;
+  final DateTime? due;
+  const ActionMoment(this.entry, this.kind, {this.block, this.due});
+}
+
+/// L'ACTION DU MOMENT parmi les actions ouvertes affichées : celle que vise le
+/// chrono en cours, sinon celle du bloc en cours, sinon la plus en retard,
+/// sinon la première au programme du jour (ordre des blocs), sinon celle du
+/// prochain bloc, sinon la plus proche échéance à 7 jours, sinon la première
+/// de la liste (prochaine action du premier projet). Null si rien.
+ActionMoment? pickActionMoment(
+  List<ActionEntry> entries, {
+  required List<ScheduleBlock> blocks,
+  required int nowMin,
+  required DateTime today,
+  String? runningActionId,
+  ActionEntry? Function(ScheduleBlock b)? entryForBlock,
+}) {
+  if (entries.isEmpty) return null;
+  final d = _dayOnly(today);
+  ActionEntry? byId(String? id) => id == null ? null : entries.where((e) => e.action.id == id).firstOrNull;
+  if (byId(runningActionId) case final e?) return ActionMoment(e, ActionMomentKind.running);
+
+  final live = blocks.where((b) => b.status == 'pending').toList()..sort((a, b) => a.startTime.compareTo(b.startTime));
+  ScheduleBlock? current, next;
+  for (final b in live) {
+    final p = b.startTime.split(':');
+    final s = (int.tryParse(p[0]) ?? 0) * 60 + (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+    if (s <= nowMin && nowMin < s + b.durationMin) {
+      current ??= b;
+    } else if (s > nowMin) {
+      next ??= b;
+    }
+  }
+  ActionEntry? ofBlock(ScheduleBlock? b) {
+    if (b == null) return null;
+    return byId(b.actionId) ?? entryForBlock?.call(b);
+  }
+  if (ofBlock(current) case final e?) return ActionMoment(e, ActionMomentKind.block, block: current);
+
+  ActionEntry? best;
+  DateTime? bestDue;
+  for (final e in entries) {
+    final due = effectiveDueDate(e.action, e.task);
+    if (due == null || !_dayOnly(due).isBefore(d)) continue;
+    if (bestDue == null || _dayOnly(due).isBefore(bestDue)) {
+      best = e;
+      bestDue = _dayOnly(due);
+    }
+  }
+  if (best != null) return ActionMoment(best, ActionMomentKind.late, due: bestDue);
+
+  for (final b in live) {
+    final e = byId(b.actionId);
+    if (e != null) return ActionMoment(e, ActionMomentKind.today, block: b);
+  }
+  if (ofBlock(next) case final e?) return ActionMoment(e, ActionMomentKind.next, block: next);
+
+  final limit = d.add(const Duration(days: 7));
+  for (final e in entries) {
+    final due = effectiveDueDate(e.action, e.task);
+    if (due == null || _dayOnly(due).isAfter(limit)) continue;
+    if (bestDue == null || _dayOnly(due).isBefore(bestDue)) {
+      best = e;
+      bestDue = _dayOnly(due);
+    }
+  }
+  if (best != null) return ActionMoment(best, ActionMomentKind.week, due: bestDue);
+  return ActionMoment(entries.first, ActionMomentKind.rest);
+}
