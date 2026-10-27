@@ -1747,6 +1747,79 @@ class _ChallengeMeButton extends StatelessWidget {
   }
 }
 
+/// Feuille « Modifier la session » (début, fin, activité, bloc du programme,
+/// suppression), partagée par « Dernières 24 h » et la fiche activité.
+/// Renvoie `true` quand la session a changé.
+Future<bool> openEditSessionSheet(
+  BuildContext context,
+  AppLogic logic,
+  Session s, {
+  FirestoreSync? sync,
+}) async {
+  final res = await showModalBottomSheet<_EditSessionResult>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _EditSessionSheet(
+      session: s,
+      logic: logic,
+    ),
+  );
+
+  if (res == null) return false;
+
+  if (res.delete) {
+    logic.deleteSession(s.id);
+    sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
+    return true;
+  }
+
+  final newStart = res.startAt ?? s.startAt;
+  final newEnd = res.endAt;
+
+  if (newEnd != null && !newEnd.isAfter(newStart)) {
+    if (!context.mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("La fin doit être après le début.")),
+    );
+    return false;
+  }
+
+  logic.updateSession(
+    s.id,
+    startAt: res.startAt,
+    endAt: res.endAt,
+    activityId: res.activityId,
+  );
+  // Rattachement après coup à un bloc (ou détachement) : la session garde
+  // son activité et prend la tâche / l'action du bloc ; un bloc sans tâche
+  // sur une autre activité prend celle du chrono (le chrono fait foi).
+  if (res.detachBlock) {
+    s.taskId = null;
+    s.actionId = null;
+    logic.onChange();
+    sync?.saveSession(s);
+  } else if (res.block != null) {
+    final b = res.block!;
+    final acts = (logic.state.activities as List).cast<Activity>();
+    final projs = (logic.currentProjects as List).cast<Project>();
+    final r = attachSessionToBlock(s, b,
+        blockActivity: acts.firstWhereOrNull((a) => a.id == b.activityId),
+        project: projs.firstWhereOrNull((p) => p.id == b.projectId));
+    if (r != AttachResult.none) {
+      logic.onChange();
+      sync?.saveSession(s);
+      if (r == AttachResult.sessionAndBlock) {
+        final d = s.startAt;
+        final ymd =
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        sync?.upsertScheduleBlock(ymd, b);
+      }
+    }
+  }
+  return true;
+}
+
 class _Last24hSessionsSheet extends StatefulWidget {
   final dynamic logic;
   final FirestoreSync? sync;
@@ -1793,74 +1866,9 @@ class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
         a.domainId, (logic.state.activeDomains as List).cast<Domain>());
   }
 
-  Future<void> _openEditSessionSheet(
-    BuildContext context,
-    dynamic logic,
-    Session s,
-  ) async {
-    final res = await showModalBottomSheet<_EditSessionResult>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _EditSessionSheet(
-        session: s,
-        logic: logic,
-      ),
-    );
-
-    if (res == null) return;
-
-    if (res.delete) {
-      logic.deleteSession(s.id);
-      sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
-      if (mounted) setState(() {});
-      return;
-    }
-
-    final newStart = res.startAt ?? s.startAt;
-    final newEnd = res.endAt;
-
-    if (newEnd != null && !newEnd.isAfter(newStart)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("La fin doit être après le début.")),
-      );
-      return;
-    }
-
-    logic.updateSession(
-      s.id,
-      startAt: res.startAt,
-      endAt: res.endAt,
-      activityId: res.activityId,
-    );
-    // Rattachement après coup à un bloc (ou détachement) : la session garde
-    // son activité et prend la tâche / l'action du bloc ; un bloc sans tâche
-    // sur une autre activité prend celle du chrono (le chrono fait foi).
-    if (res.detachBlock) {
-      s.taskId = null;
-      s.actionId = null;
-      logic.onChange();
-      sync?.saveSession(s);
-    } else if (res.block != null) {
-      final b = res.block!;
-      final acts = (logic.state.activities as List).cast<Activity>();
-      final projs = (logic.currentProjects as List).cast<Project>();
-      final r = attachSessionToBlock(s, b,
-          blockActivity: acts.firstWhereOrNull((a) => a.id == b.activityId),
-          project: projs.firstWhereOrNull((p) => p.id == b.projectId));
-      if (r != AttachResult.none) {
-        logic.onChange();
-        sync?.saveSession(s);
-        if (r == AttachResult.sessionAndBlock) {
-          final d = s.startAt;
-          final ymd =
-              '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-          sync?.upsertScheduleBlock(ymd, b);
-        }
-      }
-    }
-    if (mounted) setState(() {}); // refresh immédiat (pas besoin de quitter)
+  Future<void> _openEditSessionSheet(BuildContext context, dynamic logic, Session s) async {
+    final changed = await openEditSessionSheet(context, logic as AppLogic, s, sync: sync);
+    if (changed && mounted) setState(() {});
   }
 
   @override
@@ -7676,6 +7684,7 @@ class _AppRootState extends State<AppRoot>
           _startCountdown(m, act.name);
         },
         onLaunchBlock: (b) => _launchScheduledBlock(b, goToNow: false),
+        onEditSession: (sess) => openEditSessionSheet(context, logic, sess, sync: _sync),
       );
 
 
