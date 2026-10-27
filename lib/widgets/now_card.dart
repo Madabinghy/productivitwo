@@ -10,6 +10,8 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/mode_colors.dart';
+import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -557,6 +559,8 @@ class _NowCardState extends State<NowCard> {
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
         ),
+        ModePill(logic: widget.logic),
+        if (right != null) const SizedBox(width: 8),
         if (right != null)
           Text(right,
               style: TextStyle(
@@ -867,9 +871,9 @@ class NowPalette {
   static NowPalette of(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (cs.brightness == Brightness.dark) {
-      return const NowPalette(
+      return NowPalette(
         surface: kBSurface,
-        primary: kBPrimary,
+        primary: modeAccentOverride(AppLogic.modeNotifier.value, dark: true) ?? kBPrimary,
         onPrimary: kBBg,
         track: kBRaised,
         chip: Color(0x12FFFFFF),

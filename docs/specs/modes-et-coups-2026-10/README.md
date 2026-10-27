@@ -106,7 +106,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 | Lot | Contenu | Visible |
 |-----|---------|---------|
 | 0 | Modèle + MCP + logique pure (`horizon`, `restDomains`, `budgetWindowDays`, `set_mode`, `rest_domain`, blocs `plan_day`) | non — **livré** |
-| 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui |
+| 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui — **livré** |
 | 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui |
 | 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui |
 | 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui |
@@ -135,3 +135,18 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
   `save_objective {horizon}`, `list_objectives` → `coups` à part, `get_user_context.mode {current, label, since,
   budgetWindowDays, restDomains[{domainId, name, until}]}` + `coups`, `plan_day` → règles par mode
   (`modeFromContext`) après BLOCS / TITRES. Rien de visible dans l'app.
+
+## Lot 1 — détail (livré)
+
+- **Pilule de mode** `ModePill` (`widgets/mode_sheet.dart`) dans l'en-tête de la carte MAINTENANT (« ⌁ Flemme ▾ »),
+  et tuile « Mode du jour » dans Paramètres ; même feuille `showModeSheet` : trois postures avec leur description,
+  `AppLogic.setMode` (= pointage d'élan 2 / 3 / 4 au moment courant).
+- **Ambiance** `utils/mode_colors.dart` : `modeSeed` alimente `colorSchemeSeed` du thème (Flemme ambre, Normal teal,
+  En forme cyan) via `AppLogic.modeNotifier` (`ValueNotifier`, mis à jour à chaque `onChange`) écouté par
+  `ProductivitwoApp` ; en sombre `NowPalette.primary` suit `modeAccentOverride` (ambre / teal électrique, null en Normal).
+- **Chips** `modeChipFor(context, logic, doneAt)` : « malgré tout » (ambre) / « à fond » (teal) d'après `modeAt` au
+  moment du fait — bloc fait du programme (`daily_schedule_view.dart`), action faite (`actions_view.dart`), et récap
+  d'Enchaîner (« 3 malgré tout · 1 à fond », instants des faits de la session).
+- **Badges** : « Malgré tout » existait déjà (famille Discipline, victoires en fenêtre de flemme : même règle) ;
+  nouveau **« Deep work »** (`deep-work`, Discipline, paliers 3 / 10 / 30 = chronos terminés ≥ 60 min d'affilée,
+  `deepWorkSessions`, symbole `focus`).

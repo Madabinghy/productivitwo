@@ -343,6 +343,10 @@ class BadgePainter extends CustomPainter {
         c.drawCircle(const Offset(50, 44), 4.5, fill);
         line(38, 56, 41, 53, 4);
         line(62, 56, 59, 53, 4);
+      case 'focus':
+        c.drawCircle(const Offset(50, 42), 20, stroke(5));
+        c.drawCircle(const Offset(50, 42), 11, stroke(4));
+        c.drawCircle(const Offset(50, 42), 4, fill);
       default:
         c.drawCircle(const Offset(50, 42), 12, fill);
     }
