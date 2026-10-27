@@ -2426,11 +2426,118 @@ class _ActionsViewState extends State<ActionsView> {
                   icon: const Icon(Icons.folder_open_outlined, size: 18),
                   label: const Text('Projet'),
                 ),
+              if (e.project == null && e.activity != null)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _attachToProject(e);
+                  },
+                  icon: const Icon(Icons.drive_file_move_outlined, size: 18),
+                  label: const Text('Rattacher à un projet'),
+                ),
             ]),
           ]),
         );
       }),
     );
+  }
+
+  /// Action simple → projet : choix du projet (actifs, hors dossiers sans
+  /// tâche), puis de la tâche (ou « Au fil de l'eau »). L'action prend le
+  /// « Pour » du projet et garde son activité pour le chrono.
+  Future<void> _attachToProject(_Entry e) async {
+    final a = e.activity;
+    if (a == null) return;
+    final all = _allProjects;
+    final candidates = all
+        .where((p) => p.status != 'archived' && p.status != 'done' && !isFolderProject(p, all))
+        .toList()
+      ..sort((x, y) => x.title.toLowerCase().compareTo(y.title.toLowerCase()));
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aucun projet actif.')));
+      return;
+    }
+    final p = await showModalBottomSheet<Project>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Rattacher « ${e.action.title} » à…',
+                  maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+          Flexible(
+            child: ListView(shrinkWrap: true, children: [
+              for (final p in candidates)
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: rootProjectOf(p, all).id != p.id
+                      ? Text(rootProjectOf(p, all).title, maxLines: 1, overflow: TextOverflow.ellipsis)
+                      : null,
+                  onTap: () => Navigator.pop(ctx, p),
+                ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+    if (p == null || !mounted) return;
+    final openTasks = p.tasks
+        .where((t) => t.status == 'pending' && t.id != _flowTaskId && !isUpcomingTask(t, _day(DateTime.now())))
+        .toList();
+    String? taskId;
+    if (openTasks.isNotEmpty) {
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Dans quelle tâche de « ${p.title} » ?',
+                    maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                ListTile(
+                  leading: const Icon(Icons.water_outlined),
+                  title: const Text('Au fil de l\'eau'),
+                  subtitle: const Text('Sans tâche précise'),
+                  onTap: () => Navigator.pop(ctx, ''),
+                ),
+                for (final t in openTasks)
+                  ListTile(
+                    leading: const Icon(Icons.task_alt_outlined),
+                    title: Text(t.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    onTap: () => Navigator.pop(ctx, t.id),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
+      );
+      if (picked == null || !mounted) return;
+      taskId = picked.isEmpty ? null : picked;
+    }
+    final target = await _sync.moveOwnActionToProject(
+        activity: a, actionId: e.action.id, projectId: p.id, taskId: taskId);
+    if (!mounted) return;
+    if (target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rattachement impossible — réessaie.')));
+      return;
+    }
+    widget.logic.onChange();
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('« ${e.action.title} » → ${p.title} › ${target.title}'), duration: const Duration(seconds: 3)));
   }
 
   /// Action validée : titre barré + porteur + date, décochable pour la

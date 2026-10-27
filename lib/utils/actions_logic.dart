@@ -103,6 +103,21 @@ ProjectTask flowTaskOf(Project p) {
   return t;
 }
 
+/// Rattache une action SIMPLE (action propre d'une activité) à un projet, en
+/// mémoire : retirée des `ownActions`, ajoutée à [task] (sinon « Au fil de
+/// l'eau » du projet). Elle garde titre, détail, contextes, estimation, état
+/// et son activité comme lien chrono (`linkedActivityId`). Null si absente.
+ProjectTask? attachOwnActionToProject(Activity a, String actionId, Project p, {ProjectTask? task}) {
+  final idx = a.ownActions.indexWhere((x) => x.id == actionId);
+  if (idx < 0) return null;
+  final action = a.ownActions.removeAt(idx);
+  action.linkedActivityId ??= a.id;
+  final target = task ?? flowTaskOf(p);
+  if (target.status != 'pending' && !action.done) target.status = 'pending';
+  target.actions.add(action);
+  return target;
+}
+
 /// Contextes connus : défauts + tous ceux rencontrés sur les actions ouvertes.
 List<String> knownContexts(List<Project> projects, List<Activity> activities) {
   final seen = <String>{...kDefaultGtdContexts};

@@ -30,7 +30,11 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   l'eau » = `flowTaskOf`, `utils/actions_logic.dart`) ou activité-temps ; la capture passe `processed` avec la trace
   « → action … ». Même logique pure que le web (`utils/actions_logic.dart`).
   Chaque carte porte au-dessus du titre « Projet › Tâche » (la tâche seule en vue par projet) ; la feuille d'action
-  affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué).
+  affiche le porteur puis la tâche EN ENTIER (plus de fil d'Ariane tronqué). **« Rattacher à un projet »** (2026-10, feuille
+  d'une action SIMPLE) : choix du projet (actifs, hors dossiers) puis de la tâche ou « Au fil de l'eau » ; l'action quitte
+  `ownActions` et entre dans le projet en gardant titre, `note`, contextes, estimation et son activité en `linkedActivityId`
+  (chrono) — elle prend le « Pour » du projet (`attachOwnActionToProject`, `utils/actions_logic.dart` ;
+  `FirestoreSync.moveOwnActionToProject`). Le « Pour » n'est jamais une étiquette : toujours déduit de la hiérarchie.
   **À venir** (2026-10, mobile et web) : une action dont la TÂCHE n'a pas encore commencé (`startDate` > aujourd'hui,
   `isUpcomingTask`) sort de la liste principale et des compteurs pour une section repliée « À venir · n », triée par
   date de début avec « dès demain / dès jeu. 15 oct. / dès le 2 nov. » (`upcomingActions`, `upcomingLabel`,
