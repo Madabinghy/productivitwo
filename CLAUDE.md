@@ -826,6 +826,7 @@ actions: [
   confirmation) et aucun écran ne liste les archivés. À faire : liste « Archivés · n » repliée en bas de l'onglet Objectifs
   avec « Réactiver », et une confirmation sur « Archiver ».
 
+- **Modes et coups tactiques** (noté 2026-10-27, handoff `docs/specs/modes-et-coups-2026-10/README.md`, maquette à valider) : mode Flemme / Normal / En forme changeable à tout moment (= pointage d'élan), ambiance par mode, chips « malgré tout » / « à fond » dérivés, coups = `StrategicObjective.horizon:"tactical"` (3–10 j, même fiche / graphe), veille de domaines `data/meta.restDomains`, budget de domaine sur 14 j, carte du moment pilotée par le mode, `plan_day` par jours de focus. **Rien n'est codé** tant que la maquette n'est pas validée.
 - **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
   dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
   restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les
