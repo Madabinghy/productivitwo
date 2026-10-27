@@ -58,6 +58,25 @@ moment**, et donner le droit de **concentrer** l'effort puis de **mettre en veil
   puis le lâcher 5 jours reste « au rythme ». Le repère « attendu aujourd'hui » reste (fenêtre à départ fixe = début
   de la quinzaine).
 
+### 2.4 « Deep work 90 min » : il propose, tu disposes (décision 2026-10-27)
+
+Le bouton ne lance rien tout seul. Il ouvre une mini-fiche **« Sur quoi ? »** avec trois candidats classés, le
+premier présélectionné, un tap confirme :
+
+1. le **coup en cours** s'il y en a un ;
+2. sinon le **projet le plus en retard sur son plan** avec une séance proche (même logique que PROJET DU MOMENT,
+   `rankProjectMoments`) ;
+3. sinon **l'objectif le plus en retard sur son rythme** qui a un engagement de temps (`rankObjectiveMoments`).
+
+Plus une ligne « Autre… » (choix libre : projet ou activité). Une fois confirmé : bloc de 90 min à partir de
+maintenant sur cette source (action visée = l'action du coup, sinon la prochaine action du projet), chrono lancé
+dessus, et la proposition de mettre en veille les domaines non concernés (cases cochables à ce moment-là). Si un
+chrono tourne déjà sur une autre activité, on demande avant de le couper.
+
+Deux cas sans question : un coup en cours dont le projet n'a qu'une prochaine action (la fiche affiche « Deep work
+sur … · Changer ») ; un second deep work dans la même journée sur la même source (repart direct). Règle commune avec
+Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué sans un geste de l'utilisateur.**
+
 ## 3. Ce que le mode change sur la carte du moment
 
 | Onglet | Flemme | Normal (actuel) | En forme |
