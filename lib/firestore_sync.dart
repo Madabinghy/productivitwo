@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show momentWindowsToJson;
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show attachOwnActionToProject;
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/folder_merge.dart';
@@ -2900,6 +2901,27 @@ class FirestoreSync {
         ).toJson()
       ]),
     });
+  }
+
+  /// Rattache une action simple d'une activité à un projet (tâche donnée ou
+  /// « Au fil de l'eau ») : l'action quitte `ownActions` et entre dans le
+  /// projet — fusion à trois voies côté projet, réécriture des ownActions.
+  /// Retourne la tâche d'accueil, null si l'action ou le projet est introuvable.
+  Future<ProjectTask?> moveOwnActionToProject({
+    required Activity activity,
+    required String actionId,
+    required String projectId,
+    String? taskId,
+  }) async {
+    if (uid == null) return null;
+    final p = await _loadProject(projectId);
+    if (p == null) return null;
+    final t = taskId == null ? null : p.tasks.firstWhereOrNull((x) => x.id == taskId);
+    final target = attachOwnActionToProject(activity, actionId, p, task: t);
+    if (target == null) return null;
+    await saveProjectTasks(p.id, p.tasks);
+    await updateOwnActions(activity.id, activity.ownActions);
+    return target;
   }
 
   /// Remplace les ownActions d'une activité (cocher/décocher une action
