@@ -3583,6 +3583,7 @@ class _AppRootState extends State<AppRoot>
           GoalsView(
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
+            sessions: _state?.sessions ?? [],
             header: logic.state.showTodayPriorities
                 ? _buildTodayPrioritiesSection(
                     context, Theme.of(context).colorScheme)
