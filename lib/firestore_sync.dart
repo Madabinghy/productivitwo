@@ -3050,6 +3050,21 @@ class FirestoreSync {
     });
   }
 
+  /// Veille d'un domaine (modes et coups, lot 0) : `data/meta.restDomains
+  /// {domainId: "YYYY-MM-DD"}` ; `untilYmd` null = lever la veille.
+  Future<void> setRestDomain(String domainId, String? untilYmd) async {
+    if (uid == null) return;
+    await _meta().set({
+      'restDomains': {domainId: untilYmd ?? FieldValue.delete()},
+    }, SetOptions(merge: true));
+  }
+
+  /// Fenêtre de budget des minimums de domaine : 7 (défaut) ou 14 jours.
+  Future<void> setBudgetWindowDays(int days) async {
+    if (uid == null) return;
+    await _meta().set({'budgetWindowDays': days == 14 ? 14 : 7}, SetOptions(merge: true));
+  }
+
   Future<void> setDayStartMin(int min) async {
     if (uid == null) return;
     await _meta().set({'dayStartMin': parseDayStartMin(min)}, SetOptions(merge: true));

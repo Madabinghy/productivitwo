@@ -21,6 +21,8 @@ import {
   MoodKind, MoodMarkDoc, ELAN_LABELS, EFFORT_LABELS, MOOD_LABELS, BlockLite,
 } from "./elan";
 import { removeTask, freeTaskBlocks } from "./task_delete";
+import { modeOf, modeElanValue, MODE_LABELS, MODE_KINDS, parseRestDomains, activeRests, parseBudgetWindowDays, modeRules } from "./mode";
+import type { DayMode } from "./mode";
 import {
   timeEntries, measured, calibrate, overBudget, workedUnestimated,
   fmtMin as fmtMinutes, fmtFactor, refLabel, adviceLine, calibrationHeadline,
@@ -326,6 +328,12 @@ function pickStrategicObjective(so: StrategicObjectivePayload): Record<string, u
       targetValue: target,
     };
   }
+  let horizon: "strategic" | "tactical" | undefined;
+  if (so.horizon !== undefined) {
+    if (so.horizon !== "strategic" && so.horizon !== "tactical") throw new Error(`strategicObjective.horizon invalide : ${String(so.horizon)}`);
+    horizon = so.horizon;
+    if (horizon === "tactical" && !so.endDate) throw new Error("un coup (horizon tactical) exige endDate (3 à 10 jours)");
+  }
   let checkInEvery: number | undefined;
   if (so.checkInEvery !== undefined) {
     checkInEvery = Math.round(Number(so.checkInEvery));
@@ -337,6 +345,7 @@ function pickStrategicObjective(so: StrategicObjectivePayload): Record<string, u
     title,
     ...(metric             !== undefined ? { metric }                   : {}),
     ...(checkInEvery       !== undefined ? { checkInEvery }             : {}),
+    ...(horizon            !== undefined ? { horizon }                  : {}),
     ...(description       !== undefined ? { description }              : {}),
     ...(so.domainId       !== undefined ? { domainId: so.domainId }    : {}),
     ...(so.kpiTarget      !== undefined ? { kpiTarget: so.kpiTarget }  : {}),
@@ -822,6 +831,13 @@ async function executeGetUserContext(uid: string): Promise<string> {
     dayStartMin: dayStartCtx,
   });
   const elanLine = formatElanSummary(elanS);
+  // Modes et coups (lot 0) : mode courant (dernier élan du jour vécu), coups en
+  // cours (objectifs tactiques), domaines en veille, fenêtre de budget.
+  const livedYmdCtx = livedParts(now, tzCtx, dayStartCtx).ymd;
+  const modeCtx = modeOf(moodSnap.docs.map((d) => d.data() as unknown as MoodMarkDoc), livedYmdCtx);
+  const restCtx = activeRests(parseRestDomains(metaCtx.restDomains), todayStr);
+  const domainNameById = new Map(domains.map((d) => [String(d.id), String(d.name)]));
+  const coups = (objectives ?? []).filter((o) => o.horizon === "tactical");
   const badges = badgesSummary(badgesSnapCtx.exists ? parseSnapshot(badgesSnapCtx.data()) : null, parseHunts(metaCtx.badgeHunts));
   const elan = elanLine === null
     ? null
@@ -841,6 +857,15 @@ async function executeGetUserContext(uid: string): Promise<string> {
       ...coachingRules,
       today: todayStr,
       autoPlan: { enabled: autoPlanEnabled },
+      mode: {
+        current: modeCtx.mode,
+        label: MODE_LABELS[modeCtx.mode],
+        since: modeCtx.since,
+        budgetWindowDays: parseBudgetWindowDays(metaCtx.budgetWindowDays),
+        restDomains: Object.entries(restCtx).map(([id, until]) => ({ domainId: id, name: domainNameById.get(id) ?? id, until })),
+        _hint: "Le mode est déclaré par l'utilisateur (set_mode) : Flemme → petites choses, jamais de reproche ; En forme → un bloc de deep work sur le coup. Un domaine en veille n'est jamais réclamé ni programmé.",
+      },
+      ...(coups.length > 0 ? { coups } : {}),
       ...(elan ? { elan } : {}),
       ...(badges ? { badges } : {}),
       domains,
@@ -2504,6 +2529,45 @@ async function executeLogMood(
   return `✓ ${what} pointé pour le ${ymd}.`;
 }
 
+/** Mode lu dans le JSON de get_user_context (plan_day) ; normal si absent. */
+function modeFromContext(userContext: string): DayMode {
+  try {
+    const m = (JSON.parse(userContext) as { mode?: { current?: string } }).mode?.current;
+    return m === "low" || m === "high" ? m : "normal";
+  } catch {
+    return "normal";
+  }
+}
+
+/** set_mode : un pointage d'élan 2 / 3 / 4 sur le créneau courant (modes et coups, lot 0). */
+async function executeSetMode(uid: string, kind: string): Promise<string> {
+  if (!MODE_KINDS.includes(kind as DayMode)) return "kind doit valoir low (Flemme), normal ou high (En forme).";
+  const mode = kind as DayMode;
+  const res = await executeLogMood(uid, { kind: "elan", value: modeElanValue(mode) });
+  return `✓ Mode « ${MODE_LABELS[mode]} » posé. ${res}`;
+}
+
+/** rest_domain : veille d'un domaine jusqu'à une date incluse, ou levée. */
+async function executeRestDomain(uid: string, p: { domainId: string; until?: string; clear?: boolean }): Promise<string> {
+  if (!p.domainId) return "domainId requis.";
+  const dom = await db.doc(`users/${uid}/domains/${p.domainId}`).get();
+  if (!dom.exists || (dom.data() as Record<string, unknown>).deleted === true) return `Domaine ${p.domainId} introuvable.`;
+  const name = String((dom.data() as Record<string, unknown>).name ?? p.domainId);
+  const metaRef = db.doc(`users/${uid}/data/meta`);
+  if (p.clear) {
+    await metaRef.set({ restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() } }, { merge: true });
+    return `✓ Veille levée sur « ${name} ».`;
+  }
+  const until = p.until ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return "until : YYYY-MM-DD requis (ou clear:true).";
+  const today = todayInParis();
+  const days = Math.round((new Date(`${until}T12:00:00Z`).getTime() - new Date(`${today}T12:00:00Z`).getTime()) / 86_400_000);
+  if (days < 0) return `until ${until} est passé (aujourd'hui ${today}).`;
+  if (days > 30) return "Une veille ne dépasse pas 30 jours : au-delà, mets le projet en pause ou archive.";
+  await metaRef.set({ restDomains: { [p.domainId]: until } }, { merge: true });
+  return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus.`;
+}
+
 async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {
   if (!activityId) return "activityId requis.";
   const dec = delta < 0;
@@ -3078,6 +3142,7 @@ async function executePlanDay(
     `     suivantes). Pas un bloc par action. Routines, pauses, prep et rendez-vous gardent leur durée.`,
     `   → TITRES de bloc : verbe + objet, ≤ 8 mots, sans code ni parenthèse (le bloc est lié par`,
     `     taskId / actionId, l'app affiche le reste).`,
+    ...modeRules(modeFromContext(userContext)),
     `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
     `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
     `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
@@ -4341,12 +4406,15 @@ async function executeListObjectives(uid: string): Promise<string> {
     };
   });
   const due = result.filter((r) => r.trajectory.readingDue);
+  const coups = result.filter((r) => r.horizon === "tactical");
+  const strategic = result.filter((r) => r.horizon !== "tactical");
   return JSON.stringify({
     today: todayStr,
     _hint: due.length
       ? `${due.length} relevé(s) de métrique attendu(s) : demande la valeur du jour et appelle log_objective_reading.`
       : "trajectory.means = minutes engagées cumulées vs attendues ; trajectory.result = dernier relevé vs valeur attendue aujourd'hui.",
-    objectives: result,
+    ...(coups.length > 0 ? { coups } : {}),
+    objectives: strategic,
   }, null, 2);
 }
 
@@ -4757,6 +4825,8 @@ async function executeUpdateSession(
 }
 
 export {
+  executeSetMode,
+  executeRestDomain,
   withBothContexts,
   executeAddIntervention,
   executeUpdateIntervention,

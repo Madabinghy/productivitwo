@@ -39,7 +39,7 @@ import {
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
   PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
-  LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
+  LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, SET_MODE_TOOL, REST_DOMAIN_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
   UPDATE_SESSION_TEMPLATE_TOOL,
@@ -62,7 +62,7 @@ import {
   executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
   executePlanPrep, executeWeeklyReview, executeUpdateActions,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
-  executeLogRoutineHit, executeLogMood, executeListBadges, executeHuntBadge, executeMarkBlockDone, executeUpdateBlock,
+  executeLogRoutineHit, executeLogMood, executeSetMode, executeRestDomain, executeListBadges, executeHuntBadge, executeMarkBlockDone, executeUpdateBlock,
   executeGetDaySchedule, executeScheduleDay, executeAddPrepBlock, executeAddEvent,
   executeSaveDomainDefinition,
   executeListObjectives, executeSaveObjective, executeLogObjectiveReading,
@@ -1674,7 +1674,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
             PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
             ESTIMATE_ACCURACY_TOOL,
-            LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
+            LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, SET_MODE_TOOL, REST_DOMAIN_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
             LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
             UPDATE_SESSION_TEMPLATE_TOOL,
@@ -1937,6 +1937,14 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             moment: args.moment as string | undefined,
             blockId: args.blockId as string | undefined,
             date: args.date as string | undefined,
+          });
+        } else if (toolName === "set_mode") {
+          text = await executeSetMode(uid, args.kind as string);
+        } else if (toolName === "rest_domain") {
+          text = await executeRestDomain(uid, {
+            domainId: args.domainId as string,
+            until: args.until as string | undefined,
+            clear: args.clear === true,
           });
         } else if (toolName === "log_routine_hit") {
           text = await executeLogRoutineHit(

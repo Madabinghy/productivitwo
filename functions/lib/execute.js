@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendFcmPush = sendFcmPush;
+exports.executeSetMode = executeSetMode;
+exports.executeRestDomain = executeRestDomain;
 exports.withBothContexts = withBothContexts;
 exports.executeAddIntervention = executeAddIntervention;
 exports.executeUpdateIntervention = executeUpdateIntervention;
@@ -101,6 +103,7 @@ const action_patch_1 = require("./action_patch");
 const badges_mcp_1 = require("./badges_mcp");
 const elan_1 = require("./elan");
 const task_delete_1 = require("./task_delete");
+const mode_1 = require("./mode");
 const estimates_1 = require("./estimates");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
@@ -345,6 +348,14 @@ function pickStrategicObjective(so) {
             targetValue: target,
         };
     }
+    let horizon;
+    if (so.horizon !== undefined) {
+        if (so.horizon !== "strategic" && so.horizon !== "tactical")
+            throw new Error(`strategicObjective.horizon invalide : ${String(so.horizon)}`);
+        horizon = so.horizon;
+        if (horizon === "tactical" && !so.endDate)
+            throw new Error("un coup (horizon tactical) exige endDate (3 à 10 jours)");
+    }
     let checkInEvery;
     if (so.checkInEvery !== undefined) {
         checkInEvery = Math.round(Number(so.checkInEvery));
@@ -352,7 +363,7 @@ function pickStrategicObjective(so) {
             throw new Error("strategicObjective.checkInEvery invalide (attendu 1..90 jours)");
         }
     }
-    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ title }, (metric !== undefined ? { metric } : {})), (checkInEvery !== undefined ? { checkInEvery } : {})), (description !== undefined ? { description } : {})), (so.domainId !== undefined ? { domainId: so.domainId } : {})), (so.kpiTarget !== undefined ? { kpiTarget: so.kpiTarget } : {})), (so.horizonLabel !== undefined ? { horizonLabel: so.horizonLabel } : {})), (so.startDate !== undefined ? { startDate: so.startDate } : {})), (so.endDate !== undefined ? { endDate: so.endDate } : {})), (status !== undefined ? { status } : {})), (timeCommitments !== undefined ? { timeCommitments } : {})), (routineCommitments !== undefined ? { routineCommitments } : {}));
+    return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ title }, (metric !== undefined ? { metric } : {})), (checkInEvery !== undefined ? { checkInEvery } : {})), (horizon !== undefined ? { horizon } : {})), (description !== undefined ? { description } : {})), (so.domainId !== undefined ? { domainId: so.domainId } : {})), (so.kpiTarget !== undefined ? { kpiTarget: so.kpiTarget } : {})), (so.horizonLabel !== undefined ? { horizonLabel: so.horizonLabel } : {})), (so.startDate !== undefined ? { startDate: so.startDate } : {})), (so.endDate !== undefined ? { endDate: so.endDate } : {})), (status !== undefined ? { status } : {})), (timeCommitments !== undefined ? { timeCommitments } : {})), (routineCommitments !== undefined ? { routineCommitments } : {}));
 }
 function pickTimeCommitments(raw) {
     if (!Array.isArray(raw))
@@ -762,6 +773,13 @@ async function executeGetUserContext(uid) {
         dayStartMin: dayStartCtx,
     });
     const elanLine = (0, elan_1.formatElanSummary)(elanS);
+    // Modes et coups (lot 0) : mode courant (dernier élan du jour vécu), coups en
+    // cours (objectifs tactiques), domaines en veille, fenêtre de budget.
+    const livedYmdCtx = (0, elan_1.livedParts)(now, tzCtx, dayStartCtx).ymd;
+    const modeCtx = (0, mode_1.modeOf)(moodSnap.docs.map((d) => d.data()), livedYmdCtx);
+    const restCtx = (0, mode_1.activeRests)((0, mode_1.parseRestDomains)(metaCtx.restDomains), todayStr);
+    const domainNameById = new Map(domains.map((d) => [String(d.id), String(d.name)]));
+    const coups = (objectives !== null && objectives !== void 0 ? objectives : []).filter((o) => o.horizon === "tactical");
     const badges = (0, badges_mcp_1.badgesSummary)(badgesSnapCtx.exists ? (0, badges_mcp_1.parseSnapshot)(badgesSnapCtx.data()) : null, (0, badges_mcp_1.parseHunts)(metaCtx.badgeHunts));
     const elan = elanLine === null
         ? null
@@ -775,7 +793,14 @@ async function executeGetUserContext(uid) {
             effort: elanS.effort,
             _hint: "Élan bas récurrent le matin ou l'après-midi → propose des blocs courts et concrets à ce créneau ; ne commente jamais l'état, cite le fait (« 5 fois sur 7, fait quand même »).",
         };
-    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled } }), (elan ? { elan } : {})), (badges ? { badges } : {})), { domains,
+    return JSON.stringify(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, coachingRules), { today: todayStr, autoPlan: { enabled: autoPlanEnabled }, mode: {
+            current: modeCtx.mode,
+            label: mode_1.MODE_LABELS[modeCtx.mode],
+            since: modeCtx.since,
+            budgetWindowDays: (0, mode_1.parseBudgetWindowDays)(metaCtx.budgetWindowDays),
+            restDomains: Object.entries(restCtx).map(([id, until]) => { var _a; return ({ domainId: id, name: (_a = domainNameById.get(id)) !== null && _a !== void 0 ? _a : id, until }); }),
+            _hint: "Le mode est déclaré par l'utilisateur (set_mode) : Flemme → petites choses, jamais de reproche ; En forme → un bloc de deep work sur le coup. Un domaine en veille n'est jamais réclamé ni programmé.",
+        } }), (coups.length > 0 ? { coups } : {})), (elan ? { elan } : {})), (badges ? { badges } : {})), { domains,
         activities,
         objectives,
         activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
@@ -2280,6 +2305,51 @@ async function executeLogMood(uid, p) {
     const what = kind === "elan" ? `Élan « ${label} » (${moment})` : kind === "effort" ? `Effort « ${label} »${block ? " · " + String(block.title) : ""}` : `Humeur « ${label} »`;
     return `✓ ${what} pointé pour le ${ymd}.`;
 }
+/** Mode lu dans le JSON de get_user_context (plan_day) ; normal si absent. */
+function modeFromContext(userContext) {
+    var _a;
+    try {
+        const m = (_a = JSON.parse(userContext).mode) === null || _a === void 0 ? void 0 : _a.current;
+        return m === "low" || m === "high" ? m : "normal";
+    }
+    catch (_b) {
+        return "normal";
+    }
+}
+/** set_mode : un pointage d'élan 2 / 3 / 4 sur le créneau courant (modes et coups, lot 0). */
+async function executeSetMode(uid, kind) {
+    if (!mode_1.MODE_KINDS.includes(kind))
+        return "kind doit valoir low (Flemme), normal ou high (En forme).";
+    const mode = kind;
+    const res = await executeLogMood(uid, { kind: "elan", value: (0, mode_1.modeElanValue)(mode) });
+    return `✓ Mode « ${mode_1.MODE_LABELS[mode]} » posé. ${res}`;
+}
+/** rest_domain : veille d'un domaine jusqu'à une date incluse, ou levée. */
+async function executeRestDomain(uid, p) {
+    var _a, _b;
+    if (!p.domainId)
+        return "domainId requis.";
+    const dom = await db_1.db.doc(`users/${uid}/domains/${p.domainId}`).get();
+    if (!dom.exists || dom.data().deleted === true)
+        return `Domaine ${p.domainId} introuvable.`;
+    const name = String((_a = dom.data().name) !== null && _a !== void 0 ? _a : p.domainId);
+    const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    if (p.clear) {
+        await metaRef.set({ restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() } }, { merge: true });
+        return `✓ Veille levée sur « ${name} ».`;
+    }
+    const until = (_b = p.until) !== null && _b !== void 0 ? _b : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until))
+        return "until : YYYY-MM-DD requis (ou clear:true).";
+    const today = todayInParis();
+    const days = Math.round((new Date(`${until}T12:00:00Z`).getTime() - new Date(`${today}T12:00:00Z`).getTime()) / 86400000);
+    if (days < 0)
+        return `until ${until} est passé (aujourd'hui ${today}).`;
+    if (days > 30)
+        return "Une veille ne dépasse pas 30 jours : au-delà, mets le projet en pause ou archive.";
+    await metaRef.set({ restDomains: { [p.domainId]: until } }, { merge: true });
+    return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus.`;
+}
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;
     if (!activityId)
@@ -2805,6 +2875,7 @@ async function executePlanDay(uid, args) {
         `     suivantes). Pas un bloc par action. Routines, pauses, prep et rendez-vous gardent leur durée.`,
         `   → TITRES de bloc : verbe + objet, ≤ 8 mots, sans code ni parenthèse (le bloc est lié par`,
         `     taskId / actionId, l'app affiche le reste).`,
+        ...(0, mode_1.modeRules)(modeFromContext(userContext)),
         `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
         `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
         `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
@@ -3986,13 +4057,11 @@ async function executeListObjectives(uid) {
         return Object.assign(Object.assign({}, s), { description: (_c = raw.description) !== null && _c !== void 0 ? _c : null, domainId: (_d = raw.domainId) !== null && _d !== void 0 ? _d : null, startDate: (_e = raw.startDate) !== null && _e !== void 0 ? _e : null, projectIds: Array.isArray(raw.projectIds) ? raw.projectIds : [], trajectory, readings: readings.slice(-12) });
     });
     const due = result.filter((r) => r.trajectory.readingDue);
-    return JSON.stringify({
-        today: todayStr,
-        _hint: due.length
+    const coups = result.filter((r) => r.horizon === "tactical");
+    const strategic = result.filter((r) => r.horizon !== "tactical");
+    return JSON.stringify(Object.assign(Object.assign({ today: todayStr, _hint: due.length
             ? `${due.length} relevé(s) de métrique attendu(s) : demande la valeur du jour et appelle log_objective_reading.`
-            : "trajectory.means = minutes engagées cumulées vs attendues ; trajectory.result = dernier relevé vs valeur attendue aujourd'hui.",
-        objectives: result,
-    }, null, 2);
+            : "trajectory.means = minutes engagées cumulées vs attendues ; trajectory.result = dernier relevé vs valeur attendue aujourd'hui." }, (coups.length > 0 ? { coups } : {})), { objectives: strategic }), null, 2);
 }
 async function executeLogObjectiveReading(uid, args) {
     var _a, _b;

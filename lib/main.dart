@@ -28,6 +28,7 @@ import 'package:productivitwo_v1/softpop/softpop_home_live_screen.dart';
 import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
@@ -2022,16 +2023,22 @@ class _AppRootState extends State<AppRoot>
       final windows = parseMomentWindows(m['momentWindows']);
       final hunts = parseBadgeHunts(m['badgeHunts']);
       final elanAll = m['elanPromptsAll'] == true;
+      final rest = parseRestDomains(m['restDomains']);
+      final budget = parseBudgetWindowDays(m['budgetWindowDays']);
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
           momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString() &&
           sameHunts &&
-          logic.elanPromptsAll == elanAll;
+          logic.elanPromptsAll == elanAll &&
+          logic.budgetWindowDays == budget &&
+          rest.toString() == logic.restDomains.toString();
       if (same) return;
       logic.dayStartMin = start;
       logic.momentWindows = windows;
       logic.badgeHunts = hunts;
       logic.elanPromptsAll = elanAll;
+      logic.restDomains = rest;
+      logic.budgetWindowDays = budget;
       logic.onChange();
     });
   }

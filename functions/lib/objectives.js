@@ -126,6 +126,7 @@ function summarizeObjectives(objectives, activities, sessions, habitHits, todayS
             title: String((_g = o.title) !== null && _g !== void 0 ? _g : ""),
             kpiTarget: typeof o.kpiTarget === "string" ? o.kpiTarget : null,
             horizonLabel: typeof o.horizonLabel === "string" ? o.horizonLabel : null,
+            horizon: o.horizon === "tactical" ? "tactical" : "strategic",
             endDate,
             daysLeft,
             weekPercent: pcts.length > 0

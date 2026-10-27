@@ -72,6 +72,8 @@ export interface StrategicObjectivePayload {
   // l'échéance ; kpiTarget reste le texte lisible. null = retirer.
   metric?: { label: string; unit?: string; startValue?: number; targetValue: number } | null;
   checkInEvery?: number; // jours entre deux relevés attendus (défaut 7)
+  // "strategic" (défaut) | "tactical" = un COUP de 3 à 10 jours (modes et coups, 2026-10).
+  horizon?: "strategic" | "tactical";
 }
 
 export interface PushGanttBody {

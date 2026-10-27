@@ -12,6 +12,8 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
@@ -1700,6 +1702,26 @@ class AppLogic implements HuntStore {
 
   /// Pointe l'état : un seul par (jour, créneau) pour l'élan, par bloc pour
   /// l'effort, par jour pour l'humeur — le nouveau remplace l'ancien.
+  // ── Modes et coups (lot 0, 2026-10) ────────────────────────────────────────
+  /// Domaines en veille (`data/meta.restDomains`, flux meta) et fenêtre de
+  /// budget des minimums (7 | 14 j).
+  Map<String, String> restDomains = const {};
+  int budgetWindowDays = 7;
+
+  /// Mode du jour = dernier pointage d'élan de la journée vécue (jamais stocké).
+  DayMode get mode => modeOf(state.moodMarks, DateTime.now(), dayStartMin);
+
+  /// Poser un mode = pointer l'élan correspondant au créneau courant (zéro
+  /// double saisie : coach, badges et `get_user_context` lisent la même donnée).
+  Future<void> setMode(DayMode m) async {
+    final mark = logMood(kMoodElan, modeElanValue(m), moment: elanBucket(livedNowMinNow));
+    try {
+      await sync?.saveMoodMark(mark);
+    } catch (_) {}
+  }
+
+  bool isDomainResting(String? domainId) => isResting(domainId, restDomains, DateTime.now());
+
   MoodMark logMood(String kind, int value, {String? moment, ScheduleBlock? block}) {
     final now = DateTime.now();
     final ymd = livedProgramYmd(now, dayStartMin);
