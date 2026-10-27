@@ -32,6 +32,7 @@ const kActionTiers = [10, 50, 100, 250, 500, 1000, 5000, 10000];
 const kTimeTiersHours = [100, 500, 1000];
 const kDisciplineTiers = [10, 50, 200];
 const kBarometerTiers = [30, 100, 365];
+const kDeepWorkTiers = [3, 10, 30];
 
 /// Un badge du catalogue. `tiers` = paliers (un seul = badge simple) ;
 /// `subjectId` = routine ou objectif porteur (null = badge global).
@@ -739,6 +740,18 @@ BadgeDeck computeBadges({
     tierDates: [for (final t in kBarometerTiers) t <= disc.elanMarkDates.length ? _day(disc.elanMarkDates[t - 1]) : null],
     facts: [('Pointages d\u2019élan', '${disc.elanMarkDates.length}'), if (disc.elanMarkDates.isNotEmpty) ('Le premier', _fmtDate(disc.elanMarkDates.first))],
   ));
+  // Deep work : chronos d'au moins 60 min d'affilée sur une seule source (mode En forme, lot 1 Modes et coups).
+  final deep = deepWorkSessions(sessions);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'deep-work', family: BadgeFamily.discipline, name: 'Deep work', symbol: 'focus', tiers: kDeepWorkTiers, unit: 'blocs', unitLong: 'blocs de 60 min et plus'),
+    level: _levelOf(kDeepWorkTiers, deep.length),
+    value: deep.length,
+    tierDates: [for (final t in kDeepWorkTiers) t <= deep.length ? _day(deep[t - 1]) : null],
+    facts: [
+      ('Chronos de 60 min et plus', '${deep.length}'),
+      if (deep.isNotEmpty) ('Le dernier', _fmtDate(deep.last)),
+    ],
+  ));
   // Enchaîner : sessions menées au bout (récap atteint, file vide) et journées entières.
   final completedRuns = chainRuns.where((r) => r.completed).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
   final fullDays = completedRuns.where((r) => r.fullDay).toList();
@@ -946,3 +959,16 @@ Set<String> acquiredTierKeys(BadgeDeck d) => {
 
 /// Paliers acquis que `seen` ne connaît pas encore.
 Set<String> newTierKeys(BadgeDeck d, Set<String> seen) => acquiredTierKeys(d).difference(seen);
+
+/// Fins des chronos TERMINÉS d'au moins [minMin] minutes d'affilée (une session =
+/// une source), dans l'ordre. Un deep work au sens du handoff Modes et coups.
+List<DateTime> deepWorkSessions(List<Session> sessions, {int minMin = 60}) {
+  final out = <DateTime>[];
+  for (final s in sessions) {
+    final end = s.endAt;
+    if (s.deleted || end == null) continue;
+    if (end.difference(s.startAt).inMinutes >= minMin) out.add(end);
+  }
+  out.sort();
+  return out;
+}

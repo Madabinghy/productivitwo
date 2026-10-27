@@ -29,6 +29,8 @@ import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/mode_colors.dart';
+import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
@@ -848,7 +850,9 @@ class ProductivitwoApp extends StatelessWidget {
   const ProductivitwoApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return ValueListenableBuilder<DayMode>(
+      valueListenable: AppLogic.modeNotifier,
+      builder: (context, mode, _) => MaterialApp(
       navigatorKey: _navigatorKey,
       locale: const Locale('fr', 'FR'),
 
@@ -863,21 +867,24 @@ class ProductivitwoApp extends StatelessWidget {
       ],
       debugShowCheckedModeBanner: false,
       title: 'Productivitwo',
-      theme: _buildTheme(Brightness.light),
-      darkTheme: _buildTheme(Brightness.dark),
+      theme: _buildTheme(Brightness.light, mode),
+      darkTheme: _buildTheme(Brightness.dark, mode),
       themeMode: ThemeMode.system, // clair/sombre selon l'iPhone
       // Overlay assistant AU-DESSUS du Navigator → visible même par-dessus les
       // bottom sheets (sinon il était caché derrière, jamais vu).
       builder: (context, child) => GlobalAssistantOverlay(child: child!),
       home: const AppRoot(),
+      ),
     );
   }
 }
 
-ThemeData _buildTheme(Brightness brightness) {
+/// L'accent suit le mode du jour (ambiance, lot 1 Modes et coups) : Flemme
+/// ambre, Normal teal, En forme teal électrique.
+ThemeData _buildTheme(Brightness brightness, [DayMode mode = DayMode.normal]) {
   final base = ThemeData(
     useMaterial3: true,
-    colorSchemeSeed: Colors.teal,
+    colorSchemeSeed: modeSeed(mode),
     brightness: brightness,
   );
   final cs = base.colorScheme;
@@ -5748,6 +5755,16 @@ class _AppRootState extends State<AppRoot>
                   value: snap.data == true,
                   onChanged: (v) => _sync.setAutoPlan(v),
                 ),
+              ),
+              // Mode du jour (lot 1 Modes et coups) : même feuille que la
+              // pilule de MAINTENANT.
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(modeIcon(logic.mode)),
+                title: const Text('Mode du jour'),
+                subtitle: Text('${modeDescription(logic.mode)} · repart en Normal demain'),
+                trailing: Text(kModeLabels[logic.mode]!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                onTap: () => showModeSheet(context, logic),
               ),
               // Élan (allègement 2026-10) : une fois par jour par défaut, à
               // chaque moment sur demande.

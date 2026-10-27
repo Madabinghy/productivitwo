@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -2569,14 +2570,22 @@ class _ActionsViewState extends State<ActionsView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.action.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w500,
-                        decoration: TextDecoration.lineThrough,
-                        color: cs.onSurface.withOpacity(.55))),
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Flexible(
+                    child: Text(e.action.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.lineThrough,
+                            color: cs.onSurface.withOpacity(.55))),
+                  ),
+                  if (modeChipFor(context, widget.logic, e.action.doneAt) != null) ...[
+                    const SizedBox(width: 6),
+                    modeChipFor(context, widget.logic, e.action.doneAt)!,
+                  ],
+                ]),
                 if (parent.isNotEmpty || when.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),

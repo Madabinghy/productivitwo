@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
@@ -1137,23 +1138,32 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                           borderRadius: BorderRadius.circular(2)),
                     ),
                   ),
-                  // Titre : toute la largeur restante, 2 lignes
+                  // Titre : toute la largeur restante, 2 lignes ; un bloc fait
+                  // porte le chip « malgré tout » / « à fond » du mode d'alors.
                   Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        block.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: current ? FontWeight.w600 : FontWeight.w500,
-                          height: 1.3,
-                          color: isDone ? muted : cs.onSurface,
-                          decoration: isDone ? TextDecoration.lineThrough : null,
-                          decorationColor: muted,
+                      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Flexible(
+                          child: Text(
+                            block.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: current ? FontWeight.w600 : FontWeight.w500,
+                              height: 1.3,
+                              color: isDone ? muted : cs.onSurface,
+                              decoration: isDone ? TextDecoration.lineThrough : null,
+                              decorationColor: muted,
+                            ),
+                          ),
                         ),
-                      ),
+                        if (isDone && modeChipFor(context, widget.logic, block.doneAt) != null) ...[
+                          const SizedBox(width: 6),
+                          Padding(padding: const EdgeInsets.only(top: 2), child: modeChipFor(context, widget.logic, block.doneAt)!),
+                        ],
+                      ]),
                     ),
                   ),
                   // ▶ lancer (chrono + focus tâche) — le bloc en cours se

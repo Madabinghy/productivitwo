@@ -127,7 +127,13 @@ class AppLogic implements HuntStore {
   void addListener(void Function() l) => _listeners.add(l);
   void removeListener(void Function() l) => _listeners.remove(l);
 
+  /// Mode du jour observé par la racine (thème / ambiance) : mis à jour à
+  /// chaque onChange, sans que l'arbre entier dépende d'AppLogic.
+  static final ValueNotifier<DayMode> modeNotifier = ValueNotifier(DayMode.normal);
+
   void onChange() {
+    final m = mode;
+    if (modeNotifier.value != m) modeNotifier.value = m;
     _rootOnChange();
     for (final l in List.of(_listeners)) {
       l();

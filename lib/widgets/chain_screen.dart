@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -86,6 +88,8 @@ class _ChainScreenState extends State<_ChainScreen> {
   final Set<String> _dismissed = {};
   late final DateTime _startedAt;
   int _doneCount = 0;
+  /// Instants des choses faites dans la session (chips du récap : « dont 2 malgré tout »).
+  final List<DateTime> _doneAts = [];
   int _totalAtStart = 0;
   // Blocs dont les écrans sont épuisés : la file les considère faits même si
   // le programme n'a pas encore répercuté l'écriture.
@@ -328,6 +332,7 @@ class _ChainScreenState extends State<_ChainScreen> {
             break;
         }
         _doneCount++;
+        _doneAts.add(DateTime.now());
         if (!i.synthetic) _lastBlockId = i.block.id;
         _afterChange();
       });
@@ -981,6 +986,10 @@ class _ChainScreenState extends State<_ChainScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()]),
         ),
+        if (_modeRecap() case final r?) ...[
+          const SizedBox(height: 8),
+          Center(child: r),
+        ],
         const SizedBox(height: 24),
         Expanded(
           child: byBlock.isEmpty
@@ -1018,6 +1027,30 @@ class _ChainScreenState extends State<_ChainScreen> {
         _primary('Revenir à Aujourd\'hui', () => Navigator.of(context).pop(), icon: Icons.arrow_back_rounded),
       ]),
     );
+  }
+
+  /// « 3 malgré tout » / « 2 à fond » : choses faites pendant un mode Flemme / En forme.
+  Widget? _modeRecap() {
+    var low = 0, high = 0;
+    for (final t in _doneAts) {
+      final m = modeAt(logic.state.moodMarks, t, logic.dayStartMin);
+      if (m == DayMode.low) low++;
+      if (m == DayMode.high) high++;
+    }
+    if (low == 0 && high == 0) return null;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    Widget chip(int n, DayMode m, String label) {
+      final c = modeChipColor(m, dark: dark);
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+        decoration: BoxDecoration(color: c.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
+        child: Text('$n $label', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: c)),
+      );
+    }
+    return Wrap(spacing: 6, children: [
+      if (low > 0) chip(low, DayMode.low, 'malgré tout'),
+      if (high > 0) chip(high, DayMode.high, 'à fond'),
+    ]);
   }
 
   String _mmss(Duration d) {

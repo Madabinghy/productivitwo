@@ -66,6 +66,11 @@
         what: 'Le nombre de fois où tu as pointé ton élan.',
         how: 'Réponds à « Ton élan, là ? » : au plus trois fois par jour (matin, après-midi, soir). Paliers : 30, 100 et 365 pointages.',
       ),
+    'deep-work' => (
+        what: 'Des chronos d’au moins une heure d’affilée sur une seule chose.',
+        how: 'Lance le chrono sur une activité ou une tâche et tiens 60 min sans le couper : chaque chrono terminé de 60 min ou plus compte un bloc. '
+            'Paliers : 3, 10 et 30 blocs.',
+      ),
     'enchaineur' => (
         what: 'Des sessions du mode Enchaîner menées jusqu’au récap.',
         how: 'Lance « Enchaîner » depuis MAINTENANT et déroule la file jusqu’à ce qu’elle soit vide, puis « Voir le récap ». « Sortir » avant la fin ne compte pas. 10 sessions.',
