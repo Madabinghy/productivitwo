@@ -1,3 +1,6 @@
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/mode_colors.dart' show modeIcon;
+import 'package:productivitwo_v1/web/mode_web.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/build_info.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -18,7 +21,7 @@ enum WebTab {
 }
 
 /// Entrées du menu ⋯ (« Réglages, Claude et aide »).
-enum WebMenuItem { orion, messages, vision, coachConsole, claude, autoPlan, uiScale, help, logout }
+enum WebMenuItem { orion, messages, vision, coachConsole, claude, autoPlan, mode, uiScale, help, logout }
 
 /// Barre du haut (64 px) : logo · onglets · chrono global · « Mon coach » ·
 /// menu ⋯ · avatar. Sans état : `WebHomeScreen` garde l'onglet courant.
@@ -33,6 +36,8 @@ class WebTopBar extends StatelessWidget {
   final bool hasAssistantMessages;
   /// Programmation automatique (data/meta.autoPlan) ; null = pas encore lu.
   final bool? autoPlan;
+  /// Mode du jour (Modes et coups lot 5) : pilule hors Normal + entrée du menu ⋯.
+  final DayMode mode;
   final VoidCallback onMyCoach;
   final ValueChanged<WebMenuItem> onMenu;
   /// Zone chrono (pastille Focus + lanceur) ; null = lanceur seul.
@@ -51,6 +56,7 @@ class WebTopBar extends StatelessWidget {
     required this.isDemo,
     required this.hasAssistantMessages,
     this.autoPlan,
+    this.mode = DayMode.normal,
     required this.onMyCoach,
     required this.onMenu,
     this.chrono,
@@ -94,6 +100,7 @@ class WebTopBar extends StatelessWidget {
         const Spacer(),
         if (signedIn) chrono ?? ChronoLauncher(sync: sync),
         const SizedBox(width: 6),
+        if (signedIn) WebModePill(mode: mode, onTap: () => onMenu(WebMenuItem.mode)),
         IconButton(
           tooltip: 'Mon coach',
           icon: const Icon(Icons.supervisor_account_outlined,
@@ -137,6 +144,15 @@ class WebTopBar extends StatelessWidget {
                   Text(autoPlan == true
                       ? 'Programmation automatique · activée'
                       : 'Programmation automatique · désactivée'),
+                ]),
+              ),
+            if (!isDemo)
+              PopupMenuItem(
+                value: WebMenuItem.mode,
+                child: Row(children: [
+                  Icon(modeIcon(mode), size: 18, color: webModeColor(mode)),
+                  const SizedBox(width: 10),
+                  Text('Mode du jour · ${kModeLabels[mode]}'),
                 ]),
               ),
             const PopupMenuItem(

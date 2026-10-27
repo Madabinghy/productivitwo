@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/utils/coups.dart' show coupLabel;
+import 'package:productivitwo_v1/utils/mode_moves.dart' show activeCoups;
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -307,7 +309,8 @@ class _ProjectsViewState extends State<ProjectsView> {
             projectHealth(p, widget.recentSessions, now).kind != HealthKind.noDeadline)
         .length;
     final noNext = active.where((p) => nextAction(p) == null).length;
-    final objective = widget.objectives.where((o) => o.status == 'active').firstOrNull;
+    final coups = activeCoups(widget.objectives, now);
+    final objective = widget.objectives.where((o) => o.status == 'active' && !o.isTactical).firstOrNull;
 
     return Container(
       color: kBBg,
@@ -316,6 +319,11 @@ class _ProjectsViewState extends State<ProjectsView> {
         children: [
           _header(active.length, atRisk, noNext),
           ..._weekCardOrNothing(now),
+          // Coups en cours (Modes et coups lot 5) : au-dessus de l'objectif stratégique.
+          for (final c in coups) ...[
+            const SizedBox(height: 18),
+            _objectiveCard(c, now, label: 'COUP · ${coupLabel(c, now).toUpperCase()}'),
+          ],
           if (objective != null) ...[
             const SizedBox(height: 18),
             _objectiveCard(objective, now),
@@ -618,7 +626,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     );
   }
 
-  Widget _objectiveCard(StrategicObjective o, DateTime now) {
+  Widget _objectiveCard(StrategicObjective o, DateTime now, {String label = 'OBJECTIF'}) {
     final prog = computeObjectiveProgress(
         o, widget.activities, widget.recentSessions, widget.recentHits, now);
     final kept = prog.items.where((i) => i.onTrack).length;
@@ -636,7 +644,7 @@ class _ProjectsViewState extends State<ProjectsView> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  _label('OBJECTIF'),
+                  _label(label),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(o.title,

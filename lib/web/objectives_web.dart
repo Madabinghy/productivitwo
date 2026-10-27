@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/coups.dart' show coupLabel;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/objective_day.dart';
@@ -48,7 +49,9 @@ class WebObjectivesCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
-    final days = buildObjectiveDays(objectives: objectives, activities: activities, sessions: sessions, blocks: blocks, projects: projects, now: now, dayStartMin: dayStartMin);
+    final days = buildObjectiveDays(objectives: objectives, activities: activities, sessions: sessions, blocks: blocks, projects: projects, now: now, dayStartMin: dayStartMin)
+      // Coups en cours d'abord (Modes et coups lot 5), ordre d'origine sinon.
+      ..sort((a, b) => (a.objective.isTactical ? 0 : 1).compareTo(b.objective.isTactical ? 0 : 1));
     if (days.isEmpty) return const SizedBox.shrink();
     return Container(
       padding: folded ? const EdgeInsets.fromLTRB(20, 14, 20, 14) : const EdgeInsets.fromLTRB(20, 18, 20, 12),
@@ -82,6 +85,14 @@ class WebObjectivesCard extends StatelessWidget {
       padding: const EdgeInsets.only(top: 12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
+          if (d.objective.isTactical) ...[
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(color: kBAttention.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
+              child: Text('COUP · ${coupLabel(d.objective, now)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: kBAttention)),
+            ),
+          ],
           Expanded(child: Text(d.objective.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kBText))),
           if (pct != null) Text('$pct % du rythme', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palierColor(pct))),
         ]),

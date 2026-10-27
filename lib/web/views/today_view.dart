@@ -12,6 +12,8 @@ import 'package:productivitwo_v1/web/objectives_web.dart';
 import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/web/mode_web.dart' show webModeChip;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -86,6 +88,8 @@ class TodayView extends StatefulWidget {
   final VoidCallback onOpenWeek;
   /// Heure de bascule de la journée vécue (`data/meta.dayStartMin`).
   final int dayStartMin;
+  /// Mode du jour (Modes et coups lot 5), pour l'en-tête ; les chips se calculent sur les pointages.
+  final DayMode mode;
 
   const TodayView({
     super.key,
@@ -99,6 +103,7 @@ class TodayView extends StatefulWidget {
     required this.onOpenProjects,
     required this.onOpenWeek,
     this.dayStartMin = kDefaultDayStartMin,
+    this.mode = DayMode.normal,
   });
 
   @override
@@ -781,7 +786,8 @@ class TodayViewState extends State<TodayView> {
         ? 'Aucun programme pour aujourd\'hui'
         : '$done bloc${done > 1 ? 's' : ''} fait${done > 1 ? 's' : ''} sur ${_blocks.length}'
             '${remaining > 0 ? ' · ${_fmtHm(remaining)} planifiées restantes' : ''}'
-            '${_generatedBy == 'auto' ? ' · planifiée automatiquement' : ''}';
+            '${_generatedBy == 'auto' ? ' · planifiée automatiquement' : ''}'
+            '${widget.mode == DayMode.normal ? '' : ' · mode ${kModeLabels[widget.mode]}'}';
     return Row(children: [
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title,
@@ -1584,15 +1590,21 @@ class TodayViewState extends State<TodayView> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(b.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: current ? FontWeight.w600 : FontWeight.w400,
-                          color: done || skipped ? kBText3 : kBText,
-                          decoration: done || skipped ? TextDecoration.lineThrough : null,
-                          decorationColor: kBText3)),
+                  child: Row(children: [
+                    Flexible(
+                      child: Text(b.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                              color: done || skipped ? kBText3 : kBText,
+                              decoration: done || skipped ? TextDecoration.lineThrough : null,
+                              decorationColor: kBText3)),
+                    ),
+                    if (done)
+                      if (webModeChip(_moodMarks, b.doneAt, widget.dayStartMin) case final chip?) chip,
+                  ]),
                 ),
                 const SizedBox(width: 8),
                 Text(trailing,
@@ -2219,15 +2231,19 @@ class TodayViewState extends State<TodayView> {
     final progress = target != null && target.checklist.isNotEmpty && !done
         ? ' · ${target.checklistDone}/${target.checklistTotal}'
         : '';
-    final trailing = Text(
-      (current ? 'en cours' : fmtMin(b.durationMin)) + progress,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: current ? FontWeight.w600 : FontWeight.w400,
-        color: current ? kBPrimary : kBText3,
-        fontFeatures: _tabular,
+    final modeChip = done && !compact ? webModeChip(_moodMarks, b.doneAt, widget.dayStartMin) : null;
+    final trailing = Row(mainAxisSize: MainAxisSize.min, children: [
+      if (modeChip != null) modeChip,
+      Text(
+        (current ? 'en cours' : fmtMin(b.durationMin)) + progress,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+          color: current ? kBPrimary : kBText3,
+          fontFeatures: _tabular,
+        ),
       ),
-    );
+    ]);
 
     return Material(
       color: current ? kBActive : color.withOpacity(done ? .07 : .13),
