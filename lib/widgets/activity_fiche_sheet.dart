@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
-import 'package:productivitwo_v1/utils/time_scope.dart' show timeByDayForActivity;
+import 'package:productivitwo_v1/utils/time_scope.dart' show timeByDayForActivity, movingAvgHoursSeries, MiniAvgLineChart;
 import 'package:productivitwo_v1/utils/week_stats.dart' show minutesByActivity;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
@@ -34,10 +34,13 @@ Future<bool> showActivityFiche(
   required Activity activity,
   void Function(Activity a, int minutes)? onLaunchTimed,
   void Function(ScheduleBlock block)? onLaunchBlock,
+  /// « Modifier la session » (début, fin, activité, bloc, suppression) ; renvoie vrai si changé.
+  Future<bool> Function(Session s)? onEditSession,
 }) async {
   final r = await showFiche<bool>(
     context,
-    builder: (ctx, scroll) => _ActivityFiche(logic: logic, sync: sync, activity: activity, scroll: scroll, onLaunchTimed: onLaunchTimed, onLaunchBlock: onLaunchBlock),
+    builder: (ctx, scroll) => _ActivityFiche(
+        logic: logic, sync: sync, activity: activity, scroll: scroll, onLaunchTimed: onLaunchTimed, onLaunchBlock: onLaunchBlock, onEditSession: onEditSession),
   );
   return r ?? _ActivityFicheState.lastChanged;
 }
@@ -49,7 +52,9 @@ class _ActivityFiche extends StatefulWidget {
   final ScrollController scroll;
   final void Function(Activity a, int minutes)? onLaunchTimed;
   final void Function(ScheduleBlock block)? onLaunchBlock;
-  const _ActivityFiche({required this.logic, required this.sync, required this.activity, required this.scroll, this.onLaunchTimed, this.onLaunchBlock});
+  final Future<bool> Function(Session s)? onEditSession;
+  const _ActivityFiche(
+      {required this.logic, required this.sync, required this.activity, required this.scroll, this.onLaunchTimed, this.onLaunchBlock, this.onEditSession});
   @override
   State<_ActivityFiche> createState() => _ActivityFicheState();
 }
@@ -60,6 +65,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
   bool _timerOpen = false;
   bool _tplOpen = false;
   bool _setOpen = false;
+  bool _trendOpen = false;
   List<StrategicObjective> _objectives = const [];
   List<SessionTemplate>? _templates;
 
@@ -279,6 +285,13 @@ class _ActivityFicheState extends State<_ActivityFiche> {
 
         // ── Actions ────────────────────────────────────────────────────────
         ..._actionsSection(cs, now),
+
+        // ── Derniers chronos ───────────────────────────────────────────────
+        ..._sessionsSection(cs, now),
+
+        // ── Tendance ───────────────────────────────────────────────────────
+        FicheTitle('TENDANCE · 12 SEMAINES', trailing: _foldButton(cs, _trendOpen, () => setState(() => _trendOpen = !_trendOpen))),
+        if (_trendOpen) _trendBox(cs, now),
 
         // ── Déroulés ───────────────────────────────────────────────────────
         FicheTitle('DÉROULÉS · ${_templates?.length ?? 0}', trailing: _foldButton(cs, _tplOpen, () => setState(() => _tplOpen = !_tplOpen))),
@@ -518,6 +531,116 @@ class _ActivityFicheState extends State<_ActivityFiche> {
     );
     final v = res?.trim();
     return v == null || v.isEmpty ? null : v;
+  }
+
+  // ── Derniers chronos ────────────────────────────────────────────────────────
+
+  List<Widget> _sessionsSection(ColorScheme cs, DateTime now) {
+    final all = logic.state.sessions.where((s) => s.activityId == a.id && !s.deleted).toList()..sort((x, y) => y.startAt.compareTo(x.startAt));
+    final last = all.take(3).toList();
+    String hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    String day(DateTime d) {
+      final t = DateTime(now.year, now.month, now.day);
+      final x = DateTime(d.year, d.month, d.day);
+      final diff = t.difference(x).inDays;
+      if (diff == 0) return 'Aujourd\'hui';
+      if (diff == 1) return 'Hier';
+      const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+      return '${days[d.weekday - 1]} ${d.day}/${d.month.toString().padLeft(2, '0')}';
+    }
+    return [
+      FicheTitle('DERNIERS CHRONOS', trailing: all.isEmpty ? null : FicheDelta('${all.length} au total', color: cs.onSurface.withValues(alpha: .6))),
+      if (last.isEmpty)
+        const FicheNote('Aucun chrono sur cette activité pour l\'instant.')
+      else
+        for (final s in last)
+          FicheStep(
+            title: '${day(s.startAt)} · ${hm(s.startAt)}${s.endAt == null ? ' → en cours' : ' → ${hm(s.endAt!)}'}',
+            detail: [
+              fmtMin((s.endAt ?? now).difference(s.startAt).inMinutes),
+              if (s.taskId != null) 'sur une tâche',
+              if (s.actionId != null) 'action ciblée',
+            ].join(' · '),
+            done: s.endAt != null,
+            current: s.endAt == null,
+            onTap: widget.onEditSession == null || s.endAt == null
+                ? null
+                : () async {
+                    final changed = await widget.onEditSession!(s);
+                    if (changed && mounted) _changed();
+                  },
+            trailing: widget.onEditSession == null || s.endAt == null ? null : Icon(Icons.more_horiz, color: cs.onSurface.withValues(alpha: .5)),
+          ),
+    ];
+  }
+
+  // ── Tendance ────────────────────────────────────────────────────────────────
+
+  Widget _trendBox(ColorScheme cs, DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    final monday = today.subtract(Duration(days: today.weekday - 1));
+    final gridStart = monday.subtract(const Duration(days: 77)); // 12 semaines
+    final start = today.subtract(const Duration(days: 89));
+    final byDay = timeByDayForActivity(sessions: logic.state.sessions, activityId: a.id, start: start, end: today.add(const Duration(days: 1)), now: now);
+    final s7 = movingAvgHoursSeries(minutesByDay: byDay, today: now, windowDays: 7, points: 30);
+    final s30 = movingAvgHoursSeries(minutesByDay: byDay, today: now, windowDays: 30, points: 30);
+    final goalH = a.goalMin > 0 ? a.goalMin / 60.0 : null;
+    final avg7 = s7.isEmpty ? 0 : (s7.last * 60).round();
+    final avg30 = s30.isEmpty ? 0 : (s30.last * 60).round();
+    final color = domainColor(a.domainId, logic.state.activeDomains) ?? cs.primary;
+    var max = 1;
+    for (var i = 0; i < 84; i++) {
+      final v = byDay[gridStart.add(Duration(days: i))] ?? 0;
+      if (v > max) max = v;
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .05), borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Text('moyenne 7 j ${fmtMin(avg7)} / j', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .75))),
+          const Spacer(),
+          Text('30 j ${fmtMin(avg30)} / j', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(height: 70, child: MiniAvgLineChart(series7: s7, series30: s30, goalHoursPerDay: goalH, color: color)),
+        const SizedBox(height: 12),
+        LayoutBuilder(builder: (_, box) {
+          const gap = 2.0;
+          final cell = ((box.maxWidth - gap * 11) / 12).clamp(6.0, 22.0);
+          return Column(children: [
+            for (var row = 0; row < 7; row++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: gap),
+                child: Row(children: [
+                  for (var col = 0; col < 12; col++) ...[
+                    Builder(builder: (_) {
+                      final d = gridStart.add(Duration(days: col * 7 + row));
+                      final v = byDay[d] ?? 0;
+                      final future = d.isAfter(today);
+                      return Container(
+                        width: cell,
+                        height: cell,
+                        decoration: BoxDecoration(
+                          color: future ? Colors.transparent : color.withValues(alpha: v == 0 ? .08 : (.25 + .75 * v / max)),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      );
+                    }),
+                    if (col < 11) const SizedBox(width: gap),
+                  ],
+                ]),
+              ),
+          ]);
+        }),
+        const SizedBox(height: 4),
+        Row(children: [
+          Text('il y a 12 sem.', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
+          const Spacer(),
+          Text('cette semaine', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
+        ]),
+      ]),
+    );
   }
 
   // ── Déroulés ────────────────────────────────────────────────────────────────
