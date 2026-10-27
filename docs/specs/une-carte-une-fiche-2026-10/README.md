@@ -115,3 +115,12 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
 - **Routine du moment** (`routines_day_view.dart`) : la carte passe sur `MomentCard` (nouveaux slots `detail` = pilule
   chrono + ⏱ + réglages, `actions` = rangée +1 / −1 / Suivante / Pas maintenant ▾ + menu + Enchaîner) ; comportement
   inchangé. `MomentCard` gagne `detail` et `actions`.
+
+## Textes coupés — passe de robustesse (2026-10-27)
+
+Test de débordement `test/ui/une_carte_une_fiche_overflow_test.dart` (écran 360 px, titres et sous-lignes très longs) :
+aucun RenderFlex ne doit déborder sur la carte du moment, la ligne et la fiche. Corrections : pastille de la carte
+bornée (Flexible + ellipse), contexte « Projet › Tâche » sur 2 lignes, **bouton principal sur 2 lignes** (hauteur mini
+52 px, « Fiche » s'aligne via `IntrinsicHeight`), ligne Enchaîner sur 2 lignes ; `StatusRow` : titre et sous-ligne sur
+2 lignes, chip / écart bornés à 150 px et ellipsés, titre de section ellipsé ; fiche : chip d'en-tête bornée et ellipsée,
+détail d'étape sur 2 lignes.

@@ -71,7 +71,7 @@ class StatusRow extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(title,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 14.5,
@@ -80,7 +80,7 @@ class StatusRow extends StatelessWidget {
                         decoration: muted ? TextDecoration.lineThrough : null)),
                 if (sub != null)
                   Text(sub!,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 12, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
                 if (b != null) ...[
@@ -90,15 +90,18 @@ class StatusRow extends StatelessWidget {
               ]),
             ),
             const SizedBox(width: 10),
-            if (trailing != null)
-              trailing!
-            else if (chip != null)
-              StateChip(chip!, color: st)
-            else if (delta != null)
-              Text(delta!,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: st, fontFeatures: const [FontFeature.tabularFigures()]))
-            else
-              Icon(Icons.chevron_right, color: text3),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: trailing ??
+                  (chip != null
+                      ? StateChip(chip!, color: st)
+                      : delta != null
+                          ? Text(delta!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: st, fontFeatures: const [FontFeature.tabularFigures()]))
+                          : Icon(Icons.chevron_right, color: text3)),
+            ),
           ]),
         ),
       ),
@@ -116,7 +119,7 @@ class StateChip extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
-        child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
       );
 }
 
@@ -180,7 +183,7 @@ class ListSectionTitle extends StatelessWidget {
         onTap: onAction,
         borderRadius: BorderRadius.circular(8),
         child: Row(children: [
-          Expanded(child: Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3))),
+          Expanded(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3))),
           if (action != null)
             Text(action!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: dark ? kBText2 : cs.onSurface.withValues(alpha: .7)))
           else if (onAction != null)

@@ -87,7 +87,10 @@ class FicheHeader extends StatelessWidget {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
         Expanded(child: Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.15))),
-        if (chip != null) ...[const SizedBox(width: 10), StateChip(chip!, color: chipColor ?? cs.primary)],
+        if (chip != null) ...[
+          const SizedBox(width: 10),
+          Flexible(flex: 0, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip(chip!, color: chipColor ?? cs.primary))),
+        ],
       ]),
       if (kpi != null) ...[
         const SizedBox(height: 6),
@@ -163,7 +166,7 @@ class FicheStep extends StatelessWidget {
                           color: done ? cs.onSurface.withValues(alpha: .5) : cs.onSurface,
                           decoration: done ? TextDecoration.lineThrough : null)),
                   if (detail != null)
-                    Text(detail!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .55))),
+                    Text(detail!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .55))),
                 ]),
               ),
               if (trailing != null) trailing!,

@@ -82,14 +82,18 @@ class MomentCard extends StatelessWidget {
                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
           ),
           if (pill != null)
-            InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: onPill,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(color: accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
-                child: Text(pill!,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: accent)),
+            Flexible(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onPill,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(color: accent.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
+                  child: Text(pill!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: accent)),
+                ),
               ),
             ),
         ]),
@@ -104,7 +108,7 @@ class MomentCard extends StatelessWidget {
                   Icon(contextIcon ?? Icons.circle, size: contextIcon == null ? 8 : 13, color: accent),
                   const SizedBox(width: 6),
                   Flexible(
-                      child: Text(context_!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2))),
+                      child: Text(context_!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2))),
                 ]),
               const SizedBox(height: 4),
               Text(title,
@@ -126,12 +130,13 @@ class MomentCard extends StatelessWidget {
         if (actions != null)
           actions!
         else
-        Row(children: [
+        IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: _primary(pal)),
           if (onFiche != null) ...[
             const SizedBox(width: 8),
-            SizedBox(
-              height: 52,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 52),
               child: OutlinedButton(
                 onPressed: onFiche,
                 style: OutlinedButton.styleFrom(
@@ -144,14 +149,18 @@ class MomentCard extends StatelessWidget {
               ),
             ),
           ],
-        ]),
+          ]),
+        ),
         if (chainLabel != null) ...[
           const SizedBox(height: 8),
-          TextButton.icon(
+          TextButton(
             onPressed: onChain,
             style: TextButton.styleFrom(foregroundColor: accent, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-            icon: const Icon(Icons.playlist_play_rounded, size: 22),
-            label: Text(chainLabel!, maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.playlist_play_rounded, size: 22),
+              const SizedBox(width: 6),
+              Flexible(child: Text(chainLabel!, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
+            ]),
           ),
         ],
       ]),
@@ -161,24 +170,25 @@ class MomentCard extends StatelessWidget {
   Widget _primary(NowPalette pal) {
     final label = Row(mainAxisSize: MainAxisSize.min, children: [
       if (primaryIcon != null) ...[Icon(primaryIcon, size: 20), const SizedBox(width: 6)],
-      Flexible(child: Text(primaryLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      Flexible(child: Text(primaryLabel, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
     ]);
     if (primaryOutlined) {
-      return SizedBox(
-        height: 52,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 52),
         child: OutlinedButton(
           onPressed: onPrimary,
           style: OutlinedButton.styleFrom(
               foregroundColor: accent,
               side: BorderSide(color: accent.withValues(alpha: .5)),
               shape: const StadiumBorder(),
-              textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
           child: label,
         ),
       );
     }
-    return SizedBox(
-      height: 52,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 52),
       child: FilledButton(
         onPressed: onPrimary,
         style: FilledButton.styleFrom(
@@ -186,7 +196,8 @@ class MomentCard extends StatelessWidget {
             foregroundColor: Colors.white,
             disabledBackgroundColor: pal.track,
             shape: const StadiumBorder(),
-            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
         child: label,
       ),
     );
