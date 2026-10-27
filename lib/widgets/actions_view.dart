@@ -14,7 +14,11 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
+import 'package:productivitwo_v1/widgets/fiche.dart';
+import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
@@ -68,6 +72,9 @@ class _ActionsViewState extends State<ActionsView> {
   // Section « En pause » repliée par défaut (même logique : consultation
   // ponctuelle, réactivation en un tap).
   bool _showPaused = false;
+  // Filtres repliés sous la carte du moment (« une carte, une fiche », lot 2).
+  bool _filtersOpen = false;
+  bool _filtersAutoOpened = false;
 
   AppState get _state => widget.logic.state;
 
@@ -1207,10 +1214,15 @@ class _ActionsViewState extends State<ActionsView> {
           ]),
           const SizedBox(height: 6),
           if (_searchOpen) ...[_searchField(cs), const SizedBox(height: 8)],
+          if (_momentCard(cs, shown, all) case final card?) ...[const SizedBox(height: 6), card, const SizedBox(height: 12)],
           _captureField(cs),
           if (_pendingCaptures.isNotEmpty) ...[const SizedBox(height: 6), _triageRow(cs)],
-          const SizedBox(height: 10),
-          _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
+          const SizedBox(height: 6),
+          _filtersToggle(cs, active, activeDomains, hiddenByFilters),
+          if (_filtersOpen) ...[
+            const SizedBox(height: 4),
+            _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
+          ],
           const SizedBox(height: 6),
 
           // ── @courses actif → la liste de courses du menu, cochable ────────
@@ -1804,16 +1816,15 @@ class _ActionsViewState extends State<ActionsView> {
   Widget _sectionLabel(ColorScheme cs, String text, IconData icon, {Color? color}) {
     final c = color ?? cs.onSurface.withOpacity(.5);
     return Padding(
-      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
       child: Row(children: [
-        Icon(icon, size: 14, color: c),
+        Icon(icon, size: 13, color: c),
         const SizedBox(width: 6),
         Expanded(
           child: Text(text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: c)),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: c)),
         ),
       ]),
     );
@@ -1883,28 +1894,8 @@ class _ActionsViewState extends State<ActionsView> {
   }
 
   Widget _accordionHeader(
-      ColorScheme cs, IconData icon, String title, bool open, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(children: [
-          Icon(icon, size: 15, color: cs.onSurface.withOpacity(.4)),
-          const SizedBox(width: 8),
-          Text(title,
-              style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .8,
-                  color: cs.onSurface.withOpacity(.4))),
-          const Spacer(),
-          Icon(open ? Icons.expand_less : Icons.expand_more,
-              size: 18, color: cs.onSurface.withOpacity(.35)),
-        ]),
-      ),
-    );
-  }
+          ColorScheme cs, IconData icon, String title, bool open, VoidCallback onTap) =>
+      ListSectionTitle(title, onAction: onTap, expanded: open);
 
   Widget _groupHeader(ColorScheme cs, String title, Color color,
       {VoidCallback? onTap, Widget? trailing}) {
@@ -2050,76 +2041,33 @@ class _ActionsViewState extends State<ActionsView> {
     final due = _dueOf(e);
     final late = due != null && due.isBefore(today);
     final a = e.action;
-    final meta = <InlineSpan>[];
-    void sep() {
-      if (meta.isNotEmpty) meta.add(TextSpan(text: ' · ', style: TextStyle(color: cs.onSurface.withOpacity(.3))));
-    }
-    // D'où vient l'action : « Projet › Tâche » au-dessus du titre (la tâche
-    // seule quand la liste est déjà groupée par projet).
+    final running = _running?.actionId == a.id;
+    // « Projet › Tâche » puis le détail chiffré, sur une seule sous-ligne.
     final taskTitle = e.task != null && e.task!.id != _flowTaskId ? e.task!.title : null;
     final holderText = showHolder && e.holder.isNotEmpty ? e.holder : null;
-    final origin = <InlineSpan>[
-      if (holderText != null)
-        TextSpan(text: holderText, style: TextStyle(color: cs.onSurface.withOpacity(.5))),
-      if (holderText != null && taskTitle != null)
-        TextSpan(text: '  ›  ', style: TextStyle(color: cs.onSurface.withOpacity(.3))),
-      if (taskTitle != null)
-        TextSpan(
-            text: taskTitle,
-            style: TextStyle(color: cs.onSurface.withOpacity(.72), fontWeight: FontWeight.w600)),
-    ];
-    if (isNew) {
-      meta.add(WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: Container(
-          margin: const EdgeInsets.only(right: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-              color: _newColor.withOpacity(.16), borderRadius: BorderRadius.circular(999)),
-          child: const Text('NOUVEAU',
-              style: TextStyle(
-                  fontSize: 9.5, fontWeight: FontWeight.w800, letterSpacing: .5, color: _newColor)),
-        ),
-      ));
-    }
-    if (startLabel != null) {
-      meta.add(TextSpan(
-          text: startLabel,
-          style: TextStyle(color: cs.tertiary, fontWeight: FontWeight.w700)));
-    }
-    if (due != null) {
-      sep();
-      meta.add(TextSpan(
-          text: (a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
-          style: TextStyle(
-              color: late ? cs.error : cs.onSurface.withOpacity(.55),
-              fontWeight: late ? FontWeight.w700 : FontWeight.w500)));
-    }
-    if (a.estimatedMin != null) {
-      sep();
-      meta.add(TextSpan(text: '≈ ${fmtMin(a.estimatedMin!)}', style: TextStyle(color: cs.onSurface.withOpacity(.55))));
-    }
     final spent = spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin);
-    if (spent != null) {
-      sep();
-      meta.add(TextSpan(
-          text: spent.label,
-          style: TextStyle(
-              color: spent.over ? cs.error : cs.onSurface.withOpacity(.55),
-              fontWeight: spent.over ? FontWeight.w700 : FontWeight.w500)));
-    }
-    if (a.checklist.isNotEmpty) {
-      sep();
-      meta.add(TextSpan(
-          text: '${a.checklistDone}/${a.checklistTotal} étape${a.checklistTotal > 1 ? 's' : ''}',
-          style: TextStyle(color: cs.onSurface.withOpacity(.55))));
-    }
-    if (a.allContexts.isNotEmpty) {
-      sep();
-      meta.add(TextSpan(
-          text: (a.allContexts.toList()..sort()).join(' '),
-          style: TextStyle(color: cs.primary.withOpacity(.75), fontWeight: FontWeight.w600)));
-    }
+    final sub = <String>[
+      if (holderText != null && taskTitle != null) '$holderText › $taskTitle' else if (holderText != null) holderText else if (taskTitle != null) taskTitle,
+      if (startLabel != null) startLabel,
+      if (due != null) (a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
+      if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+      if (spent != null) spent.label,
+      if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
+    ].join(' · ');
+    // Couleur d'état : en retard corail, échéance proche ambre, sinon vert.
+    final daysTo = due == null ? null : due.difference(today).inDays;
+    final pct = late ? 40 : (daysTo != null && daysTo <= 2 ? 70 : 100);
+    final String? chip = running
+        ? 'en cours'
+        : isNew
+            ? 'nouveau'
+            : planned
+                ? 'au programme'
+                : late
+                    ? _dueLabel(due, today)
+                    : null;
+    final chipColor = running ? cs.primary : (isNew ? _newColor : palierColor(pct));
+    final steps = a.checklist.isNotEmpty ? (done: a.checklistDone, total: a.checklistTotal, expected: a.checklistDone) : null;
 
     return Dismissible(
       key: ValueKey('act_${a.id}'),
@@ -2129,7 +2077,7 @@ class _ActionsViewState extends State<ActionsView> {
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 18),
         decoration: BoxDecoration(
-            color: Colors.green.withOpacity(.18), borderRadius: BorderRadius.circular(12)),
+            color: Colors.green.withOpacity(.18), borderRadius: BorderRadius.circular(14)),
         child: const Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.check_circle, color: Colors.green),
           SizedBox(width: 8),
@@ -2140,7 +2088,7 @@ class _ActionsViewState extends State<ActionsView> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 18),
         decoration: BoxDecoration(
-            color: cs.primary.withOpacity(.14), borderRadius: BorderRadius.circular(12)),
+            color: cs.primary.withOpacity(.14), borderRadius: BorderRadius.circular(14)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Text('Caser demain', style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
           const SizedBox(width: 8),
@@ -2164,89 +2112,193 @@ class _ActionsViewState extends State<ActionsView> {
         }
         return false;
       },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withOpacity(.35),
-          borderRadius: BorderRadius.circular(12),
-          border: late ? Border.all(color: cs.error.withOpacity(.35)) : null,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: StatusRow(
+          leading: InkWell(
+            onTap: () => _toggleDone(e, true),
+            borderRadius: BorderRadius.circular(8),
+            child: const Icon(Icons.radio_button_unchecked),
+          ),
+          title: a.title,
+          sub: sub.isEmpty ? null : sub,
+          bar: steps,
+          pct: pct,
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (chip != null) StateChip(chip, color: chipColor),
+            if (e.chronoActivityId != null && !running)
+              IconButton(
+                tooltip: 'Lancer le chrono',
+                icon: Icon(Icons.play_circle_fill, size: 24, color: cs.primary),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                onPressed: () => _launch(e),
+              ),
+            if (chip == null && (e.chronoActivityId == null || running)) Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(.4)),
+          ]),
+          onTap: () => _openActionSheet(e),
+          onLongPress: e.project != null ? () => _openProject(e.project!, targetTaskId: e.task?.id) : null,
         ),
+      ),
+    );
+  }
+
+  // ── Carte ACTION DU MOMENT (« une carte, une fiche », lot 2) ────────────────
+
+  /// L'action que le moment désigne (`pickActionMoment`) : chrono en cours,
+  /// bloc en cours, retard, programme du jour, prochain bloc, semaine, sinon
+  /// la première. Anneau = étapes faites, geste = étape suivante / chrono / fait.
+  Widget? _momentCard(ColorScheme cs, List<_Entry> shown, List<_Entry> all) {
+    final pool = shown.isNotEmpty ? shown : all;
+    if (pool.isEmpty) return null;
+    final today = _day(DateTime.now());
+    final entries = <ActionEntry>[for (final e in pool) (action: e.action, project: e.project, task: e.task, activity: e.activity)];
+    final m = pickActionMoment(
+      entries,
+      blocks: _todayBlocks,
+      nowMin: widget.logic.livedNowMinNow,
+      today: today,
+      runningActionId: _running?.actionId,
+      entryForBlock: (b) {
+        final e = _entryForBlock(b, pool);
+        return e == null ? null : (action: e.action, project: e.project, task: e.task, activity: e.activity);
+      },
+    );
+    if (m == null) return null;
+    final e = pool.firstWhere((x) => x.action.id == m.entry.action.id);
+    final a = e.action;
+    final due = _dueOf(e);
+    final late = due != null && due.isBefore(today);
+    final spentMin = _spent[a.id] ?? 0;
+    final steps = a.checklist.isNotEmpty;
+    final next = nextChecklistItem(a);
+    final pill = switch (m.kind) {
+      ActionMomentKind.running => 'chrono en cours',
+      ActionMomentKind.block => 'bloc en cours · ${m.block!.startTime}',
+      ActionMomentKind.late => 'en retard · ${_dueLabel(due!, today)}',
+      ActionMomentKind.today => 'au programme · ${m.block!.startTime}',
+      ActionMomentKind.next => 'prochain bloc · ${m.block!.startTime}',
+      ActionMomentKind.week => 'cette semaine',
+      ActionMomentKind.rest => 'prochaine action',
+    };
+    final accent = late ? kPalierCoral : cs.primary;
+    final ctx = [
+      if (e.holder.isNotEmpty) e.holder,
+      if (e.task != null && e.task!.id != _flowTaskId) e.task!.title,
+    ].join(' › ');
+    final sub = <String>[
+      if (due != null) (a.dueDate != null ? '⚑ ' : 'éch. ') + _dueLabel(due, today),
+      if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+      if (spentMin > 0) '⏱ ${fmtMin(spentMin)} passées',
+      if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
+      if (steps && next != null) 'étape : ${next.title}',
+    ].join(' · ');
+    final double? ring;
+    final String big, small;
+    if (steps) {
+      ring = a.checklistTotal == 0 ? 0 : a.checklistDone / a.checklistTotal;
+      big = '${a.checklistDone} / ${a.checklistTotal}';
+      small = 'ÉTAPES';
+    } else if (a.estimatedMin != null && a.estimatedMin! > 0) {
+      ring = spentMin / a.estimatedMin!;
+      big = fmtMin(spentMin);
+      small = 'SUR ≈ ${fmtMin(a.estimatedMin!)}';
+    } else {
+      ring = 0;
+      big = fmtMin(spentMin);
+      small = 'PASSÉES';
+    }
+    final running = m.kind == ActionMomentKind.running;
+    final String primary;
+    final IconData icon;
+    final VoidCallback onPrimary;
+    if (running) {
+      primary = 'Arrêter le chrono';
+      icon = Icons.stop_rounded;
+      onPrimary = () => widget.logic.stopActive();
+    } else if (next != null) {
+      primary = 'Étape faite : ${next.title}';
+      icon = Icons.check_rounded;
+      onPrimary = () async {
+        final changed = setChecklistItem(a, next.id, true);
+        await _persistEntry(e);
+        if (changed && a.done && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text('Action faite : ${a.title}')));
+        }
+      };
+    } else if (e.chronoActivityId != null) {
+      primary = 'Chrono';
+      icon = Icons.play_arrow_rounded;
+      onPrimary = () => _launch(e);
+    } else {
+      primary = 'Fait';
+      icon = Icons.check_rounded;
+      onPrimary = () => _toggleDone(e, true);
+    }
+    return MomentCard(
+      accent: accent,
+      eyebrow: 'ACTION DU MOMENT',
+      pill: pill,
+      ring: ring,
+      ringColor: late ? kPalierCoral : palierColor(steps ? 100 : (ring > 1 ? 40 : 100)),
+      ringBig: big,
+      ringSmall: small,
+      context_: ctx.isEmpty ? null : ctx,
+      contextIcon: e.project != null ? Icons.account_tree_outlined : Icons.bolt_outlined,
+      title: a.title,
+      sub: sub.isEmpty ? 'Sans échéance ni estimation' : sub,
+      subColor: late ? kPalierCoral : null,
+      primaryLabel: primary,
+      primaryIcon: icon,
+      primaryOutlined: running,
+      onPrimary: onPrimary,
+      onFiche: () => _openActionSheet(e),
+    );
+  }
+
+  /// Ligne « Filtres » repliable : J'ai · Je suis · Domaine · Pour. Ouverte
+  /// d'office quand un filtre est actif (on voit ce qui masque).
+  Widget _filtersToggle(ColorScheme cs, Set<String> active, Set<String> activeDomains, int hidden) {
+    final n = (_time == null ? 0 : 1) + active.length + activeDomains.length + (_clientFilter == null ? 0 : 1);
+    if (n > 0 && !_filtersAutoOpened) {
+      _filtersAutoOpened = true;
+      _filtersOpen = true;
+    }
+    return InkWell(
+      onTap: () => setState(() => _filtersOpen = !_filtersOpen),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
         child: Row(children: [
-          Checkbox(
-            value: false,
-            shape: const CircleBorder(),
-            onChanged: (v) => _toggleDone(e, v ?? false),
-          ),
+          Icon(Icons.tune_rounded, size: 14, color: n > 0 ? cs.primary : cs.onSurface.withOpacity(.5)),
+          const SizedBox(width: 6),
           Expanded(
-            child: InkWell(
-              onTap: () => _openActionSheet(e),
-              onLongPress: e.project != null
-                  ? () => _openProject(e.project!, targetTaskId: e.task?.id)
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (origin.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
-                      child: RichText(
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        text: TextSpan(style: const TextStyle(fontSize: 11), children: origin),
-                      ),
-                    ),
-                  Text(a.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
-                  if (meta.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: RichText(
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        text: TextSpan(style: const TextStyle(fontSize: 11), children: meta),
-                      ),
-                    ),
-                ]),
-              ),
+            child: Text(
+              n > 0
+                  ? 'FILTRES · $n actif${n > 1 ? 's' : ''}${hidden > 0 ? ' · $hidden masquée${hidden > 1 ? 's' : ''}' : ''}'
+                  : 'FILTRES · J\'AI · JE SUIS · DOMAINE · POUR',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: n > 0 ? cs.primary : cs.onSurface.withOpacity(.5)),
             ),
           ),
-          if (planned)
-            Tooltip(
-              message: 'Au programme d\'aujourd\'hui',
-              child: Container(
-                width: 8,
-                height: 8,
-                margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle),
-              ),
-            ),
-          if (e.chronoActivityId != null)
-            IconButton(
-              tooltip: 'Lancer le chrono',
-              icon: Icon(Icons.play_circle_fill, size: 24, color: cs.primary),
-              visualDensity: VisualDensity.compact,
-              onPressed: () => _launch(e),
-            ),
-          const SizedBox(width: 2),
+          Icon(_filtersOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withOpacity(.45)),
         ]),
       ),
     );
   }
 
-  // ── Feuille d'action : étapes + agir ────────────────────────────────────────
+  // ── Fiche d'action (« une carte, une fiche », lot 2) ────────────────────────
 
+  /// En-tête + chip d'état, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (chrono,
+  /// caser, fait, contextes, projet, rattacher). Même ossature que la fiche
+  /// objectif et la fiche projet (`widgets/fiche.dart`).
   Future<void> _openActionSheet(_Entry e) async {
     final a = e.action;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+    await showFiche<void>(
+      context,
+      builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setLocal) {
         final cs = Theme.of(ctx).colorScheme;
         void refresh() {
           setLocal(() {});
@@ -2255,102 +2307,56 @@ class _ActionsViewState extends State<ActionsView> {
         Future<void> persist() => _persistEntry(e);
         final today = _day(DateTime.now());
         final due = _dueOf(e);
-        // En-tête lisible : le porteur (projet / activité) sur une ligne, la
-        // tâche EN ENTIER sur la suivante — c'est elle qui dit « de quoi il
-        // s'agit » (« Clôturer — Contrôle du 7 oct. »).
+        final late = due != null && due.isBefore(today);
+        final planned = _todayActionIds.contains(a.id);
+        final running = _running?.actionId == a.id;
+        final spent = spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin);
         final holderLine = [
           if (e.project != null) e.project!.title,
           if (e.activity != null) e.activity!.name,
         ].join(' · ');
         final taskLine = e.task != null && e.task!.id != _flowTaskId ? e.task!.title : null;
-        Widget pill(String t, {Color? color}) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                  color: (color ?? cs.onSurface).withOpacity(.1),
-                  borderRadius: BorderRadius.circular(999)),
-              child: Text(t,
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: color ?? cs.onSurface.withOpacity(.7))),
-            );
-        return SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            if (holderLine.isNotEmpty)
-              Text(holderLine,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.5))),
-            if (taskLine != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 1, right: 4),
-                    child: Icon(Icons.subdirectory_arrow_right,
-                        size: 15, color: cs.onSurface.withOpacity(.4)),
-                  ),
-                  Expanded(
-                    child: Text(taskLine,
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(.8))),
-                  ),
-                ]),
-              ),
-            const SizedBox(height: 6),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              InkWell(
+        final kpi = <String>[
+          if (holderLine.isNotEmpty && taskLine != null) '$holderLine › $taskLine' else if (holderLine.isNotEmpty) holderLine else if (taskLine != null) taskLine,
+          if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
+          if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+          if (spent != null) spent.label,
+        ].join(' · ');
+        final (chip, chipColor) = a.done
+            ? ('faite', kPalierGreen)
+            : running
+                ? ('chrono en cours', cs.primary)
+                : late
+                    ? ('en retard', kPalierCoral)
+                    : planned
+                        ? ('au programme', cs.primary)
+                        : due != null
+                            ? (_dueLabel(due, today), palierColor(due.difference(today).inDays <= 2 ? 70 : 100))
+                            : ('à faire', kPalierMuted);
+        return ListView(
+          controller: scroll,
+          padding: EdgeInsets.fromLTRB(20, 14, 20, 24 + MediaQuery.of(ctx).viewInsets.bottom),
+          children: [
+            FicheHeader(
+              title: a.title,
+              chip: chip,
+              chipColor: chipColor,
+              kpi: kpi.isEmpty ? null : kpi,
+              leading: InkWell(
                 borderRadius: BorderRadius.circular(20),
                 onTap: () async {
                   Navigator.pop(ctx);
                   await _toggleDone(e, !a.done);
                 },
                 child: Padding(
-                  padding: const EdgeInsets.all(4),
+                  padding: const EdgeInsets.all(2),
                   child: Icon(a.done ? Icons.check_circle : Icons.radio_button_unchecked,
                       size: 26, color: a.done ? Colors.green : cs.onSurface.withOpacity(.4)),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(a.title,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              if (due != null)
-                pill((a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
-                    color: due.isBefore(today) ? cs.error : null),
-              if (a.estimatedMin != null) pill('≈ ${fmtMin(a.estimatedMin!)}'),
-              if (spentLabel(_spent[a.id] ?? 0, a.estimatedMin, fmtMin) case final sp?)
-                pill(sp.label, color: sp.over ? cs.error : null),
-              for (final c in a.allContexts) pill(c, color: cs.primary),
-              if (_todayActionIds.contains(a.id)) pill("au programme aujourd'hui", color: cs.primary),
-            ]),
-            if (a.note != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                decoration: BoxDecoration(
-                  color: cs.surfaceVariant.withOpacity(.35),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: SelectableText(a.note!,
-                    style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withOpacity(.8))),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Text('ÉTAPES',
-                style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .8,
-                    color: cs.onSurface.withOpacity(.45))),
+            ),
+            FicheTitle('ÉTAPES',
+                trailing: a.checklist.isEmpty ? null : FicheDelta('${a.checklistDone} / ${a.checklistTotal}', color: kPalierGreen)),
             StepsSection(
               key: ValueKey('sheet_steps_${a.id}'),
               action: a,
@@ -2382,61 +2388,61 @@ class _ActionsViewState extends State<ActionsView> {
                 persist();
               },
             ),
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              if (e.chronoActivityId != null)
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _launch(e);
-                  },
-                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                  label: const Text('Chrono'),
-                ),
-              FilledButton.tonalIcon(
-                onPressed: () {
+            if (a.note != null) ...[
+              const FicheTitle('DÉTAIL'),
+              FicheNote(a.note!),
+            ],
+            FicheTitle('ÉCHÉANCE',
+                trailing: due == null ? null : FicheDelta((a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today), color: late ? kPalierCoral : kPalierGreen)),
+            FicheNote(due == null
+                ? 'Sans échéance : celle de la tâche fait foi quand elle en a une.'
+                : a.dueDate != null
+                    ? 'Échéance propre à l\'action${e.task?.endDate != null ? ' · tâche : ${_dueLabel(_day(e.task!.endDate!), today)}' : ''}.'
+                    : 'Échéance de la tâche « ${e.task?.title ?? ''} ».'),
+            FicheActions(
+              primaryLabel: running ? 'Arrêter le chrono' : (e.chronoActivityId != null ? 'Chrono' : 'Fait'),
+              primaryIcon: running ? Icons.stop_rounded : (e.chronoActivityId != null ? Icons.play_arrow_rounded : Icons.check_rounded),
+              onPrimary: () {
+                Navigator.pop(ctx);
+                if (running) {
+                  widget.logic.stopActive();
+                } else if (e.chronoActivityId != null) {
+                  _launch(e);
+                } else {
+                  _toggleDone(e, true);
+                }
+              },
+              secondary: [
+                (label: 'Caser', onTap: () {
                   Navigator.pop(ctx);
                   _scheduleAction(e);
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: const Text('Caser'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
+                }),
+                (label: a.dueDate == null ? 'Échéance' : 'Échéance ⚑', onTap: () async {
                   await _pickDueDate(e);
                   refresh();
-                },
-                icon: const Icon(Icons.flag_outlined, size: 18),
-                label: Text(a.dueDate == null ? 'Échéance' : _dueLabel(_day(a.dueDate!), today)),
-              ),
-              OutlinedButton.icon(
-                onPressed: () {
+                }),
+                (label: e.chronoActivityId == null ? 'Contextes & chrono' : 'Contextes', onTap: () {
                   Navigator.pop(ctx);
                   _processAction(e);
-                },
-                icon: const Icon(Icons.alternate_email, size: 18),
-                label: Text(e.chronoActivityId == null ? 'Contextes & chrono' : 'Contextes'),
-              ),
-              if (e.project != null)
-                OutlinedButton.icon(
-                  onPressed: () {
+                }),
+                if (e.project != null)
+                  (label: 'Projet', onTap: () {
                     Navigator.pop(ctx);
                     _openProject(e.project!, targetTaskId: e.task?.id);
-                  },
-                  icon: const Icon(Icons.folder_open_outlined, size: 18),
-                  label: const Text('Projet'),
-                ),
-              if (e.project == null && e.activity != null)
-                OutlinedButton.icon(
-                  onPressed: () {
+                  }),
+                if (e.project == null && e.activity != null)
+                  (label: 'Rattacher à un projet', onTap: () {
                     Navigator.pop(ctx);
                     _attachToProject(e);
-                  },
-                  icon: const Icon(Icons.drive_file_move_outlined, size: 18),
-                  label: const Text('Rattacher à un projet'),
-                ),
-            ]),
-          ]),
+                  }),
+                if (e.chronoActivityId != null && !running)
+                  (label: 'Fait', onTap: () {
+                    Navigator.pop(ctx);
+                    _toggleDone(e, true);
+                  }),
+              ],
+            ),
+          ],
         );
       }),
     );

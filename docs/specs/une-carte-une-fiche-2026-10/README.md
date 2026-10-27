@@ -28,7 +28,7 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
 | Lot | Onglet | Carte du moment | Ligne | Fiche | État |
 |-----|--------|-----------------|-------|-------|------|
 | 1 | **Projets** | PROJET DU MOMENT = séance à 7 j la plus proche, sinon le plus en retard sur son plan (`rankProjectMoments`, `utils/project_moment.dart`) ; anneau = tâches faites / total ; geste = prochaine action (chrono si activité liée, sinon plan à la tâche) | tâches faites avec repère « attendu aujourd'hui » (tâches dont l'échéance — sinon le début — est passée), chip au rythme / à surveiller / en retard / au point mort / à venir | `widgets/project_fiche_sheet.dart` : CETTE SEMAINE (actions à 7 j + prépa de la séance) · DEPUIS LE DÉBUT · AVANCEMENT · PROCHAINE SÉANCE (▶ écran séance, état de la prépa) · Prochaine action / Plan d'action / Terminer / Mettre en veille / Rouvrir | **livré** |
-| 2 | **Actions** | ACTION DU MOMENT = action du bloc en cours, sinon la plus urgente faisable ici ; anneau = étapes faites ; geste = Étape suivante ou ▶ Chrono | groupes par urgence en sections d'une seule liste ; filtres J'ai / Je suis / Pour repliés dessous | fiche action : porteur + tâche en entier, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (Chrono · Caser demain · Fait · Rattacher) | à faire |
+| 2 | **Actions** | ACTION DU MOMENT = action du bloc en cours, sinon la plus urgente faisable ici ; anneau = étapes faites ; geste = Étape suivante ou ▶ Chrono | groupes par urgence en sections d'une seule liste ; filtres J'ai / Je suis / Pour repliés dessous | fiche action : porteur + tâche en entier, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (Chrono · Caser demain · Fait · Rattacher) | **livré** |
 | 3 | **Stats** | MA SEMAINE : anneau = engagements d'objectifs tenus (décision 2026-10-26), geste = rapport de la semaine | une ligne par domaine : fait / minimum vital, repère « attendu à ce jour » | fiche domaine : CETTE SEMAINE, 4 DERNIÈRES SEMAINES (barres), activités et routines, réglage du minimum ; fiche « Ma semaine » absorbe Productivité et Élan | à faire |
 | 4 | **Aujourd'hui** | MAINTENANT reste la carte (inchangée dans l'esprit) | le programme est la liste ; Routines et Objectifs = deux lignes « en parallèle » dont la fiche ouvre la vue du moment ; plus de pilule à trois segments | fiche du bloc (remplace l'écran bloc) : Projet › Tâche, étapes, « ensuite dans ce bloc », Bloc terminé | à faire |
 | 5 | **Objectifs** + harmonisation | déjà le modèle ; la carte « Relevé de la semaine » disparaît (le relevé dû est le geste de la carte) ; archivés en section repliée avec « Réactiver » | migrer la carte Objectif du moment et la carte Routine du moment sur `MomentCard` | — | à faire |
@@ -46,3 +46,22 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
   mobile : la séance la plus proche porte la carte du moment, les autres sont dans la sous-ligne. Les cartes projet
   détaillées (phases, tâches, fil de l'eau) sont remplacées par la fiche + le plan d'action existant.
 - `GoalsView` reçoit `sessions` (santé du projet) ; `main.dart` les passe.
+
+## Lot 2 — détail (livré)
+
+- `pickActionMoment` (`utils/actions_logic.dart`, testé) : l'ACTION DU MOMENT = celle que vise le chrono en cours →
+  celle du bloc en cours → la plus en retard → la première au programme du jour → celle du prochain bloc → la plus
+  proche échéance à 7 j → la première de la liste. La carte (`MomentCard`) prend la pastille correspondante
+  (« bloc en cours · 14:00 », « en retard · −3 j »…), l'anneau = étapes faites (sinon temps passé sur l'estimation),
+  « Projet › Tâche » en contexte, et UN geste : « Étape faite : … » (coche l'étape suivante), ▶ Chrono (activité liée),
+  Fait, ou « Arrêter le chrono » en contour. « Fiche » = la fiche d'action.
+- **Lignes** (`_entryTile` sur `StatusRow`) : titre · « Projet › Tâche · ⚑ éch. · ≈ 45 min · ⏱ passées · @ctx » ·
+  barre des étapes quand il y en a · chip (en cours / nouveau / au programme / « −3 j » corail) · ▶ si une activité
+  est liée. Swipes inchangés (droite = fait, gauche = caser demain), appui long = plan du projet.
+- **Sections** : titres en capitales au même gabarit que les autres onglets (`_sectionLabel`, `ListSectionTitle`).
+- **Filtres repliés** sous la capture : ligne « FILTRES · J'AI · JE SUIS · DOMAINE · POUR » (ouverte d'office au
+  premier affichage quand un filtre est actif, avec le compte des masquées).
+- **Fiche d'action** (`_openActionSheet` sur `showFiche`) : en-tête (coche + titre + chip d'état : faite / chrono en
+  cours / en retard / au programme / échéance / à faire) + ligne repère (porteur › tâche · contextes · estimation ·
+  passées), ÉTAPES (`StepsSection`), DÉTAIL (note), ÉCHÉANCE (propre ⚑ ou de la tâche), gestes : Chrono ou Fait (plein),
+  Caser, Échéance, Contextes, Projet, Rattacher à un projet.
