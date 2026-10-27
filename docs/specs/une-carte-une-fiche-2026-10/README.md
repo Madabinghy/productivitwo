@@ -30,7 +30,7 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
 | 1 | **Projets** | PROJET DU MOMENT = séance à 7 j la plus proche, sinon le plus en retard sur son plan (`rankProjectMoments`, `utils/project_moment.dart`) ; anneau = tâches faites / total ; geste = prochaine action (chrono si activité liée, sinon plan à la tâche) | tâches faites avec repère « attendu aujourd'hui » (tâches dont l'échéance — sinon le début — est passée), chip au rythme / à surveiller / en retard / au point mort / à venir | `widgets/project_fiche_sheet.dart` : CETTE SEMAINE (actions à 7 j + prépa de la séance) · DEPUIS LE DÉBUT · AVANCEMENT · PROCHAINE SÉANCE (▶ écran séance, état de la prépa) · Prochaine action / Plan d'action / Terminer / Mettre en veille / Rouvrir | **livré** |
 | 2 | **Actions** | ACTION DU MOMENT = action du bloc en cours, sinon la plus urgente faisable ici ; anneau = étapes faites ; geste = Étape suivante ou ▶ Chrono | groupes par urgence en sections d'une seule liste ; filtres J'ai / Je suis / Pour repliés dessous | fiche action : porteur + tâche en entier, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (Chrono · Caser demain · Fait · Rattacher) | **livré** |
 | 3 | **Stats** | MA SEMAINE : anneau = engagements d'objectifs tenus (décision 2026-10-26), geste = rapport de la semaine | une ligne par domaine : fait / minimum vital, repère « attendu à ce jour » | fiche domaine : la feuille existante (`_showDomainDetail`) pour l'instant ; fiche « Ma semaine » absorbe jauges du jour, courbe de la semaine, Élan, temps, camembert, retards | **livré** |
-| 4 | **Aujourd'hui** | MAINTENANT reste la carte (inchangée dans l'esprit) | le programme est la liste ; Routines et Objectifs = deux lignes « en parallèle » dont la fiche ouvre la vue du moment ; plus de pilule à trois segments | fiche du bloc (remplace l'écran bloc) : Projet › Tâche, étapes, « ensuite dans ce bloc », Bloc terminé | à faire |
+| 4 | **Aujourd'hui** | MAINTENANT reste la carte (inchangée dans l'esprit) | le programme est la liste ; Routines et Objectifs = deux lignes « en parallèle » dont la fiche ouvre la vue du moment ; plus de pilule à trois segments | fiche du bloc (l'écran bloc devient une feuille `showFiche`) : Projet › Tâche, étapes, « ensuite dans cette tâche », Bloc terminé | **livré** |
 | 5 | **Objectifs** + harmonisation | déjà le modèle ; la carte « Relevé de la semaine » disparaît (le relevé dû est le geste de la carte) ; archivés en section repliée avec « Réactiver » | migrer la carte Objectif du moment et la carte Routine du moment sur `MomentCard` | — | à faire |
 
 ## Lot 1 — détail (livré)
@@ -82,3 +82,19 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
   jauges Activités / Routines / Projets + courbe de la semaine, Élan & discipline, temps par domaine, camembert du jour,
   compteur de retards. `_buildDashboardBody` ne garde que le cache par tick et `WeekStatsView` ;
   `_buildDomainListLive` supprimé.
+
+## Lot 4 — détail (livré)
+
+- **Plus de pilule Actions · Routines · Objectifs** (`_segmentBar`, `_setSegment`, préférence `today_view_segment`
+  retirés) : Aujourd'hui = MAINTENANT (inchangée) + programme + section **EN PARALLÈLE** sous le programme
+  (`_parallelSection`) : ligne **Routines · 5 / 18** (`StatusRow`, barre faites / total, chip « n à faire » / « à jour »,
+  sous-ligne = `RoutineDay.shortLine`) et ligne **Objectifs · n** (objectif du moment : titre · n % du rythme · reste …,
+  chip « n relevés à noter » ; `rankObjectiveMoments`). Tap = fiche (`showFiche`) qui héberge la vue existante :
+  `RoutinesDayView` (carte Routine du moment, journée par moments, Enchaîner, Organiser) et `ObjectivesDayView`
+  (carte Objectif du moment, badges visés, cartes par objectif, Enchaîner un objectif). La carte « Relevé de la
+  semaine » n'est plus en tête d'Aujourd'hui : le relevé dû est signalé par le chip de la ligne Objectifs et se note
+  depuis la carte Objectif du moment. `_routinesLine` supprimée.
+- **Fiche du bloc** (`block_work_screen.dart`, `showBlockWorkScreen`) : même contenu qu'avant (action visée avec ses
+  étapes, « Étape suivante », ensuite dans cette tâche, faites, Voir la tâche, Bloc terminé) mais en feuille
+  `showFiche` avec `FicheHeader` (▶ chrono en tête, titre de la tâche, chip « en cours · reste 52 min » / « à 14:00 » /
+  « fait », ligne projet · créneau). Routage inchangé (`_openBlockSource`, `main.dart`).
