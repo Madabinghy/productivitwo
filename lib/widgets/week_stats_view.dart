@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -84,6 +85,8 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       if (w.engagements.isNotEmpty) '${w.kept} / ${w.engagements.length} engagement${w.engagements.length > 1 ? 's' : ''} tenu${w.kept > 1 ? 's' : ''}',
       if (w.engagements.isEmpty) 'aucune routine engagée',
     ].join(' · ');
+    final mode = widget.logic.mode;
+    final modeLine = switch (mode) { DayMode.low => 'journée malgré tout · ', DayMode.high => 'journée à fond · ', DayMode.normal => '' };
     return MomentCard(
       accent: kPalierGreen,
       eyebrow: 'MA SEMAINE',
@@ -101,7 +104,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               : pct >= 60
                   ? 'Semaine à tenir'
                   : 'Semaine en retard',
-      sub: sub,
+      sub: modeLine + sub,
       subColor: pct != null && pct < 60 ? st : null,
       primaryLabel: 'Détail de la semaine',
       primaryIcon: Icons.insights_rounded,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
+import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -39,12 +40,14 @@ Future<void> showChainScreen(
   required VoidCallback onStopTimer,
   void Function(ScheduleBlock block)? onOpenSource,
   StrategicObjective? objective,
+  bool small = false,
 }) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
     builder: (_) => _ChainScreen(
       logic: logic,
       sync: sync,
+      small: small,
       date: date,
       onLaunch: onLaunch,
       onStopTimer: onStopTimer,
@@ -64,6 +67,8 @@ class _ChainScreen extends StatefulWidget {
   /// Enchaîner UN objectif (carte Objectif du moment) : file `buildObjectiveChain`
   /// au lieu du programme entier ; pas de session Enchaîner enregistrée.
   final StrategicObjective? objective;
+  /// Mode Flemme : « 3 petites choses » (routines, étapes, actions ≤ 10 min).
+  final bool small;
   const _ChainScreen({
     required this.logic,
     required this.sync,
@@ -72,6 +77,7 @@ class _ChainScreen extends StatefulWidget {
     required this.onStopTimer,
     this.onOpenSource,
     this.objective,
+    this.small = false,
   });
 
   @override
@@ -186,7 +192,7 @@ class _ChainScreenState extends State<_ChainScreen> {
           dayStartMin: logic.dayStartMin,
           moments: logic.moments,
     );
-    var list = orderChain(items, deferred: _deferred, dismissed: _dismissed);
+    var list = orderChain(widget.small ? smallChain(items) : items, deferred: _deferred, dismissed: _dismissed);
     final h = _held;
     if (h != null &&
         !_dismissed.contains(h.key) &&

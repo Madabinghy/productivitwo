@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -2155,12 +2157,23 @@ class _ActionsViewState extends State<ActionsView> {
     if (pool.isEmpty) return null;
     final today = _day(DateTime.now());
     final entries = <ActionEntry>[for (final e in pool) (action: e.action, project: e.project, task: e.task, activity: e.activity)];
+    final mode = widget.logic.mode;
+    String? focusProjectId;
+    if (mode == DayMode.high) {
+      for (final pm in rankProjectMoments(widget.logic.currentProjects, widget.logic.state.sessions, DateTime.now())) {
+        if (pm.upcoming) continue;
+        focusProjectId = pm.project.id;
+        break;
+      }
+    }
     final m = pickActionMoment(
       entries,
       blocks: _todayBlocks,
       nowMin: widget.logic.livedNowMinNow,
       today: today,
       runningActionId: _running?.actionId,
+      mode: mode,
+      focusProjectId: focusProjectId,
       entryForBlock: (b) {
         final e = _entryForBlock(b, pool);
         return e == null ? null : (action: e.action, project: e.project, task: e.task, activity: e.activity);
@@ -2182,6 +2195,8 @@ class _ActionsViewState extends State<ActionsView> {
       ActionMomentKind.next => 'prochain bloc · ${m.block!.startTime}',
       ActionMomentKind.week => 'cette semaine',
       ActionMomentKind.rest => 'prochaine action',
+      ActionMomentKind.short => 'la plus courte · malgré tout',
+      ActionMomentKind.deep => 'à fond · la plus longue',
     };
     final accent = late ? kPalierCoral : cs.primary;
     final ctx = [

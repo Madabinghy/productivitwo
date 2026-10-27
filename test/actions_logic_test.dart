@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 
 TaskAction _a(String title, {List<String>? ctx, int? est, bool done = false, String? linked, DateTime? due}) =>
     TaskAction(title: title, contexts: ctx, estimatedMin: est, done: done, linkedActivityId: linked, dueDate: due);
@@ -405,5 +406,27 @@ void main() {
     final m5 = pickActionMoment([en(plain, t)], blocks: const [], nowMin: 600, today: today)!;
     expect(m5.kind, ActionMomentKind.rest);
     expect(pickActionMoment(const [], blocks: const [], nowMin: 600, today: today), isNull);
+  });
+
+  test('pickActionMoment par mode : Flemme = la plus courte (étapes d\'abord), En forme = la plus longue du projet en retard ; le bloc en cours gagne', () {
+    final today = DateTime(2026, 10, 27);
+    final pA = Project(id: 'A', title: 'A', startDate: DateTime(2026, 9, 1), createdBy: 'u');
+    final pB = Project(id: 'B', title: 'B', startDate: DateTime(2026, 9, 1), createdBy: 'u');
+    ActionEntry en(TaskAction a, Project p) => (action: a, project: p, task: null, activity: null);
+    final longA = _a('Longue A', est: 120);
+    final shortA = _a('Courte A', est: 10);
+    final stepsB = TaskAction(title: 'Étapes B', estimatedMin: 15, checklist: [ChecklistItem(id: 'c', title: 'c')]);
+    final longB = _a('Longue B', est: 90);
+    final none = _a('Sans estimation');
+    final entries = [en(none, pA), en(longA, pA), en(shortA, pA), en(stepsB, pB), en(longB, pB)];
+    final low = pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, mode: DayMode.low)!;
+    expect((low.kind, low.entry.action.title), (ActionMomentKind.short, 'Étapes B'));
+    final high = pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, mode: DayMode.high, focusProjectId: 'B')!;
+    expect((high.kind, high.entry.action.title), (ActionMomentKind.deep, 'Longue B'));
+    final highAll = pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, mode: DayMode.high)!;
+    expect(highAll.entry.action.title, 'Longue A');
+    final cur = ScheduleBlock(id: 'k', startTime: '09:30', durationMin: 60, title: 'k', category: 'project', actionId: none.id);
+    expect(pickActionMoment(entries, blocks: [cur], nowMin: 600, today: today, mode: DayMode.low)!.kind, ActionMomentKind.block);
+    expect(pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, runningActionId: longA.id, mode: DayMode.low)!.kind, ActionMomentKind.running);
   });
 }

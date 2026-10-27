@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/chain.dart' show buildObjectiveChain;
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
@@ -74,6 +76,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
       routineCount: (a) => routineTodayCount(widget.logic, a),
       weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
       runningActivityId: widget.logic.runningActivity()?.id,
+      mode: widget.logic.mode,
     );
     if (ranked.isEmpty) return const SizedBox.shrink();
     final m = ranked[_offset % ranked.length];
@@ -91,7 +94,27 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
                 dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
                 dayStartMin: widget.logic.dayStartMin)
             .length;
-    final move = _move(m);
+    var move = _move(m);
+    // En forme : le geste devient « Bloc de 90 min » (feuille « Sur quoi ? »,
+    // présélectionnée sur cet objectif) dès qu'il a de quoi tenir un chrono.
+    final deep = widget.logic.mode == DayMode.high &&
+        widget.onLaunch != null &&
+        m.move.kind != ObjectiveMoveKind.running &&
+        m.move.kind != ObjectiveMoveKind.block &&
+        (m.day.times.isNotEmpty || m.day.nextActions.isNotEmpty);
+    if (deep) {
+      move = (
+        label: 'Bloc de 90 min · à fond',
+        icon: Icons.bolt_rounded,
+        onTap: () => showDeepWorkSheet(context,
+            logic: widget.logic,
+            sync: widget.sync,
+            date: widget.logic.livedTodayYmd,
+            onLaunch: widget.onLaunch!,
+            objectives: widget.objectives,
+            preferObjectiveId: o.id),
+      );
+    }
     return MomentCard(
       accent: kObjectiveAccent,
       eyebrow: 'OBJECTIF DU MOMENT',

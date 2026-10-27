@@ -10,7 +10,9 @@ import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
+import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
@@ -45,6 +47,12 @@ class NowCard extends StatefulWidget {
   /// Mode « Enchaîner » (2026-10) : dérouler la file du jour une chose à la
   /// fois ; null = pas de bouton.
   final VoidCallback? onChain;
+  /// Modes et coups (lot 2) : Flemme → « 10 min, malgré tout » (lance le bloc
+  /// avec un minuteur de 10 min) ; « 3 petites choses » (Enchaîner réduit) ;
+  /// En forme → « Deep work 90 min » (feuille « Sur quoi ? »).
+  final void Function(ScheduleBlock block, int minutes)? onLaunchTimed;
+  final VoidCallback? onChainSmall;
+  final VoidCallback? onDeepWork;
 
   const NowCard({
     super.key,
@@ -64,6 +72,9 @@ class NowCard extends StatefulWidget {
     this.onChallenge,
     this.onOpenFocus,
     this.onChain,
+    this.onLaunchTimed,
+    this.onChainSmall,
+    this.onDeepWork,
   });
 
   @override
@@ -352,6 +363,7 @@ class _NowCardState extends State<NowCard> {
         (b.projectId != null || b.activityId != null);
     final launchable = b != null && (b.projectId != null || b.activityId != null);
 
+    final mode = widget.logic.mode;
     final buttons = <Widget>[];
     if (aside) {
       buttons.add(Expanded(
@@ -372,10 +384,15 @@ class _NowCardState extends State<NowCard> {
       }
     } else if (b != null) {
       if (launchable) {
+        final tenMin = mode == DayMode.low && widget.onLaunchTimed != null;
         buttons.add(Expanded(
-            child: _btn(pal, current ? 'Lancer' : 'Commencer', primary: true, onTap: () {
+            child: _btn(pal, tenMin ? '10 min, malgré tout' : (current ? 'Lancer' : 'Commencer'), primary: true, onTap: () {
           HapticFeedback.lightImpact();
-          widget.onLaunch(b);
+          if (tenMin) {
+            widget.onLaunchTimed!(b, 10);
+          } else {
+            widget.onLaunch(b);
+          }
         })));
         buttons.add(const SizedBox(width: 8));
         buttons.add(_btn(pal, 'Fait', onTap: () => _markDone(b)));
@@ -457,14 +474,36 @@ class _NowCardState extends State<NowCard> {
         ],
         const SizedBox(height: 14),
         Row(children: buttons),
-        if ((widget.onChain != null && b != null ? _chainHint() : null) case final hint?) ...[
+        if (mode == DayMode.high && session == null && widget.onDeepWork != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              widget.onDeepWork!();
+            },
+            style: OutlinedButton.styleFrom(
+                foregroundColor: pal.primary,
+                side: BorderSide(color: pal.primary.withOpacity(.45)),
+                minimumSize: const Size.fromHeight(44),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
+            icon: const Icon(Icons.bolt_rounded, size: 20),
+            label: const Text('Deep work 90 min · sur quoi ?',
+                maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, height: 1.2)),
+          ),
+        ],
+        if ((widget.onChain != null && b != null ? _chainHint(small: mode == DayMode.low && widget.onChainSmall != null) : null) case final hint?) ...[
           const SizedBox(height: 8),
           // Hauteur libre : « … jusqu'à 05:00 demain · 1 routine » tient sur
           // deux lignes plutôt que d'être tronqué.
           OutlinedButton.icon(
             onPressed: () {
               HapticFeedback.lightImpact();
-              widget.onChain!();
+              if (mode == DayMode.low && widget.onChainSmall != null) {
+                widget.onChainSmall!();
+              } else {
+                widget.onChain!();
+              }
             },
             style: OutlinedButton.styleFrom(
                 foregroundColor: pal.primary,
@@ -530,7 +569,23 @@ class _NowCardState extends State<NowCard> {
   }
 
   /// « Enchaîner · 6 choses jusqu'à 18:00 » ; null si la file est vide.
-  String? _chainHint() {
+  String? _chainHint({bool small = false}) {
+    if (small) {
+      final n = smallChain(buildChain(
+        blocks: _blocks,
+        projects: widget.logic.currentProjects,
+        activities: widget.logic.state.activities,
+        hits: widget.logic.state.habitHits,
+        now: DateTime.now(),
+        pushed: widget.logic.routinePushed(widget.logic.livedYmdNow),
+        deferred: widget.logic.state.nowSkippedByYmd[widget.logic.livedYmdNow] ?? const [],
+        dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
+        dayStartMin: widget.logic.dayStartMin,
+        moments: widget.logic.moments,
+      )).length;
+      if (n == 0) return null;
+      return n == 1 ? '1 petite chose, malgré tout' : '$n petites choses, malgré tout';
+    }
     final items = buildChain(
       blocks: _blocks,
       projects: widget.logic.currentProjects,
