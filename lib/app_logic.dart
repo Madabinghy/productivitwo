@@ -9,6 +9,9 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef, timeContextsWith;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
@@ -1075,12 +1078,55 @@ class AppLogic implements HuntStore {
         activityLinkedActivityId: blockAct?.linkedActivityId);
   }
 
+  String? _lastTickLivedYmd;
+  String? _settledDayKey;
+
+  /// « Règlement du soir » (2026-10) : à la bascule de journée vécue, les blocs
+  /// de la veille dont le chrono a couvert ≥ 60 % du créneau passent « fait »
+  /// (`doneBy: "chrono"`), pour que Sommeil 22:00 → 05:00 et la journée
+  /// parfaite comptent. Une fois par journée et par appareil (préférence
+  /// `day_settled_ymd`) ; idempotent de toute façon.
+  Future<void> settleFinishedDay() async {
+    final s = sync;
+    if (s == null) return;
+    final now = DateTime.now();
+    final prev = livedDate(now, dayStartMin).subtract(const Duration(days: 1));
+    final key = ymdOf(prev);
+    if (_settledDayKey == key) return;
+    _settledDayKey = key;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString('day_settled_ymd') == key) return;
+      final sched = await s.fetchDailySchedule(key);
+      if (sched != null) {
+        final meta = await s.fetchMetaDocRaw();
+        final raw = meta['mirrorActivities'];
+        if (raw is Map) {
+          applyMirrorMemory(sched.blocks, {for (final e in raw.entries) e.key.toString(): e.value.toString()});
+        }
+        final settled = blocksSettledByChrono(blocks: sched.blocks, sessions: state.sessions, date: prev, now: now);
+        for (final b in settled) {
+          await s.updateBlockStatus(key, b.id, 'done', doneBy: 'chrono');
+        }
+      }
+      await prefs.setString('day_settled_ymd', key);
+    } catch (_) {
+      _settledDayKey = null; // on réessaiera au prochain tick
+    }
+  }
+
   /// Réveil au changement de bloc : appelé à chaque minute par l'UI. Un bloc
   /// vient de devenir courant alors que le chrono tourne sur autre chose →
   /// même feuille qu'au démarrage, une fois par couple session × bloc.
   final blockWatcher = BlockTransitionWatcher();
 
   void tickBlockTransition() {
+    // Bascule de journée vécue (ou premier tick) → règlement de la veille.
+    final ymd = livedYmdNow;
+    if (ymd != _lastTickLivedYmd) {
+      _lastTickLivedYmd = ymd;
+      unawaited(settleFinishedDay());
+    }
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;
     for (final s in state.sessions) {
