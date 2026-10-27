@@ -2007,7 +2007,10 @@ class TodayViewState extends State<TodayView> {
             left: 56 + laneW * (lanes[b.id]?.col ?? 0) / (lanes[b.id]?.cols ?? 1),
             width: laneW / (lanes[b.id]?.cols ?? 1) - ((lanes[b.id]?.cols ?? 1) > 1 ? 4 : 0),
             top: y(_dragStart(b, ppm)) + 1,
-            height: math.max(_dragDuration(b, ppm) * ppm - 3, 20),
+            // Un bloc qui passe minuit s'arrête au bord de la frise (pile non
+            // rognée : il déborderait sous ce qui suit).
+            height: math.max(
+                math.min(_dragDuration(b, ppm), 24 * 60 - _dragStart(b, ppm)) * ppm - 3, 20),
             child: MouseRegion(
               cursor: _canDrag(b) ? SystemMouseCursors.grab : MouseCursor.defer,
               onEnter: (_) => setState(() => _hoverBlockId = b.id),
