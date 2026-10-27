@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
+import 'package:productivitwo_v1/utils/objective_day.dart' show buildObjectiveDays;
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show linkMirrorsToSessions;
@@ -35,6 +36,7 @@ Future<void> showChainScreen(
   required void Function(ScheduleBlock block) onLaunch,
   required VoidCallback onStopTimer,
   void Function(ScheduleBlock block)? onOpenSource,
+  StrategicObjective? objective,
 }) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
@@ -45,6 +47,7 @@ Future<void> showChainScreen(
       onLaunch: onLaunch,
       onStopTimer: onStopTimer,
       onOpenSource: onOpenSource,
+      objective: objective,
     ),
   ));
 }
@@ -56,6 +59,9 @@ class _ChainScreen extends StatefulWidget {
   final void Function(ScheduleBlock block) onLaunch;
   final VoidCallback onStopTimer;
   final void Function(ScheduleBlock block)? onOpenSource;
+  /// Enchaîner UN objectif (carte Objectif du moment) : file `buildObjectiveChain`
+  /// au lieu du programme entier ; pas de session Enchaîner enregistrée.
+  final StrategicObjective? objective;
   const _ChainScreen({
     required this.logic,
     required this.sync,
@@ -63,6 +69,7 @@ class _ChainScreen extends StatefulWidget {
     required this.onLaunch,
     required this.onStopTimer,
     this.onOpenSource,
+    this.objective,
   });
 
   @override
@@ -159,7 +166,10 @@ class _ChainScreenState extends State<_ChainScreen> {
 
   List<ChainItem> _ordered() {
     final now = DateTime.now();
-    final items = buildChain(
+    final o = widget.objective;
+    final items = o != null
+        ? _objectiveItems(o, now)
+        : buildChain(
       blocks: _blocks.where((b) => !_finishedBlocks.contains(b.id)).toList(),
       projects: logic.currentProjects,
       activities: logic.state.activities,
@@ -181,6 +191,26 @@ class _ChainScreenState extends State<_ChainScreen> {
     }
     _held = list.firstOrNull?.kind == ChainKind.routine ? list.first : null;
     return list;
+  }
+
+  List<ChainItem> _objectiveItems(StrategicObjective o, DateTime now) {
+    final day = buildObjectiveDays(
+      objectives: [o],
+      activities: logic.state.activeActivities,
+      sessions: logic.state.sessions,
+      blocks: _blocks.where((b) => !_finishedBlocks.contains(b.id)).toList(),
+      projects: logic.currentProjects,
+      now: now,
+      dayStartMin: logic.dayStartMin,
+    ).firstOrNull;
+    if (day == null) return const [];
+    return buildObjectiveChain(day,
+        projects: logic.currentProjects,
+        activities: logic.state.activities,
+        hits: logic.state.habitHits,
+        now: now,
+        dismissed: _routineDismissed,
+        dayStartMin: logic.dayStartMin);
   }
 
   Session? get _openSession {
@@ -563,9 +593,13 @@ class _ChainScreenState extends State<_ChainScreen> {
         const SizedBox(height: 6),
         Row(children: [
           _chip(pal, kindLabel, color: kindColor),
+          if (widget.objective != null) ...[
+            const SizedBox(width: 6),
+            _chip(pal, widget.objective!.title, color: const Color(0xFF00897B)),
+          ],
           const SizedBox(width: 10),
           Expanded(
-            child: Text('${b.title} · ${_clock(start)} → ${_clock(end)}',
+            child: Text(i.synthetic ? b.title : '${b.title} · ${_clock(start)} → ${_clock(end)}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.right,
@@ -868,7 +902,7 @@ class _ChainScreenState extends State<_ChainScreen> {
   /// s'est vidée (pas « Sortir »), « plein jour » si elle va du premier au
   /// dernier bloc du programme (blocs à faire ou faits, miroirs compris).
   void _recordRun() {
-    if (_recorded || !mounted) return;
+    if (_recorded || !mounted || widget.objective != null) return;
     _recorded = true;
     final program = _blocks
         .where((b) => (b.status == 'pending' || b.status == 'done') && b.kind == 'normal')
@@ -951,7 +985,7 @@ class _ChainScreenState extends State<_ChainScreen> {
                                 style: TextStyle(fontSize: 12, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
                           ]),
                         ),
-                        if (e.block.gcalEventId == null)
+                        if (e.block.gcalEventId == null && !e.block.id.startsWith(kSyntheticPrefix))
                           TextButton(onPressed: () => _carry(e.block), child: const Text('Caser demain')),
                       ]),
                     ),

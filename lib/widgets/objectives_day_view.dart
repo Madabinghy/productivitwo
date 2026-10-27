@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show scoreDay, routineReachedDays, fmtInt;
+import 'package:productivitwo_v1/utils/chain.dart' show buildObjectiveChain;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
@@ -32,6 +33,9 @@ class ObjectivesDayView extends StatefulWidget {
   final void Function(Project project, ProjectTask task)? onOpenTask;
   final BadgeCenter? badges; // chasse aux badges : carte « Badges visés »
   final VoidCallback? onChain;
+  /// « Enchaîner » la file d'UN objectif (routines, blocs, temps en retard,
+  /// prochaines actions) depuis la carte Objectif du moment.
+  final void Function(StrategicObjective objective)? onChainObjective;
   const ObjectivesDayView({
     super.key,
     required this.logic,
@@ -42,6 +46,7 @@ class ObjectivesDayView extends StatefulWidget {
     this.onOpenTask,
     this.badges,
     this.onChain,
+    this.onChainObjective,
   });
 
   @override
@@ -167,6 +172,17 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
     final ring = pct == null ? 0.0 : pct.clamp(0.0, 1.0);
     final ringColor = pctInt == null ? _accent : palierColor(pctInt);
     final remaining = [...m.remaining, if (m.readingDue) 'relevé à noter'];
+    final st = widget.logic.state;
+    final chainN = widget.onChainObjective == null
+        ? 0
+        : buildObjectiveChain(m.day,
+                projects: widget.logic.currentProjects,
+                activities: st.activities,
+                hits: st.habitHits,
+                now: DateTime.now(),
+                dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
+                dayStartMin: widget.logic.dayStartMin)
+            .length;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -259,6 +275,15 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
             ),
           ),
         ]),
+        if (chainN > 0) ...[
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: () => widget.onChainObjective!(o),
+            style: TextButton.styleFrom(foregroundColor: _accent, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+            icon: const Icon(Icons.playlist_play_rounded, size: 22),
+            label: Text('Enchaîner · $chainN ${chainN > 1 ? 'choses' : 'chose'} pour cet objectif'),
+          ),
+        ],
       ]),
     );
   }
