@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/mode.dart' show isResting;
+import 'package:productivitwo_v1/utils/budget_window.dart' show budgetWindowStart, budgetDayIndex;
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 
 /// Onglet Stats « une carte, une fiche » (lot 3, 2026-10) : logique pure de
@@ -26,7 +27,9 @@ class DomainWeek {
   final Domain domain;
   final int doneMin; // depuis lundi
   final int goalMinDay; // minimum vital quotidien (0 = aucun)
-  final int daysElapsed; // lundi = 1 … dimanche = 7
+  final int daysElapsed; // jour courant dans la fenêtre (lundi = 1 … 7, ou 1 … 14)
+  /// Fenêtre de budget (Modes et coups lot 4) : 7 = semaine calendaire, 14 = quinzaine à départ fixe.
+  final int windowDays;
   final int routinesReached;
   final int routinesTotal;
   /// Domaine en veille (Modes et coups) : `YYYY-MM-DD` de fin, le minimum ne compte plus.
@@ -39,11 +42,12 @@ class DomainWeek {
     required this.routinesReached,
     required this.routinesTotal,
     this.restUntil,
+    this.windowDays = 7,
   });
 
   bool get resting => restUntil != null;
 
-  int get weekMin => goalMinDay * 7;
+  int get weekMin => goalMinDay * windowDays;
   int get expectedMin => goalMinDay * daysElapsed;
   bool get hasGoal => goalMinDay > 0;
   /// Part de l'attendu à ce jour (jauge Objectifs) ; sans minimum, 100.
@@ -65,9 +69,11 @@ List<DomainWeek> domainWeeks({
   required List<HabitHit> hits,
   required DateTime now,
   Map<String, String> rest = const {},
+  int windowDays = 7,
 }) {
   final monday = mondayOf(now);
-  final byActivity = minutesByActivity(sessions, monday, now);
+  final windowStart = budgetWindowStart(now, windowDays);
+  final byActivity = minutesByActivity(sessions, windowStart, now);
   final domainOf = {for (final a in activities) a.id: a.domainId};
   final doneByDomain = <String, int>{};
   byActivity.forEach((id, m) {
@@ -85,7 +91,8 @@ List<DomainWeek> domainWeeks({
       doneMin: doneByDomain[d.id] ?? 0,
       goalMinDay: resting ? 0 : domainGoalMinDay(d, activities),
       restUntil: resting ? rest[d.id] : null,
-      daysElapsed: now.weekday,
+      daysElapsed: budgetDayIndex(now, windowDays),
+      windowDays: windowDays,
       routinesReached: mine.where((e) => e.kept).length,
       routinesTotal: mine.length,
     ));

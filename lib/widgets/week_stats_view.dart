@@ -7,6 +7,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
@@ -61,12 +62,14 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final now = DateTime.now();
     final week = weekSummary(
         activities: st.activeActivities, hits: st.habitHits, sessions: st.sessions, objectives: _objectives, now: now);
-    final rows = domainWeeks(domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: widget.logic.restDomains);
+    final days = widget.logic.budgetWindowDays;
+    final rows = domainWeeks(
+        domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: widget.logic.restDomains, windowDays: days);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _weekCard(cs, week, now),
-        ListSectionTitle('DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
+        ListSectionTitle(days == 14 ? 'DOMAINES · SUR 14 JOURS' : 'DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
         for (final r in rows) _domainRow(cs, r),
         if (rows.isEmpty)
           Padding(
@@ -113,12 +116,79 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
+  /// Répartition du chrono par domaine et par jour sur la fenêtre de budget
+  /// (Modes et coups lot 4) : une barre par jour, le repère du jour courant.
+  Widget _distribution(BuildContext ctx) {
+    final cs = Theme.of(ctx).colorScheme;
+    final st = widget.logic.state;
+    final now = DateTime.now();
+    final days = widget.logic.budgetWindowDays;
+    final start = budgetWindowStart(now, days);
+    final data = dailyMinutesByDomain(st.sessions, st.activeActivities, start, days, now: now);
+    final domains = st.activeDomains.where((d) => data.containsKey(d.id)).toList();
+    if (domains.isEmpty) {
+      return FicheNote(days == 14
+          ? 'Rien de tracé sur la quinzaine. Avec 14 jours, pousser 3 jours sur un sujet puis le lâcher reste « au rythme ».'
+          : 'Rien de tracé cette semaine. Dans Paramètres, « Budget des minimums » passe la fenêtre à 14 jours.');
+    }
+    final today = budgetDayIndex(now, days) - 1;
+    var max = 1;
+    for (final row in data.values) {
+      for (final v in row) {
+        if (v > max) max = v;
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      for (final d in domains)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: domainColor(d.id, st.activeDomains) ?? cs.primary, shape: BoxShape.circle)),
+              const SizedBox(width: 6),
+              Expanded(child: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+              Text(fmtMin(data[d.id]!.fold(0, (a, b) => a + b)),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6), fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
+            const SizedBox(height: 4),
+            SizedBox(
+              height: 28,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                for (var i = 0; i < days; i++) ...[
+                  Expanded(
+                    child: Container(
+                      height: (4 + 24 * data[d.id]![i] / max).clamp(4.0, 28.0),
+                      decoration: BoxDecoration(
+                        color: i > today
+                            ? Colors.transparent
+                            : (domainColor(d.id, st.activeDomains) ?? cs.primary).withValues(alpha: data[d.id]![i] == 0 ? .15 : (i == today ? 1 : .7)),
+                        borderRadius: BorderRadius.circular(2),
+                        border: i > today ? Border.all(color: cs.onSurface.withValues(alpha: .08)) : null,
+                      ),
+                    ),
+                  ),
+                  if (i < days - 1) const SizedBox(width: 2),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+      Row(children: [
+        Text('jour 1', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
+        const Spacer(),
+        Text('jour $days', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
+      ]),
+    ]);
+  }
+
   Widget _domainRow(ColorScheme cs, DomainWeek r) {
     final color = domainColor(r.domain.id, widget.logic.state.activeDomains) ?? cs.primary;
     final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
     final sub = <String>[
       if (r.resting) 'en veille${restUntil == null ? '' : ' jusqu\'au ${dayMonthFr(restUntil)}'} · minimum suspendu',
-      r.hasGoal ? '${fmtMin(r.doneMin)} · minimum ${fmtMin(r.weekMin)} · attendu ${fmtMin(r.expectedMin)}' : (r.doneMin > 0 ? '${fmtMin(r.doneMin)} cette semaine' : (r.resting ? '' : 'pas de temps tracé')),
+      r.hasGoal
+          ? '${fmtMin(r.doneMin)} · minimum ${fmtMin(r.weekMin)}${r.windowDays == 14 ? ' sur 14 j' : ''} · attendu ${fmtMin(r.expectedMin)}'
+          : (r.doneMin > 0 ? '${fmtMin(r.doneMin)} ${r.windowDays == 14 ? 'sur 14 j' : 'cette semaine'}' : (r.resting ? '' : 'pas de temps tracé')),
       if (r.routinesTotal > 0) '${r.routinesReached} / ${r.routinesTotal} routine${r.routinesTotal > 1 ? 's' : ''}',
     ].join(' · ');
     return Padding(
@@ -168,6 +238,9 @@ class _WeekStatsViewState extends State<WeekStatsView> {
                 trailing: Text('${(e.ratio * 100).round()} %',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palierColor((e.ratio * 100).round()))),
               ),
+          FicheTitle('RÉPARTITION SUR ${widget.logic.budgetWindowDays} J',
+              trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6))),
+          _distribution(ctx),
           const FicheTitle('AUJOURD\'HUI ET LA SEMAINE'),
           ...widget.weekDetails(ctx),
           const SizedBox(height: 8),
