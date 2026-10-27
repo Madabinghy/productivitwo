@@ -987,7 +987,12 @@ class _DayTimelineViewState extends State<DayTimelineView> {
             : _categoryColor(b.category, cs);
 
     final top = start / 60 * _hourH + 6;
-    final height = (dur / 60 * _hourH).clamp(_minBlockH, 24 * _hourH);
+    // Un bloc qui passe minuit (Sommeil 22:00 → 05:00) s'arrête au bord de
+    // la frise : la pile n'est pas rognée (poignées), il déborderait sous
+    // les cartes suivantes. Sa vraie fin est rappelée dans le libellé.
+    final cut = start + dur > 24 * 60;
+    final shownDur = cut ? 24 * 60 - start : dur;
+    final height = (shownDur / 60 * _hourH).clamp(_minBlockH, 24 * _hourH);
     final colW = laneW / e.cols;
     final left = _leftGutter + 2 + e.col * colW;
 
@@ -1030,7 +1035,8 @@ class _DayTimelineViewState extends State<DayTimelineView> {
           alignment: Alignment.topLeft,
           child: Text(
             '${isDone ? '✓ ' : ''}${b.challenge ? '🔥 ' : ''}${b.title}'
-            '${isMirror ? ' · Agenda' : ''}',
+            '${isMirror ? ' · Agenda' : ''}'
+            '${cut ? ' · → ${_toHm((start + dur) % (24 * 60))}' : ''}',
             maxLines: height > 40 ? 2 : 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
