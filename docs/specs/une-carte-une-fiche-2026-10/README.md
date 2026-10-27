@@ -29,7 +29,7 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
 |-----|--------|-----------------|-------|-------|------|
 | 1 | **Projets** | PROJET DU MOMENT = séance à 7 j la plus proche, sinon le plus en retard sur son plan (`rankProjectMoments`, `utils/project_moment.dart`) ; anneau = tâches faites / total ; geste = prochaine action (chrono si activité liée, sinon plan à la tâche) | tâches faites avec repère « attendu aujourd'hui » (tâches dont l'échéance — sinon le début — est passée), chip au rythme / à surveiller / en retard / au point mort / à venir | `widgets/project_fiche_sheet.dart` : CETTE SEMAINE (actions à 7 j + prépa de la séance) · DEPUIS LE DÉBUT · AVANCEMENT · PROCHAINE SÉANCE (▶ écran séance, état de la prépa) · Prochaine action / Plan d'action / Terminer / Mettre en veille / Rouvrir | **livré** |
 | 2 | **Actions** | ACTION DU MOMENT = action du bloc en cours, sinon la plus urgente faisable ici ; anneau = étapes faites ; geste = Étape suivante ou ▶ Chrono | groupes par urgence en sections d'une seule liste ; filtres J'ai / Je suis / Pour repliés dessous | fiche action : porteur + tâche en entier, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (Chrono · Caser demain · Fait · Rattacher) | **livré** |
-| 3 | **Stats** | MA SEMAINE : anneau = engagements d'objectifs tenus (décision 2026-10-26), geste = rapport de la semaine | une ligne par domaine : fait / minimum vital, repère « attendu à ce jour » | fiche domaine : CETTE SEMAINE, 4 DERNIÈRES SEMAINES (barres), activités et routines, réglage du minimum ; fiche « Ma semaine » absorbe Productivité et Élan | à faire |
+| 3 | **Stats** | MA SEMAINE : anneau = engagements d'objectifs tenus (décision 2026-10-26), geste = rapport de la semaine | une ligne par domaine : fait / minimum vital, repère « attendu à ce jour » | fiche domaine : la feuille existante (`_showDomainDetail`) pour l'instant ; fiche « Ma semaine » absorbe jauges du jour, courbe de la semaine, Élan, temps, camembert, retards | **livré** |
 | 4 | **Aujourd'hui** | MAINTENANT reste la carte (inchangée dans l'esprit) | le programme est la liste ; Routines et Objectifs = deux lignes « en parallèle » dont la fiche ouvre la vue du moment ; plus de pilule à trois segments | fiche du bloc (remplace l'écran bloc) : Projet › Tâche, étapes, « ensuite dans ce bloc », Bloc terminé | à faire |
 | 5 | **Objectifs** + harmonisation | déjà le modèle ; la carte « Relevé de la semaine » disparaît (le relevé dû est le geste de la carte) ; archivés en section repliée avec « Réactiver » | migrer la carte Objectif du moment et la carte Routine du moment sur `MomentCard` | — | à faire |
 
@@ -65,3 +65,20 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
   cours / en retard / au programme / échéance / à faire) + ligne repère (porteur › tâche · contextes · estimation ·
   passées), ÉTAPES (`StepsSection`), DÉTAIL (note), ÉCHÉANCE (propre ⚑ ou de la tâche), gestes : Chrono ou Fait (plein),
   Caser, Échéance, Contextes, Projet, Rattacher à un projet.
+
+## Lot 3 — détail (livré)
+
+- `utils/week_stats.dart` (testé) : semaine CALENDAIRE (lundi → maintenant). `domainWeeks` = par domaine : minutes
+  faites (`minutesByActivity`, session ouverte comprise), minimum vital quotidien (`domainGoalMinDay` : réglé à la main,
+  sinon Σ des objectifs des activités-temps), attendu à ce jour = minimum × jours écoulés, routines tenues
+  (`weekEngagements`, seuil `kKeptRatio`) ; tri = les plus en retard d'abord. `weekSummary` = engagements des objectifs
+  en cours (`engagedRoutineIds` ; aucun → toutes les routines), chrono de la semaine, `pct` = `engagementPct`.
+- `widgets/week_stats_view.dart` (`WeekStatsView`) : carte MA SEMAINE (anneau « n % tenus », pastille « mer. · jour 3 / 7 »,
+  contexte « Engagements des objectifs », titre Semaine au rythme / à tenir / en retard, sous-ligne chrono + tenus,
+  geste « Détail de la semaine ») ; lignes `StatusRow` par domaine (fait · minimum · attendu, barre avec repère,
+  « n % », routines tenues ; tap = feuille du domaine, appui long = ses routines) ; « Gérer » = feuille des domaines.
+- Fiche « Ma semaine » (`showFiche`) : ENGAGEMENTS DES OBJECTIFS (une étape par routine, tenue = cochée), puis
+  AUJOURD'HUI ET LA SEMAINE = les anciennes cartes de l'onglet, passées telles quelles par `main.dart` (`weekDetails`) :
+  jauges Activités / Routines / Projets + courbe de la semaine, Élan & discipline, temps par domaine, camembert du jour,
+  compteur de retards. `_buildDashboardBody` ne garde que le cache par tick et `WeekStatsView` ;
+  `_buildDomainListLive` supprimé.

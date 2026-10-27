@@ -29,6 +29,7 @@ import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/habit_tile_full.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
+import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
 import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
@@ -6741,7 +6742,7 @@ class _AppRootState extends State<AppRoot>
         final h = _computeGlobalHabitsGauge(now);
         final cs = Theme.of(context).colorScheme;
 
-        _statsCacheChildren = [
+        List<Widget> weekDetails(BuildContext ctx) => [
         // Ordre voulu (2026-09) : jauges globales puis domaines EN TÊTE —
         // c'est la lecture principale de l'onglet ; le reste suit.
         // (Objectifs, « Ma semaine », Productivité, Temps par domaine,
@@ -6900,37 +6901,7 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         ),
-        // Élan & discipline (lot 2 badges, 2026-10) : vide tant qu'aucun pointage.
         ElanStatsCards(logic: logic, sync: _sync),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 16, 0),
-          child: Row(
-            children: [
-              Text(
-                'Domaines',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(.4),
-                  letterSpacing: .5,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                ),
-                icon: const Icon(Icons.tune, size: 14),
-                label: const Text('Gérer', style: TextStyle(fontSize: 12)),
-                onPressed: () => _showDomainsSheet(context),
-              ),
-            ],
-          ),
-        ),
-        ..._buildDomainListLive(context, now),
-        // Compteur global de retards (version neutre du compteur de nuisibles
-        // du jeu — mêmes données, présentation productivité).
         // Lecture du temps (venue d'Objectifs, allègement 2026-10) : heatmap par
         // domaine, 12 semaines, camembert du jour.
         Padding(
@@ -6942,7 +6913,20 @@ class _AppRootState extends State<AppRoot>
           child: TodayLoggedPie(logic: logic),
         ),
         PestCounterCard(logic: logic),
-        const SizedBox(height: 32),
+        ];
+        _statsCacheChildren = [
+          WeekStatsView(
+            logic: logic,
+            sync: _sync,
+            onOpenDomain: (d, {focus = 'time'}) async {
+              final goNow = await _showDomainDetail(d, startCal, endCal, days, focus: focus);
+              if (!mounted) return goNow;
+              if (goNow == true) setState(() => _tab = _goNowTab());
+              return goNow;
+            },
+            onManageDomains: () => _showDomainsSheet(context),
+            weekDetails: weekDetails,
+          ),
         ];
         return ListView(children: _statsCacheChildren!);
       },
@@ -7469,234 +7453,6 @@ class _AppRootState extends State<AppRoot>
     );
   }
 
-  List<Widget> _buildDomainListLive(BuildContext context, DateTime now) {
-    final cs = Theme.of(context).colorScheme;
-    final today0 = DateTime(now.year, now.month, now.day);
-    final tomorrow = today0.add(const Duration(days: 1));
-
-    // Fenêtres “incluant aujourd'hui”
-    final start7Inc = today0.subtract(const Duration(days: 6));
-    final end7Inc = tomorrow;
-
-    final (startCal, endCal, days) = _rangeForScope(now);
-
-    const haloReachedThreshold = 0.99;
-    final order = logic.computeDashboardDomainOrder(
-      haloReachedThreshold: haloReachedThreshold,
-    );
-    final sortedDomains = order.sortedDomains;
-
-    // ✅ TEMPS: maps calculées 1 seule fois par tick
-    final totalsTodayAll = logic.timeTotalsByDomain(today0, now);
-    final totals7All = logic.timeTotalsByDomain(start7Inc, end7Inc);
-
-    // ✅ ROUTINES: comptage binaire "atteinte ou non" par domaine
-    final routineItems = logic.routineProgressItemsForCurrentPeriod();
-    final routineReachedByDomain = <String, int>{};
-    final routineTotalByDomain = <String, int>{};
-    for (final item in routineItems) {
-      final domId = item.activity.domainId;
-      routineTotalByDomain[domId] = (routineTotalByDomain[domId] ?? 0) + 1;
-      if (item.isReached) {
-        routineReachedByDomain[domId] = (routineReachedByDomain[domId] ?? 0) + 1;
-      }
-    }
-
-    return [
-        ...sortedDomains.map((d) {
-          // ---- ROUTINES domain (binaire : atteinte ou non)
-          final routinesReached = routineReachedByDomain[d.id] ?? 0;
-          final routinesTotal = routineTotalByDomain[d.id] ?? 0;
-
-          // ---- TIME domain
-          final dailyTargetMinD = _state!.activeActivities
-              .where((a) =>
-                  a.domainId == d.id && a.type == 'time' && a.goalMin > 0)
-              .fold<int>(0, (sum, a) => sum + a.goalMin);
-
-          final dailyTargetHoursD = dailyTargetMinD / 60.0;
-
-          final doneTodayHoursD = (totalsTodayAll[d.id]?.inMinutes ?? 0) / 60.0;
-          final done7HoursD = (totals7All[d.id]?.inMinutes ?? 0) / 60.0;
-
-          final target7HoursD = dailyTargetHoursD * 7.0;
-          final bigProgressTime = target7HoursD > 0
-              ? (done7HoursD / target7HoursD).clamp(0.0, 1.0)
-              : 0.0;
-
-          final timeLabel = _fmtHoursHM(doneTodayHoursD);
-
-          final dColor = domainColor(d.id, _state!.activeDomains) ?? cs.primary;
-          final hasTarget = dailyTargetMinD > 0;
-          final hasTimeLogged = done7HoursD >= 0.017; // > 1 min sur la semaine
-          final showTimeSection = hasTarget || hasTimeLogged;
-          final week7Str = done7HoursD >= 0.017 ? _fmtHoursHM(done7HoursD) : '—';
-          final pct7 = hasTarget
-              ? '${(bigProgressTime * 100).round()}%'
-              : null;
-
-          return SectionCard(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            // TOUTE la carte ouvre la fiche activités (la zone tappable se
-            // limitait à la ligne du nom — constat user) ; le compteur de
-            // routines, en zone interne, garde la priorité vers sa fiche.
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () async {
-                final goNow = await _showDomainDetail(
-                    d, startCal, endCal, days, focus: 'time');
-                if (!mounted) return;
-                if (goNow == true) setState(() => _tab = _goNowTab());
-              },
-              child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Row 1 : nom + temps aujourd'hui ─────────────────────────
-                Row(
-                    children: [
-                      Container(
-                        width: 9,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: dColor,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          d.name.toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-                            color: cs.onSurface.withOpacity(.8),
-                          ),
-                        ),
-                      ),
-                      if (doneTodayHoursD >= 0.017)
-                        Text(
-                          timeLabel,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: dColor,
-                          ),
-                        ),
-                    ],
-                  ),
-
-                if (showTimeSection || routinesTotal > 0) ...[
-                  const SizedBox(height: 10),
-
-                  // ── Row 2 : jauge de la semaine — VISIBLE (barre épaisse
-                  // + % en gros et en couleur ; l'ancien 7 px à 40 %
-                  // d'opacité passait inaperçu, constat user).
-                  if (hasTarget) ...[
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: LinearProgressIndicator(
-                              value: bigProgressTime.clamp(0.0, 1.0),
-                              minHeight: 16,
-                              backgroundColor: dColor.withOpacity(.14),
-                              valueColor: AlwaysStoppedAnimation<Color>(dColor),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Objectif atteint : coche, mais la couleur reste
-                        // celle du domaine (repère visuel constant).
-                        if (bigProgressTime >= 1.0) ...[
-                          Icon(Icons.check_circle_rounded,
-                              size: 16, color: dColor),
-                          const SizedBox(width: 4),
-                        ],
-                        Text(
-                          pct7!,
-                          style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w800,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ],
-                            color: dColor,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '7 j',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: cs.onSurface.withOpacity(.4),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-
-                  // ── Row 3 : stats footer ─────────────────────────────────
-                  Row(
-                    children: [
-                      if (showTimeSection) ...[
-                        Icon(Icons.timer_outlined,
-                            size: 12, color: cs.onSurface.withOpacity(.4)),
-                        const SizedBox(width: 4),
-                        Text(
-                          week7Str,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: cs.onSurface.withOpacity(.5)),
-                        ),
-                      ],
-                      if (routinesTotal > 0) ...[
-                        if (showTimeSection) const SizedBox(width: 14),
-                        GestureDetector(
-                          onTap: () => _showDomainDetail(
-                              d, startCal, endCal, days,
-                              focus: 'habit'),
-                          child: Row(
-                            children: [
-                              Icon(
-                                routinesReached == routinesTotal
-                                    ? Icons.check_circle_rounded
-                                    : Icons.radio_button_unchecked,
-                                size: 12,
-                                color: routinesReached == routinesTotal
-                                    ? dColor
-                                    : cs.onSurface.withOpacity(.35),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$routinesReached / $routinesTotal routines',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: routinesReached == routinesTotal
-                                      ? dColor
-                                      : cs.onSurface.withOpacity(.5),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-              ],
-              ),
-            ),
-          );
-        }),
-        const SizedBox(height: 60),
-    ];
-  }
-
-  // Snap helper (gauge)
   double snapToFull(double value, {double threshold = 0.97}) {
     if (value >= threshold) return 1.0;
     return value.clamp(0.0, 1.0);
