@@ -139,7 +139,7 @@ ProjectMoment projectMoment(Project p, List<Project> all, List<Session> sessions
 /// proche), sinon le plus en retard sur son plan, puis ceux qui ont une
 /// prochaine action, puis les projets à venir, puis le reste ; à égalité,
 /// ordre alphabétique.
-List<ProjectMoment> rankProjectMoments(List<Project> projects, List<Session> sessions, DateTime now) {
+List<ProjectMoment> rankProjectMoments(List<Project> projects, List<Session> sessions, DateTime now, {Set<String> priorityIds = const {}}) {
   final out = <({ProjectMoment m, int rank, double key})>[];
   for (final p in projects) {
     if (p.status != 'active' || p.paused) continue;
@@ -147,7 +147,11 @@ List<ProjectMoment> rankProjectMoments(List<Project> projects, List<Session> ses
     final m = projectMoment(p, projects, sessions, now);
     final int rank;
     final double key;
-    if (m.sessionSoon) {
+    if (priorityIds.contains(p.id) && !m.upcoming) {
+      // Modes et coups (En forme) : le projet du coup en cours passe devant tout.
+      rank = -1;
+      key = m.sessionSoon ? m.daysToSession!.toDouble() : m.plan.ratio;
+    } else if (m.sessionSoon) {
       rank = 0;
       key = m.daysToSession!.toDouble();
     } else if (m.upcoming) {

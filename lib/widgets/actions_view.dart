@@ -72,6 +72,7 @@ class _ActionsViewState extends State<ActionsView> {
   // Section « Terminées » repliée par défaut (consultation ponctuelle).
   bool _showDone = false;
   bool _showUpcoming = false;
+  bool _showResting = false;
   // Section « En pause » repliée par défaut (même logique : consultation
   // ponctuelle, réactivation en un tap).
   bool _showPaused = false;
@@ -1135,7 +1136,11 @@ class _ActionsViewState extends State<ActionsView> {
     final plannedIds = _todayActionIds;
     bool upcoming(_Entry e) =>
         e.task != null && isUpcomingTask(e.task!, today0) && !plannedIds.contains(e.action.id);
-    final shown = passing.where((e) => !upcoming(e)).toList();
+    // Domaine en veille (Modes et coups) : hors de la carte du moment et des
+    // sections, dans une section « EN VEILLE » repliée (sauf action déjà au programme).
+    bool resting(_Entry e) => widget.logic.isDomainResting(_domainOf(e)) && !plannedIds.contains(e.action.id);
+    final shown = passing.where((e) => !upcoming(e) && !resting(e)).toList();
+    final restingEntries = passing.where((e) => !upcoming(e) && resting(e)).toList();
     final upcomingEntries = passing.where(upcoming).toList()
       ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
     final needNextShown = needingNext
@@ -1307,6 +1312,7 @@ class _ActionsViewState extends State<ActionsView> {
             ..._byUrgencySections(cs, shown, all, needNextShown),
 
           ..._upcomingSection(cs, upcomingEntries, today0),
+          ..._restingSection(cs, restingEntries),
           ..._pausedSection(cs),
           ..._doneSection(cs),
         ],
@@ -1595,6 +1601,34 @@ class _ActionsViewState extends State<ActionsView> {
       if (_showUpcoming)
         for (final e in upcoming)
           _entryTile(cs, e, showHolder: true, startLabel: upcomingLabel(e.task!.startDate, today)),
+    ];
+  }
+
+  /// Domaines en veille (Modes et coups) : les actions restent là, repliées.
+  List<Widget> _restingSection(ColorScheme cs, List<_Entry> resting) {
+    if (resting.isEmpty) return const [];
+    return [
+      const SizedBox(height: 6),
+      InkWell(
+        onTap: () => setState(() => _showResting = !_showResting),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(children: [
+            Icon(Icons.bedtime_outlined, size: 16, color: cs.onSurface.withOpacity(.5)),
+            const SizedBox(width: 6),
+            Text('EN VEILLE · ${resting.length}',
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurface.withOpacity(.5))),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('domaines mis en veille', style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.4))),
+            ),
+            Icon(_showResting ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withOpacity(.45)),
+          ]),
+        ),
+      ),
+      if (_showResting)
+        for (final e in resting) _entryTile(cs, e, showHolder: true),
     ];
   }
 

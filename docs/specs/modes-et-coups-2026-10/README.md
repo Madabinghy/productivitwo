@@ -108,7 +108,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 | 0 | Modèle + MCP + logique pure (`horizon`, `restDomains`, `budgetWindowDays`, `set_mode`, `rest_domain`, blocs `plan_day`) | non — **livré** |
 | 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui — **livré** |
 | 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui — **livré** |
-| 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui |
+| 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui — **livré** |
 | 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui |
 | 5 | Web : mode dans le menu ⋯, chips, section Coups dans Projets / Aujourd'hui | oui |
 
@@ -172,3 +172,23 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 - **Ma semaine** : sous-ligne préfixée « journée malgré tout · » / « journée à fond · ».
 - Non fait ici : « une seule étape » dans MAINTENANT en Flemme (les étapes restent repliées par défaut), Projets « coup en
   tête » (lot 3, avec les coups).
+
+## Lot 3 — détail (livré)
+
+- **Logique pure** `lib/utils/coups.dart` (tests `test/coups_test.dart`) : `coupDaysLeft` / `coupLabel` (« jusqu'au 2 nov. ·
+  4 j », « dernier jour », « terminé »), `validateCoup` (titre, 3 à 10 jours fin incluse, une source), `coupRestUntil`,
+  `coupProjectIds`, `coupDomainIds`. `domainWeeks(rest:)` → `DomainWeek.restUntil` / `resting` (minimum à 0, en dernier) ;
+  `rankProjectMoments(priorityIds:)` (rang −1, devant une séance proche).
+- **Objectifs** (`objectives_card.dart`) : section **« COUPS · n »** au-dessus des stratégiques avec « + Lancer un coup »
+  (`widgets/coup_sheet.dart` : quoi · cible · jusqu'à quand (3 / 5 / 7 / 10 j ou date) · pour (projet OU activité-temps,
+  min / j pour une activité) → `StrategicObjective` `horizon: "tactical"`, `checkInEvery: 1`, `startDate` = aujourd'hui), puis
+  la feuille de veille (`widgets/rest_sheet.dart`, `showRestSheet` : cases par domaine sauf celui du coup, jusqu'à la fin du
+  coup). Lignes **« <domaine> · en veille »** avec « Lever » (`liftRest`). Carte du moment : étiquette **COUP EN COURS** et
+  pilule « jusqu'au … » ; fiche trajectoire : chip « coup · … ». La ligne d'un coup affiche son échéance au lieu de « n j
+  restants ».
+- **Veille** : Stats (lignes de domaine `muted` + chip « en veille », minimum suspendu, `domainWeeks(rest:)`), Actions
+  (les actions d'un domaine en veille sortent de la carte du moment et des sections, section repliée **« EN VEILLE · n »** ;
+  une action déjà au programme reste devant), Projets (En forme : projets des coups en tête, `coupProjectIds` lus au
+  montage), deep work (après le lancement, proposition de veille : jusqu'à la fin du coup s'il y en a un, sinon ce soir ;
+  le domaine de la source est exclu), `plan_day` (`restLines` : « → EN VEILLE : Santé (jusqu'au 2026-10-30) … » en plus de
+  `modeRules`). `AppLogic.restDomains` est mis à jour en mémoire par les feuilles (le flux meta confirme).

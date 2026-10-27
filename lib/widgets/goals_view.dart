@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/utils/coups.dart' show coupProjectIds;
+import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
@@ -48,6 +51,8 @@ class _GoalsViewState extends State<GoalsView> {
   final _sync = FirestoreSync();
   StreamSubscription<List<Project>>? _projectsSub;
   int _offset = 0; // « suivant » sur la carte du moment
+  /// Coups en cours (Modes et coups) : en mode En forme, leurs projets passent en tête.
+  Set<String> _coupProjectIds = const {};
   Set<String> _folded = {'upcoming', 'done', 'archived'};
 
   List<Domain> get domains => widget.domains;
@@ -56,6 +61,9 @@ class _GoalsViewState extends State<GoalsView> {
   void initState() {
     super.initState();
     _subscribeProjects();
+    _sync.fetchStrategicObjectives().then((all) {
+      if (mounted) setState(() => _coupProjectIds = coupProjectIds(all, DateTime.now()));
+    }).catchError((_) {});
     SharedPreferences.getInstance().then((prefs) {
       final v = prefs.getStringList(_kFoldedKey);
       if (v != null && mounted) setState(() => _folded = v.toSet());
@@ -128,7 +136,8 @@ class _GoalsViewState extends State<GoalsView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final ranked = rankProjectMoments(_projects, widget.sessions, now);
+    final ranked = rankProjectMoments(_projects, widget.sessions, now,
+        priorityIds: AppLogic.modeNotifier.value == DayMode.high ? _coupProjectIds : const {});
     final live = ranked.where((m) => !m.upcoming).toList();
     final upcoming = ranked.where((m) => m.upcoming).toList();
     final done = _projects.where((p) => p.status == 'done').toList()..sort((a, b) => a.title.compareTo(b.title));

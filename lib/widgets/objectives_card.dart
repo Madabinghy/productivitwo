@@ -1,6 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:collection/collection.dart';
+import 'package:productivitwo_v1/utils/coups.dart';
+import 'package:productivitwo_v1/utils/mode.dart' show activeRests;
+import 'package:productivitwo_v1/widgets/coup_sheet.dart';
+import 'package:productivitwo_v1/widgets/rest_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -47,6 +52,8 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
   bool _showArchived = false;
 
   List<StrategicObjective> get _active => _all.where((o) => o.status == 'active').toList();
+  List<StrategicObjective> get _coups => _active.where((o) => o.isTactical).toList();
+  List<StrategicObjective> get _strategic => _active.where((o) => !o.isTactical).toList();
   List<StrategicObjective> get _archived => _all.where((o) => o.status == 'archived').toList();
   List<StrategicObjective> get _done => _all.where((o) => o.status == 'done').toList();
 
@@ -103,6 +110,11 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     if (saved != null) _load();
   }
 
+  Future<void> _newCoup() async {
+    final saved = await showCoupSheet(context, logic: widget.logic, sync: widget.sync, projects: widget.projects.where((p) => p.status != 'archived').toList());
+    if (saved != null) _load();
+  }
+
   Future<void> _showDetail(StrategicObjective o) async {
     final changed = await showObjectiveTrajectorySheet(
       context,
@@ -139,15 +151,26 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
               onChanged: _load,
             ),
           ),
-        ListSectionTitle('OBJECTIFS · ${active.length}', action: '+ Nouveau', onAction: () => _edit(null)),
-        if (active.isEmpty)
+        // Coups tactiques (Modes et coups lot 3) : 3 à 10 jours, une cible, au-dessus des stratégiques.
+        ListSectionTitle('COUPS · ${_coups.length}', action: '+ Lancer un coup', onAction: _newCoup),
+        if (_coups.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text('Un coup = 3 à 10 jours à fond sur une chose, le reste en veille.',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
+          )
+        else
+          for (final o in _coups) _row(cs, o),
+        if (_restRows(cs) case final rows when rows.isNotEmpty) ...rows,
+        ListSectionTitle('OBJECTIFS · ${_strategic.length}', action: '+ Nouveau', onAction: () => _edit(null)),
+        if (_strategic.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text('Définis un objectif : un résultat visé, relié à du temps hebdo et des routines.',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
           )
         else
-          for (final o in active) _row(cs, o),
+          for (final o in _strategic) _row(cs, o),
         if (_done.isNotEmpty || _archived.isNotEmpty) ...[
           ListSectionTitle(
             'ARCHIVÉS · ${_done.length + _archived.length}',
@@ -161,6 +184,33 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
         ],
       ]),
     );
+  }
+
+  /// Domaines en veille : une ligne chacun, « Lever » d'un tap.
+  List<Widget> _restRows(ColorScheme cs) {
+    final rest = activeRests(widget.logic.restDomains, DateTime.now());
+    if (rest.isEmpty) return const [];
+    final domains = widget.logic.state.activeDomains;
+    return [
+      for (final e in rest.entries)
+        if (domains.where((d) => d.id == e.key).firstOrNull case final d?)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: StatusRow(
+              leading: const Icon(Icons.bedtime_outlined),
+              title: '${d.name} · en veille',
+              sub: DateTime.tryParse(e.value) == null ? null : 'jusqu\'au ${dayMonthFr(DateTime.parse(e.value))} · minimums suspendus',
+              muted: true,
+              trailing: TextButton(
+                onPressed: () async {
+                  await liftRest(widget.logic, widget.sync, d.id);
+                  if (mounted) setState(() {});
+                },
+                child: const Text('Lever'),
+              ),
+            ),
+          ),
+    ];
   }
 
   Widget _row(ColorScheme cs, StrategicObjective o) {
@@ -185,15 +235,16 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
       delta = '';
     }
     final sub = <String>[
+      if (o.isTactical) coupLabel(o, DateTime.now()),
       if (means != null) '${fmtMin(means.doneMin)} investies · attendu ${fmtMin(means.expectedMin)}',
       if (means == null && o.kpiTarget != null && o.kpiTarget!.isNotEmpty) o.kpiTarget!,
-      if (progress.daysLeft != null) '${progress.daysLeft} j restants',
+      if (!o.isTactical && progress.daysLeft != null) '${progress.daysLeft} j restants',
       if (isReadingDue(o, DateTime.now())) 'relevé à noter',
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: StatusRow(
-        leading: const Icon(Icons.flag_rounded, color: kObjectiveAccent),
+        leading: Icon(o.isTactical ? Icons.bolt_rounded : Icons.flag_rounded, color: kObjectiveAccent),
         title: o.title,
         sub: sub.isEmpty ? null : sub,
         bar: bar,
