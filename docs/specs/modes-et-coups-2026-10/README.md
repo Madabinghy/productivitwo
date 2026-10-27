@@ -110,7 +110,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 | 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui — **livré** |
 | 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui — **livré** |
 | 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui — **livré** |
-| 5 | Web : mode dans le menu ⋯, chips, section Coups dans Projets / Aujourd'hui | oui |
+| 5 | Web : mode dans le menu ⋯, chips, section Coups dans Projets / Aujourd'hui | oui — **livré** |
 
 ## 6. Hors périmètre / décisions
 
@@ -209,3 +209,19 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
   demi-journée au plus, on alterne sur la fenêtre ; En forme : un seul domaine dans la journée) ; `budgetRules(14)` ajoute
   « BUDGET SUR 14 JOURS : … un domaine en retard mérite un jour de focus » (`budgetFromContext`, lu dans
   `get_user_context.mode.budgetWindowDays`).
+
+## Lot 5 — détail (livré)
+
+- **Web** `lib/web/mode_web.dart` : `moodMarkForMode` (même pointage d'élan que le mobile, créneau courant de la journée
+  vécue), `showWebModeDialog`, `WebModePill` (barre du haut, hors Normal), `webModeChip`. Le shell (`web_home_screen.dart`)
+  écoute `streamMoodMarks` → `_mode` ; entrée **« Mode du jour · … »** du menu ⋯ (`WebMenuItem.mode`) ; la pilule ouvre le
+  même dialog.
+- **Aujourd'hui** : « · mode Flemme » dans le résumé de l'en-tête ; chips « malgré tout » / « à fond » sur les blocs faits
+  (liste compacte et frise, hors blocs très courts).
+- **Coups** : carte « OBJECTIFS DU JOUR » de la colonne de droite (`objectives_web.dart`) — coups d'abord, étiquette
+  « COUP · jusqu'au … » ; Projets (`projects_view.dart`) — une carte par coup en cours (`activeCoups`) au-dessus de
+  l'objectif stratégique, libellé « COUP · JUSQU'AU … ».
+- Non fait côté web (hors périmètre du handoff) : ambiance de thème, « Sur quoi ? », création de coup, veille (le web lit
+  déjà `restDomains` via `get_user_context` pour `plan_day`).
+
+**Les 6 lots (0 à 5) sont livrés.**

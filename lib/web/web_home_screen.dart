@@ -1,3 +1,5 @@
+import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/web/mode_web.dart';
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -91,6 +93,10 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
   StreamSubscription<Map<String, dynamic>>? _metaSub;
   int _dayStartMin = kDefaultDayStartMin;
   bool? _autoPlan;
+  // Mode du jour (Modes et coups lot 5) = dernier pointage d'élan de la journée vécue.
+  StreamSubscription<List<MoodMark>>? _moodSub;
+  List<MoodMark> _moodMarks = const [];
+  DayMode get _mode => modeOf(_moodMarks, DateTime.now(), _dayStartMin);
   // Console coaching : bouton 🎓 visible seulement si le compte est coach
   // (sonde coachApi — 403 pour tout le monde d'autre).
   bool _isCoach = false;
@@ -126,12 +132,16 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     _autoPlanSub = _sync.streamAutoPlan().listen((v) {
       if (mounted) setState(() => _autoPlan = v);
     });
+    _moodSub = _sync.streamMoodMarks().listen((m) {
+      if (mounted) setState(() => _moodMarks = m);
+    });
   }
 
   @override
   void dispose() {
     _projectsSub?.cancel();
     _autoPlanSub?.cancel();
+    _moodSub?.cancel();
     _metaSub?.cancel();
     _authSub?.cancel();
     super.dispose();
@@ -274,8 +284,20 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     ));
   }
 
+  /// Poser un mode = pointer l'élan (2 / 3 / 4) sur le créneau courant — même
+  /// donnée que le mobile, le flux `mood_marks` met la barre à jour.
+  Future<void> _pickMode() async {
+    final m = await showWebModeDialog(context, _mode);
+    if (m == null || !mounted) return;
+    final mark = moodMarkForMode(m, dayStartMin: _dayStartMin);
+    setState(() => _moodMarks = [..._moodMarks, mark]);
+    await _sync.saveMoodMark(mark);
+  }
+
   void _onMenu(WebMenuItem item) {
     switch (item) {
+      case WebMenuItem.mode:
+        _pickMode();
       case WebMenuItem.orion:
         _openOrion();
       case WebMenuItem.messages:
@@ -320,6 +342,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
             isDemo: widget.isDemo,
             hasAssistantMessages: _assistantMessages.isNotEmpty,
             autoPlan: _autoPlan,
+            mode: _mode,
             overdueCount: overdueActionCount(_projects, DateTime.now()),
             onMyCoach: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSpaceScreen())),
@@ -363,6 +386,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               onOpenProjects: () => _go(WebTab.projects),
               onOpenWeek: () => _go(WebTab.week),
               dayStartMin: _dayStartMin,
+              mode: _mode,
             ),
             WeekView(
               projects: _projects,
