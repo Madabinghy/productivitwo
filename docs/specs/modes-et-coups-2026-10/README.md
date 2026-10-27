@@ -225,3 +225,13 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
   déjà `restDomains` via `get_user_context` pour `plan_day`).
 
 **Les 6 lots (0 à 5) sont livrés.**
+
+## Correctif 2026-10-27 — badge « Deep work » strict
+
+Constat utilisateur : le badge comptait tout chrono ≥ 60 min (Sommeil, séances, activité libre). Décision : **le deep
+work est un choix, pas une durée**. Le bloc créé par « Deep work 90 min » / « Bloc de 90 min » porte `kind: "deepwork"`
+(`deepWorkBlock`) ; `deepWorkSessions(sessions, schedules)` ne compte qu'un tel bloc couvert ≥ 60 min d'affilée par un
+chrono TERMINÉ de la même source (tâche, sinon activité, sinon action), un par bloc. Un bloc `deepwork` compte comme un
+bloc normal dans les journées (`_countsForDay`). Le badge étant recalculé, un palier obtenu à tort disparaît ; la mémoire
+« déjà signalé » (`badge_signals_seen`) est élaguée des paliers qui ne sont plus acquis, pour que le premier vrai deep
+work soit annoncé. Le chip « à fond » (fait en mode En forme) ne change pas.

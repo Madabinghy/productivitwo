@@ -67,9 +67,9 @@
         how: 'Réponds à « Ton élan, là ? » : au plus trois fois par jour (matin, après-midi, soir). Paliers : 30, 100 et 365 pointages.',
       ),
     'deep-work' => (
-        what: 'Des chronos d’au moins une heure d’affilée sur une seule chose.',
-        how: 'Lance le chrono sur une activité ou une tâche et tiens 60 min sans le couper : chaque chrono terminé de 60 min ou plus compte un bloc. '
-            'Paliers : 3, 10 et 30 blocs.',
+        what: 'Des blocs de deep work choisis et menés au bout.',
+        how: 'En mode En forme, lance « Deep work 90 min » (carte MAINTENANT ou « Bloc de 90 min » d’un objectif) et tiens le chrono au moins 60 min d’affilée '
+            'sur cette source : le bloc compte. Un chrono long sans bloc de deep work (sommeil, séance, activité libre) ne compte pas. Paliers : 3, 10 et 30 blocs.',
       ),
     'enchaineur' => (
         what: 'Des sessions du mode Enchaîner menées jusqu’au récap.',

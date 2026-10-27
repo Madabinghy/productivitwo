@@ -128,6 +128,7 @@ ScheduleBlock deepWorkBlock(DeepWorkCandidate c, DateTime now, {int durationMin 
     startTime: '$hh:$mm',
     durationMin: durationMin,
     title: 'Deep work · ${c.title}',
+    kind: 'deepwork',
     category: c.projectId != null ? 'project' : 'personal',
     projectId: c.projectId,
     taskId: c.taskId,
