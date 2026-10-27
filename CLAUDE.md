@@ -475,7 +475,7 @@ hors bloc (état `aside`, comme le mobile). Passage auto en « fait » = mobile 
 seul** (cible atteinte = geste explicite). Pour un bloc d'activité ou de tâche, le temps de chrono atteint (≥ 60 % du
 bloc dans son créneau) n'est qu'une **proposition** « 1 h 05 fait · Marquer fait ? » (tap = confirmer, bloc de tâche →
 feuille « où en est la tâche » ; ✕ = écarter). Un bloc **décoché à la main** porte `noAutoWin` (mobile et web,
-`updateBlockStatus(manual: true)`) : plus de coche automatique ni de proposition ; recocher le lève. **Rattachement après coup** (2026-10) : une session
+`updateBlockStatus(manual: true)`) : plus de coche automatique ni de proposition ; recocher le lève. **Règlement du soir** (2026-10, `utils/day_settle.dart`, `AppLogic.settleFinishedDay`) : à la bascule de journée vécue (ou au premier tick de l'app), les blocs de la VEILLE encore `pending` dont le chrono a couvert ≥ 60 % du créneau (plancher 10 min, heures d'horloge du jour calendaire du programme, Sommeil 22:00 → 05:00 compris) passent `done` avec `doneBy:"chrono"` — la journée est close, plus personne ne peut confirmer ; jamais un bloc `noAutoWin` ni sans source ; une fois par jour et par appareil (`day_settled_ymd`). C'est ce qui rend la journée parfaite atteignable avec un bloc Sommeil. **Rattachement après coup** (2026-10) : une session
 TERMINÉE se rattache à un bloc depuis la feuille « Modifier la session » du mobile (ligne « Bloc du programme », feuille
 « Dernières 24 h ») et depuis la carte « Chronos du jour » du web (`web/sessions_card.dart` : voir / corriger début, fin,
 activité / supprimer / rattacher) — candidats triés par chevauchement (`blockCandidatesForSession`, `today_logic.dart`),
