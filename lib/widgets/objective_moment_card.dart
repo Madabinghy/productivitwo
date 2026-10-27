@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/chain.dart' show buildObjectiveChain;
+import 'package:productivitwo_v1/utils/coups.dart' show coupLabel;
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -117,8 +118,8 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
     }
     return MomentCard(
       accent: kObjectiveAccent,
-      eyebrow: 'OBJECTIF DU MOMENT',
-      pill: ranked.length > 1 ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›' : null,
+      eyebrow: o.isTactical ? 'COUP EN COURS' : 'OBJECTIF DU MOMENT',
+      pill: ranked.length > 1 ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›' : (o.isTactical ? coupLabel(o, now) : null),
       onPill: ranked.length > 1 ? () => setState(() => _offset = (_offset + 1) % ranked.length) : null,
       ring: pct == null ? 0 : pct.clamp(0.0, 1.0),
       ringColor: pctInt == null ? kObjectiveAccent : palierColor(pctInt),

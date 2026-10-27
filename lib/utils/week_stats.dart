@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/mode.dart' show isResting;
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 
 /// Onglet Stats « une carte, une fiche » (lot 3, 2026-10) : logique pure de
@@ -28,6 +29,8 @@ class DomainWeek {
   final int daysElapsed; // lundi = 1 … dimanche = 7
   final int routinesReached;
   final int routinesTotal;
+  /// Domaine en veille (Modes et coups) : `YYYY-MM-DD` de fin, le minimum ne compte plus.
+  final String? restUntil;
   const DomainWeek({
     required this.domain,
     required this.doneMin,
@@ -35,7 +38,10 @@ class DomainWeek {
     required this.daysElapsed,
     required this.routinesReached,
     required this.routinesTotal,
+    this.restUntil,
   });
+
+  bool get resting => restUntil != null;
 
   int get weekMin => goalMinDay * 7;
   int get expectedMin => goalMinDay * daysElapsed;
@@ -58,6 +64,7 @@ List<DomainWeek> domainWeeks({
   required List<Session> sessions,
   required List<HabitHit> hits,
   required DateTime now,
+  Map<String, String> rest = const {},
 }) {
   final monday = mondayOf(now);
   final byActivity = minutesByActivity(sessions, monday, now);
@@ -72,10 +79,12 @@ List<DomainWeek> domainWeeks({
   for (final d in domains) {
     if (d.deleted) continue;
     final mine = eng.where((e) => e.domainId == d.id).toList();
+    final resting = isResting(d.id, rest, now);
     out.add(DomainWeek(
       domain: d,
       doneMin: doneByDomain[d.id] ?? 0,
-      goalMinDay: domainGoalMinDay(d, activities),
+      goalMinDay: resting ? 0 : domainGoalMinDay(d, activities),
+      restUntil: resting ? rest[d.id] : null,
       daysElapsed: now.weekday,
       routinesReached: mine.where((e) => e.kept).length,
       routinesTotal: mine.length,
@@ -83,6 +92,7 @@ List<DomainWeek> domainWeeks({
   }
   // Les plus en retard d'abord (avec minimum), puis les autres par temps fait.
   out.sort((a, b) {
+    if (a.resting != b.resting) return a.resting ? 1 : -1;
     if (a.hasGoal != b.hasGoal) return a.hasGoal ? -1 : 1;
     if (a.hasGoal) return a.pctInt.compareTo(b.pctInt);
     return b.doneMin.compareTo(a.doneMin);

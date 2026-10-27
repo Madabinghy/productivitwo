@@ -3,7 +3,10 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
+import 'package:collection/collection.dart';
+import 'package:productivitwo_v1/utils/coups.dart' show coupRestUntil;
 import 'package:productivitwo_v1/utils/mode_moves.dart';
+import 'package:productivitwo_v1/widgets/rest_sheet.dart';
 import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
@@ -109,6 +112,17 @@ Future<bool> showDeepWorkSheet(
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Deep work · ${picked.title} · $durationMin min à partir de ${block.startTime}'), duration: const Duration(seconds: 3)));
+    // Veille des domaines non concernés (§ 2.4) : jusqu'à la fin du coup, sinon ce soir.
+    final coup = picked.kind == 'coup' ? objs.where((o) => o.id == picked.objectiveId).firstOrNull : null;
+    final until = coup != null && coup.endDate != null ? coupRestUntil(coup) : date;
+    final sourceDomain = <String>{
+      for (final p in projects)
+        if (p.id == picked.projectId && p.domainId != null) p.domainId!,
+      for (final a in st.activities)
+        if (a.id == picked.activityId) a.domainId,
+    };
+    await showRestSheet(context, logic: logic, sync: sync, untilYmd: until, excludeDomainIds: sourceDomain,
+        title: 'Deep work lancé · mettre le reste en veille ${coup != null ? 'jusqu\'à la fin du coup' : 'jusqu\'à ce soir'} ?');
   }
   return true;
 }

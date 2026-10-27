@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/coups.dart' show coupLabel;
+import 'package:productivitwo_v1/widgets/status_row.dart' show StateChip;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -279,6 +281,10 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
         const Icon(Icons.flag, size: 18, color: _accent),
         const SizedBox(width: 8),
         Expanded(child: Text(o.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+        if (o.isTactical) ...[
+          const SizedBox(width: 8),
+          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip('coup · ${coupLabel(o, DateTime.now())}', color: _accent)),
+        ],
       ]),
       if (o.kpiTarget != null && o.kpiTarget!.isNotEmpty)
         Padding(

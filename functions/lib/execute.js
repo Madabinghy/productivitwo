@@ -2306,6 +2306,20 @@ async function executeLogMood(uid, p) {
     return `✓ ${what} pointé pour le ${ymd}.`;
 }
 /** Mode lu dans le JSON de get_user_context (plan_day) ; normal si absent. */
+/// Domaines en veille (Modes et coups lot 3) : nommés explicitement dans le workflow de plan_day.
+function restLines(userContext) {
+    var _a, _b;
+    try {
+        const rest = (_b = (_a = JSON.parse(userContext).mode) === null || _a === void 0 ? void 0 : _a.restDomains) !== null && _b !== void 0 ? _b : [];
+        if (rest.length === 0)
+            return [];
+        const list = rest.map((r) => { var _a, _b; return `${(_a = r.name) !== null && _a !== void 0 ? _a : "?"} (jusqu'au ${(_b = r.until) !== null && _b !== void 0 ? _b : "?"})`; }).join(", ");
+        return [`   → EN VEILLE : ${list} — aucun bloc sur ces domaines (sauf routines « toute la journée »).`];
+    }
+    catch (_c) {
+        return [];
+    }
+}
 function modeFromContext(userContext) {
     var _a;
     try {
@@ -2876,6 +2890,7 @@ async function executePlanDay(uid, args) {
         `   → TITRES de bloc : verbe + objet, ≤ 8 mots, sans code ni parenthèse (le bloc est lié par`,
         `     taskId / actionId, l'app affiche le reste).`,
         ...(0, mode_1.modeRules)(modeFromContext(userContext)),
+        ...restLines(userContext),
         `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
         `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
         `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,

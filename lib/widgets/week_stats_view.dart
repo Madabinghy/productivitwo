@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -60,7 +61,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final now = DateTime.now();
     final week = weekSummary(
         activities: st.activeActivities, hits: st.habitHits, sessions: st.sessions, objectives: _objectives, now: now);
-    final rows = domainWeeks(domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now);
+    final rows = domainWeeks(domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: widget.logic.restDomains);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -114,8 +115,10 @@ class _WeekStatsViewState extends State<WeekStatsView> {
 
   Widget _domainRow(ColorScheme cs, DomainWeek r) {
     final color = domainColor(r.domain.id, widget.logic.state.activeDomains) ?? cs.primary;
+    final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
     final sub = <String>[
-      r.hasGoal ? '${fmtMin(r.doneMin)} · minimum ${fmtMin(r.weekMin)} · attendu ${fmtMin(r.expectedMin)}' : (r.doneMin > 0 ? '${fmtMin(r.doneMin)} cette semaine' : 'pas de temps tracé'),
+      if (r.resting) 'en veille${restUntil == null ? '' : ' jusqu\'au ${dayMonthFr(restUntil)}'} · minimum suspendu',
+      r.hasGoal ? '${fmtMin(r.doneMin)} · minimum ${fmtMin(r.weekMin)} · attendu ${fmtMin(r.expectedMin)}' : (r.doneMin > 0 ? '${fmtMin(r.doneMin)} cette semaine' : (r.resting ? '' : 'pas de temps tracé')),
       if (r.routinesTotal > 0) '${r.routinesReached} / ${r.routinesTotal} routine${r.routinesTotal > 1 ? 's' : ''}',
     ].join(' · ');
     return Padding(
@@ -123,11 +126,13 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       child: StatusRow(
         leading: Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         title: r.domain.name,
-        sub: sub,
+        sub: sub.split(' · ').where((x) => x.isNotEmpty).join(' · '),
         bar: r.hasGoal ? (done: r.doneMin, total: r.weekMin, expected: r.expectedMin) : null,
         pct: r.pctInt,
+        muted: r.resting,
+        chip: r.resting ? 'en veille' : null,
         delta: r.hasGoal ? '${r.pctInt} %' : null,
-        trailing: r.hasGoal ? null : Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)),
+        trailing: r.hasGoal || r.resting ? null : Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)),
         onTap: () => widget.onOpenDomain(r.domain, focus: 'time'),
         onLongPress: r.routinesTotal > 0 ? () => widget.onOpenDomain(r.domain, focus: 'habit') : null,
       ),
