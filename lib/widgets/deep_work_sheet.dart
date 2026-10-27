@@ -28,6 +28,8 @@ Future<bool> showDeepWorkSheet(
   required void Function(ScheduleBlock block) onLaunch,
   List<StrategicObjective>? objectives,
   String? preferObjectiveId,
+  /// Page domaine / fiche activité : cette activité en tête des candidats.
+  String? preferActivityId,
   int durationMin = 90,
 }) async {
   final now = DateTime.now();
@@ -79,6 +81,17 @@ Future<bool> showDeepWorkSheet(
   if (preferObjectiveId != null) {
     final i = candidates.indexWhere((c) => c.objectiveId == preferObjectiveId);
     if (i > 0) candidates = [candidates[i], ...candidates.where((c) => c.objectiveId != preferObjectiveId)];
+  }
+  if (preferActivityId != null) {
+    final a = st.activities.where((x) => x.id == preferActivityId).firstOrNull;
+    if (a != null) {
+      final i = candidates.indexWhere((c) => c.projectId == null && c.activityId == a.id);
+      if (i >= 0) {
+        candidates = [candidates[i], ...candidates.where((c) => c != candidates[i])];
+      } else {
+        candidates = [DeepWorkCandidate(kind: 'other', title: a.name, subtitle: 'Cette activité', activityId: a.id), ...candidates];
+      }
+    }
   }
 
   final picked = await showModalBottomSheet<DeepWorkCandidate>(
