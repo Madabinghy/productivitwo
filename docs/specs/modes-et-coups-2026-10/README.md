@@ -105,7 +105,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 
 | Lot | Contenu | Visible |
 |-----|---------|---------|
-| 0 | Modèle + MCP + logique pure (`horizon`, `restDomains`, `budgetWindowDays`, `set_mode`, `rest_domain`, blocs `plan_day`) | non |
+| 0 | Modèle + MCP + logique pure (`horizon`, `restDomains`, `budgetWindowDays`, `set_mode`, `rest_domain`, blocs `plan_day`) | non — **livré** |
 | 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui |
 | 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui |
 | 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui |
@@ -118,3 +118,20 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 - Pas de nouvelle collection pour les coups : un objectif tactique EST un objectif (une fiche, un graphe, un MCP).
 - La veille n'efface rien : ce qui est en veille reste dans Projets et « Plus tard », sans relance.
 - La journée parfaite reste la même règle ; le « malgré tout » est un chip, pas une note.
+
+## Lot 0 — détail (livré)
+
+- **Logique pure** `lib/utils/mode.dart` ↔ `functions/src/mode.ts` (tests `test/mode_test.dart`, `functions/test/mode.test.mjs`) :
+  `DayMode low | normal | high`, `modeOf(marks, now, dayStartMin)` = dernier élan de la journée vécue (≤ 2 · 3 · ≥ 4,
+  aucun = normal), `modeAt` / `malgreTout` / `aFond` (mode en vigueur AU MOMENT du fait, dérivé), `modeElanValue`
+  (2 / 3 / 4), `parseRestDomains` / `isResting` / `activeRests` (veille jusqu'à la date incluse), `parseBudgetWindowDays`
+  (7 | 14), côté TS `modeRules(mode)` (texte pour `plan_day`) et `isTactical`.
+- **Modèle** : `StrategicObjective.horizon` (`"strategic"` défaut | `"tactical"`, `isTactical`), Dart + `types.ts` ;
+  `pickStrategicObjective` valide (`tactical` exige `endDate`). `ObjectiveSummary.horizon`.
+- **AppLogic** : `mode` (getter), `setMode(DayMode)` = `logMood(elan, 2|3|4, moment courant)` + `saveMoodMark`,
+  `restDomains` / `budgetWindowDays` alimentés par le flux meta (`main.dart`, `_bindDayStart`), `isDomainResting`.
+  `FirestoreSync.setRestDomain(domainId, untilYmd | null)`, `setBudgetWindowDays(7 | 14)`.
+- **MCP** : `set_mode(kind)` (= `log_mood elan`), `rest_domain(domainId, until | clear)` (≤ 30 j, domaine existant),
+  `save_objective {horizon}`, `list_objectives` → `coups` à part, `get_user_context.mode {current, label, since,
+  budgetWindowDays, restDomains[{domainId, name, until}]}` + `coups`, `plan_day` → règles par mode
+  (`modeFromContext`) après BLOCS / TITRES. Rien de visible dans l'app.

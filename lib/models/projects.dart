@@ -610,6 +610,8 @@ class StrategicObjective {
   List<ObjectiveReading> readings; // relevés de la métrique, du plus ancien au plus récent
   int checkInEvery; // jours entre deux relevés attendus (défaut 7)
   String? horizonLabel; // ex: "3 mois", "Q2 2026"
+  /// "strategic" (défaut) | "tactical" = un COUP de 3 à 10 jours (modes et coups, 2026-10).
+  String horizon;
   DateTime? startDate;
   DateTime? endDate;
   String status; // active | done | archived
@@ -629,6 +631,7 @@ class StrategicObjective {
     List<ObjectiveReading>? readings,
     this.checkInEvery = 7,
     this.horizonLabel,
+    this.horizon = 'strategic',
     this.startDate,
     this.endDate,
     this.status = 'active',
@@ -644,6 +647,8 @@ class StrategicObjective {
         timeCommitments = timeCommitments ?? [],
         routineCommitments = routineCommitments ?? [];
 
+  bool get isTactical => horizon == 'tactical';
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'title': title,
@@ -654,6 +659,7 @@ class StrategicObjective {
         'readings': readings.map((r) => r.toJson()).toList(),
         'checkInEvery': checkInEvery,
         'horizonLabel': horizonLabel,
+        'horizon': horizon,
         'startDate': startDate?.toIso8601String(),
         'endDate': endDate?.toIso8601String(),
         'status': status,
@@ -679,6 +685,7 @@ class StrategicObjective {
           ..sort((a, b) => a.date.compareTo(b.date)),
         checkInEvery: (j['checkInEvery'] as num?)?.toInt() ?? 7,
         horizonLabel: j['horizonLabel'],
+        horizon: j['horizon'] == 'tactical' ? 'tactical' : 'strategic',
         startDate: _parseDateOrNull(j['startDate']),
         endDate: _parseDateOrNull(j['endDate']),
         status: j['status'] ?? 'active',

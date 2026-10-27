@@ -22,6 +22,7 @@ export interface ObjectiveSummary {
   title: string;
   kpiTarget: string | null;
   horizonLabel: string | null;
+  horizon: "strategic" | "tactical";
   endDate: string | null;
   daysLeft: number | null;
   weekPercent: number | null; // % moyen des engagements rapportés à l'attendu à ce jour (null si aucun)
@@ -163,6 +164,7 @@ export function summarizeObjectives(
       title: String(o.title ?? ""),
       kpiTarget: typeof o.kpiTarget === "string" ? o.kpiTarget : null,
       horizonLabel: typeof o.horizonLabel === "string" ? o.horizonLabel : null,
+      horizon: o.horizon === "tactical" ? "tactical" : "strategic",
       endDate,
       daysLeft,
       weekPercent: pcts.length > 0
