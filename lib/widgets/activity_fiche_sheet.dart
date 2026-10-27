@@ -77,10 +77,15 @@ class _ActivityFicheState extends State<_ActivityFiche> {
     super.initState();
     lastChanged = false;
     logic.addListener(_onLogic);
-    widget.sync.fetchStrategicObjectives().then((all) {
-      if (mounted) setState(() => _objectives = all.where((o) => o.status == 'active').toList());
-    }).catchError((_) {});
+    _loadObjectives();
     _loadTemplates();
+  }
+
+  Future<void> _loadObjectives() async {
+    try {
+      final all = await widget.sync.fetchStrategicObjectives();
+      if (mounted) setState(() => _objectives = all.where((o) => o.status == 'active').toList());
+    } catch (_) {}
   }
 
   Future<void> _loadTemplates() async {
@@ -232,7 +237,8 @@ class _ActivityFicheState extends State<_ActivityFiche> {
           kpi: kpi,
         ),
         const SizedBox(height: 14),
-        Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Expanded(child: _primaryButton(primary, icon, onPrimary, accent, outlined: running)),
           if (!running && mode == DayMode.normal && widget.onLaunchTimed != null) ...[
             const SizedBox(width: 8),
@@ -242,7 +248,8 @@ class _ActivityFicheState extends State<_ActivityFiche> {
               child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.timer_outlined, size: 18), Icon(_timerOpen ? Icons.expand_less : Icons.expand_more, size: 18)]),
             ),
           ],
-        ]),
+          ]),
+        ),
         if (_timerOpen && !running && mode == DayMode.normal) ...[
           const SizedBox(height: 8),
           Wrap(spacing: 6, runSpacing: 6, children: [
@@ -325,9 +332,15 @@ class _ActivityFicheState extends State<_ActivityFiche> {
     );
   }
 
+  static final _smallBtn = TextButton.styleFrom(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700));
+
   Widget _foldButton(ColorScheme cs, bool open, VoidCallback onTap) => TextButton(
         onPressed: onTap,
-        style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: cs.onSurface.withValues(alpha: .6), textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        style: _smallBtn.copyWith(foregroundColor: WidgetStatePropertyAll(cs.onSurface.withValues(alpha: .6))),
         child: Text(open ? 'replier ▴' : 'afficher ▾'),
       );
 
@@ -343,8 +356,12 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           Text('fait ${fmtMin(doneWin)}', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .7), fontWeight: FontWeight.w600)),
-          const Spacer(),
-          if (a.goalMin > 0) Text('attendu ${fmtMin(expected)} · minimum ${fmtMin(total)}', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+          const SizedBox(width: 10),
+          if (a.goalMin > 0)
+            Expanded(
+              child: Text('attendu ${fmtMin(expected)} · minimum ${fmtMin(total)}',
+                  textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+            ),
         ]),
         if (a.goalMin > 0) ...[
           const SizedBox(height: 8),
@@ -413,9 +430,9 @@ class _ActivityFicheState extends State<_ActivityFiche> {
     final n = own.length + linked.length;
     return [
       FicheTitle('ACTIONS · $n',
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            TextButton(onPressed: _addOwn, style: TextButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)), child: const Text('+ ajouter')),
-            TextButton(onPressed: _linkAction, style: TextButton.styleFrom(visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)), child: const Text('lier')),
+          trailing: Wrap(alignment: WrapAlignment.end, children: [
+            TextButton(onPressed: _addOwn, style: _smallBtn, child: const Text('+ ajouter')),
+            TextButton(onPressed: _linkAction, style: _smallBtn, child: const Text('lier')),
           ])),
       if (n == 0 && ownDone.isEmpty) const FicheNote('Aucune action. « + ajouter » crée une action propre à l\'activité ; « lier » rattache une action de projet du même domaine (le chrono y sera ciblé).'),
       for (final x in own)
@@ -598,9 +615,12 @@ class _ActivityFicheState extends State<_ActivityFiche> {
       decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .05), borderRadius: BorderRadius.circular(14)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Text('moyenne 7 j ${fmtMin(avg7)} / j', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .75))),
-          const Spacer(),
-          Text('30 j ${fmtMin(avg30)} / j', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
+          Expanded(
+            child: Text('moyenne 7 j ${fmtMin(avg7)} / j',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .75))),
+          ),
+          const SizedBox(width: 10),
+          Text('30 j ${fmtMin(avg30)} / j', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55))),
         ]),
         const SizedBox(height: 8),
         SizedBox(height: 70, child: MiniAvgLineChart(series7: s7, series30: s30, goalHoursPerDay: goalH, color: color)),
