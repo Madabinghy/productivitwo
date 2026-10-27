@@ -2320,6 +2320,15 @@ function restLines(userContext) {
         return [];
     }
 }
+function budgetFromContext(userContext) {
+    var _a;
+    try {
+        return (0, mode_1.parseBudgetWindowDays)((_a = JSON.parse(userContext).mode) === null || _a === void 0 ? void 0 : _a.budgetWindowDays);
+    }
+    catch (_b) {
+        return 7;
+    }
+}
 function modeFromContext(userContext) {
     var _a;
     try {
@@ -2891,6 +2900,7 @@ async function executePlanDay(uid, args) {
         `     taskId / actionId, l'app affiche le reste).`,
         ...(0, mode_1.modeRules)(modeFromContext(userContext)),
         ...restLines(userContext),
+        ...(0, mode_1.budgetRules)(budgetFromContext(userContext)),
         `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
         `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
         `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,

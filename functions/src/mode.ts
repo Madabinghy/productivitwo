@@ -74,8 +74,23 @@ export function modeRules(mode: DayMode): string[] {
       return [
         `   → MODE EN FORME déclaré : UN bloc de deep work ≥ 90 min sur le coup en cours (sinon le projet le plus`,
         `     en retard), pas de dispersion ; les domaines en veille ne sont jamais programmés.`,
+        `   → JOUR DE FOCUS : UN SEUL domaine de travail dans la journée (routines et rendez-vous à part) ;`,
+        `     les autres domaines attendent un autre jour de la fenêtre de budget.`,
       ];
     default:
-      return [`   → MODE NORMAL : rythme habituel ; les domaines en veille ne sont jamais programmés.`];
+      return [
+        `   → MODE NORMAL : rythme habituel ; les domaines en veille ne sont jamais programmés.`,
+        `   → JOURS DE FOCUS : un domaine de travail par DEMI-JOURNÉE au plus (matin / après-midi), pas un bloc de`,
+        `     chaque domaine chaque jour — on alterne les domaines sur les jours de la fenêtre de budget.`,
+      ];
   }
+}
+
+/// Ligne « budget » du workflow de plan_day : sur 14 jours, concentrer plutôt qu'étaler.
+export function budgetRules(budgetWindowDays: number): string[] {
+  if (budgetWindowDays !== 14) return [];
+  return [
+    `   → BUDGET SUR 14 JOURS : les minimums de domaine s'évaluent sur la quinzaine, pas par jour — un domaine`,
+    `     en avance sur la quinzaine peut être laissé de côté aujourd'hui, un domaine en retard mérite un jour de focus.`,
+  ];
 }

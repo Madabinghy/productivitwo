@@ -5771,6 +5771,48 @@ class _AppRootState extends State<AppRoot>
                 trailing: Text(kModeLabels[logic.mode]!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 onTap: () => showModeSheet(context, logic),
               ),
+              // Budget des minimums (Modes et coups lot 4) : 7 j = semaine
+              // calendaire, 14 j = quinzaine à départ fixe (concentrer plutôt qu'étaler).
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.calendar_view_week_outlined),
+                title: const Text('Budget des minimums'),
+                subtitle: Text(logic.budgetWindowDays == 14
+                    ? 'Sur 14 jours · pousser 3 jours puis lâcher 5 jours reste au rythme'
+                    : 'Sur la semaine · attendu = minimum × jours écoulés'),
+                trailing: Text(logic.budgetWindowDays == 14 ? '14 j' : '7 j', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                onTap: () async {
+                  final picked = await showModalBottomSheet<int>(
+                    context: context,
+                    showDragHandle: true,
+                    builder: (c) => SafeArea(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                          child: Text('Budget des minimums de domaine', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                        ),
+                        ListTile(
+                          title: const Text('Sur la semaine · 7 j'),
+                          subtitle: const Text('Attendu chaque jour, remis à zéro le lundi'),
+                          trailing: logic.budgetWindowDays == 7 ? const Icon(Icons.check, size: 18) : null,
+                          onTap: () => Navigator.pop(c, 7),
+                        ),
+                        ListTile(
+                          title: const Text('Sur 14 jours · conseillé'),
+                          subtitle: const Text('Quinzaine à départ fixe : on peut concentrer, le repère « attendu aujourd\'hui » reste'),
+                          trailing: logic.budgetWindowDays == 14 ? const Icon(Icons.check, size: 18) : null,
+                          onTap: () => Navigator.pop(c, 14),
+                        ),
+                        const SizedBox(height: 8),
+                      ]),
+                    ),
+                  );
+                  if (picked == null) return;
+                  logic.budgetWindowDays = picked;
+                  logic.onChange();
+                  await _sync.setBudgetWindowDays(picked);
+                },
+              ),
               // Élan (allègement 2026-10) : une fois par jour par défaut, à
               // chaque moment sur demande.
               StreamBuilder<Map<String, dynamic>>(

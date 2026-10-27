@@ -109,7 +109,7 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
 | 1 | **Mode** : pilule sur MAINTENANT + Paramètres, écrit l'élan ; **ambiance** (accent par mode) ; chips « malgré tout » / « à fond » dans les listes et le récap ; 2 badges | oui — **livré** |
 | 2 | **Carte du moment pilotée par le mode** (tableau § 3) : Aujourd'hui, Actions, Objectifs ; « 10 min malgré tout » et « Deep work 90 min » | oui — **livré** |
 | 3 | **Coups** : section Objectifs, carte COUP EN COURS, création en 3 champs (quoi · cible · jusqu'à quand) + choix des domaines à mettre en veille ; veille dans Stats / Actions / plan_day | oui — **livré** |
-| 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui |
+| 4 | **Budget 14 j** + `plan_day` par jours de focus (un domaine par demi-journée en Normal, un seul en En forme) ; vue « Répartition sur 14 j » dans la fiche Ma semaine | oui — **livré** |
 | 5 | Web : mode dans le menu ⋯, chips, section Coups dans Projets / Aujourd'hui | oui |
 
 ## 6. Hors périmètre / décisions
@@ -192,3 +192,20 @@ Enchaîner : **l'app ne lance jamais un chrono sur un bloc qu'elle a fabriqué s
   montage), deep work (après le lancement, proposition de veille : jusqu'à la fin du coup s'il y en a un, sinon ce soir ;
   le domaine de la source est exclu), `plan_day` (`restLines` : « → EN VEILLE : Santé (jusqu'au 2026-10-30) … » en plus de
   `modeRules`). `AppLogic.restDomains` est mis à jour en mémoire par les feuilles (le flux meta confirme).
+
+## Lot 4 — détail (livré)
+
+- **Logique pure** `lib/utils/budget_window.dart` (tests `test/budget_window_test.dart`) : `budgetWindowStart(now, days)`
+  (7 = lundi ; 14 = quinzaine à départ fixe, blocs de deux semaines depuis le lundi 5 janvier 2026), `budgetDayIndex`,
+  `budgetWindowLabel`, `dailyMinutesByDomain` (minutes par domaine et par jour, session coupée à minuit).
+  `domainWeeks(windowDays:)` → `DomainWeek.windowDays`, `weekMin` = minimum × fenêtre, `expectedMin` = minimum × jour de la
+  fenêtre.
+- **Stats** : lignes de domaine sur la fenêtre (`AppLogic.budgetWindowDays`, titre « DOMAINES · SUR 14 JOURS », « minimum
+  … sur 14 j ») ; fiche Ma semaine : section **« RÉPARTITION SUR n J »** (`_distribution` : une barre par jour et par
+  domaine, jour courant plein, jours à venir en creux, « 14 j · jour 9 / 14 »).
+- **Paramètres** : tuile « Budget des minimums » (7 j / 14 j conseillé) → `FirestoreSync.setBudgetWindowDays`, mise à jour
+  immédiate en mémoire.
+- **`plan_day`** (`functions/src/mode.ts`) : `modeRules` porte les **jours de focus** (Normal : un domaine de travail par
+  demi-journée au plus, on alterne sur la fenêtre ; En forme : un seul domaine dans la journée) ; `budgetRules(14)` ajoute
+  « BUDGET SUR 14 JOURS : … un domaine en retard mérite un jour de focus » (`budgetFromContext`, lu dans
+  `get_user_context.mode.budgetWindowDays`).

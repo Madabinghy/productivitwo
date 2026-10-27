@@ -21,7 +21,7 @@ import {
   MoodKind, MoodMarkDoc, ELAN_LABELS, EFFORT_LABELS, MOOD_LABELS, BlockLite,
 } from "./elan";
 import { removeTask, freeTaskBlocks } from "./task_delete";
-import { modeOf, modeElanValue, MODE_LABELS, MODE_KINDS, parseRestDomains, activeRests, parseBudgetWindowDays, modeRules } from "./mode";
+import { modeOf, modeElanValue, MODE_LABELS, MODE_KINDS, parseRestDomains, activeRests, parseBudgetWindowDays, modeRules, budgetRules } from "./mode";
 import type { DayMode } from "./mode";
 import {
   timeEntries, measured, calibrate, overBudget, workedUnestimated,
@@ -2542,6 +2542,14 @@ function restLines(userContext: string): string[] {
   }
 }
 
+function budgetFromContext(userContext: string): number {
+  try {
+    return parseBudgetWindowDays((JSON.parse(userContext) as { mode?: { budgetWindowDays?: number } }).mode?.budgetWindowDays);
+  } catch {
+    return 7;
+  }
+}
+
 function modeFromContext(userContext: string): DayMode {
   try {
     const m = (JSON.parse(userContext) as { mode?: { current?: string } }).mode?.current;
@@ -3156,6 +3164,7 @@ async function executePlanDay(
     `     taskId / actionId, l'app affiche le reste).`,
     ...modeRules(modeFromContext(userContext)),
     ...restLines(userContext),
+    ...budgetRules(budgetFromContext(userContext)),
     `   → DURÉES : chaque action/tâche programmée SANS estimatedMin → estime-la en appliquant le`,
     `     facteur « estimé vs réel » ci-dessus, et POSE-LA (update_action pour une action,`,
     `     update_task pour une tâche) ; la durée du bloc = cette estimation. Une action déjà`,
