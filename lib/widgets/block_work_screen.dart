@@ -8,13 +8,15 @@ import 'package:productivitwo_v1/utils/block_work.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin;
+import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 
-/// Écran « bloc » (2026-10) : toucher un bloc de tâche dans Aujourd'hui ouvre
-/// ce qu'il y a à FAIRE, pas la fiche du projet. L'action visée (sinon la
-/// première ouverte) en avant avec ses étapes cochables, les autres actions
-/// repliées, les faites à part. Même modèle que partout (checklist des
-/// actions) : ce qui se coche ici se retrouve sur le web et via le MCP.
+/// Fiche « bloc » (2026-10 ; feuille depuis « une carte, une fiche », lot 4) :
+/// toucher un bloc de tâche dans Aujourd'hui ouvre ce qu'il y a à FAIRE, pas
+/// la fiche du projet. L'action visée (sinon la première ouverte) en avant
+/// avec ses étapes cochables, les autres actions repliées, les faites à part.
+/// Même modèle que partout (checklist des actions) : ce qui se coche ici se
+/// retrouve sur le web et via le MCP.
 Future<void> showBlockWorkScreen(
   BuildContext context, {
   required Project project,
@@ -27,9 +29,9 @@ Future<void> showBlockWorkScreen(
   Future<void> Function()? onBlockDone,
   int dayStartMin = kDefaultDayStartMin,
 }) {
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    fullscreenDialog: true,
-    builder: (_) => _BlockWorkScreen(
+  return showFiche<void>(
+    context,
+    builder: (_, scroll) => _BlockWorkScreen(
       project: project,
       task: task,
       block: block,
@@ -39,8 +41,9 @@ Future<void> showBlockWorkScreen(
       onStartTimer: onStartTimer,
       onOpenTask: onOpenTask,
       onBlockDone: onBlockDone,
+      scroll: scroll,
     ),
-  ));
+  );
 }
 
 class _BlockWorkScreen extends StatefulWidget {
@@ -53,6 +56,7 @@ class _BlockWorkScreen extends StatefulWidget {
   final VoidCallback? onStartTimer;
   final VoidCallback? onOpenTask;
   final Future<void> Function()? onBlockDone;
+  final ScrollController scroll;
   const _BlockWorkScreen({
     required this.project,
     required this.task,
@@ -63,6 +67,7 @@ class _BlockWorkScreen extends StatefulWidget {
     this.onStartTimer,
     this.onOpenTask,
     this.onBlockDone,
+    required this.scroll,
   });
 
   @override
@@ -164,51 +169,36 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
     final stepsDone = focus?.checklist.where((c) => c.done).length ?? 0;
     final stepsTotal = focus?.checklist.length ?? 0;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(task.title,
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          Text('${widget.project.title} · ${_hm(start)}–${_hm(end)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.55))),
-        ]),
-        actions: [
-          if (widget.onStartTimer != null && !_timerStarted)
-            IconButton(
-              tooltip: 'Lancer le chrono',
-              icon: const Icon(Icons.timer_outlined),
-              onPressed: () {
-                widget.onStartTimer!();
-                setState(() => _timerStarted = true);
-              },
-            ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(children: [
-          if (live)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-              child: Row(children: [
-                Container(
-                    width: 8, height: 8, decoration: BoxDecoration(color: cs.primary, shape: BoxShape.circle)),
-                const SizedBox(width: 8),
-                Text('En cours', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.primary)),
-                const Spacer(),
-                Text('reste ${_fmt(end - nowMin)}',
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: cs.onSurface.withOpacity(.6),
-                        fontFeatures: const [FontFeature.tabularFigures()])),
-              ]),
-            ),
+    final chip = live
+        ? 'en cours · reste ${_fmt(end - nowMin)}'
+        : b.status == 'done'
+            ? 'fait'
+            : 'à ${_hm(start)}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+      child: Column(children: [
+          FicheHeader(
+            title: task.title,
+            chip: chip,
+            chipColor: live ? cs.primary : (b.status == 'done' ? Colors.green : cs.onSurface.withOpacity(.5)),
+            kpi: '${widget.project.title} · ${_hm(start)}–${_hm(end)}'
+                '${widget.onStartTimer != null && !_timerStarted ? '' : (_timerStarted ? ' · chrono lancé' : '')}',
+            leading: widget.onStartTimer != null && !_timerStarted
+                ? IconButton(
+                    tooltip: 'Lancer le chrono',
+                    icon: Icon(Icons.play_circle_fill, size: 30, color: cs.primary),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    onPressed: () {
+                      widget.onStartTimer!();
+                      setState(() => _timerStarted = true);
+                    },
+                  )
+                : null,
+          ),
+          const SizedBox(height: 4),
           Expanded(
-            child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), children: [
+            child: ListView(controller: widget.scroll, padding: const EdgeInsets.fromLTRB(0, 8, 0, 16), children: [
               if (focus == null) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
@@ -343,7 +333,7 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
             ]),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
             child: Row(children: [
               if (widget.onOpenTask != null)
                 OutlinedButton.icon(
@@ -371,8 +361,7 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
                 ),
             ]),
           ),
-        ]),
-      ),
+      ]),
     );
   }
 }

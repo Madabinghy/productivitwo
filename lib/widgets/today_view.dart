@@ -17,7 +17,11 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
-import 'package:productivitwo_v1/widgets/objective_readings_card.dart';
+import 'package:productivitwo_v1/utils/objective_day.dart';
+import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
+import 'package:productivitwo_v1/widgets/fiche.dart';
+import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
@@ -112,11 +116,10 @@ class TodayViewState extends State<TodayView> {
   // DÉFAUT (demande user) — donne la journée d'un coup d'œil et se coche vite.
   // Le choix est persisté par appareil : l'app rouvre dans la dernière vue.
   static const _timelinePrefKey = 'today_view_timeline';
-  // Segment Actions · Routines en tête (2026-10) ; persisté.
-  // Segment en tête : 'actions' (défaut) · 'routines' · 'objectives' (2026-10).
-  static const _segmentPrefKey = 'today_view_segment';
-  static const _legacySegmentPrefKey = 'today_view_segment_routines';
-  String _segment = 'actions';
+  // « Une carte, une fiche » (lot 4, 2026-10) : plus de segment Actions ·
+  // Routines · Objectifs — Routines et Objectifs sont deux lignes « en
+  // parallèle » sous le programme, dont la fiche héberge la vue du moment.
+  List<StrategicObjective> _objectives = const [];
   bool _timeline = false;
   bool _syncing = false;
   // Badges obtenus depuis la dernière ouverture (lot 3) : montrés une fois.
@@ -129,13 +132,14 @@ class TodayViewState extends State<TodayView> {
   void initState() {
     super.initState();
     _loadBadgeSignals();
+    widget.sync?.fetchStrategicObjectives().then((all) {
+      if (mounted) setState(() => _objectives = all);
+    }).catchError((_) {});
     SharedPreferences.getInstance().then((p) {
       final saved = p.getBool(_timelinePrefKey);
       if (saved != null && mounted && saved != _timeline) {
         setState(() => _timeline = saved);
       }
-      final seg = p.getString(_segmentPrefKey) ?? (p.getBool(_legacySegmentPrefKey) == true ? 'routines' : null);
-      if (seg != null && mounted) setState(() => _segment = seg);
       final snooze = p.getString(_kDayGoalUpSnooze);
       final morning = p.getString(_kMorningDismissed);
       if (mounted) {
@@ -786,56 +790,7 @@ class TodayViewState extends State<TodayView> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _header(cs, now, text3),
-                if (!_showTomorrow) ...[
-                  const SizedBox(height: 14),
-                  _segmentBar(cs),
-                ],
-                if (!_showTomorrow && _segment == 'routines')
-                  Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: RoutinesDayView(
-                      logic: widget.logic,
-                      onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
-                      onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
-                      onStartTimed: widget.onStartTimed,
-                    ),
-                  )
-                else if (!_showTomorrow && _segment == 'objectives' && widget.sync != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: ObjectivesDayView(
-                      logic: widget.logic,
-                      sync: widget.sync!,
-                      blocks: _liveBlocks,
-                      onLaunch: widget.onNowLaunch ?? widget.onLaunch,
-                      onOpenSource: widget.onOpenSource,
-                      onOpenTask: widget.onOpenTask,
-                      badges: widget.badges,
-                      onChain: widget.onStopTimer == null
-                          ? null
-                          : () => showChainScreen(
-                                context,
-                                logic: widget.logic,
-                                sync: widget.sync!,
-                                date: _schedDate,
-                                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
-                                onStopTimer: widget.onStopTimer!,
-                              ),
-                      onChainObjective: widget.onStopTimer == null
-                          ? null
-                          : (o) => showChainScreen(
-                                context,
-                                logic: widget.logic,
-                                sync: widget.sync!,
-                                date: _schedDate,
-                                onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
-                                onStopTimer: widget.onStopTimer!,
-                                onOpenSource: widget.onOpenSource,
-                                objective: o,
-                              ),
-                    ),
-                  )
-                else ...[
+                ...[
                 if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
                   if (_morningCard(cs, now, text3) case final card?) card,
@@ -975,15 +930,9 @@ class TodayViewState extends State<TodayView> {
                     ),
                   ),
                 ] else ...[
-                  // Routines : une ligne courte vers le segment Routines (la
-                  // liste complète y vit ; ex-« Le meilleur à faire »).
-                  _routinesLine(cs),
-                  // Relevé de métrique d'objectif attendu : saisie en place.
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: ObjectiveReadingsCard(
-                        logic: widget.logic, sync: FirestoreSync(), projects: widget.logic.currentProjects),
-                  ),
+                  // Routines et Objectifs : deux lignes « en parallèle », la
+                  // fiche de chacune héberge la vue du moment (lot 4).
+                  ..._parallelSection(cs),
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)
@@ -1066,62 +1015,161 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
-  void _setSegment(String segment) {
-    if (segment == _segment) return;
-    HapticFeedback.selectionClick();
-    setState(() => _segment = segment);
-    SharedPreferences.getInstance().then((p) => p.setString(_segmentPrefKey, segment));
-  }
 
-  /// Pilule « Actions · Routines » (handoff Segment Routines, 2026-10).
-  Widget _segmentBar(ColorScheme cs) {
-    final dark = cs.brightness == Brightness.dark;
-    Widget seg(String label, bool on, Color accent, VoidCallback onTap) => Expanded(
-          child: SizedBox(
-            height: 44,
-            child: Material(
-              color: on ? (dark ? kBRaised : cs.surfaceContainerHighest) : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: onTap,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: on ? accent.withOpacity(.4) : Colors.transparent),
-                  ),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    if (on) ...[
-                      Container(width: 7, height: 7, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                    ],
-                    Text(label,
-                        style: TextStyle(
-                            fontSize: 14.5,
-                            fontWeight: FontWeight.w700,
-                            color: on ? cs.onSurface : cs.onSurface.withOpacity(.55))),
-                  ]),
-                ),
-              ),
-            ),
-          ),
-        );
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: dark ? kBSurface : cs.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: dark ? const Color(0x0FFFFFFF) : cs.outlineVariant.withOpacity(.4)),
-      ),
-      child: Row(children: [
-        seg('Actions', _segment == 'actions', dark ? kBPrimary : cs.primary, () => _setSegment('actions')),
-        seg('Routines', _segment == 'routines', kRoutineAccent, () => _setSegment('routines')),
-        seg('Objectifs', _segment == 'objectives', const Color(0xFF00897B), () => _setSegment('objectives')),
-      ]),
+  // ── En parallèle : Routines · Objectifs (« une carte, une fiche », lot 4) ──
+
+  RoutineDay _routineDay() {
+    final ymd = widget.logic.livedYmdNow;
+    return buildRoutineDay(
+      activities: widget.logic.state.activeActivities,
+      hits: widget.logic.state.habitHits,
+      now: DateTime.now(),
+      pushed: widget.logic.routinePushed(ymd),
+      deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
+      dismissed: widget.logic.nowDoneSet(ymd),
+      dayStartMin: widget.logic.dayStartMin,
+      moments: widget.logic.moments,
     );
   }
 
-  /// « Routines · 5 / 18 · 3 à faire ce matin → » : ouvre le segment Routines.
+  List<Widget> _parallelSection(ColorScheme cs) {
+    final day = _routineDay();
+    final all = day.countAll;
+    final queue = day.queue.length;
+    final routinePct = all.total == 0 ? 100 : (all.done / all.total * 100).round();
+    final st = widget.logic.state;
+    final now = DateTime.now();
+    final days = buildObjectiveDays(
+      objectives: _objectives,
+      activities: st.activeActivities,
+      sessions: st.sessions,
+      blocks: _liveBlocks,
+      projects: widget.logic.currentProjects,
+      now: now,
+      dayStartMin: widget.logic.dayStartMin,
+    );
+    final ranked = rankObjectiveMoments(
+      days,
+      nowMin: widget.logic.livedNowMinNow,
+      now: now,
+      routineCount: (a) => routineTodayCount(widget.logic, a),
+      weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
+      runningActivityId: widget.logic.runningActivity()?.id,
+    );
+    final due = _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length;
+    final first = ranked.firstOrNull;
+    final objPct = first?.weekPercent == null ? null : (first!.weekPercent! * 100).round();
+    return [
+      const ListSectionTitle('EN PARALLÈLE'),
+      if (day.slots.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: StatusRow(
+            leading: const Icon(Icons.loop_rounded, color: kRoutineAccent),
+            title: 'Routines · ${all.done} / ${all.total}',
+            sub: day.shortLine.replaceFirst('Routines · ${all.done} / ${all.total}', '').replaceFirst(RegExp(r'^ · '), '').trim().isEmpty
+                ? 'tout est fait pour le moment'
+                : day.shortLine.replaceFirst('Routines · ${all.done} / ${all.total}', '').replaceFirst(RegExp(r'^ · '), '').trim(),
+            bar: (done: all.done, total: all.total, expected: all.done),
+            pct: routinePct,
+            chip: queue > 0 ? '$queue à faire' : 'à jour',
+            onTap: _openRoutinesFiche,
+          ),
+        ),
+      if (widget.sync != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: StatusRow(
+            leading: const Icon(Icons.flag_rounded, color: Color(0xFF00897B)),
+            title: ranked.isEmpty ? 'Objectifs' : 'Objectifs · ${ranked.length}',
+            sub: first == null
+                ? 'aucun objectif en cours'
+                : '${first.objective.title}${objPct != null ? ' · $objPct % du rythme' : ''}${first.remaining.isNotEmpty ? ' · reste ${first.remaining.first}' : ''}',
+            pct: objPct ?? 100,
+            chip: due > 0 ? '$due relevé${due > 1 ? 's' : ''} à noter' : (objPct == null ? null : '$objPct %'),
+            onTap: _openObjectivesFiche,
+          ),
+        ),
+    ];
+  }
+
+  void _openRoutinesFiche() {
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        final day = _routineDay();
+        final all = day.countAll;
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          children: [
+            FicheHeader(
+              title: 'Routines',
+              chip: '${all.done} / ${all.total}',
+              chipColor: kRoutineAccent,
+              kpi: day.shortLine,
+            ),
+            const SizedBox(height: 14),
+            RoutinesDayView(
+              logic: widget.logic,
+              onChain: (_) => showRoutineChainScreen(context, logic: widget.logic),
+              onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
+              onStartTimed: widget.onStartTimed,
+            ),
+          ],
+        );
+      });
+    }).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void _openObjectivesFiche() {
+    final sync = widget.sync;
+    if (sync == null) return;
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return ListView(
+        controller: scroll,
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+        children: [
+          const FicheHeader(title: 'Objectifs', chip: 'aujourd\'hui', chipColor: Color(0xFF00897B)),
+          ObjectivesDayView(
+            logic: widget.logic,
+            sync: sync,
+            blocks: _liveBlocks,
+            onLaunch: widget.onNowLaunch ?? widget.onLaunch,
+            onOpenSource: widget.onOpenSource,
+            onOpenTask: widget.onOpenTask,
+            badges: widget.badges,
+            onChain: widget.onStopTimer == null
+                ? null
+                : () => showChainScreen(
+                      context,
+                      logic: widget.logic,
+                      sync: sync,
+                      date: _schedDate,
+                      onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                      onStopTimer: widget.onStopTimer!,
+                    ),
+            onChainObjective: widget.onStopTimer == null
+                ? null
+                : (o) => showChainScreen(
+                      context,
+                      logic: widget.logic,
+                      sync: sync,
+                      date: _schedDate,
+                      onLaunch: widget.onNowLaunch ?? widget.onLaunch ?? (_) {},
+                      onStopTimer: widget.onStopTimer!,
+                      onOpenSource: widget.onOpenSource,
+                      objective: o,
+                    ),
+          ),
+        ],
+      );
+    }).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   /// Déblocages à signaler : calculés à l'ouverture de l'onglet, marqués vus
   /// aussitôt (le signal ne revient jamais), affichés jusqu'au « × » / « Voir ».
   Future<void> _loadBadgeSignals() async {
@@ -1134,49 +1182,6 @@ class TodayViewState extends State<TodayView> {
     } catch (_) {}
   }
 
-  Widget _routinesLine(ColorScheme cs) {
-    final ymd = widget.logic.livedYmdNow;
-    final day = buildRoutineDay(
-      activities: widget.logic.state.activeActivities,
-      hits: widget.logic.state.habitHits,
-      now: DateTime.now(),
-      pushed: widget.logic.routinePushed(ymd),
-      deferred: widget.logic.state.nowSkippedByYmd[ymd] ?? const [],
-      dismissed: widget.logic.nowDoneSet(ymd),
-      dayStartMin: widget.logic.dayStartMin,
-      moments: widget.logic.moments,
-    );
-    if (day.slots.isEmpty) return const SizedBox.shrink();
-    final dark = cs.brightness == Brightness.dark;
-    return Material(
-      color: dark ? kBSurface : cs.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => _setSegment('routines'),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 52),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kRoutineAccent.withOpacity(.3)),
-          ),
-          child: Row(children: [
-            Container(width: 7, height: 7, decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(day.shortLine,
-                  maxLines: 2,
-                  style: TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface, fontFeatures: const [FontFeature.tabularFigures()])),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_rounded, size: 18, color: kRoutineAccent),
-          ]),
-        ),
-      ),
-    );
-  }
 
   Widget _roundBtn(ColorScheme cs, IconData icon, String tooltip, VoidCallback onTap,
       {bool accent = false}) {
