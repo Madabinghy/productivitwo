@@ -43,4 +43,70 @@ void main() {
     expect(t.doneWeekMin, 100);
     expect(t.name, 'ecrire');
   });
+
+  group('objectif du moment', () {
+    ObjectiveDay day(StrategicObjective o, {List<ObjectiveTimeToday> times = const [], List<Activity> routines = const [], List<ScheduleBlock> blocks = const []}) =>
+        ObjectiveDay(objective: o, times: times, routines: routines, blocks: blocks, nextActions: const []);
+    ObjectiveTimeToday time(String id, {int weeklyMin = 140, int doneToday = 0}) =>
+        ObjectiveTimeToday(activity: act(id), activityId: id, weeklyMin: weeklyMin, doneTodayMin: doneToday, doneWeekMin: doneToday);
+    final a = StrategicObjective(title: 'A', createdAt: DateTime(2026, 10, 1));
+    final b = StrategicObjective(title: 'B', createdAt: DateTime(2026, 10, 1));
+
+    test('bloc en cours ou chrono qui tourne = objectif du moment, avant le retard de rythme', () {
+      final blk = ScheduleBlock(id: 'k', startTime: '09:30', durationMin: 60, title: 'Écrire', category: 'project', activityId: 'ecrire');
+      final ranked = rankObjectiveMoments(
+        [day(a, times: [time('lire')]), day(b, blocks: [blk])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (o) => o.title == 'A' ? .2 : .9,
+      );
+      expect(ranked.first.objective.title, 'B');
+      expect(ranked.first.move.kind, ObjectiveMoveKind.block);
+      expect(ranked.first.remaining, ['bloc à 09:30']);
+      final run = rankObjectiveMoments(
+        [day(a, times: [time('lire')]), day(b, times: [time('ecrire', doneToday: 30)])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (_) => .5, runningActivityId: 'ecrire',
+      );
+      expect(run.first.objective.title, 'B');
+      expect(run.first.move.kind, ObjectiveMoveKind.running);
+      expect(run.first.remaining, isEmpty);
+    });
+
+    test('sinon le plus en retard sur son rythme qui a encore du travail, geste = engagement le plus en retard', () {
+      final ranked = rankObjectiveMoments(
+        [day(a, times: [time('lire', weeklyMin: 70), time('ecrire', weeklyMin: 280, doneToday: 10)]), day(b, times: [time('x')])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (o) => o.title == 'A' ? .4 : .8,
+      );
+      expect(ranked.first.objective.title, 'A');
+      expect(ranked.first.move.kind, ObjectiveMoveKind.time);
+      expect(ranked.first.move.time!.activityId, 'ecrire'); // 30 min restantes contre 10
+      expect(ranked.first.remaining, ['10 min de lire', '30 min de ecrire']);
+    });
+
+    test('routine non atteinte = +1 ; bloc passé non fait ne compte plus ; tout fait = aucun geste', () {
+      final r = act('pompes', type: 'habit');
+      final old = ScheduleBlock(id: 'o', startTime: '07:00', durationMin: 30, title: 'Vieux', category: 'project', activityId: 'pompes');
+      final ranked = rankObjectiveMoments(
+        [day(a, routines: [r], blocks: [old]), day(b, times: [time('x', doneToday: 60)])],
+        nowMin: 10 * 60, now: now, routineCount: (_) => 0, weekPercent: (_) => 1,
+      );
+      expect(ranked.first.objective.title, 'A');
+      expect(ranked.first.move.kind, ObjectiveMoveKind.routine);
+      expect(ranked.first.remaining, ['1 routine']);
+      expect(ranked.last.objective.title, 'B');
+      expect(ranked.last.move.kind, ObjectiveMoveKind.none);
+      expect(ranked.last.allDone, isTrue);
+      final done = rankObjectiveMoments([day(a, routines: [r])], nowMin: 600, now: now, routineCount: (_) => 1, weekPercent: (_) => 1);
+      expect(done.single.allDone, isTrue);
+    });
+
+    test('relevé dû = geste « noter un relevé » quand rien d’autre ne reste', () {
+      final o = StrategicObjective(
+          title: 'Poids', createdAt: DateTime(2026, 10, 1), checkInEvery: 3,
+          metric: ObjectiveMetric(label: 'Poids', unit: 'kg', startValue: 84, targetValue: 90));
+      final ranked = rankObjectiveMoments([day(o), day(a)], nowMin: 600, now: now, routineCount: (_) => 0, weekPercent: (_) => null);
+      expect(ranked.first.objective.title, 'Poids');
+      expect(ranked.first.readingDue, isTrue);
+      expect(ranked.first.move.kind, ObjectiveMoveKind.reading);
+      expect(ranked.first.allDone, isFalse);
+    });
+  });
 }
