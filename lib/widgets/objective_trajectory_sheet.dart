@@ -111,6 +111,20 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
   }
 
   Future<void> _setStatus(String status) async {
+    if (status == 'archived') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Archiver cet objectif ?'),
+          content: const Text('Il quitte la liste et ne compte plus dans la semaine. « Archivés » en bas d\'Objectifs permet de le réactiver.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Archiver')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
     o.status = status;
     await _save();
     if (mounted) Navigator.pop(context, true);

@@ -31,6 +31,10 @@ class MomentCard extends StatelessWidget {
   final String ficheLabel;
   final String? chainLabel;
   final VoidCallback? onChain;
+  /// Contenu libre sous la ligne d'état (ex. pilule chrono d'une routine).
+  final Widget? detail;
+  /// Rangée de gestes sur mesure : remplace le bouton plein + « Fiche ».
+  final Widget? actions;
 
   const MomentCard({
     super.key,
@@ -55,6 +59,8 @@ class MomentCard extends StatelessWidget {
     this.ficheLabel = 'Fiche',
     this.chainLabel,
     this.onChain,
+    this.detail,
+    this.actions,
   });
 
   @override
@@ -112,10 +118,14 @@ class MomentCard extends StatelessWidget {
                       fontWeight: subColor == null ? null : FontWeight.w700,
                       color: subColor ?? pal.text3,
                       fontFeatures: const [FontFeature.tabularFigures()])),
+              if (detail != null) ...[const SizedBox(height: 8), detail!],
             ]),
           ),
         ]),
         const SizedBox(height: 14),
+        if (actions != null)
+          actions!
+        else
         Row(children: [
           Expanded(child: _primary(pal)),
           if (onFiche != null) ...[

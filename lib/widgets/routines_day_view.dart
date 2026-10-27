@@ -5,10 +5,10 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
+import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
@@ -295,11 +295,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     ]);
   }
 
-  Widget _domainDot(Activity a, {double size = 8}) {
-    final c = domainColor(a.domainId, logic.state.domains) ?? kRoutineAccent;
-    return Container(width: size, height: size, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
-  }
-
   String _domainName(Activity a) =>
       logic.state.domains.where((d) => d.id == a.domainId).map((d) => d.name).firstOrNull ?? '';
 
@@ -315,13 +310,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
         child: Text(text, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: kBAttention)),
       );
 
-  Widget _pill(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(color: kRoutineAccent.withOpacity(.14), borderRadius: BorderRadius.circular(999)),
-        child: Text(text,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: kRoutineAccent)),
-      );
-
   Widget _momentCard(NowPalette pal, RoutineDay day) {
     final cur = day.current;
     final q = day.queue;
@@ -331,108 +319,43 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final c = day.countOf(cur.key);
     final progress = c.total == 0 ? 0.0 : (c.done / c.total).clamp(0.0, 1.0);
     final todayN = first == null ? 0 : _todayCount(first.activity);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-      decoration: BoxDecoration(
-        color: pal.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kRoutineAccent.withOpacity(.35)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(width: 7, height: 7, decoration: const BoxDecoration(color: kRoutineAccent, shape: BoxShape.circle)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text('ROUTINE DU MOMENT',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
-          ),
-          // Tap = régler les bornes des moments.
-          InkWell(
-            borderRadius: BorderRadius.circular(999),
-            onTap: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
-            child: _pill('${cur.label} · ${cur.window}'),
-          ),
-        ]),
-        const SizedBox(height: 14),
-        Row(children: [
-          SizedBox(
-            width: 96,
-            height: 96,
-            child: Stack(alignment: Alignment.center, children: [
-              CustomPaint(
-                size: const Size(96, 96),
-                painter: RingPainter(
-                    progress: progress, color: kRoutineAccent, stroke: 9, trackColor: pal.track, cap: StrokeCap.round),
-              ),
-              Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('${c.done} / ${c.total}',
-                    style: TextStyle(
-                        fontSize: 19, fontWeight: FontWeight.w700, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
-                Text('FAITES', style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: pal.text3)),
-              ]),
+    final restee = first != null && first.moment != cur.key ? 'Restée ${momentOf(first.moment).of}' : null;
+    return MomentCard(
+      accent: kRoutineAccent,
+      eyebrow: 'ROUTINE DU MOMENT',
+      pill: '${cur.label} · ${cur.window}',
+      // Tap = régler les bornes des moments.
+      onPill: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
+      ring: progress,
+      ringBig: '${c.done} / ${c.total}',
+      ringSmall: 'FAITES',
+      context_: first == null
+          ? null
+          : [if (restee != null) restee, _domainName(first.activity)].where((x) => x.isNotEmpty).join(' · '),
+      contextIcon: first == null
+          ? null
+          : (first.activity.iconCode != null ? IconData(first.activity.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded),
+      title: first == null ? '✓ ${cur.label} terminé · ${c.done} sur ${c.total}' : first.activity.name,
+      sub: first == null ? _nextLabel(cur) : (first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel),
+      subColor: first != null && first.reached ? kRoutineAccent : null,
+      detail: first == null
+          ? null
+          : Row(children: [
+              Flexible(child: RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {}))),
+              if (widget.onStartTimed != null) ...[
+                const SizedBox(width: 6),
+                _miniRound(pal, Icons.timer_outlined,
+                    tooltip: (first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
+                    badge: (first.activity.timerMin ?? 0) > 0 ? '${first.activity.timerMin}' : null,
+                    onTap: () => _timer(first.activity)),
+              ],
+              const SizedBox(width: 6),
+              _miniRound(pal, Icons.tune_rounded, tooltip: 'Réglages de la routine', onTap: () => _openSheet(first.activity)),
             ]),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: first == null
-                ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('✓', style: TextStyle(fontSize: 34, color: kRoutineAccent)),
-                    Text('${cur.label} terminé · ${c.done} sur ${c.total}',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: pal.text)),
-                    const SizedBox(height: 2),
-                    Text(_nextLabel(cur), style: TextStyle(fontSize: 12.5, color: pal.text3)),
-                  ])
-                : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (first.moment != cur.key) ...[
-                      _tag('Restée ${momentOf(first.moment).of}'),
-                      const SizedBox(height: 6),
-                    ],
-                    Row(children: [
-                      _domainDot(first.activity),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(_domainName(first.activity),
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2)),
-                      ),
-                    ]),
-                    const SizedBox(height: 4),
-                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _icon(first.activity, size: 30),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(first.activity.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
-                      ),
-                    ]),
-                    const SizedBox(height: 4),
-                    Text(first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
-                        style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: first.reached ? FontWeight.w700 : null,
-                            color: first.reached ? kRoutineAccent : pal.text3,
-                            fontFeatures: const [FontFeature.tabularFigures()])),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Flexible(
-                          child: RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {}))),
-                      if (widget.onStartTimed != null) ...[
-                        const SizedBox(width: 6),
-                        _miniRound(pal, Icons.timer_outlined,
-                            tooltip: (first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
-                            badge: (first.activity.timerMin ?? 0) > 0 ? '${first.activity.timerMin}' : null,
-                            onTap: () => _timer(first.activity)),
-                      ],
-                      const SizedBox(width: 6),
-                      _miniRound(pal, Icons.tune_rounded,
-                          tooltip: 'Réglages de la routine', onTap: () => _openSheet(first.activity)),
-                    ]),
-                  ]),
-          ),
-        ]),
-        if (first != null) ...[
-          const SizedBox(height: 14),
+      primaryLabel: '+1',
+      actions: first == null
+          ? const SizedBox.shrink()
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
               child: SizedBox(
@@ -515,8 +438,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
               ),
             ),
           ],
-        ],
-      ]),
+        ]),
     );
   }
 

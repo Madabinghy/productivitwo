@@ -7,7 +7,6 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
-import 'package:productivitwo_v1/widgets/objective_readings_card.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
@@ -442,11 +441,8 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
           // là où on agit : lib/widgets/best_to_do_card.dart.)
           // Objectifs stratégiques : progression hebdo mesurée — l'étage où
           // vivra le contrat coach-coaché.
-          // Relevés de métrique attendus (invisible quand rien n'est dû).
-          ObjectiveReadingsCard(
-              logic: widget.logic,
-              sync: widget.sync,
-              projects: widget.projects),
+          // Carte Objectif du moment + lignes + archivés (lot 5) ; le relevé dû
+          // est le geste de la carte (plus de carte « Relevé de la semaine »).
           ObjectivesCard(
               logic: widget.logic,
               sync: widget.sync,
