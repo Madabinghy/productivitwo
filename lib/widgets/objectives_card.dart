@@ -8,11 +8,15 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
+import 'package:productivitwo_v1/widgets/objective_moment_card.dart';
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart';
+import 'package:productivitwo_v1/widgets/status_row.dart';
 
-/// Carte « Objectifs » de l'onglet Accueil : un rang par objectif actif avec
-/// sa jauge de progression hebdo (engagements temps + routines, données déjà
-/// en mémoire dans AppState). Tap → détail par engagement + édition.
+/// Onglet Objectifs « une carte, une fiche » (lot 5, 2026-10) : la carte
+/// OBJECTIF DU MOMENT (partagée avec Aujourd'hui), puis une ligne par objectif
+/// actif — barre « temps investi » depuis le début avec le repère « attendu
+/// aujourd'hui » (sinon la jauge hebdo), écart à droite — et la section
+/// repliée « Archivés · n » (Réactiver). Tap = fiche trajectoire.
 class ObjectivesCard extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
@@ -30,27 +34,28 @@ class ObjectivesCard extends StatefulWidget {
 }
 
 class _ObjectivesCardState extends State<ObjectivesCard> {
-  static const _accent = Color(0xFF00897B);
-
   // Cache mémoire PARTAGÉ entre les recréations du State : la ListView de
-  // l'Accueil détruit les enfants sortis du viewport — sans cache, chaque
-  // retour en haut de page refaisait le fetch → carte vide → réapparition
-  // d'un bloc entier = saccade au scroll (constaté sur build). Rendu
-  // immédiat depuis le cache, rafraîchi silencieusement derrière.
+  // l'onglet détruit les enfants sortis du viewport — sans cache, chaque
+  // retour en haut de page refaisait le fetch → saccade au scroll.
   static List<StrategicObjective>? _cache;
   // Sessions depuis le début le plus ancien des objectifs (le temps investi
   // cumule depuis le début, pas depuis lundi) ; l'état local sert d'abord.
   static List<Session>? _sessionsCache;
 
-  List<StrategicObjective> _objectives = [];
+  List<StrategicObjective> _all = [];
   bool _loaded = false;
+  bool _showArchived = false;
+
+  List<StrategicObjective> get _active => _all.where((o) => o.status == 'active').toList();
+  List<StrategicObjective> get _archived => _all.where((o) => o.status == 'archived').toList();
+  List<StrategicObjective> get _done => _all.where((o) => o.status == 'done').toList();
 
   @override
   void initState() {
     super.initState();
     final cached = _cache;
     if (cached != null) {
-      _objectives = cached.where((o) => o.status == 'active').toList();
+      _all = cached;
       _loaded = true;
     }
     _load();
@@ -61,10 +66,10 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     if (!mounted) return;
     _cache = all;
     setState(() {
-      _objectives = all.where((o) => o.status == 'active').toList();
+      _all = all;
       _loaded = true;
     });
-    final active = _objectives;
+    final active = _active;
     if (active.isEmpty) return;
     final now = DateTime.now();
     final earliest = active.map(objectiveStart).reduce((a, b) => a.isBefore(b) ? a : b);
@@ -80,45 +85,9 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
   ObjectiveTrajectory _trajectoryOf(StrategicObjective o) =>
       computeObjectiveTrajectory(o, _sessionsCache ?? widget.logic.state.sessions, DateTime.now());
 
-  /// Barre « temps investi » : fait sur le total de l'horizon (sinon sur
-  /// l'attendu du jour), repère vertical = attendu aujourd'hui.
-  Widget _meansBar(ColorScheme cs, MeansTrajectory m) {
-    final color = m.status == TrajectoryStatus.behind ? const Color(0xFFEF6C00) : _accent;
-    final total = m.totalMin > 0 ? m.totalMin : math.max(m.expectedMin, m.doneMin);
-    final donePct = total <= 0 ? 0.0 : (m.doneMin / total).clamp(0.0, 1.0);
-    final expPct = total <= 0 ? 0.0 : (m.expectedMin / total).clamp(0.0, 1.0);
-    return LayoutBuilder(builder: (_, box) {
-      final w = box.maxWidth;
-      return SizedBox(
-        height: 16,
-        child: Stack(children: [
-          Positioned.fill(
-            top: 5,
-            bottom: 5,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                  value: donePct,
-                  minHeight: 6,
-                  backgroundColor: cs.onSurface.withOpacity(.08),
-                  valueColor: AlwaysStoppedAnimation<Color>(color)),
-            ),
-          ),
-          Positioned(
-            left: (w * expPct - 0.75).clamp(0.0, w - 1.5),
-            top: 2,
-            bottom: 2,
-            child: Container(width: 1.5, color: cs.onSurface.withOpacity(.4)),
-          ),
-        ]),
-      );
-    });
-  }
-
   ObjectiveProgress _progressOf(StrategicObjective o) {
     final st = widget.logic.state;
-    return computeObjectiveProgress(
-        o, st.activities, st.sessions, st.habitHits, DateTime.now());
+    return computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, DateTime.now());
   }
 
   Future<void> _edit(StrategicObjective? o) async {
@@ -128,8 +97,7 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
       existing: o,
       domains: st.activeDomains,
       activities: st.activities,
-      projects:
-          widget.projects.where((p) => p.status != 'archived').toList(),
+      projects: widget.projects.where((p) => p.status != 'archived').toList(),
       sync: widget.sync,
     );
     if (saved != null) _load();
@@ -146,159 +114,110 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     if (changed) _load();
   }
 
+  Future<void> _reactivate(StrategicObjective o) async {
+    o.status = 'active';
+    o.updatedAt = DateTime.now();
+    await widget.sync.saveStrategicObjective(o);
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (!_loaded) return const SizedBox.shrink();
-
-    return Card(
-      elevation: 1,
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.flag, size: 15, color: _accent.withOpacity(.9)),
-                const SizedBox(width: 8),
-                Text('OBJECTIFS',
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: .8,
-                        color: cs.onSurface.withOpacity(.5))),
-                const Spacer(),
-                IconButton(
-                  onPressed: () => _edit(null),
-                  icon: const Icon(Icons.add, size: 18),
-                  color: _accent,
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Définir un objectif',
-                ),
-              ],
+    final active = _active;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (active.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: ObjectiveMomentCard(
+              logic: widget.logic,
+              sync: widget.sync,
+              objectives: active,
+              onChanged: _load,
             ),
-            if (_objectives.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 4),
-                child: InkWell(
-                  onTap: () => _edit(null),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: Text(
-                      'Définis un objectif : un résultat visé, relié à du temps hebdo et des routines.',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: cs.onSurface.withOpacity(.5)),
-                    ),
-                  ),
-                ),
-              )
-            else
-              for (final o in _objectives) ...[
-                InkWell(
-                  onTap: () => _showDetail(o),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                        top: 6, bottom: 6, right: 8),
-                    child: Builder(builder: (_) {
-                      final progress = _progressOf(o);
-                      final pct = progress.weekPercent;
-                      // Temps investi depuis le début (repère = attendu
-                      // aujourd'hui) quand il y a des engagements de temps ;
-                      // sinon la jauge hebdo d'avant.
-                      final means = o.timeCommitments.isEmpty ? null : _trajectoryOf(o).means;
-                      final diff = means == null ? 0 : means.doneMin - means.expectedMin;
-                      final warn = const Color(0xFFEF6C00);
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(o.title,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600)),
-                              ),
-                              if (means != null)
-                                Text(
-                                    means.expectedMin <= 0
-                                        ? fmtMin(means.doneMin)
-                                        : diff >= 0
-                                            ? '+${fmtMin(diff)}'
-                                            : '−${fmtMin(-diff)}',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: means.status == TrajectoryStatus.behind ? warn : _accent.withOpacity(.9)))
-                              else if (pct != null)
-                                Text('${(pct * 100).round()}%',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: _accent.withOpacity(.9))),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          if (means != null)
-                            _meansBar(cs, means)
-                          else if (pct != null)
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(3),
-                              child: LinearProgressIndicator(
-                                value: pct,
-                                minHeight: 5,
-                                backgroundColor:
-                                    cs.onSurface.withOpacity(.08),
-                                valueColor:
-                                    const AlwaysStoppedAnimation<Color>(
-                                        _accent),
-                              ),
-                            ),
-                          if (means != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                '${fmtMin(means.doneMin)} investies · attendu ${fmtMin(means.expectedMin)}'
-                                '${means.totalMin > 0 ? ' · ${fmtMin(means.totalMin)} au total' : ''}',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.5)),
-                              ),
-                            ),
-                          if (o.kpiTarget != null &&
-                                  o.kpiTarget!.isNotEmpty ||
-                              progress.daysLeft != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 3),
-                              child: Text(
-                                [
-                                  if (o.kpiTarget != null &&
-                                      o.kpiTarget!.isNotEmpty)
-                                    o.kpiTarget!,
-                                  if (progress.daysLeft != null)
-                                    '${progress.daysLeft} j restants',
-                                ].join(' · '),
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: cs.onSurface.withOpacity(.5)),
-                              ),
-                            ),
-                        ],
-                      );
-                    }),
-                  ),
-                ),
-              ],
+          ),
+        ListSectionTitle('OBJECTIFS · ${active.length}', action: '+ Nouveau', onAction: () => _edit(null)),
+        if (active.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text('Définis un objectif : un résultat visé, relié à du temps hebdo et des routines.',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
+          )
+        else
+          for (final o in active) _row(cs, o),
+        if (_done.isNotEmpty || _archived.isNotEmpty) ...[
+          ListSectionTitle(
+            'ARCHIVÉS · ${_done.length + _archived.length}',
+            onAction: () => setState(() => _showArchived = !_showArchived),
+            expanded: _showArchived,
+          ),
+          if (_showArchived) ...[
+            for (final o in _done) _plainRow(o, 'atteint'),
+            for (final o in _archived) _plainRow(o, 'archivé'),
           ],
-        ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _row(ColorScheme cs, StrategicObjective o) {
+    final progress = _progressOf(o);
+    final pct = progress.weekPercent;
+    final means = o.timeCommitments.isEmpty ? null : _trajectoryOf(o).means;
+    final diff = means == null ? 0 : means.doneMin - means.expectedMin;
+    final int pctInt;
+    final String delta;
+    ({num done, num total, num expected})? bar;
+    if (means != null) {
+      final total = means.totalMin > 0 ? means.totalMin : math.max(means.expectedMin, means.doneMin);
+      bar = (done: means.doneMin, total: total, expected: means.expectedMin);
+      pctInt = means.expectedMin <= 0 ? 100 : (means.doneMin / means.expectedMin * 100).round();
+      delta = means.expectedMin <= 0 ? fmtMin(means.doneMin) : (diff >= 0 ? '+${fmtMin(diff)}' : '−${fmtMin(-diff)}');
+    } else if (pct != null) {
+      bar = (done: pct, total: 1, expected: progress.weekElapsed);
+      pctInt = (pct * 100).round();
+      delta = '$pctInt %';
+    } else {
+      pctInt = 100;
+      delta = '';
+    }
+    final sub = <String>[
+      if (means != null) '${fmtMin(means.doneMin)} investies · attendu ${fmtMin(means.expectedMin)}',
+      if (means == null && o.kpiTarget != null && o.kpiTarget!.isNotEmpty) o.kpiTarget!,
+      if (progress.daysLeft != null) '${progress.daysLeft} j restants',
+      if (isReadingDue(o, DateTime.now())) 'relevé à noter',
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: StatusRow(
+        leading: const Icon(Icons.flag_rounded, color: kObjectiveAccent),
+        title: o.title,
+        sub: sub.isEmpty ? null : sub,
+        bar: bar,
+        pct: pctInt,
+        delta: delta.isEmpty ? null : delta,
+        onTap: () => _showDetail(o),
+        onLongPress: () => _edit(o),
       ),
     );
   }
+
+  Widget _plainRow(StrategicObjective o, String chip) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: StatusRow(
+          leading: Icon(chip == 'atteint' ? Icons.check_rounded : Icons.inventory_2_outlined),
+          title: o.title,
+          sub: o.kpiTarget,
+          muted: chip == 'atteint',
+          trailing: TextButton(
+            onPressed: () => _reactivate(o),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: kObjectiveAccent),
+            child: const Text('Réactiver'),
+          ),
+          onTap: () => _showDetail(o),
+        ),
+      );
 }

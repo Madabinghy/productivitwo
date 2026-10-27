@@ -31,7 +31,7 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
 | 2 | **Actions** | ACTION DU MOMENT = action du bloc en cours, sinon la plus urgente faisable ici ; anneau = étapes faites ; geste = Étape suivante ou ▶ Chrono | groupes par urgence en sections d'une seule liste ; filtres J'ai / Je suis / Pour repliés dessous | fiche action : porteur + tâche en entier, ÉTAPES, DÉTAIL (note), ÉCHÉANCE, gestes (Chrono · Caser demain · Fait · Rattacher) | **livré** |
 | 3 | **Stats** | MA SEMAINE : anneau = engagements d'objectifs tenus (décision 2026-10-26), geste = rapport de la semaine | une ligne par domaine : fait / minimum vital, repère « attendu à ce jour » | fiche domaine : la feuille existante (`_showDomainDetail`) pour l'instant ; fiche « Ma semaine » absorbe jauges du jour, courbe de la semaine, Élan, temps, camembert, retards | **livré** |
 | 4 | **Aujourd'hui** | MAINTENANT reste la carte (inchangée dans l'esprit) | le programme est la liste ; Routines et Objectifs = deux lignes « en parallèle » dont la fiche ouvre la vue du moment ; plus de pilule à trois segments | fiche du bloc (l'écran bloc devient une feuille `showFiche`) : Projet › Tâche, étapes, « ensuite dans cette tâche », Bloc terminé | **livré** |
-| 5 | **Objectifs** + harmonisation | déjà le modèle ; la carte « Relevé de la semaine » disparaît (le relevé dû est le geste de la carte) ; archivés en section repliée avec « Réactiver » | migrer la carte Objectif du moment et la carte Routine du moment sur `MomentCard` | — | à faire |
+| 5 | **Objectifs** + harmonisation | déjà le modèle ; la carte « Relevé de la semaine » disparaît (le relevé dû est le geste de la carte) ; archivés en section repliée avec « Réactiver » | carte Objectif du moment partagée (`ObjectiveMomentCard`) et carte Routine du moment migrées sur `MomentCard` | fiche trajectoire inchangée + confirmation sur Archiver | **livré** |
 
 ## Lot 1 — détail (livré)
 
@@ -98,3 +98,20 @@ repliés sous la liste, les écrans existants derrière les fiches (plan d'actio
   étapes, « Étape suivante », ensuite dans cette tâche, faites, Voir la tâche, Bloc terminé) mais en feuille
   `showFiche` avec `FicheHeader` (▶ chrono en tête, titre de la tâche, chip « en cours · reste 52 min » / « à 14:00 » /
   « fait », ligne projet · créneau). Routage inchangé (`_openBlockSource`, `main.dart`).
+
+## Lot 5 — détail (livré)
+
+- `widgets/objective_moment_card.dart` (`ObjectiveMomentCard`) : la carte OBJECTIF DU MOMENT sur `MomentCard`, partagée
+  par l'onglet Objectifs (`objectives_card.dart`, sans blocs du programme) et la fiche Objectifs d'Aujourd'hui
+  (`objectives_day_view.dart`, avec les blocs). Même geste qu'avant (`ObjectiveMove`), « Fiche » = trajectoire,
+  « Enchaîner · n choses » quand un `onChainObjective` est fourni.
+- **Onglet Objectifs** (`objectives_card.dart`) : carte du moment en tête, section « OBJECTIFS · n » avec « + Nouveau »,
+  une ligne `StatusRow` par objectif (barre temps investi fait / total avec repère « attendu aujourd'hui », sinon
+  jauge hebdo ; écart « −2h18 » / « +0h40 » / « n % » ; sous-ligne investi · attendu · j restants · relevé à noter ; tap
+  = fiche, appui long = éditer), et **« ARCHIVÉS · n »** repliée (atteints + archivés, bouton **Réactiver**, tap = fiche).
+  La carte « Relevé de la semaine » (`objective_readings_card.dart`) n'est plus affichée nulle part (le relevé dû est le
+  geste de la carte du moment et une mention dans la ligne) ; le fichier reste.
+- **Confirmation sur Archiver** dans la fiche trajectoire (`_setStatus`).
+- **Routine du moment** (`routines_day_view.dart`) : la carte passe sur `MomentCard` (nouveaux slots `detail` = pilule
+  chrono + ⏱ + réglages, `actions` = rangée +1 / −1 / Suivante / Pas maintenant ▾ + menu + Enchaîner) ; comportement
+  inchangé. `MomentCard` gagne `detail` et `actions`.
