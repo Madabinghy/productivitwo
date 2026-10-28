@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/elan_view.dart' show todayElanValues;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/web/mode_web.dart';
 import 'dart:async';
@@ -343,6 +344,8 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
             hasAssistantMessages: _assistantMessages.isNotEmpty,
             autoPlan: _autoPlan,
             mode: _mode,
+            elanTrail: todayElanValues(_moodMarks, DateTime.now(), _dayStartMin).values,
+            elanCurrent: todayElanValues(_moodMarks, DateTime.now(), _dayStartMin).current,
             overdueCount: overdueActionCount(_projects, DateTime.now()),
             onMyCoach: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const CoachSpaceScreen())),

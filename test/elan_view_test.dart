@@ -72,4 +72,12 @@ void main() {
     expect(w.last.mean, 3.0);
     expect(w.last.count, 2);
   });
+
+  test('todayElanValues : trois valeurs (null = pas pointé) et le créneau courant', () {
+    final marks = [elan(DateTime(2026, 10, 28, 7, 12), 2), elan(DateTime(2026, 10, 28, 13, 40), 3)];
+    final t = todayElanValues(marks, now, 5 * 60);
+    expect(t.values, [2, 3, null]);
+    expect(t.current, 1);
+    expect(todayElanValues(const [], DateTime(2026, 10, 28, 21), 5 * 60).values, [null, null, null]);
+  });
 }

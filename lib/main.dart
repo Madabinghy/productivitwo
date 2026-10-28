@@ -41,7 +41,6 @@ import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
-import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/coach_space_sheet.dart';
 import 'package:productivitwo_v1/widgets/data_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
@@ -5316,6 +5315,11 @@ class _AppRootState extends State<AppRoot>
                 );
               },
             ),
+            // Mode du jour + traînée d'élan (matin · aprem · soir) ; tap = la feuille.
+            Padding(
+              padding: const EdgeInsets.only(left: 6),
+              child: ModePill(logic: logic, badges: _badges),
+            ),
             const Spacer(),
             // (Indicateur composite gamifié supprimé avec la couche jeu.)
             Stack(
@@ -6957,7 +6961,6 @@ class _AppRootState extends State<AppRoot>
             },
           ),
         )),
-        (title: 'ÉLAN', child: ElanStatsCards(logic: logic, sync: _sync)),
         // Lecture du temps (venue d'Objectifs, allègement 2026-10) : heatmap par
         // domaine, 12 semaines, camembert du jour.
         (title: 'TEMPS PAR DOMAINE · 12 SEMAINES', child: Padding(
@@ -6974,6 +6977,7 @@ class _AppRootState extends State<AppRoot>
           WeekStatsView(
             logic: logic,
             sync: _sync,
+            badges: _badges,
             onOpenDomain: (d, {focus = 'time'}) async {
               final goNow = await _showDomainDetail(d, startCal, endCal, days, focus: focus);
               if (!mounted) return goNow;

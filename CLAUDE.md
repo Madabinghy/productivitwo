@@ -363,7 +363,10 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   AUJOURD'HUI, CETTE SEMAINE (`ElanWeekGraph` : un point par pointage, anneau vert = fenêtre de flemme gagnée, trait de
   moyenne), FACE À LA FLEMME, 30 DERNIERS JOURS (`ElanMonthGrid`, tap = le jour) + 3 chiffres + TENDANCE, CE QUE ÇA VAUT
   (Marée haute, Vent contraire, Malgré tout, Baromètre). Programmes via `BadgeCenter.schedules` quand il est passé, sinon
-  61 jours relus.
+  61 jours relus. **Pilule du mode** (`ModePill`, barre du haut mobile + carte MAINTENANT ; `WebModePill` web, visible
+  dès qu'un pointage existe) = mode + traînée `ElanTrail` des trois créneaux du jour (`todayElanValues`). Stats : ligne
+  « Élan · 2,9 / 5 » (`_elanRow`, mini-courbe 7 j, tap = feuille) ; la carte « Élan & discipline » n'est plus dans la
+  fiche Ma semaine (elle reste sur le web).
 - `list_badges()` / `hunt_badge(action: set|remove, badgeId, tier?, targetDate?)` — **badges et chasse** (lot B,
   2026-10) : le deck est calculé par l'APP (`lib/utils/badges_logic.dart`, `BadgeCenter`) qui dépose un instantané dans
   `users/{uid}/data/badges` à chaque recalcul ; le serveur ne recalcule rien (`functions/src/badges_mcp.ts`). Chasses dans
