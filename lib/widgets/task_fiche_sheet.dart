@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr, rootProjectOf;
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -29,6 +29,7 @@ Future<void> showTaskFiche(
   required Project project,
   required ProjectTask task,
   List<Activity> activities = const [],
+  List<Project> allProjects = const [],
   FirestoreSync? sync,
   AppLogic? logic,
   void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
@@ -41,6 +42,7 @@ Future<void> showTaskFiche(
       project: project,
       task: task,
       activities: activities,
+      allProjects: allProjects,
       sync: sync ?? FirestoreSync(),
       logic: logic,
       onStartTimer: onStartTimer,
@@ -60,6 +62,7 @@ class _TaskFiche extends StatefulWidget {
   final Project project;
   final ProjectTask task;
   final List<Activity> activities;
+  final List<Project> allProjects;
   final FirestoreSync sync;
   final AppLogic? logic;
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
@@ -70,6 +73,7 @@ class _TaskFiche extends StatefulWidget {
     required this.project,
     required this.task,
     required this.activities,
+    this.allProjects = const [],
     required this.sync,
     required this.logic,
     required this.onStartTimer,
@@ -614,9 +618,12 @@ class _TaskFicheState extends State<_TaskFiche> {
                 : t.todayFlag
                     ? ('au programme', cs.primary)
                     : ('à faire', kPalierMuted);
+    final root = widget.allProjects.isEmpty ? null : rootProjectOf(p, widget.allProjects);
+    final session = t.interventionId == null ? null : p.interventions.where((i) => i.id == t.interventionId).firstOrNull;
     final kpi = <String>[
       p.title,
-      if (phase != null && phase.isNotEmpty) phase,
+      if (root != null && root.id != p.id) 'Pour ${root.title}',
+      if (session != null) 'séance du ${shortDateFr(session.date, today: today)}' else if (phase != null && phase.isNotEmpty) phase,
       '${shortDateFr(t.startDate)}${t.endDate != null ? ' → ${shortDateFr(t.endDate!)}' : ''}',
       if (t.actions.isNotEmpty) '${done.length} / ${t.actions.length} action${t.actions.length > 1 ? 's' : ''}',
       if (spentMin > 0) '⏱ ${fmtMin(spentMin)} passées',
@@ -684,7 +691,7 @@ class _TaskFicheState extends State<_TaskFiche> {
             for (final a in done) _actionRow(cs, a, today, running, spent),
         ],
         ListSectionTitle('DÉTAIL', onAction: () => setState(() => _detailOpen = !_detailOpen), expanded: _detailOpen),
-        if (_detailOpen) ..._detail(cs, phase),
+        if (_detailOpen) ..._detail(cs, phase, session),
         FicheActions(
           primaryLabel: primaryLabel,
           primaryIcon: primaryIcon,
@@ -725,9 +732,9 @@ class _TaskFicheState extends State<_TaskFiche> {
       if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
       if (sp != null) sp.label,
       if (!a.done && due != null && a.dueDate != null) '⚑ ${actionDueLabel(due, today)}',
-      if (a.done && a.doneAt != null) 'faite ${shortDateFr(a.doneAt!, today: today)}',
+      if (a.done) 'faite${a.doneAt != null ? ' ${shortDateFr(a.doneAt!, today: today)}' : ''}${(spent[a.id] ?? 0) > 0 ? ' · ${fmtMin(spent[a.id]!)}' : ''}',
     ].join(' · ');
-    final chipLabel = a.done ? null : (isRunning ? 'en cours' : (late ? 'en retard' : null));
+    final chipLabel = a.done ? null : (isRunning ? 'en cours' : (late ? 'en retard' : 'à faire'));
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: StatusRow(
@@ -756,7 +763,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     );
   }
 
-  List<Widget> _detail(ColorScheme cs, String? phase) {
+  List<Widget> _detail(ColorScheme cs, String? phase, ProjectIntervention? session) {
     final text3 = cs.onSurface.withValues(alpha: .55);
     final linked = widget.activities.where((x) => x.id == p.linkedActivityId).firstOrNull;
     Widget row(IconData icon, String title, String? sub, {VoidCallback? onTap}) => InkWell(
@@ -788,7 +795,13 @@ class _TaskFicheState extends State<_TaskFiche> {
       row(Icons.calendar_month_outlined, '${shortDateFr(t.startDate)} → ${t.endDate == null ? '—' : shortDateFr(t.endDate!)}',
           [if (phase != null && phase.isNotEmpty) 'phase $phase', if (t.estimatedMin != null) 'estimation ${fmtMin(t.estimatedMin!)}', if (t.isMilestone) 'jalon'].join(' · '),
           onTap: _editTask),
-      if (t.interventionRole != null) row(Icons.event_rounded, 'Tâche de séance', 'rôle ${t.interventionRole} · ${isPrepTask(t) ? 'préparation' : isMilestoneTask(t) ? 'la séance' : 'clôture et bilan'}'),
+      if (t.interventionRole != null) ...[
+        row(Icons.event_rounded, isPrepTask(t) ? 'Préparation de la séance' : isMilestoneTask(t) ? 'La séance' : 'Clôture de la séance',
+            session == null ? 'rôle ${t.interventionRole}' : 'séance du ${shortDateFr(session.date)}${session.place != null ? ' · ${session.place}' : ''}'),
+        if (isClosureTask(t))
+          row(Icons.rate_review_outlined, 'Bilan de la séance',
+              (session?.debriefText ?? '').trim().isEmpty ? 'à remplir · nourrit la prépa de la séance suivante' : session!.debriefText!.trim()),
+      ],
       row(Icons.timer_outlined, linked == null ? 'Aucune activité liée au projet' : linked.name, linked == null ? 'le chrono d\'une action passe par son activité liée' : 'activité liée du projet · le chrono de la tâche y compte'),
       row(Icons.description_outlined, _docCount == null ? 'Documents' : (_docCount == 0 ? 'Aucun document' : '$_docCount document${_docCount! > 1 ? 's' : ''}'), 'programmes, briefs, livrables', onTap: _openDocs),
     ];

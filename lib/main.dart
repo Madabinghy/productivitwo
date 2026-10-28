@@ -3609,6 +3609,7 @@ class _AppRootState extends State<AppRoot>
         children: [
           _buildObjectivesBody(context),
           GoalsView(
+            logic: logic,
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
             sessions: _state?.sessions ?? [],
