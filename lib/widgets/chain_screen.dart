@@ -8,7 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
+import 'package:productivitwo_v1/utils/chain_session.dart';
 import 'package:productivitwo_v1/utils/objective_day.dart' show buildObjectiveDays;
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -92,8 +94,11 @@ class _ChainScreenState extends State<_ChainScreen> {
   // Choix de la session : écrans remis à plus tard (fin de file) et écartés.
   final List<String> _deferred = [];
   final Set<String> _dismissed = {};
-  late final DateTime _startedAt;
+  late DateTime _startedAt;
   int _doneCount = 0;
+  /// Session en attente reprise (même id de ChainRun → la session écrite est réécrite, total cumulé).
+  String? _runId;
+  int _resumedCount = 0;
   /// Instants des choses faites dans la session (chips du récap : « dont 2 malgré tout »).
   final List<DateTime> _doneAts = [];
   int _totalAtStart = 0;
@@ -142,9 +147,11 @@ class _ChainScreenState extends State<_ChainScreen> {
         _blocks = blocks;
         if (!_loaded) {
           _loaded = true;
-          final first = _ordered();
-          _totalAtStart = first.length;
-          _firstBlockId = first.where((i) => !i.synthetic).firstOrNull?.block.id;
+          if (!_restorePending()) {
+            final first = _ordered();
+            _totalAtStart = first.length;
+            _firstBlockId = first.where((i) => !i.synthetic).firstOrNull?.block.id;
+          }
         }
       });
       _afterChange();
@@ -164,8 +171,69 @@ class _ChainScreenState extends State<_ChainScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Session en attente du même jour vécu, inactive depuis moins de 45 min :
+  /// on repart où on en était, et ce qui a été fait pendant la pause compte.
+  bool _restorePending() {
+    if (widget.objective != null || widget.small) return false;
+    final pc = ChainSessionStore.current;
+    final now = DateTime.now();
+    if (pc == null || !pc.isLive(now, widget.date)) {
+      if (pc != null) ChainSessionStore.clear();
+      return false;
+    }
+    final extra = resumedDoneAts(_blocks, logic.state.habitHits, logic.state.activities,
+        since: pc.lastActiveAt, now: now, dayStartMin: logic.dayStartMin, finishedBlocks: pc.finishedBlocks);
+    _runId = pc.runId;
+    _startedAt = pc.startedAt;
+    _doneCount = pc.doneCount + extra.length;
+    _doneAts
+      ..clear()
+      ..addAll(pc.doneAts)
+      ..addAll(extra);
+    _deferred
+      ..clear()
+      ..addAll(pc.deferred);
+    _dismissed
+      ..clear()
+      ..addAll(pc.dismissed);
+    _finishedBlocks
+      ..clear()
+      ..addAll(pc.finishedBlocks);
+    _firstBlockId = pc.firstBlockId;
+    _lastBlockId = pc.lastBlockId;
+    _totalAtStart = pc.totalAtStart;
+    _resumedCount = extra.length;
+    return true;
+  }
+
+  /// Mémorise la session (reprenable depuis MAINTENANT) ; jamais pour une
+  /// file d'objectif ni « petites choses ».
+  void _persist() {
+    if (widget.objective != null || widget.small || !_loaded) return;
+    ChainSessionStore.save(PendingChain(
+      runId: _runId ??= ChainRun(date: widget.date, startedAt: _startedAt, endedAt: _startedAt, doneCount: 0, total: 0, completed: false).id,
+      date: widget.date,
+      startedAt: _startedAt,
+      lastActiveAt: DateTime.now(),
+      doneCount: _doneCount,
+      doneAts: List.of(_doneAts),
+      deferred: List.of(_deferred),
+      dismissed: Set.of(_dismissed),
+      finishedBlocks: Set.of(_finishedBlocks),
+      firstBlockId: _firstBlockId,
+      lastBlockId: _lastBlockId,
+      totalAtStart: _totalAtStart,
+    ));
+  }
+
+  /// Fin réelle de la session : « Terminer » dans le récap ou file vide.
+  void _closeSession() {
+    if (widget.objective == null && !widget.small) ChainSessionStore.clear();
+  }
+
   @override
   void dispose() {
+    if (!_summary || !_ordered().isEmpty) _persist();
     WakelockPlus.disable().catchError((_) {});
     logic.removeListener(_onLogic);
     _sub?.cancel();
@@ -243,6 +311,7 @@ class _ChainScreenState extends State<_ChainScreen> {
   /// nouveau bloc affiché → chrono dessus.
   void _afterChange() {
     if (!mounted || _summary) return;
+    _persist();
     final items = _ordered();
     final cur = items.firstOrNull;
     if (_enteredBlockId != null &&
@@ -943,6 +1012,7 @@ class _ChainScreenState extends State<_ChainScreen> {
         .toList()
       ..sort((a, b) => a.startTime.compareTo(b.startTime));
     final run = ChainRun(
+      id: _runId,
       date: widget.date,
       startedAt: _startedAt,
       endedAt: DateTime.now(),
@@ -954,8 +1024,10 @@ class _ChainScreenState extends State<_ChainScreen> {
       programFirstBlockId: program.firstOrNull?.id,
       programLastBlockId: program.lastOrNull?.id,
     );
+    _runId = run.id;
     logic.recordChainRun(run);
     widget.sync.saveChainRun(run);
+    if (!_exited) _closeSession();
   }
 
   Widget _summaryView(NowPalette pal, List<ChainItem> remaining) {
@@ -996,6 +1068,14 @@ class _ChainScreenState extends State<_ChainScreen> {
           const SizedBox(height: 8),
           Center(child: r),
         ],
+        if (widget.objective == null) ...[
+          const SizedBox(height: 8),
+          Text(
+            chainCountLine(_doneCount) + (_resumedCount > 0 ? ' · $_resumedCount faite${_resumedCount > 1 ? 's' : ''} pendant la pause' : ''),
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _doneCount >= kChainCountedMin ? pal.primary : pal.text3),
+          ),
+        ],
         const SizedBox(height: 24),
         Expanded(
           child: byBlock.isEmpty
@@ -1030,7 +1110,25 @@ class _ChainScreenState extends State<_ChainScreen> {
                 ]),
         ),
         const SizedBox(height: 8),
-        _primary('Revenir à Aujourd\'hui', () => Navigator.of(context).pop(), icon: Icons.arrow_back_rounded),
+        if (byBlock.isEmpty || widget.objective != null || widget.small)
+          _primary('Revenir à Aujourd\'hui', () => Navigator.of(context).pop(), icon: Icons.arrow_back_rounded)
+        else ...[
+          // Sortie = pause : la session reste reprenable 45 min depuis MAINTENANT.
+          _primary('Reprendre plus tard', () {
+            _persist();
+            Navigator.of(context).pop();
+          }, icon: Icons.pause_circle_outline),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              onPressed: () {
+                _closeSession();
+                Navigator.of(context).pop();
+              },
+              child: Text('Terminer la session', style: TextStyle(color: pal.text3, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
       ]),
     );
   }
