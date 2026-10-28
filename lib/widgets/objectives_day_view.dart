@@ -249,7 +249,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
           child: Row(children: [
             Expanded(
               child: Text('${i.title}${i.detail.isEmpty ? '' : ' · ${i.detail}'}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .85))),
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .85))),
             ),
             if (button(i) case final w?) ...[const SizedBox(width: 8), w],
           ]),
