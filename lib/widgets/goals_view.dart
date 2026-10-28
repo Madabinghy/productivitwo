@@ -163,7 +163,7 @@ class _GoalsViewState extends State<GoalsView> {
       return;
     }
     showTaskDetail(context,
-        project: m.project, task: n.task, activities: widget.activities, sync: _sync, expandActionId: n.action.id);
+        project: m.project, task: n.task, activities: widget.activities, sync: _sync, expandActionId: n.action.id, onStartTimer: widget.onStartTimer);
   }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);
