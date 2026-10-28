@@ -1731,10 +1731,13 @@ class AppLogic implements HuntStore {
   MoodMark logMood(String kind, int value, {String? moment, ScheduleBlock? block}) {
     final now = DateTime.now();
     final ymd = livedProgramYmd(now, dayStartMin);
-    state.moodMarks.removeWhere((m) =>
-        m.kind == kind &&
-        m.ymd == ymd &&
-        (kind == kMoodElan ? m.moment == moment : kind == kMoodEffort ? m.blockId == block?.id : true));
+    bool same(MoodMark m) =>
+        m.kind == kind && m.ymd == ymd && (kind == kMoodElan ? m.moment == moment : kind == kMoodEffort ? m.blockId == block?.id : true);
+    final replaced = state.moodMarks.where(same).map((m) => m.id).toList();
+    state.moodMarks.removeWhere(same);
+    // Le pointage remplacé disparaît aussi de Firestore, sinon il revient à la
+    // fusion suivante (un clic = un document, 67 « pointages » dans la semaine).
+    if (replaced.isNotEmpty) sync?.deleteMoodMarks(replaced).catchError((_) {});
     final mark = MoodMark(
       at: now,
       ymd: ymd,

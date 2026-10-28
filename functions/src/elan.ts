@@ -88,14 +88,38 @@ export interface ElanWindow {
   endMs: number;
 }
 
+/** Clé « un pointage par … » (miroir de `moodMarkKey`, lib/utils/elan_logic.dart) :
+ *  élan par (jour vécu, créneau), effort par (jour, bloc), humeur par jour. */
+export function moodMarkKey(m: MoodMarkDoc): string {
+  if (m.kind === "elan") {
+    const t = Date.parse(m.at);
+    const d = isFinite(t) ? new Date(t) : null;
+    const bucket = m.moment ?? (d ? elanBucket(d.getUTCHours() * 60 + d.getUTCMinutes()) : "matin");
+    return `elan:${m.ymd}:${bucket}`;
+  }
+  if (m.kind === "effort") return `effort:${m.ymd}:${m.blockId ?? m.id}`;
+  return `${m.kind}:${m.ymd}`;
+}
+
+/** Un seul pointage par clé, le plus récent gagne (les documents remplacés par un
+ *  nouveau clic restaient en base avant 2026-10). */
+export function dedupeMoodMarks(marks: MoodMarkDoc[]): MoodMarkDoc[] {
+  const best = new Map<string, MoodMarkDoc>();
+  for (const m of marks) {
+    const k = moodMarkKey(m);
+    const cur = best.get(k);
+    if (!cur || Date.parse(m.at) > Date.parse(cur.at)) best.set(k, m);
+  }
+  return [...best.values()].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
 export function elanWindows(
   marks: MoodMarkDoc[],
   ymd: string,
   offsetMin: number | null | undefined,
   dayStartMin = DEFAULT_DAY_START_MIN
 ): ElanWindow[] {
-  const ms = marks
-    .filter((m) => m.kind === "elan" && m.ymd === ymd)
+  const ms = dedupeMoodMarks(marks.filter((m) => m.kind === "elan" && m.ymd === ymd))
     .map((m) => ({ m, t: Date.parse(m.at) }))
     .filter((x) => isFinite(x.t))
     .sort((a, b) => a.t - b.t);

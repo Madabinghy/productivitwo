@@ -63,12 +63,40 @@ class ElanWindow {
   bool get low => mark.lowElan;
 }
 
-/// Fenêtres des pointages d'élan d'un jour vécu, dans l'ordre.
+/// Clé « un pointage par … » : élan par (jour vécu, créneau), effort par (jour,
+/// bloc), humeur par jour. Deux documents sur la même clé = un pointage
+/// REMPLACÉ (l'app ne garde que le dernier ; avant 2026-10 l'ancien document
+/// restait en base et revenait à la fusion suivante : 67 « pointages » dans la
+/// semaine). Miroir TypeScript : `functions/src/elan.ts` (**garder alignés**).
+String moodMarkKey(MoodMark m) => switch (m.kind) {
+      kMoodElan => 'elan:${m.ymd}:${m.moment ?? elanBucket(m.at.hour * 60 + m.at.minute)}',
+      kMoodEffort => 'effort:${m.ymd}:${m.blockId ?? m.id}',
+      _ => '${m.kind}:${m.ymd}',
+    };
+
+/// Un seul pointage par clé, le plus récent gagne ; triés par instant.
+List<MoodMark> dedupeMoodMarks(Iterable<MoodMark> marks) {
+  final best = <String, MoodMark>{};
+  for (final m in marks) {
+    final k = moodMarkKey(m);
+    final cur = best[k];
+    if (cur == null || m.at.isAfter(cur.at)) best[k] = m;
+  }
+  return best.values.toList()..sort((a, b) => a.at.compareTo(b.at));
+}
+
+/// Les pointages que [kept] a remplacés (même clé, plus anciens).
+List<MoodMark> supersededMoodMarks(Iterable<MoodMark> all) {
+  final keptIds = dedupeMoodMarks(all).map((m) => m.id).toSet();
+  return all.where((m) => !keptIds.contains(m.id)).toList();
+}
+
+/// Fenêtres des pointages d'élan d'un jour vécu, dans l'ordre (un par créneau).
 List<ElanWindow> elanWindows(List<MoodMark> marks, String ymd, {int dayStartMin = kDefaultDayStartMin}) {
   final day = DateTime.tryParse(ymd);
   if (day == null) return const [];
   final dayEnd = DateTime(day.year, day.month, day.day + 1).add(Duration(minutes: dayStartMin));
-  final ms = marks.where((m) => m.kind == kMoodElan && m.ymd == ymd).toList()..sort((a, b) => a.at.compareTo(b.at));
+  final ms = dedupeMoodMarks(marks.where((m) => m.kind == kMoodElan && m.ymd == ymd));
   return [
     for (var i = 0; i < ms.length; i++) ElanWindow(ms[i], i + 1 < ms.length ? ms[i + 1].at : dayEnd),
   ];
@@ -183,6 +211,7 @@ DisciplineStats disciplineStats({
   int dayStartMin = kDefaultDayStartMin,
 }) {
   final byYmd = {for (final s in schedules) s.date: s};
+  marks = dedupeMoodMarks(marks);
   final ymds = marks.where((m) => m.kind == kMoodElan).map((m) => m.ymd).toSet();
   final wins = <DateTime>[];
   final mean = <String, double>{};

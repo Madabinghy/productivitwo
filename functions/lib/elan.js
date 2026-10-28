@@ -16,6 +16,8 @@ exports.elanBucket = elanBucket;
 exports.parisOffsetMin = parisOffsetMin;
 exports.livedParts = livedParts;
 exports.livedDayEndMs = livedDayEndMs;
+exports.moodMarkKey = moodMarkKey;
+exports.dedupeMoodMarks = dedupeMoodMarks;
 exports.elanWindows = elanWindows;
 exports.winsIn = winsIn;
 exports.elanSummary = elanSummary;
@@ -67,9 +69,34 @@ function livedDayEndMs(ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_M
     const approx = new Date(nextLocal);
     return nextLocal - offsetFor(approx, offsetMin) * 60000;
 }
+/** Clé « un pointage par … » (miroir de `moodMarkKey`, lib/utils/elan_logic.dart) :
+ *  élan par (jour vécu, créneau), effort par (jour, bloc), humeur par jour. */
+function moodMarkKey(m) {
+    var _a, _b;
+    if (m.kind === "elan") {
+        const t = Date.parse(m.at);
+        const d = isFinite(t) ? new Date(t) : null;
+        const bucket = (_a = m.moment) !== null && _a !== void 0 ? _a : (d ? elanBucket(d.getUTCHours() * 60 + d.getUTCMinutes()) : "matin");
+        return `elan:${m.ymd}:${bucket}`;
+    }
+    if (m.kind === "effort")
+        return `effort:${m.ymd}:${(_b = m.blockId) !== null && _b !== void 0 ? _b : m.id}`;
+    return `${m.kind}:${m.ymd}`;
+}
+/** Un seul pointage par clé, le plus récent gagne (les documents remplacés par un
+ *  nouveau clic restaient en base avant 2026-10). */
+function dedupeMoodMarks(marks) {
+    const best = new Map();
+    for (const m of marks) {
+        const k = moodMarkKey(m);
+        const cur = best.get(k);
+        if (!cur || Date.parse(m.at) > Date.parse(cur.at))
+            best.set(k, m);
+    }
+    return [...best.values()].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
 function elanWindows(marks, ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_MIN) {
-    const ms = marks
-        .filter((m) => m.kind === "elan" && m.ymd === ymd)
+    const ms = dedupeMoodMarks(marks.filter((m) => m.kind === "elan" && m.ymd === ymd))
         .map((m) => ({ m, t: Date.parse(m.at) }))
         .filter((x) => isFinite(x.t))
         .sort((a, b) => a.t - b.t);

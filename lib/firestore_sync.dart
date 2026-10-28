@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/intervention_builder.dart';
 import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/gold_economy.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart' show dedupeMoodMarks;
 import 'package:productivitwo_v1/battle_sim.dart';
 import 'package:productivitwo_v1/territory.dart';
 import 'package:productivitwo_v1/dev_logger.dart';
@@ -590,7 +591,8 @@ class FirestoreSync {
       }(),
       sessions:      mergeSessions(local.sessions, remote.sessions, DateTime.now()),
       habitHits:     union(local.habitHits,     remote.habitHits,     (h) => h.id),
-      moodMarks:     union(local.moodMarks,     remote.moodMarks,     (m) => m.id),
+      // Un pointage par créneau : les documents remplacés (anciens clics) ne reviennent pas.
+      moodMarks:     dedupeMoodMarks(union(local.moodMarks, remote.moodMarks, (m) => m.id)),
       chainRuns:     union(local.chainRuns,     remote.chainRuns,     (r) => r.id),
       redemptions:   union(local.redemptions,   remote.redemptions,   (r) => r.id),
       blocks:        union(local.blocks,        remote.blocks,        (b) => b.id),
@@ -1186,6 +1188,19 @@ class FirestoreSync {
   Future<void> saveMoodMark(MoodMark m) async {
     if (uid == null) return;
     await _col('mood_marks').doc(m.id).set(m.toJson());
+  }
+
+  /// Pointages REMPLACÉS (même jour vécu, même créneau / bloc) : suppression
+  /// réelle, ce ne sont pas des faits mais des brouillons du pointage gardé.
+  Future<void> deleteMoodMarks(Iterable<String> ids) async {
+    if (uid == null) return;
+    final batch = _db.batch();
+    var n = 0;
+    for (final id in ids) {
+      batch.delete(_col('mood_marks').doc(id));
+      n++;
+    }
+    if (n > 0) await batch.commit();
   }
 
   // Reconquête : persiste un crédit (registre découplé du relevé factuel).
