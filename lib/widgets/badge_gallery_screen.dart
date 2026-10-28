@@ -9,7 +9,7 @@ import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlusWithUndo;
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
 
@@ -462,7 +462,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         actions: BadgeTodayActions(
           routinePlus: (id) {
             final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
-            if (a != null) routinePlus(widget.logic, a);
+            if (a != null) routinePlusWithUndo(context, widget.logic, a);
           },
           pointElan: () => showModeSheet(context, widget.logic, badges: widget.center),
         ),

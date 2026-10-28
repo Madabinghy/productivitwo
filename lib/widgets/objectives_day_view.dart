@@ -16,7 +16,7 @@ import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineMinus, routineTodayCount;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlusWithUndo, routineMinus, routineTodayCount;
 
 /// Segment « Objectifs » d'Aujourd'hui (2026-10) : par objectif en cours, ses
 /// engagements de temps au rythme du jour (▶ lance le chrono), ses routines
@@ -204,7 +204,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
   BadgeTodayActions _todayActions() => BadgeTodayActions(
         routinePlus: (id) {
           final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
-          if (a != null) routinePlus(widget.logic, a);
+          if (a != null) routinePlusWithUndo(context, widget.logic, a);
         },
         pointElan: () => showModeSheet(context, widget.logic, badges: widget.badges),
         openBlock: widget.onOpenSource,
@@ -297,7 +297,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       // Les gestes sont sur les lignes du jour.
     } else if (lever.kind == LeverKind.routine && routineId != null && !todayReached) {
       final a = widget.logic.state.activeActivities.where((x) => x.id == routineId).firstOrNull;
-      if (a != null) action = IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlus(widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary));
+      if (a != null) action = IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlusWithUndo(context, widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary));
     } else if (lever.kind == LeverKind.chain && widget.onChain != null) {
       action = IconButton(visualDensity: VisualDensity.compact, tooltip: 'Enchaîner', onPressed: widget.onChain, icon: Icon(Icons.playlist_play_rounded, color: cs.primary));
     }
@@ -415,7 +415,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       ]),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         IconButton(visualDensity: VisualDensity.compact, onPressed: count > 0 ? () => routineMinus(widget.logic, a) : null, icon: const Icon(Icons.remove_circle_outline, size: 22)),
-        IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlus(widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary)),
+        IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlusWithUndo(context, widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary)),
       ]),
     );
   }

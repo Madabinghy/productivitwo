@@ -46,6 +46,43 @@ void routinePlus(AppLogic logic, Activity a) {
   }
 }
 
+/// Ce que vaut UNE occurrence de plus : « Footing +1 · 2 / 3 cette semaine »
+/// (compte sur la fenêtre de la routine : jour, 7 j ou 30 j), avec l'état
+/// atteint le cas échéant. Logique d'affichage partagée.
+String routinePlusLabel(AppLogic logic, Activity a) {
+  final done = logic.activeHabitDone(a);
+  final target = logic.activeHabitTarget(a);
+  final period = switch (a.habitFreq) { HabitFreq.weekly => 'cette semaine', HabitFreq.monthly => 'ce mois', _ => 'aujourd\u2019hui' };
+  final reached = target > 0 && done >= target;
+  return '${a.name} +1 · $done / $target $period${reached ? ' · atteinte' : ''}';
+}
+
+/// +1 depuis un geste HORS des listes de routines (carte Objectif du moment,
+/// Badges visés, fiche badge, lignes d'un objectif) : le compte change sans
+/// qu'on le voie, donc un SnackBar dit ce qui a changé et « Annuler » retire
+/// l'occurrence (`routineMinus`). 2026-10, à la suite d'un « +1 · Footing »
+/// qui ne disait rien.
+void routinePlusWithUndo(BuildContext context, AppLogic logic, Activity a) {
+  routinePlus(logic, a);
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (messenger == null) return;
+  messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      content: Text(routinePlusLabel(logic, a)),
+      duration: const Duration(seconds: 5),
+      action: SnackBarAction(
+        label: 'Annuler',
+        onPressed: () {
+          routineMinus(logic, a);
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(content: Text('${a.name} : +1 annulé'), duration: const Duration(seconds: 2)));
+        },
+      ),
+    ));
+}
+
 /// Segment « Routines » d'Aujourd'hui : la journée vue par les routines —
 /// carte « Routine du moment » (+1 / −1 / Pas maintenant ▾), puis la journée
 /// par moments (moment courant ouvert, les autres repliés, « Toute la

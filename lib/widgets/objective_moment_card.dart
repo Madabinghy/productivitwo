@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineTodayCount;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlusWithUndo, routineTodayCount;
 
 const kObjectiveAccent = Color(0xFF00897B);
 
@@ -165,7 +165,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
         return (label: 'Chrono · ${t.name}', icon: Icons.play_arrow_rounded, onTap: t.activity == null ? null : () => widget.logic.start(t.activityId));
       case ObjectiveMoveKind.routine:
         final a = mv.routine!;
-        return (label: '+1 · ${a.name}', icon: null, onTap: () => routinePlus(widget.logic, a));
+        return (label: '+1 · ${a.name}', icon: null, onTap: () => routinePlusWithUndo(context, widget.logic, a));
       case ObjectiveMoveKind.reading:
         return (label: 'Noter un relevé', icon: Icons.edit_rounded, onTap: () => _fiche(m.objective));
       case ObjectiveMoveKind.nextAction:
