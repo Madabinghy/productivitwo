@@ -314,8 +314,14 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
+  /// Sections ouvertes par défaut (fermées seulement si on les a repliées :
+  /// marqueur « !titre » dans la mémoire) ; les autres sont fermées par défaut.
+  static bool _openByDefault(String title) => title.contains('12 SEMAINES');
+  bool _isOpen(String title) => _openByDefault(title) ? !_open.contains('!$title') : _open.contains(title);
+
   Future<void> _toggleSection(String key, void Function(void Function()) setLocal) async {
-    setLocal(() => _open.contains(key) ? _open.remove(key) : _open.add(key));
+    final k = _openByDefault(key) ? '!$key' : key;
+    setLocal(() => _open.contains(k) ? _open.remove(k) : _open.add(k));
     if (mounted) setState(() {});
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_kOpenKey, _open.toList());
@@ -332,13 +338,17 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       return StatefulBuilder(builder: (ctx, setLocal) {
         final cs = Theme.of(ctx).colorScheme;
         List<Widget> section(String title, List<Widget> body, {Widget? trailing}) {
-          final open = _open.contains(title);
+          final open = _isOpen(title);
           return [
             FicheTitle(title, trailing: trailing, expanded: open, onToggle: () => _toggleSection(title, setLocal)),
             if (open) ...body,
           ];
         }
 
+        // La tendance sur 12 semaines monte en tête (2026-10), dépliée par défaut.
+        final details = widget.weekDetails(ctx);
+        final trend = details.where((d) => _openByDefault(d.title)).toList();
+        final rest = details.where((d) => !_openByDefault(d.title)).toList();
         return ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
@@ -349,6 +359,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               chipColor: pct == null ? kPalierMuted : palierColor(pct),
               kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
             ),
+            for (final d in trend) ...section(d.title, [d.child]),
             FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS · À CE JOUR' : 'ROUTINES DE LA SEMAINE · À CE JOUR',
                 trailing: n == 0 ? null : FicheDelta('${w.kept} / $n au rythme', color: palierColor(pct ?? 0))),
             if (n == 0)
@@ -375,7 +386,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               [_distribution(ctx)],
               trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6)),
             ),
-            for (final d in widget.weekDetails(ctx)) ...section(d.title, [d.child]),
+            for (final d in rest) ...section(d.title, [d.child]),
             const SizedBox(height: 8),
             Text('Touche un titre pour déplier une lecture ; l\'onglet garde l\'essentiel.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45))),
