@@ -697,10 +697,9 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         child: Text(
                           'Sans phase',
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                            color: cs.onSurface.withOpacity(.4),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: cs.onSurface.withOpacity(.45),
                           ),
                         ),
                       ),
@@ -1259,30 +1258,33 @@ class _PhaseHeader extends StatelessWidget {
     }
     color ??= cs.primary;
 
+    // Le nom de la phase a toute la largeur (retour user 2026-10) : plus de
+    // capitales minuscules tronquées ni de filet qui lui vole la place.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 14, 0, 6),
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 8, height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
           ),
-          const SizedBox(width: 8),
-          Flexible(
+          const SizedBox(width: 10),
+          Expanded(
             child: Text(
-              phase.label.toUpperCase(),
-              maxLines: 1,
+              phase.label,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: .2,
+                height: 1.2,
                 color: color,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(child: Divider(color: cs.outlineVariant.withOpacity(.4))),
           if (onRename != null || onDelete != null)
             SizedBox(
               width: 30,
