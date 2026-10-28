@@ -72,8 +72,9 @@
             'sur cette source : le bloc compte. Un chrono long sans bloc de deep work (sommeil, séance, activité libre) ne compte pas. Paliers : 3, 10 et 30 blocs.',
       ),
     'enchaineur' => (
-        what: 'Des sessions du mode Enchaîner menées jusqu’au récap.',
-        how: 'Lance « Enchaîner » depuis MAINTENANT et déroule la file jusqu’à ce qu’elle soit vide, puis « Voir le récap ». « Sortir » avant la fin ne compte pas. 10 sessions.',
+        what: 'Des sessions du mode Enchaîner où tu as fait au moins trois choses d’affilée.',
+        how: 'Lance « Enchaîner » depuis MAINTENANT et fais au moins 3 choses dans la même session : elle compte, que tu la mènes au bout ou que tu sortes avant. '
+            'Sortir pour un détour ne la perd pas : « Reprendre l’enchaînement » sur MAINTENANT pendant 45 min. Paliers : 5, 20 et 50 sessions.',
       ),
     'plein-jour' => (
         what: 'Une session d’Enchaîner du premier au dernier bloc du programme du jour.',

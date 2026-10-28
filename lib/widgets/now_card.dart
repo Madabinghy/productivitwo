@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
+import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
@@ -91,6 +92,9 @@ class _NowCardState extends State<NowCard> {
   @override
   void initState() {
     super.initState();
+    ChainSessionStore.load().then((_) {
+      if (mounted) setState(() {});
+    });
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -570,6 +574,10 @@ class _NowCardState extends State<NowCard> {
 
   /// « Enchaîner · 6 choses jusqu'à 18:00 » ; null si la file est vide.
   String? _chainHint({bool small = false}) {
+    final pc = ChainSessionStore.current;
+    if (!small && pc != null && pc.isLive(DateTime.now(), widget.logic.livedTodayYmd)) {
+      return 'Reprendre l\'enchaînement · ${pc.doneCount} faite${pc.doneCount > 1 ? 's' : ''}';
+    }
     if (small) {
       final n = smallChain(buildChain(
         blocks: _blocks,

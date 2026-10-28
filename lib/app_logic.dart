@@ -1784,6 +1784,8 @@ class AppLogic implements HuntStore {
 
   /// Enregistre une session d'Enchaîner (récap atteint) pour les badges.
   void recordChainRun(ChainRun r) {
+    // Une session reprise réécrit la même (même id) : total cumulé, pas de doublon.
+    state.chainRuns.removeWhere((x) => x.id == r.id);
     state.chainRuns.add(r);
     onChange();
   }

@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
+import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
@@ -753,18 +754,19 @@ BadgeDeck computeBadges({
       if (deep.isNotEmpty) ('Le dernier', _fmtDate(deep.last)),
     ],
   ));
-  // Enchaîner : sessions menées au bout (récap atteint, file vide) et journées entières.
-  final completedRuns = chainRuns.where((r) => r.completed).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
-  final fullDays = completedRuns.where((r) => r.fullDay).toList();
+  // Enchaîner (règle 2026-10) : une session compte dès 3 choses faites d'affilée, sortie ou pas
+  // (`chainRunCounts`) ; « Plein jour » garde seul l'exigence de la file vidée du premier au dernier bloc.
+  final countedRuns = chainRuns.where(chainRunCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  final fullDays = chainRuns.where((r) => r.fullDay).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
   out.add(BadgeState(
-    def: const BadgeDef(id: 'enchaineur', family: BadgeFamily.chain, name: 'Enchaîneur', symbol: 'chain', tiers: [10], label: '×10', unit: 'sessions', unitLong: 'sessions'),
-    level: completedRuns.length >= 10 ? 1 : 0,
-    value: completedRuns.length,
-    tierDates: [completedRuns.length >= 10 ? _day(completedRuns[9].endedAt) : null],
+    def: const BadgeDef(id: 'enchaineur', family: BadgeFamily.chain, name: 'Enchaîneur', symbol: 'chain', tiers: kChainTiers, unit: 'sessions', unitLong: 'sessions de 3 choses et plus'),
+    level: _levelOf(kChainTiers, countedRuns.length),
+    value: countedRuns.length,
+    tierDates: [for (final t in kChainTiers) t <= countedRuns.length ? _day(countedRuns[t - 1].endedAt) : null],
     facts: [
-      ('Sessions menées au bout', '${completedRuns.length}'),
+      ('Sessions de 3 choses et plus', '${countedRuns.length}'),
       ('Sessions commencées', '${chainRuns.length}'),
-      if (completedRuns.isNotEmpty) ('La dernière', _fmtDate(completedRuns.last.endedAt)),
+      if (countedRuns.isNotEmpty) ('La dernière', _fmtDate(countedRuns.last.endedAt)),
     ],
   ));
   out.add(BadgeState(
@@ -928,8 +930,8 @@ BadgeDeck computeBadges({
         final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
         if (last.isEmpty) return null;
         final full = id == 'plein-jour';
-        final cells = [for (final r in last) (full ? r.fullDay : r.completed) ? TrackCell.hit : TrackCell.miss];
-        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} ${full ? 'journée(s) entière(s)' : 'menée(s) au bout'}', hitLabel: full ? 'journée entière' : 'menée au bout', missLabel: full ? 'partielle' : 'sortie avant la fin');
+        final cells = [for (final r in last) (full ? r.fullDay : chainRunCounts(r)) ? TrackCell.hit : TrackCell.miss];
+        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} ${full ? 'journée(s) entière(s)' : 'comptée(s)'}', hitLabel: full ? 'journée entière' : 'comptée (3 choses et plus)', missLabel: full ? 'partielle' : 'moins de 3 choses');
       default:
         return null;
     }
