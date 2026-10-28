@@ -30,6 +30,9 @@ class BadgeCenter extends ChangeNotifier {
 
   BadgeDeck? deck;
   List<DailySchedule> _schedules = const [];
+  /// Programmes des 400 derniers jours (après `load()`), partagés avec la
+  /// feuille du mode (fenêtres d'élan gagnées sur 60 jours).
+  List<DailySchedule> get schedules => _schedules;
   List<Project> _projects = const [];
   List<StrategicObjective> _objectives = const [];
   DateTime? _fetchedAt;
