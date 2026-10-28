@@ -120,22 +120,18 @@ class _WallTaskState extends State<WallTask> {
                   ),
                 ),
                 const SizedBox(width: 8),
+                // Le titre a toute la largeur (plus de troncature, retour user
+                // 2026-10) ; compteur et état descendent sur la ligne des briques.
                 Expanded(
                   child: Text(t.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
+                          height: 1.25,
                           color: done ? text3 : cs.onSurface,
                           decoration: done ? TextDecoration.lineThrough : null)),
                 ),
-                const SizedBox(width: 6),
-                if (hasActions)
-                  Text('${brick.done} / ${brick.total}',
-                      style: TextStyle(fontSize: 11, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
-                const SizedBox(width: 6),
-                StateChip(_chip(brick), color: chipColor),
                 IconButton(
                   visualDensity: VisualDensity.compact,
                   padding: EdgeInsets.zero,
@@ -145,11 +141,19 @@ class _WallTaskState extends State<WallTask> {
                   icon: Icon(Icons.open_in_new_rounded, size: 15, color: text3),
                 ),
               ]),
-              if (hasActions)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 6, 4, 0),
-                  child: ProgressBricks(row: row, height: 8, gap: 2),
-                ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(28, 6, 4, 0),
+                child: Row(children: [
+                  Expanded(child: hasActions ? ProgressBricks(row: row, height: 8, gap: 2) : const SizedBox.shrink()),
+                  if (hasActions) ...[
+                    const SizedBox(width: 8),
+                    Text('${brick.done} / ${brick.total}',
+                        style: TextStyle(fontSize: 11, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                  ],
+                  const SizedBox(width: 8),
+                  StateChip(_chip(brick), color: chipColor),
+                ]),
+              ),
               if (widget.onLaunchSession != null && !done)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(28, 8, 4, 0),
@@ -244,10 +248,10 @@ class _WallTaskState extends State<WallTask> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(a.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: TextStyle(
                           fontSize: 13,
+                          height: 1.25,
                           color: a.done ? text3 : cs.onSurface,
                           decoration: a.done ? TextDecoration.lineThrough : null)),
                   if (hasSteps || meta.isNotEmpty)
@@ -298,8 +302,7 @@ class _WallTaskState extends State<WallTask> {
           const SizedBox(width: 8),
           Expanded(
             child: Text(c.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+                softWrap: true,
                 style: TextStyle(
                     fontSize: 12.5,
                     color: c.done ? text3 : cs.onSurface,
