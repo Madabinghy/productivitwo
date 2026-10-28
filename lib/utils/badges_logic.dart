@@ -337,7 +337,9 @@ class DayScore {
   bool solidAt(double threshold) => !neutral && routineRatio >= threshold && blockRatio >= threshold;
 }
 
-bool _countsForDay(ScheduleBlock b) =>
+/// Bloc qui compte pour les journées (parfaite, solide) : bloc normal ou deep
+/// work, hors miroir d'agenda, fait ou à faire. Partagé avec `badge_today.dart`.
+bool countsForBadges(ScheduleBlock b) =>
     (b.kind == 'normal' || b.kind == 'deepwork') && b.gcalEventId == null && (b.status == 'done' || b.status == 'pending');
 
 /// Score d'un jour vécu : routines quotidiennes dues (créées avant ce jour,
@@ -359,7 +361,7 @@ DayScore scoreDay(DateTime day, {
   var blocks = 0, done = 0;
   if (schedule != null) {
     for (final b in schedule.blocks) {
-      if (!_countsForDay(b)) continue;
+      if (!countsForBadges(b)) continue;
       blocks++;
       if (b.status == 'done') done++;
     }

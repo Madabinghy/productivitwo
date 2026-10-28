@@ -4,7 +4,8 @@ import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show scoreDay, routineReachedDays, fmtInt;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet, BadgeTodayActions;
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/objective_moment_card.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -220,7 +221,17 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       action = IconButton(visualDensity: VisualDensity.compact, tooltip: 'Enchaîner', onPressed: widget.onChain, icon: Icon(Icons.playlist_play_rounded, color: cs.primary));
     }
     return InkWell(
-      onTap: () => showBadgeSheet(context, b, logic: widget.logic),
+      onTap: () => showBadgeSheet(context, b,
+          logic: widget.logic,
+          facts: widget.badges?.todayFacts(),
+          actions: BadgeTodayActions(
+            routinePlus: (id) {
+              final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
+              if (a != null) routinePlus(widget.logic, a);
+            },
+            pointElan: () => showModeSheet(context, widget.logic),
+            openBlock: widget.onOpenSource,
+          )),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
