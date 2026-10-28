@@ -301,8 +301,9 @@ class _DomainPageState extends State<_DomainPage> {
     final rows = _timeRows(now);
     final live = rows.where((r) => !r.paused).toList();
     final paused = rows.where((r) => r.paused).toList();
-    final behind = live.where((r) => !r.onTrack).toList()..sort((a, b) => a.pctInt.compareTo(b.pctInt));
-    final ok = live.where((r) => r.onTrack).toList()..sort((a, b) => a.a.name.toLowerCase().compareTo(b.a.name.toLowerCase()));
+    // Même ordre que Stats : sous l'attendu, le plus proche en tête ; au rythme, en ordre croissant.
+    final behind = live.where((r) => !r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
+    final ok = live.where((r) => r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
     final moment = behind.isNotEmpty ? behind.first : (live.where((r) => r.hasGoal).firstOrNull ?? live.firstOrNull);
     return [
       if (moment != null) ...[const SizedBox(height: 14), _momentCard(moment, now, d)],
@@ -437,8 +438,9 @@ class _DomainPageState extends State<_DomainPage> {
       final t = logic.activeHabitTarget(a);
       return t <= 0 ? 0 : (logic.activeHabitDone(a) / t).clamp(0.0, 1.0);
     }
-    final todo = all.where((a) => !logic.habitReached(a)).toList()..sort((x, y) => ratio(y).compareTo(ratio(x)));
-    final done = all.where(logic.habitReached).toList()..sort((x, y) => x.name.toLowerCase().compareTo(y.name.toLowerCase()));
+    int pctOf(Activity a) => (ratio(a) * 100).round();
+    final todo = all.where((a) => !logic.habitReached(a)).toList()..sort((x, y) => comparePct(pctOf(x), pctOf(y)));
+    final done = all.where(logic.habitReached).toList()..sort((x, y) => comparePct(pctOf(x), pctOf(y)));
     return [
       ListSectionTitle('À FAIRE · ${todo.length}', action: '+ Nouvelle routine', onAction: () async {
         await widget.onCreate(domainId: d?.id, isHabit: true);
