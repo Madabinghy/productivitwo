@@ -70,6 +70,10 @@ class _GoalsViewState extends State<GoalsView> {
   Set<String> _domainFilter = {};
   String? _clientFilter;
   bool _filtersOpen = false;
+  /// Aide « Touche une brique… » affichée jusqu'au premier tap (retour user 2026-10).
+  static const _kHintKey = 'bricks_hint_seen';
+  bool _hintSeen = true;
+  ProjectMoment? _firstLive;
 
   List<Domain> get domains => widget.domains;
 
@@ -88,6 +92,7 @@ class _GoalsViewState extends State<GoalsView> {
       setState(() {
         if (v != null) _folded = v.toSet();
         if (d != null) _domainFilter = d.toSet();
+        _hintSeen = prefs.getBool(_kHintKey) ?? false;
         _clientFilter = c;
         _filtersOpen = _domainFilter.isNotEmpty || c != null;
       });
@@ -218,6 +223,7 @@ class _GoalsViewState extends State<GoalsView> {
     final running = runningTargets(widget.sessions);
     BrickRow rowOf(Project p) => projectBricks(p, now, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
     final liveRows = {for (final m in live) m.project.id: rowOf(m.project)};
+    _firstLive = live.firstOrNull;
     final digest = wallDigest(liveRows.values);
     final nextSession = live.where((m) => m.session != null).fold<ProjectMoment?>(
         null, (best, m) => best == null || m.daysToSession! < best.daysToSession! ? m : best);
@@ -405,6 +411,10 @@ class _GoalsViewState extends State<GoalsView> {
 
   /// Tap sur une brique = la fiche de CETTE tâche.
   void _openBrick(Project p, BrickRow row, int i) {
+    if (!_hintSeen) {
+      setState(() => _hintSeen = true);
+      SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
+    }
     if (i < 0 || i >= row.total) return;
     final id = row.bricks[i].id;
     final t = p.tasks.where((t) => t.id == id).firstOrNull;
@@ -476,7 +486,19 @@ class _GoalsViewState extends State<GoalsView> {
                 StateChip(chip, color: m.upcoming ? kPalierMuted : st),
               ]),
               const SizedBox(height: 2),
-              ProgressBricks(row: row, onBrick: (i) => _openBrick(p, row, i)),
+              ProgressBricks(row: row, onBrick: (i) => _openBrick(p, row, i), pickerTitle: 'Tâches · ${p.title}'),
+              if (!_hintSeen && m == _firstLive)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(children: [
+                    Icon(Icons.touch_app_outlined, size: 13, color: cs.primary),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text('Touche une brique pour ouvrir sa tâche · appui long = la liste',
+                          style: TextStyle(fontSize: 11.5, color: cs.primary, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                ),
               Row(children: [
                 Icon(footIcon, size: 14, color: s != null && m.sessionSoon ? cs.primary : text3),
                 const SizedBox(width: 5),
@@ -535,7 +557,7 @@ class _GoalsViewState extends State<GoalsView> {
         detail: row.total == 0
             ? null
             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ProgressBricks(row: row, height: 14, onBrick: (i) => _openBrick(p, row, i)),
+                ProgressBricks(row: row, height: 14, onBrick: (i) => _openBrick(p, row, i), pickerTitle: 'Tâches · ${p.title}'),
                 if (behindLabel(row) != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),

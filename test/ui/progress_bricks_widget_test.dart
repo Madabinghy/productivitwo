@@ -26,6 +26,22 @@ void main() {
     expect(tapped, 0);
     expect(tester.takeException(), isNull);
 
+    // Briques étroites (20 sur 300 px) : le tap ouvre le sélecteur, qui remonte l'index choisi.
+    final many = BrickRow(bricks: [for (var i = 0; i < 20; i++) Brick(id: '$i', title: 'Tâche $i', state: BrickState.todo, fill: 0)], expected: 5);
+    tapped = null;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: SizedBox(width: 300, child: ProgressBricks(row: many, onBrick: (i) => tapped = i, pickerTitle: 'Tâches'))),
+    ));
+    await tester.tap(find.byType(ProgressBricks));
+    await tester.pumpAndSettle();
+    expect(tapped, isNull);
+    expect(find.text('Tâches'), findsOneWidget);
+    expect(find.text('attendu aujourd\'hui'), findsOneWidget);
+    await tester.tap(find.text('Tâche 3'));
+    await tester.pumpAndSettle();
+    expect(tapped, 3);
+    expect(find.text('Tâches'), findsNothing);
+
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: StepDots(done: 2, total: 5))));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: ProgressBricks(row: BrickRow(bricks: [], expected: 0)))));

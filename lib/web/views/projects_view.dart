@@ -872,7 +872,11 @@ class _ProjectsViewState extends State<ProjectsView> {
                         final running = runningTargets(widget.recentSessions);
                         final row = projectBricks(v, _today, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
                         return ProgressBricks(
-                            row: row, height: 9, gap: 2, onBrick: (i) => widget.onOpenProject(p, taskId: row.bricks[i].id));
+                            row: row,
+                            height: 9,
+                            gap: 2,
+                            pickerTitle: 'Tâches · ${p.title}',
+                            onBrick: (i) => widget.onOpenProject(p, taskId: row.bricks[i].id));
                       }),
                       const SizedBox(height: 4),
                       Text('${prog.done} / ${prog.total} tâche${prog.total > 1 ? 's' : ''}',

@@ -632,7 +632,18 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                   const SizedBox(height: 8),
                   // Mur des projets (lot 2) : la rangée de briques du projet,
                   // tap sur une brique = déplie cette tâche.
-                  ProgressBricks(row: wall, height: 14, highlight: _expandedIndex(wall), onBrick: (i) => _focusBrick(wall, i)),
+                  ProgressBricks(
+                      row: wall,
+                      height: 14,
+                      highlight: _expandedIndex(wall),
+                      onBrick: (i) => _focusBrick(wall, i),
+                      pickerTitle: 'Tâches · ${_project.title}'),
+                  if (behindLabel(wall) == null && wall.total > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text('Touche une brique pour déplier sa tâche',
+                          style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.45))),
+                    ),
                   if (behindLabel(wall) != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
