@@ -10,14 +10,12 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/utils/chain.dart';
-import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
-import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
@@ -146,8 +144,12 @@ class _NowCardState extends State<NowCard> {
     return null;
   }
 
-  String _clock(int min) =>
-      '${(min ~/ 60).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
+  /// Heure d'horloge : un bloc qui passe minuit (Sommeil 22:00 → 05:00) finit
+  /// à 29 h en minutes de journée, affiché 05:00, jamais « 29:00 ».
+  String _clock(int min) {
+    final m = min % (24 * 60);
+    return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  }
 
   String _mmss(Duration d) {
     final h = d.inHours;
@@ -476,10 +478,6 @@ class _NowCardState extends State<NowCard> {
             ]),
           ),
         ]),
-        if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
-          const SizedBox(height: 12),
-          row,
-        ],
         const SizedBox(height: 14),
         Row(children: buttons),
         if (mode == DayMode.high && session == null && widget.onDeepWork != null) ...[
@@ -551,28 +549,6 @@ class _NowCardState extends State<NowCard> {
             ),
         ],
       ]),
-    );
-  }
-
-  /// « Ton élan, là ? » (lot 2) : une fois par créneau (matin / après-midi /
-  /// soir) du jour vécu, quand un bloc est devant et qu'aucun chrono ne tourne,
-  /// tant que rien n'a été pointé ni passé. Un tap pointe et replie la rangée.
-  Widget? _elanRow(NowPalette pal, ScheduleBlock? b, bool quiet) {
-    if (b == null || !quiet) return null;
-    final logic = widget.logic;
-    final ymd = livedProgramYmd(DateTime.now(), logic.dayStartMin);
-    final bucket = elanBucket(logic.livedNowMinNow);
-    if (!elanPromptDue(logic.state.moodMarks, ymd, bucket, logic.elanSkipped, allMoments: logic.elanPromptsAll)) return null;
-    return ElanRow(
-      value: 0,
-      context: 'avant ' + b.title,
-      onPick: (v) => logic.logMood(kMoodElan, v, moment: bucket, block: b),
-      onSkip: () => setState(() => logic.elanSkipped.add('$ymd:$bucket')),
-      text: pal.text,
-      text2: pal.text2,
-      text3: pal.text3,
-      surface: pal.chip,
-      raised: pal.track,
     );
   }
 
