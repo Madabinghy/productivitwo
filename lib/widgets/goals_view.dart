@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, clientRoots, inClient, rootProjectOf;
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show coupProjectIds;
 import 'package:productivitwo_v1/utils/mode.dart';
@@ -54,6 +55,12 @@ class _GoalsViewState extends State<GoalsView> {
   /// Coups en cours (Modes et coups) : en mode En forme, leurs projets passent en tête.
   Set<String> _coupProjectIds = const {};
   Set<String> _folded = {'upcoming', 'done', 'archived'};
+  /// Filtres Domaine / Pour (2026-10), persistés comme dans Actions.
+  static const _kDomainKey = 'projects_domain_filter';
+  static const _kClientKey = 'projects_client_filter';
+  Set<String> _domainFilter = {};
+  String? _clientFilter;
+  bool _filtersOpen = false;
 
   List<Domain> get domains => widget.domains;
 
@@ -66,9 +73,39 @@ class _GoalsViewState extends State<GoalsView> {
     }).catchError((_) {});
     SharedPreferences.getInstance().then((prefs) {
       final v = prefs.getStringList(_kFoldedKey);
-      if (v != null && mounted) setState(() => _folded = v.toSet());
+      final d = prefs.getStringList(_kDomainKey);
+      final c = prefs.getString(_kClientKey);
+      if (!mounted) return;
+      setState(() {
+        if (v != null) _folded = v.toSet();
+        if (d != null) _domainFilter = d.toSet();
+        _clientFilter = c;
+        _filtersOpen = _domainFilter.isNotEmpty || c != null;
+      });
     });
   }
+
+  Future<void> _toggleDomain(String id) async {
+    setState(() => _domainFilter.contains(id) ? _domainFilter.remove(id) : _domainFilter.add(id));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kDomainKey, _domainFilter.toList());
+  }
+
+  Future<void> _setClient(String? id) async {
+    setState(() => _clientFilter = id);
+    final prefs = await SharedPreferences.getInstance();
+    if (id == null) {
+      await prefs.remove(_kClientKey);
+    } else {
+      await prefs.setString(_kClientKey, id);
+    }
+  }
+
+  /// Domaine effectif d'un projet : le sien, sinon celui de sa racine.
+  String? _domainOf(Project p) => p.domainId ?? rootProjectOf(p, _projects).domainId;
+
+  bool _passes(Project p) =>
+      (_domainFilter.isEmpty || _domainFilter.contains(_domainOf(p))) && inClient(_clientFilter, p, _projects);
 
   /// Abonnement au stream projets AVEC réabonnement sur erreur : un stream
   /// Firestore tué (ex. bascule d'auth) figeait la liste.
@@ -137,13 +174,22 @@ class _GoalsViewState extends State<GoalsView> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final now = DateTime.now();
-    final ranked = rankProjectMoments(_projects, widget.sessions, now,
+    // Domaines qui portent au moins un projet (hors veille) et racines « Pour ».
+    final usedDomainIds = {for (final p in _projects) if (p.status != 'archived') _domainOf(p)};
+    final filterDomains = domains.where((d) => usedDomainIds.contains(d.id)).toList();
+    final roots = clientRoots(_projects);
+    if (_clientFilter != null && !roots.any((r) => r.id == _clientFilter)) _clientFilter = null;
+    final hasFilters = filterDomains.length > 1 || roots.length > 1;
+    final allRanked = rankProjectMoments(_projects, widget.sessions, now,
         priorityIds: AppLogic.modeNotifier.value == DayMode.high ? _coupProjectIds : const {});
+    final ranked = allRanked.where((m) => _passes(m.project)).toList();
+    final hidden = allRanked.length - ranked.length;
     final live = ranked.where((m) => !m.upcoming).toList();
     final upcoming = ranked.where((m) => m.upcoming).toList();
-    final done = _projects.where((p) => p.status == 'done').toList()..sort((a, b) => a.title.compareTo(b.title));
-    final archived = _projects.where((p) => p.status == 'archived').toList()..sort((a, b) => a.title.compareTo(b.title));
-    final paused = _projects.where((p) => p.status == 'active' && p.paused && !isFolderProject(p, _projects)).toList();
+    final done = _projects.where((p) => p.status == 'done' && _passes(p)).toList()..sort((a, b) => a.title.compareTo(b.title));
+    final archived = _projects.where((p) => p.status == 'archived' && _passes(p)).toList()..sort((a, b) => a.title.compareTo(b.title));
+    final paused = _projects.where((p) => p.status == 'active' && p.paused && !isFolderProject(p, _projects) && _passes(p)).toList();
+    final nothingAtAll = _projects.isEmpty;
     final empty = ranked.isEmpty && done.isEmpty && archived.isEmpty && paused.isEmpty;
 
     return Scaffold(
@@ -162,12 +208,20 @@ class _GoalsViewState extends State<GoalsView> {
           ),
         ],
       ),
-      body: empty
+      body: nothingAtAll
           ? _emptyState(cs)
           : ListView(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
               children: [
                 if (widget.header != null) widget.header!,
+                if (hasFilters) _filtersToggle(cs, hidden),
+                if (hasFilters && _filtersOpen) _filtersBar(cs, filterDomains, roots),
+                if (empty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
+                    child: Text('Aucun projet ne passe les filtres.',
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
+                  ),
                 if (ranked.isNotEmpty) _momentCard(ranked, now),
                 if (live.isNotEmpty) ...[
                   const ListSectionTitle('TOUS LES PROJETS'),
@@ -195,6 +249,87 @@ class _GoalsViewState extends State<GoalsView> {
         foregroundColor: Colors.white,
       ),
     );
+  }
+
+  /// Ligne « FILTRES » repliable (même grammaire que l'onglet Actions).
+  Widget _filtersToggle(ColorScheme cs, int hidden) {
+    final n = _domainFilter.length + (_clientFilter == null ? 0 : 1);
+    final on = n > 0;
+    return InkWell(
+      onTap: () => setState(() => _filtersOpen = !_filtersOpen),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
+        child: Row(children: [
+          Icon(Icons.tune_rounded, size: 14, color: on ? cs.primary : cs.onSurface.withValues(alpha: .5)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              on
+                  ? 'FILTRES · $n actif${n > 1 ? 's' : ''}${hidden > 0 ? ' · $hidden masqué${hidden > 1 ? 's' : ''}' : ''}'
+                  : 'FILTRES · DOMAINE · POUR',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: on ? cs.primary : cs.onSurface.withValues(alpha: .5)),
+            ),
+          ),
+          Icon(_filtersOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withValues(alpha: .45)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _filtersBar(ColorScheme cs, List<Domain> filterDomains, List<Project> roots) {
+    Widget chip(String label, bool on, VoidCallback onTap, {Color? color}) => ChoiceChip(
+          selected: on,
+          onSelected: (_) => onTap(),
+          showCheckmark: false,
+          label: Text(label),
+          labelStyle: TextStyle(
+            fontSize: 12.5,
+            fontWeight: on ? FontWeight.w600 : FontWeight.w500,
+            color: on ? (color ?? cs.primary) : cs.onSurface.withValues(alpha: .65),
+          ),
+          selectedColor: (color ?? cs.primary).withValues(alpha: .14),
+          backgroundColor: cs.surfaceContainerHighest.withValues(alpha: .35),
+          side: BorderSide(color: on ? (color ?? cs.primary).withValues(alpha: .5) : Colors.transparent),
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        );
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: Text(t,
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurface.withValues(alpha: .45))),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (filterDomains.length > 1)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            label('DOMAINE'),
+            for (final d in filterDomains) ...[
+              chip(d.name, _domainFilter.contains(d.id), () => _toggleDomain(d.id), color: domainColor(d.id, domains)),
+              const SizedBox(width: 6),
+            ],
+          ]),
+        ),
+      if (roots.length > 1) ...[
+        if (filterDomains.length > 1) const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            label('POUR'),
+            for (final r in roots) ...[
+              chip(r.title, _clientFilter == r.id, () => _setClient(_clientFilter == r.id ? null : r.id),
+                  color: domainColor(r.domainId, domains)),
+              const SizedBox(width: 6),
+            ],
+          ]),
+        ),
+      ],
+      const SizedBox(height: 4),
+    ]);
   }
 
   List<Widget> _section(String key, String title, List<Widget> rows) {
