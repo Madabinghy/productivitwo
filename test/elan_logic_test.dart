@@ -125,16 +125,21 @@ void main() {
     expect(elanPromptDue(const [], '2026-10-26', 'soir', {'2026-10-25:matin'}), isTrue);
   });
 
-  test('dedupeMoodMarks : un pointage par créneau, le plus récent gagne ; les remplacés sont listés', () {
+  test('dedupeMoodMarks : historique des changements, une correction < 5 min remplace le précédent', () {
     final a = elan(DateTime(2026, 10, 26, 8, 0), 2);
-    final b = elan(DateTime(2026, 10, 26, 8, 30), 4); // même créneau matin : remplace a
-    final c = elan(DateTime(2026, 10, 26, 14, 0), 3);
-    final d = elan(DateTime(2026, 10, 27, 8, 0), 3);
-    final kept = dedupeMoodMarks([b, a, d, c]);
-    expect(kept.map((m) => m.id).toList(), [b.id, c.id, d.id]);
-    expect(supersededMoodMarks([a, b, c, d]).map((m) => m.id).toList(), [a.id]);
-    // La semaine ne compte plus que les pointages gardés.
-    final days = buildElanDays(marks: [a, b, c, d], schedulesByYmd: const {}, hits: const [], activities: const [], now: DateTime(2026, 10, 27, 10));
-    expect(elanMetrics(days).count, 3);
+    final b = elan(DateTime(2026, 10, 26, 8, 3), 4); // correction du clic de 8:00 → a remplacé
+    final c = elan(DateTime(2026, 10, 26, 8, 30), 3); // vrai changement, même créneau matin : gardé
+    final d = elan(DateTime(2026, 10, 26, 14, 0), 2);
+    final e = elan(DateTime(2026, 10, 27, 8, 0), 3);
+    final kept = dedupeMoodMarks([c, b, a, e, d]);
+    expect(kept.map((m) => m.id).toList(), [b.id, c.id, d.id, e.id]);
+    expect(supersededMoodMarks([a, b, c, d, e]).map((m) => m.id).toList(), [a.id]);
+    final days = buildElanDays(marks: [a, b, c, d, e], schedulesByYmd: const {}, hits: const [], activities: const [], now: DateTime(2026, 10, 27, 10));
+    final m = elanMetrics(days);
+    expect(m.count, 4); // changements gardés
+    expect(m.slots, 3); // matin + aprem le 26, matin le 27
+    // Moyenne pondérée par le temps : le 26, 4 pendant 27 min, 3 pendant 5 h 30, 2 de 14 h à 5 h ; le 27, 3 pendant 2 h.
+    expect(m.mean < 2.7 && m.mean > 2.3, isTrue);
+    expect(days[days.length - 2].mean! < 2.6, isTrue); // le 26
   });
 }

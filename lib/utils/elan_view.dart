@@ -9,16 +9,19 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 /// la feuille du mode (`widgets/mode_sheet.dart`). Des faits, jamais un
 /// jugement.
 
-/// Un créneau du jour vécu : pointé (valeur, heure, choses faites ensuite) ou pas.
+/// Un créneau du jour vécu : pointé (valeur DOMINANTE = la plus longtemps
+/// tenue, heure du premier pointage, nombre de changements, choses faites
+/// dans ses fenêtres) ou pas.
 class ElanSlot {
   final String bucket; // matin · aprem · soir
   final int? value;
   final DateTime? at;
-  final int wins; // choses faites dans la fenêtre du pointage
+  final int wins; // choses faites dans les fenêtres du créneau
+  final int changes; // pointages gardés dans le créneau
   /// Le créneau est déjà commencé (sinon « à partir de 12 h »).
   final bool started;
   final bool current;
-  const ElanSlot(this.bucket, {this.value, this.at, this.wins = 0, this.started = false, this.current = false});
+  const ElanSlot(this.bucket, {this.value, this.at, this.wins = 0, this.changes = 0, this.started = false, this.current = false});
   bool get pointed => value != null;
   String get label => kElanBucketLabels[bucket] ?? bucket;
   /// Début du créneau (heure du jour vécu).
@@ -40,14 +43,50 @@ List<ElanSlot> todayElanSlots({
   final windows = elanWindows(marks, ymd, dayStartMin: dayStartMin);
   final out = <ElanSlot>[];
   for (final b in kElanBuckets) {
-    final w = windows.where((x) => (x.mark.moment ?? elanBucket(x.mark.at.hour * 60 + x.mark.at.minute)) == b).lastOrNull;
+    final ws = windows.where((x) => (x.mark.moment ?? elanBucket(x.mark.at.hour * 60 + x.mark.at.minute)) == b).toList();
     final startMin = switch (b) { 'matin' => 0, 'aprem' => 12 * 60, _ => 18 * 60 };
-    if (w == null) {
+    if (ws.isEmpty) {
       out.add(ElanSlot(b, started: nowMin >= startMin, current: b == cur));
       continue;
     }
-    final wins = winsIn(w, blocks: schedule?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin).length;
-    out.add(ElanSlot(b, value: w.mark.value, at: w.mark.at, wins: wins, started: true, current: b == cur));
+    var wins = 0;
+    final held = <int, int>{};
+    for (final w in ws) {
+      wins += winsIn(w, blocks: schedule?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin).length;
+      final end = w.end.isAfter(now) ? now : w.end;
+      held[w.mark.value] = (held[w.mark.value] ?? 0) + end.difference(w.mark.at).inMinutes.clamp(0, 1 << 20);
+    }
+    var dominant = ws.last.mark.value;
+    var best = -1;
+    for (final e in held.entries) {
+      if (e.value > best) {
+        best = e.value;
+        dominant = e.key;
+      }
+    }
+    out.add(ElanSlot(b, value: dominant, at: ws.first.mark.at, wins: wins, changes: ws.length, started: true, current: b == cur));
+  }
+  return out;
+}
+
+/// Bande horaire du jour vécu : une case par [stepMin] minutes depuis le début
+/// de journée, valeur d'élan EN VIGUEUR (le dernier pointage avant la case),
+/// null avant le premier pointage et après maintenant. Calculée, jamais stockée.
+List<int?> elanTimeline(List<MoodMark> marks, DateTime now, int dayStartMin, {int stepMin = 15}) {
+  final ymd = ymdOf(livedDate(now, dayStartMin));
+  final windows = elanWindows(marks, ymd, dayStartMin: dayStartMin);
+  final start = livedDayStart(now, dayStartMin);
+  final cells = (24 * 60 / stepMin).round();
+  final out = List<int?>.filled(cells, null);
+  for (var i = 0; i < cells; i++) {
+    final t = start.add(Duration(minutes: i * stepMin));
+    if (t.isAfter(now)) break;
+    for (final w in windows) {
+      if (!t.isBefore(w.mark.at) && t.isBefore(w.end)) {
+        out[i] = w.mark.value;
+        break;
+      }
+    }
   }
   return out;
 }

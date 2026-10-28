@@ -63,26 +63,47 @@ class ElanWindow {
   bool get low => mark.lowElan;
 }
 
-/// Clé « un pointage par … » : élan par (jour vécu, créneau), effort par (jour,
-/// bloc), humeur par jour. Deux documents sur la même clé = un pointage
-/// REMPLACÉ (l'app ne garde que le dernier ; avant 2026-10 l'ancien document
-/// restait en base et revenait à la fusion suivante : 67 « pointages » dans la
-/// semaine). Miroir TypeScript : `functions/src/elan.ts` (**garder alignés**).
+/// Historique des changements d'élan (2026-10) : chaque changement de mode
+/// est un pointage, SAUF un changement moins de [kElanCorrectionMin] minutes
+/// après le précédent du même jour vécu, qui le REMPLACE (correction d'un
+/// clic). L'état entre deux pointages est connu (le dernier), donc la bande
+/// horaire de 15 min se calcule, rien n'est échantillonné. Effort : un par
+/// (jour, bloc) ; humeur : un par jour. Miroir TypeScript :
+/// `functions/src/elan.ts` (**garder alignés**).
+const kElanCorrectionMin = 5;
+
+/// Clé « un pointage par … » des pointages NON élan (effort, humeur).
 String moodMarkKey(MoodMark m) => switch (m.kind) {
-      kMoodElan => 'elan:${m.ymd}:${m.moment ?? elanBucket(m.at.hour * 60 + m.at.minute)}',
       kMoodEffort => 'effort:${m.ymd}:${m.blockId ?? m.id}',
       _ => '${m.kind}:${m.ymd}',
     };
 
-/// Un seul pointage par clé, le plus récent gagne ; triés par instant.
+/// Les pointages gardés : élan = l'historique du jour moins les corrections
+/// (< 5 min avant un autre pointage du même jour) ; effort / humeur = le plus
+/// récent par clé. Triés par instant.
 List<MoodMark> dedupeMoodMarks(Iterable<MoodMark> marks) {
+  final out = <MoodMark>[];
+  final elanByYmd = <String, List<MoodMark>>{};
   final best = <String, MoodMark>{};
   for (final m in marks) {
+    if (m.kind == kMoodElan) {
+      elanByYmd.putIfAbsent(m.ymd, () => []).add(m);
+      continue;
+    }
     final k = moodMarkKey(m);
     final cur = best[k];
     if (cur == null || m.at.isAfter(cur.at)) best[k] = m;
   }
-  return best.values.toList()..sort((a, b) => a.at.compareTo(b.at));
+  out.addAll(best.values);
+  for (final list in elanByYmd.values) {
+    list.sort((a, b) => a.at.compareTo(b.at));
+    for (var i = 0; i < list.length; i++) {
+      final next = i + 1 < list.length ? list[i + 1] : null;
+      if (next != null && next.at.difference(list[i].at).inMinutes < kElanCorrectionMin) continue;
+      out.add(list[i]);
+    }
+  }
+  return out..sort((a, b) => a.at.compareTo(b.at));
 }
 
 /// Les pointages que [kept] a remplacés (même clé, plus anciens).
@@ -134,7 +155,10 @@ class ElanMarkView {
   final String bucket;
   final int value;
   final bool won; // au moins une chose faite dans la fenêtre
-  const ElanMarkView(this.bucket, this.value, this.won);
+  /// Durée de la fenêtre (jusqu'au pointage suivant, la fin de journée ou
+  /// maintenant), pour peser la moyenne par le temps. 0 = inconnue.
+  final int minutes;
+  const ElanMarkView(this.bucket, this.value, this.won, {this.minutes = 0});
 }
 
 class ElanDay {
@@ -142,7 +166,18 @@ class ElanDay {
   final List<ElanMarkView> marks;
   final int? mood;
   const ElanDay(this.ymd, this.marks, this.mood);
-  double? get mean => marks.isEmpty ? null : marks.fold(0, (s, m) => s + m.value) / marks.length;
+
+  /// Élan moyen du jour, PONDÉRÉ par le temps tenu (une heure de Flemme pèse
+  /// une heure) ; moyenne simple quand les durées sont inconnues.
+  double? get mean {
+    if (marks.isEmpty) return null;
+    final total = marks.fold<int>(0, (s, m) => s + m.minutes);
+    if (total <= 0) return marks.fold<int>(0, (s, m) => s + m.value) / marks.length;
+    return marks.fold<double>(0, (s, m) => s + m.value * m.minutes) / total;
+  }
+
+  /// Créneaux pointés (matin · aprem · soir), 3 au plus.
+  int get slots => marks.map((m) => m.bucket).toSet().length;
 }
 
 /// Les `days` derniers jours vécus (aujourd'hui compris), du plus ancien au
@@ -164,7 +199,9 @@ List<ElanDay> buildElanDays({
     final views = <ElanMarkView>[];
     for (final w in elanWindows(marks, ymd, dayStartMin: dayStartMin)) {
       final wins = winsIn(w, blocks: schedulesByYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin);
-      views.add(ElanMarkView(w.mark.moment ?? elanBucket(w.mark.at.hour * 60 + w.mark.at.minute), w.mark.value, wins.isNotEmpty));
+      final end = w.end.isAfter(now) ? now : w.end;
+      final minutes = end.difference(w.mark.at).inMinutes;
+      views.add(ElanMarkView(w.mark.moment ?? elanBucket(w.mark.at.hour * 60 + w.mark.at.minute), w.mark.value, wins.isNotEmpty, minutes: minutes < 0 ? 0 : minutes));
     }
     out.add(ElanDay(ymd, views, moodOfDay(marks, ymd)?.value));
   }
@@ -172,27 +209,34 @@ List<ElanDay> buildElanDays({
 }
 
 class ElanMetrics {
-  final int count; // pointages d'élan
+  final int count; // pointages d'élan (changements gardés)
+  /// Moyenne PONDÉRÉE par le temps tenu (simple quand les durées manquent).
   final double mean;
   final int lowCount; // fenêtres de flemme
   final int lowWon; // … où au moins une chose a été faite
-  const ElanMetrics(this.count, this.mean, this.lowCount, this.lowWon);
+  final int slots; // créneaux pointés (3 par jour au plus)
+  const ElanMetrics(this.count, this.mean, this.lowCount, this.lowWon, {this.slots = 0});
   double? get discipline => lowCount == 0 ? null : lowWon / lowCount;
 }
 
 ElanMetrics elanMetrics(List<ElanDay> days) {
-  var n = 0, sum = 0, low = 0, won = 0;
+  var n = 0, sum = 0, low = 0, won = 0, slots = 0, minutes = 0;
+  var weighted = 0.0;
   for (final d in days) {
+    slots += d.slots;
     for (final m in d.marks) {
       n++;
       sum += m.value;
+      minutes += m.minutes;
+      weighted += m.value * m.minutes;
       if (m.value <= 2) {
         low++;
         if (m.won) won++;
       }
     }
   }
-  return ElanMetrics(n, n == 0 ? 0 : sum / n, low, won);
+  final mean = n == 0 ? 0.0 : (minutes > 0 ? weighted / minutes : sum / n);
+  return ElanMetrics(n, mean, low, won, slots: slots);
 }
 
 /// Tout ce dont la famille Discipline a besoin, sur l'historique entier.
@@ -215,17 +259,36 @@ DisciplineStats disciplineStats({
   final ymds = marks.where((m) => m.kind == kMoodElan).map((m) => m.ymd).toSet();
   final wins = <DateTime>[];
   final mean = <String, double>{};
+  final now = DateTime.now();
   for (final ymd in ymds) {
     final ws = elanWindows(marks, ymd, dayStartMin: dayStartMin);
     if (ws.isEmpty) continue;
-    mean[ymd] = ws.fold(0, (s, w) => s + w.mark.value) / ws.length;
+    var minutes = 0;
+    var weighted = 0.0;
+    for (final w in ws) {
+      final end = w.end.isAfter(now) ? now : w.end;
+      final m = end.difference(w.mark.at).inMinutes;
+      if (m > 0) {
+        minutes += m;
+        weighted += w.mark.value * m;
+      }
+    }
+    mean[ymd] = minutes > 0 ? weighted / minutes : ws.fold(0, (s, w) => s + w.mark.value) / ws.length;
     for (final w in ws) {
       if (!w.low) continue;
       wins.addAll(winsIn(w, blocks: byYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin));
     }
   }
   wins.sort();
-  final dates = marks.where((m) => m.kind == kMoodElan).map((m) => m.at).toList()..sort();
+  // Baromètre compte les CRÉNEAUX pointés (3 par jour au plus), pas les changements.
+  final firstBySlot = <String, DateTime>{};
+  for (final m in marks) {
+    if (m.kind != kMoodElan) continue;
+    final k = '${m.ymd}:${m.moment ?? elanBucket(m.at.hour * 60 + m.at.minute)}';
+    final cur = firstBySlot[k];
+    if (cur == null || m.at.isBefore(cur)) firstBySlot[k] = m.at;
+  }
+  final dates = firstBySlot.values.toList()..sort();
   return DisciplineStats(wins, mean, dates);
 }
 

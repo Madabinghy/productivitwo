@@ -80,4 +80,20 @@ void main() {
     expect(t.current, 1);
     expect(todayElanValues(const [], DateTime(2026, 10, 28, 21), 5 * 60).values, [null, null, null]);
   });
+
+  test('elanTimeline : l\'élan en vigueur par quart d\'heure, vide avant le premier pointage et après maintenant', () {
+    final marks = [elan(DateTime(2026, 10, 28, 7, 12), 2), elan(DateTime(2026, 10, 28, 9, 0), 3)];
+    final t = elanTimeline(marks, now, 5 * 60); // journée vécue depuis 5 h
+    expect(t.length, 96);
+    expect(t[0], isNull); // 5:00
+    expect(t[8], isNull); // 7:00, avant 7:12
+    expect(t[9], 2); // 7:15
+    expect(t[16], 3); // 9:00
+    expect(t[38], 3); // 14:30 = maintenant
+    expect(t[39], isNull); // 14:45, futur
+    final slots = todayElanSlots(marks: marks, schedule: null, hits: const [], activities: const [], now: now);
+    expect(slots[0].value, 3); // dominant du matin : 3 tenu de 9 h à 12 h > 2 tenu 1 h 48
+    expect(slots[0].changes, 2);
+    expect(slots[0].at, DateTime(2026, 10, 28, 7, 12));
+  });
 }
