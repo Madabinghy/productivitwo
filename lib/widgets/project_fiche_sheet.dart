@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel;
@@ -25,6 +26,7 @@ Future<bool> showProjectFiche(
   required List<Activity> activities,
   required List<Session> sessions,
   FirestoreSync? sync,
+  AppLogic? logic,
   void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
 }) async {
   final changed = await showFiche<bool>(context,
@@ -35,6 +37,7 @@ Future<bool> showProjectFiche(
             activities: activities,
             sessions: sessions,
             sync: sync ?? FirestoreSync(),
+            logic: logic,
             onStartTimer: onStartTimer,
             scroll: scroll,
           ));
@@ -48,6 +51,7 @@ class _ProjectFiche extends StatefulWidget {
   final List<Activity> activities;
   final List<Session> sessions;
   final FirestoreSync sync;
+  final AppLogic? logic;
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
   final ScrollController scroll;
   const _ProjectFiche({
@@ -57,6 +61,7 @@ class _ProjectFiche extends StatefulWidget {
     required this.activities,
     required this.sessions,
     required this.sync,
+    this.logic,
     required this.onStartTimer,
     required this.scroll,
   });
@@ -99,7 +104,14 @@ class _ProjectFicheState extends State<_ProjectFiche> {
   /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan).
   Future<void> _openAction(ProjectTask task, TaskAction action) async {
     await showTaskDetail(context,
-        project: p, task: task, activities: widget.activities, sync: widget.sync, expandActionId: action.id, onStartTimer: widget.onStartTimer);
+        project: p,
+        task: task,
+        activities: widget.activities,
+        allProjects: widget.allProjects,
+        sync: widget.sync,
+        logic: widget.logic,
+        expandActionId: action.id,
+        onStartTimer: widget.onStartTimer);
     if (mounted) setState(() {});
   }
 

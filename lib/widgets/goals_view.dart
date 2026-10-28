@@ -31,6 +31,8 @@ class GoalsView extends StatefulWidget {
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
   final void Function(int doneCount)? onBadgeCheck;
   final Widget? header;
+  /// État des chronos pour la fiche de tâche (chip « chrono en cours », temps passé, Arrêter).
+  final AppLogic? logic;
 
   const GoalsView({
     super.key,
@@ -40,6 +42,7 @@ class GoalsView extends StatefulWidget {
     this.onStartTimer,
     this.onBadgeCheck,
     this.header,
+    this.logic,
   });
 
   @override
@@ -144,6 +147,7 @@ class _GoalsViewState extends State<GoalsView> {
         activities: widget.activities,
         sessions: widget.sessions,
         sync: _sync,
+        logic: widget.logic,
         onStartTimer: widget.onStartTimer);
     if (mounted) setState(() {});
   }
@@ -163,7 +167,14 @@ class _GoalsViewState extends State<GoalsView> {
       return;
     }
     showTaskDetail(context,
-        project: m.project, task: n.task, activities: widget.activities, sync: _sync, expandActionId: n.action.id, onStartTimer: widget.onStartTimer);
+        project: m.project,
+        task: n.task,
+        activities: widget.activities,
+        allProjects: _projects,
+        sync: _sync,
+        logic: widget.logic,
+        expandActionId: n.action.id,
+        onStartTimer: widget.onStartTimer);
   }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);
