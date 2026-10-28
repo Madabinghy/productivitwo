@@ -476,6 +476,10 @@ toujours le sélecteur ; aide « Touche une brique… » une fois dans Projets (
 **Tap = projet déplié** (retour user 2026-10) : dans Projets, le tap sur une ligne ouvre le projet déplié en **pleine page**
 (`showProjectSheet`, `initialChildSize: 1.0`, tâches ET actions faites masquées par défaut — « Afficher les faites · n » / « n faites » les ramènent —, description derrière un bouton discret
 « Détail ») ; l'appui long ouvre la fiche projet (`showProjectFiche`). `_ExpandableDescription` (« voir plus ») est retiré.
+**Un seul niveau dans Projets** (retour user 2026-10, « perdu entre les niveaux ») : la carte PROJET DU MOMENT, ses briques, les
+lignes et leurs briques mènent TOUS au projet déplié (`_openPlan(p, taskId:)`, la tâche visée dépliée) ; « Déplier » remplace
+« Fiche » sur la carte ; ▶ lance le chrono si une activité est liée, sinon ouvre le projet déplié sur la tâche de la prochaine
+action. La fiche projet ne s'ouvre plus que par appui long sur une ligne ; la fiche de tâche depuis le projet déplié (↗).
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
