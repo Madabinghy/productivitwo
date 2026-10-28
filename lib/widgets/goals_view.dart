@@ -159,7 +159,14 @@ class _GoalsViewState extends State<GoalsView> {
   }
 
   void _openPlan(Project p, {String? taskId}) =>
-      showProjectSheet(context, project: p, domains: domains, targetTaskId: taskId, activities: widget.activities);
+      showProjectSheet(context,
+          project: p,
+          domains: domains,
+          targetTaskId: taskId,
+          activities: widget.activities,
+          sessions: widget.sessions,
+          logic: widget.logic,
+          onStartTimer: widget.onStartTimer);
 
   void _startNext(ProjectMoment m) {
     final n = m.next;

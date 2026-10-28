@@ -460,6 +460,13 @@ pure `utils/progress_bricks.dart` (`BrickState` done · started · late · runni
 `behindLabel`) ; widgets `widgets/progress_bricks.dart` (`ProgressBricks` painter, tap sur une brique = index ; `StepDots`).
 **Lot 1 livré** : onglet Projets mobile (`goals_view.dart`) = trois chiffres (`_digest`), carte du moment avec la rangée en
 détail, lignes `_wallRow` (nom · k / n · écart au plan, briques, prochaine action ; tap brique = fiche de la tâche).
+**Lot 2 livré** : le **projet déplié sur place** remplace le plan d'action — `showProjectSheet` (`project_sheet.dart`, appui long
+sur une ligne de Projets, « Déplier le projet » dans la fiche projet) garde l'en-tête éditable (titre, domaine, dates, activité
+liée, phases, ajouter tâche / phase, documents) mais sa rangée de briques tient lieu de barre (tap sur une brique = déplie cette
+tâche) et chaque tâche est une `WallTask` (`widgets/wall_task.dart`) : titre · k / n · état + rangée des actions ; tap = ses
+actions (points des étapes, chip, cocher = `setActionDone` + `patchActionOf`) ; tap sur une action à étapes = ses étapes
+cochables (`setChecklistItem`), sans étape = fiche d'action ; ↗ / appui long = fiche de tâche ; l'ancien `_TaskTile` est retiré
+(« Au programme » reste dans le ⋯ de la fiche de tâche).
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
