@@ -464,7 +464,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
             if (a != null) routinePlus(widget.logic, a);
           },
-          pointElan: () => showModeSheet(context, widget.logic),
+          pointElan: () => showModeSheet(context, widget.logic, badges: widget.center),
         ),
       );
 }

@@ -356,6 +356,14 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   `AppLogic.logMood`). Seulement quand l'utilisateur DIT son état. `get_user_context` (donc `plan_day`) porte un bloc
   `elan` : résumé 7 j (élan moyen, pointages, fenêtres de flemme gagnées, taux de discipline, efforts). Logique pure
   `functions/src/elan.ts` ↔ `lib/utils/elan_logic.dart` (**garder alignés**)
+- **Voir son élan** (2026-10, maquette « Élan visible », `lib/utils/elan_view.dart`) : `todayElanSlots` (matin · aprem · soir :
+  valeur, heure, choses faites dans la fenêtre), `hardestBucket`, `elanMonth` (30 derniers jours : moyenne, jours de flemme
+  et gagnés, en forme, série de pointages, `previousMean` sur les 30 d'avant → `trendLabel`), `weeklyMeans`. UI = la
+  **feuille du mode** (`showModeSheet(context, logic, badges:)`, `widgets/mode_sheet.dart`) : trois postures en tête, puis
+  AUJOURD'HUI, CETTE SEMAINE (`ElanWeekGraph` : un point par pointage, anneau vert = fenêtre de flemme gagnée, trait de
+  moyenne), FACE À LA FLEMME, 30 DERNIERS JOURS (`ElanMonthGrid`, tap = le jour) + 3 chiffres + TENDANCE, CE QUE ÇA VAUT
+  (Marée haute, Vent contraire, Malgré tout, Baromètre). Programmes via `BadgeCenter.schedules` quand il est passé, sinon
+  61 jours relus.
 - `list_badges()` / `hunt_badge(action: set|remove, badgeId, tier?, targetDate?)` — **badges et chasse** (lot B,
   2026-10) : le deck est calculé par l'APP (`lib/utils/badges_logic.dart`, `BadgeCenter`) qui dépose un instantané dans
   `users/{uid}/data/badges` à chaque recalcul ; le serveur ne recalcule rien (`functions/src/badges_mcp.ts`). Chasses dans

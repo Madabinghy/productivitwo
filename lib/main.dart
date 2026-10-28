@@ -5757,7 +5757,7 @@ class _AppRootState extends State<AppRoot>
                 title: const Text('Mode du jour'),
                 subtitle: Text('${modeDescription(logic.mode)} · repart en Normal demain'),
                 trailing: Text(kModeLabels[logic.mode]!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-                onTap: () => showModeSheet(context, logic),
+                onTap: () => showModeSheet(context, logic, badges: _badges),
               ),
               // Budget des minimums (Modes et coups lot 4) : 7 j = semaine
               // calendaire, 14 j = quinzaine à départ fixe (concentrer plutôt qu'étaler).

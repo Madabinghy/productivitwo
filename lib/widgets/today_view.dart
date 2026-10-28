@@ -800,6 +800,7 @@ class TodayViewState extends State<TodayView> {
                   if (_morningCard(cs, now, text3) case final card?) card,
                   const SizedBox(height: 16),
                   NowCard(
+                    badges: widget.badges,
                     logic: widget.logic,
                     blocks: _liveBlocks,
                     date: _schedDate,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
@@ -26,6 +27,8 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 /// boutons selon l'état, checklists dépliables pendant une session.
 /// Aucune logique métier propre : `today_logic.dart` + `checklist_logic.dart`.
 class NowCard extends StatefulWidget {
+  /// Centre de badges (facultatif) : nourrit la feuille du mode (programmes, badges d'élan).
+  final BadgeCenter? badges;
   final AppLogic logic;
   // Blocs du jour (hors supprimés) et clé du programme, fournis par TodayView
   // qui porte l'unique abonnement au programme.
@@ -56,6 +59,7 @@ class NowCard extends StatefulWidget {
   final VoidCallback? onDeepWork;
 
   const NowCard({
+    this.badges,
     super.key,
     required this.logic,
     required this.blocks,
@@ -622,7 +626,7 @@ class _NowCardState extends State<NowCard> {
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
         ),
-        ModePill(logic: widget.logic),
+        ModePill(logic: widget.logic, badges: widget.badges),
         if (right != null) const SizedBox(width: 8),
         if (right != null)
           Text(right,
