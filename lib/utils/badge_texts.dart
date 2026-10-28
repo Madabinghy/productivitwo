@@ -50,21 +50,23 @@
         how: 'La même règle que Semaine solide, tenue 30 jours de suite. Les journées neutres sont enjambées.',
       ),
     'malgre-tout' => (
-        what: 'Les fois où tu as fait quand même, alors que tu avais pointé « Flemme » ou « Mou ».',
-        how: 'Pointe ton élan quand il est bas (carte MAINTENANT, Enchaîner), puis termine un bloc ou atteins une routine avant le pointage suivant : chaque chose faite compte une victoire. '
+        what: 'Les fois où tu as fait quand même, alors que tu étais en mode Flemme (ou pointé « Flemme » / « Mou »).',
+        how: 'Passe en mode Flemme (pilule de MAINTENANT ou Paramètres) ou pointe un élan bas, puis termine un bloc ou atteins une routine avant le changement de mode suivant : chaque chose faite compte une victoire. '
             'Paliers : 10, 50 et 200 victoires.',
       ),
     'vent-contraire' => (
-        what: 'Une semaine solide traversée avec un élan bas.',
-        how: '7 journées d’affilée à 80 % (la règle de Semaine solide) pendant lesquelles ton élan moyen pointé est à 2,5 ou moins. Au moins 3 pointages sur la semaine.',
+        what: 'Une semaine solide traversée en mode Flemme.',
+        how: '7 journées d’affilée à 80 % (la règle de Semaine solide) pendant lesquelles ton élan moyen est à 2,5 ou moins. Le mode Flemme vaut 2, Normal 3, En forme 4 : déclare-toi Flemme au moins 3 fois sur la semaine, sans jamais passer En forme. '
+            'Un jour en Normal sans rien poser ne compte ni pour ni contre.',
       ),
     'maree-haute' => (
-        what: '7 jours d’affilée avec un élan moyen « En forme » ou mieux.',
-        how: 'Pointe ton élan chaque jour ; 7 jours pointés d’affilée à une moyenne de 4 ou plus. Les jours sans pointage sont enjambés, un jour sous 4 remet la suite à zéro.',
+        what: '7 jours d’affilée en mode En forme (élan moyen 4 ou plus).',
+        how: 'Déclare-toi En forme (pilule de MAINTENANT) 7 jours d’affilée : chaque mode posé est un pointage d’élan (Flemme 2, Normal 3, En forme 4). Les jours sans rien de posé sont enjambés ; '
+            'un jour dont la moyenne tombe sous 4 (En forme le matin puis Flemme le soir, par exemple) remet la suite à zéro.',
       ),
     'barometre' => (
-        what: 'Le nombre de fois où tu as pointé ton élan.',
-        how: 'Réponds à « Ton élan, là ? » : au plus trois fois par jour (matin, après-midi, soir). Paliers : 30, 100 et 365 pointages.',
+        what: 'Le nombre de fois où tu as pointé ton élan, par la question ou par le mode.',
+        how: 'Réponds à « Ton élan, là ? » ou pose un mode (Flemme · Normal · En forme) : un pointage par créneau (matin, après-midi, soir), le dernier posé remplace. Paliers : 30, 100 et 365 pointages.',
       ),
     'deep-work' => (
         what: 'Des blocs de deep work choisis et menés au bout.',
