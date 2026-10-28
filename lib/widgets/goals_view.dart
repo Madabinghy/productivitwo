@@ -9,11 +9,14 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show coupProjectIds;
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/web/theme_tokens.dart' show kBSurface, kBLine;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,6 +27,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// avec le repère « attendu aujourd'hui », état en couleur), et des sections
 /// repliées À venir / Terminés / En veille. Tap = fiche projet
 /// (`showProjectFiche`) ; le plan détaillé reste `showProjectSheet`.
+/// **Mur des projets** (2026-10) : chaque ligne porte la rangée de briques du
+/// projet (`projectBricks`, une brique par tâche remplie par ses actions, trait
+/// « attendu aujourd'hui ») ; tap sur une brique = la fiche de cette tâche.
 class GoalsView extends StatefulWidget {
   final List<Domain> domains;
   final List<Activity> activities;
@@ -202,6 +208,12 @@ class _GoalsViewState extends State<GoalsView> {
     final paused = _projects.where((p) => p.status == 'active' && p.paused && !isFolderProject(p, _projects) && _passes(p)).toList();
     final nothingAtAll = _projects.isEmpty;
     final empty = ranked.isEmpty && done.isEmpty && archived.isEmpty && paused.isEmpty;
+    final running = runningTargets(widget.sessions);
+    BrickRow rowOf(Project p) => projectBricks(p, now, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
+    final liveRows = {for (final m in live) m.project.id: rowOf(m.project)};
+    final digest = wallDigest(liveRows.values);
+    final nextSession = live.where((m) => m.session != null).fold<ProjectMoment?>(
+        null, (best, m) => best == null || m.daysToSession! < best.daysToSession! ? m : best);
 
     return Scaffold(
       appBar: AppBar(
@@ -233,13 +245,14 @@ class _GoalsViewState extends State<GoalsView> {
                     child: Text('Aucun projet ne passe les filtres.',
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
                   ),
-                if (ranked.isNotEmpty) _momentCard(ranked, now),
+                if (live.isNotEmpty) _digest(cs, digest, nextSession, now),
+                if (ranked.isNotEmpty) _momentCard(ranked, now, rowOf(ranked[_offset % ranked.length].project)),
                 if (live.isNotEmpty) ...[
                   const ListSectionTitle('TOUS LES PROJETS'),
-                  for (final m in live) _projectRow(m, now),
+                  for (final m in live) _wallRow(m, liveRows[m.project.id]!, now),
                 ],
                 if (upcoming.isNotEmpty) ..._section('upcoming', 'À VENIR · ${upcoming.length}', [
-                  for (final m in upcoming) _projectRow(m, now),
+                  for (final m in upcoming) _wallRow(m, rowOf(m.project), now),
                 ]),
                 if (paused.isNotEmpty) ..._section('paused', 'EN PAUSE · ${paused.length}', [
                   for (final p in paused) _plainRow(p, 'en pause'),
@@ -351,8 +364,134 @@ class _GoalsViewState extends State<GoalsView> {
     ];
   }
 
-  /// PROJET DU MOMENT : anneau = tâches faites / total, geste = la prochaine action.
-  Widget _momentCard(List<ProjectMoment> ranked, DateTime now) {
+  /// Trois chiffres en tête du mur : tâches faites, projets derrière le trait, prochaine séance.
+  Widget _digest(ColorScheme cs, ({int done, int total, int behind}) d, ProjectMoment? nextSession, DateTime now) {
+    Widget tile(String v, String l, {Color? color}) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(12)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(v,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color ?? cs.onSurface, fontFeatures: const [FontFeature.tabularFigures()])),
+              Text(l, maxLines: 2, style: TextStyle(fontSize: 10.5, height: 1.2, color: cs.onSurface.withValues(alpha: .55))),
+            ]),
+          ),
+        );
+    final s = nextSession?.session;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(children: [
+        tile('${d.done} / ${d.total}', 'tâches faites, tous projets'),
+        const SizedBox(width: 8),
+        tile('${d.behind}', d.behind == 1 ? 'projet derrière le trait' : 'projets derrière le trait',
+            color: d.behind == 0 ? kPalierGreen : (d.behind >= 3 ? kPalierCoral : kPalierAmber)),
+        const SizedBox(width: 8),
+        if (s != null)
+          tile(sessionLabel(s, now).replaceFirst('séance ', ''), 'prochaine séance · ${nextSession!.project.title}')
+        else
+          tile('—', 'aucune séance à venir'),
+      ]),
+    );
+  }
+
+  /// Tap sur une brique = la fiche de CETTE tâche.
+  void _openBrick(Project p, BrickRow row, int i) {
+    if (i < 0 || i >= row.total) return;
+    final id = row.bricks[i].id;
+    final t = p.tasks.where((t) => t.id == id).firstOrNull;
+    if (t == null) return;
+    showTaskDetail(context,
+        project: p,
+        task: t,
+        activities: widget.activities,
+        allProjects: _projects,
+        sync: _sync,
+        logic: widget.logic,
+        onStartTimer: widget.onStartTimer);
+  }
+
+  /// Ligne du mur : nom · k / n · état, la rangée de briques, puis la prochaine action.
+  Widget _wallRow(ProjectMoment m, BrickRow row, DateTime now) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
+    final p = m.project;
+    final s = m.session;
+    final st = palierColor(m.pctInt);
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    final String foot;
+    final IconData? footIcon;
+    if (row.hasRunning) {
+      foot = m.next == null ? 'chrono en cours' : '${m.next!.action.title} · chrono en cours';
+      footIcon = Icons.timer_outlined;
+    } else if (m.upcoming) {
+      foot = 'démarre le ${_date(_firstStart(p))}';
+      footIcon = Icons.schedule_rounded;
+    } else if (m.next != null) {
+      final n = m.next!;
+      final steps = n.action.checklist.isEmpty ? '' : ' · ${n.action.checklist.where((c) => c.done).length} / ${n.action.checklist.length} étapes';
+      foot = '${n.action.title}$steps';
+      footIcon = Icons.play_arrow_rounded;
+    } else if (row.total > 0 && row.done == row.total) {
+      foot = 'Tout est fait · Terminer le projet';
+      footIcon = Icons.check_rounded;
+    } else {
+      foot = 'Définir la prochaine action';
+      footIcon = Icons.add;
+    }
+    final chip = m.upcoming ? 'à venir' : (m.plan.delta == 0 ? 'à jour' : '${m.deltaLabel.split(' ').first} sur le plan');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: dark ? kBSurface : cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: () => _openFiche(p),
+          onLongPress: () => _openPlan(p),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: dark ? kBLine : cs.outlineVariant.withValues(alpha: .4)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Text(m.rootTitle == null ? p.title : '${m.rootTitle} › ${p.title}',
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                ),
+                const SizedBox(width: 8),
+                Text('${row.done} / ${row.total}',
+                    style: TextStyle(fontSize: 12, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                const SizedBox(width: 8),
+                StateChip(chip, color: m.upcoming ? kPalierMuted : st),
+              ]),
+              const SizedBox(height: 2),
+              ProgressBricks(row: row, onBrick: (i) => _openBrick(p, row, i)),
+              Row(children: [
+                Icon(footIcon, size: 14, color: s != null && m.sessionSoon ? cs.primary : text3),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    s != null ? '$foot · ${sessionLabel(s, now)}' : foot,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: text3, fontWeight: m.next != null ? FontWeight.w600 : null),
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// PROJET DU MOMENT : anneau = tâches faites / total, rangée de briques en
+  /// détail, geste = la prochaine action.
+  Widget _momentCard(List<ProjectMoment> ranked, DateTime now, BrickRow row) {
     final m = ranked[_offset % ranked.length];
     final p = m.project;
     final plan = m.plan;
@@ -386,39 +525,20 @@ class _GoalsViewState extends State<GoalsView> {
         title: p.title,
         sub: subParts.join(' · '),
         subColor: m.behind ? st : null,
+        detail: row.total == 0
+            ? null
+            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                ProgressBricks(row: row, height: 14, onBrick: (i) => _openBrick(p, row, i)),
+                if (behindLabel(row) != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(behindLabel(row)!, style: const TextStyle(fontSize: 11.5, color: kPalierCoral, fontWeight: FontWeight.w600)),
+                  ),
+              ]),
         primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
         primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
         onPrimary: () => _startNext(m),
         onFiche: () => _openFiche(p),
-      ),
-    );
-  }
-
-  Widget _projectRow(ProjectMoment m, DateTime now) {
-    final p = m.project;
-    final plan = m.plan;
-    final s = m.session;
-    final sub = <String>[
-      '${plan.done} / ${plan.total} tâche${plan.total > 1 ? 's' : ''}',
-      if (!m.upcoming) 'attendu ${plan.expected}',
-      if (s != null)
-        sessionLabel(s, now)
-      else if (m.next != null)
-        m.next!.action.title
-      else if (m.upcoming)
-        'démarre le ${_date(_firstStart(p))}',
-    ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: StatusRow(
-        leading: Icon(s != null && m.sessionSoon ? Icons.event_rounded : Icons.account_tree_outlined),
-        title: m.rootTitle == null ? p.title : '${m.rootTitle} › ${p.title}',
-        sub: sub,
-        bar: (done: plan.done, total: plan.total, expected: m.upcoming ? 0 : plan.expected),
-        pct: m.pctInt,
-        chip: m.stateLabel,
-        onTap: () => _openFiche(p),
-        onLongPress: () => _openPlan(p),
       ),
     );
   }
