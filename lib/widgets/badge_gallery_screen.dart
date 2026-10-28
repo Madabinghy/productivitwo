@@ -109,6 +109,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             )
           else ...[
             _deckHeader(deck),
+            if (widget.center case final c?) _todaySection(deck, c.todayFacts()),
             _huntsSection(deck),
             for (final f in BadgeFamily.values) _family(deck, f),
             const SizedBox(height: 16),
@@ -211,6 +212,107 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
   String _seriesLine(BadgeDeck deck) {
     final n = deck.series.length;
     return '$n série${n > 1 ? 's' : ''} de routine, ${deck.seriesRunning} en cours\nhors compteur';
+  }
+
+  /// « EN JEU AUJOURD'HUI » (2026-10) : les suites en cours qui se perdent si
+  /// la journée n'est pas tenue, puis « À PORTÉE » : ce qui peut tomber
+  /// aujourd'hui. Pastille = ce qu'il manque ; tap = la fiche et ses gestes.
+  Widget _todaySection(BadgeDeck deck, TodayFacts facts) {
+    final inPlay = badgesInPlay(deck, facts);
+    final reachable = <(BadgeState, BadgeToday)>[];
+    for (final b in deck.badges) {
+      if (b.def.family == BadgeFamily.routines || b.complete) continue;
+      final t = badgeToday(b, facts);
+      if (t.stake == TodayStake.reachable && t.items.isNotEmpty) reachable.add((b, t));
+    }
+    if (inPlay.isEmpty && reachable.isEmpty) return const SizedBox.shrink();
+    final missing = inPlay.fold(0, (s, e) => s + e.$2.missing);
+    Widget header(String title, String right, Color color, IconData icon) => Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBLine))),
+          child: Row(children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 6),
+            Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 1, color: color)),
+            const Spacer(),
+            Text(right, style: const TextStyle(fontSize: 12.5, color: kBText4)),
+          ]),
+        );
+    Widget row(BadgeState b, BadgeToday t) {
+      final color = todayStakeColor(t.stake);
+      return InkWell(
+        onTap: () => _showFacts(b),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          child: Row(children: [
+            BadgeView(state: b, size: 40),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(b.def.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                Text(_todaySub(b, t), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kBText3)),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 130),
+                child: Text(_pill(t), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (inPlay.isNotEmpty) ...[
+          header('EN JEU AUJOURD\u2019HUI · ${inPlay.length}', missing > 0 ? 'il manque ${missing == 1 ? '1 chose' : '$missing choses'}' : '', kBAttention, Icons.local_fire_department_rounded),
+          for (final (b, t) in inPlay) row(b, t),
+        ],
+        if (reachable.isNotEmpty) ...[
+          if (inPlay.isNotEmpty) const SizedBox(height: 8),
+          header('À PORTÉE · ${reachable.length}', '', kBPrimary, Icons.flag_outlined),
+          for (final (b, t) in reachable.take(5)) row(b, t),
+        ],
+      ]),
+    );
+  }
+
+  /// Sous-titre d'une ligne du jour : la mesure en cours, sans répéter le nom.
+  String _todaySub(BadgeState b, BadgeToday t) {
+    if (b.def.family == BadgeFamily.routines) return 'série ${_num(b.value)} j${b.nextTarget == null ? '' : ' · palier ${fmtInt(b.nextTarget!)} j'}';
+    if (b.showGauge) return '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unit}';
+    return b.acquired ? 'déjà obtenu' : 'jamais obtenu';
+  }
+
+  /// Pastille courte : le premier geste quand il y en a un, sinon le chip.
+  String _pill(BadgeToday t) {
+    if (t.items.isEmpty) return t.chip;
+    final kinds = t.items.map((i) => i.kind).toSet();
+    final routines = t.items.where((i) => i.kind == GapKind.routine).length;
+    final blocks = t.items.where((i) => i.kind == GapKind.block).length;
+    if (kinds.length == 1 && t.items.length == 1) {
+      final i = t.items.single;
+      return switch (i.kind) {
+        GapKind.routine => 'coche ${i.title}',
+        GapKind.block => 'bloc ${i.block?.startTime ?? ''}'.trim(),
+        GapKind.elan => 'pointe ton élan',
+        GapKind.time => i.title.toLowerCase(),
+        GapKind.chain => 'enchaîner',
+        GapKind.reading => 'relevé à noter',
+        _ => t.chip,
+      };
+    }
+    final parts = <String>[
+      if (routines > 0) '$routines routine${routines > 1 ? 's' : ''}',
+      if (blocks > 0) '$blocks bloc${blocks > 1 ? 's' : ''}',
+    ];
+    return parts.isEmpty ? t.chip : parts.join(', ');
   }
 
   /// « EN CHASSE · n » : les badges visés, leur palier et le rythme.
