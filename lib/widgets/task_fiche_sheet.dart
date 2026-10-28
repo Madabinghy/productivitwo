@@ -51,6 +51,11 @@ Future<void> showTaskFiche(
   );
 }
 
+final RegExp _leadingEmoji = RegExp(r'^\s*((?:\p{Extended_Pictographic}|[\u2600-\u27BF])\uFE0F?)\s*', unicode: true);
+
+/// Titre sans son émoji de tête (« ✍️ Corriger — 5e » → « Corriger — 5e »).
+String stripLeadingEmoji(String title) => title.replaceFirst(_leadingEmoji, '');
+
 class _TaskFiche extends StatefulWidget {
   final Project project;
   final ProjectTask task;
@@ -155,9 +160,15 @@ class _TaskFicheState extends State<_TaskFiche> {
     return DateTime(n.year, n.month, n.day);
   }
 
-  String get _roleEmoji => isPrepTask(t) ? '📝' : (isMilestoneTask(t) ? '🎯' : (isClosureTask(t) ? '✅' : ''));
+  /// Émoji de tête du titre (rôle de séance 📝 / 🎯 / ✅, ou tout autre pictogramme
+  /// posé par Claude) : il passe dans la pastille, le titre reste du texte.
+  String get _roleEmoji {
+    final m = _leadingEmoji.firstMatch(t.title);
+    if (m != null) return m.group(1)!;
+    return isPrepTask(t) ? '📝' : (isMilestoneTask(t) ? '🎯' : (isClosureTask(t) ? '✅' : ''));
+  }
 
-  String get _cleanTitle => t.title.replaceFirst(RegExp(r'^\s*[📝🎯✅]\s*'), '');
+  String get _cleanTitle => stripLeadingEmoji(t.title);
 
   TaskAction? get _next => t.actions.where((a) => !a.done).firstOrNull;
 
@@ -479,7 +490,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     );
     if (saved == true) {
       final newTitle = titleCtrl.text.trim();
-      if (newTitle.isNotEmpty) t.title = _roleEmoji.isEmpty ? newTitle : '$_roleEmoji $newTitle';
+      if (newTitle.isNotEmpty) t.title = _roleEmoji.isEmpty ? newTitle : '$_roleEmoji ${stripLeadingEmoji(newTitle)}';
       final d = descCtrl.text.trim();
       t.description = d.isEmpty ? null : d;
       t.startDate = start;
@@ -977,7 +988,7 @@ class _ActionFicheState extends State<_ActionFiche> {
     final sp = spentLabel(spent, a.estimatedMin, fmtMin);
     final linked = widget.activities.where((x) => x.id == (a.linkedActivityId ?? widget.project.linkedActivityId)).firstOrNull;
     final kpi = <String>[
-      '${widget.project.title} › ${widget.task.title.replaceFirst(RegExp(r'^\s*[📝🎯✅]\s*'), '')}',
+      '${widget.project.title} › ${stripLeadingEmoji(widget.task.title)}',
       if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
       if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
       if (sp != null) sp.label,

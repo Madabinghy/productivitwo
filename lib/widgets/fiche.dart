@@ -102,7 +102,8 @@ class FicheHeader extends StatelessWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
-        Expanded(child: Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, height: 1.15))),
+        // Titre long (tâche de séance, action détaillée) : un cran plus petit pour tenir en deux ou trois lignes.
+        Expanded(child: Text(title, style: TextStyle(fontSize: title.length > 40 ? 17 : 20, fontWeight: FontWeight.w800, height: 1.15))),
         if (chip != null) ...[
           const SizedBox(width: 10),
           Flexible(flex: 0, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip(chip!, color: chipColor ?? cs.primary))),
@@ -207,29 +208,36 @@ class FicheActions extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 20),
-      child: Wrap(spacing: 8, runSpacing: 8, children: [
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // Le geste principal prend toute la largeur, son libellé tient sur une ligne.
         SizedBox(
           height: 44,
           child: FilledButton.icon(
             onPressed: onPrimary,
             style: FilledButton.styleFrom(shape: const StadiumBorder(), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
             icon: Icon(primaryIcon ?? Icons.play_arrow_rounded, size: 20),
-            label: Text(primaryLabel),
+            label: Text(primaryLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ),
-        for (final s in secondary)
-          SizedBox(
-            height: 44,
-            child: OutlinedButton(
-              onPressed: s.onTap,
-              style: OutlinedButton.styleFrom(
-                  shape: const StadiumBorder(),
-                  foregroundColor: cs.onSurface.withValues(alpha: .8),
-                  side: BorderSide(color: cs.onSurface.withValues(alpha: .18)),
-                  textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-              child: Text(s.label),
-            ),
-          ),
+        if (secondary.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final s in secondary)
+              SizedBox(
+                height: 40,
+                child: OutlinedButton(
+                  onPressed: s.onTap,
+                  style: OutlinedButton.styleFrom(
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      foregroundColor: cs.onSurface.withValues(alpha: .8),
+                      side: BorderSide(color: cs.onSurface.withValues(alpha: .18)),
+                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  child: Text(s.label),
+                ),
+              ),
+          ]),
+        ],
       ]),
     );
   }
