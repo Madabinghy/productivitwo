@@ -158,11 +158,12 @@ List<ProjectMoment> rankProjectMoments(List<Project> projects, List<Session> ses
       rank = 3;
       key = 0;
     } else if (m.behind) {
+      // Même ordre que Stats : sous le plan, le plus proche du plan en tête.
       rank = 1;
-      key = m.plan.ratio;
+      key = -m.plan.ratio;
     } else if (m.next != null) {
       rank = 2;
-      key = -m.plan.ratio;
+      key = m.plan.ratio;
     } else {
       rank = 4;
       key = 0;

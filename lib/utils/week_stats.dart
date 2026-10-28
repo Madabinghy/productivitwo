@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart' show comparePct;
 import 'package:productivitwo_v1/utils/mode.dart' show isResting;
 import 'package:productivitwo_v1/utils/budget_window.dart' show budgetWindowStart, budgetDayIndex;
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
@@ -109,11 +110,7 @@ List<DomainWeek> domainWeeks({
 int compareDomainWeeks(DomainWeek a, DomainWeek b) {
   if (a.resting != b.resting) return a.resting ? 1 : -1;
   if (a.hasGoal != b.hasGoal) return a.hasGoal ? -1 : 1;
-  if (a.hasGoal) {
-    final aUnder = a.pctInt < 100, bUnder = b.pctInt < 100;
-    if (aUnder != bUnder) return aUnder ? -1 : 1;
-    return aUnder ? b.pctInt.compareTo(a.pctInt) : a.pctInt.compareTo(b.pctInt);
-  }
+  if (a.hasGoal) return comparePct(a.pctInt, b.pctInt);
   return b.doneMin.compareTo(a.doneMin);
 }
 

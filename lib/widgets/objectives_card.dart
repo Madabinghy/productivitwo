@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/widgets/rest_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
@@ -52,8 +53,19 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
   bool _showArchived = false;
 
   List<StrategicObjective> get _active => _all.where((o) => o.status == 'active').toList();
-  List<StrategicObjective> get _coups => _active.where((o) => o.isTactical).toList();
-  List<StrategicObjective> get _strategic => _active.where((o) => !o.isTactical).toList();
+  List<StrategicObjective> get _coups => _active.where((o) => o.isTactical).toList()..sort((a, b) => comparePct(_pctOf(a), _pctOf(b)));
+  List<StrategicObjective> get _strategic => _active.where((o) => !o.isTactical).toList()..sort((a, b) => comparePct(_pctOf(a), _pctOf(b)));
+
+  /// Pourcentage d'une ligne (même lecture que `_row`) : temps investi sur
+  /// l'attendu à ce jour, sinon la jauge hebdo, sinon 100.
+  int _pctOf(StrategicObjective o) {
+    if (o.timeCommitments.isNotEmpty) {
+      final means = _trajectoryOf(o).means;
+      return means.expectedMin <= 0 ? 100 : (means.doneMin / means.expectedMin * 100).round();
+    }
+    final pct = _progressOf(o).weekPercent;
+    return pct == null ? 100 : (pct * 100).round();
+  }
   List<StrategicObjective> get _archived => _all.where((o) => o.status == 'archived').toList();
   List<StrategicObjective> get _done => _all.where((o) => o.status == 'done').toList();
 

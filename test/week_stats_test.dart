@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart' show comparePct;
 import 'package:productivitwo_v1/utils/week_stats.dart';
 
 void main() {
@@ -81,5 +82,10 @@ void main() {
         domain: Domain(id: id, name: id), doneMin: done, goalMinDay: goal, daysElapsed: 1, routinesReached: 0, routinesTotal: 0, restUntil: rest ? '2026-12-31' : null);
     final rows = [w('a', 60, 60), w('b', 30, 60), w('c', 90, 60), w('d', 50, 60), w('e', 10, 0), w('f', 0, 0, rest: true)]..sort(compareDomainWeeks);
     expect(rows.map((r) => r.domain.id).toList(), ['d', 'b', 'a', 'c', 'e', 'f']); // 83 %, 50 %, 100 %, 150 %, sans minimum, veille
+  });
+
+  test('comparePct : sous 100 décroissant, puis 100 et plus croissant', () {
+    final v = [120, 40, 100, 83, 0, 150]..sort(comparePct);
+    expect(v, [83, 40, 0, 100, 120, 150]);
   });
 }
