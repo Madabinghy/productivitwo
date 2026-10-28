@@ -125,7 +125,8 @@ class _GoalsViewState extends State<GoalsView> {
       widget.onStartTimer!(act, m.project, n.task);
       return;
     }
-    _openPlan(m.project, taskId: n.task.id);
+    showTaskDetail(context,
+        project: m.project, task: n.task, activities: widget.activities, sync: _sync, expandActionId: n.action.id);
   }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);

@@ -59,6 +59,12 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   final _scrollCtrl = ScrollController();
   final _taskKeys = <String, GlobalKey>{};
   List<Map<String, dynamic>> _docs = [];
+  /// Tâches faites masquées par défaut (2026-10) : le plan montre ce qui
+  /// reste ; « Afficher les faites · n » les ramène. La tâche visée reste
+  /// toujours visible.
+  bool _showDone = false;
+
+  bool _visible(ProjectTask t) => _showDone || t.status != 'done' || t.id == widget.targetTaskId;
 
   @override
   void initState() {
@@ -635,6 +641,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                 controller: _scrollCtrl,
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                 children: [
+                  if (done > 0) _doneToggle(cs, done),
                   // Phases dans l'ordre, puis tâches sans phase
                   for (final phase in _project.phases) ...[
                     _PhaseHeader(
@@ -642,7 +649,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                       onRename: () => _renamePhase(phase),
                       onDelete: () => _deletePhase(phase),
                     ),
-                    for (final task in grouped[phase.id] ?? [])
+                    for (final task in (grouped[phase.id] ?? []).where(_visible))
                       _TaskTile(
                         key: _taskKeys[task.id],
                         task: task,
@@ -674,7 +681,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                           ),
                         ),
                       ),
-                    for (final task in grouped[null] ?? [])
+                    for (final task in (grouped[null] ?? []).where(_visible))
                       _TaskTile(
                         key: _taskKeys[task.id],
                         task: task,
@@ -863,20 +870,28 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     });
   }
 
-  Future<void> _openTaskDetail(ProjectTask task) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _TaskDetailSheet(
-        task: task,
-        project: _project,
-        sync: _sync,
-        onChanged: () => setState(() {}),
-        activities: widget.activities,
+  Widget _doneToggle(ColorScheme cs, int done) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: () => setState(() => _showDone = !_showDone),
+        icon: Icon(_showDone ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 16),
+        label: Text(_showDone
+            ? 'Masquer les ${done > 1 ? '$done tâches faites' : 'tâche faite'}'
+            : 'Afficher les ${done > 1 ? '$done tâches faites' : 'tâche faite'}'),
+        style: TextButton.styleFrom(
+          foregroundColor: cs.onSurface.withOpacity(.55),
+          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          visualDensity: VisualDensity.compact,
+        ),
       ),
     );
-    setState(() {});
+  }
+
+  Future<void> _openTaskDetail(ProjectTask task) async {
+    await showTaskDetail(context,
+        project: _project, task: task, activities: widget.activities, sync: _sync, onChanged: () => setState(() {}));
+    if (mounted) setState(() {});
   }
 
   /// Crée une tâche dans le projet, sans IA (titre + phase + dates optionnelles).
@@ -997,12 +1012,41 @@ class _ProjectSheetState extends State<_ProjectSheet> {
 
 // ── Sheet détail d'une tâche ──────────────────────────────────────────────────
 
+/// Fiche de TÂCHE (actions à faire / faites, étapes dépliables, dates,
+/// description). Ouverte depuis le plan d'action, et directement depuis la
+/// fiche projet quand on touche une action (2026-10 : avant, le tap ouvrait
+/// tout le plan) — [expandActionId] déplie les étapes de cette action.
+Future<void> showTaskDetail(
+  BuildContext context, {
+  required Project project,
+  required ProjectTask task,
+  List<Activity> activities = const [],
+  FirestoreSync? sync,
+  String? expandActionId,
+  VoidCallback? onChanged,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (_) => _TaskDetailSheet(
+      task: task,
+      project: project,
+      sync: sync ?? FirestoreSync(),
+      onChanged: onChanged ?? () {},
+      activities: activities,
+      expandActionId: expandActionId,
+    ),
+  );
+}
+
 class _TaskDetailSheet extends StatefulWidget {
   final ProjectTask task;
   final Project project;
   final FirestoreSync sync;
   final VoidCallback onChanged;
   final List<Activity> activities; // pour lier une action à une activité-temps
+  final String? expandActionId;
 
   const _TaskDetailSheet({
     required this.task,
@@ -1010,6 +1054,7 @@ class _TaskDetailSheet extends StatefulWidget {
     required this.sync,
     required this.onChanged,
     this.activities = const [],
+    this.expandActionId,
   });
 
   @override
@@ -1028,7 +1073,15 @@ class _TaskDetailSheetState extends State<_TaskDetailSheet>
   void initState() {
     super.initState();
     _task = widget.task;
-    _actionTabs = TabController(length: 2, vsync: this);
+    final target = widget.expandActionId;
+    if (target != null) {
+      _expandedActions.add(target);
+      // Action déjà faite → onglet « Faites », sinon elle serait introuvable.
+      final a = _task.actions.where((x) => x.id == target).firstOrNull;
+      _actionTabs = TabController(length: 2, vsync: this, initialIndex: a != null && a.done ? 1 : 0);
+    } else {
+      _actionTabs = TabController(length: 2, vsync: this);
+    }
     _actionTabs.addListener(() => setState(() {}));
   }
 

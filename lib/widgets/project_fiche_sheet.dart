@@ -96,6 +96,13 @@ class _ProjectFicheState extends State<_ProjectFiche> {
   void _openPlan({String? taskId}) =>
       showProjectSheet(context, project: p, domains: widget.domains, targetTaskId: taskId, activities: widget.activities);
 
+  /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan).
+  Future<void> _openAction(ProjectTask task, TaskAction action) async {
+    await showTaskDetail(context,
+        project: p, task: task, activities: widget.activities, sync: widget.sync, expandActionId: action.id);
+    if (mounted) setState(() {});
+  }
+
   void _startNext(ProjectMoment m) {
     final n = m.next;
     if (n == null) {
@@ -108,7 +115,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
       widget.onStartTimer!(act, p, n.task);
       return;
     }
-    _openPlan(taskId: n.task.id);
+    _openAction(n.task, n.action);
   }
 
   void _openSession(Intervention s) {
@@ -175,7 +182,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
                   title: a.action.title,
                   detail: '${a.task.title}${a.due != null ? ' · ${actionDueLabel(a.due!, now)}' : ''}',
                   current: identical(a.action, m.next?.action) || a.action.id == m.next?.action.id,
-                  onTap: () => _openPlan(taskId: a.task.id),
+                  onTap: () => _openAction(a.task, a.action),
                 ),
             if (week.length > 6)
               FicheNote('+ ${week.length - 6} autre${week.length - 6 > 1 ? 's' : ''} dans le plan d\'action.'),
