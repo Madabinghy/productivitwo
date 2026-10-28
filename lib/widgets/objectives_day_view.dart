@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
+import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show scoreDay, routineReachedDays, fmtInt;
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet, BadgeTodayActions;
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet, BadgeTodayActions, todayStakeColor;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/objective_moment_card.dart';
@@ -195,13 +196,90 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
           const Spacer(),
           Text('${views.length} / $kMaxBadgeHunts', style: TextStyle(fontSize: 12.5, color: text3)),
         ]),
-        for (final v in views) _huntRow(cs, text3, v, now, todayScore: todayScore, reachedByRoutine: reachedByRoutine, todayYmd: todayYmd),
+        for (final v in views) _huntRow(cs, text3, v, now, todayScore: todayScore, reachedByRoutine: reachedByRoutine, todayYmd: todayYmd, facts: bc.todayFacts()),
       ]),
     );
   }
 
-  Widget _huntRow(ColorScheme cs, Color text3, HuntView v, DateTime now, {required dynamic todayScore, required Map<String, Set<String>> reachedByRoutine, required String todayYmd}) {
+  BadgeTodayActions _todayActions() => BadgeTodayActions(
+        routinePlus: (id) {
+          final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
+          if (a != null) routinePlus(widget.logic, a);
+        },
+        pointElan: () => showModeSheet(context, widget.logic),
+        openBlock: widget.onOpenSource,
+        openChain: widget.onChain,
+        startChrono: (id, _) => widget.logic.start(id),
+      );
+
+  /// Ce qu'il manque aujourd'hui pour la chasse (2026-10) : le chip d'enjeu et
+  /// les deux premiers gestes, à la place des comptes génériques du levier.
+  Widget? _todayLines(ColorScheme cs, Color text3, BadgeToday t) {
+    if (t.chip.isEmpty && t.items.isEmpty) return null;
+    final color = todayStakeColor(t.stake);
+    final acts = _todayActions();
+    Widget? button(GapItem i) {
+      switch (i.kind) {
+        case GapKind.routine:
+          return i.activityId == null ? null : _miniBtn('+1', () => acts.routinePlus!(i.activityId!), cs);
+        case GapKind.elan:
+          return _miniBtn('Pointer', acts.pointElan!, cs);
+        case GapKind.block:
+          return i.block == null || widget.onOpenSource == null ? null : _miniBtn('Ouvrir', () => widget.onOpenSource!(i.block!), cs, outlined: true);
+        case GapKind.chain:
+          return widget.onChain == null ? null : _miniBtn('Enchaîner', widget.onChain!, cs, outlined: true);
+        case GapKind.time:
+          return i.activityId == null ? null : _miniBtn('Chrono', () => widget.logic.start(i.activityId!), cs, outlined: true);
+        default:
+          return null;
+      }
+    }
+
+    final shown = t.items.take(2).toList();
+    final more = t.items.length - shown.length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (t.chip.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(t.chip, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+        ),
+      for (final i in shown)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(children: [
+            Expanded(
+              child: Text('${i.title}${i.detail.isEmpty ? '' : ' · ${i.detail}'}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .85))),
+            ),
+            if (button(i) case final w?) ...[const SizedBox(width: 8), w],
+          ]),
+        ),
+      if (more > 0) Padding(padding: const EdgeInsets.only(top: 2), child: Text('+ $more dans la fiche', style: TextStyle(fontSize: 11.5, color: text3))),
+    ]);
+  }
+
+  Widget _miniBtn(String label, VoidCallback onTap, ColorScheme cs, {bool outlined = false}) => SizedBox(
+        height: 26,
+        child: outlined
+            ? OutlinedButton(
+                onPressed: () {
+                  onTap();
+                  if (mounted) setState(() {});
+                },
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                child: Text(label))
+            : FilledButton(
+                onPressed: () {
+                  onTap();
+                  if (mounted) setState(() {});
+                },
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 10), visualDensity: VisualDensity.compact, textStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                child: Text(label)),
+      );
+
+  Widget _huntRow(ColorScheme cs, Color text3, HuntView v, DateTime now, {required dynamic todayScore, required Map<String, Set<String>> reachedByRoutine, required String todayYmd, TodayFacts? facts}) {
     final b = v.badge;
+    final todayLines = facts == null ? null : _todayLines(cs, text3, badgeToday(b, facts));
     final routineId = b.def.subjectId;
     final todayReached = routineId != null && (reachedByRoutine[routineId]?.contains(todayYmd) ?? false);
     final readingDue = b.def.id == 'releve-fidele' && _objectives.any((o) => isReadingDue(o, now));
@@ -214,7 +292,9 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       todayBlocksDone: todayScore.blocksDone as int,
     );
     Widget? action;
-    if (lever.kind == LeverKind.routine && routineId != null && !todayReached) {
+    if (todayLines != null) {
+      // Les gestes sont sur les lignes du jour.
+    } else if (lever.kind == LeverKind.routine && routineId != null && !todayReached) {
       final a = widget.logic.state.activeActivities.where((x) => x.id == routineId).firstOrNull;
       if (a != null) action = IconButton(visualDensity: VisualDensity.compact, onPressed: () => routinePlus(widget.logic, a), icon: Icon(Icons.add_circle, size: 24, color: cs.primary));
     } else if (lever.kind == LeverKind.chain && widget.onChain != null) {
@@ -224,14 +304,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       onTap: () => showBadgeSheet(context, b,
           logic: widget.logic,
           facts: widget.badges?.todayFacts(),
-          actions: BadgeTodayActions(
-            routinePlus: (id) {
-              final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
-              if (a != null) routinePlus(widget.logic, a);
-            },
-            pointElan: () => showModeSheet(context, widget.logic),
-            openBlock: widget.onOpenSource,
-          )),
+          actions: _todayActions()),
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -242,7 +315,9 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('${b.def.name} · ${fmtInt(v.tierValue)}${b.def.unit.isEmpty ? '' : ' ${b.def.unit}'}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: cs.onSurface)),
               Text(v.paceLabel(now), style: TextStyle(fontSize: 12, color: text3)),
-              if (lever.text.isNotEmpty)
+              if (todayLines != null)
+                todayLines
+              else if (lever.text.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 3),
                   child: Text(lever.text, style: TextStyle(fontSize: 12.5, color: todayReached ? kPalierGreen : cs.onSurface.withValues(alpha: .8))),
