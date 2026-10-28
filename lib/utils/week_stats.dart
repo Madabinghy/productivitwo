@@ -93,7 +93,8 @@ List<DomainWeek> domainWeeks({
       restUntil: resting ? rest[d.id] : null,
       daysElapsed: budgetDayIndex(now, windowDays),
       windowDays: windowDays,
-      routinesReached: mine.where((e) => e.kept).length,
+      // Au rythme à ce jour (prorata du jour de la semaine), pas sur la cible entière.
+      routinesReached: mine.where((e) => _onTrackToDate(e, now.weekday)).length,
       routinesTotal: mine.length,
     ));
   }
@@ -109,6 +110,17 @@ List<DomainWeek> domainWeeks({
 
 /// MA SEMAINE : engagements des objectifs en cours (décision 2026-10-26 : les
 /// routines rattachées à un objectif ; aucune → toutes), chrono de la semaine.
+bool _onTrackToDate(EngagementStat e, int daysElapsed) {
+  final x = expectedToDate(e.target, daysElapsed);
+  return x <= 0 || (e.done / x) >= kKeptRatio;
+}
+
+/// Attendu À CE JOUR d'un engagement hebdo (2026-10) : cible × jours écoulés
+/// / 7, arrondi — un lundi, « 3 fois par semaine » n'attend rien encore, le
+/// mercredi 1, le dimanche 3. Avant, la semaine était jugée sur la cible
+/// entière dès le lundi (« Semaine en retard » à 9 h le premier jour).
+int expectedToDate(int target, int daysElapsed) => (target * daysElapsed / 7).round().clamp(0, target);
+
 class WeekSummary {
   final List<EngagementStat> engagements;
   final int chronoMin;
@@ -117,8 +129,25 @@ class WeekSummary {
   final bool fromObjectives;
   const WeekSummary({required this.engagements, required this.chronoMin, required this.daysElapsed, required this.fromObjectives});
 
-  int get pct => engagementPct(engagements);
-  int get kept => engagements.where((e) => e.kept).length;
+  int expectedOf(EngagementStat e) => expectedToDate(e.target, daysElapsed);
+
+  /// Part de l'attendu à ce jour (plafonnée à 1 ; rien d'attendu → 1).
+  double ratioOf(EngagementStat e) {
+    final x = expectedOf(e);
+    return x <= 0 ? 1.0 : (e.done / x).clamp(0.0, 1.0).toDouble();
+  }
+
+  /// Au rythme = [kKeptRatio] de l'attendu à ce jour (même seuil que « tenu »).
+  bool onTrack(EngagementStat e) => ratioOf(e) >= kKeptRatio;
+
+  /// Moyenne des parts faites À CE JOUR (carte MA SEMAINE, anneau).
+  int get pct =>
+      engagements.isEmpty ? 0 : ((engagements.fold<double>(0, (s, e) => s + ratioOf(e)) / engagements.length) * 100).round();
+  int get kept => engagements.where(onTrack).length;
+
+  /// Lecture sur la SEMAINE ENTIÈRE (fiche : ce qu'il reste d'ici dimanche).
+  int get pctWeek => engagementPct(engagements);
+  int get keptWeek => engagements.where((e) => e.kept).length;
 }
 
 WeekSummary weekSummary({

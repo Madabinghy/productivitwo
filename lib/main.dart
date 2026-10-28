@@ -6801,13 +6801,10 @@ class _AppRootState extends State<AppRoot>
         final h = _computeGlobalHabitsGauge(now);
         final cs = Theme.of(context).colorScheme;
 
-        List<Widget> weekDetails(BuildContext ctx) => [
-        // Ordre voulu (2026-09) : jauges globales puis domaines EN TÊTE —
-        // c'est la lecture principale de l'onglet ; le reste suit.
-        // (Objectifs, « Ma semaine », Productivité, Temps par domaine,
-        // Routines, « Mes programmes » et le camembert du jour ont été
-        // retirés : ces lectures vivent dans Objectifs ou Maintenant.)
-        SectionCard(
+        // Sections nommées de la fiche « Ma semaine » (2026-10) : chacune est
+        // repliable, plus de lectures empilées en vrac.
+        List<WeekDetailSection> weekDetails(BuildContext ctx) => [
+        (title: 'JAUGES DU JOUR · COURBE DE LA SEMAINE', child: SectionCard(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Builder(
             builder: (context) {
@@ -6959,19 +6956,19 @@ class _AppRootState extends State<AppRoot>
               );
             },
           ),
-        ),
-        ElanStatsCards(logic: logic, sync: _sync),
+        )),
+        (title: 'ÉLAN', child: ElanStatsCards(logic: logic, sync: _sync)),
         // Lecture du temps (venue d'Objectifs, allègement 2026-10) : heatmap par
         // domaine, 12 semaines, camembert du jour.
-        Padding(
+        (title: 'TEMPS PAR DOMAINE · 12 SEMAINES', child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           child: AccueilTimeStats(logic: logic),
-        ),
-        Padding(
+        )),
+        (title: 'AUJOURD\'HUI · TEMPS LOGGUÉ', child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: TodayLoggedPie(logic: logic),
-        ),
-        PestCounterCard(logic: logic),
+        )),
+        (title: 'RETARDS', child: PestCounterCard(logic: logic)),
         ];
         _statsCacheChildren = [
           WeekStatsView(
