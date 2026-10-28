@@ -15,7 +15,6 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
-import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
@@ -146,8 +145,12 @@ class _NowCardState extends State<NowCard> {
     return null;
   }
 
-  String _clock(int min) =>
-      '${(min ~/ 60).toString().padLeft(2, '0')}:${(min % 60).toString().padLeft(2, '0')}';
+  /// Heure d'horloge : un bloc qui passe minuit (Sommeil 22:00 → 05:00) finit
+  /// à 29 h en minutes de journée, affiché 05:00, jamais « 29:00 ».
+  String _clock(int min) {
+    final m = min % (24 * 60);
+    return '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+  }
 
   String _mmss(Duration d) {
     final h = d.inHours;
@@ -626,7 +629,6 @@ class _NowCardState extends State<NowCard> {
               style: TextStyle(
                   fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
         ),
-        ModePill(logic: widget.logic, badges: widget.badges),
         if (right != null) const SizedBox(width: 8),
         if (right != null)
           Text(right,
