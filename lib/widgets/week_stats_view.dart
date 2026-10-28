@@ -12,6 +12,10 @@ import 'package:productivitwo_v1/utils/week_stats.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Section nommée de la fiche « Ma semaine » (repliable).
+typedef WeekDetailSection = ({String title, Widget child});
 
 /// Onglet Stats « une carte, une fiche » (lot 3, 2026-10) : la carte MA
 /// SEMAINE (anneau = engagements des objectifs tenus, chrono de la semaine),
@@ -25,8 +29,8 @@ class WeekStatsView extends StatefulWidget {
   final Future<bool?> Function(Domain domain, {String focus}) onOpenDomain;
   final VoidCallback onManageDomains;
   /// Lectures détaillées, construites par l'appelant (jauges + courbe, élan,
-  /// temps, camembert, retards) : affichées dans la fiche « Ma semaine ».
-  final List<Widget> Function(BuildContext ctx) weekDetails;
+  /// temps, camembert, retards) : sections repliables de la fiche « Ma semaine ».
+  final List<WeekDetailSection> Function(BuildContext ctx) weekDetails;
   const WeekStatsView({
     super.key,
     required this.logic,
@@ -42,12 +46,19 @@ class WeekStatsView extends StatefulWidget {
 
 class _WeekStatsViewState extends State<WeekStatsView> {
   static List<StrategicObjective>? _cache;
+  static const _kOpenKey = 'week_fiche_open';
   List<StrategicObjective> _objectives = const [];
+  /// Sections de la fiche ouvertes (titres) ; ENGAGEMENTS l'est toujours.
+  Set<String> _open = {};
 
   @override
   void initState() {
     super.initState();
     _objectives = _cache ?? const [];
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getStringList(_kOpenKey);
+      if (v != null && mounted) setState(() => _open = v.toSet());
+    });
     widget.sync.fetchStrategicObjectives().then((all) {
       if (!mounted) return;
       _cache = all;
@@ -84,10 +95,11 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final st = pct == null ? kPalierMuted : palierColor(pct);
     const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+    final n = w.engagements.length;
     final sub = <String>[
       if (w.chronoMin > 0) '${fmtMin(w.chronoMin)} de chrono',
-      if (w.engagements.isNotEmpty) '${w.kept} / ${w.engagements.length} engagement${w.engagements.length > 1 ? 's' : ''} tenu${w.kept > 1 ? 's' : ''}',
-      if (w.engagements.isEmpty) 'aucune routine engagée',
+      if (n > 0) '${w.kept} / $n engagement${n > 1 ? 's' : ''} au rythme',
+      if (n == 0) 'aucune routine engagée',
     ].join(' · ');
     final mode = widget.logic.mode;
     final modeLine = switch (mode) { DayMode.low => 'journée malgré tout · ', DayMode.high => 'journée à fond · ', DayMode.normal => '' };
@@ -98,8 +110,10 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       ring: pct == null ? 0 : pct / 100,
       ringColor: st,
       ringBig: pct == null ? '—' : '$pct %',
-      ringSmall: 'TENUS',
-      context_: w.fromObjectives ? 'Engagements des objectifs' : 'Toutes les routines de la semaine',
+      ringSmall: 'DU RYTHME',
+      // Jugée au prorata du jour (2026-10) : un lundi n'est plus « en retard »
+      // sur une cible de 7 jours.
+      context_: '${w.fromObjectives ? 'Engagements des objectifs' : 'Toutes les routines'} · attendu à ce jour',
       contextIcon: Icons.flag_rounded,
       title: pct == null
           ? 'Pas d\'engagement cette semaine'
@@ -189,7 +203,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       r.hasGoal
           ? '${fmtMin(r.doneMin)} · minimum ${fmtMin(r.weekMin)}${r.windowDays == 14 ? ' sur 14 j' : ''} · attendu ${fmtMin(r.expectedMin)}'
           : (r.doneMin > 0 ? '${fmtMin(r.doneMin)} ${r.windowDays == 14 ? 'sur 14 j' : 'cette semaine'}' : (r.resting ? '' : 'pas de temps tracé')),
-      if (r.routinesTotal > 0) '${r.routinesReached} / ${r.routinesTotal} routine${r.routinesTotal > 1 ? 's' : ''}',
+      if (r.routinesTotal > 0) '${r.routinesReached} / ${r.routinesTotal} routine${r.routinesTotal > 1 ? 's' : ''} au rythme',
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -209,45 +223,74 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
-  /// Fiche « Ma semaine » : engagements, puis les lectures détaillées de
-  /// l'ancien onglet (jauges du jour + courbe de la semaine, élan, temps).
+  Future<void> _toggleSection(String key, void Function(void Function()) setLocal) async {
+    setLocal(() => _open.contains(key) ? _open.remove(key) : _open.add(key));
+    if (mounted) setState(() {});
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kOpenKey, _open.toList());
+  }
+
+  /// Fiche « Ma semaine » (2026-10) : ENGAGEMENTS à ce jour (toujours ouvert,
+  /// attendu au prorata + rappel de la semaine entière), puis des sections
+  /// REPLIABLES — répartition, jauges + courbe, élan, temps, camembert,
+  /// retards — au lieu des lectures empilées en vrac.
   void _openWeekFiche(WeekSummary w) {
     final pct = w.engagements.isEmpty ? null : w.pct;
+    final n = w.engagements.length;
     showFiche<void>(context, builder: (ctx, scroll) {
-      final cs = Theme.of(ctx).colorScheme;
-      return ListView(
-        controller: scroll,
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
-        children: [
-          FicheHeader(
-            title: 'Ma semaine',
-            chip: pct == null ? 'sans engagement' : '$pct % tenus',
-            chipColor: pct == null ? kPalierMuted : palierColor(pct),
-            kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
-          ),
-          FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS' : 'ROUTINES DE LA SEMAINE',
-              trailing: w.engagements.isEmpty ? null : FicheDelta('${w.kept} / ${w.engagements.length} tenus', color: palierColor(pct ?? 0))),
-          if (w.engagements.isEmpty)
-            const FicheNote('Rattache des routines à un objectif pour que la semaine les juge ; sinon toutes les routines comptent.')
-          else
-            for (final e in w.engagements)
-              FicheStep(
-                title: e.label,
-                detail: '${e.done} / ${e.target} · ${(e.ratio * 100).round()} %',
-                done: e.kept,
-                trailing: Text('${(e.ratio * 100).round()} %',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palierColor((e.ratio * 100).round()))),
-              ),
-          FicheTitle('RÉPARTITION SUR ${widget.logic.budgetWindowDays} J',
-              trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6))),
-          _distribution(ctx),
-          const FicheTitle('AUJOURD\'HUI ET LA SEMAINE'),
-          ...widget.weekDetails(ctx),
-          const SizedBox(height: 8),
-          Text('Les lectures détaillées vivent ici ; l\'onglet garde l\'essentiel.',
-              textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45))),
-        ],
-      );
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        final cs = Theme.of(ctx).colorScheme;
+        List<Widget> section(String title, List<Widget> body, {Widget? trailing}) {
+          final open = _open.contains(title);
+          return [
+            FicheTitle(title, trailing: trailing, expanded: open, onToggle: () => _toggleSection(title, setLocal)),
+            if (open) ...body,
+          ];
+        }
+
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          children: [
+            FicheHeader(
+              title: 'Ma semaine',
+              chip: pct == null ? 'sans engagement' : '$pct % du rythme',
+              chipColor: pct == null ? kPalierMuted : palierColor(pct),
+              kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
+            ),
+            FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS · À CE JOUR' : 'ROUTINES DE LA SEMAINE · À CE JOUR',
+                trailing: n == 0 ? null : FicheDelta('${w.kept} / $n au rythme', color: palierColor(pct ?? 0))),
+            if (n == 0)
+              const FicheNote('Rattache des routines à un objectif pour que la semaine les juge ; sinon toutes les routines comptent.')
+            else ...[
+              for (final e in w.engagements) ...[
+                FicheStep(
+                  title: e.label,
+                  detail: '${e.done} / ${w.expectedOf(e)} attendu${w.expectedOf(e) > 1 ? 's' : ''} à ce jour · ${e.target} sur la semaine',
+                  done: w.onTrack(e),
+                  trailing: Text('${(w.ratioOf(e) * 100).round()} %',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: palierColor((w.ratioOf(e) * 100).round()))),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                  child: ExpectedBar(done: e.done, total: e.target, expected: w.expectedOf(e), color: palierColor((w.ratioOf(e) * 100).round()), height: 6),
+                ),
+              ],
+              FicheNote(
+                  'Attendu au prorata du jour (jour ${w.daysElapsed} / 7). Semaine entière : ${w.pctWeek} % · ${w.keptWeek} / $n tenu${w.keptWeek > 1 ? 's' : ''}.'),
+            ],
+            ...section(
+              'RÉPARTITION SUR ${widget.logic.budgetWindowDays} J',
+              [_distribution(ctx)],
+              trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6)),
+            ),
+            for (final d in widget.weekDetails(ctx)) ...section(d.title, [d.child]),
+            const SizedBox(height: 8),
+            Text('Touche un titre pour déplier une lecture ; l\'onglet garde l\'essentiel.',
+                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45))),
+          ],
+        );
+      });
     });
   }
 }

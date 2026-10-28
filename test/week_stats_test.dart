@@ -30,7 +30,7 @@ void main() {
     expect((s.doneMin, s.goalMinDay, s.expectedMin, s.weekMin), (90, 40, 120, 280));
     expect(s.pctInt, 75);
     expect(s.deltaMin, -30);
-    expect((s.routinesReached, s.routinesTotal), (0, 1)); // 3 / 7 < 80 %
+    expect((s.routinesReached, s.routinesTotal), (1, 1)); // 3 faits / 3 attendus mercredi → au rythme
     final m = rows.firstWhere((r) => r.domain.id == 'm');
     expect((m.doneMin, m.goalMinDay, m.expectedMin), (10, 20, 60)); // minimum réglé à la main
     expect(m.pctInt, 17);
@@ -42,10 +42,37 @@ void main() {
     final w = weekSummary(activities: acts, hits: hits, sessions: sessions, objectives: [o], now: now);
     expect(w.fromObjectives, isTrue);
     expect(w.engagements.single.label, 'pompes');
-    expect(w.pct, 43); // 3 / 7
+    expect(w.pctWeek, 43); // 3 / 7 sur la semaine entière
+    expect(w.pct, 100); // attendu à ce jour = 3 (mercredi) → au rythme
+    expect(w.kept, 1);
+    expect(w.keptWeek, 0);
     expect(w.chronoMin, 100);
     final all = weekSummary(activities: acts, hits: hits, sessions: sessions, objectives: const [], now: now);
     expect(all.fromObjectives, isFalse);
     expect(all.engagements.length, 1);
+  });
+
+  test('expectedToDate : prorata arrondi, borné à la cible', () {
+    expect(expectedToDate(3, 1), 0); // lundi : rien d'attendu encore
+    expect(expectedToDate(3, 3), 1);
+    expect(expectedToDate(3, 7), 3);
+    expect(expectedToDate(7, 1), 1); // quotidienne : 1 par jour
+    expect(expectedToDate(7, 4), 4);
+    expect(expectedToDate(1, 3), 0);
+    expect(expectedToDate(1, 4), 1);
+  });
+
+  test('weekSummary : un lundi, rien d\'attendu → 100 % et au rythme', () {
+    final monday = DateTime(2026, 10, 26, 9);
+    final w = weekSummary(activities: acts, hits: const [], sessions: const [], objectives: const [], now: monday);
+    // quotidienne cible 7 → attendu lundi = 1, rien de fait → 0 %
+    expect(w.pct, 0);
+    final weekly = Activity(
+        id: 'yoga', domainId: 's', name: 'yoga', role: ActivityRole.generic, type: 'habit', goalMin: 0,
+        habitFreq: HabitFreq.weekly, habitTarget: 3, createdAt: DateTime(2026, 1, 1));
+    final w2 = weekSummary(activities: [weekly], hits: const [], sessions: const [], objectives: const [], now: monday);
+    expect(w2.pct, 100);
+    expect(w2.kept, 1);
+    expect(w2.pctWeek, 0);
   });
 }

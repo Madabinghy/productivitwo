@@ -37,22 +37,38 @@ Future<T?> showFiche<T>(BuildContext context, {required Widget Function(BuildCon
 class FicheTitle extends StatelessWidget {
   final String text;
   final Widget? trailing;
-  const FicheTitle(this.text, {super.key, this.trailing});
+  /// Section repliable (2026-10) : [onToggle] rend le titre tapable, avec un
+  /// chevron selon [expanded].
+  final bool expanded;
+  final VoidCallback? onToggle;
+  const FicheTitle(this.text, {super.key, this.trailing, this.expanded = true, this.onToggle});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final row = Row(children: [
+      Expanded(
+        child: Text(text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: cs.onSurface.withValues(alpha: .5))),
+      ),
+      if (trailing != null) ...[const SizedBox(width: 8), Flexible(child: trailing!)],
+      if (onToggle != null) ...[
+        const SizedBox(width: 4),
+        Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withValues(alpha: .45)),
+      ],
+    ]);
+    if (onToggle == null) {
+      return Padding(padding: const EdgeInsets.only(top: 18, bottom: 8), child: row);
+    }
     return Padding(
-      padding: const EdgeInsets.only(top: 18, bottom: 8),
-      child: Row(children: [
-        Expanded(
-          child: Text(text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: cs.onSurface.withValues(alpha: .5))),
-        ),
-        if (trailing != null) ...[const SizedBox(width: 8), Flexible(child: trailing!)],
-      ]),
+      padding: const EdgeInsets.only(top: 10),
+      child: InkWell(
+        onTap: onToggle,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(padding: const EdgeInsets.fromLTRB(0, 8, 0, 8), child: row),
+      ),
     );
   }
 }
