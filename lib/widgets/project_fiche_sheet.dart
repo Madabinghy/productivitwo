@@ -99,7 +99,14 @@ class _ProjectFicheState extends State<_ProjectFiche> {
   }
 
   void _openPlan({String? taskId}) =>
-      showProjectSheet(context, project: p, domains: widget.domains, targetTaskId: taskId, activities: widget.activities);
+      showProjectSheet(context,
+          project: p,
+          domains: widget.domains,
+          targetTaskId: taskId,
+          activities: widget.activities,
+          sessions: widget.sessions,
+          logic: widget.logic,
+          onStartTimer: widget.onStartTimer);
 
   /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan).
   Future<void> _openAction(ProjectTask task, TaskAction action) async {
@@ -237,7 +244,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
               primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
               onPrimary: () => _startNext(m),
               secondary: [
-                (label: 'Plan d\'action', onTap: () => _openPlan()),
+                (label: 'Déplier le projet', onTap: () => _openPlan()),
                 (label: 'Terminer', onTap: () => _setStatus('done')),
                 (label: 'Mettre en veille', onTap: () => _setStatus('archived')),
               ],

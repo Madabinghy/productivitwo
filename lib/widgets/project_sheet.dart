@@ -3,9 +3,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone, setChecklistItem;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierCoral;
+import 'package:productivitwo_v1/utils/progress_bricks.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart';
+import 'package:productivitwo_v1/widgets/wall_task.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
-import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/widgets/task_fiche_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -18,6 +22,9 @@ Future<void> showProjectSheet(
   required List<Domain> domains,
   String? targetTaskId,
   List<Activity> activities = const [], // pour lier une action à une activité-temps
+  List<Session> sessions = const [], // chronos ouverts → briques « chrono dessus »
+  AppLogic? logic,
+  void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -28,6 +35,9 @@ Future<void> showProjectSheet(
       domains: domains,
       targetTaskId: targetTaskId,
       activities: activities,
+      sessions: sessions,
+      logic: logic,
+      onStartTimer: onStartTimer,
     ),
   );
 }
@@ -39,12 +49,18 @@ class _ProjectSheet extends StatefulWidget {
   final List<Domain> domains;
   final String? targetTaskId;
   final List<Activity> activities;
+  final List<Session> sessions;
+  final AppLogic? logic;
+  final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
 
   const _ProjectSheet({
     required this.project,
     required this.domains,
     this.targetTaskId,
     this.activities = const [],
+    this.sessions = const [],
+    this.logic,
+    this.onStartTimer,
   });
 
   @override
@@ -423,8 +439,8 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     final today = DateTime.now();
 
     final done  = _project.tasks.where((t) => t.status == 'done').length;
-    final total = _project.tasks.length;
-    final progress = total > 0 ? done / total : 0.0;
+    final running = runningTargets(widget.sessions);
+    final wall = projectBricks(_project, today, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
 
     // Grouper tâches par phase (phaseId en priorité, groupLabel en fallback)
     final phaseByLabel = { for (final p in _project.phases) p.label: p };
@@ -607,20 +623,22 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                       ),
                       const Spacer(),
                       Text(
-                        '$done / $total tâches',
+                        '${wall.done} / ${wall.total} tâches${wall.expected > 0 && wall.expected < wall.total ? ' · attendu ${wall.expected}' : ''}',
                         style: TextStyle(
                             fontSize: 12, color: cs.onSurface.withOpacity(.45)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 4,
-                    borderRadius: BorderRadius.circular(2),
-                    backgroundColor: cs.onSurface.withOpacity(.08),
-                    color: color,
-                  ),
+                  // Mur des projets (lot 2) : la rangée de briques du projet,
+                  // tap sur une brique = déplie cette tâche.
+                  ProgressBricks(row: wall, height: 14, highlight: _expandedIndex(wall), onBrick: (i) => _focusBrick(wall, i)),
+                  if (behindLabel(wall) != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(behindLabel(wall)!,
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: kPalierCoral)),
+                    ),
                   const SizedBox(height: 8),
                   _linkedActivityRow(cs),
                   if (_project.status == 'draft') ...[
@@ -648,21 +666,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                       onDelete: () => _deletePhase(phase),
                     ),
                     for (final task in (grouped[phase.id] ?? []).where(_visible))
-                      _TaskTile(
-                        key: _taskKeys[task.id],
-                        task: task,
-                        isTarget: task.id == widget.targetTaskId,
-                        today: today,
-                        cs: cs,
-                        onToggle: () => _toggleStatus(task),
-                        onOpenDetail: _openTaskDetail,
-                        onToggleTodayFlag: () async {
-                          await toggleTaskTodayAndSchedule(
-                              context, _sync, _project, task);
-                          if (mounted) setState(() {});
-                        },
-                        onLaunchSession: _sessionLauncher(task),
-                      ),
+                      KeyedSubtree(key: _taskKeys[task.id], child: _wallTask(task, today, running)),
                   ],
                   // Tâches sans phase
                   if ((grouped[null] ?? []).isNotEmpty) ...[
@@ -680,21 +684,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                         ),
                       ),
                     for (final task in (grouped[null] ?? []).where(_visible))
-                      _TaskTile(
-                        key: _taskKeys[task.id],
-                        task: task,
-                        isTarget: task.id == widget.targetTaskId,
-                        today: today,
-                        cs: cs,
-                        onToggle: () => _toggleStatus(task),
-                        onOpenDetail: _openTaskDetail,
-                        onToggleTodayFlag: () async {
-                          await toggleTaskTodayAndSchedule(
-                              context, _sync, _project, task);
-                          if (mounted) setState(() {});
-                        },
-                        onLaunchSession: _sessionLauncher(task),
-                      ),
+                      KeyedSubtree(key: _taskKeys[task.id], child: _wallTask(task, today, running)),
                   ],
 
                   // Ajouter une tâche / une phase (gestion autonome, sans IA)
@@ -886,10 +876,69 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     );
   }
 
-  Future<void> _openTaskDetail(ProjectTask task) async {
+  Future<void> _openTaskDetail(ProjectTask task, {String? actionId}) async {
     await showTaskDetail(context,
-        project: _project, task: task, activities: widget.activities, sync: _sync, onChanged: () => setState(() {}));
+        project: _project,
+        task: task,
+        activities: widget.activities,
+        sync: _sync,
+        logic: widget.logic,
+        onStartTimer: widget.onStartTimer,
+        expandActionId: actionId,
+        onChanged: () => setState(() {}));
     if (mounted) setState(() {});
+  }
+
+  /// Tâche dépliée sur place : la tâche visée (ou touchée dans la rangée) s'ouvre.
+  String? _expandedTaskId;
+
+  int? _expandedIndex(BrickRow wall) {
+    final id = _expandedTaskId ?? widget.targetTaskId;
+    if (id == null) return null;
+    final i = wall.bricks.indexWhere((b) => b.id == id);
+    return i < 0 ? null : i;
+  }
+
+  void _focusBrick(BrickRow wall, int i) {
+    if (i < 0 || i >= wall.total) return;
+    final id = wall.bricks[i].id;
+    setState(() {
+      _expandedTaskId = id;
+      _showDone = _showDone || _project.tasks.any((t) => t.id == id && t.status == 'done');
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _taskKeys[id]?.currentContext;
+      if (ctx != null) Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 350), curve: Curves.easeOut, alignment: 0.15);
+    });
+  }
+
+  Future<void> _setActionDone(TaskAction a, bool done) async {
+    setState(() => setActionDone(a, done));
+    await _sync.patchActionOf(_project, a);
+  }
+
+  Future<void> _setStep(TaskAction a, ChecklistItem c, bool done) async {
+    setState(() => setChecklistItem(a, c.id, done));
+    await _sync.patchActionOf(_project, a);
+  }
+
+  Widget _wallTask(ProjectTask task, DateTime today, ({Set<String> taskIds, Set<String> actionIds}) running) {
+    final expandId = _expandedTaskId ?? widget.targetTaskId;
+    return WallTask(
+      key: ValueKey('wall-${task.id}-${expandId == task.id}'),
+      task: task,
+      today: today,
+      runningTaskIds: running.taskIds,
+      runningActionIds: running.actionIds,
+      initiallyExpanded: task.id == expandId,
+      isTarget: task.id == widget.targetTaskId,
+      onOpenFiche: () => _openTaskDetail(task),
+      onOpenAction: (a) => _openTaskDetail(task, actionId: a.id),
+      onToggleDone: () => _toggleStatus(task),
+      onActionDone: _setActionDone,
+      onStep: _setStep,
+      onLaunchSession: _sessionLauncher(task),
+    );
   }
 
   /// Crée une tâche dans le projet, sans IA (titre + phase + dates optionnelles).
@@ -1239,239 +1288,6 @@ class _PhaseHeader extends StatelessWidget {
 
 // ── Tuile de tâche ────────────────────────────────────────────────────────────
 
-class _TaskTile extends StatelessWidget {
-  final ProjectTask task;
-  final bool isTarget;
-  final DateTime today;
-  final ColorScheme cs;
-  final VoidCallback onToggle;
-  final Future<void> Function(ProjectTask)? onOpenDetail;
-  final VoidCallback? onToggleTodayFlag;
-  /// Jalon d'une intervention : ouvre l'écran « séance en cours ».
-  final VoidCallback? onLaunchSession;
-
-  const _TaskTile({
-    super.key,
-    required this.task,
-    required this.isTarget,
-    required this.today,
-    required this.cs,
-    required this.onToggle,
-    this.onOpenDetail,
-    this.onToggleTodayFlag,
-    this.onLaunchSession,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDone    = task.status == 'done';
-    final isSkipped = task.status == 'skipped';
-    final todayD    = DateTime(today.year, today.month, today.day);
-    final isOverdue = task.endDate != null &&
-        task.endDate!.isBefore(todayD) &&
-        !isDone && !isSkipped;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: isTarget
-            ? cs.primaryContainer.withOpacity(.35)
-            : cs.surfaceContainerHighest.withOpacity(.35),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isTarget
-              ? cs.primary.withOpacity(.4)
-              : cs.outlineVariant.withOpacity(.35),
-          width: isTarget ? 1.5 : 1,
-        ),
-      ),
-      child: InkWell(
-        // Jalon : la carte ouvre la FICHE (titre, dates, étapes — un jalon
-        // se modifie comme une tâche, retour user 2026-09) ; le toggle
-        // rapide atteint/pas atteint vit sur le losange.
-        onTap: () => onOpenDetail?.call(task) ?? onToggle(),
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Icône statut / jalon
-              Padding(
-                padding: const EdgeInsets.only(top: 1, right: 10),
-                child: task.isMilestone
-                    ? GestureDetector(
-                        // Toggle rapide conservé : tap sur le losange.
-                        onTap: onToggle,
-                        child: Transform.rotate(
-                          angle: 0.785,
-                          child: Container(
-                            width: 13, height: 13,
-                            decoration: BoxDecoration(
-                              color: isDone
-                                  ? Colors.green.shade500
-                                  : Colors.orange.shade600,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      )
-                    : Icon(
-                        isDone
-                            ? Icons.check_circle_rounded
-                            : isSkipped
-                                ? Icons.remove_circle_outline
-                                : Icons.radio_button_unchecked,
-                        size: 18,
-                        color: isDone
-                            ? Colors.green.shade500
-                            : isSkipped
-                                ? cs.onSurface.withOpacity(.3)
-                                : isOverdue
-                                    ? cs.error
-                                    : cs.onSurface.withOpacity(.45),
-                      ),
-              ),
-
-              // Contenu
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      task.title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withOpacity(isDone || isSkipped ? .35 : .9),
-                        decoration: isDone ? TextDecoration.lineThrough : null,
-                      ),
-                    ),
-                    if (task.endDate != null) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.event_outlined,
-                            size: 11,
-                            color: isOverdue ? cs.error : cs.onSurface.withOpacity(.35),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _fmtDate(task.endDate!),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isOverdue ? cs.error : cs.onSurface.withOpacity(.4),
-                              fontWeight: isOverdue ? FontWeight.w600 : FontWeight.normal,
-                            ),
-                          ),
-                          if (isOverdue) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: cs.error.withOpacity(.1),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '−${todayD.difference(task.endDate!).inDays}j',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: cs.error,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                    // Actions / sous-étapes
-                    if (task.stepsTotal > 0) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${task.stepsDone}/${task.stepsTotal} étapes',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: cs.onSurface.withOpacity(.35),
-                        ),
-                      ),
-                    ],
-                    if (onLaunchSession != null && !isDone && !isSkipped) ...[
-                      const SizedBox(height: 6),
-                      FilledButton.tonalIcon(
-                        onPressed: onLaunchSession,
-                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                        label: const Text('Séance en cours'),
-                        style: FilledButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-
-              // Badge cible ORION
-              if (isTarget)
-                Padding(
-                  padding: const EdgeInsets.only(left: 6, top: 1),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFe8c94a).withOpacity(.15),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                          color: const Color(0xFFe8c94a).withOpacity(.4)),
-                    ),
-                    child: const Text(
-                      'ORION',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
-                        color: Color(0xFFe8c94a),
-                      ),
-                    ),
-                  ),
-                ),
-              // Étoile priorité du jour
-              GestureDetector(
-                onTap: onToggleTodayFlag,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 6, top: 1),
-                  child: Icon(
-                    task.todayFlag
-                        ? Icons.star_rounded
-                        : Icons.star_outline_rounded,
-                    size: 16,
-                    color: task.todayFlag
-                        ? Colors.amber.shade600
-                        : cs.onSurface.withOpacity(.25),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _fmtDate(DateTime d) {
-    const m = ['jan', 'fév', 'mar', 'avr', 'mai', 'juin',
-                'juil', 'aoû', 'sep', 'oct', 'nov', 'déc'];
-    return '${d.day} ${m[d.month - 1]} ${d.year}';
-  }
-}
-
-/// Bandeau « brouillon » : tant que le projet n'est pas validé, il reste hors
-/// économie d'Or et hors score. Le bouton bascule le projet en actif.
 class _DraftPlanBanner extends StatelessWidget {
   final Future<void> Function() onValidate;
   const _DraftPlanBanner({required this.onValidate});
