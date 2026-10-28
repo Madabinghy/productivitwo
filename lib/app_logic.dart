@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
-import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket;
+import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
@@ -1731,12 +1731,21 @@ class AppLogic implements HuntStore {
   MoodMark logMood(String kind, int value, {String? moment, ScheduleBlock? block}) {
     final now = DateTime.now();
     final ymd = livedProgramYmd(now, dayStartMin);
+    // Élan : chaque changement est gardé (historique de la journée), sauf un
+    // changement moins de 5 min après le précédent, qui le remplace (correction).
+    // Effort / humeur : un seul par bloc / par jour.
     bool same(MoodMark m) =>
-        m.kind == kind && m.ymd == ymd && (kind == kMoodElan ? m.moment == moment : kind == kMoodEffort ? m.blockId == block?.id : true);
+        m.kind == kind &&
+        m.ymd == ymd &&
+        (kind == kMoodElan
+            ? now.difference(m.at).inMinutes < kElanCorrectionMin
+            : kind == kMoodEffort
+                ? m.blockId == block?.id
+                : true);
     final replaced = state.moodMarks.where(same).map((m) => m.id).toList();
     state.moodMarks.removeWhere(same);
     // Le pointage remplacé disparaît aussi de Firestore, sinon il revient à la
-    // fusion suivante (un clic = un document, 67 « pointages » dans la semaine).
+    // fusion suivante.
     if (replaced.isNotEmpty) sync?.deleteMoodMarks(replaced).catchError((_) {});
     final mark = MoodMark(
       at: now,

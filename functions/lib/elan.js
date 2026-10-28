@@ -10,7 +10,7 @@
  * pointage ↔ fait est recalculé.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_DAY_START_MIN = exports.ELAN_BUCKETS = exports.MOOD_LABELS = exports.EFFORT_LABELS = exports.ELAN_LABELS = exports.MOOD_KINDS = void 0;
+exports.ELAN_CORRECTION_MIN = exports.DEFAULT_DAY_START_MIN = exports.ELAN_BUCKETS = exports.MOOD_LABELS = exports.EFFORT_LABELS = exports.ELAN_LABELS = exports.MOOD_KINDS = void 0;
 exports.validMoodValue = validMoodValue;
 exports.elanBucket = elanBucket;
 exports.parisOffsetMin = parisOffsetMin;
@@ -69,31 +69,46 @@ function livedDayEndMs(ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_M
     const approx = new Date(nextLocal);
     return nextLocal - offsetFor(approx, offsetMin) * 60000;
 }
-/** Clé « un pointage par … » (miroir de `moodMarkKey`, lib/utils/elan_logic.dart) :
- *  élan par (jour vécu, créneau), effort par (jour, bloc), humeur par jour. */
+/** Historique des changements d'élan (miroir de `dedupeMoodMarks`,
+ *  lib/utils/elan_logic.dart) : chaque changement est un pointage, sauf un
+ *  changement moins de ELAN_CORRECTION_MIN minutes après le précédent du même
+ *  jour vécu, qui le remplace (correction). Effort : un par (jour, bloc) ;
+ *  humeur : un par jour. */
+exports.ELAN_CORRECTION_MIN = 5;
 function moodMarkKey(m) {
-    var _a, _b;
-    if (m.kind === "elan") {
-        const t = Date.parse(m.at);
-        const d = isFinite(t) ? new Date(t) : null;
-        const bucket = (_a = m.moment) !== null && _a !== void 0 ? _a : (d ? elanBucket(d.getUTCHours() * 60 + d.getUTCMinutes()) : "matin");
-        return `elan:${m.ymd}:${bucket}`;
-    }
+    var _a;
     if (m.kind === "effort")
-        return `effort:${m.ymd}:${(_b = m.blockId) !== null && _b !== void 0 ? _b : m.id}`;
+        return `effort:${m.ymd}:${(_a = m.blockId) !== null && _a !== void 0 ? _a : m.id}`;
     return `${m.kind}:${m.ymd}`;
 }
-/** Un seul pointage par clé, le plus récent gagne (les documents remplacés par un
- *  nouveau clic restaient en base avant 2026-10). */
 function dedupeMoodMarks(marks) {
+    var _a;
+    const out = [];
+    const elanByYmd = new Map();
     const best = new Map();
     for (const m of marks) {
+        if (m.kind === "elan") {
+            const l = (_a = elanByYmd.get(m.ymd)) !== null && _a !== void 0 ? _a : [];
+            l.push(m);
+            elanByYmd.set(m.ymd, l);
+            continue;
+        }
         const k = moodMarkKey(m);
         const cur = best.get(k);
         if (!cur || Date.parse(m.at) > Date.parse(cur.at))
             best.set(k, m);
     }
-    return [...best.values()].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    out.push(...best.values());
+    for (const l of elanByYmd.values()) {
+        l.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+        for (let i = 0; i < l.length; i++) {
+            const next = l[i + 1];
+            if (next && (Date.parse(next.at) - Date.parse(l[i].at)) / 60000 < exports.ELAN_CORRECTION_MIN)
+                continue;
+            out.push(l[i]);
+        }
+    }
+    return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 function elanWindows(marks, ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_MIN) {
     const ms = dedupeMoodMarks(marks.filter((m) => m.kind === "elan" && m.ymd === ymd))
@@ -138,26 +153,33 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
 }
 /** Résumé des `days` derniers jours vécus (aujourd'hui compris). */
 function elanSummary(opts) {
-    var _a, _b;
+    var _a, _b, _c;
     const days = (_a = opts.days) !== null && _a !== void 0 ? _a : 7;
     const dayStartMin = (_b = opts.dayStartMin) !== null && _b !== void 0 ? _b : exports.DEFAULT_DAY_START_MIN;
     const [y, m, d] = opts.todayYmd.split("-").map(Number);
     const out = [];
-    let count = 0, sum = 0, lowCount = 0, lowWon = 0;
+    let count = 0, sum = 0, lowCount = 0, lowWon = 0, minutes = 0, weighted = 0, slots = 0;
+    const nowMs = (_c = opts.nowMs) !== null && _c !== void 0 ? _c : Date.now();
     const effort = { facile: 0, juste: 0, dur: 0 };
     for (let i = days - 1; i >= 0; i--) {
         const ymd = new Date(Date.UTC(y, m - 1, d - i)).toISOString().slice(0, 10);
+        const seen = new Set();
         const views = elanWindows(opts.marks, ymd, opts.offsetMin, dayStartMin).map((w) => {
-            var _a, _b;
+            var _a, _b, _c;
             const won = winsIn(w, (_a = opts.schedulesByYmd.get(ymd)) !== null && _a !== void 0 ? _a : [], opts.hits, opts.activities, opts.offsetMin, dayStartMin) > 0;
             count++;
             sum += w.mark.value;
+            // Moyenne pondérée par le temps tenu (jusqu'au pointage suivant, la fin de journée ou maintenant).
+            const mins = Math.max(0, (Math.min(w.endMs, nowMs) - w.startMs) / 60000);
+            minutes += mins;
+            weighted += w.mark.value * mins;
+            seen.add((_b = w.mark.moment) !== null && _b !== void 0 ? _b : elanBucket(livedParts(w.mark.at, opts.offsetMin, dayStartMin).min));
             if (w.mark.value <= 2) {
                 lowCount++;
                 if (won)
                     lowWon++;
             }
-            return { bucket: (_b = w.mark.moment) !== null && _b !== void 0 ? _b : elanBucket(livedParts(w.mark.at, opts.offsetMin, dayStartMin).min), value: w.mark.value, won };
+            return { bucket: (_c = w.mark.moment) !== null && _c !== void 0 ? _c : elanBucket(livedParts(w.mark.at, opts.offsetMin, dayStartMin).min), value: w.mark.value, won };
         });
         for (const mk of opts.marks) {
             if (mk.kind === "effort" && mk.ymd === ymd) {
@@ -170,12 +192,15 @@ function elanSummary(opts) {
             }
         }
         const moods = opts.marks.filter((mk) => mk.kind === "mood" && mk.ymd === ymd).sort((a, b) => a.at.localeCompare(b.at));
+        slots += seen.size;
         out.push({ ymd, marks: views, mood: moods.length ? moods[moods.length - 1].value : null });
     }
+    const mean = count === 0 ? null : minutes > 0 ? weighted / minutes : sum / count;
     return {
         days: out,
         count,
-        mean: count ? Math.round((sum / count) * 10) / 10 : null,
+        slots,
+        mean: mean === null ? null : Math.round(mean * 10) / 10,
         lowCount,
         lowWon,
         discipline: lowCount ? Math.round((lowWon / lowCount) * 100) / 100 : null,
@@ -191,6 +216,7 @@ function formatElanSummary(s) {
     const eff = s.effort.facile + s.effort.juste + s.effort.dur > 0
         ? ` · effort : ${s.effort.facile} facile, ${s.effort.juste} juste, ${s.effort.dur} dur`
         : "";
-    return `Élan 7 j : moyen ${mean} sur 5 (${s.count} pointage${s.count > 1 ? "s" : ""}) · ${disc}${eff}`;
+    const n = s.slots || s.count;
+    return `Élan 7 j : moyen ${mean} sur 5 (${n} créneau${n > 1 ? "x" : ""} pointé${n > 1 ? "s" : ""}, moyenne pondérée par le temps) · ${disc}${eff}`;
 }
 //# sourceMappingURL=elan.js.map

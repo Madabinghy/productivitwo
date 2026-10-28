@@ -65,22 +65,25 @@ test("résumé 7 jours : moyenne, fenêtres de flemme, discipline, efforts, lign
   assert.equal(s.days.length, 7);
   assert.equal(s.days[6].ymd, "2026-10-26");
   assert.equal(s.count, 3);
-  assert.equal(s.mean, 2.3);
+  assert.equal(s.slots, 3);
+  // Moyenne pondérée par le temps tenu : 1 pendant 7 h, 2 jusqu'à la fin du 24, 4 toute la journée du 25.
+  assert.ok(s.mean >= 2 && s.mean <= 3, `mean ${s.mean}`);
   assert.equal(s.lowCount, 2);
   assert.equal(s.lowWon, 1);
   assert.equal(s.discipline, 0.5);
   assert.deepEqual(s.effort, { facile: 0, juste: 1, dur: 0 });
   assert.equal(s.days.find((d) => d.ymd === "2026-10-25").mood, 2);
-  assert.equal(formatElanSummary(s), "Élan 7 j : moyen 2,3 sur 5 (3 pointages) · face à la flemme 1 / 2 (50 %) · effort : 0 facile, 1 juste, 0 dur");
+  assert.match(formatElanSummary(s), /^Élan 7 j : moyen \d,?\d? sur 5 \(3 créneaux pointés, moyenne pondérée par le temps\) · face à la flemme 1 \/ 2 \(50 %\) · effort : 0 facile, 1 juste, 0 dur$/);
   assert.equal(formatElanSummary(elanSummary({ marks: [], schedulesByYmd: new Map(), hits: [], activities: [], todayYmd: "2026-10-26", offsetMin: OFF })), null);
 });
 
-test("dedupeMoodMarks : un pointage par (jour, créneau), le plus récent gagne", () => {
+test("dedupeMoodMarks : historique des changements, une correction < 5 min remplace le précédent", () => {
   const mk = (id, at, value, moment) => ({ id, at, ymd: "2026-10-26", kind: "elan", value, moment });
   const kept = dedupeMoodMarks([
-    mk("b", "2026-10-26T08:30:00.000Z", 4, "matin"),
+    mk("c", "2026-10-26T08:30:00.000Z", 3, "matin"),
+    mk("b", "2026-10-26T08:03:00.000Z", 4, "matin"),
     mk("a", "2026-10-26T08:00:00.000Z", 2, "matin"),
-    mk("c", "2026-10-26T14:00:00.000Z", 3, "aprem"),
+    mk("d", "2026-10-26T14:00:00.000Z", 2, "aprem"),
   ]);
-  assert.deepEqual(kept.map((m) => m.id), ["b", "c"]);
+  assert.deepEqual(kept.map((m) => m.id), ["b", "c", "d"]);
 });

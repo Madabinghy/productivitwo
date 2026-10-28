@@ -133,15 +133,19 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
             })),
           ],
         ]),
-        title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday pointage${pointedToday > 1 ? 's' : ''}'}'),
+        title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday créneau${pointedToday > 1 ? 'x' : ''} pointé${pointedToday > 1 ? 's' : ''}'}'),
         Row(children: [
           for (final s in slots) ...[
             if (s.bucket != 'matin') const SizedBox(width: 8),
             Expanded(child: _slotTile(cs, dark, s)),
           ],
         ]),
+        const SizedBox(height: 10),
+        ElanDayStrip(cells: elanTimeline(st.moodMarks, now, logic.dayStartMin), dayStartMin: logic.dayStartMin),
         title('CETTE SEMAINE',
-            right: wm.count == 0 ? 'aucun pointage' : 'moyenne ${fmtElan(wm.mean)} · ${wm.count} pointage${wm.count > 1 ? 's' : ''}',
+            right: wm.count == 0
+                ? 'aucun pointage'
+                : 'moyenne ${fmtElan(wm.mean)} · ${wm.slots} créneau${wm.slots > 1 ? 'x' : ''}${wm.count > wm.slots ? ' · ${wm.count} changements' : ''}',
             rightColor: wm.count == 0 ? null : kElanAccent),
         if (wm.count == 0)
           _note(cs, 'Pointe ton élan (le mode du jour suffit) : la semaine se dessinera ici, un point par pointage.')
@@ -212,7 +216,11 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final String detail;
     if (s.value != null) {
       big = '${s.value} · ${kElanLabels[s.value!]}';
-      detail = 'pointé ${_hm(s.at!)}${s.wins > 0 ? ' · ${s.wins} chose${s.wins > 1 ? 's' : ''} faite${s.wins > 1 ? 's' : ''} ensuite' : (s.value! <= 2 ? ' · rien de fait ensuite' : '')}';
+      detail = [
+        'pointé ${_hm(s.at!)}',
+        if (s.changes > 1) '${s.changes} changements',
+        if (s.wins > 0) '${s.wins} chose${s.wins > 1 ? 's' : ''} faite${s.wins > 1 ? 's' : ''} ensuite' else if (s.value! <= 2) 'rien de fait ensuite',
+      ].join(' · ');
     } else if (s.started) {
       big = 'pas pointé';
       detail = s.current ? 'c’est maintenant' : 'créneau passé';
@@ -341,6 +349,57 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
 
 /// Accent des moyennes d'élan (ambre, comme le « pour l'instant » des badges).
 const kElanAccent = Color(0xFFE0A23A);
+
+/// Bande horaire du jour vécu (2026-10) : une case par quart d'heure, colorée
+/// par l'élan en vigueur, vide avant le premier pointage et après maintenant ;
+/// repères 8 h · 12 h · 18 h · 22 h. Calculée depuis l'historique des
+/// changements, rien n'est échantillonné.
+class ElanDayStrip extends StatelessWidget {
+  final List<int?> cells;
+  final int dayStartMin;
+  const ElanDayStrip({super.key, required this.cells, required this.dayStartMin});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final muted = cs.onSurface.withValues(alpha: .45);
+    final n = cells.length;
+    final stepMin = n == 0 ? 15 : (24 * 60 / n).round();
+    const marks = <int>[8 * 60, 12 * 60, 18 * 60, 22 * 60];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(
+        height: 14,
+        child: Row(children: [
+          for (var i = 0; i < n; i++)
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: .5),
+                decoration: BoxDecoration(
+                  color: cells[i] == null ? cs.onSurface.withValues(alpha: .07) : elanColor(cells[i]!),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(height: 3),
+      LayoutBuilder(builder: (_, c) {
+        return SizedBox(
+          height: 12,
+          child: Stack(children: [
+            for (final m in marks)
+              Positioned(
+                left: ((m - dayStartMin + 24 * 60) % (24 * 60)) / (24 * 60) * c.maxWidth - 8,
+                child: Text('${m ~/ 60} h', style: TextStyle(fontSize: 9.5, color: muted)),
+              ),
+          ]),
+        );
+      }),
+      const SizedBox(height: 2),
+      Text('L\u2019élan en vigueur, $stepMin min par case : il suit le dernier pointage jusqu\u2019au suivant.', style: TextStyle(fontSize: 11, color: muted)),
+    ]);
+  }
+}
 
 /// La semaine en sept colonnes : un point par pointage à sa hauteur (1 → 5),
 /// anneau vert = fenêtre de flemme gagnée, trait de moyenne.

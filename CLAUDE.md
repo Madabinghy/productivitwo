@@ -356,6 +356,14 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   `AppLogic.logMood`). Seulement quand l'utilisateur DIT son état. `get_user_context` (donc `plan_day`) porte un bloc
   `elan` : résumé 7 j (élan moyen, pointages, fenêtres de flemme gagnées, taux de discipline, efforts). Logique pure
   `functions/src/elan.ts` ↔ `lib/utils/elan_logic.dart` (**garder alignés**)
+- **Historique des changements d'élan** (2026-10) : chaque changement de mode est un pointage ; un changement < 5 min
+  après le précédent du même jour vécu le REMPLACE (`kElanCorrectionMin`, correction d'un clic ; `logMood` supprime le
+  document remplacé via `deleteMoodMarks`). `dedupeMoodMarks` (`utils/elan_logic.dart` ↔ `functions/src/elan.ts`,
+  **garder alignés**) applique la règle à la lecture (fusion, fenêtres, flux web) ; effort = un par (jour, bloc), humeur =
+  un par jour. Moyennes **pondérées par le temps tenu** (`ElanMarkView.minutes`, `ElanDay.mean`, `elanMetrics.mean`,
+  `elanSummary.mean`), « créneaux pointés » (`slots`, 3 par jour max) pour Baromètre et les en-têtes, bande horaire du
+  jour calculée par quart d'heure (`elanTimeline`, `ElanDayStrip` dans la feuille du mode), valeur DOMINANTE par créneau
+  (`todayElanSlots`, `changes`). Rien n'est échantillonné.
 - **Voir son élan** (2026-10, maquette « Élan visible », `lib/utils/elan_view.dart`) : `todayElanSlots` (matin · aprem · soir :
   valeur, heure, choses faites dans la fenêtre), `hardestBucket`, `elanMonth` (30 derniers jours : moyenne, jours de flemme
   et gagnés, en forme, série de pointages, `previousMean` sur les 30 d'avant → `trendLabel`), `weeklyMeans`. UI = la
