@@ -55,4 +55,17 @@ void main() {
     expect(r.map((x) => x.activity.id).toList(), ['c', 'a', 'b']);
     expect(r.last.reached, isTrue);
   });
+
+  group('todayMark', () {
+    test('quotidienne → jamais (le compte du jour suffit)', () {
+      expect(todayMark(HabitFreq.daily, 2), isNull);
+    });
+    test('hebdo sans +1 aujourd\'hui → rien', () {
+      expect(todayMark(HabitFreq.weekly, 0), isNull);
+    });
+    test('hebdo validée une fois → « faite aujourd\'hui », plusieurs → « ×n »', () {
+      expect(todayMark(HabitFreq.weekly, 1), '✓ faite aujourd\'hui');
+      expect(todayMark(HabitFreq.monthly, 3), '✓ ×3 aujourd\'hui');
+    });
+  });
 }

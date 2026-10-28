@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
+import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/moment_card.dart';
@@ -336,7 +337,12 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ? null
           : (first.activity.iconCode != null ? IconData(first.activity.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded),
       title: first == null ? '✓ ${cur.label} terminé · ${c.done} sur ${c.total}' : first.activity.name,
-      sub: first == null ? _nextLabel(cur) : (first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel),
+      sub: first == null
+          ? _nextLabel(cur)
+          : [
+              first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
+              if (todayMark(first.activity.habitFreq, todayN) case final mark?) mark,
+            ].join(' · '),
       subColor: first != null && first.reached ? kRoutineAccent : null,
       detail: first == null
           ? null
@@ -611,6 +617,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             color: done ? pal.text3 : pal.text,
                             decoration: done ? TextDecoration.lineThrough : null,
                             decorationColor: pal.text3)),
+                    if (todayMark(a.habitFreq, n) case final mark?)
+                      Text('$mark · ${s.todo.progressLabel}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
                     if (s.pushed)
                       Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
                     if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),

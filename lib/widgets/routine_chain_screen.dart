@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
+import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
@@ -208,6 +209,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
     final target = dayTarget ?? s.todo.weekTarget;
     final reached = s.reached;
     final domainName = logic.state.domains.where((x) => x.id == a.domainId).map((x) => x.name).firstOrNull ?? '';
+    final mark = todayMark(a.habitFreq, todayN);
     final domainC = domainColor(a.domainId, logic.state.domains) ?? kRoutineAccent;
     final nextId = _ids.where((x) => !_passed.contains(x) && x != s.id).firstOrNull;
     final next = nextId == null ? null : _slotOf(nextId, d);
@@ -287,7 +289,7 @@ class _RoutineChainScreenState extends State<_RoutineChainScreen> {
                 Container(width: 8, height: 8, decoration: BoxDecoration(color: domainC, shape: BoxShape.circle)),
                 const SizedBox(width: 6),
                 Flexible(
-                  child: Text('$domainName · ${s.todo.progressLabel}',
+                  child: Text('$domainName · ${s.todo.progressLabel}${mark == null ? '' : ' · $mark'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
