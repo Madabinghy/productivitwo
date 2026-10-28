@@ -1082,6 +1082,10 @@ class TodayViewState extends State<TodayView> {
       routineCount: (a) => routineTodayCount(widget.logic, a),
       weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
       runningActivityId: widget.logic.runningActivity()?.id,
+      // Même classement que la carte OBJECTIF DU MOMENT de la fiche (qui
+      // tient compte du mode) : la ligne montre l'objectif qu'on retrouve en
+      // tête en l'ouvrant.
+      mode: widget.logic.mode,
     );
     final due = _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length;
     final first = ranked.firstOrNull;
@@ -1192,8 +1196,15 @@ class TodayViewState extends State<TodayView> {
           ),
         ],
       );
-    }).then((_) {
-      if (mounted) setState(() {});
+    }).then((_) async {
+      // La fiche peut avoir créé / archivé un objectif : la ligne relit la
+      // même liste que la carte du moment.
+      try {
+        final all = await sync.fetchStrategicObjectives();
+        if (mounted) setState(() => _objectives = all);
+      } catch (_) {
+        if (mounted) setState(() {});
+      }
     });
   }
 
