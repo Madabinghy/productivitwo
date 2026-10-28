@@ -13,7 +13,9 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show groupByFolder;
 import 'package:productivitwo_v1/utils/folder_merge.dart';
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks, runningTargets;
 import 'package:productivitwo_v1/utils/project_health.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/week_planner.dart';
 import 'package:productivitwo_v1/web/project_edit_dialog.dart';
@@ -865,8 +867,14 @@ class _ProjectsViewState extends State<ProjectsView> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _bar(prog.total == 0 ? 0 : prog.done / prog.total, kBPrimary),
-                      const SizedBox(height: 6),
+                      // Mur des projets (lot 3) : une brique par tâche, remplie par ses actions.
+                      Builder(builder: (_) {
+                        final running = runningTargets(widget.recentSessions);
+                        final row = projectBricks(v, _today, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
+                        return ProgressBricks(
+                            row: row, height: 9, gap: 2, onBrick: (i) => widget.onOpenProject(p, taskId: row.bricks[i].id));
+                      }),
+                      const SizedBox(height: 4),
                       Text('${prog.done} / ${prog.total} tâche${prog.total > 1 ? 's' : ''}',
                           style: const TextStyle(
                               fontSize: 12, color: kBText3, fontFeatures: _tabular)),

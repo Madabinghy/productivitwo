@@ -467,6 +467,9 @@ tâche) et chaque tâche est une `WallTask` (`widgets/wall_task.dart`) : titre �
 actions (points des étapes, chip, cocher = `setActionDone` + `patchActionOf`) ; tap sur une action à étapes = ses étapes
 cochables (`setChecklistItem`), sans étape = fiche d'action ; ↗ / appui long = fiche de tâche ; l'ancien `_TaskTile` est retiré
 (« Au programme » reste dans le ⋯ de la fiche de tâche).
+**Lot 3 livré** : la rangée de briques de la TÂCHE (une par action, remplie par ses étapes) sous l'en-tête de la fiche de tâche
+mobile ; sur le web, la colonne « avancement » du tableau Projets (`views/projects_view.dart`) est la rangée de briques du
+projet (tap sur une brique = fiche projet sur cette tâche). **Les 3 lots sont livrés.**
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
