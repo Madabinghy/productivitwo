@@ -98,14 +98,23 @@ List<DomainWeek> domainWeeks({
       routinesTotal: mine.length,
     ));
   }
-  // Les plus en retard d'abord (avec minimum), puis les autres par temps fait.
-  out.sort((a, b) {
-    if (a.resting != b.resting) return a.resting ? 1 : -1;
-    if (a.hasGoal != b.hasGoal) return a.hasGoal ? -1 : 1;
-    if (a.hasGoal) return a.pctInt.compareTo(b.pctInt);
-    return b.doneMin.compareTo(a.doneMin);
-  });
+  out.sort(compareDomainWeeks);
   return out;
+}
+
+/// Ordre des lignes de Stats (2026-10) : d'abord les domaines SOUS 100 % de
+/// l'attendu, le plus proche de 100 en tête (celui qu'un petit effort fait
+/// basculer), puis ceux à 100 % et plus en ordre croissant, puis les sans
+/// minimum (par temps fait), la veille en fin.
+int compareDomainWeeks(DomainWeek a, DomainWeek b) {
+  if (a.resting != b.resting) return a.resting ? 1 : -1;
+  if (a.hasGoal != b.hasGoal) return a.hasGoal ? -1 : 1;
+  if (a.hasGoal) {
+    final aUnder = a.pctInt < 100, bUnder = b.pctInt < 100;
+    if (aUnder != bUnder) return aUnder ? -1 : 1;
+    return aUnder ? b.pctInt.compareTo(a.pctInt) : a.pctInt.compareTo(b.pctInt);
+  }
+  return b.doneMin.compareTo(a.doneMin);
 }
 
 /// MA SEMAINE : engagements des objectifs en cours (décision 2026-10-26 : les
