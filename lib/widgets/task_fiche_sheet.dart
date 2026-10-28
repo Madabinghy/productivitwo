@@ -8,9 +8,11 @@ import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show isPrepTask, isMilestoneTask, isClosureTask;
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/utils/progress_bricks.dart' show taskBricks;
 import 'package:productivitwo_v1/utils/time_spent.dart' show spentByAction, spentLabel;
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/widgets/project_sheet.dart' show showDocList;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
@@ -675,6 +677,14 @@ class _TaskFicheState extends State<_TaskFiche> {
                   child: Text(_roleEmoji, style: const TextStyle(fontSize: 17)),
                 ),
         ),
+        // Mur des projets (lot 3) : la rangée de briques de la tâche, une par
+        // action, remplie par ses étapes ; trait = actions échues à ce jour.
+        if (t.actions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: ProgressBricks(
+                row: taskBricks(t, today, runningActionIds: {if (running?.actionId != null) running!.actionId!}), height: 12),
+          ),
         FicheTitle('ACTIONS',
             trailing: open.isEmpty
                 ? (t.actions.isEmpty ? null : FicheDelta('toutes faites', color: kPalierGreen))
