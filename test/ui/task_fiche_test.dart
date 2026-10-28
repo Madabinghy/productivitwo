@@ -89,4 +89,11 @@ void main() {
     expect(started, 1);
     expect(tester.takeException(), isNull);
   });
+
+  test('stripLeadingEmoji : rôle de séance ou pictogramme de tête, texte intact sinon', () {
+    expect(stripLeadingEmoji('✍️ Corriger — 5e, DM Ch2'), 'Corriger — 5e, DM Ch2');
+    expect(stripLeadingEmoji('✅ Clôturer — Séance du 19 oct'), 'Clôturer — Séance du 19 oct');
+    expect(stripLeadingEmoji('🎯 Séance'), 'Séance');
+    expect(stripLeadingEmoji('Relire le cours'), 'Relire le cours');
+  });
 }
