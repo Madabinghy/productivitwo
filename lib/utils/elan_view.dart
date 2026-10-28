@@ -153,3 +153,14 @@ String? trendLabel(ElanMonth m) {
   if (d.abs() < 0.15) return '→ stable vs les 30 j d’avant';
   return '${d > 0 ? '↗ +' : '↘ −'}${fmtElan(d.abs())} vs les 30 j d’avant';
 }
+
+/// Les valeurs des trois créneaux d'aujourd'hui (null = pas pointé), pour la
+/// traînée de la pilule du mode ; `current` = index du créneau courant.
+({List<int?> values, int current}) todayElanValues(List<MoodMark> marks, DateTime now, int dayStartMin) {
+  final ymd = ymdOf(livedDate(now, dayStartMin));
+  final cur = kElanBuckets.indexOf(elanBucket(livedNowMin(now, dayStartMin)));
+  final values = <int?>[
+    for (final b in kElanBuckets) elanMarkOf(marks, ymd, b)?.value,
+  ];
+  return (values: values, current: cur < 0 ? 2 : cur);
+}

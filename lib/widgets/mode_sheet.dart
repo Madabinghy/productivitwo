@@ -461,7 +461,38 @@ class ElanMonthGrid extends StatelessWidget {
   }
 }
 
-/// Pilule « Mode · Flemme ▾ » de la carte MAINTENANT.
+/// Traînée du jour (2026-10) : trois points matin · aprem · soir, colorés à
+/// la hauteur de l'élan pointé, vides sinon ; le créneau courant est cerclé.
+class ElanTrail extends StatelessWidget {
+  final List<int?> values;
+  final int current;
+  final Color empty;
+  final Color ring;
+  final double size;
+  const ElanTrail({super.key, required this.values, required this.current, required this.empty, required this.ring, this.size = 7});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < values.length; i++)
+        Padding(
+          padding: EdgeInsets.only(left: i == 0 ? 0 : 3),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: values[i] == null ? empty : elanColor(values[i]!),
+              border: i == current ? Border.all(color: ring, width: 1) : null,
+            ),
+          ),
+        ),
+    ]);
+  }
+}
+
+/// Pilule « Mode · Flemme ▾ » de la carte MAINTENANT et de la barre du haut :
+/// le mode, puis la traînée des trois créneaux du jour. Tap = la feuille.
 class ModePill extends StatelessWidget {
   final AppLogic logic;
   final BadgeCenter? badges;
@@ -474,11 +505,12 @@ class ModePill extends StatelessWidget {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final accent = modeAccentOverride(m, dark: dark);
     final fg = accent ?? pal.text3;
+    final trail = todayElanValues(logic.state.moodMarks, DateTime.now(), logic.dayStartMin);
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: () => showModeSheet(context, logic, badges: badges),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(9, 3, 6, 3),
+        padding: const EdgeInsets.fromLTRB(9, 3, 7, 3),
         decoration: BoxDecoration(
           color: accent == null ? pal.chip : accent.withValues(alpha: .14),
           borderRadius: BorderRadius.circular(999),
@@ -487,7 +519,8 @@ class ModePill extends StatelessWidget {
           Icon(modeIcon(m), size: 12, color: fg),
           const SizedBox(width: 4),
           Text(kModeLabels[m]!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: fg)),
-          Icon(Icons.arrow_drop_down_rounded, size: 16, color: fg),
+          Container(width: 1, height: 10, margin: const EdgeInsets.symmetric(horizontal: 6), color: fg.withValues(alpha: .35)),
+          ElanTrail(values: trail.values, current: trail.current, empty: fg.withValues(alpha: .22), ring: fg),
         ]),
       ),
     );

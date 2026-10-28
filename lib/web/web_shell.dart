@@ -38,6 +38,9 @@ class WebTopBar extends StatelessWidget {
   final bool? autoPlan;
   /// Mode du jour (Modes et coups lot 5) : pilule hors Normal + entrée du menu ⋯.
   final DayMode mode;
+  /// Traînée d'élan du jour (matin · aprem · soir) et créneau courant.
+  final List<int?> elanTrail;
+  final int elanCurrent;
   final VoidCallback onMyCoach;
   final ValueChanged<WebMenuItem> onMenu;
   /// Zone chrono (pastille Focus + lanceur) ; null = lanceur seul.
@@ -57,6 +60,8 @@ class WebTopBar extends StatelessWidget {
     required this.hasAssistantMessages,
     this.autoPlan,
     this.mode = DayMode.normal,
+    this.elanTrail = const [null, null, null],
+    this.elanCurrent = 0,
     required this.onMyCoach,
     required this.onMenu,
     this.chrono,
@@ -100,7 +105,7 @@ class WebTopBar extends StatelessWidget {
         const Spacer(),
         if (signedIn) chrono ?? ChronoLauncher(sync: sync),
         const SizedBox(width: 6),
-        if (signedIn) WebModePill(mode: mode, onTap: () => onMenu(WebMenuItem.mode)),
+        if (signedIn) WebModePill(mode: mode, trail: elanTrail, current: elanCurrent, onTap: () => onMenu(WebMenuItem.mode)),
         IconButton(
           tooltip: 'Mon coach',
           icon: const Icon(Icons.supervisor_account_outlined,

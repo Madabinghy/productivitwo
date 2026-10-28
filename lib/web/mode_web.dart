@@ -5,6 +5,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
 
 /// Mode du jour côté web (Modes et coups lot 5) : même donnée que le mobile —
 /// poser un mode écrit un pointage d'élan (2 / 3 / 4) sur le créneau courant de
@@ -55,16 +56,21 @@ Future<DayMode?> showWebModeDialog(BuildContext context, DayMode current) {
   );
 }
 
-/// Pilule « Flemme » / « En forme » de la barre du haut (rien en Normal).
+/// Pilule du mode de la barre du haut : le mode et la traînée des trois
+/// créneaux du jour (2026-10). En Normal sans aucun pointage, rien.
 class WebModePill extends StatelessWidget {
   final DayMode mode;
   final VoidCallback onTap;
-  const WebModePill({super.key, required this.mode, required this.onTap});
+  /// Valeurs matin · aprem · soir (null = pas pointé) et créneau courant.
+  final List<int?> trail;
+  final int current;
+  const WebModePill({super.key, required this.mode, required this.onTap, this.trail = const [null, null, null], this.current = 0});
 
   @override
   Widget build(BuildContext context) {
-    if (mode == DayMode.normal) return const SizedBox.shrink();
-    final c = webModeColor(mode);
+    final pointed = trail.any((v) => v != null);
+    if (mode == DayMode.normal && !pointed) return const SizedBox.shrink();
+    final c = mode == DayMode.normal ? kBText2 : webModeColor(mode);
     return Padding(
       padding: const EdgeInsets.only(right: 6),
       child: InkWell(
@@ -77,6 +83,20 @@ class WebModePill extends StatelessWidget {
             Icon(modeIcon(mode), size: 13, color: c),
             const SizedBox(width: 5),
             Text(kModeLabels[mode]!, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: c)),
+            Container(width: 1, height: 10, margin: const EdgeInsets.symmetric(horizontal: 6), color: c.withValues(alpha: .35)),
+            for (var i = 0; i < trail.length; i++)
+              Padding(
+                padding: EdgeInsets.only(left: i == 0 ? 0 : 3),
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: trail[i] == null ? c.withValues(alpha: .22) : elanColor(trail[i]!),
+                    border: i == current ? Border.all(color: c, width: 1) : null,
+                  ),
+                ),
+              ),
           ]),
         ),
       ),

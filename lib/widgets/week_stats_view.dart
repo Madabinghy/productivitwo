@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/badge_center.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/elan_view.dart' show fmtElan, hardestBucket;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -31,6 +37,8 @@ class WeekStatsView extends StatefulWidget {
   /// Lectures détaillées, construites par l'appelant (jauges + courbe, élan,
   /// temps, camembert, retards) : sections repliables de la fiche « Ma semaine ».
   final List<WeekDetailSection> Function(BuildContext ctx) weekDetails;
+  /// Centre de badges (facultatif) : programmes pour la ligne Élan et la feuille du mode.
+  final BadgeCenter? badges;
   const WeekStatsView({
     super.key,
     required this.logic,
@@ -38,6 +46,7 @@ class WeekStatsView extends StatefulWidget {
     required this.onOpenDomain,
     required this.onManageDomains,
     required this.weekDetails,
+    this.badges,
   });
 
   @override
@@ -50,11 +59,23 @@ class _WeekStatsViewState extends State<WeekStatsView> {
   List<StrategicObjective> _objectives = const [];
   /// Sections de la fiche ouvertes (titres) ; ENGAGEMENTS l'est toujours.
   Set<String> _open = {};
+  List<DailySchedule> _schedules = const [];
 
   @override
   void initState() {
     super.initState();
     _objectives = _cache ?? const [];
+    final bc = widget.badges;
+    if (bc != null) {
+      bc.load().then((_) {
+        if (mounted) setState(() => _schedules = bc.schedules);
+      }).catchError((_) {});
+    } else {
+      final now = DateTime.now();
+      widget.sync.fetchDailySchedulesRange(ymdOf(now.subtract(const Duration(days: 8))), ymdOf(now)).then((s) {
+        if (mounted) setState(() => _schedules = s);
+      }).catchError((_) {});
+    }
     SharedPreferences.getInstance().then((p) {
       final v = p.getStringList(_kOpenKey);
       if (v != null && mounted) setState(() => _open = v.toSet());
@@ -80,6 +101,8 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _weekCard(cs, week, now),
+        const ListSectionTitle('ÉLAN · CETTE SEMAINE'),
+        _elanRow(cs, now),
         ListSectionTitle(days == 14 ? 'DOMAINES · SUR 14 JOURS' : 'DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
         for (final r in rows) _domainRow(cs, r),
         if (rows.isEmpty)
@@ -193,6 +216,74 @@ class _WeekStatsViewState extends State<WeekStatsView> {
         Text('jour $days', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
       ]),
     ]);
+  }
+
+  /// Ligne Élan (2026-10) : moyenne des 7 jours, pointages, face à la flemme,
+  /// créneau difficile, mini-courbe par jour. Tap = la feuille du mode.
+  Widget _elanRow(ColorScheme cs, DateTime now) {
+    final st = widget.logic.state;
+    final days = buildElanDays(
+      marks: st.moodMarks,
+      schedulesByYmd: {for (final s in _schedules) s.date: s},
+      hits: st.habitHits,
+      activities: st.activities,
+      now: now,
+      dayStartMin: widget.logic.dayStartMin,
+    );
+    final m = elanMetrics(days);
+    final hardest = hardestBucket(days);
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    final sub = m.count == 0
+        ? 'aucun pointage cette semaine · le mode du jour en pose un'
+        : [
+            '${m.count} pointage${m.count > 1 ? 's' : ''}',
+            if (m.lowCount > 0) 'face à la flemme ${m.lowWon} / ${m.lowCount}',
+            if (hardest != null) '${kElanBucketLabels[hardest]!.toLowerCase()} = créneau difficile',
+          ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => showModeSheet(context, widget.logic, badges: widget.badges),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: .35),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(children: [
+            Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFFE0A23A), shape: BoxShape.circle)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(m.count == 0 ? 'Élan' : 'Élan · ${fmtElan(m.mean)} / 5', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(sub, style: TextStyle(fontSize: 12, color: text3)),
+              ]),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 56,
+              height: 22,
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                for (var i = 0; i < days.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 2),
+                  Expanded(
+                    child: Container(
+                      height: days[i].mean == null ? 3 : (4 + 18 * (days[i].mean! - 1) / 4).clamp(4.0, 22.0),
+                      decoration: BoxDecoration(
+                        color: days[i].mean == null ? cs.onSurface.withValues(alpha: .12) : elanColor(days[i].mean!.round()),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                      ),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   Widget _domainRow(ColorScheme cs, DomainWeek r) {
