@@ -464,8 +464,9 @@ class _GoalsViewState extends State<GoalsView> {
         color: dark ? kBSurface : cs.surface,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          onTap: () => _openFiche(p),
-          onLongPress: () => _openPlan(p),
+          // Tap = le projet déplié (pleine page), appui long = la fiche (retour user 2026-10).
+          onTap: () => _openPlan(p),
+          onLongPress: () => _openFiche(p),
           borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -494,7 +495,7 @@ class _GoalsViewState extends State<GoalsView> {
                     Icon(Icons.touch_app_outlined, size: 13, color: cs.primary),
                     const SizedBox(width: 5),
                     Expanded(
-                      child: Text('Touche une brique pour ouvrir sa tâche · appui long = la liste',
+                      child: Text('Touche une brique pour ouvrir sa tâche · la ligne = le projet déplié',
                           style: TextStyle(fontSize: 11.5, color: cs.primary, fontWeight: FontWeight.w600)),
                     ),
                   ]),
@@ -583,8 +584,8 @@ class _GoalsViewState extends State<GoalsView> {
         pct: 100,
         muted: muted,
         trailing: StateChip(chip, color: kPalierMuted),
-        onTap: () => _openFiche(p),
-        onLongPress: () => _openPlan(p),
+        onTap: () => _openPlan(p),
+        onLongPress: () => _openFiche(p),
       ),
     );
   }
