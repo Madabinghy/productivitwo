@@ -98,4 +98,20 @@ void main() {
     ]);
     expect(badgesInPlay(deck, f).map((e) => e.$1.def.id).toList(), ['semaine-solide', 'maree-haute', 'serie-lecture']);
   });
+
+  test('impact du jour : gain +1 des journées solides, acquis quand la journée tient ; faisable du jour', () {
+    final t = badgeToday(_state('semaine-solide', value: 2), f);
+    expect(t.gain, 1);
+    expect(t.gainSecured, isFalse);
+    expect((t.dayDone, t.dayTotal), (3 + 2, 4 + 4)); // routines 3 / 4 suffisantes · blocs 2 / 4 suffisants
+    final held = TodayFacts(ymd: '2026-10-28', now: now, routines: routines.map((r) => RoutineToday(r.activity, 1, 1)).toList(), blocks: [_b('a', 'done'), _b('b', 'done'), _b('c', 'done'), _b('d', 'done'), _b('e', 'pending')]);
+    final h = badgeToday(_state('semaine-solide', value: 3), held);
+    expect(h.gainSecured, isTrue);
+    expect(h.dayRatio, 1.0);
+    // Une série compte déjà aujourd'hui : pas de gain, mais un faisable.
+    final s = badgeToday(_state('serie-lecture', value: 2, subject: 'lecture'), f);
+    expect(s.gain, 0);
+    expect((s.dayDone, s.dayTotal), (1, 2));
+    expect(badgeToday(_state('maree-haute', value: 6), f).dayRatio, 0.0);
+  });
 }

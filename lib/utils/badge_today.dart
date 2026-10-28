@@ -79,10 +79,31 @@ class BadgeToday {
   final List<String> notes; // phrases d'explication (marge, « comptera demain »…)
   /// Jauges à montrer : (libellé, fait, suffisant, total).
   final List<({String label, int done, int need, int total})> gauges;
-  const BadgeToday({required this.stake, required this.chip, this.items = const [], this.notes = const [], this.gauges = const []});
+  /// « Faisable du jour » : ce qui est fait sur ce que la journée peut
+  /// apporter au badge (gestes, minutes). Mini-barre des lignes À portée.
+  final int dayDone;
+  final int dayTotal;
+  /// Ce que la journée ajoutera à la mesure du badge une fois close, si elle
+  /// tient (badges dont le compteur ne voit que les jours clos : journées
+  /// solides). 0 quand le compteur inclut déjà aujourd'hui.
+  final num gain;
+  const BadgeToday({
+    required this.stake,
+    required this.chip,
+    this.items = const [],
+    this.notes = const [],
+    this.gauges = const [],
+    this.dayDone = 0,
+    this.dayTotal = 0,
+    this.gain = 0,
+  });
 
   bool get inPlay => stake == TodayStake.atRisk;
   int get missing => items.length;
+  /// Le gain du jour est acquis « pour l'instant » (journée tenue).
+  bool get gainSecured => gain > 0 && stake == TodayStake.saved;
+  /// Part du faisable du jour (0..1), null sans faisable.
+  double? get dayRatio => dayTotal <= 0 ? null : (dayDone / dayTotal).clamp(0.0, 1.0);
   static const none = BadgeToday(stake: TodayStake.none, chip: '');
 }
 
@@ -181,6 +202,8 @@ BadgeToday _serie(BadgeState b, TodayFacts f) {
   return BadgeToday(
     stake: b.value > 0 ? TodayStake.atRisk : TodayStake.reachable,
     chip: b.value > 0 ? 'en jeu · pas encore cochée' : 'à portée · pas encore cochée',
+    dayDone: r.done,
+    dayTotal: r.target,
     items: [
       _routineItem(r, extra: b.value > 0 ? 'série ${b.value} j' : null),
       for (final x in blocks) GapItem(GapKind.block, 'Bloc « ${x.title} »', detail: '${_blockTime(x)} · le bloc coche la routine à la fin', block: x),
@@ -199,6 +222,7 @@ BadgeToday _parfaite(BadgeState b, TodayFacts f) {
   final missing = _missingRoutines(f);
   final pending = f.pendingBlocks;
   final n = missing.length + pending.length;
+  final dayDone = f.routinesReached + f.blocksDone;
   final gauges = [
     (label: 'Routines', done: f.routinesReached, need: due, total: due),
     (label: 'Blocs', done: f.blocksDone, need: total, total: total),
@@ -208,6 +232,9 @@ BadgeToday _parfaite(BadgeState b, TodayFacts f) {
       stake: TodayStake.saved,
       chip: 'journée parfaite · pour l’instant',
       gauges: gauges,
+      dayDone: dayDone,
+      dayTotal: due + total,
+      gain: b.acquired ? 0 : 1,
       notes: ['Tout est fait. Un bloc ajouté au programme devra l’être aussi ; la journée est comptée demain à la bascule.'],
     );
   }
@@ -215,6 +242,9 @@ BadgeToday _parfaite(BadgeState b, TodayFacts f) {
     stake: TodayStake.reachable,
     chip: 'possible aujourd’hui · il manque ${_things(n)}',
     gauges: gauges,
+    dayDone: dayDone,
+    dayTotal: due + total,
+    gain: b.acquired ? 0 : 1,
     items: [
       for (final r in missing) _routineItem(r),
       for (final x in pending) _blockItem(x),
@@ -239,9 +269,14 @@ BadgeToday _solide(BadgeState b, TodayFacts f) {
     if (total > 0) (label: 'Blocs', done: done, need: needB, total: total),
   ];
   final running = b.value > 0;
+  final dayDone = (reached > needR ? needR : reached) + (done > needB ? needB : done);
+  final dayTotal = needR + needB;
   if (missingR == 0 && missingB == 0) {
     return BadgeToday(
       stake: TodayStake.saved,
+      dayDone: dayDone,
+      dayTotal: dayTotal,
+      gain: 1,
       chip: 'journée solide · pour l’instant',
       gauges: gauges,
       notes: ['≥ 80 % des deux côtés : la journée est tenue, elle comptera demain à la bascule${running ? ' (${b.value + 1} j d’affilée)' : ''}.'],
@@ -252,6 +287,8 @@ BadgeToday _solide(BadgeState b, TodayFacts f) {
       stake: TodayStake.lostToday,
       chip: 'sous 80 % aujourd’hui',
       gauges: gauges,
+      dayDone: dayDone,
+      dayTotal: dayTotal,
       notes: ['Trop de blocs sautés ou supprimés : la journée ne sera pas solide${running ? ', la suite de ${b.value} j repart demain' : ''}.'],
     );
   }
@@ -265,6 +302,9 @@ BadgeToday _solide(BadgeState b, TodayFacts f) {
     stake: running ? TodayStake.atRisk : TodayStake.reachable,
     chip: '${running ? 'en jeu' : 'à portée'} · ${parts.join(', ')}',
     gauges: gauges,
+    dayDone: dayDone,
+    dayTotal: dayTotal,
+    gain: 1,
     items: [
       for (final r in missing.take(missingR)) _routineItem(r, extra: 'la plus avancée'),
       for (final x in pending) _blockItem(x),
@@ -285,6 +325,7 @@ BadgeToday _maree(BadgeState b, TodayFacts f) {
     return BadgeToday(
       stake: b.value > 0 ? TodayStake.atRisk : TodayStake.reachable,
       chip: b.value > 0 ? 'en jeu · pas encore pointé' : 'à portée · pointe ton élan',
+      dayTotal: 1,
       items: const [GapItem(GapKind.elan, 'Pointe ton élan', detail: 'Flemme · Normal · En forme, depuis la pilule du mode')],
       notes: [
         'Compte si l’élan moyen du jour est ≥ 4 (En forme ou Lancé).',
@@ -293,7 +334,7 @@ BadgeToday _maree(BadgeState b, TodayFacts f) {
     );
   }
   if (mean >= 4) {
-    return BadgeToday(stake: TodayStake.saved, chip: 'élan ${_mean(mean)} · tenu', notes: ['Journée à élan haut : la suite continue (${b.value + 1} j).']);
+    return BadgeToday(stake: TodayStake.saved, chip: 'élan ${_mean(mean)} · tenu', dayDone: 1, dayTotal: 1, notes: ['Journée à élan haut : la suite continue (${b.value + 1} j).']);
   }
   return BadgeToday(
     stake: TodayStake.lostToday,
@@ -305,10 +346,11 @@ BadgeToday _maree(BadgeState b, TodayFacts f) {
 String _mean(double m) => m == m.roundToDouble() ? '${m.round()}' : m.toStringAsFixed(1).replaceAll('.', ',');
 
 BadgeToday _barometre(TodayFacts f) {
-  if (f.elanPointed) return const BadgeToday(stake: TodayStake.saved, chip: 'pointé aujourd’hui');
+  if (f.elanPointed) return const BadgeToday(stake: TodayStake.saved, chip: 'pointé aujourd’hui', dayDone: 1, dayTotal: 1);
   return const BadgeToday(
     stake: TodayStake.reachable,
     chip: 'à portée · +1 pointage',
+    dayTotal: 1,
     items: [GapItem(GapKind.elan, 'Pointe ton élan', detail: 'un pointage par créneau compte')],
   );
 }
@@ -325,6 +367,7 @@ BadgeToday _malgreTout(TodayFacts f) {
   return BadgeToday(
     stake: TodayStake.reachable,
     chip: 'jour de flemme · une chose = une victoire',
+    dayTotal: 1,
     items: [
       for (final r in missing.take(2)) _routineItem(r),
       for (final x in f.pendingBlocks.take(1)) _blockItem(x),
@@ -339,17 +382,20 @@ BadgeToday _enchainer(BadgeState b, TodayFacts f) {
     return BadgeToday(
       stake: TodayStake.reachable,
       chip: 'session en attente · encore ${_things(left)}',
+      dayDone: p.doneCount,
+      dayTotal: kChainCountedMin,
       items: [GapItem(GapKind.chain, 'Reprends l’enchaînement', detail: '${p.doneCount} faite${p.doneCount > 1 ? 's' : ''} · encore $left pour qu’elle compte')],
     );
   }
   if (p != null) {
-    return BadgeToday(stake: TodayStake.saved, chip: 'session comptée · ${p.doneCount} choses');
+    return BadgeToday(stake: TodayStake.saved, chip: 'session comptée · ${p.doneCount} choses', dayDone: kChainCountedMin, dayTotal: kChainCountedMin);
   }
   if (b.complete) return BadgeToday.none;
   final n = f.pendingBlocks.length;
   return BadgeToday(
     stake: n >= kChainCountedMin ? TodayStake.reachable : TodayStake.none,
     chip: n >= kChainCountedMin ? 'à portée · $n blocs à enchaîner' : 'moins de 3 blocs à venir',
+    dayTotal: n >= kChainCountedMin ? kChainCountedMin : 0,
     items: [
       if (n >= kChainCountedMin) GapItem(GapKind.chain, 'Lance Enchaîner', detail: b.def.id == 'plein-jour' ? 'avant le premier bloc, jusqu’au dernier' : '3 choses faites d’affilée et la session compte'),
     ],
@@ -362,6 +408,7 @@ BadgeToday _releves(TodayFacts f) {
   return BadgeToday(
     stake: TodayStake.reachable,
     chip: '${due.length} relevé${due.length > 1 ? 's' : ''} à noter',
+    dayTotal: due.length,
     items: [for (final o in due) GapItem(GapKind.reading, 'Note le relevé « ${o.title} »', detail: o.metric!.label)],
   );
 }
@@ -373,7 +420,7 @@ BadgeToday _temps(BadgeState b, TodayFacts f) {
   final done = day.times.fold<int>(0, (s, t) => s + t.doneTodayMin);
   final gauges = [(label: 'Rythme du jour', done: done, need: expected, total: expected)];
   if (done >= expected) {
-    return BadgeToday(stake: TodayStake.saved, chip: 'rythme du jour tenu · ${fmtMin(done)}', gauges: gauges);
+    return BadgeToday(stake: TodayStake.saved, chip: 'rythme du jour tenu · ${fmtMin(done)}', gauges: gauges, dayDone: expected, dayTotal: expected);
   }
   final behind = [...day.times]..sort((x, y) => (y.expectedTodayMin - y.doneTodayMin).compareTo(x.expectedTodayMin - x.doneTodayMin));
   final t = behind.first;
@@ -383,6 +430,8 @@ BadgeToday _temps(BadgeState b, TodayFacts f) {
     stake: TodayStake.reachable,
     chip: 'encore ${fmtMin(expected - done)} aujourd’hui',
     gauges: gauges,
+    dayDone: done,
+    dayTotal: expected,
     items: [
       GapItem(GapKind.time, 'Encore ${fmtMin(left)} de ${t.name}', detail: block == null ? 'chrono sur l’activité' : 'bloc « ${block.title} » à ${block.startTime}', activityId: t.activityId, minutes: left, block: block),
     ],

@@ -79,9 +79,12 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     }
   }
 
+  TodayFacts? _facts;
+
   @override
   Widget build(BuildContext context) {
     final deck = _deck;
+    _facts = widget.center?.todayFacts();
     return Scaffold(
       backgroundColor: kBBg,
       appBar: AppBar(
@@ -109,7 +112,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             )
           else ...[
             _deckHeader(deck),
-            if (widget.center case final c?) _todaySection(deck, c.todayFacts()),
+            if (_facts case final f?) _todaySection(deck, f),
             _huntsSection(deck),
             for (final f in BadgeFamily.values) _family(deck, f),
             const SizedBox(height: 16),
@@ -245,12 +248,25 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 7),
           child: Row(children: [
-            BadgeView(state: b, size: 40),
+            BadgeView(state: b, size: 40, todayGain: t.gain, todaySecured: t.gainSecured),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(b.def.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
                 Text(_todaySub(b, t), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kBText3)),
+                if (t.dayRatio case final r?) ...[
+                  const SizedBox(height: 5),
+                  Row(children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(value: r, minHeight: 4, backgroundColor: kBadgeGaugeTrack, valueColor: AlwaysStoppedAnimation<Color>(r >= 1 ? kBPrimary : kBadgeGaugeToday)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(_dayLabel(t), style: const TextStyle(fontSize: 10.5, color: kBText4, fontFeatures: [FontFeature.tabularFigures()])),
+                  ]),
+                ],
               ]),
             ),
             const SizedBox(width: 8),
@@ -283,11 +299,19 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
     );
   }
 
-  /// Sous-titre d'une ligne du jour : la mesure en cours, sans répéter le nom.
+  /// Sous-titre d'une ligne du jour : la mesure en cours, sans répéter le nom,
+  /// et ce que la journée ajoutera (« +1 ce soir ») quand le compteur ne voit
+  /// que les jours clos.
   String _todaySub(BadgeState b, BadgeToday t) {
     if (b.def.family == BadgeFamily.routines) return 'série ${_num(b.value)} j${b.nextTarget == null ? '' : ' · palier ${fmtInt(b.nextTarget!)} j'}';
-    if (b.showGauge) return '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unit}';
+    if (b.showGauge) return '${_num(b.value)} / ${fmtInt(b.nextTarget!)} ${b.def.unit}${todayGainLabel(t)}';
     return b.acquired ? 'déjà obtenu' : 'jamais obtenu';
+  }
+
+  /// « 3 / 5 du faisable » ou « 25 / 60 min ».
+  String _dayLabel(BadgeToday t) {
+    final unit = t.items.any((i) => i.kind == GapKind.time) || t.gauges.any((g) => g.label == 'Rythme du jour') ? ' min' : '';
+    return '${t.dayDone} / ${t.dayTotal}$unit';
   }
 
   /// Pastille courte : le premier geste quand il y en a un, sinon le chip.
@@ -397,7 +421,15 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
       child: GestureDetector(
         onTap: () => _showFacts(b),
         child: Column(children: [
-          Opacity(opacity: b.acquired ? 1 : .55, child: BadgeView(state: b, size: 72)),
+          Opacity(
+            opacity: b.acquired ? 1 : .55,
+            child: _facts == null
+                ? BadgeView(state: b, size: 72)
+                : Builder(builder: (_) {
+                    final t = badgeToday(b, _facts!);
+                    return BadgeView(state: b, size: 72, todayGain: t.gain, todaySecured: t.gainSecured);
+                  }),
+          ),
           const SizedBox(height: 4),
           Text(b.def.name,
               maxLines: 2,
@@ -467,11 +499,13 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       expand: false,
       initialChildSize: .9,
       maxChildSize: .95,
-      builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setSheet) => ListView(
+      builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setSheet) {
+        final today = facts == null ? null : badgeToday(b, facts);
+        return ListView(
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        Center(child: BadgeView(state: b, size: 150)),
+        Center(child: BadgeView(state: b, size: 150, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false)),
         const SizedBox(height: 12),
         Text(badgeFamilyLabel(b.def.family).toUpperCase(),
             textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
@@ -484,11 +518,22 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 15, color: kBText),
         ),
+        if (today != null && today.gain > 0 && b.showGauge)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+              today.gainSecured
+                  ? '+${_numOf(today.gain)} ce soir · la journée tient pour l\u2019instant'
+                  : '+${_numOf(today.gain)} ce soir si la journée tient',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: today.gainSecured ? kBadgeGaugeToday : kBText3),
+            ),
+          ),
         if (b.def.what.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
         ],
-        if (facts != null) _todayBlock(ctx, b, badgeToday(b, facts), actions, () => setSheet(() {})),
+        if (today != null) _todayBlock(ctx, b, today, actions, () => setSheet(() {})),
         if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
@@ -555,10 +600,18 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
         const SizedBox(height: 12),
         const Text('Visible par ton coach · lecture seule', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: kBText4)),
       ],
-      ),
-      ),
+      );
+      }),
     ),
   );
+}
+
+/// « · +1 ce soir » / « · +1 ce soir ✓ » après la mesure, quand la journée
+/// ajoute à un compteur qui ne voit que les jours clos.
+String todayGainLabel(BadgeToday t) {
+  if (t.gain <= 0) return '';
+  final g = t.gain == t.gain.roundToDouble() ? '${t.gain.round()}' : t.gain.toStringAsFixed(1).replaceAll('.', ',');
+  return t.gainSecured ? ' · +$g ce soir ✓' : ' · +$g ce soir ?';
 }
 
 Color todayStakeColor(TodayStake s) => switch (s) {

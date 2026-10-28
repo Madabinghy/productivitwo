@@ -24,6 +24,8 @@ const kBadgeLockedSymbol = Color(0xFF3A4F41);
 const kBadgeLockedBand = Color(0xFF16241B);
 const kBadgeGaugeTrack = Color(0xFF1B2A20);
 const kBadgeGaugeFill = Color(0xFF27C48F);
+/// Segment provisoire de la jauge : ce qu'aujourd'hui ajoute une fois la journée close.
+const kBadgeGaugeToday = Color(0xFFF2A93B);
 // Chevrons de niveau atteints : rouge corail, choisi sur planche (2026-10-26)
 // pour trancher sur le ruban khaki à 72 et 40 px ; les chevrons à venir
 // restent un contour d'encre.
@@ -34,11 +36,19 @@ const kBadgeChevronDark = Color(0xFF8C2E22);
 class BadgeView extends StatelessWidget {
   final BadgeState state;
   final double size;
-  const BadgeView({super.key, required this.state, this.size = 72});
+  /// Impact du jour sur la jauge (2026-10) : [todayGain] = ce que la journée
+  /// ajoutera à la mesure si elle tient (trait « atteignable ce soir »),
+  /// [todaySecured] = la journée tient pour l'instant (segment jaune jusqu'au
+  /// trait). Sans effet sur un badge sans jauge.
+  final num todayGain;
+  final bool todaySecured;
+  const BadgeView({super.key, required this.state, this.size = 72, this.todayGain = 0, this.todaySecured = false});
 
   @override
   Widget build(BuildContext context) {
     final s = state;
+    final target = s.nextTarget;
+    final tick = s.showGauge && todayGain > 0 && target != null && target > 0 ? ((s.value + todayGain) / target).clamp(0.0, 1.0).toDouble() : null;
     return Semantics(
       label: '${s.def.name}${s.acquired ? '' : ', pas encore obtenu'}',
       child: CustomPaint(
@@ -50,6 +60,8 @@ class BadgeView extends StatelessWidget {
           level: s.level,
           progress: s.showGauge ? s.progress : null,
           label: s.ribbonLabel,
+          tick: tick,
+          provisional: tick != null && todaySecured ? tick : null,
         ),
       ),
     );
@@ -63,6 +75,10 @@ class BadgePainter extends CustomPainter {
   final int level;
   final double? progress; // 0..1 → jauge ; null = pas de jauge
   final String label;
+  /// Trait « atteignable aujourd'hui » (0..1) et fin du segment provisoire
+  /// jaune (0..1, de [progress] à [provisional]) quand la journée tient.
+  final double? tick;
+  final double? provisional;
   const BadgePainter({
     required this.symbol,
     required this.acquired,
@@ -70,6 +86,8 @@ class BadgePainter extends CustomPainter {
     this.level = 0,
     this.progress,
     this.label = '',
+    this.tick,
+    this.provisional,
   });
 
   static final Path _shield = Path()
@@ -121,6 +139,25 @@ class BadgePainter extends CustomPainter {
           ..strokeCap = StrokeCap.round
           ..color = kBadgeGaugeFill;
         canvas.drawArc(Rect.fromCircle(center: const Offset(50, 50), radius: 46), -math.pi / 2, 2 * math.pi * ratio, false, fill);
+      }
+      final prov = provisional;
+      if (prov != null && prov > ratio) {
+        final today = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round
+          ..color = kBadgeGaugeToday;
+        canvas.drawArc(Rect.fromCircle(center: const Offset(50, 50), radius: 46), -math.pi / 2 + 2 * math.pi * ratio, 2 * math.pi * (prov.clamp(0.0, 1.0) - ratio), false, today);
+      }
+      final t = tick;
+      if (t != null && t > ratio) {
+        final a = -math.pi / 2 + 2 * math.pi * t.clamp(0.0, 1.0);
+        final mark = Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..strokeCap = StrokeCap.round
+          ..color = kBadgeGaugeToday;
+        canvas.drawLine(Offset(50 + 41.5 * math.cos(a), 50 + 41.5 * math.sin(a)), Offset(50 + 50.5 * math.cos(a), 50 + 50.5 * math.sin(a)), mark);
       }
       canvas.translate(50, 50);
       canvas.scale(.84);
@@ -216,7 +253,7 @@ class BadgePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(BadgePainter old) =>
-      old.symbol != symbol || old.acquired != acquired || old.levels != levels || old.level != level || old.progress != progress || old.label != label;
+      old.symbol != symbol || old.acquired != acquired || old.levels != levels || old.level != level || old.progress != progress || old.label != label || old.tick != tick || old.provisional != provisional;
 
   /// Les symboles, en unités de grille, dans le cercle r 22 centré (50, 42).
   /// Trait 6 u (anneaux 5 u), bouts ronds, rien sous 4 u ; `ink` = encre,

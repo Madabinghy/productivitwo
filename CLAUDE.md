@@ -367,6 +367,10 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   Faits du jour vécu composés par `BadgeCenter.todayFacts()` ; section AUJOURD'HUI de la fiche badge (`showBadgeSheet(facts:,
   actions: BadgeTodayActions)` : +1 routine, Pointer, Ouvrir le bloc). Les compteurs restent sur les jours clos (`scoreDays`
   jusqu'à hier vécu) : la journée en cours n'est montrée que « pour l'instant ». `badgesInPlay(deck, facts)` = suites en jeu.
+  **Impact du jour sur la jauge** : `BadgeToday.gain` (+1 des journées solides, dont le compteur ne voit que les jours clos)
+  → trait jaune « atteignable ce soir » sur la jauge du badge (`BadgeView(todayGain:, todaySecured:)`, `BadgePainter.tick` /
+  `provisional`) et segment jaune jusqu'au trait quand la journée tient (`gainSecured`) ; `dayDone / dayTotal` = « faisable
+  du jour » (mini-barre des lignes En jeu / À portée de la galerie).
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les
