@@ -29,6 +29,7 @@ import 'package:productivitwo_v1/softpop/softpop_shell.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart' show supersededMoodMarks;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_page.dart';
 import 'package:productivitwo_v1/widgets/activity_fiche_sheet.dart';
@@ -2431,6 +2432,12 @@ class _AppRootState extends State<AppRoot>
         ? FirestoreSync.merge(local, remote)
         : local;
 
+    // Pointages remplacés restés en base (un clic = un document, avant 2026-10) :
+    // purgés une fois pour toutes à la première fusion.
+    if (firestoreEnabled && remote != null) {
+      final stale = supersededMoodMarks(remote.moodMarks).map((m) => m.id).toList();
+      if (stale.isNotEmpty) _sync.deleteMoodMarks(stale).catchError((_) {});
+    }
     // Si on a mergé, on re-push le résultat pour que Firestore soit à jour
     if (firestoreEnabled && remote != null) {
       _sync.pushAll(s).catchError((e) =>

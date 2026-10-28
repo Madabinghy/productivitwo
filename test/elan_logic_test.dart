@@ -124,4 +124,17 @@ void main() {
     expect(elanPromptDue(const [], '2026-10-26', 'soir', {'2026-10-26:matin'}), isFalse, reason: 'passé ce jour');
     expect(elanPromptDue(const [], '2026-10-26', 'soir', {'2026-10-25:matin'}), isTrue);
   });
+
+  test('dedupeMoodMarks : un pointage par créneau, le plus récent gagne ; les remplacés sont listés', () {
+    final a = elan(DateTime(2026, 10, 26, 8, 0), 2);
+    final b = elan(DateTime(2026, 10, 26, 8, 30), 4); // même créneau matin : remplace a
+    final c = elan(DateTime(2026, 10, 26, 14, 0), 3);
+    final d = elan(DateTime(2026, 10, 27, 8, 0), 3);
+    final kept = dedupeMoodMarks([b, a, d, c]);
+    expect(kept.map((m) => m.id).toList(), [b.id, c.id, d.id]);
+    expect(supersededMoodMarks([a, b, c, d]).map((m) => m.id).toList(), [a.id]);
+    // La semaine ne compte plus que les pointages gardés.
+    final days = buildElanDays(marks: [a, b, c, d], schedulesByYmd: const {}, hits: const [], activities: const [], now: DateTime(2026, 10, 27, 10));
+    expect(elanMetrics(days).count, 3);
+  });
 }

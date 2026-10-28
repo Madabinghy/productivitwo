@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/elan_logic.dart' show dedupeMoodMarks;
 import 'package:productivitwo_v1/utils/elan_view.dart' show todayElanValues;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/web/mode_web.dart';
@@ -134,7 +135,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
       if (mounted) setState(() => _autoPlan = v);
     });
     _moodSub = _sync.streamMoodMarks().listen((m) {
-      if (mounted) setState(() => _moodMarks = m);
+      if (mounted) setState(() => _moodMarks = dedupeMoodMarks(m));
     });
   }
 
@@ -291,7 +292,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
     final m = await showWebModeDialog(context, _mode);
     if (m == null || !mounted) return;
     final mark = moodMarkForMode(m, dayStartMin: _dayStartMin);
-    setState(() => _moodMarks = [..._moodMarks, mark]);
+    setState(() => _moodMarks = dedupeMoodMarks([..._moodMarks, mark]));
     await _sync.saveMoodMark(mark);
   }
 

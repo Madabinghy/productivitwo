@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  dedupeMoodMarks,
   elanBucket, livedParts, livedDayEndMs, elanWindows, winsIn, elanSummary, formatElanSummary, validMoodValue,
 } from "../lib/elan.js";
 
@@ -72,4 +73,14 @@ test("résumé 7 jours : moyenne, fenêtres de flemme, discipline, efforts, lign
   assert.equal(s.days.find((d) => d.ymd === "2026-10-25").mood, 2);
   assert.equal(formatElanSummary(s), "Élan 7 j : moyen 2,3 sur 5 (3 pointages) · face à la flemme 1 / 2 (50 %) · effort : 0 facile, 1 juste, 0 dur");
   assert.equal(formatElanSummary(elanSummary({ marks: [], schedulesByYmd: new Map(), hits: [], activities: [], todayYmd: "2026-10-26", offsetMin: OFF })), null);
+});
+
+test("dedupeMoodMarks : un pointage par (jour, créneau), le plus récent gagne", () => {
+  const mk = (id, at, value, moment) => ({ id, at, ymd: "2026-10-26", kind: "elan", value, moment });
+  const kept = dedupeMoodMarks([
+    mk("b", "2026-10-26T08:30:00.000Z", 4, "matin"),
+    mk("a", "2026-10-26T08:00:00.000Z", 2, "matin"),
+    mk("c", "2026-10-26T14:00:00.000Z", 3, "aprem"),
+  ]);
+  assert.deepEqual(kept.map((m) => m.id), ["b", "c"]);
 });
