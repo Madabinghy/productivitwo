@@ -65,7 +65,6 @@ class _ActivityFicheState extends State<_ActivityFiche> {
   bool _timerOpen = false;
   bool _tplOpen = false;
   bool _setOpen = false;
-  bool _trendOpen = false;
   List<StrategicObjective> _objectives = const [];
   List<SessionTemplate>? _templates;
 
@@ -283,6 +282,10 @@ class _ActivityFicheState extends State<_ActivityFiche> {
             trailing: a.goalMin > 0 ? FicheDelta('$pctInt % de l\'attendu', color: palierColor(pctInt)) : FicheDelta(fmtMin(doneWin), color: cs.onSurface.withValues(alpha: .6))),
         _weekBox(cs, now, start, days, idx, doneWin, expected, total, pctInt),
 
+        // ── Tendance (2026-10 : au-dessus des engagements, toujours visible) ──
+        const FicheTitle('TENDANCE · 12 SEMAINES'),
+        _trendBox(cs, now),
+
         // ── Engagements ────────────────────────────────────────────────────
         FicheTitle('ENGAGEMENTS', trailing: engaged.isEmpty ? null : FicheDelta('${engaged.length} objectif${engaged.length > 1 ? 's' : ''}', color: cs.onSurface.withValues(alpha: .6))),
         if (engaged.isEmpty)
@@ -296,9 +299,6 @@ class _ActivityFicheState extends State<_ActivityFiche> {
         // ── Derniers chronos ───────────────────────────────────────────────
         ..._sessionsSection(cs, now),
 
-        // ── Tendance ───────────────────────────────────────────────────────
-        FicheTitle('TENDANCE · 12 SEMAINES', trailing: _foldButton(cs, _trendOpen, () => setState(() => _trendOpen = !_trendOpen))),
-        if (_trendOpen) _trendBox(cs, now),
 
         // ── Déroulés ───────────────────────────────────────────────────────
         FicheTitle('DÉROULÉS · ${_templates?.length ?? 0}', trailing: _foldButton(cs, _tplOpen, () => setState(() => _tplOpen = !_tplOpen))),
