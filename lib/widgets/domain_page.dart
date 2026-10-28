@@ -15,7 +15,8 @@ import 'package:productivitwo_v1/widgets/deep_work_sheet.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
-import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineMinus;
+import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineMinus, routineTodayCount;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 
 /// Page d'un domaine (tap sur une ligne de Stats ; `domain` null = toutes les
@@ -466,14 +467,18 @@ class _DomainPageState extends State<_DomainPage> {
     final period = switch (a.habitFreq) { HabitFreq.weekly => '7 j', HabitFreq.monthly => '30 j', _ => 'aujourd\'hui' };
     final series = routineSeries(a, logic.state.habitHits, now, dayStartMin: logic.dayStartMin);
     final pct = target <= 0 ? 100 : (done / target * 100).round().clamp(0, 100);
+    final todayN = routineTodayCount(logic, a);
+    final mark = todayMark(a.habitFreq, todayN);
     final sub = [
       '$period : $done / $target',
+      if (mark != null) mark,
       if (series.current > 0) '🔥 ${series.current} j',
     ].join(' · ');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: StatusRow(
-        leading: Icon(reached ? Icons.check_rounded : Icons.repeat_rounded, color: reached ? cs.primary : null),
+        leading: Icon(reached || mark != null ? Icons.check_rounded : Icons.repeat_rounded,
+            color: reached ? cs.primary : (mark != null ? cs.primary.withValues(alpha: .6) : null)),
         title: a.name,
         sub: sub,
         bar: target > 0 ? (done: done, total: target, expected: target) : null,

@@ -31,6 +31,15 @@ class RoutineToDo {
       : '$weekDone / $weekTarget sur 7 j';
 }
 
+/// Routine HEBDO (ou mensuelle) déjà validée aujourd'hui (2026-10) : son
+/// compte « 3 / 5 sur 7 j » ne dit pas si le +1 du jour est fait — on
+/// l'affiche à côté, sans ouvrir la fiche. Quotidienne ou rien aujourd'hui →
+/// null. [todayCount] = occurrences depuis le début de la journée vécue.
+String? todayMark(HabitFreq? freq, int todayCount) {
+  if (freq == HabitFreq.daily || todayCount <= 0) return null;
+  return todayCount == 1 ? '✓ faite aujourd\'hui' : '✓ ×$todayCount aujourd\'hui';
+}
+
 /// Ordre : non atteintes (les plus avancées d'abord : elles se bouclent vite),
 /// puis atteintes. À égalité, ordre alphabétique.
 List<RoutineToDo> routinesForToday(
