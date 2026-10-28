@@ -74,9 +74,10 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   final _scrollCtrl = ScrollController();
   final _taskKeys = <String, GlobalKey>{};
   List<Map<String, dynamic>> _docs = [];
-  /// Tâches faites VISIBLES par défaut (retour user 2026-10 : on veut voir
-  /// tout le projet avec ses phases) ; « Masquer les faites » les retire.
-  bool _showDone = true;
+  /// Tâches faites MASQUÉES par défaut (retour user 2026-10 : prioriser
+  /// l'action) ; « Afficher les faites · n » les ramène. La tâche visée
+  /// reste toujours visible.
+  bool _showDone = false;
   /// Description repliée derrière un bouton discret « Détail ».
   bool _detailOpen = false;
 

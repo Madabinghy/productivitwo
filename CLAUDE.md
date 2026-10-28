@@ -474,7 +474,7 @@ projet (tap sur une brique = fiche projet sur cette tâche). **Les 3 lots sont l
 `showBrickPicker` (liste des briques avec carré d'état, titre, k / n, état, séparateur « attendu aujourd'hui ») ; appui long =
 toujours le sélecteur ; aide « Touche une brique… » une fois dans Projets (`bricks_hint_seen`) et sous la rangée de la feuille projet.
 **Tap = projet déplié** (retour user 2026-10) : dans Projets, le tap sur une ligne ouvre le projet déplié en **pleine page**
-(`showProjectSheet`, `initialChildSize: 1.0`, tâches faites visibles par défaut, description derrière un bouton discret
+(`showProjectSheet`, `initialChildSize: 1.0`, tâches ET actions faites masquées par défaut — « Afficher les faites · n » / « n faites » les ramènent —, description derrière un bouton discret
 « Détail ») ; l'appui long ouvre la fiche projet (`showProjectFiche`). `_ExpandableDescription` (« voir plus ») est retiré.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
