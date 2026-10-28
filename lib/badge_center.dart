@@ -2,8 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
+import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart' show disciplineStats;
+import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/objective_day.dart' show buildObjectiveDays;
 import 'dart:convert' show jsonEncode;
 
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -81,6 +86,51 @@ class BadgeCenter extends ChangeNotifier {
     _pushSnapshot(d);
     notifyListeners();
     return d;
+  }
+
+  /// Les faits du jour vécu pour « ce qu'il manque aujourd'hui »
+  /// (`badge_today.dart`) : routines quotidiennes dues et leur compte, blocs
+  /// du programme du jour, pointages d'élan, session Enchaîner en attente,
+  /// temps des objectifs. Synchrone : tout vient de l'état local et du dernier
+  /// `load()`.
+  TodayFacts todayFacts() {
+    final st = logic.state;
+    final now = DateTime.now();
+    final dayStart = livedDayStart(now, logic.dayStartMin);
+    final ymd = logic.livedTodayYmd;
+    final routines = <RoutineToday>[];
+    for (final a in st.activeActivities) {
+      if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
+      if (a.createdAt.isAfter(now)) continue;
+      final t = a.habitTarget ?? 1;
+      final done = st.habitHits.where((h) => h.habitId == a.id && !h.ts.isBefore(dayStart)).length;
+      routines.add(RoutineToday(a, done, t <= 0 ? 1 : t));
+    }
+    final schedule = _schedules.where((s) => s.date == ymd).firstOrNull;
+    final elan = st.moodMarks.where((m) => m.isElan && m.ymd == ymd).toList();
+    final pending = ChainSessionStore.current;
+    final live = pending != null && pending.isLive(now, ymd) ? pending : null;
+    final days = buildObjectiveDays(
+      objectives: _objectives,
+      activities: st.activeActivities,
+      sessions: st.sessions,
+      blocks: schedule?.blocks ?? const [],
+      projects: _projects,
+      now: now,
+      dayStartMin: logic.dayStartMin,
+    );
+    final disc = disciplineStats(marks: elan, schedules: schedule == null ? const [] : [schedule], hits: st.habitHits, activities: st.activities, dayStartMin: logic.dayStartMin);
+    return TodayFacts(
+      ymd: ymd,
+      now: now,
+      routines: routines,
+      blocks: schedule?.blocks ?? const [],
+      elanMarks: elan,
+      pendingChain: live,
+      objectiveDays: days,
+      objectives: _objectives,
+      disciplineWinsToday: disc.wins.length,
+    );
   }
 
   /// Dépose l'instantané du deck dans `data/badges` quand il change (le MCP

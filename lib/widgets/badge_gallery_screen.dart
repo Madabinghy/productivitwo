@@ -8,7 +8,10 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus;
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
+import 'package:productivitwo_v1/utils/badge_today.dart';
 
 /// Aperçu des badges (lot 1) : le gabarit aux trois tailles, puis le deck
 /// calculé sur les VRAIES données de la personne (routines, programmes des
@@ -317,7 +320,19 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
 
   String _shortDate(DateTime d) => _shortDateOf(d);
 
-  void _showFacts(BadgeState b) => showBadgeSheet(context, b, logic: widget.logic);
+  void _showFacts(BadgeState b) => showBadgeSheet(
+        context,
+        b,
+        logic: widget.logic,
+        facts: widget.center?.todayFacts(),
+        actions: BadgeTodayActions(
+          routinePlus: (id) {
+            final a = widget.logic.state.activities.where((x) => x.id == id).firstOrNull;
+            if (a != null) routinePlus(widget.logic, a);
+          },
+          pointElan: () => showModeSheet(context, widget.logic),
+        ),
+      );
 }
 
 String _numOf(num v) => v is int || v == v.roundToDouble() ? fmtInt(v) : v.toStringAsFixed(1).replaceAll('.', ',');
@@ -330,7 +345,17 @@ String _shortDateOf(DateTime d) {
 /// La fiche d'un badge : badge, mesure, « à quoi ça correspond », paliers,
 /// « Où j'en suis », « Comment l'obtenir », faits. Ouverte depuis le deck, la
 /// rangée d'Objectifs et les routines d'Aujourd'hui.
-Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic}) {
+/// Gestes de la section AUJOURD'HUI (facultatifs : sans eux, les lignes se lisent).
+class BadgeTodayActions {
+  final void Function(String activityId)? routinePlus;
+  final VoidCallback? pointElan;
+  final void Function(ScheduleBlock block)? openBlock;
+  final void Function(String activityId, int minutes)? startChrono;
+  final VoidCallback? openChain;
+  const BadgeTodayActions({this.routinePlus, this.pointElan, this.openBlock, this.startChrono, this.openChain});
+}
+
+Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logic, TodayFacts? facts, BadgeTodayActions? actions}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: kBSurface,
@@ -361,6 +386,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           const SizedBox(height: 10),
           Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
         ],
+        if (facts != null) _todayBlock(ctx, b, badgeToday(b, facts), actions, () => setSheet(() {})),
         if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
@@ -430,6 +456,146 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       ),
       ),
     ),
+  );
+}
+
+Color todayStakeColor(TodayStake s) => switch (s) {
+      TodayStake.atRisk => kBAttention,
+      TodayStake.reachable => kBPrimary,
+      TodayStake.saved => kBPrimaryDark,
+      TodayStake.lostToday => kBAlert,
+      TodayStake.none => kBText4,
+    };
+
+IconData _gapIcon(GapKind k) => switch (k) {
+      GapKind.routine => Icons.loop_rounded,
+      GapKind.block => Icons.play_arrow_rounded,
+      GapKind.elan => Icons.bolt_rounded,
+      GapKind.time => Icons.timer_outlined,
+      GapKind.chain => Icons.link_rounded,
+      GapKind.reading => Icons.edit_note_rounded,
+      GapKind.deepwork => Icons.center_focus_strong_rounded,
+      GapKind.action => Icons.check_rounded,
+    };
+
+/// AUJOURD'HUI : l'enjeu du jour (chip), les jauges fait / suffisant, puis
+/// chaque chose qui manque avec son geste. Rien n'y juge la journée : elle
+/// est comptée demain, une fois close.
+Widget _todayBlock(BuildContext ctx, BadgeState b, BadgeToday t, BadgeTodayActions? actions, VoidCallback refresh) {
+  if (t.stake == TodayStake.none && t.items.isEmpty && t.notes.isEmpty) return const SizedBox.shrink();
+  final color = todayStakeColor(t.stake);
+  Widget? gesture(GapItem i) {
+    final a = actions;
+    if (a == null) return null;
+    (String, VoidCallback)? g;
+    switch (i.kind) {
+      case GapKind.routine:
+        if (a.routinePlus != null && i.activityId != null) g = ('+1', () => a.routinePlus!(i.activityId!));
+      case GapKind.elan:
+        if (a.pointElan != null) g = ('Pointer', a.pointElan!);
+      case GapKind.block:
+        if (a.openBlock != null && i.block != null) g = ('Ouvrir', () => a.openBlock!(i.block!));
+      case GapKind.time:
+        if (a.startChrono != null && i.activityId != null) g = ('Chrono', () => a.startChrono!(i.activityId!, i.minutes ?? 25));
+      case GapKind.chain:
+        if (a.openChain != null) g = ('Enchaîner', a.openChain!);
+      default:
+        g = null;
+    }
+    if (g == null) return null;
+    final (label, onTap) = g;
+    final primary = i.kind == GapKind.routine || i.kind == GapKind.elan;
+    return SizedBox(
+      height: 30,
+      child: FilledButton(
+        onPressed: () {
+          onTap();
+          refresh();
+        },
+        style: FilledButton.styleFrom(
+          backgroundColor: primary ? kBPrimary : kBRaised,
+          foregroundColor: primary ? kBBg : kBText,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+        ),
+        child: Text(label),
+      ),
+    );
+  }
+
+  return Container(
+    width: double.infinity,
+    margin: const EdgeInsets.only(top: 14),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+    decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withValues(alpha: .45))),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Expanded(child: Text('AUJOURD\u2019HUI', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4))),
+        if (t.chip.isNotEmpty)
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
+              child: Text(t.chip, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+            ),
+          ),
+      ]),
+      for (final g in t.gauges) ...[
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(child: Text(g.label, style: const TextStyle(fontSize: 12.5, color: kBText2))),
+          Text(
+            g.need == g.total ? '${g.done} / ${g.total}' : '${g.done} / ${g.total} · ${g.need} suffisent',
+            style: const TextStyle(fontSize: 12, color: kBText3, fontFeatures: [FontFeature.tabularFigures()]),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        LayoutBuilder(builder: (_, c) {
+          final w = c.maxWidth;
+          final total = g.total <= 0 ? 1 : g.total;
+          final ok = g.done >= g.need;
+          return SizedBox(
+            height: 10,
+            child: Stack(children: [
+              Container(decoration: BoxDecoration(color: kBadgeGaugeTrack, borderRadius: BorderRadius.circular(5))),
+              Container(
+                width: w * (g.done / total).clamp(0.0, 1.0),
+                decoration: BoxDecoration(color: ok ? kBPrimary : kBAttention, borderRadius: BorderRadius.circular(5)),
+              ),
+              if (g.need < g.total && g.need > 0)
+                Positioned(left: (w * g.need / total).clamp(0.0, w - 2), top: -1, bottom: -1, child: Container(width: 2, color: kBText)),
+            ]),
+          );
+        }),
+      ],
+      if (t.items.isNotEmpty) const SizedBox(height: 6),
+      for (final i in t.items)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(color: kBRaised, shape: BoxShape.circle),
+              child: Icon(_gapIcon(i.kind), size: 15, color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(i.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                if (i.detail.isNotEmpty) Text(i.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: kBText3)),
+              ]),
+            ),
+            if (gesture(i) case final w?) ...[const SizedBox(width: 8), w],
+          ]),
+        ),
+      for (final n in t.notes)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(n, style: const TextStyle(fontSize: 12.5, height: 1.35, color: kBText2)),
+        ),
+    ]),
   );
 }
 

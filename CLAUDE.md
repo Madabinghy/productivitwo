@@ -361,6 +361,12 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   `users/{uid}/data/badges` à chaque recalcul ; le serveur ne recalcule rien (`functions/src/badges_mcp.ts`). Chasses dans
   `data/meta.badgeHunts` (3 max, palier restant, jamais posées sans accord explicite). `get_user_context` porte un bloc
   `badges` (compteur, dernier obtenu, chasses, paliers proches).
+- **Ce qu'il manque aujourd'hui** (badges, 2026-10, `lib/utils/badge_today.dart`) : `badgeToday(badge, TodayFacts)` → `BadgeToday`
+  (enjeu `TodayStake` en jeu / à portée / tenu / perdu aujourd'hui / rien, chip, jauges fait / suffisant, `GapItem`s = routines
+  nommées non atteintes, blocs à faire, pointer l'élan, minutes du rythme, reprise d'Enchaîner, relevés dus, notes de marge).
+  Faits du jour vécu composés par `BadgeCenter.todayFacts()` ; section AUJOURD'HUI de la fiche badge (`showBadgeSheet(facts:,
+  actions: BadgeTodayActions)` : +1 routine, Pointer, Ouvrir le bloc). Les compteurs restent sur les jours clos (`scoreDays`
+  jusqu'à hier vécu) : la journée en cours n'est montrée que « pour l'instant ». `badgesInPlay(deck, facts)` = suites en jeu.
 - `manage_contexts(action: list|add|rename|delete, context?, newContext?, detach?)` — contextes GTD : `list` (défauts +
   personnalisés `data/meta.customContexts`, usage ouvertes/faites, orphelins), `add`, `rename` (propagé à toutes les
   actions des projets et des activités, fusion si le nom existe), `delete` (tag orphelin conservé sauf `detach:true`). Les
