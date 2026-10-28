@@ -5823,8 +5823,8 @@ class _AppRootState extends State<AppRoot>
                     secondary: const Icon(Icons.mood_outlined),
                     title: const Text('Élan : demander à chaque moment'),
                     subtitle: Text(all
-                        ? 'Dans Enchaîner : matin, après-midi et soir'
-                        : 'Dans Enchaîner, une fois par jour · sinon la pilule du mode'),
+                        ? 'Matin, après-midi et soir · trois pointages par jour'
+                        : 'Une fois par jour, au premier geste · « Ton élan, là ? »'),
                     value: all,
                     onChanged: (v) => _sync.setElanPromptsAll(v),
                   );
