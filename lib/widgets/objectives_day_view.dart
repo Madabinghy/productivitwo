@@ -279,7 +279,8 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
 
   Widget _huntRow(ColorScheme cs, Color text3, HuntView v, DateTime now, {required dynamic todayScore, required Map<String, Set<String>> reachedByRoutine, required String todayYmd, TodayFacts? facts}) {
     final b = v.badge;
-    final todayLines = facts == null ? null : _todayLines(cs, text3, badgeToday(b, facts));
+    final today = facts == null ? null : badgeToday(b, facts);
+    final todayLines = today == null ? null : _todayLines(cs, text3, today);
     final routineId = b.def.subjectId;
     final todayReached = routineId != null && (reachedByRoutine[routineId]?.contains(todayYmd) ?? false);
     final readingDue = b.def.id == 'releve-fidele' && _objectives.any((o) => isReadingDue(o, now));
@@ -309,7 +310,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(children: [
-          BadgeView(state: b, size: 44),
+          BadgeView(state: b, size: 44, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
