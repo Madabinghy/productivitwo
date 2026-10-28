@@ -29,6 +29,7 @@ Future<void> showProjectSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (_) => _ProjectSheet(
       project: project,
@@ -73,10 +74,11 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   final _scrollCtrl = ScrollController();
   final _taskKeys = <String, GlobalKey>{};
   List<Map<String, dynamic>> _docs = [];
-  /// Tâches faites masquées par défaut (2026-10) : le plan montre ce qui
-  /// reste ; « Afficher les faites · n » les ramène. La tâche visée reste
-  /// toujours visible.
-  bool _showDone = false;
+  /// Tâches faites VISIBLES par défaut (retour user 2026-10 : on veut voir
+  /// tout le projet avec ses phases) ; « Masquer les faites » les retire.
+  bool _showDone = true;
+  /// Description repliée derrière un bouton discret « Détail ».
+  bool _detailOpen = false;
 
   bool _visible(ProjectTask t) => _showDone || t.status != 'done' || t.id == widget.targetTaskId;
 
@@ -461,9 +463,10 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     }
 
     return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      maxChildSize: 0.95,
-      minChildSize: 0.4,
+      // Pleine page (retour user 2026-10) : le projet déplié se lit en entier.
+      initialChildSize: 1.0,
+      maxChildSize: 1.0,
+      minChildSize: 0.5,
       expand: false,
       builder: (_, __) => Container(
         decoration: BoxDecoration(
@@ -548,16 +551,23 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                             ),
                             if (_project.description != null &&
                                 _project.description!.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              // Repliée au-delà de 4 lignes (« voir plus ») :
-                              // une longue description ne mange plus la fiche.
-                              _ExpandableDescription(
-                                text: _project.description!,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: cs.onSurface.withOpacity(.55),
+                              GestureDetector(
+                                onTap: () => setState(() => _detailOpen = !_detailOpen),
+                                behavior: HitTestBehavior.opaque,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 4, bottom: 2),
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Text('Détail',
+                                        style: TextStyle(
+                                            fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.primary.withOpacity(.85))),
+                                    Icon(_detailOpen ? Icons.expand_less : Icons.expand_more,
+                                        size: 16, color: cs.primary.withOpacity(.85)),
+                                  ]),
                                 ),
                               ),
+                              if (_detailOpen)
+                                Text(_project.description!,
+                                    style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.55))),
                             ],
                           ],
                         ),
@@ -1345,60 +1355,3 @@ class _DraftPlanBanner extends StatelessWidget {
 // Au-delà de [maxLines] lignes, le texte est tronqué avec un lien
 // « … voir plus » / « voir moins ». La mesure utilise un TextPainter pour ne
 // proposer le repli QUE si le texte déborde réellement.
-class _ExpandableDescription extends StatefulWidget {
-  final String text;
-  final TextStyle style;
-  static const int maxLines = 4;
-  const _ExpandableDescription({
-    required this.text,
-    required this.style,
-  });
-
-  @override
-  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
-}
-
-class _ExpandableDescriptionState extends State<_ExpandableDescription> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return LayoutBuilder(builder: (context, box) {
-      final painter = TextPainter(
-        text: TextSpan(text: widget.text, style: widget.style),
-        maxLines: _ExpandableDescription.maxLines,
-        textDirection: TextDirection.ltr,
-      )..layout(maxWidth: box.maxWidth);
-      final overflows = painter.didExceedMaxLines;
-      if (!overflows) return Text(widget.text, style: widget.style);
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.text,
-            style: widget.style,
-            maxLines: _expanded ? null : _ExpandableDescription.maxLines,
-            overflow: _expanded ? null : TextOverflow.ellipsis,
-          ),
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4, bottom: 2),
-              child: Text(
-                _expanded ? 'voir moins' : '… voir plus',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: cs.primary.withOpacity(.85),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    });
-  }
-}
