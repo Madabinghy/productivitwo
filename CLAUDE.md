@@ -159,7 +159,16 @@ niveau : le modèle `ChecklistItem` est inchangé, donc tout reste cochable sur 
 mobile (`widgets/project_sheet.dart`, `_StepsSection`) déplie les étapes au tap (cocher, ajouter, appui long =
 renommer / retirer). Helpers purs dans
 `utils/checklist_logic.dart` (`setChecklistItem`, `addChecklistItem`, `renameChecklistItem`, `moveChecklistItem`,
-`setActionDone`, `nextChecklistItem`).
+`setActionDone`, `nextChecklistItem`). **Fiche de tâche mobile** (2026-10, `widgets/task_fiche_sheet.dart`, `showTaskFiche`,
+`showTaskDetail` de `project_sheet.dart` y délègue ; l'ancienne `_TaskDetailSheet` est retirée) : `FicheHeader` (émoji de rôle
+📝 / 🎯 / ✅ en petit, titre sans l'émoji, chip faite / chrono en cours / en retard · n j / au programme / à faire, ligne projet ·
+phase · dates · k / n actions · ⏱ passées), ACTIONS en `StatusRow` (cocher = fait avec Annuler, tap = fiche d'action
+`showActionFicheOfTask` : ÉTAPES `StepsSection`, DÉTAIL note, ÉCHÉANCE propre, ACTIVITÉ LIÉE, Lancer / Marquer faite /
+Modifier / Organiser ; appui long = Monter · Descendre · Déplacer · Promouvoir · Supprimer), FAITES repliées, DÉTAIL repliable
+(description, dates + phase, activité liée, documents via `showDocList`), `FicheActions` (Lancer la prochaine action si une
+activité est liée et `onStartTimer` fourni, sinon Ouvrir ; Arrêter le chrono ; Rouvrir ; + Action · Modifier · ⋯ : Au
+programme, Déplacer la tâche, Repousser l'échéance, Documents, Supprimer). Écritures ciblées `patchActionOf` /
+`patchTaskFields`, structure par `saveProjectTasks`.
 **Gantt projet** (refonte 2026-10, handoff `docs/specs/gantt-projet-2026-10/README.md`, 4 lots) : `gantt_screen.dart`
 n'a plus d'AppBar ni de Scaffold (un seul en-tête = celui de la fiche), couleurs `kB*` ; axe de temps en logique
 pure `lib/utils/gantt_axis.dart` (`GanttAxis` : plage lundi−7 j → +14 j couvrant toutes les tâches, `x(date)`,

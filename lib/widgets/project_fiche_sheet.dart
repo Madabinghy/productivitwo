@@ -99,7 +99,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
   /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan).
   Future<void> _openAction(ProjectTask task, TaskAction action) async {
     await showTaskDetail(context,
-        project: p, task: task, activities: widget.activities, sync: widget.sync, expandActionId: action.id);
+        project: p, task: task, activities: widget.activities, sync: widget.sync, expandActionId: action.id, onStartTimer: widget.onStartTimer);
     if (mounted) setState(() {});
   }
 
