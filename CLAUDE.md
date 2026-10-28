@@ -470,6 +470,9 @@ cochables (`setChecklistItem`), sans étape = fiche d'action ; ↗ / appui long 
 **Lot 3 livré** : la rangée de briques de la TÂCHE (une par action, remplie par ses étapes) sous l'en-tête de la fiche de tâche
 mobile ; sur le web, la colonne « avancement » du tableau Projets (`views/projects_view.dart`) est la rangée de briques du
 projet (tap sur une brique = fiche projet sur cette tâche). **Les 3 lots sont livrés.**
+**Viser une brique** (retour user 2026-10) : sous `kBrickMinTapWidth` (26 px) par brique, le tap ouvre le **sélecteur**
+`showBrickPicker` (liste des briques avec carré d'état, titre, k / n, état, séparateur « attendu aujourd'hui ») ; appui long =
+toujours le sélecteur ; aide « Touche une brique… » une fois dans Projets (`bricks_hint_seen`) et sous la rangée de la feuille projet.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
