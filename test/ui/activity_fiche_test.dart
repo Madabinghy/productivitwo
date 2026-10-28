@@ -41,11 +41,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('Préparation'), findsOneWidget);
     expect(find.text('Chrono'), findsOneWidget);
-    expect(find.textContaining('DERNIERS CHRONOS'), findsOneWidget);
-    // Fait défiler jusqu'en bas et déplie Tendance, Déroulés et Réglages.
+    // La tendance est en tête (sous CETTE SEMAINE), toujours visible.
+    expect(find.textContaining('TENDANCE · 12 SEMAINES'), findsOneWidget);
+    // Fait défiler jusqu'en bas (DERNIERS CHRONOS apparaît) et déplie Déroulés et Réglages.
+    var sawSessions = false;
     for (var i = 0; i < 6; i++) {
       await tester.drag(find.byType(ListView).last, const Offset(0, -400));
       await tester.pump(const Duration(milliseconds: 200));
+      if (find.textContaining('DERNIERS CHRONOS').evaluate().isNotEmpty) sawSessions = true;
       final f = find.text('afficher ▾');
       if (f.evaluate().isNotEmpty) {
         await tester.tap(f.first, warnIfMissed: false);
@@ -53,6 +56,7 @@ void main() {
         expect(tester.takeException(), isNull, reason: 'après dépliage $i');
       }
     }
+    expect(sawSessions, isTrue);
     expect(find.text('replier ▴'), findsWidgets);
     expect(tester.takeException(), isNull);
   });

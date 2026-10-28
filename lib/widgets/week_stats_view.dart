@@ -314,9 +314,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
-  /// La tendance sur 12 semaines est toujours visible, sans accordéon.
-  static bool _alwaysOpen(String title) => title.contains('12 SEMAINES');
-
   Future<void> _toggleSection(String key, void Function(void Function()) setLocal) async {
     setLocal(() => _open.contains(key) ? _open.remove(key) : _open.add(key));
     if (mounted) setState(() {});
@@ -342,10 +339,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
           ];
         }
 
-        // La tendance sur 12 semaines monte en tête (2026-10), toujours visible.
-        final details = widget.weekDetails(ctx);
-        final trend = details.where((d) => _alwaysOpen(d.title)).toList();
-        final rest = details.where((d) => !_alwaysOpen(d.title)).toList();
         return ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
@@ -356,7 +349,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               chipColor: pct == null ? kPalierMuted : palierColor(pct),
               kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
             ),
-            for (final d in trend) ...[FicheTitle(d.title), d.child],
             FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS · À CE JOUR' : 'ROUTINES DE LA SEMAINE · À CE JOUR',
                 trailing: n == 0 ? null : FicheDelta('${w.kept} / $n au rythme', color: palierColor(pct ?? 0))),
             if (n == 0)
@@ -383,7 +375,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               [_distribution(ctx)],
               trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6)),
             ),
-            for (final d in rest) ...section(d.title, [d.child]),
+            for (final d in widget.weekDetails(ctx)) ...section(d.title, [d.child]),
             const SizedBox(height: 8),
             Text('Touche un titre pour déplier une lecture ; l\'onglet garde l\'essentiel.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45))),
