@@ -50,6 +50,8 @@ class WallTask extends StatefulWidget {
 class _WallTaskState extends State<WallTask> {
   late bool _open = widget.initiallyExpanded;
   final _openActions = <String>{};
+  /// Actions faites masquées par défaut (prioriser l'action) ; « n faites » les montre.
+  bool _showDoneActions = false;
 
   ProjectTask get t => widget.task;
 
@@ -165,7 +167,29 @@ class _WallTaskState extends State<WallTask> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 0, 10, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              for (final a in t.actions) _action(cs, a),
+              for (final a in t.actions)
+                if (!a.done || _showDoneActions) _action(cs, a),
+              if (t.actions.any((a) => a.done))
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 4),
+                  child: InkWell(
+                    onTap: () => setState(() => _showDoneActions = !_showDoneActions),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(_showDoneActions ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 13, color: cs.onSurface.withValues(alpha: .5)),
+                        const SizedBox(width: 5),
+                        Text(
+                          '${t.actions.where((a) => a.done).length} faite${t.actions.where((a) => a.done).length > 1 ? 's' : ''}'
+                          '${_showDoneActions ? ' · masquer' : ''}',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: cs.onSurface.withValues(alpha: .5)),
+                        ),
+                      ]),
+                    ),
+                  ),
+                ),
             ]),
           ),
       ]),
