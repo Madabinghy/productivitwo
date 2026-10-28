@@ -310,7 +310,7 @@ class _ObjectivesDayViewState extends State<ObjectivesDayView> {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(children: [
-          BadgeView(state: b, size: 44, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false),
+          BadgeView(state: b, size: 44, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false, todayRatio: today?.dayRatio),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

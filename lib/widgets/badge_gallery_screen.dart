@@ -248,7 +248,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 7),
           child: Row(children: [
-            BadgeView(state: b, size: 40, todayGain: t.gain, todaySecured: t.gainSecured),
+            BadgeView(state: b, size: 40, todayGain: t.gain, todaySecured: t.gainSecured, todayRatio: t.dayRatio),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -427,7 +427,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                 ? BadgeView(state: b, size: 72)
                 : Builder(builder: (_) {
                     final t = badgeToday(b, _facts!);
-                    return BadgeView(state: b, size: 72, todayGain: t.gain, todaySecured: t.gainSecured);
+                    return BadgeView(state: b, size: 72, todayGain: t.gain, todaySecured: t.gainSecured, todayRatio: t.dayRatio);
                   }),
           ),
           const SizedBox(height: 4),
@@ -505,7 +505,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
       controller: scroll,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        Center(child: BadgeView(state: b, size: 150, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false)),
+        Center(child: BadgeView(state: b, size: 150, todayGain: today?.gain ?? 0, todaySecured: today?.gainSecured ?? false, todayRatio: today?.dayRatio)),
         const SizedBox(height: 12),
         Text(badgeFamilyLabel(b.def.family).toUpperCase(),
             textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, letterSpacing: 1, color: kBText3)),
@@ -518,6 +518,15 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 15, color: kBText),
         ),
+        if (today != null && !b.showGauge && !b.complete && today.dayRatio != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(
+              today.dayRatio! >= 1 ? 'Faisable du jour fait · ${today.dayDone} / ${today.dayTotal}' : 'Faisable du jour · ${today.dayDone} / ${today.dayTotal}',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: today.dayRatio! >= 1 ? kBPrimary : kBadgeGaugeToday),
+            ),
+          ),
         if (today != null && today.gain > 0 && b.showGauge)
           Padding(
             padding: const EdgeInsets.only(top: 3),
