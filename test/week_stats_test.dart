@@ -34,7 +34,7 @@ void main() {
     final m = rows.firstWhere((r) => r.domain.id == 'm');
     expect((m.doneMin, m.goalMinDay, m.expectedMin), (10, 20, 60)); // minimum réglé à la main
     expect(m.pctInt, 17);
-    expect(rows.first.domain.id, 'm'); // le plus en retard d'abord
+    expect(rows.first.domain.id, 's'); // sous 100 %, le plus proche de 100 d'abord (75 % avant 17 %)
   });
 
   test('weekSummary : engagements des objectifs seulement quand il y en a, chrono de la semaine', () {
@@ -74,5 +74,12 @@ void main() {
     expect(w2.pct, 100);
     expect(w2.kept, 1);
     expect(w2.pctWeek, 0);
+  });
+
+  test('domainWeeks : sous 100 % décroissant, puis ≥ 100 % croissant, puis sans minimum, veille en fin', () {
+    DomainWeek w(String id, int done, int goal, {bool rest = false}) => DomainWeek(
+        domain: Domain(id: id, name: id), doneMin: done, goalMinDay: goal, daysElapsed: 1, routinesReached: 0, routinesTotal: 0, restUntil: rest ? '2026-12-31' : null);
+    final rows = [w('a', 60, 60), w('b', 30, 60), w('c', 90, 60), w('d', 50, 60), w('e', 10, 0), w('f', 0, 0, rest: true)]..sort(compareDomainWeeks);
+    expect(rows.map((r) => r.domain.id).toList(), ['d', 'b', 'a', 'c', 'e', 'f']); // 83 %, 50 %, 100 %, 150 %, sans minimum, veille
   });
 }
