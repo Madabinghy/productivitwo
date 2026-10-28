@@ -184,15 +184,9 @@ class _GoalsViewState extends State<GoalsView> {
       widget.onStartTimer!(act, m.project, n.task);
       return;
     }
-    showTaskDetail(context,
-        project: m.project,
-        task: n.task,
-        activities: widget.activities,
-        allProjects: _projects,
-        sync: _sync,
-        logic: widget.logic,
-        expandActionId: n.action.id,
-        onStartTimer: widget.onStartTimer);
+    // Un seul niveau dans Projets (retour user 2026-10) : sans chrono possible,
+    // la prochaine action s'ouvre dans le projet déplié, sa tâche dépliée.
+    _openPlan(m.project, taskId: n.task.id);
   }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);
@@ -409,24 +403,15 @@ class _GoalsViewState extends State<GoalsView> {
     );
   }
 
-  /// Tap sur une brique = la fiche de CETTE tâche.
+  /// Tap sur une brique = le projet déplié, CETTE tâche dépliée (même
+  /// destination que la ligne : un seul niveau à retenir).
   void _openBrick(Project p, BrickRow row, int i) {
     if (!_hintSeen) {
       setState(() => _hintSeen = true);
       SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
     }
     if (i < 0 || i >= row.total) return;
-    final id = row.bricks[i].id;
-    final t = p.tasks.where((t) => t.id == id).firstOrNull;
-    if (t == null) return;
-    showTaskDetail(context,
-        project: p,
-        task: t,
-        activities: widget.activities,
-        allProjects: _projects,
-        sync: _sync,
-        logic: widget.logic,
-        onStartTimer: widget.onStartTimer);
+    _openPlan(p, taskId: row.bricks[i].id);
   }
 
   /// Ligne du mur : nom · k / n · état, la rangée de briques, puis la prochaine action.
@@ -495,7 +480,7 @@ class _GoalsViewState extends State<GoalsView> {
                     Icon(Icons.touch_app_outlined, size: 13, color: cs.primary),
                     const SizedBox(width: 5),
                     Expanded(
-                      child: Text('Touche une brique pour ouvrir sa tâche · la ligne = le projet déplié',
+                      child: Text('Touche une brique pour aller à sa tâche · appui long sur la ligne = fiche',
                           style: TextStyle(fontSize: 11.5, color: cs.primary, fontWeight: FontWeight.w600)),
                     ),
                   ]),
@@ -568,7 +553,8 @@ class _GoalsViewState extends State<GoalsView> {
         primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
         primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
         onPrimary: () => _startNext(m),
-        onFiche: () => _openFiche(p),
+        ficheLabel: 'Déplier',
+        onFiche: () => _openPlan(p),
       ),
     );
   }
