@@ -42,13 +42,18 @@ class BadgeView extends StatelessWidget {
   /// trait). Sans effet sur un badge sans jauge.
   final num todayGain;
   final bool todaySecured;
-  const BadgeView({super.key, required this.state, this.size = 72, this.todayGain = 0, this.todaySecured = false});
+  /// Part du faisable du jour (0..1) : sur un badge SANS jauge de palier
+  /// (Journée parfaite, Vent contraire, Plein jour), l'anneau la montre en
+  /// orange, pour voir la journée avancer avant que le badge ne tombe.
+  final double? todayRatio;
+  const BadgeView({super.key, required this.state, this.size = 72, this.todayGain = 0, this.todaySecured = false, this.todayRatio});
 
   @override
   Widget build(BuildContext context) {
     final s = state;
     final target = s.nextTarget;
     final tick = s.showGauge && todayGain > 0 && target != null && target > 0 ? ((s.value + todayGain) / target).clamp(0.0, 1.0).toDouble() : null;
+    final dayRing = !s.showGauge && !s.complete && todayRatio != null;
     return Semantics(
       label: '${s.def.name}${s.acquired ? '' : ', pas encore obtenu'}',
       child: CustomPaint(
@@ -58,10 +63,10 @@ class BadgeView extends StatelessWidget {
           acquired: s.acquired,
           levels: s.def.levels,
           level: s.level,
-          progress: s.showGauge ? s.progress : null,
+          progress: s.showGauge ? s.progress : (dayRing ? 0.0 : null),
           label: s.ribbonLabel,
           tick: tick,
-          provisional: tick != null && todaySecured ? tick : null,
+          provisional: dayRing ? todayRatio : (tick != null && todaySecured ? tick : null),
         ),
       ),
     );
