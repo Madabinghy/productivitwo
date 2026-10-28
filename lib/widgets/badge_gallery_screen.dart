@@ -202,7 +202,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                   const Text('DERNIER OBTENU', style: TextStyle(fontSize: 10, letterSpacing: .6, color: kBText3)),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 150),
-                    child: Text('${last.def.name} · ${_shortDate(last.obtained!)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: kBText2)),
+                    child: Text('${last.def.name} · ${_shortDate(last.obtained!)}', maxLines: 2, style: const TextStyle(fontSize: 13, color: kBText2)),
                   ),
                 ]),
               ]),
@@ -252,8 +252,16 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(b.def.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
-                Text(_todaySub(b, t), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: kBText3)),
+                Text(b.def.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                Text(_todaySub(b, t), style: const TextStyle(fontSize: 12, color: kBText3)),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(10)),
+                    child: Text(_pill(t), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+                  ),
+                ),
                 if (t.dayRatio case final r?) ...[
                   const SizedBox(height: 5),
                   Row(children: [
@@ -269,15 +277,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                 ],
               ]),
             ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 130),
-                child: Text(_pill(t), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-              ),
-            ),
+            const Icon(Icons.chevron_right, color: kBText4),
           ]),
         ),
       );
@@ -369,7 +369,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text('${v.badge.def.name} · palier ${fmtInt(v.tierValue)}${v.badge.def.unit.isEmpty ? '' : ' ${v.badge.def.unit}'}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
-                    Text(v.paceLabel(now), style: const TextStyle(fontSize: 12.5, color: kBText3)),
+                    Text(v.paceLabel(now), softWrap: true, style: const TextStyle(fontSize: 12.5, color: kBText3)),
                     const SizedBox(height: 6),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(3),
@@ -432,7 +432,7 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
           ),
           const SizedBox(height: 4),
           Text(b.def.name,
-              maxLines: 2,
+              maxLines: 3,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, height: 1.25, fontWeight: b.acquired ? FontWeight.w600 : FontWeight.w400, color: b.acquired ? kBText : kBText3)),
@@ -685,17 +685,16 @@ Widget _todayBlock(BuildContext ctx, BadgeState b, BadgeToday t, BadgeTodayActio
     padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
     decoration: BoxDecoration(color: kBBg, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withValues(alpha: .45))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Expanded(child: Text('AUJOURD\u2019HUI', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4))),
-        if (t.chip.isNotEmpty)
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
-              child: Text(t.chip, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-            ),
+      const Text('AUJOURD\u2019HUI', style: TextStyle(fontSize: 11, letterSpacing: .8, color: kBText4)),
+      if (t.chip.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(10)),
+            child: Text(t.chip, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
           ),
-      ]),
+        ),
       for (final g in t.gauges) ...[
         const SizedBox(height: 10),
         Row(children: [
@@ -738,8 +737,8 @@ Widget _todayBlock(BuildContext ctx, BadgeState b, BadgeToday t, BadgeTodayActio
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(i.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
-                if (i.detail.isNotEmpty) Text(i.detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: kBText3)),
+                Text(i.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kBText)),
+                if (i.detail.isNotEmpty) Text(i.detail, style: const TextStyle(fontSize: 11.5, color: kBText3)),
               ]),
             ),
             if (gesture(i) case final w?) ...[const SizedBox(width: 8), w],
