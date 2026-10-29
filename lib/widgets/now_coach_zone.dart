@@ -18,8 +18,6 @@ class NowCoachZone extends StatefulWidget {
   // Ouvertures de l'onglet (déclencheur n° 1 de la question d'état).
   final List<DateTime> tabOpens;
   final void Function(ScheduleBlock block)? onLaunch;
-  final void Function(Activity activity, int minutes)? onChallengeAccept;
-  final Future<void> Function(Activity activity, int minutes)? onChallengeSchedule;
 
   const NowCoachZone({
     super.key,
@@ -28,8 +26,6 @@ class NowCoachZone extends StatefulWidget {
     required this.date,
     required this.tabOpens,
     this.onLaunch,
-    this.onChallengeAccept,
-    this.onChallengeSchedule,
   });
 
   @override
@@ -37,8 +33,6 @@ class NowCoachZone extends StatefulWidget {
 }
 
 class _NowCoachZoneState extends State<NowCoachZone> {
-  final _sync = FirestoreSync();
-  Set<String> _scheduledChallengeIds = const {};
   // Renégociation faite → la carte dérive respire 45 min ; « Ignorer » → elle
   // se tait jusqu'à demain.
   DateTime? _driftSnoozeUntil;
@@ -46,36 +40,15 @@ class _NowCoachZoneState extends State<NowCoachZone> {
   AppLogic get logic => widget.logic;
   AppState get st => widget.logic.state;
 
-  @override
-  void initState() {
-    super.initState();
-    _sync.fetchScheduledChallengeActivityIds().then((ids) {
-      if (mounted) setState(() => _scheduledChallengeIds = ids);
-    });
-  }
 
   // La question d'état « ORION · ÉTAT » (À fond · Correct · À plat) est retirée
   // le 2026-10-30 : le mode Flemme / Normal / En forme la remplace.
   @override
   Widget build(BuildContext context) => _coachCard(DateTime.now());
 
-  ChallengeProposal? _challengeProposal(DateTime now) {
-    final a = logic.challengeActivity(exclude: _scheduledChallengeIds);
-    if (a == null) return null;
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final done = logic.totalForRangeByActivity(a.id, todayStart, now).inMinutes;
-    return ChallengeProposal(
-        activity: a,
-        minutes: logic.challengeDurationFor(a),
-        doneMin: done,
-        targetMin: a.goalMin,
-        streak: st.challengeStreak);
-  }
-
   Widget _coachCard(DateTime now) {
     final moment = computeCoachMoment(now, st, widget.schedule, st.sessions,
         driftSnoozed: _driftSnoozeUntil != null && now.isBefore(_driftSnoozeUntil!),
-        challenge: _challengeProposal(now),
         timeContexts: logic.timeContexts);
     if (moment.hidden) return const SizedBox.shrink();
     return Padding(
@@ -98,10 +71,6 @@ class _NowCoachZoneState extends State<NowCoachZone> {
         },
         onDismiss: () => setState(() => _driftSnoozeUntil =
             DateTime(now.year, now.month, now.day).add(const Duration(days: 1))),
-        onChallengeAccept: (block) {
-          final a = st.activities.where((x) => x.id == block.activityId).firstOrNull;
-          if (a != null) _confirmChallenge(a, block.durationMin);
-        },
         onCheckRoutine: (block) async {
           final a = st.activities.where((x) => x.id == block.activityId).firstOrNull;
           if (a == null || !a.isHabit) return;
@@ -125,45 +94,5 @@ class _NowCoachZoneState extends State<NowCoachZone> {
         },
       ),
     );
-  }
-
-  /// Confirmation du défi (même dialog que le bouton doré) : rien ne se lance
-  /// sans ça.
-  Future<void> _confirmChallenge(Activity a, int minutes) async {
-    final cs = Theme.of(context).colorScheme;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (d) => AlertDialog(
-        icon: const Icon(Icons.smart_toy_rounded, color: Color(0xFFB8860B), size: 32),
-        title: const Text('ORION te défie'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$minutes min de « ${a.name} »',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text(
-                '« Je relève » lance le chrono et le minuteur-alarme tout de suite. « Programmer » le pose pour plus tard.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
-          ],
-        ),
-        actionsOverflowDirection: VerticalDirection.down,
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, null), child: const Text('Pas maintenant')),
-          TextButton(
-              onPressed: () => Navigator.pop(d, 'schedule'), child: const Text('Programmer')),
-          FilledButton(onPressed: () => Navigator.pop(d, 'now'), child: const Text('Je relève')),
-        ],
-      ),
-    );
-    if (!mounted) return;
-    if (choice == 'now') widget.onChallengeAccept?.call(a, minutes);
-    if (choice == 'schedule') {
-      await widget.onChallengeSchedule?.call(a, minutes);
-      final ids = await _sync.fetchScheduledChallengeActivityIds();
-      if (mounted) setState(() => _scheduledChallengeIds = ids);
-    }
   }
 }

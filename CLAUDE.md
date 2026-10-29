@@ -811,6 +811,16 @@ projet, « Où tracer le temps » d'une routine, activité liée (projet, routin
 libre, deep work « Autre », tri d'une capture, chrono d'une action (feuille d'action d'Actions : un bouton au lieu de 8 puces), nouvelle
 action simple, Nouveau bloc (« Toutes »), web : « Modifier le chrono » et « Action simple ». Tout nouveau choix d'activité passe par lui.
 
+**Lanceur d'activités (FAB)** (maquette validée 2026-10-30, `widgets/activity_launcher_sheet.dart`, `showActivityLauncher` /
+`ActivityLauncher`, appelé par `_showLaunchActivitySheet` de main.dart) : « n chronométré aujourd'hui · k en retard », carte EN COURS (seul
+élément hero : nom, temps qui défile, domaine · depuis, Arrêter · Fiche), recherche, À RATTRAPER (minimum ≥ 5 min / j et < 95 % de l'attendu sur
+la fenêtre de budget, `launcherRows` / `LauncherRow`, même lecture que la page domaine), puis par domaine (temps du jour dans l'en-tête), « Peu
+utilisées » repliées (aucun chrono sur 30 j). Ligne = icône du domaine, nom + infos + jauge (tap = fiche), **▶ lance le chrono tout de suite**
+(■ si elle tourne) ; appui long = Lancer · 10 / 20 / 30 / 45 min · Deep work 90 (`showDeepWorkSheet(preferActivityId:)`) · Fiche. Activités en
+pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de bouton doré « Challenge me », de puce « Défi ORION » dans MAINTENANT,
+de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
+champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet

@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
+import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
@@ -1677,75 +1679,6 @@ class _RunningBannerGlobalState extends State<RunningBannerGlobal> {
 }
 
 /// Bouton doré « Challenge me » en tête du lanceur d'activité.
-class _ChallengeMeButton extends StatelessWidget {
-  final int streak;
-  final VoidCallback onTap;
-  const _ChallengeMeButton({required this.streak, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE7C66B), Color(0xFFB8860B)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFB8860B).withOpacity(.35),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.smart_toy_rounded, color: Colors.white, size: 22),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Challenge me',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15)),
-                    Text('ORION choisit, tu relèves',
-                        style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  ],
-                ),
-              ),
-              if (streak > 0)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(.22),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text('🔥 $streak',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13)),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Feuille « Modifier la session » (début, fin, activité, bloc du programme,
 /// suppression), partagée par « Dernières 24 h » et la fiche activité.
 /// Renvoie `true` quand la session a changé.
@@ -2173,9 +2106,8 @@ class _AppRootState extends State<AppRoot>
           showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
         case 3: // Streak en danger → Aujourd'hui (routines du jour en tête)
           setState(() => _tab = _goNowTab());
-        case 4: // Défi du jour → le défi lui-même
+        case 4: // ancien « Défi du jour » (retiré) → Aujourd'hui
           setState(() => _tab = _goNowTab());
-          _showChallenge();
         case 5: // Score mi-journée → résumé du jour
           showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
       }
@@ -2653,8 +2585,9 @@ class _AppRootState extends State<AppRoot>
       if (st.streakNotifEnabled) await NotificationService.scheduleStreakReminder(
         hour: st.streakNotifHour, minute: st.streakNotifMinute,
         routineNames: logic.streakAtRiskNames());
-      if (st.challengeNotifEnabled) await NotificationService.scheduleChallengeReminder(
-        hour: st.challengeNotifHour, minute: st.challengeNotifMinute);
+      // Défi ORION retiré (2026-10-30) : on annule le rappel quotidien encore
+      // programmé sur les appareils.
+      await NotificationService.cancelById(4);
       if (st.midDayNotifEnabled) await NotificationService.scheduleMidDayScore(
         hour: st.midDayNotifHour, minute: st.midDayNotifMinute);
       final blocksWithTime = st.blocks
@@ -3681,7 +3614,6 @@ class _AppRootState extends State<AppRoot>
             onOpenActivities: () => _showLaunchActivitySheet(context),
             onOpenActions: () => setState(() => _tab = _Tab.actions),
             onOpenProjects: _state?.hideProjectsTab == true ? null : () => setState(() => _tab = _Tab.projets),
-            onChallenge: _showChallenge,
             onOpenTask: (project, task) => showProjectSheet(
               context,
               project: project,
@@ -3691,17 +3623,6 @@ class _AppRootState extends State<AppRoot>
             ),
             onOpenDayReview: () => showDayReviewSheet(context,
                 logic: logic, projects: _dashboardProjects),
-            // « Je relève » de la carte coach → chrono + minuteur-alarme +
-            // streak (même flow que le bouton doré) ; « Programmer » → défi daté.
-            onChallengeAccept: (a, minutes) {
-              logic.start(a.id);
-              _startCountdown(minutes, a.name);
-              final now = DateTime.now();
-              logic.recordChallengeAccepted(
-                  '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}');
-              setState(() {});
-            },
-            onChallengeSchedule: (a, minutes) => _programChallenge(a, minutes),
             // Minuteur d'une routine (« Le meilleur à faire ») : chrono ciblé +
             // décompte, routine cochée à la fin.
             onStartTimed: (a, minutes) {
@@ -3775,72 +3696,6 @@ class _AppRootState extends State<AppRoot>
   }
 
   // ---------- UI ----------
-
-  /// Défi ORION : choisit localement l'activité la plus en retard sur sa cible
-  /// du jour, propose un minuteur, et lance l'activité + l'alarme si accepté.
-  Future<void> _showChallenge() async {
-    // Exclut les activités ayant déjà un défi programmé (aujourd'hui/futur) →
-    // ORION propose autre chose, l'utilisateur étale ses défis.
-    final scheduledIds = await _sync.fetchScheduledChallengeActivityIds();
-    if (!mounted) return;
-    final a = logic.challengeActivity(exclude: scheduledIds);
-    if (a == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('🤖 Tes cibles du jour sont à jour — rien à rattraper 💪'),
-        duration: Duration(seconds: 3),
-      ));
-      return;
-    }
-    final minutes = logic.challengeDurationFor(a);
-    final cs = Theme.of(context).colorScheme;
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (d) => AlertDialog(
-        icon: const Icon(Icons.smart_toy_rounded,
-            color: Color(0xFFB8860B), size: 32),
-        title: const Text('ORION te défie'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$minutes min de « ${a.name} »',
-                textAlign: TextAlign.center,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text(
-                'Maintenant, ou programme-le pour plus tard (il rejoint ton plan du jour).',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: cs.onSurface.withOpacity(.6))),
-          ],
-        ),
-        actionsOverflowDirection: VerticalDirection.down,
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(d, null),
-              child: const Text('Pas maintenant')),
-          TextButton(
-              onPressed: () => Navigator.pop(d, 'schedule'),
-              child: const Text('Programmer 📅')),
-          FilledButton(
-              onPressed: () => Navigator.pop(d, 'now'),
-              child: const Text('Je relève 🔥')),
-        ],
-      ),
-    );
-    if (choice == 'schedule') {
-      await _programChallenge(a, minutes);
-      return;
-    }
-    if (choice != 'now') return;
-    logic.start(a.id);
-    _startCountdown(minutes, a.name);
-    final now = DateTime.now();
-    final ymd =
-        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
-    logic.recordChallengeAccepted(ymd);
-    if (mounted) setState(() => _tab = _goNowTab());
-  }
 
   /// Programme un défi dans le futur : pose un bloc 🔥 dans le plan du jour
   /// cible + une notif-alarme à l'heure + un rappel en amont. Le défi est
@@ -4113,190 +3968,48 @@ class _AppRootState extends State<AppRoot>
     return 'le ${day.day}/${day.month}';
   }
 
-  Future<void> _showLaunchActivitySheet(BuildContext context) async {
-    final activities = logic.state.activities
-        .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-
-    if (activities.isEmpty) return;
-
-    final domainById = {for (final d in logic.state.activeDomains) d.id: d};
-
-    // Grouper par domaine
-    final Map<String, List<Activity>> byDomain = {};
-    for (final a in activities) {
-      (byDomain[a.domainId] ??= []).add(a);
-    }
-    final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
-      ..add(''); // domaines orphelins en dernier
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        final running = logic.runningActivity();
-
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.55,
-          minChildSize: 0.35,
-          maxChildSize: 0.9,
-          builder: (ctx, scrollCtrl) => Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Text('Lancer une activité',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 18)),
-                    ),
-                    if (running != null)
-                      TextButton.icon(
-                        icon: const Icon(Icons.stop, size: 16),
-                        label: const Text('Arrêter'),
-                        style: TextButton.styleFrom(
-                            foregroundColor: cs.error,
-                            visualDensity: VisualDensity.compact),
-                        onPressed: () async {
-                          _cancelCountdown();
-                          final (_, name, delta) =
-                              await logic.stopActiveWithAdjustment();
-                          setState(() {});
-                          if (ctx.mounted) Navigator.pop(ctx);
-                          if (delta != null && delta > 0 && name != null &&
-                              mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content:
-                                  Text('Objectif ajusté : $name +${delta}min'),
-                              duration: const Duration(seconds: 3),
-                            ));
-                          }
-                        },
-                      ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView(
-                  controller: scrollCtrl,
-                  children: [
-                    // ── Bouton doré « Challenge me » (défi ORION) ──────────
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                      child: _ChallengeMeButton(
-                        streak: logic.state.challengeStreak,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _showChallenge();
-                        },
-                      ),
-                    ),
-                    for (final domId in domainOrder)
-                      if (byDomain.containsKey(domId)) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-                          child: Text(
-                            domainById[domId]?.name ?? 'Sans domaine',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.6,
-                              color: cs.onSurface.withOpacity(.45),
-                            ),
-                          ),
-                        ),
-                        for (final a in byDomain[domId]!) ...[
-                          Builder(builder: (ctx2) {
-                            final isRunning = running?.id == a.id;
-                            final dColor = domainColor(domId, logic.state.activeDomains) ?? cs.primary;
-                            final now2 = DateTime.now();
-                            final todayStart = DateTime(now2.year, now2.month, now2.day);
-                            final todayMin = logic.totalForRangeByActivity(a.id, todayStart, now2).inMinutes;
-                            final timeStr = todayMin == 0 ? null
-                                : todayMin < 60 ? '${todayMin}min'
-                                : '${(todayMin / 60).floor()}h${(todayMin % 60).toString().padLeft(2, '0')}';
-
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () async {
-                                  Navigator.pop(ctx);
-                                  // Ouvre le sheet de l'activité : l'user voit ses stats
-                                  // et choisit chrono libre OU minuteur avant de lancer.
-                                  await _openActivitySheet(a);
-                                  if (mounted) setState(() {});
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                                  decoration: BoxDecoration(
-                                    color: isRunning
-                                        ? cs.errorContainer.withOpacity(.15)
-                                        : cs.surfaceContainerHighest.withOpacity(.4),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: isRunning
-                                          ? cs.error.withOpacity(.3)
-                                          : dColor.withOpacity(.2),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 10, height: 10,
-                                        decoration: BoxDecoration(
-                                          color: isRunning ? cs.error : dColor,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Text(
-                                          a.name,
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w600,
-                                            color: isRunning ? cs.error : cs.onSurface,
-                                          ),
-                                        ),
-                                      ),
-                                      if (timeStr != null) ...[
-                                        Text(timeStr,
-                                            style: TextStyle(
-                                                fontSize: 12,
-                                                color: cs.onSurface.withOpacity(.45))),
-                                        const SizedBox(width: 8),
-                                      ],
-                                      Icon(
-                                        isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                                        size: 22,
-                                        color: isRunning ? cs.error : dColor,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ],
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
+  /// Lanceur d'activités (FAB) : `widgets/activity_launcher_sheet.dart`.
+  Future<void> _showLaunchActivitySheet(BuildContext context) {
+    return showActivityLauncher(
+      context,
+      logic: logic,
+      onStart: (a) {
+        logic.start(a.id);
+        logic.rev.value++;
+        setState(() => _tab = _goNowTab());
       },
+      onStartTimed: (a, m) {
+        logic.start(a.id);
+        _startCountdown(m, a.name);
+        setState(() => _tab = _goNowTab());
+      },
+      onDeepWork: (a) => showDeepWorkSheet(
+        context,
+        logic: logic,
+        sync: _sync,
+        date: logic.livedTodayYmd,
+        preferActivityId: a.id,
+        onLaunch: (b) => _launchScheduledBlock(b, goToNow: true),
+      ),
+      onOpenFiche: (a) async {
+        await _openActivitySheet(a);
+        if (mounted) setState(() {});
+      },
+      onStop: () async {
+        _cancelCountdown();
+        final (_, name, delta) = await logic.stopActiveWithAdjustment();
+        if (!mounted) return;
+        setState(() {});
+        if (delta != null && delta > 0 && name != null) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Objectif ajusté : $name +${delta}min'),
+            duration: const Duration(seconds: 3),
+          ));
+        }
+      },
+      onNew: () => _createActivityDialog(domainId: null, isHabit: false),
     );
   }
-
 
   Future<void> _createRoutineFromNow(BuildContext context) async {
     final result = await showNewRoutineSheet(context, logic: logic);
@@ -6952,26 +6665,6 @@ class _AppRootState extends State<AppRoot>
                       logic.onChange(); rebuild();
                       await NotificationService.scheduleStreakReminder(
                           hour: picked.hour, minute: picked.minute, routineNames: logic.streakAtRiskNames());
-                    },
-                  ),
-                  const Divider(height: 1),
-                  _notifSettingRow(ctx, cs,
-                    icon: Icons.bolt_outlined,
-                    label: 'Défi du jour',
-                    hour: _state!.challengeNotifHour,
-                    minute: _state!.challengeNotifMinute,
-                    enabled: _state!.challengeNotifEnabled,
-                    onToggled: (v) async {
-                      setState(() => _state!.challengeNotifEnabled = v);
-                      logic.onChange(); rebuild();
-                      if (!v) { await NotificationService.cancelById(4); return; }
-                      await NotificationService.scheduleChallengeReminder(
-                          hour: _state!.challengeNotifHour, minute: _state!.challengeNotifMinute);
-                    },
-                    onPicked: (picked) async {
-                      setState(() { _state!.challengeNotifHour = picked.hour; _state!.challengeNotifMinute = picked.minute; });
-                      logic.onChange(); rebuild();
-                      await NotificationService.scheduleChallengeReminder(hour: picked.hour, minute: picked.minute);
                     },
                   ),
                   const Divider(height: 1),

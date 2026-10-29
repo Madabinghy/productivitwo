@@ -76,7 +76,6 @@ class TodayView extends StatefulWidget {
   final VoidCallback? onStopCountdown;
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
-  final VoidCallback? onChallenge;
   // PR 2 : onglet unique — tâche en retard → fiche projet ; résumé du jour ;
   // défi ORION de la carte coach ; minuteur d'une routine (« Le meilleur à faire »).
   final void Function(Project project, ProjectTask task)? onOpenTask;
@@ -84,8 +83,6 @@ class TodayView extends StatefulWidget {
   /// Tuiles du tableau de bord (lot 3) : ouvrir l'onglet Actions / Projets.
   final VoidCallback? onOpenActions;
   final VoidCallback? onOpenProjects;
-  final void Function(Activity activity, int minutes)? onChallengeAccept;
-  final Future<void> Function(Activity activity, int minutes)? onChallengeSchedule;
   final void Function(Activity activity, int minutes)? onStartTimed;
   /// Modes et coups (lot 2) : lancer un bloc avec un minuteur (« 10 min, malgré tout »).
   final void Function(ScheduleBlock block, int minutes)? onNowLaunchTimed;
@@ -107,13 +104,10 @@ class TodayView extends StatefulWidget {
       this.onStopCountdown,
       this.onOpenRoutines,
       this.onOpenActivities,
-      this.onChallenge,
       this.onOpenTask,
       this.onOpenDayReview,
       this.onOpenActions,
       this.onOpenProjects,
-      this.onChallengeAccept,
-      this.onChallengeSchedule,
       this.onStartTimed,
       this.onNowLaunchTimed});
 
@@ -721,7 +715,6 @@ class TodayViewState extends State<TodayView> {
                     onStopCountdown: widget.onStopCountdown ?? () {},
                     onOpenRoutines: widget.onOpenRoutines,
                     onOpenActivities: widget.onOpenActivities,
-                    onChallenge: widget.onChallenge,
                     onChain: widget.onStopTimer == null
                         ? null
                         : () => showChainScreen(
@@ -792,8 +785,6 @@ class TodayViewState extends State<TodayView> {
                     date: _schedDate,
                     tabOpens: _tabOpens,
                     onLaunch: widget.onNowLaunch ?? widget.onLaunch,
-                    onChallengeAccept: widget.onChallengeAccept,
-                    onChallengeSchedule: widget.onChallengeSchedule,
                   ),
                 ],
                 // Programme du jour : dans une feuille ouverte par la tuile
