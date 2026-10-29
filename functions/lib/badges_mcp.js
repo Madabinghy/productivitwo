@@ -29,12 +29,19 @@ function parseSnapshot(raw) {
         return null;
     const r = raw;
     const badges = Array.isArray(r.badges) ? r.badges.map(parseItem).filter((b) => b !== null) : [];
-    return {
-        updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : undefined,
-        acquired: Number(r.acquired) || 0,
-        total: Number(r.total) || 0,
-        badges,
-    };
+    return Object.assign({ updatedAt: typeof r.updatedAt === "string" ? r.updatedAt : undefined, acquired: Number(r.acquired) || 0, total: Number(r.total) || 0, badges }, (parseEmbers(r.embers) ? { embers: parseEmbers(r.embers) } : {}));
+}
+function parseEmbers(raw) {
+    if (!raw || typeof raw !== "object")
+        return null;
+    const r = raw;
+    const rekindled = Array.isArray(r.rekindled)
+        ? r.rekindled
+            .filter((x) => !!x && typeof x === "object")
+            .filter((x) => typeof x.name === "string" && typeof x.ymd === "string")
+            .map((x) => ({ name: String(x.name), ymd: String(x.ymd), domainId: typeof x.domainId === "string" ? x.domainId : null }))
+        : [];
+    return { stock: Math.max(0, Number(r.stock) || 0), rekindled };
 }
 function parseItem(raw) {
     var _a, _b;
@@ -124,7 +131,7 @@ function badgesSummary(snap, hunts) {
         .sort((x, y) => x.left / x.b.nextTarget - y.left / y.b.nextTarget)
         .slice(0, 3)
         .map(({ b, left }) => `${b.name} : encore ${fmtN(left)}${b.unit ? " " + b.unit : ""} avant le palier ${fmtN(b.nextTarget)}`);
-    return Object.assign(Object.assign({ acquired: snap.acquired, total: snap.total }, (last ? { lastObtained: `${last.name} (${last.obtained})` } : {})), { hunts: huntLines(snap, hunts), closeToTier: close, _hint: "Une chasse se PROPOSE (hunt_badge) quand un palier est proche et que l'utilisateur en parle ou le demande ; jamais imposée, trois au plus. Un badge est un fait : cite-le, ne le commente pas." });
+    return Object.assign(Object.assign(Object.assign(Object.assign({ acquired: snap.acquired, total: snap.total }, (last ? { lastObtained: `${last.name} (${last.obtained})` } : {})), { hunts: huntLines(snap, hunts), closeToTier: close }), (snap.embers ? { embers: { stock: snap.embers.stock, rekindled: snap.embers.rekindled.map((e) => `${e.name} (${e.ymd})`) } } : {})), { _hint: "Une chasse se PROPOSE (hunt_badge) quand un palier est proche et que l'utilisateur en parle ou le demande ; jamais imposée, trois au plus. Un badge est un fait : cite-le, ne le commente pas." });
 }
 /** Liste lisible du deck pour list_badges. */
 function formatBadgeList(snap, hunts) {
@@ -164,6 +171,8 @@ function formatBadgeList(snap, hunts) {
 function badgesForCoach(snap, sharedDomains) {
     if (!snap)
         return null;
-    return Object.assign(Object.assign({}, snap), { badges: snap.badges.filter((b) => b.family !== "routines" || (b.domainId != null && sharedDomains.has(b.domainId))) });
+    return Object.assign(Object.assign(Object.assign({}, snap), { badges: snap.badges.filter((b) => b.family !== "routines" || (b.domainId != null && sharedDomains.has(b.domainId))) }), (snap.embers
+        ? { embers: { stock: snap.embers.stock, rekindled: snap.embers.rekindled.filter((e) => e.domainId != null && sharedDomains.has(e.domainId)) } }
+        : {}));
 }
 //# sourceMappingURL=badges_mcp.js.map

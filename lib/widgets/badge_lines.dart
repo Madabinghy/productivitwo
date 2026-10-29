@@ -59,6 +59,8 @@ class RoutineTiersLine extends StatelessWidget {
   final List<MoodMark> marks;
   final int dayStartMin;
   final Color accent;
+  /// Jours comblés par une braise (`AppLogic.bridgedOf`).
+  final Set<String> bridged;
   const RoutineTiersLine({
     super.key,
     required this.activity,
@@ -66,12 +68,13 @@ class RoutineTiersLine extends StatelessWidget {
     required this.marks,
     required this.dayStartMin,
     required this.accent,
+    this.bridged = const {},
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final s = routineSeries(activity, hits, DateTime.now(), dayStartMin: dayStartMin);
+    final s = routineSeries(activity, hits, DateTime.now(), dayStartMin: dayStartMin, bridged: bridged);
     final level = kRoutineTiers.where((t) => s.longest >= t).length;
     final state = BadgeState(
       def: BadgeDef(id: 'serie-${activity.id}', family: BadgeFamily.routines, name: activity.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: activity.id),
@@ -140,7 +143,7 @@ class RoutineTiersLine extends StatelessWidget {
     final cells = <TrackCell>[];
     for (var i = 13; i >= 0; i--) {
       final y = ymdOf(today.subtract(Duration(days: i)));
-      cells.add(reached.contains(y) ? TrackCell.hit : (i == 0 ? TrackCell.current : TrackCell.miss));
+      cells.add(reached.contains(y) ? TrackCell.hit : (i == 0 ? TrackCell.current : (bridged.contains(y) ? TrackCell.bridged : TrackCell.miss)));
     }
     return BadgeTrack(cells: cells, caption: '14 derniers jours · ${cells.where((c) => c == TrackCell.hit).length} atteints');
   }

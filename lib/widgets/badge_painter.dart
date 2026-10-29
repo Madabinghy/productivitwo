@@ -15,6 +15,8 @@ const kBadgeOlive300 = Color(0xFF5E7040);
 const kBadgeOlive500 = Color(0xFF4A5A2F);
 const kBadgeKhaki = Color(0xFFC9B978);
 const kBadgeKhakiDark = Color(0xFF8E8150);
+/// Braises (rallumage d'une série cassée hier).
+const kEmberColor = Color(0xFFFF8A3D);
 const kBadgeBrass = Color(0xFFD4B35A);
 const kBadgeBrassDark = Color(0xFFA8863A);
 const kBadgeRibbonInk = Color(0xFF1A1F12);

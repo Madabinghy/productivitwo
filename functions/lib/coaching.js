@@ -309,7 +309,7 @@ async function buildDashboard(coacheeUid, sharing) {
 // Texte déterministe prêt à relire/copier avant séance — les chiffres du
 // dashboard + la fiche (notes, prochaine séance). Aucune IA : les faits.
 function buildPresessionReport(fiche, dash) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
     const name = (_b = (_a = fiche.name) !== null && _a !== void 0 ? _a : fiche.email) !== null && _b !== void 0 ? _b : "Coaché";
     const today = new Date().toISOString().slice(0, 10);
     const engagements = (_c = dash.engagements) !== null && _c !== void 0 ? _c : [];
@@ -338,12 +338,17 @@ function buildPresessionReport(fiche, dash) {
         const hunts = (_e = badges.hunts) !== null && _e !== void 0 ? _e : [];
         if (hunts.length)
             lines.push(`  En chasse : ${hunts.join(" · ")}`);
+        const embers = badges.embers;
+        if (embers) {
+            const re = (_f = embers.rekindled) !== null && _f !== void 0 ? _f : [];
+            lines.push(`  Braises : ${embers.stock} en réserve${re.length ? ` · séries rallumées (30 j) : ${re.join(" · ")}` : ""}`);
+        }
     }
     const elan = dash.elan;
     if (elan && typeof elan.summary === "string")
         lines.push(elan.summary);
-    const minutes = (_f = dash.weekMinutesByActivity) !== null && _f !== void 0 ? _f : null;
-    const actNames = new Map(((_g = dash.activities) !== null && _g !== void 0 ? _g : []).map((a) => [String(a.id), String(a.name)]));
+    const minutes = (_g = dash.weekMinutesByActivity) !== null && _g !== void 0 ? _g : null;
+    const actNames = new Map(((_h = dash.activities) !== null && _h !== void 0 ? _h : []).map((a) => [String(a.id), String(a.name)]));
     if (minutes != null && Object.keys(minutes).length > 0) {
         const top = Object.entries(minutes)
             .sort((a, b) => b[1] - a[1])
@@ -352,10 +357,10 @@ function buildPresessionReport(fiche, dash) {
         lines.push(`Temps (7 j) : ${top.join(" · ")}`);
     }
     lines.push("");
-    if ((_h = fiche.nextSession) === null || _h === void 0 ? void 0 : _h.trim()) {
+    if ((_j = fiche.nextSession) === null || _j === void 0 ? void 0 : _j.trim()) {
         lines.push(`Prochaine séance : ${fiche.nextSession.trim()}`);
     }
-    if ((_j = fiche.notes) === null || _j === void 0 ? void 0 : _j.trim()) {
+    if ((_k = fiche.notes) === null || _k === void 0 ? void 0 : _k.trim()) {
         lines.push(`Notes de coaching :`);
         lines.push(fiche.notes.trim());
     }

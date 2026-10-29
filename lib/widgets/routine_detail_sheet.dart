@@ -277,6 +277,7 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 marks: logic.state.moodMarks,
                 dayStartMin: logic.dayStartMin,
                 accent: accentColor,
+                bridged: logic.bridgedOf(act.id),
               ),
             ] else ...[
             if (currentStreak > 0 || bestStreak > 1) ...[

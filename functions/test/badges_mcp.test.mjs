@@ -67,3 +67,15 @@ test("vue coach : les séries hors domaines partagés sont retirées, le reste p
   assert.deepEqual(v.badges.map((b) => b.id), ["serie-a", "actions"]);
   assert.equal(badgesForCoach(null, new Set()), null);
 });
+
+test("braises : lues dans l'instantané, filtrées par domaine partagé pour le coach, résumées", async () => {
+  const m = await import("../lib/badges_mcp.js");
+  const snap = m.parseSnapshot({ acquired: 1, total: 9, badges: [], embers: { stock: 2, rekindled: [{ name: "Pompes", ymd: "2026-10-29", domainId: "sport" }, { name: "Journal", ymd: "2026-10-20", domainId: "perso" }, { bad: 1 }] } });
+  assert.equal(snap.embers.stock, 2);
+  assert.equal(snap.embers.rekindled.length, 2);
+  const coach = m.badgesForCoach(snap, new Set(["sport"]));
+  assert.deepEqual(coach.embers.rekindled.map((e) => e.name), ["Pompes"]);
+  const sum = m.badgesSummary(coach, []);
+  assert.deepEqual(sum.embers, { stock: 2, rekindled: ["Pompes (2026-10-29)"] });
+  assert.equal(m.parseSnapshot({ badges: [] }).embers, undefined);
+});

@@ -54,6 +54,7 @@ import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -2038,6 +2039,8 @@ class _AppRootState extends State<AppRoot>
       final start = parseDayStartMin(m['dayStartMin']);
       final windows = parseMomentWindows(m['momentWindows']);
       final hunts = parseBadgeHunts(m['badgeHunts']);
+      final spends = EmberSpend.listFrom(m['emberSpends']);
+      final sameSpends = spends.map((x) => x.toJson().toString()).join('|') == logic.emberSpends.map((x) => x.toJson().toString()).join('|');
       final elanAll = m['elanPromptsAll'] == true;
       final rest = parseRestDomains(m['restDomains']);
       final budget = parseBudgetWindowDays(m['budgetWindowDays']);
@@ -2045,6 +2048,7 @@ class _AppRootState extends State<AppRoot>
       final same = logic.dayStartMin == start &&
           momentWindowsToJson(logic.momentWindows).toString() == momentWindowsToJson(windows).toString() &&
           sameHunts &&
+          sameSpends &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString();
@@ -2052,6 +2056,7 @@ class _AppRootState extends State<AppRoot>
       logic.dayStartMin = start;
       logic.momentWindows = windows;
       logic.badgeHunts = hunts;
+      logic.emberSpends = spends;
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
       logic.budgetWindowDays = budget;

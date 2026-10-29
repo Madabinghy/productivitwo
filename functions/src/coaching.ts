@@ -378,6 +378,11 @@ function buildPresessionReport(fiche: Json, dash: Json): string {
     lines.push(`Badges : ${badges.acquired} / ${badges.total} paliers${badges.lastObtained ? ` · dernier obtenu : ${badges.lastObtained}` : ""}`);
     const hunts = (badges.hunts as string[]) ?? [];
     if (hunts.length) lines.push(`  En chasse : ${hunts.join(" · ")}`);
+    const embers = badges.embers as Json | undefined;
+    if (embers) {
+      const re = (embers.rekindled as string[]) ?? [];
+      lines.push(`  Braises : ${embers.stock} en réserve${re.length ? ` · séries rallumées (30 j) : ${re.join(" · ")}` : ""}`);
+    }
   }
   const elan = dash.elan as Json | null;
   if (elan && typeof elan.summary === "string") lines.push(elan.summary);
