@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
+import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/objective_moment_card.dart';
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
@@ -150,19 +151,10 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     final cs = Theme.of(context).colorScheme;
     if (!_loaded) return const SizedBox.shrink();
     final active = _active;
+    _momentId = active.isEmpty ? null : rankedObjectiveMoments(widget.logic, active).firstOrNull?.objective.id;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (active.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: ObjectiveMomentCard(
-              logic: widget.logic,
-              sync: widget.sync,
-              objectives: active,
-              onChanged: _load,
-            ),
-          ),
         // Coups tactiques (Modes et coups lot 3) : 3 à 10 jours, une cible, au-dessus des stratégiques.
         ListSectionTitle('COUPS · ${_coups.length}', action: '+ Lancer un coup', onAction: _newCoup),
         if (_coups.isEmpty)
@@ -225,6 +217,10 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     ];
   }
 
+  /// « Une liste, un seul bloc ouvert » : l'objectif du moment est ouvert par défaut.
+  final _open = OpenItem();
+  String? _momentId;
+
   Widget _row(ColorScheme cs, StrategicObjective o) {
     final progress = _progressOf(o);
     final pct = progress.weekPercent;
@@ -253,18 +249,26 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
       if (!o.isTactical && progress.daysLeft != null) '${progress.daysLeft} j restants',
       if (isReadingDue(o, DateTime.now())) 'relevé à noter',
     ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: StatusRow(
+    return MomentItem(
+      key: _open.keyFor(o.id),
+      open: _open.isOpen(o.id, _momentId),
+      collapsed: StatusRow(
         leading: Icon(o.isTactical ? Icons.bolt_rounded : Icons.flag_rounded, color: kObjectiveAccent),
         title: o.title,
         sub: sub.isEmpty ? null : sub,
         bar: bar,
         pct: pctInt,
         delta: delta.isEmpty ? null : delta,
-        onTap: () => _showDetail(o),
-        onLongPress: () => _edit(o),
       ),
+      expanded: ObjectiveMomentCard(
+        logic: widget.logic,
+        sync: widget.sync,
+        objectives: _active,
+        objectiveId: o.id,
+        onChanged: _load,
+      ),
+      onToggle: () => _open.settle(o.id, () => setState(() => _open.toggle(o.id, _momentId))),
+      onLongPress: () => _edit(o),
     );
   }
 

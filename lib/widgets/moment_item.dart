@@ -12,12 +12,20 @@ class MomentItem extends StatelessWidget {
   final Widget expanded;
   final VoidCallback onToggle;
   final VoidCallback? onLongPress;
-  const MomentItem({super.key, required this.open, required this.collapsed, required this.expanded, required this.onToggle, this.onLongPress});
+  final EdgeInsets padding;
+  const MomentItem(
+      {super.key,
+      required this.open,
+      required this.collapsed,
+      required this.expanded,
+      required this.onToggle,
+      this.onLongPress,
+      this.padding = const EdgeInsets.only(bottom: 8)});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: padding,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onToggle,
@@ -62,15 +70,24 @@ class OpenItem {
 
   /// Mesure la ligne avant le changement, puis recale le défilement après le
   /// frame pour qu'elle ne bouge pas.
-  void settle(String id, ScrollController scroll, VoidCallback apply) {
+  /// [scroll] = le contrôleur de la liste ; sans contrôleur, le `Scrollable`
+  /// qui englobe l'item (pages en `Column` dans un parent défilant).
+  void settle(String id, VoidCallback apply, {ScrollController? scroll}) {
     final before = _top(id);
     apply();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!scroll.hasClients) return;
+      ScrollPosition? pos;
+      if (scroll != null && scroll.hasClients) {
+        pos = scroll.position;
+      } else {
+        final ctx = keys[id]?.currentContext;
+        if (ctx != null) pos = Scrollable.maybeOf(ctx)?.position;
+      }
+      if (pos == null) return;
       final after = _top(id);
       if (before.isNaN || after.isNaN) return;
-      final target = (scroll.offset + (after - before)).clamp(scroll.position.minScrollExtent, scroll.position.maxScrollExtent);
-      if ((target - scroll.offset).abs() > .5) scroll.jumpTo(target);
+      final target = (pos.pixels + (after - before)).clamp(pos.minScrollExtent, pos.maxScrollExtent);
+      if ((target - pos.pixels).abs() > .5) pos.jumpTo(target);
     });
   }
 }

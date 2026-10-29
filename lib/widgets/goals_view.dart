@@ -153,7 +153,7 @@ class _GoalsViewState extends State<GoalsView> {
       _hintSeen = true;
       SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
     }
-    _open.settle(id, _scroll, () => setState(() => _open.toggle(id, defaultId)));
+    _open.settle(id, () => setState(() => _open.toggle(id, defaultId)), scroll: _scroll);
   }
 
   Future<void> _toggle(String key) async {

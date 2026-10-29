@@ -22,11 +22,39 @@ const kObjectiveAccent = Color(0xFF00897B);
 /// l'onglet Objectifs et la fiche Objectifs d'Aujourd'hui, sur `MomentCard`).
 /// UN objectif (`rankObjectiveMoments`), UN geste (`ObjectiveMove`), anneau
 /// « n % du rythme », « Fiche » = trajectoire, pilule « 1 / n · suivant › ».
+/// Classement du jour (le premier = l'objectif du moment), partagé par la carte
+/// et par la liste « une liste, un seul bloc ouvert » de l'onglet Objectifs.
+List<ObjectiveMoment> rankedObjectiveMoments(AppLogic logic, List<StrategicObjective> objectives, {List<ScheduleBlock> blocks = const []}) {
+  final st = logic.state;
+  final now = DateTime.now();
+  final days = buildObjectiveDays(
+    objectives: objectives,
+    activities: st.activeActivities,
+    sessions: st.sessions,
+    blocks: blocks,
+    projects: logic.currentProjects,
+    now: now,
+    dayStartMin: logic.dayStartMin,
+  );
+  return rankObjectiveMoments(
+    days,
+    nowMin: logic.livedNowMinNow,
+    now: now,
+    routineCount: (a) => routineTodayCount(logic, a),
+    weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
+    runningActivityId: logic.runningActivity()?.id,
+    mode: logic.mode,
+  );
+}
+
 class ObjectiveMomentCard extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;
   final List<StrategicObjective> objectives;
   final List<ScheduleBlock> blocks;
+  /// Bloc ouvert d'UN objectif donné (liste « un seul bloc ouvert ») : pas de
+  /// pilule « suivant », étiquette OBJECTIF DU MOMENT seulement s'il est premier.
+  final String? objectiveId;
   final void Function(ScheduleBlock block)? onLaunch;
   final void Function(ScheduleBlock block)? onOpenSource;
   final void Function(Project project, ProjectTask task)? onOpenTask;
@@ -44,6 +72,7 @@ class ObjectiveMomentCard extends StatefulWidget {
     this.onOpenTask,
     this.onChainObjective,
     this.onChanged,
+    this.objectiveId,
   });
 
   @override
@@ -63,26 +92,12 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
   Widget build(BuildContext context) {
     final st = widget.logic.state;
     final now = DateTime.now();
-    final days = buildObjectiveDays(
-      objectives: widget.objectives,
-      activities: st.activeActivities,
-      sessions: st.sessions,
-      blocks: widget.blocks,
-      projects: widget.logic.currentProjects,
-      now: now,
-      dayStartMin: widget.logic.dayStartMin,
-    );
-    final ranked = rankObjectiveMoments(
-      days,
-      nowMin: widget.logic.livedNowMinNow,
-      now: now,
-      routineCount: (a) => routineTodayCount(widget.logic, a),
-      weekPercent: (o) => computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now).weekPercent,
-      runningActivityId: widget.logic.runningActivity()?.id,
-      mode: widget.logic.mode,
-    );
+    final ranked = rankedObjectiveMoments(widget.logic, widget.objectives, blocks: widget.blocks);
     if (ranked.isEmpty) return const SizedBox.shrink();
-    final m = ranked[_offset % ranked.length];
+    final fixed = widget.objectiveId == null ? null : ranked.where((x) => x.objective.id == widget.objectiveId).firstOrNull;
+    if (widget.objectiveId != null && fixed == null) return const SizedBox.shrink();
+    final isMoment = fixed == null || identical(fixed, ranked.first);
+    final m = fixed ?? ranked[_offset % ranked.length];
     final o = m.objective;
     final pct = m.weekPercent;
     final pctInt = pct == null ? null : (pct * 100).round();
@@ -139,9 +154,11 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
         preferObjectiveId: o.id);
     return MomentCard(
       accent: kObjectiveAccent,
-      eyebrow: o.isTactical ? 'COUP EN COURS' : 'OBJECTIF DU MOMENT',
-      pill: ranked.length > 1 ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›' : (o.isTactical ? coupLabel(o, now) : null),
-      onPill: ranked.length > 1 ? () => setState(() => _offset = (_offset + 1) % ranked.length) : null,
+      eyebrow: o.isTactical ? (isMoment ? 'COUP EN COURS' : 'COUP') : (isMoment ? 'OBJECTIF DU MOMENT' : 'OBJECTIF'),
+      pill: fixed == null && ranked.length > 1
+          ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›'
+          : (o.isTactical ? coupLabel(o, now) : (pctInt == null ? null : '$pctInt % du rythme')),
+      onPill: fixed == null && ranked.length > 1 ? () => setState(() => _offset = (_offset + 1) % ranked.length) : null,
       ring: pct == null ? 0 : pct.clamp(0.0, 1.0),
       ringColor: pctInt == null ? kObjectiveAccent : palierColor(pctInt),
       ringBig: pctInt == null ? '—' : '$pctInt %',
@@ -164,6 +181,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
       primaryIcon: move.icon,
       primaryOutlined: m.move.kind == ObjectiveMoveKind.running,
       onPrimary: move.onTap,
+      ficheLabel: 'Détail',
       onFiche: () => _fiche(o),
       chainLabel: chainN > 0 ? 'Enchaîner · $chainN' : null,
       onChain: chainN > 0 ? () => widget.onChainObjective!(o) : null,

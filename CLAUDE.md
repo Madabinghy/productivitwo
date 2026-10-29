@@ -512,9 +512,14 @@ PROJET DU MOMENT · PROJET · PROJET À VENIR, pilule séance ou écart au plan,
 « 1 / n · suivant » disparaît. `MomentCard.chainIcon` (null = lien texte seul). **Lot 2 livré = Actions** (`actions_view.dart`) : plus de carte ACTION DU MOMENT en tête ; `_pickMoment` désigne l'action du moment
 (item ouvert par défaut), chaque `_entryTile` = `MomentItem` (ligne `StatusRow` repliée sans ▶ ni chevron, bloc `_momentCardFor`
 ouvert : étiquette ACTION DU MOMENT · ACTION EN RETARD · ACTION, pilule d'état, liens « Détail » = feuille d'action · « Projet » =
-projet déplié sur la tâche) ; glisser droite / gauche et la coche restent sur la ligne ; appui long = feuille d'action. Lots
-suivants : Objectifs + Routines, Aujourd'hui (MAINTENANT = ligne ouverte par défaut, blocs du programme = les autres lignes) ; le ▶
-lancera la page focus (maquette « Page focus »).
+projet déplié sur la tâche) ; glisser droite / gauche et la coche restent sur la ligne ; appui long = feuille d'action. **Lot 3 livré = Objectifs + Routines** : `rankedObjectiveMoments(logic, objectives)` partagé ; `ObjectiveMomentCard(objectiveId:)` =
+bloc ouvert d'UN objectif (étiquette OBJECTIF DU MOMENT / COUP EN COURS si premier, sinon OBJECTIF / COUP, pilule « n % du rythme »,
+lien « Détail ») ; `objectives_card.dart` : plus de carte en tête, chaque `_row` = `MomentItem` (appui long = éditer). Routines
+(`routines_day_view.dart`) : plus de carte en tête, chaque ligne des sections par moment = `MomentItem` (clé `moment/id`, padding
+zéro), bloc ouvert = `_momentCard(pal, day, slot)` (étiquette ROUTINE DU MOMENT si c'est la routine en avant, sinon ROUTINE CE
+MATIN…), défaut = la routine en avant de la file ; le nom de la ligne n'ouvre plus la fiche (appui long). `OpenItem.settle(id, apply,
+{scroll})` : sans contrôleur, recale le `Scrollable` englobant. Lot suivant : Aujourd'hui (MAINTENANT = ligne ouverte par défaut,
+blocs du programme = les autres lignes) ; le ▶ lancera la page focus (maquette « Page focus »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
