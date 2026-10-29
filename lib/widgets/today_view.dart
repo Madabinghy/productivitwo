@@ -40,6 +40,7 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection;
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -693,6 +694,8 @@ class TodayViewState extends State<TodayView> {
                     const SizedBox(height: 12),
                     StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet),
                   ],
+                  // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
+                  LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged, onPlus: _emberPlus),
                   if (_morningCard(cs, now, text3) case final card?) card,
                   // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
                   // sous le programme (retour user 2026-10-30).
@@ -971,6 +974,8 @@ class TodayViewState extends State<TodayView> {
       return BadgesInPlayScreen(
         data: badgesInPlay(board, widget.badges?.deck),
         sheetScroll: scroll,
+        embers: widget.logic.emberLedgerNow(),
+        names: {for (final a in widget.logic.state.activities) a.id: a.name},
         onRun: _runStake,
         onAll: () {
           Navigator.of(ctx).pop();
@@ -1086,6 +1091,18 @@ class TodayViewState extends State<TodayView> {
     }
   }
 
+  /// Un rallumage armé ou annulé, un +1 qui le rend effectif : le deck se
+  /// recalcule (séries comblées, enjeux).
+  void _onEmbersChanged() {
+    widget.badges?.load();
+    if (mounted) setState(() {});
+  }
+
+  void _emberPlus(Activity a) {
+    routinePlusWithUndo(context, widget.logic, a);
+    _onEmbersChanged();
+  }
+
   /// Les enjeux du jour dans une feuille (tap sur « Ta journée » / « Ce soir »,
   /// retour user 2026-10-30) : le tableau (ou le bilan complet du soir) puis la
   /// liste EN JEU. Un +1 garde la feuille ouverte ; un chrono ou la page focus
@@ -1110,6 +1127,18 @@ class TodayViewState extends State<TodayView> {
               EveningLedgerCard(ledger: ledger)
             else if (!evening)
               StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+            LostYesterdaySection(
+              logic: widget.logic,
+              all: true,
+              onChanged: () {
+                _onEmbersChanged();
+                setLocal(() {});
+              },
+              onPlus: (a) {
+                _emberPlus(a);
+                setLocal(() {});
+              },
+            ),
             StakesList(
               board: board,
               evening: evening,
@@ -1139,15 +1168,18 @@ class TodayViewState extends State<TodayView> {
     final bc = widget.badges;
     final now = DateTime.now();
     final st = widget.logic.state;
+    final facts = bc?.todayFacts();
     return buildEveningLedger(
       board: board,
       deck: bc?.deck,
       projects: widget.logic.currentProjects,
       activities: st.activeActivities,
       sessions: st.sessions,
-      objectiveDays: bc?.todayFacts().objectiveDays ?? const [],
+      objectiveDays: facts?.objectiveDays ?? const [],
       dayStart: livedDayStart(now, widget.logic.dayStartMin),
       now: now,
+      perfectToday: facts != null && isPerfectSoFar(facts),
+      emberStock: widget.logic.emberLedgerNow().available,
     );
   }
 

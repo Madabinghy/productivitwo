@@ -665,8 +665,13 @@ pose `logic.embers` ; `AppLogic.bridgedOf`, `emberLedgerNow` (registre frais : u
 `lostSeriesYesterday`, `rekindle` / `cancelRekindle`. Séries comblées aussi dans la page domaine, la fiche routine (`RoutineTiersLine(bridged:)`),
 les routines du jour et le web (`WebHuntStore.emberSpends` → `WebDeckSource.deck(emberSpends:)`). Coach : instantané `data/badges.embers
 {stock, rekindled[{name, ymd, domainId}]}` (30 j), filtré par domaine partagé (`badgesForCoach`), résumé `badgesSummary.embers`, ligne
-« Braises » du rapport de pré-séance (⚠️ `firebase deploy --only functions`). Lot à venir : 2 = écrans (Perdu hier + Rallumer, feuille de
-confirmation, braise gagnée au bilan du soir, réserve et historique dans « Badges en jeu »).
+« Braises » du rapport de pré-séance (⚠️ `firebase deploy --only functions`). **Lot 2 livré (écrans, `widgets/embers_view.dart`)** :
+`LostYesterdaySection` sous « Ta journée » (page : séries rallumables ou en attente seulement ; feuille des enjeux : toutes, indisponibles
+comprises) — `LostSeriesRow` « Pompes · série de 4 j cassée » + « Rallumer · 🔥1 » / en attente « +1 » + ✕ annuler / « Indisponible » +
+raison, puis `EmberDots` (réserve) ; `showRekindleSheet` (six derniers jours, hier en braise, Prix · Condition · Résultat · Trace, « Rallumer
+avec une braise ») ; `_onEmbersChanged` recharge le deck. « Badges en jeu » (mobile et web) : `EmberLedgerPanel` en tête (réserve, 5
+derniers événements). Bilan du soir : « Journée parfaite · une braise » (`isPerfectSoFar(TodayFacts)`, `buildEveningLedger(perfectToday:,
+emberStock:)`). Tuile Badges : « · 🔥 n braises ». Pas de rallumage depuis le web (affichage seulement).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

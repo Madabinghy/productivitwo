@@ -873,6 +873,8 @@ class TodayViewState extends State<TodayView> {
         objectiveDays: _facts?.objectiveDays ?? const [],
         dayStart: livedDayStart(now, widget.dayStartMin),
         now: now,
+        perfectToday: _facts != null && isPerfectSoFar(_facts!),
+        emberStock: _deck().embers.available,
       );
       if (ledger.isEmpty) return const [];
       return [EveningLedgerCard(ledger: ledger), const SizedBox(height: 18)];
@@ -934,7 +936,12 @@ class TodayViewState extends State<TodayView> {
         child: SizedBox(
           width: 560,
           height: 680,
-          child: BadgesInPlayScreen(data: data, onRun: _runStake),
+          child: BadgesInPlayScreen(
+            data: data,
+            onRun: _runStake,
+            embers: _deck().embers,
+            names: {for (final a in widget.activities) a.id: a.name},
+          ),
         ),
       ),
     );
