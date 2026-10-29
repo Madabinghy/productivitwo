@@ -502,6 +502,15 @@ pleins, bloc en avant marqué d'un trait, légende « le 3ᵉ est en avant · 3 
 Commencer / « 10 min, malgré tout » en Flemme / Terminer + Pause / Arrêter / Bloc ▾) ; lien « Enchaîner · n » / « n petites choses » /
 « Reprendre · k faites » (`_chainLink`) ; « ⋯ Autres » = Lancer sans minuteur ou 10 min malgré tout, Fait, Deep work 90 min, Enchaîner
 tout, Voir la source ; « Ton élan, là ? » passe sous les liens. **Les 5 lots sont livrés.**
+**« Une liste, un seul bloc ouvert »** (maquette validée 2026-10-29, `widgets/moment_item.dart`) : la ligne et la carte du moment
+sont deux états du MÊME item (`MomentItem(open, collapsed, expanded, onToggle, onLongPress)`), un seul ouvert par page
+(`OpenItem` : le premier du classement par défaut tant que rien n'est touché, puis le choix de l'utilisateur, y compris aucun ;
+retoucher le bloc ouvert le referme ; `settle` recale le défilement pour que la ligne touchée ne bouge pas). Trois gestes partout :
+**tap = explorer** (ouvrir sur place, rien ne part), **bouton plein = lancer**, **lien = feuille**. Plus de carte du moment à part ni de
+doublon dans la liste. **Lot 1 livré = Projets** (`goals_view.dart`) : `_item` = `_wallRow` repliée / `_momentCard` ouverte (étiquette
+PROJET DU MOMENT · PROJET · PROJET À VENIR, pilule séance ou écart au plan, liens Déplier · Fiche), appui long = fiche ; la pilule
+« 1 / n · suivant » disparaît. `MomentCard.chainIcon` (null = lien texte seul). Lots suivants : Actions, Objectifs + Routines, Aujourd'hui
+(MAINTENANT = ligne ouverte par défaut, blocs du programme = les autres lignes) ; le ▶ lancera la page focus (maquette « Page focus »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
