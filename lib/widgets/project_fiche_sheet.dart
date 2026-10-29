@@ -15,6 +15,8 @@ import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/task_picker_sheet.dart' show showTaskPicker, kPickFlowTask;
+import 'package:productivitwo_v1/widgets/task_fiche_sheet.dart' show stripLeadingEmoji;
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart' show ExpectedBar;
 
@@ -227,14 +229,29 @@ class _ProjectFicheState extends State<_ProjectFiche> {
             const SizedBox(height: 14),
             const Text('Dans la tâche', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            DropdownButton<ProjectTask?>(
-              isExpanded: true,
-              value: target,
-              items: [
-                for (final t in tasks) DropdownMenuItem(value: t, child: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                if (!tasks.any((t) => t.id == kFlowTaskId)) const DropdownMenuItem(value: null, child: Text('Au fil de l\'eau')),
-              ],
-              onChanged: (t) => setD(() => target = t),
+            // Sélecteur lisible (phases, avancement, échéance) au lieu d'une
+            // liste déroulante plate.
+            Material(
+              color: Theme.of(d).colorScheme.onSurface.withValues(alpha: .06),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () async {
+                  final id = await showTaskPicker(d, project: p, currentTaskId: target?.id ?? kPickFlowTask);
+                  if (id == null) return;
+                  setD(() => target = id == kPickFlowTask ? null : tasks.where((t) => t.id == id).firstOrNull);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(target == null ? 'Au fil de l\'eau' : stripLeadingEmoji(target!.title),
+                          maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+                    const Icon(Icons.unfold_more_rounded, size: 20),
+                  ]),
+                ),
+              ),
             ),
           ]),
           actions: [

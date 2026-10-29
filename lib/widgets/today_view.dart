@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart' show showProjectFiche;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, kFlowTaskId;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/morning_three.dart';
@@ -967,7 +968,7 @@ class TodayViewState extends State<TodayView> {
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
         onPerfect: bc == null ? null : _openPerfectDaySheet,
-        onActions: widget.onOpenActions,
+        onActions: _openFocusedActionsSheet,
         onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
     ];
@@ -1046,6 +1047,132 @@ class TodayViewState extends State<TodayView> {
     }).then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  /// Tuile ACTIONS (2026-10-30, retour user) : une feuille des actions visées
+  /// aujourd'hui au lieu de l'onglet Actions. Tap = page focus de l'action,
+  /// appui long = viser demain / retirer le jour visé.
+  void _openFocusedActionsSheet() {
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        bool focusedToday(TaskAction a) {
+          final f = a.focusDate;
+          return isFocusedOn(a, today) || (a.done && f != null && f.year == today.year && f.month == today.month && f.day == today.day);
+        }
+
+        final items = <_FocusedItem>[
+          for (final p in widget.logic.currentProjects)
+            if (p.status == 'active' && !p.paused)
+              for (final t in p.tasks)
+                if (t.status != 'skipped')
+                  for (final a in t.actions)
+                    if (focusedToday(a)) _FocusedItem(a, project: p, task: t),
+          for (final act in widget.logic.state.activeActivities)
+            for (final a in act.ownActions)
+              if (focusedToday(a)) _FocusedItem(a, owner: act),
+        ];
+        final open = items.where((e) => !e.action.done).toList();
+        final done = items.where((e) => e.action.done).toList();
+        String detail(_FocusedItem e) => [
+              if (e.project != null) '${e.project!.title}${e.task != null && e.task!.id != kFlowTaskId ? ' › ${e.task!.title}' : ''}',
+              if (e.owner != null) e.owner!.name,
+              if (e.action.estimatedMin != null) '≈ ${fmtMin(e.action.estimatedMin!)}',
+            ].join(' · ');
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          children: [
+            FicheHeader(
+              title: 'Visées aujourd\'hui',
+              chip: '${done.length} / ${items.length} faite${done.length > 1 ? 's' : ''}',
+              chipColor: open.isEmpty && items.isNotEmpty ? kPalierGreen : kPalierAmber,
+              kpi: 'touche une action pour l\'ouvrir en focus · appui long pour la re-viser',
+            ),
+            if (items.isEmpty) const FicheNote('Rien n\'est visé aujourd\'hui.'),
+            if (open.isNotEmpty) ...[
+              FicheTitle('À FAIRE · ${open.length}'),
+              for (final e in open)
+                FicheStep(
+                  title: e.action.title,
+                  detail: detail(e),
+                  onTap: () async {
+                    await _openFocusedItem(e);
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                  onLongPress: () async {
+                    await _refocusItem(e);
+                    if (ctx.mounted) setLocal(() {});
+                  },
+                ),
+            ],
+            if (done.isNotEmpty) ...[
+              FicheTitle('FAITES · ${done.length}'),
+              for (final e in done) FicheStep(title: e.action.title, detail: detail(e), done: true),
+            ],
+            if (widget.onOpenActions != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    widget.onOpenActions!();
+                  },
+                  icon: const Icon(Icons.checklist_rounded, size: 18),
+                  label: const Text('Ouvrir l\'onglet Actions'),
+                ),
+              ),
+          ],
+        );
+      });
+    }).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _openFocusedItem(_FocusedItem e) {
+    final acts = widget.logic.state.activities;
+    final chronoId = e.action.linkedActivityId ?? e.project?.linkedActivityId ?? e.owner?.id;
+    return showActionFocusScreen(context,
+        logic: widget.logic,
+        action: e.action,
+        project: e.project,
+        task: e.task,
+        ownerActivity: e.owner,
+        chronoActivity: acts.where((a) => a.id == chronoId).firstOrNull,
+        sync: widget.sync);
+  }
+
+  Future<void> _refocusItem(_FocusedItem e) async {
+    final sync = widget.sync;
+    if (sync == null) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(e.action.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          ListTile(leading: const Icon(Icons.wb_sunny_outlined), title: const Text('Viser demain'), onTap: () => Navigator.pop(c, 'tomorrow')),
+          ListTile(leading: const Icon(Icons.event_busy_outlined), title: const Text('Retirer le jour visé'), onTap: () => Navigator.pop(c, 'clear')),
+        ]),
+      ),
+    );
+    if (choice == null) return;
+    final t = DateTime.now().add(const Duration(days: 1));
+    e.action.focusDate = choice == 'tomorrow' ? DateTime(t.year, t.month, t.day) : null;
+    if (e.project != null) {
+      await sync.patchActionOf(e.project!, e.action);
+    } else if (e.owner != null) {
+      await sync.updateOwnActions(e.owner!.id, e.owner!.ownActions);
+    }
+    widget.logic.onChange();
   }
 
   void _openBadgesInPlay(StakeBoard board) {
@@ -1465,4 +1592,13 @@ class TodayViewState extends State<TodayView> {
     ]);
   }
 
+}
+
+/// Action visée aujourd'hui, avec son porteur (projet › tâche ou activité).
+class _FocusedItem {
+  final TaskAction action;
+  final Project? project;
+  final ProjectTask? task;
+  final Activity? owner;
+  const _FocusedItem(this.action, {this.project, this.task, this.owner});
 }
