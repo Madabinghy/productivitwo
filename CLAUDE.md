@@ -496,7 +496,12 @@ lien « Enchaîner · n », Autres = Bloc de 90 min · relevé · chronos des au
 **Lot 4 livré** : MA SEMAINE (`week_stats_view.dart`) — titre = « k / n au rythme », sous-ligne « attendu à ce jour · chrono · mode »,
 sept barres par jour (`WeekSummary.dayHits`, `weekDayHits` dans `utils/week_stats.dart` : occurrences des routines engagées, jour courant
 cerclé), légende « à rattraper : n », bouton « Détail », lien « Élan · 2,9 / 5 » (feuille du mode ; la section « ÉLAN · CETTE SEMAINE »
-et `_elanRow` sont retirées), Autres = Mode du jour · Gérer les domaines. Lot suivant : MAINTENANT.
+et `_elanRow` sont retirées), Autres = Mode du jour · Gérer les domaines. **Lot 5 livré** : MAINTENANT (`now_card.dart`, carte sur mesure) — titre = l'ACTION du bloc quand il en vise une (`blockWork`), contexte
+« Projet › Tâche », sous-ligne « étape : … » ou « bloc 14:00 → 15:00 » ; visuel `_dayStrip` = la journée en blocs (largeur = durée, faits
+pleins, bloc en avant marqué d'un trait, légende « le 3ᵉ est en avant · 3 après · jusqu'à 18:00 ») ; bouton principal inchangé (Lancer /
+Commencer / « 10 min, malgré tout » en Flemme / Terminer + Pause / Arrêter / Bloc ▾) ; lien « Enchaîner · n » / « n petites choses » /
+« Reprendre · k faites » (`_chainLink`) ; « ⋯ Autres » = Lancer sans minuteur ou 10 min malgré tout, Fait, Deep work 90 min, Enchaîner
+tout, Voir la source ; « Ton élan, là ? » passe sous les liens. **Les 5 lots sont livrés.**
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
