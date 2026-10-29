@@ -6,7 +6,24 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart';
 
+class _Replaces extends NavigatorObserver {
+  int count = 0;
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => count++;
+}
+
 void main() {
+  test('BlockFocus.remainingMin suit la journée vécue (bloc de la nuit compris)', () {
+    final act = Activity(id: 'a', domainId: 'd', name: 'A', role: ActivityRole.generic, type: 'time', createdAt: DateTime(2026, 1, 1));
+    final night = ScheduleBlock(id: 'n', startTime: '01:30', durationMin: 60, title: 'A', activityId: 'a')..dayOffset = 1;
+    final bf = BlockFocus(block: night, activity: act, queue: const [], ymd: '2026-10-30');
+    expect(bf.remainingMin(DateTime(2026, 10, 31, 1, 57), dayStartMin: 300), 33);
+    final late = ScheduleBlock(id: 'l', startTime: '23:30', durationMin: 60, title: 'A', activityId: 'a');
+    final bf2 = BlockFocus(block: late, activity: act, queue: const [], ymd: '2026-10-30');
+    expect(bf2.remainingMin(DateTime(2026, 10, 31, 0, 10), dayStartMin: 300), 20);
+    expect(bf2.remainingMin(DateTime(2026, 10, 31, 1, 57), dayStartMin: 300), 0);
+  });
+
   testWidgets('focus d\'un bloc d\'activité : file → commencer → suivante → enchaîner', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -28,8 +45,10 @@ void main() {
     expect(queue.map((e) => e.id).toList(), ['a1', 'a2', 'own']);
 
     final st = AppState(domains: [dom], activities: [act], sessions: [], habitProgress: []);
-    final logic = AppLogic(st, () {});
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    final replaces = _Replaces();
     await tester.pumpWidget(MaterialApp(
+      navigatorObservers: [replaces],
       home: Builder(
         builder: (ctx) => Scaffold(
           body: TextButton(
@@ -50,6 +69,8 @@ void main() {
     await tester.tap(find.text('Remplir la fiche').first);
     await tester.pumpAndSettle();
     expect(find.text('Commencer · Remplir la fiche'), findsOneWidget);
+    expect(find.text('LA FILE DU BLOC · 3'), findsOneWidget); // toujours sur la file, même page
+    expect(replaces.count, 0);
 
     // Commencer → chrono ciblé sur l'activité du bloc ; « Suivante » disponible.
     await tester.tap(find.text('Commencer · Remplir la fiche'));
@@ -61,6 +82,7 @@ void main() {
     expect(st.sessions.where((s) => s.endAt == null).isEmpty, isTrue);
     expect(find.text('Ranger le bureau'), findsWidgets);
     expect(find.text('Lancer le chrono'), findsOneWidget);
+    expect(replaces.count, 0); // « Suivante » change d'action sur place
 
     // Action faite → après : « Enchaîner » sur la suivante ouverte de la file.
     await tester.tap(find.text('Action faite').first);

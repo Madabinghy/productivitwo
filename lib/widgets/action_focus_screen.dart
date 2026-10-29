@@ -9,6 +9,8 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, 
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
+import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/utils/mode_moves.dart' show DeepWorkCandidate, deepWorkBlock;
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show spentByAction;
@@ -63,7 +65,15 @@ class BlockFocus {
   const BlockFocus({required this.block, required this.activity, required this.queue, required this.ymd});
 
   DateTime get date => DateTime.parse(ymd);
-  int remainingMin(DateTime now) => blockRemainingMin(block, now.hour * 60 + now.minute);
+  /// Minutes restantes sur la journée VÉCUE (un bloc de la nuit après minuit
+  /// compte +24 h, comme `blockStartMin`).
+  int remainingMin(DateTime now, {int dayStartMin = 0}) {
+    final start = blockStartMin(block);
+    final nowMin = livedNowMin(now, dayStartMin);
+    if (nowMin < start) return block.durationMin;
+    final end = start + block.durationMin;
+    return end > nowMin ? end - nowMin : 0;
+  }
 }
 
 /// Ouvre la page focus sur la file d'un bloc d'activité ([queue] non vide).
@@ -143,8 +153,16 @@ class _FocusScreenState extends State<_FocusScreen> {
   int? _effort;
   int? _plannedMin;
   late bool _picking = widget.picking;
+  // Mode bloc : l'élément de la file affiché. Changer d'action = changer
+  // d'index SUR PLACE (retour user 2026-10-30 : plus de fermeture / réouverture).
+  late int _index = widget.index;
 
-  TaskAction get a => widget.action;
+  QueueItem? get _item => widget.bloc?.queue[_index];
+  TaskAction get a => _item?.action ?? widget.action;
+  Project? get _project => _item == null ? widget.project : _item!.project;
+  ProjectTask? get _task => _item == null ? widget.task : _item!.task;
+  Activity? get _owner => _item == null ? widget.ownerActivity : (_item!.project == null ? widget.bloc!.activity : null);
+  int _remaining(BlockFocus b) => b.remainingMin(DateTime.now(), dayStartMin: logic.dayStartMin);
 
   /// Prochain élément ouvert de la file après celui-ci (en boucle), sinon null.
   int? get _nextIndex {
@@ -152,7 +170,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     if (b == null) return null;
     final n = b.queue.length;
     for (var k = 1; k < n; k++) {
-      final i = (widget.index + k) % n;
+      final i = (_index + k) % n;
       if (!b.queue[i].action.done) return i;
     }
     return null;
@@ -170,15 +188,16 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   void _goTo(int index, {bool picking = false}) {
-    final r = _running;
-    if (r != null) {
-      _thisChronoMin += DateTime.now().difference(r.startAt).inMinutes;
-      logic.stopActive();
-    }
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => _FocusScreen.ofQueue(logic: logic, bloc: widget.bloc!, index: index, sync: widget.sync, picking: picking),
-    ));
+    if (_running != null) logic.stopActive();
+    HapticFeedback.selectionClick();
+    setState(() {
+      _index = index;
+      _picking = picking;
+      _phase = _Phase.before;
+      _thisChronoMin = 0;
+      _effort = null;
+      _plannedMin = null;
+    });
   }
   AppLogic get logic => widget.logic;
 
@@ -214,12 +233,12 @@ class _FocusScreenState extends State<_FocusScreen> {
   // ── Écritures ───────────────────────────────────────────────────────────────
 
   Future<void> _persist() async {
-    final p = widget.project;
+    final p = _project;
     try {
       if (p != null) {
         await widget.sync.patchActionOf(p, a);
-      } else if (widget.ownerActivity != null) {
-        await widget.sync.updateOwnActions(widget.ownerActivity!.id, widget.ownerActivity!.ownActions);
+      } else if (_owner != null) {
+        await widget.sync.updateOwnActions(_owner!.id, _owner!.ownActions);
       }
     } catch (_) {
       // Hors ligne / pas de session : l'état local reste la vérité de l'écran.
@@ -237,7 +256,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     final act = widget.chronoActivity;
     if (act == null) return;
     HapticFeedback.lightImpact();
-    logic.start(act.id, taskId: widget.task?.id, actionId: a.id);
+    logic.start(act.id, taskId: _task?.id, actionId: a.id);
     setState(() {
       _phase = _Phase.running;
       _plannedMin = minutes;
@@ -249,11 +268,11 @@ class _FocusScreenState extends State<_FocusScreen> {
     if (act == null) return;
     final block = deepWorkBlock(
       DeepWorkCandidate(
-        kind: widget.project != null ? 'project' : 'other',
+        kind: _project != null ? 'project' : 'other',
         title: a.title,
-        subtitle: widget.project?.title ?? act.name,
-        projectId: widget.project?.id,
-        taskId: widget.task?.id,
+        subtitle: _project?.title ?? act.name,
+        projectId: _project?.id,
+        taskId: _task?.id,
         actionId: a.id,
         activityId: act.id,
       ),
@@ -340,9 +359,9 @@ class _FocusScreenState extends State<_FocusScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text3 = cs.onSurface.withValues(alpha: .55);
-    final ctx = widget.project != null
-        ? '${widget.project!.title}${widget.task != null ? ' › ${widget.task!.title}' : ''}'
-        : widget.ownerActivity?.name;
+    final ctx = _project != null
+        ? '${_project!.title}${_task != null ? ' › ${_task!.title}' : ''}'
+        : _owner?.name;
     final spentBefore = spentByAction(logic.state.sessions)[a.id] ?? 0;
     final stepsDone = a.checklist.where((c) => c.done).length;
     final stepsTotal = a.checklist.length;
@@ -357,7 +376,7 @@ class _FocusScreenState extends State<_FocusScreen> {
       _Phase.running => 'FOCUS · CHRONO',
       _Phase.after => 'FOCUS · TERMINÉ',
     };
-    final remaining = bloc?.remainingMin(DateTime.now());
+    final remaining = bloc == null ? null : _remaining(bloc);
 
     return Scaffold(
       body: SafeArea(
@@ -484,7 +503,7 @@ class _FocusScreenState extends State<_FocusScreen> {
 
   List<Widget> _trace(ColorScheme cs, Color text3, int spentBefore, int stepsDone, int stepsTotal) {
     final total = spentBefore; // spentByAction inclut déjà la session qu'on vient de fermer
-    final t = widget.task;
+    final t = _task;
     final actionsDone = t?.actions.where((x) => x.done).length ?? 0;
     final actionsTotal = t?.actions.length ?? 0;
     final nextAction = t?.actions.where((x) => !x.done && x.id != a.id).firstOrNull;
@@ -547,7 +566,7 @@ class _FocusScreenState extends State<_FocusScreen> {
   List<Widget> _queueList(ColorScheme cs, Color text3, BlockFocus bloc) {
     final open = [for (var i = 0; i < bloc.queue.length; i++) if (!bloc.queue[i].action.done) i];
     final est = queueEstimateMin([for (final i in open) bloc.queue[i]]);
-    final remaining = bloc.remainingMin(DateTime.now());
+    final remaining = _remaining(bloc);
     final today = DateTime.now();
     return [
       Text('LA FILE DU BLOC · ${open.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
@@ -557,13 +576,13 @@ class _FocusScreenState extends State<_FocusScreen> {
           padding: const EdgeInsets.only(bottom: 6),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: i == widget.index ? () => setState(() => _picking = false) : () => _goTo(i, picking: true),
+            onTap: () => i == _index ? setState(() => _picking = false) : _goTo(i, picking: true),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest.withValues(alpha: .35),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: i == widget.index ? kBrickRunning : Colors.transparent, width: 1.5),
+                border: Border.all(color: i == _index ? kBrickRunning : Colors.transparent, width: 1.5),
               ),
               child: Row(children: [
                 Expanded(
@@ -631,14 +650,13 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
           else
             primary('Action faite', Icons.check_rounded, () => _mutate(() => setActionDone(a, true))),
-          Row(children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             if (widget.bloc != null) link('Terminer le bloc', _endBlock, color: text3) else if (canChrono) link('Durée · Deep work 90 min', _chooseDuration, color: kPalierAmber),
-            const Spacer(),
             if (canChrono) link(next != null ? 'Étape faite' : 'Action faite', () => _mutate(() => next != null ? setChecklistItem(a, next.id, true) : setActionDone(a, true))),
           ]),
         ];
       case _Phase.running:
-        final over = widget.bloc != null && widget.bloc!.remainingMin(DateTime.now()) == 0;
+        final over = widget.bloc != null && _remaining(widget.bloc!) == 0;
         return [
           if (over)
             Padding(
@@ -653,15 +671,14 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
           else
             primary('Action faite', Icons.check_rounded, () => _mutate(() => setActionDone(a, true))),
-          Row(children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             link('Pause', _pause),
-            const Spacer(),
             if (next != null) link('Action faite', () => _mutate(() => setActionDone(a, true))),
             if (nextIdx != null) link('Suivante ›', () => _goTo(nextIdx), color: kPalierAmber) else link('Terminer', _finish, color: text3),
           ]),
         ];
       case _Phase.after:
-        final t = widget.task;
+        final t = _task;
         final nextAction = t?.actions.where((x) => !x.done && x.id != a.id).firstOrNull;
         return [
           const SizedBox(height: 8),
@@ -669,14 +686,14 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Enchaîner · ${widget.bloc!.queue[nextIdx].action.title}', Icons.play_arrow_rounded, () => _goTo(nextIdx))
           else if (widget.bloc != null)
             primary('Terminer le bloc', Icons.check_rounded, _endBlock)
-          else if (nextAction != null && widget.project != null && widget.bloc == null)
+          else if (nextAction != null && _project != null && widget.bloc == null)
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
               Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
                 fullscreenDialog: true,
                 builder: (_) => _FocusScreen(
                   logic: logic,
                   action: nextAction,
-                  project: widget.project,
+                  project: _project,
                   task: t,
                   chronoActivity: widget.chronoActivity,
                   sync: widget.sync,
