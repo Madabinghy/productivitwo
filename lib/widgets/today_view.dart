@@ -24,6 +24,7 @@ import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReading
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show mergeLivedDay, nextYmd;
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -110,8 +111,8 @@ class TodayViewState extends State<TodayView> {
   bool _showTomorrow = false;
   // Programme du jour : UNIQUE abonnement de l'onglet (carte MAINTENANT,
   // en-tête « n / N blocs · restantes », zone coach).
-  StreamSubscription<DailySchedule?>? _schedSub;
-  DailySchedule? _schedule;
+  StreamSubscription<DailySchedule?>? _schedSub, _nextSub;
+  DailySchedule? _schedule, _dayDoc, _nextDoc;
   String _schedDate = '';
   // Ouvertures de l'onglet (déclencheur n° 1 de la question d'état, 24a).
   final List<DateTime> _tabOpens = [];
@@ -177,6 +178,7 @@ class TodayViewState extends State<TodayView> {
   void dispose() {
     _gaugeTick?.cancel();
     _schedSub?.cancel();
+    _nextSub?.cancel();
     _scroll.dispose();
     super.dispose();
   }
@@ -185,10 +187,24 @@ class TodayViewState extends State<TodayView> {
     _schedSub?.cancel();
     _schedDate = widget.logic.livedTodayYmd;
     _tabOpens.clear();
+    _nextSub?.cancel();
+    _dayDoc = null;
+    _nextDoc = null;
+    // Journée vécue : le doc du lendemain apporte les blocs de la nuit.
+    void recompose() {
+      final merged = mergeLivedDay(_schedDate, _dayDoc, _nextDoc, widget.logic.dayStartMin);
+      setState(() => _schedule = merged);
+      widget.logic.todayBlocks = merged?.blocks ?? [];
+    }
     _schedSub = FirestoreSync().streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
-      setState(() => _schedule = s);
-      widget.logic.todayBlocks = s?.blocks ?? [];
+      _dayDoc = s;
+      recompose();
+    });
+    _nextSub = FirestoreSync().streamDailySchedule(nextYmd(_schedDate)).listen((s) {
+      if (!mounted) return;
+      _nextDoc = s;
+      recompose();
     });
   }
 
