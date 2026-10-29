@@ -654,7 +654,9 @@ Actions : tap checkbox → done, tap → éditer, swipe gauche → supprimer, lo
 est recalculé à l'affichage par `sessionMatchesBlock` (tâche du bloc, sinon activité-temps ou activité liée
 de la routine, sinon activité liée du projet ; l'action n'est pas regardée). Au `start()` d'un chrono, si le
 bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
-est sur une autre source, l'UI propose « Pour ce bloc » = `attachSessionToBlock` → `AttachResult`. **Le chrono
+est sur une autre source, l'UI proposait « Pour ce bloc » = `attachSessionToBlock` → `AttachResult` — **question COUPÉE depuis le
+2026-10-30** (`AppLogic.askBlockOnChrono = false`, retour user, sans réglage : au lancement ET au changement de bloc ; le chrono fait
+foi, rattachement à la main par « Bloc ▾ » de la carte mobile). **Le chrono
 fait foi** (2026-10) : la session GARDE son activité (c'est elle qui alimente les stats, l'utilisateur l'a choisie)
 et prend la tâche/action du bloc ; un bloc **sans tâche** sur une autre activité ou **libre** (miroir Google Agenda,
 bloc perso, projet sans activité liée) prend l'activité du chrono (`AttachResult.sessionAndBlock`, persisté par
