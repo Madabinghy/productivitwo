@@ -32,7 +32,7 @@ export function normalizeSplitMoments(input: unknown): { moments: string[]; unkn
   const set = new Set<string>();
   const unknown: string[] = [];
   for (const raw of list) {
-    const k = String(raw ?? "").trim().toLowerCase();
+    const k = String(raw ?? "").replace(/[\[\]"']/g, "").trim().toLowerCase();
     if (!k) continue;
     const key = ALIASES[k];
     if (key) set.add(key);

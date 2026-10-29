@@ -17,3 +17,7 @@ test("splitShares / splitLabel : cible ÷ moments, surplus aux premiers, part nu
   assert.equal(splitLabel(2, ["midday", "evening"]), "1 le midi · 1 le soir");
   assert.equal(splitLabel(5, ["morning"]), "");
 });
+
+test("normalizeSplitMoments : liste JSON passée en texte", () => {
+  assert.deepEqual(normalizeSplitMoments('["morning", "evening"]').moments, ["morning", "evening"]);
+});
