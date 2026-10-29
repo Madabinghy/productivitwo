@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart';
@@ -60,7 +61,9 @@ class _GoalsViewState extends State<GoalsView> {
   List<Project> _projects = [];
   final _sync = FirestoreSync();
   StreamSubscription<List<Project>>? _projectsSub;
-  int _offset = 0; // « suivant » sur la carte du moment
+  /// « Une liste, un seul bloc ouvert » : l'item ouvert (le premier par défaut).
+  final _open = OpenItem();
+  final _scroll = ScrollController();
   /// Coups en cours (Modes et coups) : en mode En forme, leurs projets passent en tête.
   Set<String> _coupProjectIds = const {};
   Set<String> _folded = {'upcoming', 'done', 'archived'};
@@ -141,8 +144,12 @@ class _GoalsViewState extends State<GoalsView> {
   @override
   void dispose() {
     _projectsSub?.cancel();
+    _scroll.dispose();
     super.dispose();
   }
+
+  void _toggleItem(String id, String? defaultId) =>
+      _open.settle(id, _scroll, () => setState(() => _open.toggle(id, defaultId)));
 
   Future<void> _toggle(String key) async {
     setState(() => _folded.contains(key) ? _folded.remove(key) : _folded.add(key));
@@ -241,6 +248,7 @@ class _GoalsViewState extends State<GoalsView> {
       body: nothingAtAll
           ? _emptyState(cs)
           : ListView(
+              controller: _scroll,
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
               children: [
                 if (widget.header != null) widget.header!,
@@ -253,13 +261,12 @@ class _GoalsViewState extends State<GoalsView> {
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
                   ),
                 if (live.isNotEmpty) _digest(cs, digest, nextSession, now),
-                if (ranked.isNotEmpty) _momentCard(ranked, now, rowOf(ranked[_offset % ranked.length].project)),
                 if (live.isNotEmpty) ...[
                   const ListSectionTitle('TOUS LES PROJETS'),
-                  for (final m in live) _wallRow(m, liveRows[m.project.id]!, now),
+                  for (final m in live) _item(m, liveRows[m.project.id]!, now, defaultId: live.first.project.id, moment: m == live.first),
                 ],
                 if (upcoming.isNotEmpty) ..._section('upcoming', 'À VENIR · ${upcoming.length}', [
-                  for (final m in upcoming) _wallRow(m, rowOf(m.project), now),
+                  for (final m in upcoming) _item(m, rowOf(m.project), now, defaultId: live.firstOrNull?.project.id),
                 ]),
                 if (paused.isNotEmpty) ..._section('paused', 'EN PAUSE · ${paused.length}', [
                   for (final p in paused) _plainRow(p, 'en pause'),
@@ -415,6 +422,20 @@ class _GoalsViewState extends State<GoalsView> {
   }
 
   /// Ligne du mur : nom · k / n · état, la rangée de briques, puis la prochaine action.
+  /// Un projet = un item à deux états : la ligne du mur (repliée) ou la carte
+  /// du moment (ouverte), à sa place dans la liste.
+  Widget _item(ProjectMoment m, BrickRow row, DateTime now, {required String? defaultId, bool moment = false}) {
+    final id = m.project.id;
+    return MomentItem(
+      key: _open.keyFor(id),
+      open: _open.isOpen(id, defaultId),
+      collapsed: _wallRow(m, row, now),
+      expanded: _momentCard(m, row, now, eyebrow: moment ? 'PROJET DU MOMENT' : (m.upcoming ? 'PROJET À VENIR' : 'PROJET')),
+      onToggle: () => _toggleItem(id, defaultId),
+      onLongPress: () => _openFiche(m.project),
+    );
+  }
+
   Widget _wallRow(ProjectMoment m, BrickRow row, DateTime now) {
     final cs = Theme.of(context).colorScheme;
     final dark = cs.brightness == Brightness.dark;
@@ -443,17 +464,10 @@ class _GoalsViewState extends State<GoalsView> {
       footIcon = Icons.add;
     }
     final chip = m.upcoming ? 'à venir' : (m.plan.delta == 0 ? 'à jour' : '${m.deltaLabel.split(' ').first} sur le plan');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
+    return Material(
         color: dark ? kBSurface : cs.surface,
         borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          // Tap = le projet déplié (pleine page), appui long = la fiche (retour user 2026-10).
-          onTap: () => _openPlan(p),
-          onLongPress: () => _openFiche(p),
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
+        child: Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
@@ -480,7 +494,7 @@ class _GoalsViewState extends State<GoalsView> {
                     Icon(Icons.touch_app_outlined, size: 13, color: cs.primary),
                     const SizedBox(width: 5),
                     Expanded(
-                      child: Text('Touche une brique pour aller à sa tâche · appui long sur la ligne = fiche',
+                      child: Text('Touche la ligne pour l\'ouvrir ici · une brique pour aller à sa tâche',
                           style: TextStyle(fontSize: 11.5, color: cs.primary, fontWeight: FontWeight.w600)),
                     ),
                   ]),
@@ -498,16 +512,14 @@ class _GoalsViewState extends State<GoalsView> {
                 ),
               ]),
             ]),
-          ),
         ),
-      ),
     );
   }
 
-  /// PROJET DU MOMENT : anneau = tâches faites / total, rangée de briques en
-  /// détail, geste = la prochaine action.
-  Widget _momentCard(List<ProjectMoment> ranked, DateTime now, BrickRow row) {
-    final m = ranked[_offset % ranked.length];
+  /// Bloc ouvert d'un projet (= l'ancienne carte PROJET DU MOMENT) : anneau =
+  /// tâches faites / total, rangée de briques en détail, geste = la prochaine
+  /// action, liens Déplier · Fiche · Autres.
+  Widget _momentCard(ProjectMoment m, BrickRow row, DateTime now, {required String eyebrow}) {
     final p = m.project;
     final plan = m.plan;
     final st = palierColor(m.pctInt);
@@ -524,13 +536,10 @@ class _GoalsViewState extends State<GoalsView> {
       if (m.rootTitle != null) 'Pour ${m.rootTitle}',
       if (s != null) sessionLabel(s, now) else if (p.endDate != null) 'échéance ${_date(p.endDate!)}',
     ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: MomentCard(
+    return MomentCard(
         accent: kPalierGreen,
-        eyebrow: 'PROJET DU MOMENT',
-        pill: ranked.length > 1 ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›' : (s != null && m.sessionSoon ? sessionLabel(s, now) : null),
-        onPill: ranked.length > 1 ? () => setState(() => _offset = (_offset + 1) % ranked.length) : null,
+        eyebrow: eyebrow,
+        pill: s != null && m.sessionSoon ? sessionLabel(s, now) : (m.upcoming ? 'à venir' : (m.plan.delta == 0 ? 'à jour' : '${m.deltaLabel} sur le plan')),
         ring: plan.total == 0 ? 0 : plan.done / plan.total,
         ringColor: st,
         ringBig: '${plan.done} / ${plan.total}',
@@ -555,8 +564,10 @@ class _GoalsViewState extends State<GoalsView> {
         onPrimary: () => _startNext(m),
         ficheLabel: 'Déplier',
         onFiche: () => _openPlan(p),
-      ),
-    );
+        chainLabel: 'Fiche',
+        chainIcon: null,
+        onChain: () => _openFiche(p),
+      );
   }
 
   Widget _plainRow(Project p, String chip, {bool muted = false}) {

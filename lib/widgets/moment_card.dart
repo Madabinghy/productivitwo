@@ -105,6 +105,8 @@ class MomentCard extends StatelessWidget {
   final String ficheLabel;
   final String? chainLabel;
   final VoidCallback? onChain;
+  /// Icône du lien secondaire (défaut : file « Enchaîner ») ; null = texte seul.
+  final IconData? chainIcon;
   /// Contenu libre sous la ligne d'état (ex. pilule chrono d'une routine).
   final Widget? detail;
   /// Rangée de gestes sur mesure : remplace le bouton plein + « Fiche ».
@@ -140,6 +142,7 @@ class MomentCard extends StatelessWidget {
     this.ficheLabel = 'Fiche',
     this.chainLabel,
     this.onChain,
+    this.chainIcon = Icons.playlist_play_rounded,
     this.detail,
     this.actions,
     this.visual,
@@ -245,7 +248,7 @@ class MomentCard extends StatelessWidget {
       child: Row(children: [
         if (onFiche != null) link(ficheLabel, onFiche, color: pal.text2),
         const Spacer(),
-        if (chainLabel != null) Flexible(child: link(chainLabel!, onChain, icon: Icons.playlist_play_rounded, color: accent)),
+        if (chainLabel != null) Flexible(child: link(chainLabel!, onChain, icon: chainIcon, color: accent)),
         if (moreActions.isNotEmpty)
           link('⋯ Autres', () => showMomentActions(context, title: moreTitle ?? title, actions: moreActions), color: pal.text3),
       ]),
