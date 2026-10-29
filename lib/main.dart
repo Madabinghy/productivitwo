@@ -12,7 +12,9 @@ import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
+import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
 import 'package:productivitwo_v1/utils/claude_link.dart';
@@ -3120,6 +3122,21 @@ class _AppRootState extends State<AppRoot>
           // on demande une fois où le tracer, la réponse est mémorisée.
           await _askRoutineTimeOwner(act);
           return;
+        }
+        // Bloc d'ACTIVITÉ sans action visée (2026-10, « Blocs d'activité ») :
+        // la page focus ouvre la file du bloc — une action par projet lié à
+        // l'activité, puis ses actions propres. Rien à proposer → chrono seul.
+        if (act != null && !act.isHabit && block.actionId == null) {
+          final queue = blockQueue(
+            activity: act,
+            projects: _dashboardProjects,
+            today: logic.livedToday,
+          );
+          if (queue.isNotEmpty && mounted) {
+            await showBlockFocusScreen(context,
+                logic: logic, block: block, activity: act, queue: queue);
+            return;
+          }
         }
         // Bloc ciblant une action propre de l'activité → chrono ciblé (actionId).
         logic.start(block.activityId!, actionId: block.actionId);

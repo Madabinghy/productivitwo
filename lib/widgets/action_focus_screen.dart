@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel;
+import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show DeepWorkCandidate, deepWorkBlock;
@@ -47,6 +49,36 @@ Future<void> showActionFocusScreen(
   ));
 }
 
+/// Mode « bloc » (maquette « Blocs d'activité », 2026-10) : la page focus
+/// ouverte depuis le ▶ d'un bloc d'ACTIVITÉ porte la file du bloc (une action
+/// par projet lié, puis les actions propres) ; on en prend une, le chrono
+/// tourne sur l'activité du bloc, « Suivante » passe à la prochaine sans
+/// sortir. Le bloc ne retient que le temps.
+class BlockFocus {
+  final ScheduleBlock block;
+  final Activity activity;
+  final List<QueueItem> queue;
+  const BlockFocus({required this.block, required this.activity, required this.queue});
+
+  int remainingMin(DateTime now) => blockRemainingMin(block, now.hour * 60 + now.minute);
+}
+
+/// Ouvre la page focus sur la file d'un bloc d'activité ([queue] non vide).
+Future<void> showBlockFocusScreen(
+  BuildContext context, {
+  required AppLogic logic,
+  required ScheduleBlock block,
+  required Activity activity,
+  required List<QueueItem> queue,
+  FirestoreSync? sync,
+}) {
+  final bf = BlockFocus(block: block, activity: activity, queue: queue);
+  return Navigator.of(context).push(MaterialPageRoute<void>(
+    fullscreenDialog: true,
+    builder: (_) => _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true),
+  ));
+}
+
 enum _Phase { before, running, after }
 
 class _FocusScreen extends StatefulWidget {
@@ -57,6 +89,10 @@ class _FocusScreen extends StatefulWidget {
   final Activity? ownerActivity;
   final Activity? chronoActivity;
   final FirestoreSync sync;
+  final BlockFocus? bloc;
+  final int index;
+  /// Mode bloc, à l'entrée : la file est montrée avant de choisir.
+  final bool picking;
   const _FocusScreen({
     required this.logic,
     required this.action,
@@ -65,7 +101,32 @@ class _FocusScreen extends StatefulWidget {
     this.ownerActivity,
     this.chronoActivity,
     required this.sync,
+    this.bloc,
+    this.index = 0,
+    this.picking = false,
   });
+
+  factory _FocusScreen.ofQueue({
+    required AppLogic logic,
+    required BlockFocus bloc,
+    required int index,
+    required FirestoreSync sync,
+    bool picking = false,
+  }) {
+    final it = bloc.queue[index];
+    return _FocusScreen(
+      logic: logic,
+      action: it.action,
+      project: it.project,
+      task: it.task,
+      ownerActivity: it.project == null ? bloc.activity : null,
+      chronoActivity: bloc.activity,
+      sync: sync,
+      bloc: bloc,
+      index: index,
+      picking: picking,
+    );
+  }
 
   @override
   State<_FocusScreen> createState() => _FocusScreenState();
@@ -77,8 +138,33 @@ class _FocusScreenState extends State<_FocusScreen> {
   int _thisChronoMin = 0;
   int? _effort;
   int? _plannedMin;
+  late bool _picking = widget.picking;
 
   TaskAction get a => widget.action;
+
+  /// Prochain élément ouvert de la file après celui-ci (en boucle), sinon null.
+  int? get _nextIndex {
+    final b = widget.bloc;
+    if (b == null) return null;
+    final n = b.queue.length;
+    for (var k = 1; k < n; k++) {
+      final i = (widget.index + k) % n;
+      if (!b.queue[i].action.done) return i;
+    }
+    return null;
+  }
+
+  void _goTo(int index, {bool picking = false}) {
+    final r = _running;
+    if (r != null) {
+      _thisChronoMin += DateTime.now().difference(r.startAt).inMinutes;
+      logic.stopActive();
+    }
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => _FocusScreen.ofQueue(logic: logic, bloc: widget.bloc!, index: index, sync: widget.sync, picking: picking),
+    ));
+  }
   AppLogic get logic => widget.logic;
 
   Session? get _running =>
@@ -250,11 +336,13 @@ class _FocusScreenState extends State<_FocusScreen> {
     final elapsed = r == null ? Duration.zero : DateTime.now().difference(r.startAt);
     final goalMin = _plannedMin ?? a.estimatedMin;
 
+    final bloc = widget.bloc;
     final String headerLabel = switch (_phase) {
-      _Phase.before => 'FOCUS',
+      _Phase.before => bloc != null ? 'FOCUS · ${bloc.activity.name.toUpperCase()}' : 'FOCUS',
       _Phase.running => 'FOCUS · CHRONO',
       _Phase.after => 'FOCUS · TERMINÉ',
     };
+    final remaining = bloc?.remainingMin(DateTime.now());
 
     return Scaffold(
       body: SafeArea(
@@ -272,10 +360,15 @@ class _FocusScreenState extends State<_FocusScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3, color: text3)),
               ),
-              const SizedBox(width: 48),
+              if (remaining != null)
+                Text(remaining > 0 ? 'bloc · reste ${fmtMin(remaining)}' : 'bloc terminé',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: remaining > 0 ? text3 : kPalierAmber))
+              else
+                const SizedBox(width: 48),
             ]),
             Expanded(
               child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 12), children: [
+                if (bloc != null && _picking && _phase == _Phase.before) ..._queueList(cs, text3, bloc),
                 if (ctx != null)
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Padding(
@@ -435,6 +528,59 @@ class _FocusScreenState extends State<_FocusScreen> {
     ];
   }
 
+  /// Mode bloc, avant de choisir : la file du bloc, l'élément courant cerclé.
+  List<Widget> _queueList(ColorScheme cs, Color text3, BlockFocus bloc) {
+    final open = [for (var i = 0; i < bloc.queue.length; i++) if (!bloc.queue[i].action.done) i];
+    final est = queueEstimateMin([for (final i in open) bloc.queue[i]]);
+    final remaining = bloc.remainingMin(DateTime.now());
+    final today = DateTime.now();
+    return [
+      Text('LA FILE DU BLOC · ${open.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
+      const SizedBox(height: 8),
+      for (final i in open)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: i == widget.index ? () => setState(() => _picking = false) : () => _goTo(i, picking: true),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: cs.surfaceContainerHighest.withValues(alpha: .35),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: i == widget.index ? kBrickRunning : Colors.transparent, width: 1.5),
+              ),
+              child: Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (bloc.queue[i].context case final c?) Text(c, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: text3)),
+                    Text(bloc.queue[i].action.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  [
+                    if (bloc.queue[i].due case final d?) actionDueLabel(d, today),
+                    if (bloc.queue[i].action.estimatedMin case final m?) fmtMin(m),
+                  ].join(' · '),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: bloc.queue[i].overdue ? kPalierCoral : text3),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      if (open.length > 1)
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 6),
+          child: Text(
+            'Total ≈ ${fmtMin(est)} pour ${fmtMin(remaining)} de bloc${est > remaining ? ' : le reste glissera au prochain bloc ${bloc.activity.name}' : ''}.',
+            style: TextStyle(fontSize: 12, color: text3, height: 1.35),
+          ),
+        ),
+      const SizedBox(height: 14),
+    ];
+  }
+
   List<Widget> _bottom(ColorScheme cs, Color text3, ChecklistItem? next) {
     Widget primary(String label, IconData icon, VoidCallback? onTap) => SizedBox(
           height: 52,
@@ -456,11 +602,14 @@ class _FocusScreenState extends State<_FocusScreen> {
           ),
         );
     final canChrono = widget.chronoActivity != null;
+    final nextIdx = _nextIndex;
     switch (_phase) {
       case _Phase.before:
         return [
           const SizedBox(height: 8),
-          if (canChrono)
+          if (canChrono && widget.bloc != null)
+            primary(_picking ? 'Commencer · ${a.title}' : 'Lancer le chrono', Icons.play_arrow_rounded, () => _start(minutes: a.estimatedMin))
+          else if (canChrono)
             primary('Lancer le chrono', Icons.play_arrow_rounded, () => _start(minutes: a.estimatedMin))
           else if (next != null)
             primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
@@ -483,7 +632,7 @@ class _FocusScreenState extends State<_FocusScreen> {
             link('Pause', _pause),
             const Spacer(),
             if (next != null) link('Action faite', () => _mutate(() => setActionDone(a, true))),
-            link('Terminer', _finish, color: text3),
+            if (nextIdx != null) link('Suivante ›', () => _goTo(nextIdx), color: kPalierAmber) else link('Terminer', _finish, color: text3),
           ]),
         ];
       case _Phase.after:
@@ -491,7 +640,9 @@ class _FocusScreenState extends State<_FocusScreen> {
         final nextAction = t?.actions.where((x) => !x.done && x.id != a.id).firstOrNull;
         return [
           const SizedBox(height: 8),
-          if (nextAction != null && widget.project != null)
+          if (nextIdx != null)
+            primary('Enchaîner · ${widget.bloc!.queue[nextIdx].action.title}', Icons.play_arrow_rounded, () => _goTo(nextIdx))
+          else if (nextAction != null && widget.project != null && widget.bloc == null)
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
               Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
                 fullscreenDialog: true,
@@ -507,7 +658,8 @@ class _FocusScreenState extends State<_FocusScreen> {
             })
           else
             primary('Fermer', Icons.check_rounded, () => Navigator.of(context).maybePop()),
-          if (nextAction != null) Row(mainAxisAlignment: MainAxisAlignment.center, children: [link('Fermer', () => Navigator.of(context).maybePop(), color: text3)]),
+          if (nextIdx != null || (nextAction != null && widget.bloc == null))
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [link('Fermer', () => Navigator.of(context).maybePop(), color: text3)]),
         ];
     }
   }
