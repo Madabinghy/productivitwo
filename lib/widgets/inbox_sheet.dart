@@ -78,7 +78,10 @@ class _InboxSheetState extends State<_InboxSheet> {
       if (mounted) setState(() => _items = items);
     });
     _propSub = widget.sync.streamProposals().listen((items) {
-      if (mounted) setState(() => _proposals = items);
+      if (mounted) setState(() {
+        _proposals = items;
+        _propsLoaded = true;
+      });
     });
   }
 
@@ -94,7 +97,12 @@ class _InboxSheetState extends State<_InboxSheet> {
       _items.where((i) => i.status == 'pending').toList();
   // Idées transformées en proposition ORION, en attente dans « À valider ».
   // Idée « proposée » dont la proposition est déjà affichée : pas de doublon.
+  // Tant que les propositions ne sont pas chargées, on ne sait pas lesquelles
+  // ont disparu.
+  bool _propsLoaded = false;
+
   List<CaptureItem> get _proposed {
+    if (!_propsLoaded) return const [];
     final shown = {for (final p in _proposals) if (p.sourceCaptureId != null) p.sourceCaptureId};
     return _items.where((i) => i.status == 'proposed' && !shown.contains(i.id)).toList();
   }
@@ -288,7 +296,7 @@ class _InboxSheetState extends State<_InboxSheet> {
                 // ── Idées proposées dont la proposition n'est plus en file ───
                 if (_proposed.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _sectionHeader('PROPOSÉ — EN ATTENTE DE VALIDATION', cs),
+                  _sectionHeader('PROPOSITIONS DISPARUES · ${_proposed.length}', cs),
                   for (final item in _proposed) _buildProposedTile(item, cs),
                 ],
 
@@ -428,15 +436,66 @@ class _InboxSheetState extends State<_InboxSheet> {
               style: TextStyle(
                   fontSize: 14, color: cs.onSurface.withOpacity(.75))),
           subtitle: Text(
-            'Proposition à valider — appuie pour ouvrir',
+            'Plus de proposition en attente · touche pour décider',
             style: TextStyle(
                 fontSize: 11,
                 color: cs.primary.withOpacity(.7),
                 fontStyle: FontStyle.italic),
           ),
-          onTap: () => showProposalsSheet(context, widget.sync),
+          onTap: () => _decideOrphan(item),
         ),
       );
+
+  /// Idée restée « proposée » sans proposition en attente (déjà traitée,
+  /// expirée ou supprimée côté ORION) : rien ne s'ouvrait au tap. On la
+  /// débloque à la main (retour user 2026-10-30).
+  Future<void> _decideOrphan(CaptureItem item) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(item.text, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.replay_rounded),
+            title: const Text('Remettre dans les idées'),
+            subtitle: const Text('ORION la reprendra à son prochain passage'),
+            onTap: () => Navigator.pop(c, 'pending'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.check_circle_outline),
+            title: const Text('Marquer traitée'),
+            subtitle: const Text('elle passe dans « Traité »'),
+            onTap: () => Navigator.pop(c, 'processed'),
+          ),
+          ListTile(
+            leading: Icon(Icons.delete_outline, color: Theme.of(c).colorScheme.error),
+            title: Text('Supprimer', style: TextStyle(color: Theme.of(c).colorScheme.error)),
+            onTap: () => Navigator.pop(c, 'delete'),
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == 'delete') {
+      await _delete(item);
+    } else if (choice == 'pending') {
+      await widget.sync.updateCaptureItem(item.id, {'status': 'pending'});
+    } else {
+      await widget.sync.updateCaptureItem(item.id, {
+        'status': 'processed',
+        'processedAt': DateTime.now().toIso8601String(),
+        'orionNote': item.orionNote ?? 'Traitée à la main',
+      });
+    }
+  }
 
   Widget _buildProcessedTile(CaptureItem item, ColorScheme cs) => Container(
         margin: const EdgeInsets.only(bottom: 8),
