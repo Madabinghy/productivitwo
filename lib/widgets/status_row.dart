@@ -44,6 +44,7 @@ class StatusRow extends StatelessWidget {
     final text3 = dark ? kBText3 : cs.onSurface.withValues(alpha: .55);
     final st = palierColor(pct);
     final b = bar;
+    final inlineChip = trailing == null && delta == null && chip != null;
     return Material(
       color: dark ? kBSurface : cs.surface,
       borderRadius: BorderRadius.circular(14),
@@ -70,38 +71,52 @@ class StatusRow extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                // Le titre a toute la largeur (retour user 2026-10-30 : la chip à
+                // droite mangeait un tiers de la ligne) ; la chip d'état passe en
+                // tête de la sous-ligne.
                 Text(title,
-                    maxLines: 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 14.5,
                         fontWeight: FontWeight.w600,
                         color: muted ? text3 : cs.onSurface,
                         decoration: muted ? TextDecoration.lineThrough : null)),
-                if (sub != null)
-                  Text(sub!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                if (inlineChip || sub != null) ...[
+                  const SizedBox(height: 3),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (inlineChip) ...[
+                      Padding(padding: const EdgeInsets.only(top: 1), child: StateChip(chip!, color: st, compact: true)),
+                      if (sub != null) const SizedBox(width: 6),
+                    ],
+                    if (sub != null)
+                      Expanded(
+                        child: Text(sub!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, height: 1.3, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+                      ),
+                  ]),
+                ],
                 if (b != null) ...[
                   const SizedBox(height: 6),
                   ExpectedBar(done: b.done, total: b.total, expected: b.expected, color: st, height: 6),
                 ],
               ]),
             ),
-            const SizedBox(width: 10),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 150),
-              child: trailing ??
-                  (chip != null
-                      ? StateChip(chip!, color: st)
-                      : delta != null
-                          ? Text(delta!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: st, fontFeatures: const [FontFeature.tabularFigures()]))
-                          : Icon(Icons.chevron_right, color: text3)),
-            ),
+            if (!inlineChip) ...[
+              const SizedBox(width: 10),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 110),
+                child: trailing ??
+                    (delta != null
+                        ? Text(delta!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: st, fontFeatures: const [FontFeature.tabularFigures()]))
+                        : Icon(Icons.chevron_right, color: text3)),
+              ),
+            ],
           ]),
         ),
       ),
@@ -113,13 +128,18 @@ class StatusRow extends StatelessWidget {
 class StateChip extends StatelessWidget {
   final String label;
   final Color color;
-  const StateChip(this.label, {super.key, required this.color});
+  /// En ligne dans une sous-ligne : plus petit, moins de marge.
+  final bool compact;
+  const StateChip(this.label, {super.key, required this.color, this.compact = false});
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 8, vertical: compact ? 1.5 : 3),
         decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
-        child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color)),
+        child: Text(label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: compact ? 10.5 : 11, fontWeight: FontWeight.w800, color: color)),
       );
 }
 
