@@ -2457,8 +2457,8 @@ class _ActionsViewState extends State<ActionsView> {
       chainIcon: running ? Icons.stop_rounded : Icons.check_rounded,
       onChain: running ? () => widget.logic.stopActive() : (next != null ? stepDone : null),
       moreActions: [
-        if (!running && e.chronoActivityId != null)
-          MomentAction('Chrono seul', icon: Icons.timer_outlined, hint: 'sans la page focus', onTap: () => _launch(e)),
+        // Plus de « Chrono seul » (retour user 2026-10-30 : chrono lancé sans le
+        // vouloir) : le chrono part toujours de la page focus.
         if (!a.done && (next != null || e.chronoActivityId != null))
           MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
         MomentAction('Viser un jour', icon: Icons.wb_sunny_outlined, hint: a.focusDate == null ? 'l\'avoir sous la main ce jour-là, sans bloc' : focusLabel(a.focusDate!, today), onTap: () => _pickFocusDay(e)),
