@@ -281,7 +281,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (act == null || !act.isHabit) return;
     final today = _livedToday;
     final tgt = logic.activeHabitTarget(act);
-    if (tgt > 0 && logic.habitValueOn(activityId, today) >= tgt) return;
+    if (tgt > 0 && livedHitCount(logic.state.habitHits, activityId, DateTime.now(), widget.dayStartMin) >= tgt) return;
     logic.incHabit(activityId, 1, today);
     final key = yyyymmdd(today);
     final hp = logic.state.habitProgress
