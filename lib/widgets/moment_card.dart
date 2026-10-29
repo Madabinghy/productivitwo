@@ -3,10 +3,84 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
+/// Geste rare d'une carte du moment, rangé dans la feuille « ⋯ Autres ».
+class MomentAction {
+  final String label;
+  final IconData? icon;
+  final VoidCallback? onTap;
+  /// Sous-titre (« retirer la dernière occurrence »).
+  final String? hint;
+  final bool destructive;
+  const MomentAction(this.label, {this.icon, this.onTap, this.hint, this.destructive = false});
+}
+
+/// Légende sous le visuel : texte à gauche, chiffre à droite.
+class MomentLegend extends StatelessWidget {
+  final String left;
+  final String? right;
+  const MomentLegend(this.left, {super.key, this.right});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = NowPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(children: [
+        Expanded(child: Text(left, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text3))),
+        if (right != null) ...[
+          const SizedBox(width: 8),
+          Text(right!, style: TextStyle(fontSize: 11.5, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
+        ],
+      ]),
+    );
+  }
+}
+
+/// Feuille « Autres gestes » commune aux cartes du moment.
+Future<void> showMomentActions(BuildContext context, {required String title, required List<MomentAction> actions}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      final cs = Theme.of(ctx).colorScheme;
+      return SafeArea(
+        child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(8, 0, 8, 12), children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Text(title.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: cs.onSurface.withValues(alpha: .5))),
+          ),
+          for (final a in actions)
+            ListTile(
+              dense: true,
+              enabled: a.onTap != null,
+              leading: a.icon == null ? null : Icon(a.icon, size: 20, color: a.destructive ? cs.error : null),
+              title: Text(a.label, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: a.destructive ? cs.error : null)),
+              subtitle: a.hint == null ? null : Text(a.hint!, style: const TextStyle(fontSize: 12)),
+              onTap: a.onTap == null
+                  ? null
+                  : () {
+                      Navigator.pop(ctx);
+                      a.onTap!();
+                    },
+            ),
+        ]),
+      );
+    },
+  );
+}
+
 /// « Une carte, une fiche » (2026-10, handoff `docs/specs/une-carte-une-fiche-2026-10`) :
 /// la *carte du moment* commune à tous les onglets — étiquette en capitales +
 /// pastille, anneau à gauche, titre, ligne « reste / état », UN bouton plein et
 /// « Fiche ». Même silhouette que MAINTENANT et « Routine du moment ».
+/// **Grammaire de Projets** (maquette « Cartes du moment », 2026-10) : une seule
+/// ligne de contexte, un [visual] pleine largeur à la place d'une sous-ligne
+/// dense, un bouton de deux ou trois mots sur toute la largeur, puis une ligne
+/// de liens discrets (fiche · geste secondaire · « ⋯ Autres » → feuille
+/// [moreActions]).
 class MomentCard extends StatelessWidget {
   final Color accent;
   final String eyebrow;
@@ -35,6 +109,13 @@ class MomentCard extends StatelessWidget {
   final Widget? detail;
   /// Rangée de gestes sur mesure : remplace le bouton plein + « Fiche ».
   final Widget? actions;
+  /// Visuel pleine largeur entre le titre et le bouton (points d'étapes,
+  /// briques, barres par jour, frise des blocs).
+  final Widget? visual;
+  /// Gestes rares → lien « ⋯ Autres » + feuille.
+  final List<MomentAction> moreActions;
+  /// Titre de la feuille « Autres » (défaut : le titre de la carte).
+  final String? moreTitle;
 
   const MomentCard({
     super.key,
@@ -61,6 +142,9 @@ class MomentCard extends StatelessWidget {
     this.onChain,
     this.detail,
     this.actions,
+    this.visual,
+    this.moreActions = const [],
+    this.moreTitle,
   });
 
   @override
@@ -126,43 +210,43 @@ class MomentCard extends StatelessWidget {
             ]),
           ),
         ]),
+        if (visual != null) ...[const SizedBox(height: 12), visual!],
         const SizedBox(height: 14),
         if (actions != null)
           actions!
-        else
-        IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _primary(pal)),
-          if (onFiche != null) ...[
-            const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 52),
-              child: OutlinedButton(
-                onPressed: onFiche,
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: pal.text2,
-                    side: BorderSide(color: pal.track),
-                    shape: const StadiumBorder(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-                child: Text(ficheLabel),
-              ),
-            ),
-          ],
-          ]),
-        ),
-        if (chainLabel != null) ...[
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: onChain,
-            style: TextButton.styleFrom(foregroundColor: accent, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.playlist_play_rounded, size: 22),
-              const SizedBox(width: 6),
-              Flexible(child: Text(chainLabel!, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis)),
-            ]),
-          ),
+        else ...[
+          _primary(pal),
+          if (onFiche != null || chainLabel != null || moreActions.isNotEmpty) _links(context, pal),
         ],
+      ]),
+    );
+  }
+
+  /// Ligne de liens discrets sous le bouton : fiche à gauche, geste secondaire
+  /// (Enchaîner…) et « ⋯ Autres » à droite.
+  Widget _links(BuildContext context, NowPalette pal) {
+    Widget link(String label, VoidCallback? onTap, {IconData? icon, Color? color}) => TextButton(
+          onPressed: onTap,
+          style: TextButton.styleFrom(
+            foregroundColor: color ?? pal.text2,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            minimumSize: const Size(0, 36),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 4)],
+            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+        );
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(children: [
+        if (onFiche != null) link(ficheLabel, onFiche, color: pal.text2),
+        const Spacer(),
+        if (chainLabel != null) Flexible(child: link(chainLabel!, onChain, icon: Icons.playlist_play_rounded, color: accent)),
+        if (moreActions.isNotEmpty)
+          link('⋯ Autres', () => showMomentActions(context, title: moreTitle ?? title, actions: moreActions), color: pal.text3),
       ]),
     );
   }
