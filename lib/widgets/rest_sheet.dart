@@ -19,45 +19,61 @@ Future<int> showRestSheet(
   final domains = logic.state.activeDomains.where((d) => !excludeDomainIds.contains(d.id)).toList();
   if (domains.isEmpty) return 0;
   final until = DateTime.tryParse(untilYmd);
-  final selected = <String>{for (final d in domains) if (logic.isDomainResting(d.id)) d.id};
+  final selected = <String>{
+    for (final d in domains)
+      if (logic.isDomainResting(d.id)) d.id
+  };
   final picked = await showModalBottomSheet<Set<String>>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
     builder: (c) => StatefulBuilder(builder: (c, setSt) {
       final cs = Theme.of(c).colorScheme;
+      // Liste des domaines défilante, boutons toujours visibles en bas.
       return SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Text(title ?? 'Mettre en veille${until == null ? '' : ' jusqu\'au ${dayMonthFr(until)}'} ?',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-            child: Text('Un domaine en veille ne compte plus dans Ma semaine, sort de la carte du moment et n\'est pas programmé. Les routines « toute la journée » restent.',
-                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6))),
-          ),
-          for (final d in domains)
-            CheckboxListTile(
-              dense: true,
-              value: selected.contains(d.id),
-              title: Text(d.name),
-              controlAffinity: ListTileControlAffinity.leading,
-              onChanged: (v) => setSt(() => v == true ? selected.add(d.id) : selected.remove(d.id)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * .85),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text(title ?? 'Mettre en veille${until == null ? '' : ' jusqu\'au ${dayMonthFr(until)}'} ?',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-            child: Row(children: [
-              TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('Pas de veille')),
-              const Spacer(),
-              FilledButton(
-                onPressed: () => Navigator.pop(c, selected),
-                style: FilledButton.styleFrom(shape: const StadiumBorder()),
-                child: Text(selected.isEmpty ? 'Valider' : 'Mettre en veille · ${selected.length}'),
-              ),
-            ]),
-          ),
-        ]),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                  'Un domaine en veille ne compte plus dans Ma semaine, sort de la carte du moment et n\'est pas programmé. Les routines « toute la journée » restent.',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6))),
+            ),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                for (final d in domains)
+                  CheckboxListTile(
+                    dense: true,
+                    value: selected.contains(d.id),
+                    title: Text(d.name),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (v) => setSt(() => v == true ? selected.add(d.id) : selected.remove(d.id)),
+                  ),
+              ]),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Row(children: [
+                TextButton(onPressed: () => Navigator.pop(c, null), child: const Text('Pas de veille')),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(c, selected),
+                    style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                    child: Text(selected.isEmpty ? 'Valider' : 'Mettre en veille · ${selected.length}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ]),
+            ),
+          ]),
+        ),
       );
     }),
   );
