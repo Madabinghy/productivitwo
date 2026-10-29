@@ -35,27 +35,31 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('FOCUS'), findsOneWidget);
+    // Grammaire de l'écran séance : en-tête titre + contexte, « Étape k / n »,
+    // l'étape en cours en grand, Précédente · Action faite, liste complète.
     expect(find.text('Corriger les copies'), findsOneWidget);
     expect(find.text('5e — Mathématiques › Corriger les DM Ch2'), findsOneWidget);
-    expect(find.text('1 / 2'), findsOneWidget);
+    expect(find.text('Étape 2 / 2'), findsOneWidget);
+    expect(find.text('Dylan'), findsNWidgets(2));
+    expect(find.text('Précédente'), findsOneWidget);
+    expect(find.text('Ajouter une étape'), findsOneWidget);
     expect(find.text('Lancer le chrono'), findsOneWidget);
 
     // Lancer le chrono → pendant : étape en cours en avant, chrono ciblé.
     await tester.tap(find.text('Lancer le chrono'));
     await tester.pump();
     expect(st.sessions.where((s) => s.endAt == null && s.actionId == 'a1').length, 1);
-    expect(find.text('FOCUS · CHRONO'), findsOneWidget);
-    expect(find.text('Dylan'), findsOneWidget);
+    expect(find.text('Pause'), findsOneWidget);
+    expect(find.textContaining('sur ≈ 45 min'), findsOneWidget);
     expect(find.text('Dernière étape : elle termine l\'action.'), findsOneWidget);
 
-    // Étape faite = dernière → action faite → après : trace et chrono fermé.
-    await tester.tap(find.text('Étape faite'));
+    // Dernière étape → « Action faite » → après : trace et chrono fermé.
+    await tester.tap(find.text('Action faite'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(action.done, isTrue);
     expect(st.sessions.where((s) => s.endAt == null).isEmpty, isTrue);
-    expect(find.text('FOCUS · TERMINÉ'), findsOneWidget);
+    expect(find.text('Corriger les copies ✓'), findsOneWidget);
     expect(find.text('LA TÂCHE AVANCE'), findsOneWidget);
     expect(find.textContaining('reste Saisir les notes'), findsOneWidget);
     expect(find.textContaining('Enchaîner · Saisir les notes'), findsOneWidget);

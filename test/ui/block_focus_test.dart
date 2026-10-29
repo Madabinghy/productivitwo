@@ -60,7 +60,7 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.text('FOCUS · ENSEIGNEMENT'), findsOneWidget);
+    expect(find.textContaining('bloc Enseignement'), findsOneWidget);
     expect(find.text('LA FILE DU BLOC · 3'), findsOneWidget);
     expect(find.textContaining('bloc · reste'), findsOneWidget);
     expect(find.text('Commencer · Corriger les copies'), findsOneWidget);
@@ -88,7 +88,7 @@ void main() {
     await tester.tap(find.text('Action faite').first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('FOCUS · TERMINÉ'), findsOneWidget);
+    expect(find.text('Ranger le bureau ✓'), findsOneWidget);
     expect(find.text('Enchaîner · Corriger les copies'), findsOneWidget);
 
     // Terminer le bloc → récap : tenu, fait, reste, « Caser un bloc demain ».

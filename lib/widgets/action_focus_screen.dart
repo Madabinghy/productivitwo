@@ -14,9 +14,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 import 'package:productivitwo_v1/utils/mode_moves.dart' show DeepWorkCandidate, deepWorkBlock;
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/time_spent.dart' show spentByAction;
-import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentRing;
-import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots, kBrickRunning;
-import 'package:productivitwo_v1/widgets/steps_section.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart' show kBrickRunning;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 /// Page focus (maquette « Page focus », 2026-10) : ▶ sur une action ouvre un
@@ -354,6 +352,10 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────────
+  // Même grammaire que l'écran « séance en cours » (retour user 2026-10-30) :
+  // en-tête ✕ + titre + contexte, bandeau « Étape k / n » + temps + barre,
+  // l'étape en cours en grand, « Ensuite : … », Précédente / Étape suivante,
+  // la liste complète des étapes, le chrono en bas.
 
   @override
   Widget build(BuildContext context) {
@@ -366,139 +368,242 @@ class _FocusScreenState extends State<_FocusScreen> {
     final stepsDone = a.checklist.where((c) => c.done).length;
     final stepsTotal = a.checklist.length;
     final next = nextChecklistItem(a);
-    final r = _running;
-    final elapsed = r == null ? Duration.zero : DateTime.now().difference(r.startAt);
-    final goalMin = _plannedMin ?? a.estimatedMin;
-
+    final after = _phase == _Phase.after;
     final bloc = widget.bloc;
-    final String headerLabel = switch (_phase) {
-      _Phase.before => bloc != null ? 'FOCUS · ${bloc.activity.name.toUpperCase()}' : 'FOCUS',
-      _Phase.running => 'FOCUS · CHRONO',
-      _Phase.after => 'FOCUS · TERMINÉ',
-    };
-    final remaining = bloc == null ? null : _remaining(bloc);
+    final canChrono = widget.chronoActivity != null;
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        leading: IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).maybePop()),
+        titleSpacing: 0,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${a.title}${after && a.done ? ' ✓' : ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+          Text(
+            [
+              if (bloc != null) 'bloc ${bloc.activity.name}',
+              if (ctx != null) ctx,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11.5, color: text3),
+          ),
+        ]),
+        actions: [
+          if (!after && canChrono && _phase == _Phase.before)
+            IconButton(tooltip: 'Lancer le chrono', icon: const Icon(Icons.timer_outlined), onPressed: () => _start(minutes: a.estimatedMin)),
+        ],
+      ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              IconButton(
-                tooltip: 'Retour',
-                icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: Text(headerLabel,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3, color: text3)),
-              ),
-              if (remaining != null)
-                Text(remaining > 0 ? 'bloc · reste ${fmtMin(remaining)}' : 'bloc terminé',
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: remaining > 0 ? text3 : kPalierAmber))
-              else
-                const SizedBox(width: 48),
-            ]),
-            Expanded(
-              child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 12), children: [
-                if (bloc != null && _picking && _phase == _Phase.before) ..._queueList(cs, text3, bloc),
-                if (ctx != null)
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5),
-                      child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: kPalierGreen, shape: BoxShape.circle)),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(ctx, style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .75)))),
-                  ]),
-                const SizedBox(height: 6),
-                Text('${a.title}${_phase == _Phase.after && a.done ? ' ✓' : ''}',
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.15)),
-                const SizedBox(height: 4),
-                Text(
-                  switch (_phase) {
-                    _Phase.before => [
-                        if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
-                        if (spentBefore > 0) 'déjà ${fmtMin(spentBefore)} passées',
-                        if (stepsTotal > 0) '$stepsDone / $stepsTotal étapes',
-                      ].join(' · '),
-                    _Phase.running => 'en cours depuis ${_hm(r?.startAt)}${goalMin != null ? ' · sur ≈ ${fmtMin(goalMin)}' : ''}',
-                    _Phase.after => ctx ?? '',
-                  },
-                  style: TextStyle(fontSize: 12.5, color: text3),
-                ),
-                const SizedBox(height: 18),
-                if (_phase != _Phase.after) ...[
-                  Center(child: _ring(elapsed, goalMin, stepsDone, stepsTotal)),
-                  const SizedBox(height: 8),
-                  Wrap(alignment: WrapAlignment.center, spacing: 8, runSpacing: 6, children: [
-                    if (_phase == _Phase.running && widget.chronoActivity != null) _pill('● chrono · ${widget.chronoActivity!.name}', kBrickRunning),
-                    for (final c in a.allContexts) _pill(c, text3),
-                  ]),
-                ],
-                if (_phase == _Phase.after) ..._trace(cs, text3, spentBefore, stepsDone, stepsTotal),
-                if (_phase != _Phase.after) ...[
-                  const SizedBox(height: 18),
-                  Text(_phase == _Phase.running && next != null ? 'ÉTAPE EN COURS' : 'ÉTAPES',
-                      style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: text3)),
-                  const SizedBox(height: 6),
-                  if (_phase == _Phase.running && next != null) ...[
-                    Container(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      decoration: BoxDecoration(
-                        color: kBrickRunning.withValues(alpha: .08),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: kBrickRunning.withValues(alpha: .5), width: 1.5),
-                      ),
-                      child: Text(next.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-                    ),
-                    const SizedBox(height: 8),
-                    StepDots(done: stepsDone, total: stepsTotal, allDone: a.done, size: 12),
-                    const SizedBox(height: 6),
-                    Text(_afterNext(next), style: TextStyle(fontSize: 12, color: text3)),
-                  ] else
-                    StepsSection(
-                      key: ValueKey('focus_steps_${a.id}'),
-                      action: a,
-                      leftInset: 0,
-                      onToggle: (c, v) => _mutate(() => setChecklistItem(a, c.id, v)),
-                      onAdd: (t) => _mutate(() => addChecklistItem(a, t)),
-                      onRemove: (c) => _mutate(() => removeChecklistItem(a, c.id)),
-                      onRename: (c, t) => _mutate(() => renameChecklistItem(a, c.id, t)),
-                    ),
-                  if (a.note != null && a.note!.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text('DÉTAIL', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: text3)),
-                    const SizedBox(height: 4),
-                    Text(a.note!, style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withValues(alpha: .75))),
-                  ],
-                ],
-              ]),
+        child: Column(children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              children: after ? _trace(cs, text3, spentBefore, stepsDone, stepsTotal) : _session(cs, text3, spentBefore, stepsDone, stepsTotal, next),
             ),
-            ..._bottom(cs, text3, next),
-          ]),
-        ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: _bottom(cs, text3, next)),
+          ),
+        ]),
       ),
     );
   }
 
-  Widget _ring(Duration elapsed, int? goalMin, int stepsDone, int stepsTotal) {
-    if (_phase == _Phase.running) {
-      final v = goalMin == null || goalMin <= 0 ? 0.0 : (elapsed.inSeconds / (goalMin * 60)).clamp(0.0, 1.0);
-      return MomentRing(value: v, color: kBrickRunning, big: _mmss(elapsed), small: goalMin == null ? 'EN COURS' : 'SUR ≈ ${fmtMin(goalMin)}', size: 150);
+  List<Widget> _session(ColorScheme cs, Color text3, int spentBefore, int stepsDone, int stepsTotal, ChecklistItem? next) {
+    final r = _running;
+    final elapsed = r == null ? Duration.zero : DateTime.now().difference(r.startAt);
+    final goalMin = _plannedMin ?? a.estimatedMin;
+    final bloc = widget.bloc;
+    final remaining = bloc == null ? null : _remaining(bloc);
+    final steps = a.checklist;
+    final currentIdx = next == null ? steps.length : steps.indexOf(next);
+    final lastDone = steps.where((c) => c.done).lastOrNull;
+    final String right;
+    final Color rightColor;
+    if (r != null) {
+      right = '${_mmss(elapsed)}${goalMin != null ? ' · sur ≈ ${fmtMin(goalMin)}' : ''}';
+      rightColor = kBrickRunning;
+    } else if (remaining != null) {
+      right = remaining > 0 ? 'bloc · reste ${fmtMin(remaining)}' : 'bloc terminé';
+      rightColor = remaining > 0 ? text3 : kPalierAmber;
+    } else {
+      right = [
+        if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+        if (spentBefore > 0) 'déjà ${fmtMin(spentBefore)}',
+      ].join(' · ');
+      rightColor = text3;
     }
-    if (stepsTotal > 0) {
-      return MomentRing(value: stepsDone / stepsTotal, color: kPalierGreen, big: '$stepsDone / $stepsTotal', small: 'ÉTAPES', size: 150);
+    final progress = stepsTotal > 0
+        ? stepsDone / stepsTotal
+        : (a.estimatedMin == null || a.estimatedMin! <= 0 ? 0.0 : (spentBefore / a.estimatedMin!).clamp(0.0, 1.0));
+    final openCount = steps.where((c) => !c.done).length;
+    return [
+      Row(children: [
+        Flexible(
+          child: Text(
+            stepsTotal == 0 ? 'Une seule chose à faire' : (next == null ? 'Étapes faites · $stepsTotal / $stepsTotal' : 'Étape ${currentIdx + 1} / $stepsTotal'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .6)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(right,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: rightColor, fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: LinearProgressIndicator(value: progress, minHeight: 6, backgroundColor: cs.onSurface.withValues(alpha: .08), valueColor: const AlwaysStoppedAnimation(kPalierGreen)),
+      ),
+      if (r != null && goalMin != null && goalMin > 0) ...[
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+              value: (elapsed.inSeconds / (goalMin * 60)).clamp(0.0, 1.0),
+              minHeight: 3,
+              backgroundColor: Colors.transparent,
+              valueColor: const AlwaysStoppedAnimation(kBrickRunning)),
+        ),
+      ],
+      if (bloc != null && _picking && _phase == _Phase.before) ...[const SizedBox(height: 16), ..._queueList(cs, text3, bloc)],
+      // L'étape en cours, en grand.
+      ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 150),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 22, 4, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (next != null) ...[
+              Text(next.title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.2)),
+              const SizedBox(height: 10),
+              Text(_afterNext(next), maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.5, color: text3)),
+            ] else if (stepsTotal == 0) ...[
+              Text(a.title, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.2)),
+              const SizedBox(height: 10),
+              Text('Pas d’étapes : ajoute-les en dessous, ou fais-la d’un trait.', style: TextStyle(fontSize: 13.5, color: text3)),
+            ] else ...[
+              Row(children: [
+                const Icon(Icons.check_circle_outline, size: 30, color: kPalierGreen),
+                const SizedBox(width: 10),
+                Expanded(child: Text(a.done ? 'Action faite.' : 'Toutes les étapes sont faites.', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
+              ]),
+            ],
+            if (a.allContexts.isNotEmpty || (r != null && widget.chronoActivity != null)) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 6, children: [
+                if (r != null && widget.chronoActivity != null) _pill('● chrono · ${widget.chronoActivity!.name}', kBrickRunning),
+                for (final c in a.allContexts) _pill(c, text3),
+              ]),
+            ],
+          ]),
+        ),
+      ),
+      // Commandes, comme la séance : Précédente · Étape suivante.
+      Row(children: [
+        OutlinedButton.icon(
+          onPressed: lastDone == null ? null : () => _mutate(() => setChecklistItem(a, lastDone.id, false)),
+          icon: const Icon(Icons.undo, size: 18),
+          label: const Text('Précédente'),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: a.done ? null : () => _mutate(() => next != null ? setChecklistItem(a, next.id, true) : setActionDone(a, true)),
+              icon: Icon(next != null && openCount > 1 ? Icons.skip_next_rounded : Icons.check_rounded),
+              label: Text(next != null && openCount > 1 ? 'Étape suivante' : 'Action faite', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 14),
+      // La liste complète.
+      for (var k = 0; k < steps.length; k++)
+        ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          visualDensity: VisualDensity.compact,
+          leading: Icon(
+            steps[k].done ? Icons.check_circle : (k == currentIdx ? Icons.play_circle_outline : Icons.radio_button_unchecked),
+            size: 20,
+            color: steps[k].done || k == currentIdx ? kPalierGreen : cs.onSurface.withValues(alpha: .4),
+          ),
+          title: Text(
+            steps[k].title,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: k == currentIdx ? FontWeight.w700 : FontWeight.w500,
+              color: cs.onSurface.withValues(alpha: steps[k].done ? .45 : .9),
+              decoration: steps[k].done ? TextDecoration.lineThrough : null,
+            ),
+          ),
+          onTap: () => _mutate(() => setChecklistItem(a, steps[k].id, !steps[k].done)),
+          onLongPress: () => _editStep(steps[k]),
+        ),
+      ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        leading: const Icon(Icons.add, size: 20, color: kPalierGreen),
+        title: const Text('Ajouter une étape', style: TextStyle(fontSize: 13.5, color: kPalierGreen)),
+        onTap: _addStep,
+      ),
+      if (a.note != null && a.note!.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Text('DÉTAIL', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: text3)),
+        const SizedBox(height: 4),
+        Text(a.note!, style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withValues(alpha: .75))),
+      ],
+    ];
+  }
+
+  Future<String?> _askText(String title, {String initial = '', String hint = ''}) async {
+    final ctrl = TextEditingController(text: initial);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(title),
+        content: TextField(controller: ctrl, autofocus: true, decoration: InputDecoration(hintText: hint), onSubmitted: (v) => Navigator.pop(d, v)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: const Text('OK')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return v == null || v.trim().isEmpty ? null : v.trim();
+  }
+
+  Future<void> _addStep() async {
+    final v = await _askText('Ajouter une étape', hint: 'Relire le premier jet');
+    if (v != null) await _mutate(() => addChecklistItem(a, v));
+  }
+
+  Future<void> _editStep(ChecklistItem c) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Renommer'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Retirer l’étape'), onTap: () => Navigator.pop(ctx, 'remove')),
+        ]),
+      ),
+    );
+    if (choice == 'rename') {
+      final v = await _askText('Renommer l’étape', initial: c.title);
+      if (v != null) await _mutate(() => renameChecklistItem(a, c.id, v));
+    } else if (choice == 'remove') {
+      await _mutate(() => removeChecklistItem(a, c.id));
     }
-    final spent = spentByAction(logic.state.sessions)[a.id] ?? 0;
-    final est = a.estimatedMin;
-    return MomentRing(
-        value: est == null || est <= 0 ? 0 : (spent / est).clamp(0.0, 1.0),
-        color: kPalierGreen,
-        big: fmtMin(spent),
-        small: est == null ? 'PASSÉES' : 'SUR ≈ ${fmtMin(est)}',
-        size: 150);
   }
 
   List<Widget> _trace(ColorScheme cs, Color text3, int spentBefore, int stepsDone, int stepsTotal) {
@@ -640,19 +745,23 @@ class _FocusScreenState extends State<_FocusScreen> {
     final nextIdx = _nextIndex;
     switch (_phase) {
       case _Phase.before:
+        // Étape suivante / Action faite sont dans la page (comme la séance) ;
+        // en bas, le chrono et la sortie.
         return [
-          const SizedBox(height: 8),
-          if (canChrono && widget.bloc != null)
-            primary(_picking ? 'Commencer · ${a.title}' : 'Lancer le chrono', Icons.play_arrow_rounded, () => _start(minutes: a.estimatedMin))
-          else if (canChrono)
-            primary('Lancer le chrono', Icons.play_arrow_rounded, () => _start(minutes: a.estimatedMin))
-          else if (next != null)
-            primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
-          else
-            primary('Action faite', Icons.check_rounded, () => _mutate(() => setActionDone(a, true))),
+          const SizedBox(height: 6),
+          if (canChrono)
+            SizedBox(
+              height: 48,
+              child: FilledButton.tonalIcon(
+                onPressed: () => _start(minutes: a.estimatedMin),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: Text(widget.bloc != null && _picking ? 'Commencer · ${a.title}' : 'Lancer le chrono',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             if (widget.bloc != null) link('Terminer le bloc', _endBlock, color: text3) else if (canChrono) link('Durée · Deep work 90 min', _chooseDuration, color: kPalierAmber),
-            if (canChrono) link(next != null ? 'Étape faite' : 'Action faite', () => _mutate(() => next != null ? setChecklistItem(a, next.id, true) : setActionDone(a, true))),
+            link('Terminer · bilan', _finish, color: text3),
           ]),
         ];
       case _Phase.running:
@@ -666,15 +775,14 @@ class _FocusScreenState extends State<_FocusScreen> {
                 link('Terminer le bloc', _endBlock, color: kPalierAmber),
               ]),
             ),
-          const SizedBox(height: 8),
-          if (next != null)
-            primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
-          else
-            primary('Action faite', Icons.check_rounded, () => _mutate(() => setActionDone(a, true))),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 48,
+            child: FilledButton.tonalIcon(onPressed: _pause, icon: const Icon(Icons.pause_rounded), label: const Text('Pause', style: TextStyle(fontWeight: FontWeight.w800))),
+          ),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            link('Pause', _pause),
-            if (next != null) link('Action faite', () => _mutate(() => setActionDone(a, true))),
-            if (nextIdx != null) link('Suivante ›', () => _goTo(nextIdx), color: kPalierAmber) else link('Terminer', _finish, color: text3),
+            link('Terminer · bilan', _finish, color: text3),
+            if (nextIdx != null) link('Suivante ›', () => _goTo(nextIdx), color: kPalierAmber),
           ]),
         ];
       case _Phase.after:
@@ -723,7 +831,6 @@ class _FocusScreenState extends State<_FocusScreen> {
     return 'Ensuite : ${open[1].title}${open.length > 2 ? ' · puis ${open[2].title}' : ''}';
   }
 
-  String _hm(DateTime? d) => d == null ? '' : '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   String _mmss(Duration d) {
     final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
     return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
