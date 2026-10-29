@@ -62,6 +62,10 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   Actions ; jamais « Définir la prochaine action » sur un dossier. Filtre « Pour… » (`inClient`, `actions_logic.dart`) :
   un client choisi ne montre QUE ses projets (les actions simples d'activité disparaissent) ; entrée **« Perso »**
   (`kPersoClientId`) = les actions sans projet ; « Tous » = tout.
+  **Inbox mobile** (2026-10-30, `widgets/inbox_sheet.dart`) : section « À VALIDER · n » EN TÊTE = les propositions ORION en
+attente (`streamProposals`), validables sur place (`ProposalCard` partagée avec `proposals_sheet.dart` : Accepter · Rediriger ·
+Refuser) ; une idée « proposée » dont la proposition est affichée n'est plus listée en double ; « TRAITÉ PAR ORION · n » replié
+par défaut, 20 plus récents.
   **App bar mobile** (2026-10-30) : titre = pilule 24 h + `ModePill` (dans un `FittedBox`, jamais de débordement) ; `actions`
 = Inbox (point ambre si captures) + menu ⋯ (Propositions à valider, Orion, Revue, Filtres, Nouveautés, Catalogue, Paramètres).
 La pilule sommeil a été retirée de la barre (le sommeil se lit dans Stats). Ne rien rajouter dans le titre.
