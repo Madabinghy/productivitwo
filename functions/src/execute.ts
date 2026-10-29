@@ -1,3 +1,4 @@
+import { normalizeSplitMoments, splitLabel } from "./routine_split";
 import { fillAgainstExisting, isSettledBlock, splitAgainstMirrors, nextFreeSlot, traceUnlisted, DaySession } from "./schedule_dedupe";
 import { resolvePhaseIds } from "./phase_resolve";
 import { toMin } from "./schedule_dedupe";
@@ -645,6 +646,7 @@ async function executeGetUserContext(uid: string): Promise<string> {
       goalMin: v.goalMin,
       habitFreq: v.habitFreq,
       habitTarget: v.habitTarget,
+      ...(Array.isArray(v.splitMoments) && v.splitMoments.length >= 2 ? { splitMoments: v.splitMoments } : {}),
       ...(ownActions.length > 0 ? { ownActions } : {}),
       ...(ownDone > 0 ? { ownActionsDone: ownDone } : {}),
     };
@@ -943,9 +945,10 @@ async function executeSetActivityTargets(
 
 async function executeCreateRoutine(
   uid: string,
-  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number }
+  args: { name: string; domainId: string; activityId?: string; unit?: string; habitFreq?: number; habitTarget?: number; splitMoments?: unknown }
 ): Promise<string> {
   const id = uuidv4();
+  const split = args.splitMoments !== undefined && (args.habitFreq ?? 0) === 0 ? normalizeSplitMoments(args.splitMoments).moments : [];
   await db.collection(`users/${uid}/activities`).doc(id).set({
     id,
     name: args.name,
@@ -964,8 +967,10 @@ async function executeCreateRoutine(
     order: 0,
     iconCode: null,
     deleted: false,
+    splitMoments: split,
   });
-  return `✅ Routine "${args.name}" créée (tracking habitude). Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
+  const splitMsg = split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split)}.` : "";
+  return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
 
 
@@ -1539,6 +1544,7 @@ async function executeUpdateActivity(
     habitTarget?: number;
     finalTarget?: number;
     timeContext?: string;
+    splitMoments?: unknown;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -1564,11 +1570,26 @@ async function executeUpdateActivity(
     patch.stepUpdatedWeek = null;
   }
 
+  // Routine répartie sur plusieurs moments : [] / un seul moment = retirer.
+  let splitNote = "";
+  if (updates.splitMoments !== undefined) {
+    const { moments, unknown } = normalizeSplitMoments(updates.splitMoments);
+    patch.splitMoments = moments;
+    const data = snap.data() ?? {};
+    const target = Number(updates.habitTarget ?? data.habitTarget ?? 1);
+    const freq = Number(updates.habitFreq ?? data.habitFreq ?? 0);
+    splitNote = moments.length
+      ? ` Répartie : ${splitLabel(target, moments)}.`
+      : " Plus répartie : un seul moment (son contexte horaire).";
+    if (moments.length && freq !== 0) splitNote += " ⚠️ La répartition ne s'applique qu'aux routines quotidiennes.";
+    if (unknown.length) splitNote += ` Moments ignorés : ${unknown.join(", ")} (matin · midi · après-midi · soir).`;
+  }
+
   await ref.update(patch);
   if (updates.finalTarget !== undefined && updates.finalTarget > 0) {
     return `✅ Activité "${currentName}" mise à jour — progression vers ${updates.finalTarget}/j, palier courant ${updates.habitTarget ?? snap.data()?.habitTarget ?? 1}/j (évalué chaque lundi sur les hits réels).`;
   }
-  return `✅ Activité "${currentName}" mise à jour.`;
+  return `✅ Activité "${currentName}" mise à jour.${splitNote}`;
 }
 
 async function executeDeleteRoutine(uid: string, routineId: string): Promise<string> {
