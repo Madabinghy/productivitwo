@@ -509,8 +509,12 @@ retoucher le bloc ouvert le referme ; `settle` recale le défilement pour que la
 **tap = explorer** (ouvrir sur place, rien ne part), **bouton plein = lancer**, **lien = feuille**. Plus de carte du moment à part ni de
 doublon dans la liste. **Lot 1 livré = Projets** (`goals_view.dart`) : `_item` = `_wallRow` repliée / `_momentCard` ouverte (étiquette
 PROJET DU MOMENT · PROJET · PROJET À VENIR, pilule séance ou écart au plan, liens « Projet » = projet déplié · « Détail » = fiche), appui long = fiche ; la ligne repliée est UN seul geste (ses briques ne sont plus tappables, elles le restent dans le bloc ouvert) ; la pilule
-« 1 / n · suivant » disparaît. `MomentCard.chainIcon` (null = lien texte seul). Lots suivants : Actions, Objectifs + Routines, Aujourd'hui
-(MAINTENANT = ligne ouverte par défaut, blocs du programme = les autres lignes) ; le ▶ lancera la page focus (maquette « Page focus »).
+« 1 / n · suivant » disparaît. `MomentCard.chainIcon` (null = lien texte seul). **Lot 2 livré = Actions** (`actions_view.dart`) : plus de carte ACTION DU MOMENT en tête ; `_pickMoment` désigne l'action du moment
+(item ouvert par défaut), chaque `_entryTile` = `MomentItem` (ligne `StatusRow` repliée sans ▶ ni chevron, bloc `_momentCardFor`
+ouvert : étiquette ACTION DU MOMENT · ACTION EN RETARD · ACTION, pilule d'état, liens « Détail » = feuille d'action · « Projet » =
+projet déplié sur la tâche) ; glisser droite / gauche et la coche restent sur la ligne ; appui long = feuille d'action. Lots
+suivants : Objectifs + Routines, Aujourd'hui (MAINTENANT = ligne ouverte par défaut, blocs du programme = les autres lignes) ; le ▶
+lancera la page focus (maquette « Page focus »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
