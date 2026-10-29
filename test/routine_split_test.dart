@@ -47,4 +47,31 @@ void main() {
     expect(day.slots.single.pushed, isFalse);
     expect(day.queue, isEmpty);
   });
+
+  test('Fiche routine · Moments : placer, répartir, revenir', () {
+    final repas = _r('repas', 2, []);
+    var r = toggleMoment(repas, kMomentMidday);
+    expect(r.timeContext, kMomentMidday);
+    expect(r.split, isEmpty);
+    repas.timeContext = r.timeContext;
+    r = toggleMoment(repas, kMomentEvening);
+    expect(r.split, [kMomentMidday, kMomentEvening]);
+    repas
+      ..timeContext = r.timeContext
+      ..splitMoments = r.split;
+    expect(pickedMomentsOf(repas), {kMomentMidday, kMomentEvening});
+    r = toggleMoment(repas, kMomentEvening);
+    expect(r.timeContext, kMomentMidday);
+    expect(r.split, isEmpty);
+    repas
+      ..timeContext = 'meal'
+      ..splitMoments = [];
+    expect(pickedMomentsOf(repas), {kMomentMidday});
+    final hebdo = Activity(
+        id: 'h', domainId: 'd', name: 'h', role: ActivityRole.generic, type: 'habit', goalMin: 1,
+        habitFreq: HabitFreq.weekly, habitTarget: 3, createdAt: DateTime(2026, 1, 1), timeContext: kMomentMorning);
+    r = toggleMoment(hebdo, kMomentEvening);
+    expect(r.timeContext, kMomentEvening);
+    expect(r.split, isEmpty);
+  });
 }

@@ -10,7 +10,7 @@ import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
-import 'package:productivitwo_v1/utils/routine_moments.dart' show kTimedMoments, momentOf, splitMomentsOf;
+import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
@@ -721,69 +721,47 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
             ],
 
-            // Contexte horaire : la fenêtre NATURELLE de la routine (hygiène
-            // du soir = le soir, boire de l'eau = toute la journée). « Auto »
-            // = dérivé du nom via le catalogue ; le coach, la proposition et
-            // la renégociation respectent cette fenêtre.
+            // Moments (2026-10-30, fusion « Contexte horaire » + « Répartir ») :
+            // un moment = la fenêtre naturelle de la routine ; plusieurs (routine
+            // quotidienne) = la cible du jour se partage entre eux. Auto,
+            // Toute la journée et Libre sont exclusifs.
             const SizedBox(height: 14),
-            Text('Contexte horaire',
+            Text('Moments',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: cs.onSurface.withOpacity(.75),
                 )),
+            const SizedBox(height: 4),
+            Text(_momentsHint(),
+                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 8, children: [
               ChoiceChip(
                 label: Text(() {
                   final arch = routineArchetype(act.name);
-                  final derived =
-                      arch != null ? kTimeContexts[arch.contextKey] : null;
+                  final derived = arch != null ? kTimeContexts[arch.contextKey] : null;
                   return derived != null ? 'Auto · ${derived.label}' : 'Auto';
                 }()),
-                selected: act.timeContext == null,
-                onSelected: (_) {
-                  act.timeContext = null;
-                  _applySetting();
-                },
+                selected: act.timeContext == null && act.splitMoments.length < 2,
+                onSelected: (_) => _setMoments(null, const []),
               ),
-              for (final c in kTimeContexts.values)
-                ChoiceChip(
-                  label: Text(c.label),
-                  selected: act.timeContext == c.key,
-                  onSelected: (_) {
-                    act.timeContext = c.key;
-                    _applySetting();
-                  },
+              for (final m in logic.moments)
+                FilterChip(
+                  label: Text(m.label),
+                  selected: pickedMomentsOf(act).contains(m.key),
+                  onSelected: (_) => _toggleMoment(m.key),
                 ),
+              ChoiceChip(
+                label: const Text('Toute la journée'),
+                selected: act.splitMoments.length < 2 && (act.timeContext == 'allday' || act.timeContext == 'day'),
+                onSelected: (_) => _setMoments('allday', const []),
+              ),
+              ChoiceChip(
+                label: const Text('Libre'),
+                selected: act.splitMoments.length < 2 && act.timeContext == 'any',
+                onSelected: (_) => _setMoments('any', const []),
+              ),
             ]),
-
-            // Routine répartie (2026-10-30) : plusieurs moments se partagent
-            // la cible du jour (20 pompes matin + soir = 10 et 10).
-            if (act.habitFreq == HabitFreq.daily) ...[
-              const SizedBox(height: 14),
-              Text('Répartir sur plusieurs moments',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withOpacity(.75),
-                  )),
-              const SizedBox(height: 4),
-              Text(_splitHint(),
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final m in logic.moments)
-                  FilterChip(
-                    label: Text(m.label),
-                    selected: act.splitMoments.contains(m.key),
-                    onSelected: (on) {
-                      final set = act.splitMoments.toSet();
-                      on ? set.add(m.key) : set.remove(m.key);
-                      act.splitMoments = [for (final x in kTimedMoments) if (set.contains(x.key)) x.key];
-                      _applySetting();
-                    },
-                  ),
-              ]),
-            ],
 
             // Contextes GTD (@maison…) : où la routine est réalisable —
             // filtre « je suis » de Maintenant + CTA d'enchaînement
@@ -809,16 +787,39 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
     );
   }
 
-  /// « 10 le matin · 10 le soir » pour la cible du jour, ou l'aide.
-  String _splitHint() {
+  void _setMoments(String? timeContext, List<String> split) {
+    act.timeContext = timeContext;
+    act.splitMoments = split;
+    _applySetting();
+  }
+
+  void _toggleMoment(String key) {
+    final r = toggleMoment(act, key);
+    _setMoments(r.timeContext, r.split);
+  }
+
+  /// Ce que donnent les moments cochés : « 10 ce matin · 10 ce soir », la
+  /// fenêtre d'un seul moment, ou l'aide.
+  String _momentsHint() {
     final keys = splitMomentsOf(act);
-    final n = logic.activeHabitTarget(act);
-    if (keys.isEmpty) return 'Coche au moins deux moments : la cible du jour se partage entre eux.';
-    final base = n ~/ keys.length, extra = n % keys.length;
-    return [
-      for (var i = 0; i < keys.length; i++)
-        if (base + (i < extra ? 1 : 0) > 0) '${base + (i < extra ? 1 : 0)} ${momentOf(keys[i]).thisOne}',
-    ].join(' · ');
+    if (keys.isNotEmpty) {
+      final n = logic.activeHabitTarget(act);
+      final base = n ~/ keys.length, extra = n % keys.length;
+      return 'Répartie : ${[
+        for (var i = 0; i < keys.length; i++)
+          if (base + (i < extra ? 1 : 0) > 0) '${base + (i < extra ? 1 : 0)} ${momentOf(keys[i]).thisOne}',
+      ].join(' · ')}';
+    }
+    final picked = pickedMomentsOf(act);
+    final daily = act.habitFreq == HabitFreq.daily;
+    if (picked.length == 1) {
+      return 'À faire ${momentOf(picked.first).thisOne}${daily ? ' · touche un autre moment pour la répartir' : ''}';
+    }
+    return switch (act.timeContext) {
+      'allday' || 'day' => 'Disponible toute la journée, sans découpage.',
+      'any' => 'Sans moment : à faire quand tu veux.',
+      _ => daily ? 'Touche un moment pour la placer, plusieurs pour la répartir.' : 'Touche un moment pour la placer.',
+    };
   }
 
   /// Cap de progression : saisie libre (vider = retirer la progression, la

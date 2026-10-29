@@ -968,6 +968,7 @@ async function executeCreateRoutine(
     iconCode: null,
     deleted: false,
     splitMoments: split,
+    ...(split.length ? { timeContext: split[0] } : {}),
   });
   const splitMsg = split.length ? ` Répartie : ${splitLabel(args.habitTarget ?? 1, split)}.` : "";
   return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
@@ -1575,6 +1576,8 @@ async function executeUpdateActivity(
   if (updates.splitMoments !== undefined) {
     const { moments, unknown } = normalizeSplitMoments(updates.splitMoments);
     patch.splitMoments = moments;
+    // Même règle que la fiche « Moments » : le contexte horaire = le premier moment.
+    if (moments.length && updates.timeContext === undefined) patch.timeContext = moments[0];
     const data = snap.data() ?? {};
     const target = Number(updates.habitTarget ?? data.habitTarget ?? 1);
     const freq = Number(updates.habitFreq ?? data.habitFreq ?? 0);

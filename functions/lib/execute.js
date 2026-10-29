@@ -865,26 +865,7 @@ async function executeCreateRoutine(uid, args) {
     var _a, _b, _c, _d, _e, _f;
     const id = (0, uuid_1.v4)();
     const split = args.splitMoments !== undefined && ((_a = args.habitFreq) !== null && _a !== void 0 ? _a : 0) === 0 ? (0, routine_split_1.normalizeSplitMoments)(args.splitMoments).moments : [];
-    await db_1.db.collection(`users/${uid}/activities`).doc(id).set({
-        id,
-        name: args.name,
-        domainId: args.domainId,
-        activityId: (_b = args.activityId) !== null && _b !== void 0 ? _b : null, // lien optionnel vers une activité temps
-        type: "habit",
-        role: "generic",
-        goalMin: 1,
-        unit: (_c = args.unit) !== null && _c !== void 0 ? _c : null,
-        habitFreq: (_d = args.habitFreq) !== null && _d !== void 0 ? _d : 0,
-        habitTarget: (_e = args.habitTarget) !== null && _e !== void 0 ? _e : 1,
-        manualTarget: false,
-        autoTune: true,
-        createdAt: db_1.FieldValue.serverTimestamp(),
-        lastTuneAt: null,
-        order: 0,
-        iconCode: null,
-        deleted: false,
-        splitMoments: split,
-    });
+    await db_1.db.collection(`users/${uid}/activities`).doc(id).set(Object.assign({ id, name: args.name, domainId: args.domainId, activityId: (_b = args.activityId) !== null && _b !== void 0 ? _b : null, type: "habit", role: "generic", goalMin: 1, unit: (_c = args.unit) !== null && _c !== void 0 ? _c : null, habitFreq: (_d = args.habitFreq) !== null && _d !== void 0 ? _d : 0, habitTarget: (_e = args.habitTarget) !== null && _e !== void 0 ? _e : 1, manualTarget: false, autoTune: true, createdAt: db_1.FieldValue.serverTimestamp(), lastTuneAt: null, order: 0, iconCode: null, deleted: false, splitMoments: split }, (split.length ? { timeContext: split[0] } : {})));
     const splitMsg = split.length ? ` Répartie : ${(0, routine_split_1.splitLabel)((_f = args.habitTarget) !== null && _f !== void 0 ? _f : 1, split)}.` : "";
     return `✅ Routine "${args.name}" créée (tracking habitude).${splitMsg} Elle apparaîtra dans Productivitwo à la prochaine synchronisation.`;
 }
@@ -1442,6 +1423,9 @@ async function executeUpdateActivity(uid, activityId, updates) {
     if (updates.splitMoments !== undefined) {
         const { moments, unknown } = (0, routine_split_1.normalizeSplitMoments)(updates.splitMoments);
         patch.splitMoments = moments;
+        // Même règle que la fiche « Moments » : le contexte horaire = le premier moment.
+        if (moments.length && updates.timeContext === undefined)
+            patch.timeContext = moments[0];
         const data = (_c = snap.data()) !== null && _c !== void 0 ? _c : {};
         const target = Number((_e = (_d = updates.habitTarget) !== null && _d !== void 0 ? _d : data.habitTarget) !== null && _e !== void 0 ? _e : 1);
         const freq = Number((_g = (_f = updates.habitFreq) !== null && _f !== void 0 ? _f : data.habitFreq) !== null && _g !== void 0 ? _g : 0);
