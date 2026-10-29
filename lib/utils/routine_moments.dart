@@ -338,3 +338,27 @@ RoutineDay buildRoutineDay({
   ]..sort(_cmpSlots);
   return RoutineDay(current, slots, deferred, dismissed, moments: ms);
 }
+
+/// Fiche routine, section « Moments » (2026-10-30) : moments horaires cochés —
+/// la répartition, sinon le contexte réglé (« Repas » se lit Midi).
+Set<String> pickedMomentsOf(Activity a) {
+  if (a.splitMoments.length >= 2) return a.splitMoments.toSet();
+  return switch (a.timeContext) {
+    kMomentMorning || kMomentMidday || kMomentAfternoon || kMomentEvening => {a.timeContext!},
+    'meal' => {kMomentMidday},
+    _ => <String>{},
+  };
+}
+
+/// Toucher un moment : un seul = la routine y est placée (`timeContext`),
+/// plusieurs = répartie (`splitMoments`, `timeContext` = le premier), aucun =
+/// retour à l'auto. Une routine non quotidienne ne se répartit pas : le moment
+/// touché remplace le précédent.
+({String? timeContext, List<String> split}) toggleMoment(Activity a, String key) {
+  final set = a.habitFreq == HabitFreq.daily ? pickedMomentsOf(a) : <String>{};
+  set.contains(key) ? set.remove(key) : set.add(key);
+  final ordered = [for (final m in kTimedMoments) if (set.contains(m.key)) m.key];
+  if (ordered.isEmpty) return (timeContext: null, split: const []);
+  if (ordered.length == 1) return (timeContext: ordered.first, split: const []);
+  return (timeContext: ordered.first, split: ordered);
+}
