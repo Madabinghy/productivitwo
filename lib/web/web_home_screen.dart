@@ -389,6 +389,7 @@ class _WebHomeScreenState extends State<WebHomeScreen> {
               onOpenProject: _openProjectInShell,
               onOpenProjects: () => _go(WebTab.projects),
               onOpenWeek: () => _go(WebTab.week),
+              onOpenActions: () => _go(WebTab.actions),
               dayStartMin: _dayStartMin,
               mode: _mode,
             ),

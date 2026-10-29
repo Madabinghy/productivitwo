@@ -19,8 +19,12 @@ class DashboardTiles extends StatelessWidget {
   final VoidCallback? onBadges;
   final VoidCallback? onActions;
   final VoidCallback? onProjects;
+  /// Web large : toutes les tuiles sur une rangée (Programme et Projets
+  /// deux fois plus larges), sans titre de section.
+  final bool row;
   const DashboardTiles({
     super.key,
+    this.row = false,
     this.program,
     this.routines,
     this.objectives,
@@ -43,6 +47,22 @@ class DashboardTiles extends StatelessWidget {
       if (badges != null) (badges!, onBadges),
       if (actions != null) (actions!, onActions),
     ];
+    if (row) {
+      final all = <(DashTile, VoidCallback?, int)>[
+        if (program != null) (program!, onProgram, 2),
+        for (final t in small) (t.$1, t.$2, 1),
+        if (projects != null) (projects!, onProjects, 2),
+      ];
+      if (all.isEmpty) return const SizedBox.shrink();
+      return IntrinsicHeight(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final (i, t) in all.indexed) ...[
+            if (i > 0) const SizedBox(width: 10),
+            Expanded(flex: t.$3, child: _Tile(tile: t.$1, onTap: t.$2)),
+          ],
+        ]),
+      );
+    }
     final rows = <Widget>[
       if (program != null) _Tile(tile: program!, onTap: onProgram),
       for (var i = 0; i < small.length; i += 2)

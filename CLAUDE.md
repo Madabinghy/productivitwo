@@ -636,6 +636,14 @@ gagnés · encore · perdus, AVANCÉ AUJOURD'HUI (paliers obtenus aujourd'hui `t
 `doneAt`, temps par activité avec l'objectif servi), LAISSÉ FILER (perdus, engagements de temps en retard sans rien aujourd'hui),
 « Demain en jeu » + « Encore possible ce soir » ; la liste devient ENCORE POSSIBLE CE SOIR (`StakesList(evening: true)`, sans
 gagné / perdu). **Les 4 lots sont livrés.**
+**Web** (2026-10-30, `web/views/today_view.dart`) : même logique, rien de neuf en base — faits du jour composés par
+`composeTodayFacts` (`utils/today_facts.dart`, partagé avec `BadgeCenter.todayFacts`), deck partagé avec la carte BADGES
+(`WebDeckSource`, `web/badges_web.dart`), tableau recalculé au plus une fois par minute (`_board`, le ticker redessine chaque
+seconde). « TON TABLEAU DE BORD » en rangée sous l'en-tête (`DashboardTiles(row: true)` dès 1064 px ; empilé sinon) : Programme =
+recentre la frise, Routines / Objectifs = déplient leur module, Badges = dialog « Badges en jeu », Actions / Projets = onglets
+(`onOpenActions`). Colonne MAINTENANT : tableau du jour (ou « Ce soir » après 19 h) en tête, puis MAINTENANT, puis la liste EN JEU,
+puis « Au programme · concrètement ». Gestes `_runStake` : `_incRoutine`, `_startActivityChrono`, `_startChrono`, chrono sur l'action
+(`_startActionChrono`, sinon fiche projet sur la tâche). Pas d'enjeux en disposition active ni en bande Focus.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

@@ -53,6 +53,56 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
   }
 }
 
+/// Le deck du web, partagé par la carte BADGES et les enjeux d'Aujourd'hui :
+/// programmes des 400 derniers jours relus toutes les cinq minutes, deck
+/// recalculé quand une entrée change.
+class WebDeckSource extends ChangeNotifier {
+  final FirestoreSync sync;
+  WebDeckSource(this.sync);
+  List<DailySchedule> schedules = const [];
+  DateTime? _fetchedAt;
+  BadgeDeck? _deck;
+  String _key = '';
+
+  Future<void> fetch() async {
+    final now = DateTime.now();
+    if (_fetchedAt != null && now.difference(_fetchedAt!) < const Duration(minutes: 5)) return;
+    _fetchedAt = now;
+    try {
+      schedules = await sync.fetchDailySchedulesRange(ymdOf(now.subtract(const Duration(days: 400))), ymdOf(now));
+      _key = '';
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  BadgeDeck deck({
+    required List<Activity> activities,
+    required List<HabitHit> hits,
+    required List<Project> projects,
+    required List<StrategicObjective> objectives,
+    required List<Session> sessions,
+    required List<MoodMark> moodMarks,
+    required List<ChainRun> chainRuns,
+    required int dayStartMin,
+  }) {
+    final key = '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}';
+    if (_deck != null && key == _key) return _deck!;
+    _key = key;
+    return _deck = computeBadges(
+      activities: activities,
+      habitHits: hits,
+      schedules: schedules,
+      projects: projects,
+      objectives: objectives,
+      sessions: sessions,
+      moodMarks: moodMarks,
+      chainRuns: chainRuns,
+      now: DateTime.now(),
+      dayStartMin: dayStartMin,
+    );
+  }
+}
+
 /// Badges sur le web (2026-10) : module « BADGES » de la colonne de droite
 /// d'Aujourd'hui (compteur hors séries, séries en cours, bande de six badges,
 /// « Voir le deck ») et le deck complet en dialog. Le deck se calcule ici
@@ -72,6 +122,8 @@ class WebBadgesCard extends StatefulWidget {
   final VoidCallback onToggleFold;
   final WebHuntStore? huntStore;
   final List<ScheduleBlock> todayBlocks;
+  /// Source partagée du deck (Aujourd'hui) ; sans elle, la carte a la sienne.
+  final WebDeckSource? source;
   const WebBadgesCard({
     super.key,
     required this.sync,
@@ -87,6 +139,7 @@ class WebBadgesCard extends StatefulWidget {
     required this.onToggleFold,
     this.huntStore,
     this.todayBlocks = const [],
+    this.source,
   });
 
   @override
@@ -94,20 +147,23 @@ class WebBadgesCard extends StatefulWidget {
 }
 
 class _WebBadgesCardState extends State<WebBadgesCard> {
-  List<DailySchedule> _schedules = const [];
-  DateTime? _fetchedAt;
-  BadgeDeck? _deck;
-  String _deckKey = '';
+  late WebDeckSource _source;
+  bool _own = false;
 
   @override
   void initState() {
     super.initState();
+    _source = widget.source ?? WebDeckSource(widget.sync);
+    _own = widget.source == null;
+    _source.addListener(_onHunts);
     widget.huntStore?.addListener(_onHunts);
-    _fetch();
+    _source.fetch();
   }
 
   @override
   void dispose() {
+    _source.removeListener(_onHunts);
+    if (_own) _source.dispose();
     widget.huntStore?.removeListener(_onHunts);
     super.dispose();
   }
@@ -116,37 +172,16 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _fetch() async {
-    final now = DateTime.now();
-    if (_fetchedAt != null && now.difference(_fetchedAt!) < const Duration(minutes: 5)) return;
-    _fetchedAt = now;
-    try {
-      final s = await widget.sync.fetchDailySchedulesRange(ymdOf(now.subtract(const Duration(days: 400))), ymdOf(now));
-      if (!mounted) return;
-      setState(() {
-        _schedules = s;
-        _deckKey = '';
-      });
-    } catch (_) {}
-  }
-
-  BadgeDeck _deckOf() {
-    final key = '${widget.hits.length}|${widget.sessions.length}|${widget.moodMarks.length}|${widget.chainRuns.length}|${widget.projects.length}|${widget.objectives.length}|${_schedules.length}|${ymdOf(DateTime.now())}';
-    if (_deck != null && key == _deckKey) return _deck!;
-    _deckKey = key;
-    return _deck = computeBadges(
-      activities: widget.activities,
-      habitHits: widget.hits,
-      schedules: _schedules,
-      projects: widget.projects,
-      objectives: widget.objectives,
-      sessions: widget.sessions,
-      moodMarks: widget.moodMarks,
-      chainRuns: widget.chainRuns,
-      now: DateTime.now(),
-      dayStartMin: widget.dayStartMin,
-    );
-  }
+  BadgeDeck _deckOf() => _source.deck(
+        activities: widget.activities,
+        hits: widget.hits,
+        projects: widget.projects,
+        objectives: widget.objectives,
+        sessions: widget.sessions,
+        moodMarks: widget.moodMarks,
+        chainRuns: widget.chainRuns,
+        dayStartMin: widget.dayStartMin,
+      );
 
   @override
   Widget build(BuildContext context) {

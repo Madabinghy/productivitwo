@@ -36,6 +36,15 @@ import 'package:productivitwo_v1/web/schedule_block_dialog.dart';
 import 'package:productivitwo_v1/web/tomorrow_schedule_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/utils/stakes.dart';
+import 'package:productivitwo_v1/utils/today_facts.dart';
+import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
+import 'package:productivitwo_v1/utils/badges_logic.dart' show BadgeDeck;
+import 'package:productivitwo_v1/utils/evening_ledger.dart';
+import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
+import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObjectiveProgress;
+import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
@@ -86,6 +95,8 @@ class TodayView extends StatefulWidget {
   final void Function(Project project, {String? taskId}) onOpenProject;
   final VoidCallback onOpenProjects;
   final VoidCallback onOpenWeek;
+  /// Tuile ACTIONS du tableau de bord : ouvre l'onglet Actions.
+  final VoidCallback? onOpenActions;
   /// Heure de bascule de la journée vécue (`data/meta.dayStartMin`).
   final int dayStartMin;
   /// Mode du jour (Modes et coups lot 5), pour l'en-tête ; les chips se calculent sur les pointages.
@@ -102,6 +113,7 @@ class TodayView extends StatefulWidget {
     required this.onOpenProject,
     required this.onOpenProjects,
     required this.onOpenWeek,
+    this.onOpenActions,
     this.dayStartMin = kDefaultDayStartMin,
     this.mode = DayMode.normal,
   });
@@ -129,6 +141,7 @@ class TodayViewState extends State<TodayView> {
   StreamSubscription<List<ChainRun>>? _chainSub;
   final Set<String> _elanSkipped = {};
   late final WebHuntStore _huntStore = WebHuntStore(widget.sync);
+  late final WebDeckSource _deckSource = WebDeckSource(widget.sync);
   AppLogic? _logic; // pour valider la routine liée à un bloc (comme Focus)
   // Carte « Au programme » : blocs dépliés (null = défaut : le premier bloc à
   // contenu est ouvert) et liste complète ou non.
@@ -193,6 +206,8 @@ class TodayViewState extends State<TodayView> {
     }).catchError((_) {});
     _subscribe();
     _loadLogic();
+    _deckSource.addListener(_onDeck);
+    _deckSource.fetch();
     // Horloge : chrono, ligne « maintenant » et changement de jour.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -296,6 +311,8 @@ class TodayViewState extends State<TodayView> {
     _moodSub?.cancel();
     _chainSub?.cancel();
     _huntStore.dispose();
+    _deckSource.removeListener(_onDeck);
+    _deckSource.dispose();
     _tomorrowSub?.cancel();
     _ticker?.cancel();
     _timelineCtrl.dispose();
@@ -686,6 +703,10 @@ class TodayViewState extends State<TodayView> {
         children: [
           _header(),
           const SizedBox(height: 18),
+          if (MediaQuery.sizeOf(context).width >= 1064) ...[
+            _dashboard(row: true),
+            const SizedBox(height: 18),
+          ],
           Expanded(
             child: LayoutBuilder(builder: (ctx, box) {
               // Chrono sur une action → la carte MAINTENANT se déploie en
@@ -694,7 +715,10 @@ class TodayViewState extends State<TodayView> {
               if (box.maxWidth < 1000) {
                 // Écran étroit : les trois temps s'empilent.
                 return ListView(children: [
+                  if (MediaQuery.sizeOf(context).width < 1064) _dashboard(row: false),
+                  ..._dayBoard(),
                   if (focus != null) _focusBand(focus) else _nowCard(),
+                  ..._stakesList(),
                   const SizedBox(height: 18),
                   _agendaCard(),
                   const SizedBox(height: 18),
@@ -755,7 +779,9 @@ class TodayViewState extends State<TodayView> {
                   SizedBox(
                     width: 340,
                     child: ListView(children: [
+                      ..._dayBoard(),
                       _nowCard(),
+                      ..._stakesList(),
                       const SizedBox(height: 18),
                       _agendaCard(),
                     ]),
@@ -773,6 +799,183 @@ class TodayViewState extends State<TodayView> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Aujourd'hui en enjeux (web, 2026-10-30) ─────────────────────────────────
+  void _onDeck() {
+    if (mounted) setState(() {});
+  }
+
+  BadgeDeck _deck() => _deckSource.deck(
+        activities: widget.activities,
+        hits: _hits,
+        projects: widget.projects,
+        objectives: widget.objectives,
+        sessions: _sessions,
+        moodMarks: _moodMarks,
+        chainRuns: _chainRuns,
+        dayStartMin: widget.dayStartMin,
+      );
+
+  String _stakesKey = '';
+  StakeBoard _stakes = StakeBoard.empty;
+  TodayFacts? _facts;
+
+  /// Faits du jour + tableau des enjeux, recalculés au plus une fois par
+  /// minute ou quand une donnée change (le ticker redessine chaque seconde).
+  StakeBoard _board() {
+    final now = DateTime.now();
+    final deck = _deck();
+    final key = '${now.hour}:${now.minute}|${_hits.length}|${_sessions.length}|${_moodMarks.length}|${identityHashCode(_allBlocks)}|'
+        '${identityHashCode(widget.projects)}|${identityHashCode(widget.activities)}|${identityHashCode(widget.objectives)}|'
+        '${identityHashCode(deck)}|${_huntStore.hunts.length}';
+    if (key == _stakesKey && _facts != null) return _stakes;
+    _stakesKey = key;
+    final ymd = ymdOf(_livedToday);
+    final facts = _facts = composeTodayFacts(
+      ymd: ymd,
+      now: now,
+      dayStartMin: widget.dayStartMin,
+      activities: widget.activities,
+      hits: _hits,
+      sessions: _sessions,
+      moodMarks: _moodMarks,
+      objectives: widget.objectives,
+      projects: widget.projects,
+      schedule: DailySchedule(date: _today, blocks: _allBlocks),
+    );
+    return _stakes = buildStakeBoard(
+      deck: deck,
+      facts: facts,
+      hunts: _huntStore.hunts,
+      projects: widget.projects,
+      activities: widget.activities.where((a) => !a.deleted).toList(),
+      dayStartMin: widget.dayStartMin,
+    );
+  }
+
+  bool get _evening => isEvening(_nowMin);
+
+  /// Tableau du jour (ou bilan du soir après 19 h), en tête de la colonne
+  /// MAINTENANT.
+  List<Widget> _dayBoard() {
+    final board = _board();
+    if (_evening) {
+      final now = DateTime.now();
+      final ledger = buildEveningLedger(
+        board: board,
+        deck: _deck(),
+        projects: widget.projects,
+        activities: widget.activities,
+        sessions: _sessions,
+        objectiveDays: _facts?.objectiveDays ?? const [],
+        dayStart: livedDayStart(now, widget.dayStartMin),
+        now: now,
+      );
+      if (ledger.isEmpty) return const [];
+      return [EveningLedgerCard(ledger: ledger), const SizedBox(height: 18)];
+    }
+    if (board.isEmpty) return const [];
+    return [StakeScoreboard(board: board, elapsed: dayElapsed(_nowMin)), const SizedBox(height: 18)];
+  }
+
+  List<Widget> _stakesList() {
+    final board = _board();
+    if (board.isEmpty || (_evening && board.inPlay == 0)) return const [];
+    return [
+      const SizedBox(height: 4),
+      StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgesInPlay, evening: _evening),
+    ];
+  }
+
+  /// Fait le geste d'un enjeu : +1, chrono d'activité, bloc, chrono sur l'action.
+  void _runStake(Stake s) {
+    final g = s.gesture;
+    switch (g.kind) {
+      case StakeGestureKind.routine:
+        if (g.activity != null) _incRoutine(g.activity!);
+      case StakeGestureKind.activity:
+        if (g.activity != null) _startActivityChrono(g.activity!.id);
+      case StakeGestureKind.block:
+        if (g.block != null) _startChrono(g.block!);
+      case StakeGestureKind.action:
+        _startActionChrono(g);
+    }
+  }
+
+  Future<void> _startActionChrono(StakeGesture g) async {
+    final a = g.action;
+    if (a == null) return;
+    final actId = a.linkedActivityId ?? g.project?.linkedActivityId ?? g.owner?.id;
+    if (actId == null) {
+      if (g.project != null) widget.onOpenProject(g.project!, taskId: g.task?.id);
+      return;
+    }
+    final now = DateTime.now();
+    for (final s in _sessions.where((s) => s.endAt == null)) {
+      s.endAt = now;
+      await widget.sync.saveSession(s);
+    }
+    final session = Session(activityId: actId, startAt: now, taskId: g.task?.id, actionId: a.id);
+    setState(() => _sessions = [..._sessions, session]);
+    await widget.sync.saveSession(session);
+  }
+
+  void _openBadgesInPlay() {
+    final data = badgesInPlay(_board(), _deck());
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: kBBg,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 560,
+          height: 680,
+          child: BadgesInPlayScreen(data: data, onRun: _runStake),
+        ),
+      ),
+    );
+  }
+
+  void _unfold(String key) {
+    if (_isFolded(key)) _toggleFold(key);
+  }
+
+  /// « TON TABLEAU DE BORD » : une tuile par vue, tap = la vue complète.
+  Widget _dashboard({required bool row}) {
+    final board = _board();
+    final facts = _facts;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final routines = facts?.routines ?? const [];
+    final reached = routines.where((r) => r.reached).length;
+    final active = widget.activities.where((a) => !a.deleted).toList();
+    final objectives = widget.objectives.where((o) => o.status == 'active').toList();
+    return DashboardTiles(
+      row: row,
+      program: programTile(_blocks, _nowMin) ??
+          const ProgramTile(value: 'Rien de prévu', sub: 'ajoute un bloc dans la frise', strip: []),
+      routines: routinesTile(
+        done: reached,
+        total: routines.length,
+        toDoNow: [for (final r in routines) if (!r.reached) r.activity.name],
+        momentLabel: 'aujourd’hui',
+        seriesRunning: _deck().seriesRunning,
+      ),
+      objectives: objectivesTile([
+        for (final o in objectives) (o.title, computeObjectiveProgress(o, widget.activities, _sessions, _hits, now).weekPercent),
+      ]),
+      badges: badgesTile(_deck(), board),
+      actions: actionsTile(projects: widget.projects, activities: active, today: today),
+      projects: projectsTile(widget.projects, today),
+      onProgram: scrollToNow,
+      onRoutines: () => _unfold('routines'),
+      onObjectives: () => _unfold('objectives'),
+      onBadges: _openBadgesInPlay,
+      onActions: widget.onOpenActions,
+      onProjects: widget.onOpenProjects,
     );
   }
 
@@ -2935,6 +3138,7 @@ class TodayViewState extends State<TodayView> {
           onToggleFold: () => _toggleFold('badges'),
           huntStore: _huntStore,
           todayBlocks: _allBlocks,
+          source: _deckSource,
         ),
         const SizedBox(height: 18),
         WebObjectivesCard(
