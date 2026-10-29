@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/block_vs_focus_note.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
@@ -838,7 +839,7 @@ class _ActionsViewState extends State<ActionsView> {
         ? const TimeOfDay(hour: 9, minute: 0)
         : TimeOfDay.now();
     var duration = e.action.estimatedMin ?? 30;
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -871,7 +872,9 @@ class _ActionsViewState extends State<ActionsView> {
                     style: TextStyle(
                         fontSize: 12.5,
                         color: cs2.onSurface.withOpacity(.55))),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
+                const BlockVsFocusNote(side: BlockVsFocusSide.block),
+                const SizedBox(height: 10),
                 sectionLabel('QUEL JOUR ?'),
                 const SizedBox(height: 6),
                 Wrap(
@@ -931,7 +934,18 @@ class _ActionsViewState extends State<ActionsView> {
                     icon: const Icon(Icons.event_available_rounded,
                         size: 16),
                     label: const Text('Programmer'),
-                    onPressed: () => Navigator.pop(ctx, true),
+                    onPressed: () => Navigator.pop(ctx, 'block'),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.wb_sunny_outlined, size: 16),
+                    label: Text(pickedDay == _ymdOf(today)
+                        ? 'Plutôt la viser aujourd\'hui, sans bloc'
+                        : 'Plutôt viser ce jour, sans bloc'),
+                    onPressed: () => Navigator.pop(ctx, 'focus'),
                   ),
                 ),
               ],
@@ -940,7 +954,28 @@ class _ActionsViewState extends State<ActionsView> {
         },
       ),
     );
-    if (saved != true) return;
+    if (saved == null) return;
+    if (saved == 'focus') {
+      final p = pickedDay.split('-').map(int.parse).toList();
+      final before = e.action.focusDate;
+      e.action.focusDate = DateTime(p[0], p[1], p[2]);
+      await _persistEntry(e);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showClosingSnackBar(SnackBar(
+          duration: const Duration(seconds: 4),
+          content: Text('☀ Visée ${focusLabel(e.action.focusDate!, today)} : ${e.action.title}'),
+          action: SnackBarAction(
+            label: 'Annuler',
+            onPressed: () async {
+              e.action.focusDate = before;
+              await _persistEntry(e);
+            },
+          ),
+        ));
+      return;
+    }
     final hhmm =
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
     unawaited(_sync.addScheduleBlock(
