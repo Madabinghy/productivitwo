@@ -1178,9 +1178,13 @@ class _ActionsViewState extends State<ActionsView> {
     final restingEntries = passing.where((e) => !upcoming(e) && resting(e)).toList();
     final upcomingEntries = passing.where(upcoming).toList()
       ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
-    final needNextShown = needingNext
-        .where((p) => inDomain(p.domainId) && _inClient(p) && matchesQuery(_query, [p.title]))
-        .toList();
+    // « Définir la prochaine action » : vue par projet seulement (2026-10-30) ;
+    // en vue par urgence, c'est Projets qui s'en charge.
+    final needNextShown = !_byProject
+        ? const <Project>[]
+        : needingNext
+            .where((p) => inDomain(p.domainId) && _inClient(p) && matchesQuery(_query, [p.title]))
+            .toList();
     // « J'ai 15 min » et rien ne passe : la plus proche du créneau parmi celles
     // que seul le temps écarte.
     final nearest = _time == null
@@ -1814,19 +1818,18 @@ class _ActionsViewState extends State<ActionsView> {
         restOwn.putIfAbsent(e.activity!.id, () => []).add(e);
       }
     }
-    if (restProjects.isNotEmpty || needNext.isNotEmpty) {
-      out.add(_sectionLabel(cs, 'PLUS TARD · PAR PROJET', Icons.folder_outlined));
+    // Plus de section « Plus tard · par projet » (retour user 2026-10-30) : ni
+    // en-tête de projet, ni « Définir la prochaine action » (Projets s'en
+    // charge, et la vue « par projet » les garde). Les actions restantes
+    // sont des cartes simples, « Projet › Tâche » sur chacune.
+    if (restProjects.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'ENSUITE', Icons.east_rounded));
       for (final g in _projectGroups()) {
-        final entries = restProjects[g.project.id];
-        final needs = needNext.any((p) => p.id == g.project.id);
-        if ((entries == null || entries.isEmpty) && !needs) continue;
-        out.add(_projectHeader(cs, g.project));
-        for (final e in _byEst(entries ?? const <_Entry>[])) {
-          out.add(_entryTile(cs, e, planned: todayIds.contains(e.action.id)));
+        for (final e in _byEst(restProjects[g.project.id] ?? const <_Entry>[])) {
+          out.add(_entryTile(cs, e, showHolder: true, planned: todayIds.contains(e.action.id)));
         }
-        if (needs) out.add(_defineTile(cs, g.project));
-        out.add(const SizedBox(height: 6));
       }
+      out.add(const SizedBox(height: 6));
     }
     if (restOwn.isNotEmpty) {
       out.add(_sectionLabel(cs, 'ACTIONS SIMPLES', Icons.flash_on_outlined, color: cs.tertiary));
