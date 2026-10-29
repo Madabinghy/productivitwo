@@ -549,8 +549,12 @@ l'activité — `linkedActivityId` du projet ou d'une action ouverte, `projectSe
 effective, en retard d'abord, puis datées, puis actions propres de l'activité ; tâches à venir, dossiers, projets en pause
 exclus), tap = choisir, « Commencer · … » = chrono ciblé sur l'activité du bloc, « Suivante › » passe à la prochaine sans
 sortir, « Enchaîner · … » après une action faite ; en-tête « bloc · reste n min » (`blockRemainingMin`). File vide = chrono
-seul comme avant. Lots suivants : écran de fin de bloc + « Caser un bloc demain », ajout « activité + durée », règles
-`plan_day`.
+seul comme avant. **Lot 2 livré** : « Terminer le bloc » (lien avant / après, bandeau « Le bloc est fini · le chrono
+continue » pendant) → écran BLOC TERMINÉ (`_BlockEndScreen`, `blockOutcome` : temps tenu = sessions de l'activité tronquées
+au créneau, actions de la file faites dans la fenêtre avec leurs minutes, étapes cochées, reste de la file — qui ne va nulle
+part) ; le bloc passe `done` (`doneBy:"focus"`) dès qu'il a du temps ; « Caser un bloc … demain » = NOUVEAU bloc même
+activité / heure / durée sans action (`carriedActivityBlock`, `carriedFromDate`). Lot 3 à venir : ajout « activité +
+durée », règles `plan_day`.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

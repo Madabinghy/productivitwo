@@ -103,3 +103,75 @@ int blockRemainingMin(ScheduleBlock b, int nowMin) {
   if (nowMin < s) return b.durationMin;
   return end > nowMin ? end - nowMin : 0;
 }
+
+/// Bilan d'un bloc d'activité (écran de fin, lot 2) : temps tenu = sessions
+/// de l'activité du bloc qui recoupent son créneau (tronquées), actions de la
+/// file faites pendant le créneau, étapes cochées pendant le créneau, et ce
+/// qui reste dans la file.
+class BlockOutcome {
+  final int heldMin;
+  final List<QueueItem> doneItems;
+  final Map<String, int> minutesByAction;
+  final int stepsDone;
+  final List<QueueItem> remaining;
+  const BlockOutcome({
+    required this.heldMin,
+    required this.doneItems,
+    required this.minutesByAction,
+    required this.stepsDone,
+    required this.remaining,
+  });
+}
+
+({DateTime start, DateTime end}) blockWindow(ScheduleBlock b, DateTime date) {
+  final p = b.startTime.split(':');
+  final s = DateTime(date.year, date.month, date.day, int.tryParse(p[0]) ?? 0, p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+  return (start: s, end: s.add(Duration(minutes: b.durationMin)));
+}
+
+BlockOutcome blockOutcome({
+  required ScheduleBlock block,
+  required DateTime date,
+  required String activityId,
+  required List<QueueItem> queue,
+  required List<Session> sessions,
+  required DateTime now,
+}) {
+  final w = blockWindow(block, date);
+  final end = now.isBefore(w.end) ? now : w.end;
+  var held = 0;
+  final byAction = <String, int>{};
+  for (final s in sessions) {
+    if (s.deleted || s.activityId != activityId) continue;
+    final a = s.startAt.isAfter(w.start) ? s.startAt : w.start;
+    final b = (s.endAt ?? now).isBefore(end) ? (s.endAt ?? now) : end;
+    final m = b.difference(a).inMinutes;
+    if (m <= 0) continue;
+    held += m;
+    if (s.actionId != null) byAction[s.actionId!] = (byAction[s.actionId!] ?? 0) + m;
+  }
+  bool inWindow(DateTime? d) => d != null && !d.isBefore(w.start) && !d.isAfter(end.add(const Duration(minutes: 1)));
+  final done = <QueueItem>[], rest = <QueueItem>[];
+  var steps = 0;
+  for (final q in queue) {
+    if (q.action.done) {
+      if (inWindow(q.action.doneAt)) done.add(q);
+    } else {
+      rest.add(q);
+    }
+    steps += q.action.checklist.where((c) => c.done && inWindow(c.doneAt)).length;
+  }
+  return BlockOutcome(heldMin: held, doneItems: done, minutesByAction: byAction, stepsDone: steps, remaining: rest);
+}
+
+/// « Caser un bloc demain » : un NOUVEAU bloc, même activité, même heure,
+/// même durée, sans action visée — la file se recalculera au lancement.
+ScheduleBlock carriedActivityBlock(ScheduleBlock b, String fromYmd) => ScheduleBlock(
+      startTime: b.startTime,
+      durationMin: b.durationMin,
+      title: b.title,
+      category: b.category,
+      activityId: b.activityId,
+      domainId: b.domainId,
+      carriedFromDate: fromYmd,
+    );

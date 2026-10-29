@@ -45,6 +45,29 @@ void main() {
     expect(blockQueue(activity: act('autre'), projects: [folder, child], today: today), isEmpty);
   });
 
+  test('blockOutcome : temps tenu tronqué au créneau, actions et étapes faites dans la fenêtre, reste', () {
+    final day = DateTime(2026, 10, 29);
+    final b = ScheduleBlock(id: 'b', startTime: '14:00', durationMin: 120, title: 'Ens', category: 'project', activityId: 'ens');
+    final a1 = TaskAction(id: 'a1', title: 'faite dans le bloc', done: true, doneAt: DateTime(2026, 10, 29, 14, 50));
+    final a2 = TaskAction(id: 'a2', title: 'faite avant', done: true, doneAt: DateTime(2026, 10, 29, 9));
+    final a3 = TaskAction(id: 'a3', title: 'reste', checklist: [ChecklistItem(title: 's', done: true, doneAt: DateTime(2026, 10, 29, 15, 10))]);
+    final q = [for (final a in [a1, a2, a3]) QueueItem(action: a)];
+    final sessions = [
+      Session(id: 's1', activityId: 'ens', startAt: DateTime(2026, 10, 29, 13, 50), endAt: DateTime(2026, 10, 29, 14, 50), actionId: 'a1'),
+      Session(id: 's2', activityId: 'ens', startAt: DateTime(2026, 10, 29, 15), endAt: null, actionId: 'a3'),
+      Session(id: 's3', activityId: 'sport', startAt: DateTime(2026, 10, 29, 15), endAt: DateTime(2026, 10, 29, 15, 30)),
+    ];
+    final o = blockOutcome(block: b, date: day, activityId: 'ens', queue: q, sessions: sessions, now: DateTime(2026, 10, 29, 15, 30));
+    expect(o.heldMin, 50 + 30);
+    expect(o.minutesByAction, {'a1': 50, 'a3': 30});
+    expect(o.doneItems.map((e) => e.id).toList(), ['a1']);
+    expect(o.remaining.map((e) => e.id).toList(), ['a3']);
+    expect(o.stepsDone, 1);
+    final c = carriedActivityBlock(b, '2026-10-29');
+    expect((c.startTime, c.durationMin, c.activityId, c.actionId, c.carriedFromDate), ('14:00', 120, 'ens', null, '2026-10-29'));
+    expect(c.id, isNot('b'));
+  });
+
   test('blockRemainingMin', () {
     final b = ScheduleBlock(id: 'b', startTime: '14:00', durationMin: 120, title: 'Ens', category: 'project');
     expect(blockRemainingMin(b, 13 * 60), 120);

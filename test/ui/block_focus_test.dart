@@ -33,7 +33,7 @@ void main() {
       home: Builder(
         builder: (ctx) => Scaffold(
           body: TextButton(
-            onPressed: () => showBlockFocusScreen(ctx, logic: logic, block: block, activity: act, queue: queue, sync: FirestoreSync()),
+            onPressed: () => showBlockFocusScreen(ctx, logic: logic, block: block, activity: act, queue: queue, ymd: '2026-10-29', sync: FirestoreSync()),
             child: const Text('open'),
           ),
         ),
@@ -68,6 +68,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('FOCUS · TERMINÉ'), findsOneWidget);
     expect(find.text('Enchaîner · Corriger les copies'), findsOneWidget);
+
+    // Terminer le bloc → récap : tenu, fait, reste, « Caser un bloc demain ».
+    await tester.tap(find.text('Terminer le bloc'));
+    await tester.pumpAndSettle();
+    expect(find.text('BLOC TERMINÉ'), findsOneWidget);
+    expect(find.text('FAIT SUR CE BLOC'), findsOneWidget);
+    expect(find.text('RESTE DANS LA FILE · 2'), findsOneWidget);
+    expect(find.text('Caser un bloc Enseignement demain'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
