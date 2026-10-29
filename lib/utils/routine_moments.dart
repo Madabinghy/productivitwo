@@ -157,7 +157,9 @@ class RoutineSlot {
   final String home;
   /// Moment où elle apparaît aujourd'hui (report « cet après-midi »).
   final String moment;
-  const RoutineSlot(this.todo, this.home, this.moment);
+  /// Part du moment quand la routine est répartie sur plusieurs moments.
+  final MomentShare? share;
+  const RoutineSlot(this.todo, this.home, this.moment, {this.share});
 
   Activity get activity => todo.activity;
   String get id => todo.activity.id;
@@ -237,6 +239,70 @@ class RoutineDay {
   }
 }
 
+/// Part d'une routine RÉPARTIE (2026-10-30) dans le moment où elle se trouve :
+/// [done] / [target] pour ce moment (« 7 / 10 ce matin »).
+class MomentShare {
+  final String moment;
+  final int done;
+  final int target;
+  const MomentShare(this.moment, this.done, this.target);
+  int get left => (target - done).clamp(0, target);
+
+  /// « 7 / 10 ce matin » ; rien fait encore = « 10 ce soir ».
+  String get label => done > 0 ? '$done / $target ${momentOf(moment).thisOne}' : '$target ${momentOf(moment).thisOne}';
+}
+
+/// Moments horaires d'une routine répartie, dans l'ordre de la journée ; vide
+/// si elle n'est pas répartie (moins de deux moments).
+List<String> splitMomentsOf(Activity a) {
+  final set = a.splitMoments.toSet();
+  final keys = [for (final m in kTimedMoments) if (set.contains(m.key)) m.key];
+  return keys.length < 2 ? const [] : keys;
+}
+
+/// Où en est une routine répartie sur plusieurs moments. Parts = cible ÷
+/// moments, le surplus aux premiers (3 sur 2 → 2 puis 1) ; un moment sans part
+/// (cible < moments) est ignoré. La routine reste dans le premier moment dont
+/// la part cumulée n'est pas atteinte et qui n'est pas fini ; un moment fini
+/// laisse son reste au suivant. Null = pas répartie, cible du jour atteinte,
+/// ou routine hebdo.
+MomentShare? momentShareOf(Activity a, {required int dayDone, required int? dayTarget, required int nowMin, List<Moment>? moments}) {
+  final keys = splitMomentsOf(a);
+  final n = dayTarget ?? 0;
+  if (keys.isEmpty || n <= 0 || dayDone >= n) return null;
+  final ms = moments ?? kTimedMoments;
+  final base = n ~/ keys.length, extra = n % keys.length;
+  final parts = <(String, int)>[];
+  for (var i = 0; i < keys.length; i++) {
+    final share = base + (i < extra ? 1 : 0);
+    if (share > 0) parts.add((keys[i], share));
+  }
+  var cum = 0;
+  final cums = <int>[];
+  for (final p in parts) {
+    cum += p.$2;
+    cums.add(cum);
+  }
+  bool ended(String key) {
+    final m = ms.where((x) => x.key == key).firstOrNull ?? momentOf(key);
+    return nowMin >= m.endMin;
+  }
+
+  var i = 0;
+  while (i < parts.length - 1 && (dayDone >= cums[i] || ended(parts[i].$1))) {
+    i++;
+  }
+  final start = i == 0 ? 0 : (dayDone < cums[i - 1] ? dayDone : cums[i - 1]);
+  return MomentShare(parts[i].$1, (dayDone - start).clamp(0, cums[i] - start), cums[i] - start);
+}
+
+/// Moment d'une routine non répartie (ou atteinte) : son réglage ; une
+/// routine répartie atteinte reste dans son dernier moment.
+String _homeOf(Activity a) {
+  final keys = splitMomentsOf(a);
+  return keys.isNotEmpty ? keys.last : momentKeyOf(a);
+}
+
 int _cmpSlots(RoutineSlot a, RoutineSlot b) {
   final oa = a.activity.routineOrder, ob = b.activity.routineOrder;
   if (oa != null && ob != null && oa != ob) return oa.compareTo(ob);
@@ -265,7 +331,10 @@ RoutineDay buildRoutineDay({
   final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin);
   final slots = <RoutineSlot>[
     for (final t in todos)
-      RoutineSlot(t, momentKeyOf(t.activity), pushed[t.activity.id] ?? momentKeyOf(t.activity)),
+      if (momentShareOf(t.activity, dayDone: t.dayDone, dayTarget: t.dayTarget, nowMin: nowMin, moments: ms) case final share?)
+        RoutineSlot(t, share.moment, pushed[t.activity.id] ?? share.moment, share: share)
+      else
+        RoutineSlot(t, _homeOf(t.activity), pushed[t.activity.id] ?? _homeOf(t.activity)),
   ]..sort(_cmpSlots);
   return RoutineDay(current, slots, deferred, dismissed, moments: ms);
 }

@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
+import 'package:productivitwo_v1/utils/routine_moments.dart' show kTimedMoments, momentOf, splitMomentsOf;
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
@@ -756,6 +757,34 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 ),
             ]),
 
+            // Routine répartie (2026-10-30) : plusieurs moments se partagent
+            // la cible du jour (20 pompes matin + soir = 10 et 10).
+            if (act.habitFreq == HabitFreq.daily) ...[
+              const SizedBox(height: 14),
+              Text('Répartir sur plusieurs moments',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withOpacity(.75),
+                  )),
+              const SizedBox(height: 4),
+              Text(_splitHint(),
+                  style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final m in logic.moments)
+                  FilterChip(
+                    label: Text(m.label),
+                    selected: act.splitMoments.contains(m.key),
+                    onSelected: (on) {
+                      final set = act.splitMoments.toSet();
+                      on ? set.add(m.key) : set.remove(m.key);
+                      act.splitMoments = [for (final x in kTimedMoments) if (set.contains(x.key)) x.key];
+                      _applySetting();
+                    },
+                  ),
+              ]),
+            ],
+
             // Contextes GTD (@maison…) : où la routine est réalisable —
             // filtre « je suis » de Maintenant + CTA d'enchaînement
             // (« tu viens de finir X @maison — Y l'est aussi »).
@@ -778,6 +807,18 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
         ),
       ),
     );
+  }
+
+  /// « 10 le matin · 10 le soir » pour la cible du jour, ou l'aide.
+  String _splitHint() {
+    final keys = splitMomentsOf(act);
+    final n = logic.activeHabitTarget(act);
+    if (keys.isEmpty) return 'Coche au moins deux moments : la cible du jour se partage entre eux.';
+    final base = n ~/ keys.length, extra = n % keys.length;
+    return [
+      for (var i = 0; i < keys.length; i++)
+        if (base + (i < extra ? 1 : 0) > 0) '${base + (i < extra ? 1 : 0)} ${momentOf(keys[i]).thisOne}',
+    ].join(' · ');
   }
 
   /// Cap de progression : saisie libre (vider = retirer la progression, la

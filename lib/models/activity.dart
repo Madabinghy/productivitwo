@@ -80,6 +80,12 @@ class Activity {
   /// catalogue d'archétypes (utils/routine_context.dart), lui-même optionnel.
   String? timeContext;
 
+  /// Routine RÉPARTIE (2026-10-30) : moments horaires où elle se fait
+  /// (morning / midday / afternoon / evening), deux ou plus. La cible du jour
+  /// est partagée entre eux (`momentShareOf`, utils/routine_moments.dart).
+  /// Vide = un seul moment (le `timeContext`).
+  List<String> splitMoments;
+
   /// Actions « propres » de l'activité : des TaskAction qui appartiennent
   /// directement à l'activité (sans tâche/projet). Le chrono ciblé fonctionne
   /// via Session.actionId. Persisté dans la collection `activities`.
@@ -115,9 +121,11 @@ class Activity {
     this.todayFlag = false,
     this.timerMin,
     this.timeContext,
+    List<String>? splitMoments,
     List<TaskAction>? ownActions,
     List<String>? contexts,
   })  : id = id ?? _uuid.v4(), // <-- sans const ici
+        splitMoments = splitMoments ?? <String>[],
         ownActions = ownActions ?? <TaskAction>[],
         contexts = contexts ?? <String>[],
         createdAt = createdAt ?? DateTime.now();
@@ -158,6 +166,7 @@ class Activity {
         'todayFlag': todayFlag,
         'timerMin': timerMin,
         'timeContext': timeContext,
+        'splitMoments': splitMoments,
         'ownActions': ownActions.map((e) => e.toJson()).toList(),
         'contexts': contexts,
       };
@@ -210,6 +219,7 @@ class Activity {
       todayFlag: j['todayFlag'] as bool? ?? false,
       timerMin: (j['timerMin'] as num?)?.toInt(),
       timeContext: j['timeContext'] as String?,
+      splitMoments: (j['splitMoments'] as List?)?.map((e) => e.toString()).toList(),
       ownActions: (j['ownActions'] as List?)
           ?.map((e) => TaskAction.from(e as Map))
           .toList(),
