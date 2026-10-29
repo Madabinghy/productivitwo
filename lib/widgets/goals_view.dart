@@ -576,11 +576,12 @@ class _GoalsViewState extends State<GoalsView> {
         primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
         primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
         onPrimary: () => _startNext(m),
-        ficheLabel: 'Projet',
-        onFiche: () => _openPlan(p),
-        chainLabel: 'Détail',
-        chainIcon: null,
-        onChain: () => _openFiche(p),
+        ficheLabel: 'Détail',
+        ficheIcon: Icons.description_outlined,
+        onFiche: () => _openFiche(p),
+        chainLabel: 'Projet',
+        chainIcon: Icons.account_tree_outlined,
+        onChain: () => _openPlan(p),
       );
   }
 

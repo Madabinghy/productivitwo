@@ -182,6 +182,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
       primaryOutlined: m.move.kind == ObjectiveMoveKind.running,
       onPrimary: move.onTap,
       ficheLabel: 'Détail',
+      ficheIcon: Icons.description_outlined,
       onFiche: () => _fiche(o),
       chainLabel: chainN > 0 ? 'Enchaîner · $chainN' : null,
       onChain: chainN > 0 ? () => widget.onChainObjective!(o) : null,

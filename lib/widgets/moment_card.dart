@@ -103,6 +103,9 @@ class MomentCard extends StatelessWidget {
   final bool primaryOutlined;
   final VoidCallback? onFiche;
   final String ficheLabel;
+  /// Bouton fiche en ICÔNE seule (retour user 2026-10-30 : « Détail » prenait
+  /// un tiers de la ligne) ; `ficheLabel` devient l'infobulle.
+  final IconData? ficheIcon;
   final String? chainLabel;
   final VoidCallback? onChain;
   /// Icône du lien secondaire (défaut : file « Enchaîner ») ; null = texte seul.
@@ -140,6 +143,7 @@ class MomentCard extends StatelessWidget {
     this.primaryOutlined = false,
     this.onFiche,
     this.ficheLabel = 'Fiche',
+    this.ficheIcon,
     this.chainLabel,
     this.onChain,
     this.chainIcon = Icons.playlist_play_rounded,
@@ -270,10 +274,31 @@ class MomentCard extends StatelessWidget {
             ),
           ),
         );
+    Widget iconBtn(IconData icon, String label, VoidCallback? onTap) => Tooltip(
+          message: label,
+          child: Semantics(
+            button: true,
+            label: label,
+            child: SizedBox(
+              width: 52,
+              height: 42,
+              child: OutlinedButton(
+                onPressed: onTap,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: pal.text2,
+                  side: BorderSide(color: pal.text2.withValues(alpha: .25)),
+                  shape: const StadiumBorder(),
+                  padding: EdgeInsets.zero,
+                ),
+                child: Icon(icon, size: 19),
+              ),
+            ),
+          ),
+        );
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(children: [
-        if (onFiche != null) btn(ficheLabel, onFiche),
+        if (onFiche != null) ficheIcon != null ? iconBtn(ficheIcon!, ficheLabel, onFiche) : btn(ficheLabel, onFiche),
         if (onFiche != null && chainLabel != null) const SizedBox(width: 8),
         if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
         if (moreActions.isNotEmpty) ...[

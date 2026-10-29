@@ -2446,6 +2446,7 @@ class _ActionsViewState extends State<ActionsView> {
       primaryIcon: icon,
       onPrimary: onPrimary,
       ficheLabel: 'Détail',
+      ficheIcon: Icons.description_outlined,
       onFiche: () => _openActionSheet(e),
       chainLabel: running ? 'Arrêter le chrono' : (next != null ? 'Étape faite' : null),
       chainIcon: running ? Icons.stop_rounded : Icons.check_rounded,
