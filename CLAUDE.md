@@ -508,7 +508,7 @@ sont deux états du MÊME item (`MomentItem(open, collapsed, expanded, onToggle,
 retoucher le bloc ouvert le referme ; `settle` recale le défilement pour que la ligne touchée ne bouge pas). Trois gestes partout :
 **tap = explorer** (ouvrir sur place, rien ne part), **bouton plein = lancer**, **lien = feuille**. Plus de carte du moment à part ni de
 doublon dans la liste. **Lot 1 livré = Projets** (`goals_view.dart`) : `_item` = `_wallRow` repliée / `_momentCard` ouverte (étiquette
-PROJET DU MOMENT · PROJET · PROJET À VENIR, pilule séance ou écart au plan, liens Déplier · Fiche), appui long = fiche ; la pilule
+PROJET DU MOMENT · PROJET · PROJET À VENIR, pilule séance ou écart au plan, liens « Projet » = projet déplié · « Détail » = fiche), appui long = fiche ; la ligne repliée est UN seul geste (ses briques ne sont plus tappables, elles le restent dans le bloc ouvert) ; la pilule
 « 1 / n · suivant » disparaît. `MomentCard.chainIcon` (null = lien texte seul). Lots suivants : Actions, Objectifs + Routines, Aujourd'hui
 (MAINTENANT = ligne ouverte par défaut, blocs du programme = les autres lignes) ; le ▶ lancera la page focus (maquette « Page focus »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel

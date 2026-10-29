@@ -148,8 +148,13 @@ class _GoalsViewState extends State<GoalsView> {
     super.dispose();
   }
 
-  void _toggleItem(String id, String? defaultId) =>
-      _open.settle(id, _scroll, () => setState(() => _open.toggle(id, defaultId)));
+  void _toggleItem(String id, String? defaultId) {
+    if (!_hintSeen) {
+      _hintSeen = true;
+      SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
+    }
+    _open.settle(id, _scroll, () => setState(() => _open.toggle(id, defaultId)));
+  }
 
   Future<void> _toggle(String key) async {
     setState(() => _folded.contains(key) ? _folded.remove(key) : _folded.add(key));
@@ -486,7 +491,11 @@ class _GoalsViewState extends State<GoalsView> {
                 StateChip(chip, color: m.upcoming ? kPalierMuted : st),
               ]),
               const SizedBox(height: 2),
-              ProgressBricks(row: row, onBrick: (i) => _openBrick(p, row, i), pickerTitle: 'Tâches · ${p.title}'),
+              // Retour user 2026-10 : la ligne entière ouvre le bloc, les briques ne
+              // sont plus un geste à part (elles le restent dans le bloc ouvert).
+              const SizedBox(height: 6),
+              ProgressBricks(row: row),
+              const SizedBox(height: 6),
               if (!_hintSeen && m == _firstLive)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -494,7 +503,7 @@ class _GoalsViewState extends State<GoalsView> {
                     Icon(Icons.touch_app_outlined, size: 13, color: cs.primary),
                     const SizedBox(width: 5),
                     Expanded(
-                      child: Text('Touche la ligne pour l\'ouvrir ici · une brique pour aller à sa tâche',
+                      child: Text('Touche la ligne pour l\'ouvrir ici',
                           style: TextStyle(fontSize: 11.5, color: cs.primary, fontWeight: FontWeight.w600)),
                     ),
                   ]),
@@ -562,9 +571,9 @@ class _GoalsViewState extends State<GoalsView> {
         primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
         primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
         onPrimary: () => _startNext(m),
-        ficheLabel: 'Déplier',
+        ficheLabel: 'Projet',
         onFiche: () => _openPlan(p),
-        chainLabel: 'Fiche',
+        chainLabel: 'Détail',
         chainIcon: null,
         onChain: () => _openFiche(p),
       );
