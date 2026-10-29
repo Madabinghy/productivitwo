@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:productivitwo_v1/widgets/block_vs_focus_note.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
@@ -862,9 +863,12 @@ class _ActionsViewState extends State<ActionsView> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Programmer',
-                    style:
-                        TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                const Row(children: [
+                  Text('Programmer',
+                      style:
+                          TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                  InfoDot(kRuleBlockVsFocus),
+                ]),
                 const SizedBox(height: 4),
                 Text(e.action.title,
                     maxLines: 2,
@@ -872,9 +876,7 @@ class _ActionsViewState extends State<ActionsView> {
                     style: TextStyle(
                         fontSize: 12.5,
                         color: cs2.onSurface.withOpacity(.55))),
-                const SizedBox(height: 8),
-                const BlockVsFocusNote(side: BlockVsFocusSide.block),
-                const SizedBox(height: 10),
+                const SizedBox(height: 14),
                 sectionLabel('QUEL JOUR ?'),
                 const SizedBox(height: 6),
                 Wrap(

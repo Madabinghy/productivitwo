@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
@@ -196,7 +198,9 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
         Row(children: [
-          const Expanded(child: Text('Activités', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900))),
+          const Text('Activités', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+          const InfoDot(kRuleActivityPace),
+          const Spacer(),
           TextButton.icon(
             onPressed: widget.onNew,
             icon: const Icon(Icons.add, size: 18),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -121,7 +123,10 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
       controller: widget.scroll,
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
       children: [
-        const Text('Mode du jour', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        const Row(children: [
+          Text('Mode du jour', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          InfoDot(kRuleModes),
+        ]),
         const SizedBox(height: 2),
         Text('Une posture, changeable à tout moment. Elle pointe ton élan et repart en Normal demain.', style: TextStyle(fontSize: 12.5, color: text3)),
         const SizedBox(height: 12),

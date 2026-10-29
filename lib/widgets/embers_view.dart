@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays, kRoutineTiers;
@@ -129,9 +131,10 @@ class LostYesterdaySection extends StatelessWidget {
     Activity? act(String id) => logic.state.activeActivities.where((a) => a.id == id).firstOrNull;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Padding(
-        padding: EdgeInsets.fromLTRB(2, 12, 2, 8),
+        padding: EdgeInsets.fromLTRB(2, 6, 2, 2),
         child: Row(children: [
           Text('PERDU HIER', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
+          InfoDot(kRuleEmbers, size: 16),
           Spacer(),
           Text('rattrapable jusqu’à ce soir', style: TextStyle(fontSize: 11, color: kBText4)),
         ]),
@@ -295,6 +298,7 @@ class EmberLedgerPanel extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           const Text('BRAISES', style: TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
+          const InfoDot(kRuleEmbers, size: 16),
           const Spacer(),
           Text('${ledger.available} sur $kEmberCap', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: kEmberColor)),
         ]),
@@ -320,9 +324,6 @@ class EmberLedgerPanel extends StatelessWidget {
               ]),
             ),
         ],
-        const SizedBox(height: 4),
-        const Text('Une journée parfaite forge une braise. Une braise rallume une série cassée hier, si tu fais la routine aujourd’hui.',
-            style: TextStyle(fontSize: 11.5, color: kBText4, height: 1.35)),
       ]),
     );
   }

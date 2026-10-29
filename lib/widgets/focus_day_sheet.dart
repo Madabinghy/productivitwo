@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:productivitwo_v1/widgets/block_vs_focus_note.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, shortDateFr;
 
 /// Choix d'un JOUR VISÉ (2026-10-30) : aujourd'hui · demain · lundi prochain ·
@@ -46,7 +47,10 @@ Future<FocusPick?> pickFocusDay(BuildContext context, {DateTime? current, DateTi
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Viser un jour', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const Row(children: [
+                Text('Viser un jour', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                InfoDot(kRuleBlockVsFocus, startAt: 2),
+              ]),
               const SizedBox(height: 2),
               Text(
                 current == null
@@ -54,8 +58,6 @@ Future<FocusPick?> pickFocusDay(BuildContext context, {DateTime? current, DateTi
                     : 'Actuellement ${focusLabel(current, t)}. Une intention : ni créneau, ni retard.',
                 style: TextStyle(fontSize: 12.5, color: text3),
               ),
-              const SizedBox(height: 4),
-              const BlockVsFocusNote(side: BlockVsFocusSide.focus),
             ]),
           ),
           ListTile(

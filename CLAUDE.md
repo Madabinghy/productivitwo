@@ -591,7 +591,7 @@ demain »** (`_focusTomorrow`, annulable — plus « Caser demain »), « Viser 
 (section JOUR VISÉ + bouton) ; fiche d'action de la fiche de tâche : section JOUR VISÉ ; file d'un bloc : « ☀ visée … » sur
 la ligne. **Lot 3 livré (web)** : dialog d'action (`web/action_dialogs.dart`) champ « Jour visé » (date · Aujourd'hui · Demain · retirer)
 au-dessus de « Échéance propre · seulement une vraie date butoir » ; badge « ☀ visée … » sur la ligne d'Actions (ambre si à
-re-viser). **Les 3 lots sont livrés** (⚠️ `firebase deploy --only functions` puis `migrate_focus_dates`). **Bloc ou jour visé ?** (2026-10-30, `widgets/block_vs_focus_note.dart`, `BlockVsFocusNote`) : une ligne repliable dans la feuille « Programmer » d'une action (Actions mobile, `_scheduleAction`) et dans « Viser un jour » (`pickFocusDay`) ; tap = comparaison — bloc = engagement qui compte pour la journée parfaite et les badges, pèse tant qu'il n'est ni fait ni déplacé ni supprimé ; jour visé = intention proposée ce jour-là, « à re-viser » si non faite, jamais en retard. « Programmer » propose aussi « Plutôt viser ce jour, sans bloc » (pose `focusDate` au jour choisi, annulable).
+re-viser). **Les 3 lots sont livrés** (⚠️ `firebase deploy --only functions` puis `migrate_focus_dates`). « Programmer » (Actions mobile, `_scheduleAction`) propose aussi « Plutôt viser ce jour, sans bloc » (pose `focusDate` au jour choisi, annulable).
 **Blocs d'activité, lot 1 livré** (maquette validée 2026-10-29) : le ▶ d'un bloc d'ACTIVITÉ (activité-temps, sans
 `actionId`, hors routine et séance) ouvre la page focus en mode « bloc » (`showBlockFocusScreen`, `BlockFocus`,
 `action_focus_screen.dart`) : LA FILE DU BLOC = `blockQueue` (`utils/block_queue.dart` : une action par projet vivant lié à
@@ -821,6 +821,16 @@ utilisées » repliées (aucun chrono sur 30 j). Ligne = icône du domaine, nom 
 pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de bouton doré « Challenge me », de puce « Défi ORION » dans MAINTENANT,
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
+
+## Règles du jeu en place (2026-10-30)
+
+Retour user : « pas une tonne de texte, pas un tuto au fond des paramètres ». Toute fonctionnalité à enjeux porte un petit
+ⓘ (`InfoDot(rule, startAt:)`, `widgets/info_dot.dart`) qui ouvre un mini-tuto en cartes (`showRuleSheet` : émoji, titre, une
+phrase, points, Suivant / Compris). Règles = données dans `utils/game_rules.dart` (`GameRule`, `RuleCard`) : `kRuleBlockVsFocus`
+(« Programmer » d'une action, « Viser un jour » qui s'ouvre sur la carte 3), `kRulePerfectDay` (feuille Journée parfaite),
+`kRuleEmbers` (PERDU HIER, panneau BRAISES), `kRuleSeries` (fiche Routines, remplace l'ancien « À SAVOIR »), `kRuleStakes`
+(feuille Ta journée / Ce soir), `kRuleActivityPace` (lanceur d'activités), `kRuleModes` (feuille du mode). `FicheHeader(info:)`
+colle le ⓘ au titre. Nouvelle règle = une constante + un `InfoDot` à l'endroit où elle sert ; pas d'explication en texte long.
 
 ## Confirmation avant de cocher (2026-10-30)
 
