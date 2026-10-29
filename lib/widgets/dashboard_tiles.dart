@@ -15,12 +15,15 @@ class DashboardTiles extends StatelessWidget {
   final DashTile? objectives;
   final DashTile? badges;
   final DashTile? perfect;
+  /// « Recul » : résumé du jour + où on va (comble la case libre du mobile).
+  final DashTile? review;
   final DashTile? actions;
   final DashTile? projects;
   final VoidCallback? onProgram;
   final VoidCallback? onRoutines;
   final VoidCallback? onObjectives;
   final VoidCallback? onBadges;
+  final VoidCallback? onReview;
   final VoidCallback? onPerfect;
   final VoidCallback? onActions;
   final VoidCallback? onProjects;
@@ -35,6 +38,8 @@ class DashboardTiles extends StatelessWidget {
     this.objectives,
     this.badges,
     this.perfect,
+    this.review,
+    this.onReview,
     this.actions,
     this.projects,
     this.onProgram,
@@ -56,6 +61,7 @@ class DashboardTiles extends StatelessWidget {
       if (badges != null) (badges!, onBadges),
       if (objectives != null) (objectives!, onObjectives),
       if (actions != null) (actions!, onActions),
+      if (review != null) (review!, onReview),
     ];
     if (row) {
       final all = <(DashTile, VoidCallback?, int)>[
