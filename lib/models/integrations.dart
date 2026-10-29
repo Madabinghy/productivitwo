@@ -94,6 +94,9 @@ class OrionProposal {
   String title; // résumé humain
   String rationale; // justification
   String? sourceCaptureId;
+  /// Toutes les idées regroupées dans la proposition (ORION en fusionne
+  /// plusieurs) ; vide sur les anciennes propositions → [sourceCaptureId].
+  List<String> sourceCaptureIds;
   Map<String, dynamic> payload;
   String status; // pending | accepted | rejected
   DateTime? createdAt;
@@ -104,6 +107,7 @@ class OrionProposal {
     required this.title,
     this.rationale = '',
     this.sourceCaptureId,
+    this.sourceCaptureIds = const [],
     Map<String, dynamic>? payload,
     this.status = 'pending',
     this.createdAt,
@@ -116,6 +120,7 @@ class OrionProposal {
         'title': title,
         'rationale': rationale,
         'sourceCaptureId': sourceCaptureId,
+        if (sourceCaptureIds.isNotEmpty) 'sourceCaptureIds': sourceCaptureIds,
         'payload': payload,
         'status': status,
         'createdAt': createdAt?.toIso8601String(),
@@ -127,10 +132,14 @@ class OrionProposal {
         title: j['title'] ?? '',
         rationale: j['rationale'] ?? '',
         sourceCaptureId: j['sourceCaptureId'],
+        sourceCaptureIds: [for (final x in (j['sourceCaptureIds'] as List?) ?? const []) if (x is String) x],
         payload: (j['payload'] as Map?)?.cast<String, dynamic>() ?? {},
         status: j['status'] ?? 'pending',
         createdAt: _parseDateOrNull(j['createdAt']),
       );
+
+  /// Idées à consommer à l'acceptation / au refus.
+  Set<String> get captureIds => {if (sourceCaptureId != null) sourceCaptureId!, ...sourceCaptureIds};
 }
 
 /// Entrée du grand livre d'Or (append-only) : un gain, une perte ou une dépense.

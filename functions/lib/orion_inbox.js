@@ -282,6 +282,7 @@ async function processInboxToProjects(uid, opts) {
             title: `Créer le projet « ${np.title} »`,
             rationale: (_q = np.description) !== null && _q !== void 0 ? _q : origin.map((o) => o.text).join(" · "),
             sourceCaptureId: ids[0],
+            sourceCaptureIds: ids,
             payload: Object.assign({ projectTitle: np.title, domainId: (_r = np.domainId) !== null && _r !== void 0 ? _r : undefined, objectiveId, description: np.description, startDate: projectStart, endDate: lastEnd, phases,
                 tasks }, (firstActionTitle
                 ? { firstAction: { title: firstActionTitle, context: firstActionContext } }
@@ -301,6 +302,7 @@ async function processInboxToProjects(uid, opts) {
                 title: `Ajouter « ${t.title} » à « ${proj.title} »`,
                 rationale: ids.map((id) => { var _a; return (_a = ideaById.get(id)) === null || _a === void 0 ? void 0 : _a.text; }).filter(Boolean).join(" · "),
                 sourceCaptureId: ids[0],
+                sourceCaptureIds: ids,
                 payload: {
                     projectId: ap.projectId,
                     taskTitle: t.title,

@@ -103,7 +103,7 @@ class _InboxSheetState extends State<_InboxSheet> {
 
   List<CaptureItem> get _proposed {
     if (!_propsLoaded) return const [];
-    final shown = {for (final p in _proposals) if (p.sourceCaptureId != null) p.sourceCaptureId};
+    final shown = {for (final p in _proposals) ...p.captureIds};
     return _items.where((i) => i.status == 'proposed' && !shown.contains(i.id)).toList();
   }
   List<CaptureItem> get _processed => _items.where((i) => i.status == 'processed').toList()
