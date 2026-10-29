@@ -645,7 +645,9 @@ PROJETS (`projectsTile(sessions:, skipped:)` : depuis le 2026-10-30 le PROJET DU
 la fiche du projet `showProjectFiche(onSkipToday:)` avec une section DÉCISIONS — Suivant (passé pour aujourd'hui, `project_tile_skipped`
 = « ymd|ids » en SharedPreferences, jour vécu), Viser demain (prochaine action `focusDate` = demain + passé), Mettre en pause
 (`paused`) ; à la fermeture la tuile se recalcule, le même projet reste s'il est toujours le plus pertinent ; depuis la tuile, `actionsOpenFocus: true` : tap sur une action
-de CETTE SEMAINE et « Prochaine action » = la page focus de l'action (`showActionFocusScreen`) ; tap web = onglet Projets). **Lot 4 livré** :
+de CETTE SEMAINE = la page focus de l'action (`showActionFocusScreen`) ; DÉCISIONS AU-DESSUS de CETTE SEMAINE ; tap web = onglet Projets).
+Dans toute fiche projet, le bouton principal porte le TITRE de la prochaine action et ouvre sa page focus (jamais de chrono lancé
+d'ici : il se lance explicitement dans le focus), ligne « Prochaine action · Tâche · ouvre la page focus » dessous. **Lot 4 livré** :
 bilan du soir (`utils/evening_ledger.dart`, `isEvening` = journée vécue ≥ 19 h) — `EveningLedgerCard` remplace le tableau du jour :
 gagnés · encore · perdus, AVANCÉ AUJOURD'HUI (paliers obtenus aujourd'hui `tierDates`, séries tenues, actions faites par projet
 `doneAt`, temps par activité avec l'objectif servi), LAISSÉ FILER (perdus, engagements de temps en retard sans rien aujourd'hui),
