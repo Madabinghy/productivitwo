@@ -118,7 +118,6 @@ class TodayView extends StatefulWidget {
 }
 
 class TodayViewState extends State<TodayView> {
-  final _programKey = GlobalKey();
   bool _showTomorrow = false;
   // Programme du jour : UNIQUE abonnement de l'onglet (carte MAINTENANT,
   // en-tête « n / N blocs · restantes », zone coach).
@@ -630,6 +629,11 @@ class TodayViewState extends State<TodayView> {
   /// Timeline : offset linéaire (1 h = 100 px, ~120 px d'en-tête avant 00:00).
   /// Liste (blocs) : délégué à DailyScheduleView (bloc le plus proche).
   void _jumpTo(int minute) {
+    // Aujourd'hui : le programme vit dans sa feuille, la jauge l'ouvre.
+    if (!_showTomorrow) {
+      _openProgramSheet();
+      return;
+    }
     if (!_timeline) {
       _listScrollToMinute?.call(minute);
       return;
@@ -922,56 +926,12 @@ class TodayViewState extends State<TodayView> {
                   if (stakes case final board? when !board.isEmpty)
                     StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery, evening: isEvening(widget.logic.livedNowMinNow)),
                 ],
-                const SizedBox(height: 22),
-                KeyedSubtree(key: _programKey, child: _programHeader(cs, link, text3)),
-                const SizedBox(height: 8),
-                // key par date : force un nouveau state (nouveau stream Firestore)
-                // quand on bascule aujourd'hui ↔ demain.
-                if (_timeline)
-                  DayTimelineView(
-                    key: ValueKey('tl-$date'),
-                    date: date,
-                    logic: widget.logic,
-                    visible: widget.visible,
-                    // ▶ n'a de sens que pour le jour même (chrono maintenant).
-                    onLaunch: _showTomorrow ? null : widget.onLaunch,
-                    onOpenSource: widget.onOpenSource,
-                  )
-                else
-                  DailyScheduleView(
-                    key: ValueKey(date),
-                    date: date,
-                    logic: widget.logic,
-                    visible: widget.visible,
-                    onLaunch: _showTomorrow ? null : widget.onLaunch,
-                    onOpenSource: widget.onOpenSource,
-                    // Saut minimap (jauge) en mode liste.
-                    onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
-                    title: '',
-                    // Placeholder 21a/22c : sans domaine, le programme ne peut pas
-                    // exister — l'étape est juste au-dessus (nudge de Maintenant).
-                    emptyText: _showTomorrow
-                        ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
-                        : _domainsPlaceholder(),
-                  ),
-                // Bascule liste ⇄ frise en fin de section (§ 3.3), persistée.
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton.icon(
-                    icon: Icon(
-                        _timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined,
-                        size: 16),
-                    label: Text(_timeline ? 'Voir en liste' : 'Voir en frise'),
-                    style: TextButton.styleFrom(
-                        foregroundColor: link,
-                        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    onPressed: () {
-                      setState(() => _timeline = !_timeline);
-                      SharedPreferences.getInstance()
-                          .then((p) => p.setBool(_timelinePrefKey, _timeline));
-                    },
-                  ),
-                ),
+                // Programme du jour : dans une feuille ouverte par la tuile
+                // PROGRAMME (retour user 2026-10-30) ; Demain reste sur la page.
+                if (_showTomorrow) ...[
+                  const SizedBox(height: 22),
+                  ..._programSection(cs, link, text3, date, refresh: () => setState(() {})),
+                ],
                 if (_showTomorrow) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -1131,7 +1091,8 @@ class TodayViewState extends State<TodayView> {
     final today = DateTime(now.year, now.month, now.day);
     return [
       DashboardTiles(
-        program: programTile(_liveBlocks, widget.logic.livedNowMinNow),
+        program: programTile(_liveBlocks, widget.logic.livedNowMinNow) ??
+            const ProgramTile(value: 'Rien de prévu', sub: 'touche pour voir le programme et ajouter un bloc', strip: []),
         routines: day.slots.isEmpty
             ? null
             : routinesTile(done: all.done, total: all.total, toDoNow: current, momentLabel: day.current.thisOne, seriesRunning: bc?.deck?.seriesRunning ?? 0),
@@ -1140,10 +1101,7 @@ class TodayViewState extends State<TodayView> {
         badges: badgesTile(bc?.deck, board),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today),
         projects: projectsTile(widget.logic.currentProjects, today),
-        onProgram: () {
-          final c = _programKey.currentContext;
-          if (c != null) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
-        },
+        onProgram: _openProgramSheet,
         onRoutines: _openRoutinesFiche,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
@@ -1366,7 +1324,85 @@ class TodayViewState extends State<TodayView> {
 
   /// Ligne « PROGRAMME DU JOUR » (§ 3.3) : liens Demain / Modifier + outils
   /// (sync agenda, liste ⇄ frise, reprogrammer) — plus de boutons épinglés.
-  Widget _programHeader(ColorScheme cs, Color link, Color text3) {
+  bool _programOpen = false;
+
+  /// Le programme du jour dans une feuille (tuile PROGRAMME, jauge).
+  void _openProgramSheet() {
+    if (_programOpen || !mounted) return;
+    _programOpen = true;
+    final cs = Theme.of(context).colorScheme;
+    final dark = cs.brightness == Brightness.dark;
+    final link = dark ? kBPrimary : cs.primary;
+    final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.55);
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+          children: _programSection(cs, link, text3, widget.logic.livedTodayYmd, inSheet: true, refresh: () {
+            setLocal(() {});
+            if (mounted) setState(() {});
+          }),
+        );
+      });
+    }).whenComplete(() {
+      _programOpen = false;
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// En-tête, liste ou frise, bascule liste ⇄ frise. [inSheet] : « Demain »
+  /// ferme la feuille et bascule la page sur demain.
+  List<Widget> _programSection(ColorScheme cs, Color link, Color text3, String date,
+      {bool inSheet = false, required VoidCallback refresh}) {
+    return [
+      _programHeader(cs, link, text3, inSheet: inSheet),
+      const SizedBox(height: 8),
+      // key par date : force un nouveau state (nouveau stream Firestore)
+      // quand on bascule aujourd'hui ↔ demain.
+      if (_timeline)
+        DayTimelineView(
+          key: ValueKey('tl-$date'),
+          date: date,
+          logic: widget.logic,
+          visible: widget.visible,
+          // ▶ n'a de sens que pour le jour même (chrono maintenant).
+          onLaunch: _showTomorrow ? null : widget.onLaunch,
+          onOpenSource: widget.onOpenSource,
+        )
+      else
+        DailyScheduleView(
+          key: ValueKey(date),
+          date: date,
+          logic: widget.logic,
+          visible: widget.visible,
+          onLaunch: _showTomorrow ? null : widget.onLaunch,
+          onOpenSource: widget.onOpenSource,
+          onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
+          title: '',
+          emptyText: _showTomorrow
+              ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
+              : _domainsPlaceholder(),
+        ),
+      // Bascule liste ⇄ frise en fin de section (§ 3.3), persistée.
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          icon: Icon(_timeline ? Icons.view_list_outlined : Icons.calendar_view_day_outlined, size: 16),
+          label: Text(_timeline ? 'Voir en liste' : 'Voir en frise'),
+          style: TextButton.styleFrom(
+              foregroundColor: link, textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          onPressed: () {
+            _timeline = !_timeline;
+            refresh();
+            SharedPreferences.getInstance().then((p) => p.setBool(_timelinePrefKey, _timeline));
+          },
+        ),
+      ),
+    ];
+  }
+
+  Widget _programHeader(ColorScheme cs, Color link, Color text3, {bool inSheet = false}) {
     Widget tlink(String label, VoidCallback onTap) => InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
@@ -1382,8 +1418,10 @@ class TodayViewState extends State<TodayView> {
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
       ),
-      tlink(_showTomorrow ? 'Aujourd\'hui' : 'Demain',
-          () => setState(() => _showTomorrow = !_showTomorrow)),
+      tlink(_showTomorrow ? 'Aujourd\'hui' : 'Demain', () {
+        if (inSheet) Navigator.of(context).maybePop();
+        setState(() => _showTomorrow = !_showTomorrow);
+      }),
       tlink('Modifier', () {
         final n = DateTime.now();
         _openPlan(_showTomorrow ? _ymd(n.add(const Duration(days: 1))) : _ymd(n));

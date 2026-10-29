@@ -621,7 +621,10 @@ avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / F
 `StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
 (`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,
 `showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE ; depuis le 2026-10-30 (retour user) il est EN TÊTE
-d'Aujourd'hui, au-dessus de MAINTENANT, et le tableau du jour / « Ce soir » passe à sa place sous le programme
+d'Aujourd'hui, au-dessus de MAINTENANT, et le tableau du jour / « Ce soir » passe à sa place sous le programme ; le **programme du jour n'est plus sur la
+page** (2026-10-30) : la tuile PROGRAMME (toujours présente, « Rien de prévu » sans bloc) et la jauge du bord gauche ouvrent la
+feuille `_openProgramSheet` (`showFiche` + `_programSection` : en-tête, liste ou frise, bascule) ; « Demain » ferme la feuille et
+montre le programme de demain sur la page. Le passage auto en « fait » des blocs de routine (`_maybeAutoWin`) ne tourne que feuille ouverte
 (`_parallelSection(cs, stakes)` → `widgets/dashboard_tiles.dart` `DashboardTiles`, logique pure `utils/dashboard_tiles.dart`) : PROGRAMME
 (`programTile` : bande des blocs, en cours / ensuite ; tap = remonte au programme), ROUTINES (`routinesTile`, tap = fiche Routines),
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
