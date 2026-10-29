@@ -296,6 +296,7 @@ const CREATE_ROUTINE_TOOL = {
       unit:        { type: "string", description: "Unité comptée (ex: fois, verres, séries)" },
       habitFreq:   { type: "number", description: "Fréquence : 0=daily, 1=weekly, 2=monthly" },
       habitTarget: { type: "number", description: "Cible par période (ex: 3 fois/semaine)" },
+      splitMoments: { type: "array", items: { type: "string" }, description: "Routine QUOTIDIENNE RÉPARTIE sur plusieurs moments : morning|midday|afternoon|evening (ou matin, midi, après-midi, soir), deux ou plus. La cible du jour se partage (20 pompes matin + soir = 10 et 10 ; le surplus va aux premiers moments) : la routine reste dans un moment jusqu'à sa part, puis passe d'elle-même au suivant. [] ou un seul moment = plus répartie. Propose-la pour une routine faite naturellement en plusieurs fois (repas midi + soir, pompes matin + soir) ; applique-la quand l'utilisateur la demande ou l'accepte." },
     },
   },
 };
@@ -658,7 +659,7 @@ const DELETE_TASK_TOOL = {
 const UPDATE_ACTIVITY_TOOL = {
   name: "update_activity",
   description:
-    "Modifie une activité existante (nom, domaine, type, objectif, unité). " +
+    "Modifie une activité existante (nom, domaine, type, objectif, unité, contexte horaire, répartition d'une routine sur plusieurs moments). " +
     "Utilise get_user_context pour obtenir l'activityId. " +
     "Ne modifie que les champs fournis, laisse les autres inchangés.",
   inputSchema: {
@@ -674,6 +675,7 @@ const UPDATE_ACTIVITY_TOOL = {
       habitTarget: { type: "number", description: "cible par période — avec finalTarget, c'est le PALIER courant" },
       finalTarget: { type: "number", description: "cap de progression d'une routine quotidienne (ex: 50 pompes/j) — habitTarget devient le palier courant, démarré bas, ajusté chaque lundi selon les hits réels. 0 = retirer la progression" },
       timeContext: { type: "string", description: "contexte horaire de la routine : morning|midday|afternoon|evening|meal|day|allday|any — fenêtre naturelle (hygiène du soir=evening, boire de l'eau=allday). Vide = revenir à l'auto (catalogue)" },
+      splitMoments: { type: "array", items: { type: "string" }, description: "Routine QUOTIDIENNE RÉPARTIE sur plusieurs moments : morning|midday|afternoon|evening (ou matin, midi, après-midi, soir), deux ou plus. La cible du jour se partage (20 pompes matin + soir = 10 et 10 ; le surplus va aux premiers moments) : la routine reste dans un moment jusqu'à sa part, puis passe d'elle-même au suivant. [] ou un seul moment = plus répartie. Propose-la pour une routine faite naturellement en plusieurs fois (repas midi + soir, pompes matin + soir) ; applique-la quand l'utilisateur la demande ou l'accepte." },
     },
   },
 };

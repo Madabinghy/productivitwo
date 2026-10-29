@@ -12,6 +12,7 @@ var __rest = (this && this.__rest) || function (s, e) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.coachAlertsCron = exports.coacheeApi = exports.coachConsent = exports.coachApi = exports.gcalOnScheduleWrite = exports.gcalOauthCallback = exports.gcalApi = exports.resetDemoData = exports.getDemoToken = exports.applyFormationProfile = exports.getVisionAccess = exports.generateFormationAccess = exports.adminProductivitwo = exports.revenueCatWebhook = exports.onboardingChat = exports.structureProject = exports.orionCron = exports.orionBrief = exports.orionRunCount = exports.orionSaveConfig = exports.githubWebhook = exports.orionWebhook = exports.mcpHandler = exports.sendMagicLink = exports.getCustomToken = exports.pushAssistantMessage = exports.weeklyReportCron = exports.weeklyReportNow = exports.generateArtifact = exports.defineDomainChat = exports.proposeDayPlan = exports.whereWeGo = exports.nowAssist = exports.pushGantt = void 0;
+const routine_split_1 = require("./routine_split");
 const https_1 = require("firebase-functions/v2/https");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
@@ -686,7 +687,7 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
         }
         const routineList = acts.filter((a) => a.type === "habit")
             .map((a) => {
-            var _a;
+            var _a, _b;
             // Méta-contexte (catalogue/override) : « le soir », « aux repas »…
             const ctx = (0, routine_context_1.routineTimeContext)(String(a.name), a.timeContext);
             return `  · "${a.name}" (activityId: ${a.id})` +
@@ -697,7 +698,10 @@ exports.proposeDayPlan = (0, https_1.onRequest)({ cors: true, invoker: "public",
                 (typicalByHabit.has(String(a.id))
                     ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
                     : "") +
-                (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "");
+                (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
+                (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
+                    ? ` · répartie : ${(0, routine_split_1.splitLabel)(Number((_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1), a.splitMoments)}`
+                    : "");
         })
             .join("\n") || "  Aucune.";
         const activityList = acts.filter((a) => a.type !== "habit")

@@ -1,3 +1,4 @@
+import { splitLabel } from "./routine_split";
 import { onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
@@ -736,7 +737,10 @@ export const proposeDayPlan = onRequest(
             (typicalByHabit.has(String(a.id))
               ? ` · heure habituelle : ${typicalByHabit.get(String(a.id))}`
               : "") +
-            (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "");
+            (ctx && ctx.windows.length > 0 ? ` · contexte : ${ctx.label}` : "") +
+            (Array.isArray(a.splitMoments) && a.splitMoments.length >= 2
+              ? ` · répartie : ${splitLabel(Number(a.habitTarget ?? 1), a.splitMoments as string[])}`
+              : "");
         })
         .join("\n") || "  Aucune.";
       const activityList = acts.filter((a) => a.type !== "habit")
