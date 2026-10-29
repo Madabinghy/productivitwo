@@ -473,8 +473,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     );
   }
 
-  String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
   Widget _round(NowPalette pal, String label, VoidCallback? onTap,
           {double size = 44, Color? bg, Color? fg}) =>
       SizedBox(
