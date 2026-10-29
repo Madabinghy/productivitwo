@@ -16,7 +16,9 @@ import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/mode_moves.dart' show smallChain;
 import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
+import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, showMomentActions;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
@@ -349,15 +351,32 @@ class _NowCardState extends State<NowCard> {
         : project?.title ??
             _activity(b?.activityId)?.name ??
             (b == null ? _activity(running?.id)?.name : null);
-    final title = b != null && (current || session == null) && !aside ? b.title : runningName;
+    // Grammaire de Projets (2026-10) : le titre est l'ACTION du bloc quand il en
+    // vise une (ce qu'on fait), la tâche remonte en contexte « Projet › Tâche ».
+    String title = b != null && (current || session == null) && !aside ? b.title : runningName;
+    String? origin2 = origin;
+    String? stepLine;
+    if (b != null && !aside && (current || session == null) && project != null && b.taskId != null) {
+      final task = project.tasks.where((t) => t.id == b.taskId).firstOrNull;
+      final focusAction = task == null ? null : blockWork(task, b.actionId).focus;
+      if (task != null && focusAction != null) {
+        title = focusAction.title;
+        origin2 = '${project.title} › ${task.title}';
+        final nextStep = nextChecklistItem(focusAction);
+        if (nextStep != null) stepLine = 'étape : ${nextStep.title}';
+      }
+    }
     final next = b != null ? nextBlockAfter(_blocks, b) : null;
     final ensuite = aside
         ? 'Prévu : ${b.title} · ${_fmtMin(b.durationMin)}'
         : b != null && !current && session != null
             ? 'Ensuite · ${b.title}' // session hors bloc : le bloc à venir est « ensuite »
-            : next != null
-                ? 'Ensuite · ${next.title}'
-                : null;
+            : stepLine ??
+                (b != null && current
+                    ? 'bloc ${_clock(blockStartMin(b))} → ${_clock(blockEndMin(b))}'
+                    : next != null
+                        ? 'Ensuite · ${next.title}'
+                        : null);
     final catColor = kBCategoryColor[b?.category] ?? pal.primary;
 
     String? right;
@@ -376,6 +395,7 @@ class _NowCardState extends State<NowCard> {
 
     final mode = widget.logic.mode;
     final buttons = <Widget>[];
+    final more = <MomentAction>[];
     if (aside) {
       buttons.add(Expanded(
           child: _btn(pal, countdown ? 'Arrêter le minuteur' : 'Arrêter',
@@ -405,16 +425,26 @@ class _NowCardState extends State<NowCard> {
             widget.onLaunch(b);
           }
         })));
-        buttons.add(const SizedBox(width: 8));
-        buttons.add(_btn(pal, 'Fait', onTap: () => _markDone(b)));
+        if (tenMin) more.add(MomentAction('Lancer sans minuteur', icon: Icons.play_arrow_rounded, onTap: () => widget.onLaunch(b)));
+        if (!tenMin && widget.onLaunchTimed != null) {
+          more.add(MomentAction('10 min, malgré tout', icon: Icons.timer_outlined, hint: 'un minuteur de 10 min sur ce bloc', onTap: () => widget.onLaunchTimed!(b, 10)));
+        }
+        more.add(MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'marquer le bloc fait', onTap: () => _markDone(b)));
       } else {
         buttons.add(Expanded(child: _btn(pal, 'Marquer fait', primary: true, onTap: () => _markDone(b))));
       }
     }
-    if (hasSource) {
-      buttons.add(const SizedBox(width: 8));
-      buttons.add(_iconBtn(pal, Icons.chevron_right, 'Voir la source', () => widget.onOpenSource!(b)));
+    if (session == null && widget.onDeepWork != null) {
+      more.add(MomentAction('Deep work 90 min', icon: Icons.bolt_rounded, hint: 'sur quoi ?', onTap: widget.onDeepWork!));
     }
+    final chain = widget.onChain != null && b != null ? _chainLink(mode) : null;
+    if (chain != null && chain.small && widget.onChain != null) {
+      more.add(MomentAction('Enchaîner tout', icon: Icons.playlist_play_rounded, hint: 'la file complète jusqu\'à la fin du programme', onTap: widget.onChain!));
+    }
+    if (hasSource) {
+      more.add(MomentAction('Voir la source', icon: Icons.chevron_right, hint: project?.title ?? _activity(b.activityId)?.name, onTap: () => widget.onOpenSource!(b)));
+    }
+    final strip = _dayStrip(pal, b);
 
     final openFocus = session != null && widget.onOpenFocus != null ? widget.onOpenFocus : null;
     return _frame(
@@ -448,7 +478,7 @@ class _NowCardState extends State<NowCard> {
           const SizedBox(width: 16),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (origin != null)
+              if (origin2 != null)
                 Row(children: [
                   Container(
                       width: 8,
@@ -457,7 +487,7 @@ class _NowCardState extends State<NowCard> {
                           color: catColor, borderRadius: BorderRadius.circular(2))),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(origin,
+                    child: Text(origin2,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 12, color: pal.text2)),
@@ -479,55 +509,51 @@ class _NowCardState extends State<NowCard> {
             ]),
           ),
         ]),
-        if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
-          const SizedBox(height: 12),
-          row,
-        ],
+        if (strip != null) ...[const SizedBox(height: 12), strip],
         const SizedBox(height: 14),
         Row(children: buttons),
-        if (mode == DayMode.high && session == null && widget.onDeepWork != null) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              widget.onDeepWork!();
-            },
-            style: OutlinedButton.styleFrom(
-                foregroundColor: pal.primary,
-                side: BorderSide(color: pal.primary.withOpacity(.45)),
-                minimumSize: const Size.fromHeight(44),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
-            icon: const Icon(Icons.bolt_rounded, size: 20),
-            label: const Text('Deep work 90 min · sur quoi ?',
-                maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, height: 1.2)),
+        if (chain != null || more.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(children: [
+              if (chain != null)
+                Flexible(
+                  child: TextButton.icon(
+                    onPressed: () {
+                      HapticFeedback.lightImpact();
+                      if (chain.small && widget.onChainSmall != null) {
+                        widget.onChainSmall!();
+                      } else {
+                        widget.onChain!();
+                      }
+                    },
+                    style: TextButton.styleFrom(
+                        foregroundColor: pal.primary,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        minimumSize: const Size(0, 36),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                    icon: const Icon(Icons.playlist_play_rounded, size: 18),
+                    label: Text(chain.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              const Spacer(),
+              if (more.isNotEmpty)
+                TextButton(
+                  onPressed: () => showMomentActions(context, title: title, actions: more),
+                  style: TextButton.styleFrom(
+                      foregroundColor: pal.text3,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      minimumSize: const Size(0, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  child: const Text('⋯ Autres'),
+                ),
+            ]),
           ),
-        ],
-        if ((widget.onChain != null && b != null ? _chainHint(small: mode == DayMode.low && widget.onChainSmall != null) : null) case final hint?) ...[
-          const SizedBox(height: 8),
-          // Hauteur libre : « … jusqu'à 05:00 demain · 1 routine » tient sur
-          // deux lignes plutôt que d'être tronqué.
-          OutlinedButton.icon(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              if (mode == DayMode.low && widget.onChainSmall != null) {
-                widget.onChainSmall!();
-              } else {
-                widget.onChain!();
-              }
-            },
-            style: OutlinedButton.styleFrom(
-                foregroundColor: pal.primary,
-                side: BorderSide(color: pal.primary.withOpacity(.45)),
-                minimumSize: const Size.fromHeight(44),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8)),
-            icon: const Icon(Icons.playlist_play_rounded, size: 20),
-            label: Text(hint,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, height: 1.2)),
-          ),
+        if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
+          const SizedBox(height: 10),
+          row,
         ],
         if (session != null) ...[
           const SizedBox(height: 6),
@@ -579,14 +605,25 @@ class _NowCardState extends State<NowCard> {
     );
   }
 
-  /// « Enchaîner · 6 choses jusqu'à 18:00 » ; null si la file est vide.
-  String? _chainHint({bool small = false}) {
+  /// Lien « Enchaîner · 6 » (ou « 3 petites choses » en Flemme, « Reprendre ·
+  /// 2 faites » si une session attend) ; null si la file est vide.
+  ({String label, bool small})? _chainLink(DayMode mode) {
+    final small = mode == DayMode.low && widget.onChainSmall != null;
     final pc = ChainSessionStore.current;
-    if (!small && pc != null && pc.isLive(DateTime.now(), widget.logic.livedTodayYmd)) {
-      return 'Reprendre l\'enchaînement · ${pc.doneCount} faite${pc.doneCount > 1 ? 's' : ''}';
+    if (pc != null && pc.isLive(DateTime.now(), widget.logic.livedTodayYmd)) {
+      return (label: 'Reprendre · ${pc.doneCount} faite${pc.doneCount > 1 ? 's' : ''}', small: false);
     }
+    final items = _chainItems();
     if (small) {
-      final n = smallChain(buildChain(
+      final n = smallChain(items).length;
+      if (n == 0) return null;
+      return (label: n == 1 ? '1 petite chose' : '$n petites choses', small: true);
+    }
+    if (items.isEmpty) return null;
+    return (label: 'Enchaîner · ${items.length}', small: false);
+  }
+
+  List<ChainItem> _chainItems() => buildChain(
         blocks: _blocks,
         projects: widget.logic.currentProjects,
         activities: widget.logic.state.activities,
@@ -597,27 +634,52 @@ class _NowCardState extends State<NowCard> {
         dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
         dayStartMin: widget.logic.dayStartMin,
         moments: widget.logic.moments,
-      )).length;
-      if (n == 0) return null;
-      return n == 1 ? '1 petite chose, malgré tout' : '$n petites choses, malgré tout';
-    }
-    final items = buildChain(
-      blocks: _blocks,
-      projects: widget.logic.currentProjects,
-      activities: widget.logic.state.activities,
-      hits: widget.logic.state.habitHits,
-      now: DateTime.now(),
-      pushed: widget.logic.routinePushed(widget.logic.livedYmdNow),
-      deferred: widget.logic.state.nowSkippedByYmd[widget.logic.livedYmdNow] ?? const [],
-      dismissed: widget.logic.nowDoneSet(widget.logic.livedYmdNow),
-      dayStartMin: widget.logic.dayStartMin,
-      moments: widget.logic.moments,
-    );
-    if (items.isEmpty) return null;
-    final end = chainEndMin(items)!;
-    final routines = items.where((i) => i.kind == ChainKind.routine).length;
-    return 'Enchaîner · ${items.length} chose${items.length > 1 ? 's' : ''} jusqu\'à ${chainEndLabel(end)}'
-        '${routines > 0 ? ' · $routines routine${routines > 1 ? 's' : ''}' : ''}';
+      );
+
+  /// La journée en blocs : une case par bloc du programme (largeur = durée),
+  /// faits pleins, le bloc en avant marqué d'un trait, le reste en creux ;
+  /// légende « le 3ᵉ est en cours · 3 après · jusqu'à 18:00 ».
+  Widget? _dayStrip(NowPalette pal, ScheduleBlock? focus) {
+    final blocks = _blocks.where((x) => x.status != 'deleted' && x.status != 'skipped').toList()
+      ..sort((a, c) => blockStartMin(a).compareTo(blockStartMin(c)));
+    if (blocks.length < 2) return null;
+    final idx = focus == null ? -1 : blocks.indexWhere((x) => x.id == focus.id);
+    final after = idx < 0 ? blocks.where((x) => x.status != 'done').length : blocks.length - idx - 1;
+    final end = blockEndMin(blocks.last);
+    final done = blocks.where((x) => x.status == 'done').length;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SizedBox(
+        height: 12,
+        child: Row(children: [
+          for (var i = 0; i < blocks.length; i++) ...[
+            if (i > 0) const SizedBox(width: 3),
+            Expanded(
+              flex: blocks[i].durationMin.clamp(10, 240),
+              child: Stack(children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: blocks[i].status == 'done'
+                        ? pal.primary.withOpacity(.85)
+                        : i == idx
+                            ? pal.primary.withOpacity(.45)
+                            : pal.track,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+                if (i == idx)
+                  Positioned(right: 0, top: -2, bottom: -2, child: Container(width: 2.5, color: pal.text)),
+              ]),
+            ),
+          ],
+        ]),
+      ),
+      MomentLegend(
+        idx < 0
+            ? 'La journée en blocs · $done fait${done > 1 ? 's' : ''}'
+            : 'La journée en blocs · le ${idx + 1}${idx == 0 ? 'ᵉʳ' : 'ᵉ'} est ${focus!.status == 'done' ? 'fait' : 'en avant'}',
+        right: '$after après · jusqu\'à ${_clock(end)}',
+      ),
+    ]);
   }
 
   Widget _header(NowPalette pal, String? right, {bool chevron = false}) => Row(children: [
@@ -685,20 +747,6 @@ class _NowCardState extends State<NowCard> {
                         color: primary ? pal.onPrimary : pal.text)),
               ),
             ),
-          ),
-        ),
-      );
-
-  Widget _iconBtn(NowPalette pal, IconData icon, String tooltip, VoidCallback onTap) => SizedBox(
-        width: 48,
-        height: 48,
-        child: Material(
-          color: pal.chip,
-          shape: const CircleBorder(),
-          child: InkWell(
-            onTap: onTap,
-            customBorder: const CircleBorder(),
-            child: Tooltip(message: tooltip, child: Icon(icon, size: 20, color: pal.text2)),
           ),
         ),
       );
