@@ -8,12 +8,62 @@
 // pauses, préparations et rendez-vous ne sont pas concernés. Pure, pas d'I/O.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MIN_WORK_BLOCK_MIN = exports.BLOCK_RULES = void 0;
+exports.activityLoad = activityLoad;
+exports.activityLoadLabel = activityLoadLabel;
 exports.analyzeBlocks = analyzeBlocks;
 exports.blockAdvice = blockAdvice;
-exports.BLOCK_RULES = "BLOCS : 30 min minimum pour un bloc de travail (projet / activité) ; les actions consécutives d'une " +
-    "même tâche vont dans UN SEUL bloc nommé par la tâche (actionId = la première, l'écran bloc enchaîne " +
-    "les suivantes) plutôt qu'un bloc par action. Routines, pauses, prep (5 min) et rendez-vous gardent " +
-    "leur durée propre.";
+exports.BLOCK_RULES = "BLOCS : 30 min minimum pour un bloc de travail. Pour le travail de fond, pose des blocs d'ACTIVITÉ " +
+    "(activityId seul, sans projectId / taskId / actionId, titre = le nom de l'activité, ex. « Enseignement ») : " +
+    "au lancement, l'app propose la prochaine action de chaque projet lié à l'activité (les en retard d'abord) et " +
+    "le bloc ne retient que le temps — JAMAIS un bloc par action, jamais une action recopiée dans le programme. " +
+    "Un bloc de tâche (projectId + taskId) est réservé au DATÉ : séance, jalon, rendez-vous, préparation. " +
+    "Routines, pauses, prep (5 min) et rendez-vous gardent leur durée propre.";
+function activityLoad(activityId, projects, today) {
+    let count = 0;
+    let overdue = 0;
+    for (const p of projects) {
+        if (p.status !== "active" || p.paused === true)
+            continue;
+        const whole = p.linkedActivityId === activityId;
+        const tasks = Array.isArray(p.tasks) ? p.tasks : [];
+        let serves = whole;
+        let late = 0;
+        for (const t of tasks) {
+            if (t.status === "done" || t.status === "skipped")
+                continue;
+            const actions = Array.isArray(t.actions) ? t.actions : [];
+            for (const raw of actions) {
+                if (typeof raw !== "object" || raw === null)
+                    continue;
+                const a = raw;
+                if (a.done === true)
+                    continue;
+                if (!(whole || a.linkedActivityId === activityId))
+                    continue;
+                serves = true;
+                const due = typeof a.dueDate === "string" && a.dueDate
+                    ? a.dueDate
+                    : typeof t.endDate === "string" ? t.endDate.slice(0, 10) : "";
+                if (due && due < today)
+                    late++;
+            }
+        }
+        if (serves) {
+            count++;
+            overdue += late;
+        }
+    }
+    return { projects: count, overdue };
+}
+/** « 4 projets liés · 2 actions en retard » ; "" si rien n'est lié. */
+function activityLoadLabel(l) {
+    if (l.projects === 0)
+        return "";
+    const parts = [`${l.projects} projet${l.projects > 1 ? "s" : ""} lié${l.projects > 1 ? "s" : ""}`];
+    if (l.overdue > 0)
+        parts.push(`${l.overdue} action${l.overdue > 1 ? "s" : ""} en retard`);
+    return parts.join(" · ");
+}
 exports.MIN_WORK_BLOCK_MIN = 30;
 function toMin(hm) {
     const [h, m] = hm.split(":").map((x) => parseInt(x, 10));

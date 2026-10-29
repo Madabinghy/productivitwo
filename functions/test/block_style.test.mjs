@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeBlocks, blockAdvice } from "../lib/block_style.js";
+import { analyzeBlocks, blockAdvice, activityLoad, activityLoadLabel } from "../lib/block_style.js";
 
 const wb = (startTime, durationMin, taskId, title = "x") => ({ startTime, durationMin, title, category: "project", projectId: "p", taskId });
 
@@ -29,4 +29,20 @@ test("blockAdvice : vide quand c'est propre, sinon lignes utiles", () => {
   assert.ok(txt.includes("Programme haché"));
   assert.ok(txt.includes("2 bloc(s) de travail < 30 min"));
   assert.ok(txt.includes("2 blocs consécutifs"));
+});
+
+test("activityLoad : projets liés (projet ou action), retards par échéance effective, en pause exclus", () => {
+  const projects = [
+    { status: "active", linkedActivityId: "ens", tasks: [
+      { status: "pending", endDate: "2026-10-27", actions: [{ title: "a", done: false }, { title: "b", done: true }] },
+      { status: "done", endDate: "2026-10-01", actions: [{ title: "c" }] },
+    ] },
+    { status: "active", tasks: [{ status: "pending", endDate: "2026-11-20", actions: [{ title: "d", linkedActivityId: "ens", dueDate: "2026-10-20" }, { title: "e", linkedActivityId: "sport" }] }] },
+    { status: "active", linkedActivityId: "ens", paused: true, tasks: [{ status: "pending", actions: [{ title: "f" }] }] },
+    { status: "active", linkedActivityId: "sport", tasks: [] },
+  ];
+  assert.deepEqual(activityLoad("ens", projects, "2026-10-29"), { projects: 2, overdue: 2 });
+  assert.equal(activityLoadLabel({ projects: 2, overdue: 2 }), "2 projets liés · 2 actions en retard");
+  assert.equal(activityLoadLabel({ projects: 1, overdue: 0 }), "1 projet lié");
+  assert.equal(activityLoadLabel(activityLoad("rien", projects, "2026-10-29")), "");
 });

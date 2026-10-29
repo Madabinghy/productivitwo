@@ -38,7 +38,7 @@ import type { ProjectTask, PushGanttBody, ProjectPayload, StrategicObjectivePayl
 import { generateWeeklyReport, mondayOf } from "./weekly_report";
 import { summarizeObjectives } from "./objectives";
 import { titleAdvice } from "./title_style";
-import { blockAdvice } from "./block_style";
+import { blockAdvice, activityLoad, activityLoadLabel } from "./block_style";
 import {
   summarizeTrajectory, objectiveStartYmd, isReadingDue, parseMetric, parseReadings, upsertReading, latestReading,
   formatReadingsDue,
@@ -3096,10 +3096,19 @@ async function executePlanDay(
   // Activités-temps programmables : un bloc peut porter UNIQUEMENT activityId
   // (sans projet/tâche) → le ▶ de l'app lance un chrono ciblé sur l'activité.
   const actsSnap = await db.collection(`users/${uid}/activities`).get();
-  const timeActivities = actsSnap.docs
+  const timeActivitiesRaw = actsSnap.docs
     .map((d) => d.data() as Record<string, unknown>)
     .filter((a) => a.deleted !== true && a.type !== "habit")
-    .map((a) => `  · "${a.name}" (activityId: ${a.id}${a.goalMin ? ` — objectif ${a.goalMin} min/j` : ""})`);
+    .map((a) => ({
+      id: String(a.id),
+      line: `  · "${a.name}" (activityId: ${a.id}${a.goalMin ? ` — objectif ${a.goalMin} min/j` : ""})`,
+    }));
+  // Charge par activité : ce que la file du bloc proposera dans l'app.
+  const projectDatas = projectsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+  const timeActivities = timeActivitiesRaw.map(({ line, id }) => {
+    const label = activityLoadLabel(activityLoad(id, projectDatas, date));
+    return label ? `${line} — ${label}` : line;
+  });
 
   const calendarSync = syncToCalendar
     ? [
@@ -3138,8 +3147,9 @@ async function executePlanDay(
     projectDetails.length > 0 ? projectDetails.join("\n\n---\n\n") : "Aucun projet actif.",
     ``,
     `── ACTIVITÉS-TEMPS PROGRAMMABLES (${timeActivities.length}) ──`,
-    `Un bloc peut porter UNIQUEMENT activityId (sans projet/tâche) → ▶ lance un`,
-    `chrono ciblé sur l'activité. Utilise-les pour bloquer du temps dessus :`,
+    `Un bloc d'ACTIVITÉ porte UNIQUEMENT activityId (sans projet/tâche/action), titre = le nom de`,
+    `l'activité : au ▶, l'app propose la prochaine action de chaque projet lié (en retard d'abord).`,
+    `C'est LA façon de programmer le travail de fond — un bloc par activité, pas un bloc par action :`,
     timeActivities.length > 0 ? timeActivities.join("\n") : "  Aucune.",
     ...timeBlock,
     ``,
@@ -3157,9 +3167,11 @@ async function executePlanDay(
     `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
     `   → ÉCHÉANCES : une action peut porter sa propre dueDate (YYYY-MM-DD), qui PRIME sur la date de sa tâche —`,
     `     programme d'abord ce qui échoit le plus tôt ; une date connue sans dueDate → update_action {dueDate}.`,
-    `   → BLOCS : 30 min minimum pour un bloc de travail ; les actions consécutives d'une même tâche`,
-    `     vont dans UN SEUL bloc nommé par la tâche (actionId = la première, l'écran bloc enchaîne les`,
-    `     suivantes). Pas un bloc par action. Routines, pauses, prep et rendez-vous gardent leur durée.`,
+    `   → BLOCS : 30 min minimum pour un bloc de travail. Le travail de fond = blocs d'ACTIVITÉ`,
+    `     (activityId seul, titre = nom de l'activité, durée d'après la charge ci-dessus) — JAMAIS un`,
+    `     bloc par action ni une action recopiée : la file des prochaines actions se calcule dans l'app.`,
+    `     Un bloc de tâche (projectId + taskId) seulement pour le DATÉ : séance, jalon, rendez-vous.`,
+    `     Routines, pauses, prep et rendez-vous gardent leur durée.`,
     `   → TITRES de bloc : verbe + objet, ≤ 8 mots, sans code ni parenthèse (le bloc est lié par`,
     `     taskId / actionId, l'app affiche le reste).`,
     ...modeRules(modeFromContext(userContext)),

@@ -46,8 +46,10 @@ en direct). Date = aujourd'hui, heure de Paris.
      en double : un seul bloc par chose).
 4. Planifie aujourd'hui : 3 à 6 blocs, autour des rendez-vous Google (📅, déjà présents), des routines du
    matin/soir et des blocs déjà posés ; tâche la plus proche de l'échéance d'abord ; engagements en
-   retard (onTrack:false) prioritaires ; regroupe par contexte GTD ; un bloc = une routine/activité avec
-   son activityId ; ne recrée jamais un bloc [supprimé par l'utilisateur]. Puis
+   retard (onTrack:false) prioritaires ; regroupe par contexte GTD ; le travail de fond = blocs
+   d'ACTIVITÉ (activityId seul, titre = nom de l'activité, jamais un bloc par action : l'app propose la
+   prochaine action de chaque projet lié au lancement) ; un bloc de tâche seulement pour le daté (séance,
+   jalon) ; ne recrée jamais un bloc [supprimé par l'utilisateur]. Puis
    schedule_day(date, blocks, mode:"fill", generatedBy:"auto"). Jamais mode "replace".
 5. Termine par UN push_assistant_message (targetDate = aujourd'hui, condition always, characterName
    "ORION") : « Journée planifiée automatiquement · N blocs — <3 titres max> ». Rien d'autre.
