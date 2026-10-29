@@ -548,7 +548,8 @@ Pause · Action faite · Terminer ; écran allumé) ; APRÈS (trace : ce chrono,
 actions faites + reste ; « C'était comment ? » = `logMood(kMoodEffort)` ; « Enchaîner · action suivante » rouvre la page dessus).
 Chrono ciblé `logic.start(activityId, taskId:, actionId:)`, écriture `patchActionOf` / `updateOwnActions`, rien de nouveau en
 base. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'ACTION DU MOMENT (« Étape faite » / « Arrêter le chrono »
-en lien, « Chrono seul » et « Ouvrir le projet » dans Autres). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)
+en lien, « Ouvrir le projet » dans les gestes rares ; « Chrono seul » RETIRÉ le 2026-10-30 — sur la carte, le chrono part toujours
+de la page focus). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)
 est un autre fichier.
 **Actions = l'essentiel** (décision user 2026-10-29 : « trop de blocs, doublons projets / actions ») : par défaut l'onglet Actions
 ne montre que ce qui est à portée de main — actions libres (sans projet), UNE action par projet (`nextAction`, déjà sa plus en
