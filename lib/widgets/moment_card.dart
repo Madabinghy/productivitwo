@@ -8,6 +8,9 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 /// Gestes rares affichés en ligne sous une carte du moment (le reste derrière « ⋯ »).
 const kMomentInlineActions = 5;
 
+/// Largeur d'un rond à icône (fiche, gestes rares).
+const kMomentIconBtn = 42.0;
+
 class MomentAction {
   final String label;
   final IconData? icon;
@@ -284,7 +287,7 @@ class MomentCard extends StatelessWidget {
             button: true,
             label: label,
             child: SizedBox(
-              width: 52,
+              width: kMomentIconBtn,
               height: 42,
               child: OutlinedButton(
                 onPressed: onTap,
@@ -299,21 +302,37 @@ class MomentCard extends StatelessWidget {
             ),
           ),
         );
-    final hasMain = onFiche != null || chainLabel != null;
+    // UNE ligne (retour user 2026-10-30 : les icônes passaient sous le bouton
+    // détail) : fiche · geste secondaire (≥ 120 px) · autant d'icônes que la
+    // largeur permet, le reste derrière « ⋯ ».
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        if (hasMain)
-          Row(children: [
-            if (onFiche != null) ficheIcon != null ? iconBtn(ficheIcon!, ficheLabel, onFiche) : btn(ficheLabel, onFiche),
-            if (onFiche != null && chainLabel != null) const SizedBox(width: 8),
-            if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
-          ]),
-        if (moreActions.isNotEmpty) ...[
-          if (hasMain) const SizedBox(height: 8),
-          MomentActionIcons(actions: moreActions, title: moreTitle ?? title),
-        ],
-      ]),
+      child: LayoutBuilder(builder: (context, c) {
+        const gap = 6.0;
+        var reserved = 0.0;
+        if (onFiche != null) reserved += (ficheIcon != null ? kMomentIconBtn : 110) + gap;
+        if (chainLabel != null) reserved += 120 + gap;
+        final fit = ((c.maxWidth - reserved + gap) / (kMomentIconBtn + gap)).floor();
+        final sameLine = moreActions.isEmpty || fit >= 1;
+        final icons = moreActions.isEmpty
+            ? null
+            : MomentActionIcons(
+                actions: moreActions,
+                title: moreTitle ?? title,
+                maxInline: sameLine ? fit.clamp(1, kMomentInlineActions) : kMomentInlineActions,
+              );
+        final main = Row(children: [
+          if (onFiche != null) ficheIcon != null ? iconBtn(ficheIcon!, ficheLabel, onFiche) : btn(ficheLabel, onFiche),
+          if (onFiche != null && chainLabel != null) const SizedBox(width: gap),
+          if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
+          if (icons != null && sameLine) ...[
+            if (onFiche != null || chainLabel != null) const SizedBox(width: gap),
+            icons,
+          ],
+        ]);
+        if (sameLine) return main;
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [main, const SizedBox(height: 8), icons!]);
+      }),
     );
   }
 
@@ -393,23 +412,31 @@ class MomentRing extends StatelessWidget {
 class MomentActionIcons extends StatelessWidget {
   final List<MomentAction> actions;
   final String title;
-  const MomentActionIcons({super.key, required this.actions, required this.title});
+  /// Nombre total de ronds, « ⋯ » compris.
+  final int maxInline;
+  const MomentActionIcons({super.key, required this.actions, required this.title, this.maxInline = kMomentInlineActions});
 
   @override
   Widget build(BuildContext context) {
     final pal = NowPalette.of(context);
-    final inline = <MomentAction>[];
-    final overflow = <MomentAction>[];
+    // Gestes aux icônes distinctes, dans l'ordre ; si tout ne tient pas en
+    // `maxInline` ronds, le dernier rond devient « ⋯ ».
+    final distinct = <MomentAction>[];
+    final rest = <MomentAction>[];
     final usedIcons = <IconData>{};
     for (final m in actions) {
       final ic = m.icon;
-      if (ic != null && inline.length < kMomentInlineActions && !usedIcons.contains(ic)) {
-        inline.add(m);
+      if (ic != null && !usedIcons.contains(ic)) {
+        distinct.add(m);
         usedIcons.add(ic);
       } else {
-        overflow.add(m);
+        rest.add(m);
       }
     }
+    final cap = maxInline < 1 ? 1 : maxInline;
+    final needMore = rest.isNotEmpty || distinct.length > cap;
+    final inline = needMore ? distinct.take(cap - 1).toList() : distinct;
+    final overflow = needMore ? [...distinct.skip(cap - 1), ...rest] : const <MomentAction>[];
     Widget btn(MomentAction m) => Tooltip(
           message: m.hint == null ? m.label : '${m.label} · ${m.hint}',
           child: Semantics(
@@ -417,8 +444,8 @@ class MomentActionIcons extends StatelessWidget {
             label: m.label,
             excludeSemantics: true,
             child: SizedBox(
-              width: 46,
-              height: 40,
+              width: kMomentIconBtn,
+              height: 42,
               child: OutlinedButton(
                 onPressed: m.onTap,
                 style: OutlinedButton.styleFrom(
@@ -432,7 +459,7 @@ class MomentActionIcons extends StatelessWidget {
             ),
           ),
         );
-    return Wrap(spacing: 8, runSpacing: 8, children: [
+    return Wrap(spacing: 6, runSpacing: 8, children: [
       for (final m in inline) btn(m),
       if (overflow.isNotEmpty)
         btn(MomentAction(

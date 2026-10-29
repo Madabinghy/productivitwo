@@ -18,7 +18,7 @@ import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
-import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, MomentActionIcons;
+import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, MomentActionIcons, kMomentIconBtn, kMomentInlineActions;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
@@ -512,37 +512,42 @@ class _NowCardState extends State<NowCard> {
         if (strip != null) ...[const SizedBox(height: 12), strip],
         const SizedBox(height: 14),
         Row(children: buttons),
-        if (chain != null)
+        // Lien « Enchaîner » et gestes rares sur UNE ligne (2026-10-30) : autant
+        // d'icônes que la largeur laisse après le lien (≥ 150 px), le reste
+        // derrière « ⋯ ».
+        if (chain != null || more.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Row(children: [
-              // lien « Enchaîner »
-                Flexible(
-                  child: TextButton.icon(
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      if (chain.small && widget.onChainSmall != null) {
-                        widget.onChainSmall!();
-                      } else {
-                        widget.onChain!();
-                      }
-                    },
-                    style: TextButton.styleFrom(
-                        foregroundColor: pal.primary,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                        minimumSize: const Size(0, 36),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                    icon: const Icon(Icons.playlist_play_rounded, size: 18),
-                    label: Text(chain.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: LayoutBuilder(builder: (context, c) {
+              final reserved = chain != null ? 150.0 + 6 : 0.0;
+              final fit = ((c.maxWidth - reserved + 6) / (kMomentIconBtn + 6)).floor().clamp(1, kMomentInlineActions);
+              return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                if (chain != null)
+                  Flexible(
+                    child: TextButton.icon(
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        if (chain.small && widget.onChainSmall != null) {
+                          widget.onChainSmall!();
+                        } else {
+                          widget.onChain!();
+                        }
+                      },
+                      style: TextButton.styleFrom(
+                          foregroundColor: pal.primary,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          minimumSize: const Size(0, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      icon: const Icon(Icons.playlist_play_rounded, size: 18),
+                      label: Text(chain.label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
                   ),
-                ),
-            ]),
+                if (chain != null && more.isNotEmpty) const SizedBox(width: 6),
+                if (more.isNotEmpty) MomentActionIcons(actions: more, title: title, maxInline: fit),
+              ]);
+            }),
           ),
-        if (more.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          MomentActionIcons(actions: more, title: title),
-        ],
         if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
           const SizedBox(height: 10),
           row,
