@@ -795,6 +795,8 @@ la dernière écriture gagne pour cette tâche. Hors connexion / transaction > 1
 d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste utilisable sans réseau. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
 « ✓ Action faite » (coche + arrête, annulable).
 
+**Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet

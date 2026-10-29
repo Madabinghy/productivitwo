@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/progression.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show momentOf, pickedMomentsOf, splitMomentsOf, toggleMoment;
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
+import 'package:productivitwo_v1/widgets/fiche.dart' show showFiche;
 import 'package:productivitwo_v1/widgets/icon_picker_sheet.dart';
 import 'package:productivitwo_v1/widgets/now_habit_tile_full.dart';
 
@@ -24,11 +25,10 @@ Future<void> showRoutineSheet(
   Future<void> Function(VoidCallback refresh)? onRename,
   VoidCallback? onSaved,
 }) async {
-  await showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (_) => RoutineDetailSheet(
+  await showFiche<void>(
+    context,
+    builder: (_, scroll) => RoutineDetailSheet(
+      scroll: scroll,
       logic: logic,
       st: logic.state,
       habitId: habitId,
@@ -46,9 +46,11 @@ class RoutineDetailSheet extends StatefulWidget {
   final DateTime day;
   final Future<void> Function(VoidCallback refresh)? onRename;
   final VoidCallback? onSaved;
+  final ScrollController? scroll;
 
   const RoutineDetailSheet({
     super.key,
+    this.scroll,
     required this.logic,
     required this.st,
     required this.habitId,
@@ -171,7 +173,8 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
 
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        controller: widget.scroll,
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
