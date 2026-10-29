@@ -58,8 +58,11 @@ class BlockFocus {
   final ScheduleBlock block;
   final Activity activity;
   final List<QueueItem> queue;
-  const BlockFocus({required this.block, required this.activity, required this.queue});
+  /// Jour du programme qui porte le bloc (`YYYY-MM-DD`).
+  final String ymd;
+  const BlockFocus({required this.block, required this.activity, required this.queue, required this.ymd});
 
+  DateTime get date => DateTime.parse(ymd);
   int remainingMin(DateTime now) => blockRemainingMin(block, now.hour * 60 + now.minute);
 }
 
@@ -70,9 +73,10 @@ Future<void> showBlockFocusScreen(
   required ScheduleBlock block,
   required Activity activity,
   required List<QueueItem> queue,
+  required String ymd,
   FirestoreSync? sync,
 }) {
-  final bf = BlockFocus(block: block, activity: activity, queue: queue);
+  final bf = BlockFocus(block: block, activity: activity, queue: queue, ymd: ymd);
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
     builder: (_) => _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true),
@@ -152,6 +156,17 @@ class _FocusScreenState extends State<_FocusScreen> {
       if (!b.queue[i].action.done) return i;
     }
     return null;
+  }
+
+  /// Fin du bloc : chrono arrêté, récap (temps tenu, fait, reste) et
+  /// « Caser un bloc demain ». Le bloc passe « fait » dès qu'il a du temps.
+  void _endBlock() {
+    final r = _running;
+    if (r != null) logic.stopActive();
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => _BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync),
+    ));
   }
 
   void _goTo(int index, {bool picking = false}) {
@@ -616,13 +631,22 @@ class _FocusScreenState extends State<_FocusScreen> {
           else
             primary('Action faite', Icons.check_rounded, () => _mutate(() => setActionDone(a, true))),
           Row(children: [
-            if (canChrono) link('Durée · Deep work 90 min', _chooseDuration, color: kPalierAmber),
+            if (widget.bloc != null) link('Terminer le bloc', _endBlock, color: text3) else if (canChrono) link('Durée · Deep work 90 min', _chooseDuration, color: kPalierAmber),
             const Spacer(),
             if (canChrono) link(next != null ? 'Étape faite' : 'Action faite', () => _mutate(() => next != null ? setChecklistItem(a, next.id, true) : setActionDone(a, true))),
           ]),
         ];
       case _Phase.running:
+        final over = widget.bloc != null && widget.bloc!.remainingMin(DateTime.now()) == 0;
         return [
+          if (over)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(children: [
+                Expanded(child: Text('Le bloc est fini · le chrono continue', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: kPalierAmber))),
+                link('Terminer le bloc', _endBlock, color: kPalierAmber),
+              ]),
+            ),
           const SizedBox(height: 8),
           if (next != null)
             primary('Étape faite', Icons.check_rounded, () => _mutate(() => setChecklistItem(a, next.id, true)))
@@ -642,6 +666,8 @@ class _FocusScreenState extends State<_FocusScreen> {
           const SizedBox(height: 8),
           if (nextIdx != null)
             primary('Enchaîner · ${widget.bloc!.queue[nextIdx].action.title}', Icons.play_arrow_rounded, () => _goTo(nextIdx))
+          else if (widget.bloc != null)
+            primary('Terminer le bloc', Icons.check_rounded, _endBlock)
           else if (nextAction != null && widget.project != null && widget.bloc == null)
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
               Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
@@ -658,8 +684,11 @@ class _FocusScreenState extends State<_FocusScreen> {
             })
           else
             primary('Fermer', Icons.check_rounded, () => Navigator.of(context).maybePop()),
-          if (nextIdx != null || (nextAction != null && widget.bloc == null))
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [link('Fermer', () => Navigator.of(context).maybePop(), color: text3)]),
+          if (nextIdx != null || widget.bloc != null || nextAction != null)
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              if (nextIdx != null && widget.bloc != null) link('Terminer le bloc', _endBlock, color: text3),
+              link('Fermer', () => Navigator.of(context).maybePop(), color: text3),
+            ]),
         ];
     }
   }
@@ -680,5 +709,156 @@ class _FocusScreenState extends State<_FocusScreen> {
   String _mmss(Duration d) {
     final h = d.inHours, m = d.inMinutes % 60, s = d.inSeconds % 60;
     return h > 0 ? '${h}h${m.toString().padLeft(2, '0')}' : '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Écran de fin d'un bloc d'activité (lot 2) : le temps tenu, ce qui a été
+/// fait sur ce bloc, ce qui reste dans la file (qui ne va nulle part : ça
+/// revient au prochain bloc de l'activité), « Caser un bloc demain ».
+class _BlockEndScreen extends StatefulWidget {
+  final AppLogic logic;
+  final BlockFocus bloc;
+  final FirestoreSync sync;
+  const _BlockEndScreen({required this.logic, required this.bloc, required this.sync});
+
+  @override
+  State<_BlockEndScreen> createState() => _BlockEndScreenState();
+}
+
+class _BlockEndScreenState extends State<_BlockEndScreen> {
+  late final BlockOutcome outcome;
+  bool _carried = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final b = widget.bloc;
+    outcome = blockOutcome(
+      block: b.block,
+      date: b.date,
+      activityId: b.activity.id,
+      queue: b.queue,
+      sessions: widget.logic.state.sessions,
+      now: DateTime.now(),
+    );
+    if (outcome.heldMin > 0 && b.block.status != 'done') {
+      widget.sync.updateBlockStatus(b.ymd, b.block.id, 'done', doneBy: 'focus').catchError((_) {});
+    }
+  }
+
+  Future<void> _carry() async {
+    final b = widget.bloc;
+    final tomorrow = b.date.add(const Duration(days: 1));
+    final ymd = '${tomorrow.year}-${tomorrow.month.toString().padLeft(2, '0')}-${tomorrow.day.toString().padLeft(2, '0')}';
+    try {
+      await widget.sync.upsertScheduleBlock(ymd, carriedActivityBlock(b.block, b.ymd));
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _carried = true);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bloc ${b.activity.name} posé demain à ${b.block.startTime}.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    final b = widget.bloc;
+    final w = blockWindow(b.block, b.date);
+    String hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    const days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+    Widget tile(String v, String l) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(14)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(v, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text(l, style: TextStyle(fontSize: 11, color: text3)),
+            ]),
+          ),
+        );
+    Widget section(String t) => Padding(
+          padding: const EdgeInsets.only(top: 18, bottom: 8),
+          child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
+        );
+    Widget row(QueueItem q, {String? right, bool done = false}) => Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (q.context case final c?) Text(c, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: text3)),
+                Text(q.action.title,
+                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, decoration: done ? TextDecoration.lineThrough : null, color: done ? text3 : null)),
+              ]),
+            ),
+            if (right != null) Text(right, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text3)),
+          ]),
+        );
+    final steps = outcome.stepsDone;
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              const SizedBox(width: 48),
+              Expanded(
+                child: Text('BLOC TERMINÉ', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.3, color: text3)),
+              ),
+              IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close_rounded, size: 20), onPressed: () => Navigator.of(context).maybePop()),
+            ]),
+            Expanded(
+              child: ListView(padding: const EdgeInsets.only(top: 10, bottom: 12), children: [
+                Text('${b.activity.name}${outcome.heldMin > 0 ? ' ✓' : ''}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.15)),
+                const SizedBox(height: 4),
+                Text('${hm(w.start)} → ${hm(w.end)} · ${days[b.date.weekday - 1]}', style: TextStyle(fontSize: 12.5, color: text3)),
+                const SizedBox(height: 14),
+                Row(children: [
+                  tile(fmtMin(outcome.heldMin), 'tenu sur ${fmtMin(b.block.durationMin)}'),
+                  const SizedBox(width: 8),
+                  tile('${outcome.doneItems.length}', outcome.doneItems.length == 1 ? 'action faite' : 'actions faites'),
+                  const SizedBox(width: 8),
+                  tile('$steps', steps == 1 ? 'étape' : 'étapes'),
+                ]),
+                if (outcome.doneItems.isNotEmpty) ...[
+                  section('FAIT SUR CE BLOC'),
+                  for (final q in outcome.doneItems) row(q, done: true, right: outcome.minutesByAction[q.id] == null ? null : fmtMin(outcome.minutesByAction[q.id]!)),
+                ],
+                if (outcome.remaining.isNotEmpty) ...[
+                  section('RESTE DANS LA FILE · ${outcome.remaining.length}'),
+                  for (final q in outcome.remaining) row(q, right: q.action.estimatedMin == null ? null : fmtMin(q.action.estimatedMin!)),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Elles ne vont nulle part : elles restent la prochaine action de leur projet et reviendront dans la file du prochain bloc ${b.activity.name}.',
+                      style: TextStyle(fontSize: 12.5, color: text3, height: 1.4),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: _carried ? null : _carry,
+                icon: Icon(_carried ? Icons.check_rounded : Icons.event_repeat_rounded),
+                label: Text(_carried ? 'Bloc posé demain' : 'Caser un bloc ${b.activity.name} demain',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                style: FilledButton.styleFrom(shape: const StadiumBorder()),
+              ),
+            ),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              TextButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                style: TextButton.styleFrom(foregroundColor: text3, textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                child: const Text('Fermer'),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    );
   }
 }

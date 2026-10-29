@@ -3134,7 +3134,11 @@ class _AppRootState extends State<AppRoot>
           );
           if (queue.isNotEmpty && mounted) {
             await showBlockFocusScreen(context,
-                logic: logic, block: block, activity: act, queue: queue);
+                logic: logic,
+                block: block,
+                activity: act,
+                queue: queue,
+                ymd: logic.livedTodayYmd);
             return;
           }
         }
