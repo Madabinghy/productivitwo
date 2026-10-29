@@ -553,7 +553,12 @@ chrono sur l'estimation, étape en cours en avant, `StepDots`, « Ensuite : … 
 Pause · Action faite · Terminer ; écran allumé) ; APRÈS (trace : ce chrono, total sur estimé, étapes ; « La tâche avance » = barre
 actions faites + reste ; « C'était comment ? » = `logMood(kMoodEffort)` ; « Enchaîner · action suivante » rouvre la page dessus).
 Chrono ciblé `logic.start(activityId, taskId:, actionId:)`, écriture `patchActionOf` / `updateOwnActions`, rien de nouveau en
-base. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'ACTION DU MOMENT (« Étape faite » / « Arrêter le chrono »
+base. **Grammaire de l'écran séance** (retour user 2026-10-30) : en-tête ✕ + titre + « bloc X · Projet › Tâche » (⏱ en action
+quand le chrono peut partir), bandeau « Étape k / n » + temps (≈ estimé · déjà passé, chrono en cours, ou reste du bloc) + barre des étapes
+(barre fine du chrono par-dessus), l'étape en cours en GRAND (28 px) + « Ensuite : … », Précédente · Étape suivante / Action faite, la
+liste complète des étapes (tap = cocher, appui long = renommer / retirer, « Ajouter une étape »), DÉTAIL ; en bas : « Lancer le chrono »
+/ « Commencer · … » (bloc) puis « Pause » pendant, liens Durée · Deep work / Terminer le bloc / Terminer · bilan / Suivante ›. L'anneau
+et `StepsSection` ne sont plus sur cette page. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'ACTION DU MOMENT (« Étape faite » / « Arrêter le chrono »
 en lien, « Ouvrir le projet » dans les gestes rares ; « Chrono seul » RETIRÉ le 2026-10-30 — sur la carte, le chrono part toujours
 de la page focus). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)
 est un autre fichier.
