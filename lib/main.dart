@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWin
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
@@ -2439,6 +2440,10 @@ class _AppRootState extends State<AppRoot>
     final s = (firestoreEnabled && remote != null)
         ? FirestoreSync.merge(local, remote)
         : local;
+
+    // Compteur du jour et hits des routines alignés (divergence d'avant le
+    // 2026-10-30) : le résultat part avec le re-push ci-dessous.
+    reconcileHabitStores(s, dayStartMin: kDefaultDayStartMin, now: DateTime.now());
 
     // Pointages remplacés restés en base (un clic = un document, avant 2026-10) :
     // purgés une fois pour toutes à la première fusion.

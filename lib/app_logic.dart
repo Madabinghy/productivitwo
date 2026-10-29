@@ -1590,12 +1590,15 @@ class AppLogic implements HuntStore {
     if (delta > 0) {
       final running = runningActivity(); // activité en cours (peut être null)
 
-      // log du contexte (30j)
-      state.habitHits.add(HabitHit(
-        habitId: activityId,
-        ts: DateTime.now(),
-        contextActivityId: running?.id,
-      ));
+      // log du contexte (30j) : une trace par unité, comme incHabit.
+      final now = DateTime.now();
+      for (var i = 0; i < delta; i++) {
+        state.habitHits.add(HabitHit(
+          habitId: activityId,
+          ts: now.add(Duration(milliseconds: i)),
+          contextActivityId: running?.id,
+        ));
+      }
 
       // pin au 1er clic si activité en cours
       if (running != null) {
