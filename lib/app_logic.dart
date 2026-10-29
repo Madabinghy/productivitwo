@@ -1066,8 +1066,11 @@ class AppLogic implements HuntStore {
 
     // 3) bloc en cours — ou qui commence dans les 15 min (cours de 14 h lancé
     //    à 13 h 55) — sur une AUTRE source → l'UI propose (pas d'écriture ici).
+    //    Coupé depuis le 2026-10-30 (`askBlockOnChrono`, retour user : « il me
+    //    demande systématiquement si ça correspond au bloc ») : le chrono fait
+    //    foi ; rattachement à la main par « Bloc ▾ ».
     final hook = onSessionOffBlock;
-    if (hook != null) {
+    if (hook != null && askBlockOnChrono) {
       final live = todayBlocks.where((b) => b.status != 'deleted').toList();
       final target = blockToAttachAt(live, livedNowMinNow)?.block;
       if (target != null && !sessionOnBlock(session, target)) {
@@ -1128,6 +1131,11 @@ class AppLogic implements HuntStore {
   /// même feuille qu'au démarrage, une fois par couple session × bloc.
   final blockWatcher = BlockTransitionWatcher();
 
+  /// Question « Pour ce bloc ? » au lancement d'un chrono et au changement de
+  /// bloc. false depuis le 2026-10-30 (retour user, sans réglage) : on ne
+  /// demande plus, le rattachement se fait à la main par « Bloc ▾ ».
+  static const askBlockOnChrono = false;
+
   void tickBlockTransition() {
     // Bascule de journée vécue (ou premier tick) → règlement de la veille.
     final ymd = livedYmdNow;
@@ -1135,6 +1143,7 @@ class AppLogic implements HuntStore {
       _lastTickLivedYmd = ymd;
       unawaited(settleFinishedDay());
     }
+    if (!askBlockOnChrono) return;
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;
     for (final s in state.sessions) {
