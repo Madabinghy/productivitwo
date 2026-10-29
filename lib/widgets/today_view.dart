@@ -998,30 +998,30 @@ class TodayViewState extends State<TodayView> {
             ),
             if (routines.isNotEmpty) ...[
               FicheTitle('ROUTINES À ATTEINDRE · ${routines.length}'),
-              for (final r in routines)
-                FicheStep(
-                  title: r.activity.name,
-                  detail: '${r.done} / ${r.target} aujourd\'hui',
-                  trailing: TextButton(
-                    onPressed: () {
-                      routinePlusWithUndo(context, widget.logic, r.activity);
-                      setLocal(() {});
-                    },
-                    child: const Text('+1'),
-                  ),
-                ),
+              const SizedBox(height: 6),
+              // Même vue que la fiche Routines, filtrée sur ce qui manque.
+              RoutinesDayView(
+                logic: widget.logic,
+                onlyMissing: true,
+                onStartTimed: widget.onStartTimed,
+                onChanged: () {
+                  if (ctx.mounted) setLocal(() {});
+                },
+              ),
             ],
             if (blocks.isNotEmpty) ...[
               FicheTitle('BLOCS À FAIRE · ${blocks.length}'),
-              for (final b in blocks)
-                FicheStep(
-                  title: b.title.isEmpty ? 'Bloc' : b.title,
-                  detail: '${b.startTime} · ${fmtMin(b.durationMin)}',
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _openProgramSheet();
-                  },
-                ),
+              // Même liste que le programme du jour, sans les blocs faits.
+              DailyScheduleView(
+                key: ValueKey('perfect-${widget.logic.livedTodayYmd}'),
+                date: widget.logic.livedTodayYmd,
+                logic: widget.logic,
+                visible: true,
+                onlyToDo: true,
+                title: '',
+                onLaunch: widget.onLaunch,
+                onOpenSource: widget.onOpenSource,
+              ),
             ],
             if (total > 0 && missing == 0)
               FicheNote(ledger.stock >= kEmberCap

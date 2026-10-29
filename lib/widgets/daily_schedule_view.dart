@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart' show countsForBadges;
 import 'package:productivitwo_v1/utils/challenge_reminders.dart';
 import 'package:productivitwo_v1/utils/routine_match.dart';
 import 'package:productivitwo_v1/notifications.dart';
@@ -47,6 +48,9 @@ class DailyScheduleView extends StatefulWidget {
   // Onglet réellement affiché ? (IndexedStack : le build hors écran ne doit
   // pas consumer l'auto-scroll « maintenant », qui est un one-shot.)
   final bool visible;
+  /// Journée parfaite : seulement les blocs qui comptent et restent à faire
+  /// (ni faits, ni miroirs d'agenda), sans résumé, « Plus tôt » ni ajout.
+  final bool onlyToDo;
 
   const DailyScheduleView(
       {super.key,
@@ -57,7 +61,8 @@ class DailyScheduleView extends StatefulWidget {
       this.title = 'Programme du jour',
       this.emptyText,
       this.onRegisterScrollToMinute,
-      this.visible = true});
+      this.visible = true,
+      this.onlyToDo = false});
 
   @override
   State<DailyScheduleView> createState() => _DailyScheduleViewState();
@@ -515,7 +520,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // B12 : sautés / déplacés hors de la vue, tracés par un compteur en pied.
     final aside = asideBlocks(_schedule?.blocks ?? const []);
     final visible = (_schedule?.blocks
-                .where((b) => b.status != 'deleted' && b.status != 'skipped')
+                .where((b) => widget.onlyToDo
+                    ? countsForBadges(b) && b.status == 'pending'
+                    : b.status != 'deleted' && b.status != 'skipped')
                 .toList() ??
             [])
       ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
@@ -571,9 +578,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           ),
         // Résumé prévu / fait : la visibilité globale de la journée en une
         // ligne, même en vue liste (le loggué inclut le chrono en cours).
-        if (visible.isNotEmpty) _daySummary(cs, visible),
+        if (visible.isNotEmpty && !widget.onlyToDo) _daySummary(cs, visible),
         SizedBox(height: bare ? 8 : 12),
-        if (visible.isEmpty)
+        if (visible.isEmpty && widget.onlyToDo)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text('Tous les blocs sont faits.', style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .6))),
+          )
+        else if (visible.isEmpty)
           _buildEmptyState(cs)
         else
           Builder(builder: (context) {
@@ -585,7 +597,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             // Aujourd'hui : les blocs finis depuis un moment sont repliés en
             // une ligne « Plus tôt » — l'écran reste sur ce qui vient, le
             // passé reste dans le programme (rattachement après coup, bilan).
-            final fold = _isToday && !_showEarlier
+            final fold = _isToday && !_showEarlier && !widget.onlyToDo
                 ? foldEarlierBlocks(visible, nowMin)
                 : (folded: const <ScheduleBlock>[], shown: visible);
             final rows = fold.shown;
@@ -625,14 +637,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               if (nowAtEnd) KeyedSubtree(key: _nowKey, child: _nowLine(now)),
             ]);
           }),
-        if (_isToday)
+        if (_isToday && !widget.onlyToDo)
           if (blocksToCarry(visible, widget.logic.livedNowMinNow) case final carry
               when showCarryCard(carry, widget.logic.livedNowMinNow))
             _carryCard(cs, carry),
-        if (_isToday)
+        if (_isToday && !widget.onlyToDo)
           if (_moodRow(cs) case final mood?) mood,
-        if (asideLabel(aside) != null) _asideRow(cs, aside),
-        if (bare) _addRow(cs),
+        if (asideLabel(aside) != null && !widget.onlyToDo) _asideRow(cs, aside),
+        if (bare && !widget.onlyToDo) _addRow(cs),
       ],
     );
   }

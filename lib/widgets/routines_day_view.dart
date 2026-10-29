@@ -99,7 +99,12 @@ class RoutinesDayView extends StatefulWidget {
   /// ⏱ de la carte du moment : chrono ciblé + décompte, routine cochée à la
   /// fin (même branchement que l'ancien « Le meilleur à faire »).
   final void Function(Activity routine, int minutes)? onStartTimed;
-  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain, this.onStartTimed});
+  /// Journée parfaite : seulement les routines quotidiennes pas encore
+  /// atteintes, par moment (sections vides masquées, toutes dépliées).
+  final bool onlyMissing;
+  /// Appelé après chaque changement (+1, −1, report…) : l'hôte se recalcule.
+  final VoidCallback? onChanged;
+  const RoutinesDayView({super.key, required this.logic, this.onOrganize, this.onChain, this.onStartTimed, this.onlyMissing = false, this.onChanged});
 
   @override
   State<RoutinesDayView> createState() => _RoutinesDayViewState();
@@ -114,6 +119,17 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
 
   AppLogic get logic => widget.logic;
   String get _ymd => logic.livedYmdNow;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    widget.onChanged?.call();
+  }
+
+  /// Lignes d'un moment (filtrées en mode Journée parfaite).
+  List<RoutineSlot> _rowsOf(RoutineDay day, String key) => widget.onlyMissing
+      ? day.of(key).where((s) => !s.reached && s.activity.habitFreq == HabitFreq.daily).toList()
+      : day.of(key);
 
   RoutineDay _day() => buildRoutineDay(
         activities: logic.state.activeActivities,
@@ -303,7 +319,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final day = _day();
     _defaultId = (_heldSlot(day) ?? day.queue.firstOrNull)?.id;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
+      if (!widget.onlyMissing) Row(children: [
         Expanded(
           child: Text('LA JOURNÉE PAR MOMENTS',
               style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: pal.text3)),
@@ -322,11 +338,12 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             ),
           ),
       ]),
-      const SizedBox(height: 10),
-      for (final m in logic.allMoments) ...[
-        if (day.of(m.key).isNotEmpty || m.timed) _momentSection(pal, day, m),
-        const SizedBox(height: 10),
-      ],
+      if (!widget.onlyMissing) const SizedBox(height: 10),
+      for (final m in logic.allMoments)
+        if (widget.onlyMissing ? _rowsOf(day, m.key).isNotEmpty : (day.of(m.key).isNotEmpty || m.timed)) ...[
+          _momentSection(pal, day, m),
+          const SizedBox(height: 10),
+        ],
     ]);
   }
 
@@ -485,10 +502,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   Widget _momentSection(NowPalette pal, RoutineDay day, Moment m) {
     final isCur = m.key == day.current.key;
     final always = m.key == kMomentAllDay;
-    final open = always || (_open[m.key] ?? isCur);
+    final open = always || (_open[m.key] ?? (isCur || widget.onlyMissing));
     final c = day.countOf(m.key);
     final left = day.leftoverCountOf(m.key);
-    final rows = day.of(m.key);
+    final rows = _rowsOf(day, m.key);
     return Container(
       decoration: BoxDecoration(
         color: isCur ? pal.track : pal.surface,
@@ -512,7 +529,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                   child: Text(m.window, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text4)),
                 ),
                 if (left > 0) ...[_tag('$left restée${left > 1 ? 's' : ''}'), const SizedBox(width: 10)],
-                Text('${c.done} / ${c.total}',
+                Text(widget.onlyMissing ? '${rows.length} à faire' : '${c.done} / ${c.total}',
                     style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700, color: pal.text2, fontFeatures: const [FontFeature.tabularFigures()])),
                 if (!always) ...[
