@@ -48,6 +48,8 @@ void main() {
     expect(w.kept, 1);
     expect(w.keptWeek, 0);
     expect(w.chronoMin, 100);
+    expect(w.dayHits, [1, 1, 1, 0, 0, 0, 0]); // lun. 26 · mar. 27 · mer. 28
+    expect(weekDayHits({'autre'}, hits, DateTime(2026, 10, 26)), [0, 0, 0, 0, 0, 0, 0]);
     final all = weekSummary(activities: acts, hits: hits, sessions: sessions, objectives: const [], now: now);
     expect(all.fromObjectives, isFalse);
     expect(all.engagements.length, 1);

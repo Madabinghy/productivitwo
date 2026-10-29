@@ -133,7 +133,10 @@ class WeekSummary {
   final int daysElapsed;
   /// Vrai quand les engagements sont ceux des objectifs (sinon : toutes les routines).
   final bool fromObjectives;
-  const WeekSummary({required this.engagements, required this.chronoMin, required this.daysElapsed, required this.fromObjectives});
+  /// Occurrences des routines engagées par jour (lundi → dimanche).
+  final List<int> dayHits;
+  const WeekSummary(
+      {required this.engagements, required this.chronoMin, required this.daysElapsed, required this.fromObjectives, this.dayHits = const [0, 0, 0, 0, 0, 0, 0]});
 
   int expectedOf(EngagementStat e) => expectedToDate(e.target, daysElapsed);
 
@@ -167,5 +170,23 @@ WeekSummary weekSummary({
   final only = engagedRoutineIds(objectives);
   final eng = weekEngagements(activities: activities, hits: hits, weekStart: monday, onlyIds: only);
   final chrono = minutesByActivity(sessions, monday, now).values.fold<int>(0, (s, m) => s + m);
-  return WeekSummary(engagements: eng, chronoMin: chrono, daysElapsed: now.weekday, fromObjectives: only != null && only.isNotEmpty);
+  return WeekSummary(
+      engagements: eng,
+      chronoMin: chrono,
+      daysElapsed: now.weekday,
+      fromObjectives: only != null && only.isNotEmpty,
+      dayHits: weekDayHits(eng.map((e) => e.id).toSet(), hits, monday));
+}
+
+/// Occurrences des routines [ids] par jour de la semaine (lundi → dimanche),
+/// pour les sept barres de la carte MA SEMAINE.
+List<int> weekDayHits(Set<String> ids, List<HabitHit> hits, DateTime weekStart) {
+  final start = DateTime(weekStart.year, weekStart.month, weekStart.day);
+  final out = List<int>.filled(7, 0);
+  for (final h in hits) {
+    if (!ids.contains(h.habitId)) continue;
+    final d = DateTime(h.ts.year, h.ts.month, h.ts.day).difference(start).inDays;
+    if (d >= 0 && d < 7) out[d]++;
+  }
+  return out;
 }

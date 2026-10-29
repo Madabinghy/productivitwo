@@ -493,7 +493,10 @@ aujourd'hui · Réglages ; la pilule chrono n'apparaît que si un chrono tourne.
 engagés fait / attendu, routines compte / cible, blocs, relevé dû ; `ProgressBricks(accent:)`), légende « Aujourd'hui : … », sous-ligne =
 état du rythme · relevé dû, boutons courts (Arrêter · Lancer · HH:MM · Chrono · n min · +1 · X · Noter un relevé · Ouvrir l'action),
 lien « Enchaîner · n », Autres = Bloc de 90 min · relevé · chronos des autres temps · +1 des autres routines · prochaines actions.
-Lots suivants : Ma semaine, MAINTENANT.
+**Lot 4 livré** : MA SEMAINE (`week_stats_view.dart`) — titre = « k / n au rythme », sous-ligne « attendu à ce jour · chrono · mode »,
+sept barres par jour (`WeekSummary.dayHits`, `weekDayHits` dans `utils/week_stats.dart` : occurrences des routines engagées, jour courant
+cerclé), légende « à rattraper : n », bouton « Détail », lien « Élan · 2,9 / 5 » (feuille du mode ; la section « ÉLAN · CETTE SEMAINE »
+et `_elanRow` sont retirées), Autres = Mode du jour · Gérer les domaines. Lot suivant : MAINTENANT.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
