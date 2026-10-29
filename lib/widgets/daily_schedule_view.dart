@@ -363,12 +363,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Filet : un glisser sur une ligne de 48 px part vite — « Annuler » 5 s
     // remet le bloc (et son étoile) tel quel.
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+    // Un seul message à la fois (plusieurs glissers = pas de file de 5 s
+    // chacun) et fermeture forcée au bout de 5 s quoi qu'il arrive.
+    final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
+    final ctrl = messenger.showSnackBar(SnackBar(
         content: Text('« ${block.title} » supprimé'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
+        dismissDirection: DismissDirection.horizontal,
         action: SnackBarAction(
           label: 'Annuler',
           onPressed: () async {
@@ -382,6 +384,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           },
         ),
       ));
+    Future<void>.delayed(const Duration(seconds: 5), () => ctrl.close());
   }
 
   /// Défi programmé gagné automatiquement si du temps a été loggué sur
@@ -743,7 +746,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     }
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
+      ..clearSnackBars()
       ..showSnackBar(SnackBar(
         content: Text(carryMessage(placed)),
         duration: const Duration(seconds: 6),
@@ -1597,7 +1600,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (block.challenge) await cancelChallengeNotifications(block);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
+      ..clearSnackBars()
       ..showSnackBar(SnackBar(
         content: Text('« ${block.title} » annulé'),
         duration: const Duration(seconds: 5),
