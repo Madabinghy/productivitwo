@@ -626,8 +626,12 @@ avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / F
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
 sauver, plus proche ; tap = écran `BadgesInPlayScreen` — SE PERD CE SOIR · PALIER CE SOIR · CHASSES · PROCHES, `badgesInPlay` —, bouton =
 le geste, « Tous les badges » = galerie), ACTIONS (`actionsTile` : visées aujourd'hui ; tap = onglet Actions, `onOpenActions`),
-PROJETS (`projectsTile` : séance la plus proche + prépa, retards sur le plan ; tap = onglet Projets, `onOpenProjects`). Lot à venir :
-4 = bilan du soir.
+PROJETS (`projectsTile` : séance la plus proche + prépa, retards sur le plan ; tap = onglet Projets, `onOpenProjects`). **Lot 4 livré** :
+bilan du soir (`utils/evening_ledger.dart`, `isEvening` = journée vécue ≥ 19 h) — `EveningLedgerCard` remplace le tableau du jour :
+gagnés · encore · perdus, AVANCÉ AUJOURD'HUI (paliers obtenus aujourd'hui `tierDates`, séries tenues, actions faites par projet
+`doneAt`, temps par activité avec l'objectif servi), LAISSÉ FILER (perdus, engagements de temps en retard sans rien aujourd'hui),
+« Demain en jeu » + « Encore possible ce soir » ; la liste devient ENCORE POSSIBLE CE SOIR (`StakesList(evening: true)`, sans
+gagné / perdu). **Les 4 lots sont livrés.**
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

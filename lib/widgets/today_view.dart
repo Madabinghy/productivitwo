@@ -23,7 +23,8 @@ import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
-import 'package:productivitwo_v1/utils/lived_day.dart' show mergeLivedDay, nextYmd;
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayStart, mergeLivedDay, nextYmd;
+import 'package:productivitwo_v1/utils/evening_ledger.dart';
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
 import 'package:productivitwo_v1/widgets/day_timeline_view.dart';
 import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
@@ -825,7 +826,12 @@ class TodayViewState extends State<TodayView> {
                 if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
                   if (_morningCard(cs, now, text3) case final card?) card,
-                  if (stakes case final board? when !board.isEmpty) ...[
+                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
+                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      EveningLedgerCard(ledger: ledger),
+                    ],
+                  ] else if (stakes case final board? when !board.isEmpty) ...[
                     const SizedBox(height: 12),
                     StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
                   ],
@@ -920,7 +926,7 @@ class TodayViewState extends State<TodayView> {
                     onChallengeSchedule: widget.onChallengeSchedule,
                   ),
                   if (stakes case final board? when !board.isEmpty)
-                    StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery),
+                    StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery, evening: isEvening(widget.logic.livedNowMinNow)),
                 ],
                 const SizedBox(height: 22),
                 KeyedSubtree(key: _programKey, child: _programHeader(cs, link, text3)),
@@ -1261,6 +1267,22 @@ class TodayViewState extends State<TodayView> {
     } catch (_) {
       return null;
     }
+  }
+
+  EveningLedger _eveningLedger(StakeBoard board) {
+    final bc = widget.badges;
+    final now = DateTime.now();
+    final st = widget.logic.state;
+    return buildEveningLedger(
+      board: board,
+      deck: bc?.deck,
+      projects: widget.logic.currentProjects,
+      activities: st.activeActivities,
+      sessions: st.sessions,
+      objectiveDays: bc?.todayFacts().objectiveDays ?? const [],
+      dayStart: livedDayStart(now, widget.logic.dayStartMin),
+      now: now,
+    );
   }
 
   void _openBadgeGallery() {

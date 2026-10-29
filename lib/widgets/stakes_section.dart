@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
+import 'package:productivitwo_v1/utils/evening_ledger.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
@@ -103,7 +104,10 @@ class StakesList extends StatefulWidget {
   final void Function(Stake s) onRun;
   /// Ouvre la galerie des badges (lien d'un geste qui sert un badge).
   final VoidCallback? onOpenBadges;
-  const StakesList({super.key, required this.board, required this.onRun, this.onOpenBadges});
+  /// Le soir (lot 4) : le bilan porte gagné / perdu ; la liste ne garde que
+  /// ce qui reste possible.
+  final bool evening;
+  const StakesList({super.key, required this.board, required this.onRun, this.onOpenBadges, this.evening = false});
 
   @override
   State<StakesList> createState() => _StakesListState();
@@ -116,19 +120,20 @@ class _StakesListState extends State<StakesList> {
   @override
   Widget build(BuildContext context) {
     final b = widget.board;
-    if (b.isEmpty) return const SizedBox.shrink();
+    if (b.isEmpty || (widget.evening && b.inPlay == 0)) return const SizedBox.shrink();
+    final ev = widget.evening;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (b.top.isNotEmpty) ...[
-        _sec('EN JEU D’ICI CE SOIR', b.rest.isEmpty ? '${b.top.length}' : '${b.top.length} sur ${b.inPlay}'),
+        _sec(ev ? 'ENCORE POSSIBLE CE SOIR' : 'EN JEU D’ICI CE SOIR', b.rest.isEmpty ? '${b.top.length}' : '${b.top.length} sur ${b.inPlay}'),
         for (final s in b.top) _item(s),
       ],
       if (b.rest.isNotEmpty) _restToggle(b.rest),
       if (_restOpen) ..._restList(b.rest),
-      if (b.won.isNotEmpty) ...[
+      if (!ev && b.won.isNotEmpty) ...[
         _sec('GAGNÉ AUJOURD’HUI', '${b.won.length}'),
         _summary(Icons.check_rounded, kBPrimary, b.won.join(' · ')),
       ],
-      if (b.lost.isNotEmpty) ...[
+      if (!ev && b.lost.isNotEmpty) ...[
         _sec(b.lost.length > 1 ? 'PERDUS' : 'PERDU', '${b.lost.length}'),
         _summary(Icons.close_rounded, kStakeLose, b.lost.join(' · ')),
       ],
@@ -403,6 +408,85 @@ class StakeGauge extends StatelessWidget {
           Container(width: w * d / total, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
         ]);
       }),
+    );
+  }
+}
+
+/// Le bilan du soir (lot 4) : le tableau du jour retourné — gagnés, encore,
+/// perdus ; AVANCÉ AUJOURD'HUI ; LAISSÉ FILER ; demain en jeu.
+class EveningLedgerCard extends StatelessWidget {
+  final EveningLedger ledger;
+  const EveningLedgerCard({super.key, required this.ledger});
+
+  @override
+  Widget build(BuildContext context) {
+    final l = ledger;
+    Widget counter(int n, String label, Color c) => Expanded(
+          child: Column(children: [
+            Text('$n', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
+            Text(label, style: const TextStyle(fontSize: 10, letterSpacing: .8, fontWeight: FontWeight.w700, color: kBText3)),
+          ]),
+        );
+    Widget sec(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(0, 14, 0, 6),
+          child: Text(t, style: const TextStyle(fontSize: 11, letterSpacing: 1, fontWeight: FontWeight.w800, color: kBText3)),
+        );
+    Widget line(LedgerLine x, Color c) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Container(
+              constraints: const BoxConstraints(minWidth: 52),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+              decoration: BoxDecoration(color: c.withValues(alpha: .14), borderRadius: BorderRadius.circular(8)),
+              child: Text(x.figure, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: c)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(x.title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kBText)),
+                Text(x.sub, style: const TextStyle(fontSize: 12, color: kBText3, height: 1.3)),
+              ]),
+            ),
+          ]),
+        );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Text('Ce soir · ta journée', style: TextStyle(fontSize: 13, color: kBText3, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          if (l.total > 0) Text('tenu ${l.won} sur ${l.total}', style: const TextStyle(fontSize: 13, color: kBText, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          counter(l.won, 'GAGNÉS', kBPrimary),
+          counter(l.stillPossible.length, 'ENCORE', kStakeHunt),
+          counter(l.lost, l.lost > 1 ? 'PERDUS' : 'PERDU', kStakeLose),
+        ]),
+        if (l.advanced.isNotEmpty) ...[sec('AVANCÉ AUJOURD’HUI'), for (final x in l.advanced) line(x, kBPrimary)],
+        if (l.slipped.isNotEmpty) ...[sec('LAISSÉ FILER'), for (final x in l.slipped) line(x, kStakeLose)],
+        if (l.tomorrow.isNotEmpty || l.stillPossible.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: kBRaised.withValues(alpha: .6), borderRadius: BorderRadius.circular(10)),
+            child: Text.rich(
+              TextSpan(children: [
+                if (l.tomorrow.isNotEmpty) ...[
+                  const TextSpan(text: 'Demain en jeu : ', style: TextStyle(fontWeight: FontWeight.w800, color: kBText)),
+                  TextSpan(text: '${l.tomorrow.join(' · ')}. '),
+                ],
+                if (l.stillPossible.isNotEmpty) ...[
+                  const TextSpan(text: 'Encore possible ce soir : ', style: TextStyle(fontWeight: FontWeight.w800, color: kBText)),
+                  TextSpan(text: '${l.stillPossible.take(3).join(', ')}${l.stillPossible.length > 3 ? '…' : ''}.'),
+                ],
+              ]),
+              style: const TextStyle(fontSize: 12.5, color: kBText2, height: 1.4),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 }
