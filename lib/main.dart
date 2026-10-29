@@ -3034,7 +3034,7 @@ class _AppRootState extends State<AppRoot>
                 : null,
             onOpenTask: openTask,
             onBlockDone: isToday
-                ? () => _sync.updateBlockStatus(logic.livedTodayYmd, block.id, 'done', manual: true)
+                ? () => _sync.updateBlockStatus(block.docDate ?? logic.livedTodayYmd, block.id, 'done', manual: true)
                 : null);
         return;
       }
@@ -3138,7 +3138,7 @@ class _AppRootState extends State<AppRoot>
                 block: block,
                 activity: act,
                 queue: queue,
-                ymd: logic.livedTodayYmd);
+                ymd: block.docDate ?? logic.livedTodayYmd);
             return;
           }
         }
@@ -4540,34 +4540,6 @@ class _AppRootState extends State<AppRoot>
   /// Minutes de sommeil des 7 dernières nuits (ancien → récent) + cible.
   /// Nuit attribuée au jour du RÉVEIL (fin de session) ; activités retenues :
   /// domaine « Sommeil » ou nom contenant « sommeil ».
-  (List<int>, int, Domain?) _sleepLast7(DateTime now) {
-    Domain? sleepDomain;
-    for (final d in logic.state.activeDomains) {
-      if (d.name.toLowerCase().contains('sommeil')) sleepDomain = d;
-    }
-    var goal = 7 * 60;
-    final ids = <String>{};
-    for (final a in logic.state.activeActivities) {
-      final inDomain = sleepDomain != null && a.domainId == sleepDomain.id;
-      if (inDomain || a.name.toLowerCase().contains('sommeil')) {
-        ids.add(a.id);
-        if (!a.isHabit && a.goalMin > 60) goal = a.goalMin;
-      }
-    }
-    final today0 = DateTime(now.year, now.month, now.day);
-    final mins = List<int>.filled(7, 0);
-    if (ids.isEmpty) return (mins, goal, sleepDomain);
-    for (final s in logic.state.sessions) {
-      if (!ids.contains(s.activityId)) continue;
-      final end = s.endAt ?? now;
-      final endDay = DateTime(end.year, end.month, end.day);
-      final idx = 6 - today0.difference(endDay).inDays;
-      if (idx < 0 || idx > 6) continue;
-      mins[idx] += end.difference(s.startAt).inMinutes;
-    }
-    return (mins, goal, sleepDomain);
-  }
-
   /// Pastille rouge « actions en retard » sur l'icône de l'onglet Actions.
   Widget _overdueBadge(Widget icon) {
     final n = overdueActionCount(logic.currentProjects, DateTime.now());
@@ -5283,228 +5255,176 @@ class _AppRootState extends State<AppRoot>
                 );
               },
             ),
-            // 🌙 Mini-graphe sommeil (7 nuits) — test 2026-09. Tap → fiche
-            // du domaine Sommeil. Masqué si aucune nuit logguée sur 7 j.
-            ValueListenableBuilder<int>(
-              valueListenable: _tick,
-              builder: (context, _, __) {
-                final now = DateTime.now();
-                final (nights, goal, sleepDomain) = _sleepLast7(now);
-                if (nights.every((m) => m <= 0)) {
-                  return const SizedBox.shrink();
-                }
-                final last = nights[6] > 0 ? nights[6] : nights[5];
-                final label = last <= 0
-                    ? '—'
-                    : '${last ~/ 60}h${(last % 60).toString().padLeft(2, '0')}';
-                final cs = Theme.of(context).colorScheme;
-                return Padding(
+            Flexible(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Padding(
                   padding: const EdgeInsets.only(left: 6),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: sleepDomain == null
-                          ? null
-                          : () {
-                              final (sc, ec, dj) =
-                                  _rangeForScope(DateTime.now());
-                              _showDomainDetail(sleepDomain, sc, ec, dj,
-                                  focus: 'time');
-                            },
-                      borderRadius: BorderRadius.circular(999),
-                      child: Ink(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: cs.surfaceContainerHighest
-                              .withValues(alpha: .55),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                              color:
-                                  cs.outlineVariant.withValues(alpha: .55)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            MiniSleepBars(nightsMin: nights, goalMin: goal),
-                            const SizedBox(width: 5),
-                            Text(label,
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    fontFeatures: const [
-                                      FontFeature.tabularFigures()
-                                    ],
-                                    color: cs.onSurface.withOpacity(.7))),
-                          ],
-                        ),
-                      ),
+                  child: ModePill(logic: logic, badges: _badges),
+                ),
+              ),
+            ),
+
+          ],
+        ),
+        actions: [
+            Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.lightbulb_outline, size: 20),
+                tooltip: 'Inbox',
+                onPressed: () => showInboxSheet(context, _sync),
+              ),
+              if (_inboxPendingCount > 0)
+                Positioned(
+                  right: 6,
+                  top: 6,
+                  child: Container(
+                    width: 8, height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade600,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Plus',
+            onSelected: (v) async {
+              if (v == 'sync_status') {
+                // Ouverture (kFreeForAll) : plus de paywall, console directe.
+                Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
+              } else if (v == 'proposals') {
+                showProposalsSheet(context, _sync);
+              } else if (v == 'orion') {
+                OrionScreen.show(context, _sync);
+              } else if (v == 'weekly_review') {
+                showWeeklyReviewSheet(context, _sync);
+              } else if (v == 'filters') {
+                _openFiltersSheet(context);
+              } else if (v == 'changelog') {
+                showChangelogSheet(context);
+              } else if (v == 'catalogue') {
+                await showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  builder: (_) => DraggableScrollableSheet(
+                    expand: false,
+                    initialChildSize: 0.92,
+                    minChildSize: 0.5,
+                    maxChildSize: 0.95,
+                    builder: (_, controller) => CatalogueSheet(
+                      logic: logic,
+                      onChanged: () => setState(() {}),
                     ),
                   ),
                 );
-              },
-            ),
-            // Mode du jour + traînée d'élan (matin · aprem · soir) ; tap = la feuille.
-            Padding(
-              padding: const EdgeInsets.only(left: 6),
-              child: ModePill(logic: logic, badges: _badges),
-            ),
-            const Spacer(),
-            // (Indicateur composite gamifié supprimé avec la couche jeu.)
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.lightbulb_outline, size: 20),
-                  tooltip: 'Inbox',
-                  onPressed: () => showInboxSheet(context, _sync),
-                ),
-                if (_inboxPendingCount > 0)
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Container(
-                      width: 8, height: 8,
-                      decoration: BoxDecoration(
-                        color: Colors.amber.shade600,
-                        shape: BoxShape.circle,
+              } else if (v == 'settings') {
+                _showSettingsSheet(context);
+              }
+            },
+            itemBuilder: (_) => [
+              // Indicateur sync / Pro
+              PopupMenuItem(
+                value: 'sync_status',
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: ProManager.notifier,
+                  builder: (ctx, isPro, _) => Row(
+                    children: [
+                      Icon(
+                        isPro
+                            ? (_syncStatus == '☁️' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined)
+                            : Icons.lock_outlined,
+                        size: 18,
+                        color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.4),
                       ),
-                    ),
-                  ),
-              ],
-            ),
-            // Propositions à valider (déplacé ici depuis la Revue de la semaine).
-            // Orion Stratège déplacé dans le menu « Plus ».
-            IconButton(
-              icon: const Icon(Icons.fact_check_outlined, size: 20),
-              tooltip: 'Propositions à valider',
-              onPressed: () => showProposalsSheet(context, _sync),
-            ),
-            const SizedBox(width: 4),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              tooltip: 'Plus',
-              onSelected: (v) async {
-                if (v == 'sync_status') {
-                  // Ouverture (kFreeForAll) : plus de paywall, console directe.
-                  Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const DevConsoleScreen()));
-                } else if (v == 'orion') {
-                  OrionScreen.show(context, _sync);
-                } else if (v == 'weekly_review') {
-                  showWeeklyReviewSheet(context, _sync);
-                } else if (v == 'filters') {
-                  _openFiltersSheet(context);
-                } else if (v == 'changelog') {
-                  showChangelogSheet(context);
-                } else if (v == 'catalogue') {
-                  await showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    showDragHandle: true,
-                    builder: (_) => DraggableScrollableSheet(
-                      expand: false,
-                      initialChildSize: 0.92,
-                      minChildSize: 0.5,
-                      maxChildSize: 0.95,
-                      builder: (_, controller) => CatalogueSheet(
-                        logic: logic,
-                        onChanged: () => setState(() {}),
+                      const SizedBox(width: 12),
+                      Text(
+                        isPro
+                            ? (_syncStatus == '☁️' ? 'Sync OK' : 'Mode local')
+                            : 'Passer à Pro',
+                        style: TextStyle(
+                          color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.5),
+                        ),
                       ),
-                    ),
-                  );
-                } else if (v == 'settings') {
-                  _showSettingsSheet(context);
-                }
-              },
-              itemBuilder: (_) => [
-                // Indicateur sync / Pro
-                PopupMenuItem(
-                  value: 'sync_status',
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable: ProManager.notifier,
-                    builder: (ctx, isPro, _) => Row(
-                      children: [
-                        Icon(
-                          isPro
-                              ? (_syncStatus == '☁️' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined)
-                              : Icons.lock_outlined,
-                          size: 18,
-                          color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.4),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          isPro
-                              ? (_syncStatus == '☁️' ? 'Sync OK' : 'Mode local')
-                              : 'Passer à Pro',
-                          style: TextStyle(
-                            color: isPro ? null : Theme.of(ctx).colorScheme.onSurface.withOpacity(.5),
-                          ),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'orion',
-                  child: Row(children: [
-                    Icon(Icons.smart_toy_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Orion Stratège'),
-                  ]),
-                ),
-                const PopupMenuItem(
-                  value: 'weekly_review',
-                  child: Row(children: [
-                    Icon(Icons.cleaning_services_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Revue de la semaine'),
-                  ]),
-                ),
-                PopupMenuItem(
-                  value: 'filters',
-                  child: Row(children: [
-                    Icon(Icons.tune, size: 18,
-                        color: filtersOn ? Theme.of(context).colorScheme.primary : null),
-                    const SizedBox(width: 12),
-                    Text('Filtres',
-                        style: filtersOn
-                            ? TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)
-                            : null),
-                  ]),
-                ),
-                const PopupMenuItem(
-                  value: 'changelog',
-                  child: Row(children: [
-                    Icon(Icons.new_releases_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Nouveautés'),
-                  ]),
-                ),
-                const PopupMenuItem(
-                  value: 'catalogue',
-                  child: Row(children: [
-                    Icon(Icons.library_add_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Catalogue'),
-                  ]),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'settings',
-                  child: Row(children: [
-                    Icon(Icons.settings_outlined, size: 18),
-                    SizedBox(width: 12),
-                    Text('Paramètres'),
-                    Spacer(),
-                    Icon(Icons.chevron_right, size: 16),
-                  ]),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'proposals',
+                child: Row(children: [
+                  Icon(Icons.fact_check_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Propositions à valider'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'orion',
+                child: Row(children: [
+                  Icon(Icons.smart_toy_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Orion Stratège'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'weekly_review',
+                child: Row(children: [
+                  Icon(Icons.cleaning_services_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Revue de la semaine'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'filters',
+                child: Row(children: [
+                  Icon(Icons.tune, size: 18,
+                      color: filtersOn ? Theme.of(context).colorScheme.primary : null),
+                  const SizedBox(width: 12),
+                  Text('Filtres',
+                      style: filtersOn
+                          ? TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)
+                          : null),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'changelog',
+                child: Row(children: [
+                  Icon(Icons.new_releases_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Nouveautés'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'catalogue',
+                child: Row(children: [
+                  Icon(Icons.library_add_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Catalogue'),
+                ]),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(children: [
+                  Icon(Icons.settings_outlined, size: 18),
+                  SizedBox(width: 12),
+                  Text('Paramètres'),
+                  Spacer(),
+                  Icon(Icons.chevron_right, size: 16),
+                ]),
+              ),
+            ],
+          ),
+          const SizedBox(width: 4),
+        ],
       ),
 
 // --- Dans build(...) ---
