@@ -24,6 +24,7 @@ export interface TaskActionPayload {
   contexts?: string[]; // multi-contextes GTD (context = le premier)
   estimatedMin?: number | null; // durée estimée (min) ; absent = sans estimation
   dueDate?: string | null; // échéance PROPRE (YYYY-MM-DD) ; absente = la date de la tâche fait foi
+  focusDate?: string | null; // JOUR VISÉ (YYYY-MM-DD) : intention, jamais en retard — la date par défaut d'une action
   checklist?: Array<string | ChecklistItemPayload>; // micro-actions (3ᵉ niveau)
 }
 

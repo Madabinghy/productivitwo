@@ -12,6 +12,7 @@ exports.executeWeeklyReview = executeWeeklyReview;
 exports.executeUpdateActions = executeUpdateActions;
 exports.executeManageInterventionTemplates = executeManageInterventionTemplates;
 exports.executeMigrateInterventions = executeMigrateInterventions;
+exports.executeMigrateFocusDates = executeMigrateFocusDates;
 exports.executeListSessions = executeListSessions;
 exports.executeDeleteSessions = executeDeleteSessions;
 exports.executeUpdateSession = executeUpdateSession;
@@ -114,6 +115,7 @@ const weekly_report_1 = require("./weekly_report");
 const objectives_1 = require("./objectives");
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
+const focus_dates_1 = require("./focus_dates");
 const objective_trajectory_1 = require("./objective_trajectory");
 // ── Date helpers ──────────────────────────────────────────────────────────────
 /** Retourne YYYY-MM-DD dans le fuseau Europe/Paris. */
@@ -226,10 +228,11 @@ function pickTask(t) {
             : typeof o.context === "string" ? [o.context] : [];
         const est = (_b = (_a = estimatedMinOrUndefined(o.estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(o.title, ctxs)) !== null && _b !== void 0 ? _b : undefined;
         const due = actionDueDate(o.dueDate, "action.dueDate");
-        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
+        const focus = actionDueDate(o.focusDate, "action.focusDate");
+        return withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof o.id === "string" ? o.id : (0, uuid_1.v4)(), title: typeof o.title === "string" ? o.title : String((_c = o.title) !== null && _c !== void 0 ? _c : ""), done: o.done === true, doneAt: typeof o.doneAt === "string" ? o.doneAt : null, createdAt: typeof o.createdAt === "string"
                 ? o.createdAt : new Date().toISOString() }, (typeof o.linkedActivityId === "string" && o.linkedActivityId
             ? { linkedActivityId: o.linkedActivityId } : {})), (typeof o.context === "string" ? { context: o.context } : {})), (Array.isArray(o.contexts)
-            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
+            ? { contexts: o.contexts.filter((c) => typeof c === "string") } : {})), (est !== undefined ? { estimatedMin: est } : {})), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (noteOrUndefined(o.note) !== undefined ? { note: noteOrUndefined(o.note) } : {})), (Array.isArray(o.checklist) ? { checklist: normalizeChecklist(o.checklist) } : {})));
     });
     const estimatedMin = estimatedMinOrUndefined(t.estimatedMin);
     return Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({ id: typeof t.id === "string" ? t.id : (0, uuid_1.v4)(), title, startDate: t.startDate }, (typeof t.endDate === "string" ? { endDate: t.endDate } : {})), (typeof t.phaseId === "string" ? { phaseId: t.phaseId } : {})), (typeof t.groupLabel === "string" ? { groupLabel: t.groupLabel } : {})), (typeof t.color === "string" ? { color: t.color } : {})), (typeof t.barLabel === "string" ? { barLabel: t.barLabel } : {})), (typeof t.interventionId === "string" && t.interventionId ? { interventionId: t.interventionId } : {})), (typeof t.interventionRole === "string" && ["prep", "session", "closure"].includes(t.interventionRole)
@@ -607,7 +610,7 @@ async function executeGetUserContext(uid) {
             .filter((a) => (a === null || a === void 0 ? void 0 : a.done) !== true)
             .map((a) => {
             var _a;
-            return (Object.assign(Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, (typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
+            return (Object.assign(Object.assign(Object.assign({ id: a.id, title: a.title, done: false, estimatedMin: (_a = estimatedMinOrUndefined(a.estimatedMin)) !== null && _a !== void 0 ? _a : null }, (typeof a.dueDate === "string" && a.dueDate ? { dueDate: a.dueDate } : {})), (typeof a.focusDate === "string" && a.focusDate ? { focusDate: a.focusDate } : {})), ((0, contexts_1.contextsOf)(a).length > 0 ? { contexts: (0, contexts_1.contextsOf)(a) } : {})));
         });
         return Object.assign(Object.assign({ id: v.id, name: v.name, type: v.type, domainId: v.domainId, goalMin: v.goalMin, habitFreq: v.habitFreq, habitTarget: v.habitTarget }, (ownActions.length > 0 ? { ownActions } : {})), (ownDone > 0 ? { ownActionsDone: ownDone } : {}));
     });
@@ -1704,13 +1707,14 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                         contexts: Array.isArray(a.contexts) ? a.contexts : [],
                         estimatedMin: (_j = estimatedMinOrUndefined(a.estimatedMin)) !== null && _j !== void 0 ? _j : null,
                         dueDate: typeof a.dueDate === "string" && a.dueDate ? a.dueDate : null,
+                        focusDate: typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null,
                         checklist: Array.isArray(a.checklist)
                             ? a.checklist : [],
                     };
                 }
             }
             patch.actions = rawActions.map((a) => {
-                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j, _l, _m, _o, _p, _q, _r;
                 const obj = typeof a === "object" && a !== null ? a : null;
                 const title = typeof a === "string"
                     ? a
@@ -1734,10 +1738,14 @@ async function executeUpdateTask(uid, projectId, taskId, updates) {
                     dueDate: obj && "dueDate" in obj
                         ? ((_m = actionDueDate(obj.dueDate, "action.dueDate")) !== null && _m !== void 0 ? _m : null)
                         : (_o = previous === null || previous === void 0 ? void 0 : previous.dueDate) !== null && _o !== void 0 ? _o : null,
+                    // Jour visé fourni (null / "" = retirer) ; sinon celui conservé.
+                    focusDate: obj && "focusDate" in obj
+                        ? ((_p = actionDueDate(obj.focusDate, "action.focusDate")) !== null && _p !== void 0 ? _p : null)
+                        : (_q = previous === null || previous === void 0 ? void 0 : previous.focusDate) !== null && _q !== void 0 ? _q : null,
                     // Checklist fournie → normalisée ; sinon celle de l'action conservée.
                     checklist: Array.isArray(obj === null || obj === void 0 ? void 0 : obj.checklist)
                         ? normalizeChecklist(obj.checklist)
-                        : (_p = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _p !== void 0 ? _p : [],
+                        : (_r = previous === null || previous === void 0 ? void 0 : previous.checklist) !== null && _r !== void 0 ? _r : [],
                 });
             });
         }
@@ -2006,6 +2014,10 @@ async function executeUpdateAction(uid, args) {
         patch.dueDate = null;
     else if (args.dueDate !== undefined)
         patch.dueDate = args.dueDate;
+    if (args.clearFocusDate === true)
+        patch.focusDate = null;
+    else if (args.focusDate !== undefined)
+        patch.focusDate = args.focusDate;
     if (args.clearNote === true)
         patch.note = null;
     else if (args.note !== undefined)
@@ -2219,11 +2231,12 @@ async function executeManageContexts(uid, args) {
 // Crée une action PROPRE sur une activité (Activity.ownActions) : une TaskAction
 // qui appartient directement à l'activité, sans tâche/projet. Réutilisable ensuite
 // dans schedule_day (activityId + actionId) pour la programmer.
-async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin, dueDate, note) {
+async function executeAddActivityAction(uid, activityId, title, context, contexts, estimatedMin, dueDate, note, focusDate) {
     var _a;
     if (!(title === null || title === void 0 ? void 0 : title.trim()))
         return "Titre de l'action requis.";
     const due = actionDueDate(dueDate, "dueDate");
+    const focus = actionDueDate(focusDate, "focusDate");
     const cleanNote = noteOrUndefined(note);
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
     const snap = await ref.get();
@@ -2235,11 +2248,11 @@ async function executeAddActivityAction(uid, activityId, title, context, context
     const own = Array.isArray(data.ownActions)
         ? data.ownActions.slice()
         : [];
-    const action = withBothContexts(Object.assign(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
+    const action = withBothContexts(Object.assign(Object.assign(Object.assign(Object.assign({ id: (0, uuid_1.v4)(), title: title.trim(), done: false, doneAt: null, createdAt: new Date().toISOString(), linkedActivityId: activityId, context: (context === null || context === void 0 ? void 0 : context.trim()) || null, contexts: Array.isArray(contexts) ? contexts : [] }, (() => {
         var _a;
         const est = (_a = estimatedMinOrUndefined(estimatedMin)) !== null && _a !== void 0 ? _a : (0, default_estimates_1.defaultEstimateFor)(title, [...(Array.isArray(contexts) ? contexts : []), context !== null && context !== void 0 ? context : ""]);
         return est !== undefined && est !== null ? { estimatedMin: est } : {};
-    })()), (due !== undefined ? { dueDate: due } : {})), (cleanNote ? { note: cleanNote } : {})));
+    })()), (due !== undefined ? { dueDate: due } : {})), (focus !== undefined ? { focusDate: focus } : {})), (cleanNote ? { note: cleanNote } : {})));
     own.push(action);
     await ref.update({ ownActions: own });
     const estNote = estimatedMinOrUndefined(estimatedMin) === undefined && typeof action.estimatedMin === "number"
@@ -2856,6 +2869,8 @@ async function executePlanDay(uid, args) {
     }));
     // Charge par activité : ce que la file du bloc proposera dans l'app.
     const projectDatas = projectsSnap.docs.map((d) => (Object.assign({ id: d.id }, d.data())));
+    // Jour visé : les actions que l'utilisateur veut sous la main ce jour-là.
+    const focusedToday = (0, focus_dates_1.focusedActions)(projectDatas, date);
     const timeActivities = timeActivitiesRaw.map(({ line, id }) => {
         const label = (0, block_style_1.activityLoadLabel)((0, block_style_1.activityLoad)(id, projectDatas, date));
         return label ? `${line} — ${label}` : line;
@@ -2895,6 +2910,11 @@ async function executePlanDay(uid, args) {
         `── PROJETS ACTIFS (${projectDetails.length}) ──`,
         projectDetails.length > 0 ? projectDetails.join("\n\n---\n\n") : "Aucun projet actif.",
         ``,
+        `── ACTIONS VISÉES POUR CE JOUR (${focusedToday.length}) ──`,
+        `Jour visé (focusDate) = l'intention de l'utilisateur, pas un bloc : elles passent en tête de la file`,
+        `des blocs d'activité. Dimensionne les blocs d'activité avec ; ne crée JAMAIS un bloc par action.`,
+        focusedToday.length > 0 ? focusedToday.join("\n") : "  Aucune.",
+        ``,
         `── ACTIVITÉS-TEMPS PROGRAMMABLES (${timeActivities.length}) ──`,
         `Un bloc d'ACTIVITÉ porte UNIQUEMENT activityId (sans projet/tâche/action), titre = le nom de`,
         `l'activité : au ▶, l'app propose la prochaine action de chaque projet lié (en retard d'abord).`,
@@ -2914,8 +2934,9 @@ async function executePlanDay(uid, args) {
         `     regroupe en séquences ADJACENTES les blocs dont les actions partagent le même contexte`,
         `     (toutes les courses ensemble, tout l'@ordinateur d'affilée…) pour éviter les allers-retours`,
         `   → Ne pas recréer les blocs marqués [supprimé par l'utilisateur]`,
-        `   → ÉCHÉANCES : une action peut porter sa propre dueDate (YYYY-MM-DD), qui PRIME sur la date de sa tâche —`,
-        `     programme d'abord ce qui échoit le plus tôt ; une date connue sans dueDate → update_action {dueDate}.`,
+        `   → DATES : le JOUR VISÉ d'une action (focusDate) dit quand l'utilisateur veut la faire — c'est la date par`,
+        `     défaut ; pour reporter une action à un autre jour → update_action {focusDate}, jamais un bloc. L'échéance`,
+        `     (dueDate, ou la date de la tâche) n'est qu'une vraie date butoir : programme d'abord ce qui échoit le plus tôt.`,
         `   → BLOCS : 30 min minimum pour un bloc de travail. Le travail de fond = blocs d'ACTIVITÉ`,
         `     (activityId seul, titre = nom de l'activité, durée d'après la charge ci-dessus) — JAMAIS un`,
         `     bloc par action ni une action recopiée : la file des prochaines actions se calcule dans l'app.`,
@@ -3756,6 +3777,49 @@ async function upcomingWarning(uid, projectId, data) {
         return "";
     return `\n⚠️ ${up.length} séance(s) à venir dans ce projet : ${up.slice(0, 4).map((u) => `${u.date} « ${u.title} »`).join(" · ")}${up.length > 4 ? "…" : ""}. ` +
         `Annule-les (update_intervention status:"cancelled" / update_task_status skipped) ou réactive le projet si elles ont lieu — la revue hebdo (weekly_review) le rappellera.`;
+}
+/** Jour visé (2026-10-30) : `dueDate` → `focusDate` pour les actions ouvertes
+ *  des tâches qui ne sont pas des tâches de séance, et les actions propres des
+ *  activités. dryRun (défaut true) liste ce qui bougerait. */
+async function executeMigrateFocusDates(uid, args) {
+    var _a, _b;
+    const dryRun = args.dryRun !== false;
+    const col = db_1.db.collection(`users/${uid}/projects`);
+    const docs = args.projectId
+        ? [await col.doc(args.projectId).get()].filter((d) => d.exists)
+        : (await col.where("status", "==", "active").get()).docs;
+    const out = [dryRun
+            ? "🔎 Simulation (dryRun) — rien n'est écrit. Relance avec dryRun:false pour appliquer."
+            : "✅ Migration appliquée."];
+    let moved = 0, kept = 0;
+    const batch = db_1.db.batch();
+    for (const d of docs) {
+        const data = d.data();
+        const tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        const m = (0, focus_dates_1.migrateTaskFocusDates)(tasks, String((_a = data.title) !== null && _a !== void 0 ? _a : d.id));
+        moved += m.moved;
+        kept += m.skippedIntervention;
+        out.push(...m.lines);
+        if (!dryRun && m.moved > 0)
+            batch.update(d.ref, { tasks: m.tasks, updatedAt: db_1.FieldValue.serverTimestamp() });
+    }
+    if (args.includeActivities !== false && !args.projectId) {
+        const acts = await db_1.db.collection(`users/${uid}/activities`).get();
+        for (const d of acts.docs) {
+            const data = d.data();
+            if (data.deleted === true || !Array.isArray(data.ownActions))
+                continue;
+            const m = (0, focus_dates_1.migrateOwnFocusDates)(data.ownActions, String((_b = data.name) !== null && _b !== void 0 ? _b : d.id));
+            moved += m.moved;
+            out.push(...m.lines);
+            if (!dryRun && m.moved > 0)
+                batch.update(d.ref, { ownActions: m.own });
+        }
+    }
+    if (!dryRun && moved > 0)
+        await batch.commit();
+    out.push(`— ${moved} action(s) ${dryRun ? "à déplacer" : "déplacée(s)"} vers un jour visé · ${kept} échéance(s) de séance conservée(s).`);
+    return out.join("\n");
 }
 async function executeMigrateInterventions(uid, args) {
     const dryRun = args.dryRun !== false;

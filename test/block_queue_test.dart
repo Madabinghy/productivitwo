@@ -32,6 +32,20 @@ void main() {
     expect(queueEstimateMin(q), 4 * 45);
   });
 
+  test('visées aujourd\'hui (ou avant) en tête de la file, avant les retards', () {
+    final ens = act('ens', own: [TaskAction(id: 'own', title: 'propre', focusDate: DateTime(2026, 10, 29))]);
+    final late = proj('late', [task('a', end: '2026-10-20', actions: [TaskAction(id: 'late1', title: 'en retard')])], linked: 'ens');
+    final focused = proj('foc', [task('b', end: '2026-11-20', actions: [
+      TaskAction(id: 'foc0', title: 'autre', dueDate: DateTime(2026, 11, 1)),
+      TaskAction(id: 'foc1', title: 'visée', focusDate: DateTime(2026, 10, 29)),
+    ])], linked: 'ens');
+    final q = blockQueue(activity: ens, projects: [late, focused], today: today);
+    expect(q.map((e) => e.id).toList(), ['foc1', 'own', 'late1']);
+    expect(q[0].focusedToday, isTrue);
+    expect(q[0].overdue, isFalse);
+    expect(q[2].overdue, isTrue);
+  });
+
   test('tâches à venir, faites et dossiers exclus ; vide sans lien', () {
     final ens = act('ens');
     final folder = proj('dossier', [], linked: 'ens');

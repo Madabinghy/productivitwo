@@ -71,6 +71,11 @@ class TaskAction {
   // Échéance PROPRE de l'action (jour, 2026-10) ; null = celle de la tâche fait
   // foi. Lire via `effectiveDueDate` (utils/actions_logic.dart), jamais seule.
   DateTime? dueDate;
+  // JOUR VISÉ (2026-10-30) : une intention — « je veux l'avoir sous la main ce
+  // jour-là » — jamais une échéance (jamais en retard), jamais un bloc. C'est
+  // la date par défaut d'une action ; `dueDate` ne sert qu'aux vraies dates
+  // butoirs. Lire via `workDate` / `isFocusedOn` (utils/actions_logic.dart).
+  DateTime? focusDate;
   // Détail de l'action (B, 2026-10) : consignes, fichiers, contraintes — tout
   // ce que le titre ne doit plus porter. Affiché au tap, jamais dans la liste.
   String? note;
@@ -87,6 +92,7 @@ class TaskAction {
     List<String>? contexts,
     this.estimatedMin,
     this.dueDate,
+    this.focusDate,
     this.note,
     List<ChecklistItem>? checklist,
   })  : id = id ?? _uuid.v4(),
@@ -126,6 +132,7 @@ class TaskAction {
         'contexts': contexts,
         'estimatedMin': estimatedMin,
         'dueDate': dueDate == null ? null : _actionYmd(dueDate!),
+        'focusDate': focusDate == null ? null : _actionYmd(focusDate!),
         if (note != null && note!.trim().isNotEmpty) 'note': note,
         'checklist': checklist.map((c) => c.toJson()).toList(),
       };
@@ -152,6 +159,7 @@ class TaskAction {
       contexts: multi,
       estimatedMin: _parseEstimatedMin(j['estimatedMin']),
       dueDate: _parseDateOrNull(j['dueDate']),
+      focusDate: _parseDateOrNull(j['focusDate']),
       note: (j['note'] is String && (j['note'] as String).trim().isNotEmpty) ? j['note'] as String : null,
       checklist: (j['checklist'] as List?)?.map(ChecklistItem.from).toList() ?? [],
     );

@@ -11,6 +11,7 @@ export type ActionPatch = {
   removeContexts?: string[];
   estimatedMin?: number | null; // null = effacer
   dueDate?: string | null;      // échéance propre YYYY-MM-DD ; null / "" = retour à la date de la tâche
+  focusDate?: string | null;    // jour visé YYYY-MM-DD (intention) ; null / "" = retirer
   note?: string | null;         // détail de l'action (B 2026-10) ; null / "" = effacer
   linkedActivityId?: string | null; // null = délier (actions de projet)
   done?: boolean;
@@ -86,6 +87,19 @@ export function applyActionPatch(
       if (v !== cur) {
         changes.push(`échéance ${cur ?? "— (celle de la tâche)"} → ${v ?? "— (celle de la tâche)"}`);
         a = { ...a, dueDate: v };
+      }
+    }
+  }
+
+  if (patch.focusDate !== undefined) {
+    const v = patch.focusDate === null || patch.focusDate.trim() === "" ? null : patch.focusDate.trim();
+    if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      changes.push(`jour visé ignoré (YYYY-MM-DD attendu, reçu « ${v} »)`);
+    } else {
+      const cur = typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null;
+      if (v !== cur) {
+        changes.push(`jour visé ${cur ?? "—"} → ${v ?? "—"}`);
+        a = { ...a, focusDate: v };
       }
     }
   }

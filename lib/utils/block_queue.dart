@@ -1,6 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart'
-    show effectiveDueDate, isFolderProject, isUpcomingTask;
+    show effectiveDueDate, focusDateOf, isFolderProject, isUpcomingTask, workDate;
 import 'package:productivitwo_v1/utils/project_health.dart' show ganttOrder;
 
 /// File d'un bloc d'ACTIVITÉ (maquette « Blocs d'activité », 2026-10) : un
@@ -12,9 +12,24 @@ class QueueItem {
   final TaskAction action;
   final Project? project; // null = action propre de l'activité
   final ProjectTask? task;
+  /// Échéance effective (vraie date butoir) ; `overdue` la regarde seule.
   final DateTime? due;
   final bool overdue;
-  const QueueItem({required this.action, this.project, this.task, this.due, this.overdue = false});
+  /// Jour visé (intention) ; `focusedToday` = visée pour la journée du bloc.
+  final DateTime? focus;
+  final bool focusedToday;
+  const QueueItem({
+    required this.action,
+    this.project,
+    this.task,
+    this.due,
+    this.overdue = false,
+    this.focus,
+    this.focusedToday = false,
+  });
+
+  /// Date de travail : jour visé, sinon échéance.
+  DateTime? get work => focus ?? due;
 
   String get id => action.id;
   String? get context => project == null ? null : '${project!.title}${task != null ? ' › ${task!.title}' : ''}';
@@ -35,9 +50,24 @@ bool projectServesActivity(Project p, String activityId) {
   return false;
 }
 
+QueueItem _item(TaskAction a, Project? p, ProjectTask? t, DateTime today) {
+  final due = effectiveDueDate(a, t);
+  final focus = focusDateOf(a);
+  return QueueItem(
+    action: a,
+    project: p,
+    task: t,
+    due: due,
+    overdue: due != null && due.isBefore(today),
+    focus: focus,
+    focusedToday: focus != null && !focus.isAfter(today),
+  );
+}
+
 /// Prochaine action d'un projet pour l'activité : parmi les actions ouvertes
 /// des tâches ouvertes non à venir qui servent l'activité (toutes si le projet
-/// est lié), l'échéance effective la plus proche, sinon l'ordre Gantt.
+/// est lié), la date de travail la plus proche (jour visé, sinon échéance),
+/// sinon l'ordre Gantt.
 QueueItem? _nextFor(Project p, String activityId, DateTime today) {
   final wholeProject = p.linkedActivityId == activityId;
   QueueItem? best;
@@ -45,11 +75,9 @@ QueueItem? _nextFor(Project p, String activityId, DateTime today) {
     if (t.status == 'done' || t.status == 'skipped' || isUpcomingTask(t, today)) continue;
     for (final a in t.actions) {
       if (a.done || !(wholeProject || a.linkedActivityId == activityId)) continue;
-      final due = effectiveDueDate(a, t);
-      final better = best == null || (due != null && (best.due == null || due.isBefore(best.due!)));
-      if (better) {
-        best = QueueItem(action: a, project: p, task: t, due: due, overdue: due != null && due.isBefore(today));
-      }
+      final w = workDate(a, t);
+      final better = best == null || (w != null && (best.work == null || w.isBefore(best.work!)));
+      if (better) best = _item(a, p, t, today);
     }
   }
   return best;
@@ -57,8 +85,9 @@ QueueItem? _nextFor(Project p, String activityId, DateTime today) {
 
 /// La file du bloc : une action par projet vivant (actif, pas en pause, pas un
 /// dossier) lié à l'activité, puis les actions propres ouvertes de l'activité.
-/// Tri : en retard (échéance la plus ancienne d'abord), puis datées par
-/// échéance, puis sans date dans l'ordre d'arrivée. Vide = rien à proposer
+/// Tri : VISÉES pour aujourd'hui (ou avant) d'abord — l'intention du jour
+/// commande —, puis en retard (échéance la plus ancienne), puis datées par date
+/// de travail, puis sans date dans l'ordre d'arrivée. Vide = rien à proposer
 /// (le ▶ garde son comportement : chrono seul).
 List<QueueItem> blockQueue({
   required Activity activity,
@@ -75,16 +104,15 @@ List<QueueItem> blockQueue({
   }
   for (final a in activity.ownActions) {
     if (a.done) continue;
-    final due = a.dueDate == null ? null : _day(a.dueDate!);
-    items.add(QueueItem(action: a, due: due, overdue: due != null && due.isBefore(d)));
+    items.add(_item(a, null, null, d));
   }
-  int rank(QueueItem q) => q.overdue ? 0 : (q.due != null ? 1 : 2);
+  int rank(QueueItem q) => q.focusedToday ? 0 : (q.overdue ? 1 : (q.work != null ? 2 : 3));
   final indexed = items.indexed.toList()
     ..sort((x, y) {
       final r = rank(x.$2).compareTo(rank(y.$2));
       if (r != 0) return r;
-      if (x.$2.due != null && y.$2.due != null) {
-        final c = x.$2.due!.compareTo(y.$2.due!);
+      if (x.$2.work != null && y.$2.work != null) {
+        final c = x.$2.work!.compareTo(y.$2.work!);
         if (c != 0) return c;
       }
       return x.$1.compareTo(y.$1);

@@ -816,7 +816,7 @@ const PUSH_GANTT_MCP_TOOL = {
                   items: TASK_ACTION_ITEM_SCHEMA,
                   description:
                     "Sous-actions opérationnelles — string simple, OU objet " +
-                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
+                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour lier l'action à une " +
                     "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -892,7 +892,7 @@ const ADD_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Sous-actions opérationnelles — string simple, OU objet " +
-          "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
+          "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour lier l'action à une " +
           "activité-temps (chrono ciblé) dès la création. " +
           "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
           "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -935,7 +935,7 @@ const UPDATE_TASK_TOOL = {
         items: TASK_ACTION_ITEM_SCHEMA,
         description:
           "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
-          "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour poser le lien chrono.",
+          "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour poser le lien chrono.",
       },
     },
   },
@@ -1178,6 +1178,23 @@ const MIGRATE_INTERVENTIONS_TOOL = {
   },
 };
 
+const MIGRATE_FOCUS_DATES_TOOL = {
+  name: "migrate_focus_dates",
+  description:
+    "Jour visé : déplace l'échéance propre (dueDate) des actions ouvertes vers focusDate (le jour visé, une intention), " +
+    "sauf dans les tâches de séance (📝 / 🎯 / ✅ : leur date est une vraie échéance) ; les actions propres des activités " +
+    "aussi. dryRun (défaut true) liste ce qui bougerait ; relance avec dryRun:false pour appliquer. Les dates des tâches " +
+    "ne changent pas.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: { type: "string", description: "omis = tous les projets actifs (+ activités)" },
+      dryRun: { type: "boolean" },
+      includeActivities: { type: "boolean", description: "actions propres des activités aussi (défaut true)" },
+    },
+  },
+};
+
 const UPDATE_ACTION_TOOL = {
   name: "update_action",
   description:
@@ -1185,7 +1202,9 @@ const UPDATE_ACTION_TOOL = {
     "ids via get_user_context) ou sous-action d'une tâche de projet (projectId + taskId + actionId, ids via get_project). " +
     "Champs modifiables : title, contexts (remplace tout ; [] = aucun), addContexts / removeContexts (ajuste sans " +
     "tout réécrire), estimatedMin (clearEstimate=true pour effacer), dueDate (échéance PROPRE de l'action, YYYY-MM-DD, " +
-    "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), linkedActivityId " +
+    "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), focusDate (JOUR VISÉ, " +
+    "YYYY-MM-DD : quand l'utilisateur veut l'action sous la main — la date par défaut ; clearFocusDate=true ou '' pour " +
+    "retirer), linkedActivityId " +
     "(sous-action de projet ; '' pour délier), done (true coche aussi toutes les étapes de la checklist), delete=true " +
     "pour supprimer l'action, note (détail affiché au tap ; clearNote=true pour effacer). " +
     "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions). " +
@@ -1206,6 +1225,8 @@ const UPDATE_ACTION_TOOL = {
       clearEstimate:    { type: "boolean", description: "Efface l'estimation" },
       dueDate:          { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD) ; '' pour effacer" },
       clearDueDate:     { type: "boolean", description: "Efface l'échéance propre (la date de la tâche fait foi à nouveau)" },
+      focusDate:        { type: "string", description: "Jour visé (YYYY-MM-DD) : intention, jamais en retard, jamais un bloc ; '' pour retirer" },
+      clearFocusDate:   { type: "boolean", description: "Retire le jour visé" },
       note:             { type: "string", description: "Détail de l'action (consignes, fichiers, contraintes) — affiché au tap, jamais dans la liste" },
       clearNote:        { type: "boolean", description: "Efface le détail" },
       linkedActivityId: { type: "string", description: "Activité-temps liée (chrono ciblé) ; '' pour délier. Sous-actions de projet uniquement" },
@@ -1248,6 +1269,8 @@ const UPDATE_ACTIONS_TOOL = {
             clearEstimate: { type: "boolean" },
             dueDate: { type: "string" },
             clearDueDate: { type: "boolean" },
+            focusDate: { type: "string" },
+            clearFocusDate: { type: "boolean" },
             linkedActivityId: { type: "string" },
             done: { type: "boolean" },
             delete: { type: "boolean" },
@@ -1316,7 +1339,8 @@ const ADD_ACTIVITY_ACTION_TOOL = {
       context:    { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
       contexts:   { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
       estimatedMin: { type: "integer", description: "Durée estimée en minutes (voir estimate_accuracy pour calibrer)" },
-      dueDate:    { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD, optionnel)" },
+      dueDate:    { type: "string", description: "Vraie échéance de l'action (YYYY-MM-DD, optionnel) — seulement s'il y a une date butoir" },
+      focusDate:  { type: "string", description: "Jour visé (YYYY-MM-DD, optionnel) : quand l'utilisateur veut la faire — la date par défaut" },
       note:       { type: "string", description: "Détail de l'action (consignes, fichiers) — affiché au tap, jamais dans la liste" },
     },
   },
@@ -1596,6 +1620,7 @@ DELETE_INTERVENTION_TOOL,
 PLAN_PREP_TOOL,
 WEEKLY_REVIEW_TOOL,
 UPDATE_ACTIONS_TOOL,
+MIGRATE_FOCUS_DATES_TOOL,
 MANAGE_INTERVENTION_TEMPLATES_TOOL,
 MIGRATE_INTERVENTIONS_TOOL,
 ESTIMATE_ACCURACY_TOOL,

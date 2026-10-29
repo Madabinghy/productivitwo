@@ -429,4 +429,28 @@ void main() {
     expect(pickActionMoment(entries, blocks: [cur], nowMin: 600, today: today, mode: DayMode.low)!.kind, ActionMomentKind.block);
     expect(pickActionMoment(entries, blocks: const [], nowMin: 600, today: today, runningActionId: longA.id, mode: DayMode.low)!.kind, ActionMomentKind.running);
   });
+
+  test('jour visé : workDate, isFocusedOn, isStaleFocus, focusLabel', () {
+    final today = DateTime(2026, 10, 30, 9);
+    final t = _t('t', '2026-10-01', []);
+    t.endDate = DateTime(2026, 11, 10);
+    final a = _a('a')..focusDate = DateTime(2026, 10, 30);
+    final b = _a('b', due: DateTime(2026, 10, 27));
+    final c = _a('c')..focusDate = DateTime(2026, 10, 28);
+    expect(workDate(a, t), DateTime(2026, 10, 30)); // le jour visé prime
+    expect(workDate(b, t), DateTime(2026, 10, 27)); // sinon l'échéance effective
+    expect(workDate(_a('d'), t), DateTime(2026, 11, 10)); // sinon celle de la tâche
+    expect(isFocusedOn(a, today), isTrue);
+    expect(isFocusedOn(c, today), isFalse);
+    expect(isStaleFocus(c, today), isTrue);
+    expect(isStaleFocus(a, today), isFalse);
+    expect(isOverdueAction(c, t, today), isFalse); // un jour visé dépassé n'est jamais un retard
+    expect(isOverdueAction(b, t, today), isTrue);
+    expect(focusLabel(DateTime(2026, 10, 30), today), "visée aujourd'hui");
+    expect(focusLabel(DateTime(2026, 10, 31), today), 'visée demain');
+    expect(focusLabel(DateTime(2026, 10, 29), today), 'visée hier');
+    expect(focusLabel(DateTime(2026, 10, 27), today), 'visée il y a 3 j');
+    expect(focusLabel(DateTime(2026, 11, 3), today), 'visée 3 nov.');
+    expect(TaskAction.from(a.toJson()).focusDate, DateTime(2026, 10, 30));
+  });
 }

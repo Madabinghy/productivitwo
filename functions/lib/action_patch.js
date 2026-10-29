@@ -77,6 +77,19 @@ function applyActionPatch(action, patch, nowIso = new Date().toISOString()) {
             }
         }
     }
+    if (patch.focusDate !== undefined) {
+        const v = patch.focusDate === null || patch.focusDate.trim() === "" ? null : patch.focusDate.trim();
+        if (v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            changes.push(`jour visé ignoré (YYYY-MM-DD attendu, reçu « ${v} »)`);
+        }
+        else {
+            const cur = typeof a.focusDate === "string" && a.focusDate ? a.focusDate : null;
+            if (v !== cur) {
+                changes.push(`jour visé ${cur !== null && cur !== void 0 ? cur : "—"} → ${v !== null && v !== void 0 ? v : "—"}`);
+                a = Object.assign(Object.assign({}, a), { focusDate: v });
+            }
+        }
+    }
     if (patch.linkedActivityId !== undefined) {
         const v = patch.linkedActivityId && patch.linkedActivityId.trim() ? patch.linkedActivityId.trim() : null;
         const cur = typeof a.linkedActivityId === "string" && a.linkedActivityId ? a.linkedActivityId : null;

@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
-exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = void 0;
+exports.MIGRATE_FOCUS_DATES_TOOL = exports.UPDATE_ACTIONS_TOOL = exports.WEEKLY_REVIEW_TOOL = exports.PLAN_PREP_TOOL = exports.DELETE_INTERVENTION_TOOL = exports.UPDATE_INTERVENTION_TOOL = exports.ADD_INTERVENTION_TOOL = exports.UPDATE_ACTION_TOOL = exports.MANAGE_CONTEXTS_TOOL = exports.ADD_ACTIVITY_ACTION_TOOL = exports.LINK_ACTION_TO_ACTIVITY_TOOL = exports.MARK_CHECKLIST_ITEM_TOOL = exports.MARK_ACTION_DONE_TOOL = exports.UPDATE_TASK_TOOL = exports.ADD_TASK_TOOL = exports.PUSH_GANTT_MCP_TOOL = exports.GET_PROJECT_TOOL = exports.LIST_PROJECTS_TOOL = exports.DELETE_PROJECT_TOOL = exports.ARCHIVE_PROJECT_TOOL = exports.GET_DAY_BLOCKS_TOOL = exports.DELETE_ROUTINE_TOOL = exports.UPDATE_ACTIVITY_TOOL = exports.DELETE_TASK_TOOL = exports.UPDATE_TASK_STATUS_TOOL = exports.UPDATE_PROJECT_TOOL = exports.DELETE_ACTIVITY_TOOL = exports.RESTORE_ITEM_TOOL = exports.GET_ARCHIVES_TOOL = exports.DELETE_DOCUMENT_TOOL = exports.GET_DOCUMENTS_TOOL = exports.SAVE_DOCUMENT_TOOL = exports.GET_DOCUMENT_TEMPLATE_TOOL = exports.DELETE_DOMAIN_TOOL = exports.PUSH_ASSISTANT_MESSAGE_TOOL = exports.UPDATE_DOMAIN_TOOL = exports.CREATE_DOMAIN_TOOL = exports.CREATE_ACTIVITY_TOOL = exports.CREATE_ROUTINE_TOOL = exports.PROPOSE_CHANGE_TOOL = exports.SWEEP_INBOX_TOOL = exports.UPDATE_SESSION_TOOL = exports.DELETE_SESSIONS_TOOL = exports.LIST_SESSIONS_TOOL = exports.COMPUTE_TIME_BUDGET_TOOL = exports.SET_ACTIVITY_TARGETS_TOOL = exports.UPDATE_ACTIVITY_GOAL_TOOL = exports.GET_USER_CONTEXT_TOOL = exports.DELETE_ASSISTANT_MESSAGE_TOOL = exports.GET_ASSISTANT_MESSAGES_TOOL = void 0;
+exports.UPDATE_SESSION_TEMPLATE_TOOL = exports.CREATE_SESSION_TEMPLATE_TOOL = exports.LIST_SESSION_TEMPLATES_TOOL = exports.ADD_EVENT_TOOL = exports.ADD_PREP_BLOCK_TOOL = exports.SAVE_OBJECTIVE_TOOL = exports.LOG_OBJECTIVE_READING_TOOL = exports.LIST_OBJECTIVES_TOOL = exports.SAVE_DOMAIN_DEFINITION_TOOL = exports.SCHEDULE_DAY_TOOL = exports.GET_DAY_SCHEDULE_TOOL = exports.SYNC_CALENDAR_TOOL = exports.PLAN_WEEK_TOOL = exports.PLAN_DAY_TOOL = exports.CHECK_SHOPPING_ITEM_TOOL = exports.ADD_SHOPPING_ITEM_TOOL = exports.GET_SHOPPING_LIST_TOOL = exports.GENERATE_WEEKLY_REPORT_TOOL = exports.UPDATE_BLOCK_TOOL = exports.MARK_BLOCK_DONE_TOOL = exports.HUNT_BADGE_TOOL = exports.LIST_BADGES_TOOL = exports.REST_DOMAIN_TOOL = exports.SET_MODE_TOOL = exports.LOG_MOOD_TOOL = exports.LOG_ROUTINE_HIT_TOOL = exports.ESTIMATE_ACCURACY_TOOL = exports.MIGRATE_INTERVENTIONS_TOOL = exports.MANAGE_INTERVENTION_TEMPLATES_TOOL = void 0;
 const title_style_1 = require("./title_style");
 const block_style_1 = require("./block_style");
 // Une sous-action de tâche Gantt : soit un simple titre (string), soit un
@@ -774,7 +774,7 @@ const PUSH_GANTT_MCP_TOOL = {
                                     type: "array",
                                     items: TASK_ACTION_ITEM_SCHEMA,
                                     description: "Sous-actions opérationnelles — string simple, OU objet " +
-                                        "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
+                                        "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour lier l'action à une " +
                                         "activité-temps (chrono ciblé) dès la création. " +
                                         "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                                         "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -844,7 +844,7 @@ const ADD_TASK_TOOL = {
                 type: "array",
                 items: TASK_ACTION_ITEM_SCHEMA,
                 description: "Sous-actions opérationnelles — string simple, OU objet " +
-                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour lier l'action à une " +
+                    "{ title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour lier l'action à une " +
                     "activité-temps (chrono ciblé) dès la création. " +
                     "Pour une tâche de développement, utiliser le format mini-spec en 4 lignes :\n" +
                     "  1. \"Objectif : <ce que la tâche doit accomplir>\"\n" +
@@ -885,7 +885,7 @@ const UPDATE_TASK_TOOL = {
                 type: "array",
                 items: TASK_ACTION_ITEM_SCHEMA,
                 description: "Remplace toutes les sous-actions (l'état done des titres conservés est préservé). " +
-                    "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, note? } pour poser le lien chrono.",
+                    "Un item peut être un objet { title, linkedActivityId?, contexts?, estimatedMin?, dueDate?, focusDate?, note? } pour poser le lien chrono.",
             },
         },
     },
@@ -1116,13 +1116,31 @@ const MIGRATE_INTERVENTIONS_TOOL = {
     },
 };
 exports.MIGRATE_INTERVENTIONS_TOOL = MIGRATE_INTERVENTIONS_TOOL;
+const MIGRATE_FOCUS_DATES_TOOL = {
+    name: "migrate_focus_dates",
+    description: "Jour visé : déplace l'échéance propre (dueDate) des actions ouvertes vers focusDate (le jour visé, une intention), " +
+        "sauf dans les tâches de séance (📝 / 🎯 / ✅ : leur date est une vraie échéance) ; les actions propres des activités " +
+        "aussi. dryRun (défaut true) liste ce qui bougerait ; relance avec dryRun:false pour appliquer. Les dates des tâches " +
+        "ne changent pas.",
+    inputSchema: {
+        type: "object",
+        properties: {
+            projectId: { type: "string", description: "omis = tous les projets actifs (+ activités)" },
+            dryRun: { type: "boolean" },
+            includeActivities: { type: "boolean", description: "actions propres des activités aussi (défaut true)" },
+        },
+    },
+};
+exports.MIGRATE_FOCUS_DATES_TOOL = MIGRATE_FOCUS_DATES_TOOL;
 const UPDATE_ACTION_TOOL = {
     name: "update_action",
     description: "Modifie UNE action existante sans toucher au reste : action propre d'une activité (activityId + actionId, " +
         "ids via get_user_context) ou sous-action d'une tâche de projet (projectId + taskId + actionId, ids via get_project). " +
         "Champs modifiables : title, contexts (remplace tout ; [] = aucun), addContexts / removeContexts (ajuste sans " +
         "tout réécrire), estimatedMin (clearEstimate=true pour effacer), dueDate (échéance PROPRE de l'action, YYYY-MM-DD, " +
-        "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), linkedActivityId " +
+        "prime sur la date de la tâche ; clearDueDate=true ou '' pour revenir à la date de la tâche), focusDate (JOUR VISÉ, " +
+        "YYYY-MM-DD : quand l'utilisateur veut l'action sous la main — la date par défaut ; clearFocusDate=true ou '' pour " +
+        "retirer), linkedActivityId " +
         "(sous-action de projet ; '' pour délier), done (true coche aussi toutes les étapes de la checklist), delete=true " +
         "pour supprimer l'action, note (détail affiché au tap ; clearNote=true pour effacer). " +
         "Préférer cet outil à update_task pour retoucher une action (update_task remplace toutes les sous-actions). " +
@@ -1143,6 +1161,8 @@ const UPDATE_ACTION_TOOL = {
             clearEstimate: { type: "boolean", description: "Efface l'estimation" },
             dueDate: { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD) ; '' pour effacer" },
             clearDueDate: { type: "boolean", description: "Efface l'échéance propre (la date de la tâche fait foi à nouveau)" },
+            focusDate: { type: "string", description: "Jour visé (YYYY-MM-DD) : intention, jamais en retard, jamais un bloc ; '' pour retirer" },
+            clearFocusDate: { type: "boolean", description: "Retire le jour visé" },
             note: { type: "string", description: "Détail de l'action (consignes, fichiers, contraintes) — affiché au tap, jamais dans la liste" },
             clearNote: { type: "boolean", description: "Efface le détail" },
             linkedActivityId: { type: "string", description: "Activité-temps liée (chrono ciblé) ; '' pour délier. Sous-actions de projet uniquement" },
@@ -1184,6 +1204,8 @@ const UPDATE_ACTIONS_TOOL = {
                         clearEstimate: { type: "boolean" },
                         dueDate: { type: "string" },
                         clearDueDate: { type: "boolean" },
+                        focusDate: { type: "string" },
+                        clearFocusDate: { type: "boolean" },
                         linkedActivityId: { type: "string" },
                         done: { type: "boolean" },
                         delete: { type: "boolean" },
@@ -1249,7 +1271,8 @@ const ADD_ACTIVITY_ACTION_TOOL = {
             context: { type: "string", description: "contexte GTD optionnel, ex: '@maison', '@ordinateur'" },
             contexts: { type: "array", items: { type: "string" }, description: "multi-contextes GTD (le premier devient `context`)" },
             estimatedMin: { type: "integer", description: "Durée estimée en minutes (voir estimate_accuracy pour calibrer)" },
-            dueDate: { type: "string", description: "Échéance propre de l'action (YYYY-MM-DD, optionnel)" },
+            dueDate: { type: "string", description: "Vraie échéance de l'action (YYYY-MM-DD, optionnel) — seulement s'il y a une date butoir" },
+            focusDate: { type: "string", description: "Jour visé (YYYY-MM-DD, optionnel) : quand l'utilisateur veut la faire — la date par défaut" },
             note: { type: "string", description: "Détail de l'action (consignes, fichiers) — affiché au tap, jamais dans la liste" },
         },
     },

@@ -18,7 +18,9 @@ export const WRITING_RULES =
   "jamais dans le titre. Tâche de séance : garde la forme courte « 📝 Préparer — Séance du 12 oct » / " +
   "« 🎯 Lun 12 oct — <thème en 3 mots> » / « ✅ Clôturer — Séance du 12 oct », le contenu détaillé dans " +
   "description. Une chose n'a qu'UNE maison : pas de tâche « Corriger… » si une action « Corriger… » " +
-  "existe déjà dans la prépa.";
+  "existe déjà dans la prépa. " +
+  "DATES : `focusDate` = le jour visé (quand l'utilisateur veut l'action sous la main — la date par défaut, une " +
+  "intention, jamais en retard) ; `dueDate` = une VRAIE échéance seulement (séance, rendu, démarche).";
 
 const ROLE_EMOJI = /^(📝|🎯|✅|🏁|✍️)\s*/u;
 const SPEC_TOKENS = /(\bcoef\.?\s*\d|\brecto\s*verso\b|×\s*\d+|\bx\s*\d+\b|\b\d+\.[A-Z]\.?\d*\b|\bp\.\s*\d+|\bex\.?\s*\d|\bCM[12]\b\s*[:.]|\(\s*\d+\s*(pages?|min)\b)/iu;
