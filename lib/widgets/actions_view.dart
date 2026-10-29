@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart';
+import 'package:productivitwo_v1/widgets/focus_day_sheet.dart';
 import 'package:productivitwo_v1/widgets/capture_triage_sheet.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
@@ -1753,6 +1754,26 @@ class _ActionsViewState extends State<ActionsView> {
       out.add(const SizedBox(height: 8));
     }
 
+    // Jour visé (2026-10-30) : l'intention du jour, puis les visées passées
+    // sans être faites — à re-viser, jamais « en retard ».
+    final focused = take((e) => isFocusedOn(e.action, today));
+    if (focused.isNotEmpty) {
+      out.add(_sectionLabel(cs, "VISÉES AUJOURD'HUI", Icons.wb_sunny_outlined, color: cs.primary));
+      for (final e in _byEst(focused)) {
+        out.add(_entryTile(cs, e, showHolder: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+    final stale = take((e) => isStaleFocus(e.action, today))
+      ..sort((a, b) => a.action.focusDate!.compareTo(b.action.focusDate!));
+    if (stale.isNotEmpty) {
+      out.add(_sectionLabel(cs, 'À RE-VISER', Icons.update_outlined, color: kPalierAmber));
+      for (final e in stale) {
+        out.add(_entryTile(cs, e, showHolder: true));
+      }
+      out.add(const SizedBox(height: 8));
+    }
+
     if (arrived.isNotEmpty) {
       out.add(_sectionLabel(cs, "ARRIVÉES AUJOURD'HUI", Icons.fiber_new_outlined, color: _newColor));
       for (final e in _byEst(arrived)) {
@@ -1771,8 +1792,9 @@ class _ActionsViewState extends State<ActionsView> {
       out.add(const SizedBox(height: 8));
     }
 
-    final week = take((e) => _dueOf(e) != null && !_dueOf(e)!.isAfter(weekEnd))
-      ..sort((a, b) => _dueOf(a)!.compareTo(_dueOf(b)!));
+    DateTime? workOf(_Entry e) => workDate(e.action, e.task);
+    final week = take((e) => workOf(e) != null && !workOf(e)!.isAfter(weekEnd))
+      ..sort((a, b) => workOf(a)!.compareTo(workOf(b)!));
     if (week.isNotEmpty) {
       out.add(_sectionLabel(cs, 'CETTE SEMAINE', Icons.date_range_outlined));
       for (final e in _byEst(week)) {
@@ -2051,6 +2073,38 @@ class _ActionsViewState extends State<ActionsView> {
 
   String _dueLabel(DateTime due, DateTime today) => actionDueLabel(due, today);
 
+  /// JOUR VISÉ (2026-10-30) : aujourd'hui · demain · lundi · date · retirer.
+  /// Une intention, jamais une échéance. Persistée comme le reste.
+  Future<void> _pickFocusDay(_Entry e) async {
+    final pick = await pickFocusDay(context, current: e.action.focusDate, today: _day(DateTime.now()));
+    if (pick == null) return;
+    e.action.focusDate = switch (pick) { FocusDay(:final day) => day, FocusClear() => null };
+    await _persistEntry(e);
+  }
+
+  /// Glisser gauche : « Viser demain » — l'action sera sous la main demain,
+  /// sans bloc ni engagement d'heure. Annulable.
+  Future<void> _focusTomorrow(_Entry e) async {
+    final a = e.action;
+    final before = a.focusDate;
+    a.focusDate = _day(DateTime.now()).add(const Duration(days: 1));
+    await _persistEntry(e);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        duration: const Duration(seconds: 4),
+        content: Text('Visée demain : ${a.title}'),
+        action: SnackBarAction(
+          label: 'Annuler',
+          onPressed: () async {
+            a.focusDate = before;
+            await _persistEntry(e);
+          },
+        ),
+      ));
+  }
+
   /// Échéance PROPRE de l'action (2026-10) : demain · fin de semaine · une date
   /// · retirer (la date de la tâche fait foi à nouveau). Persistée comme le
   /// reste de la feuille (`_persistEntry`).
@@ -2140,6 +2194,7 @@ class _ActionsViewState extends State<ActionsView> {
     final sub = <String>[
       if (holderText != null && taskTitle != null) '$holderText › $taskTitle' else if (holderText != null) holderText else if (taskTitle != null) taskTitle,
       if (startLabel != null) startLabel,
+      if (a.focusDate != null && !late) '☀ ${focusLabel(a.focusDate!, today)}',
       if (due != null) (a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today),
       if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
       if (spent != null) spent.label,
@@ -2162,7 +2217,7 @@ class _ActionsViewState extends State<ActionsView> {
 
     return Dismissible(
       key: ValueKey('act_${a.id}'),
-      // Droite = fait, gauche = caser demain. Les deux gestes agissent et
+      // Droite = fait, gauche = viser demain (jour visé, pas un bloc). Les deux gestes agissent et
       // laissent la tuile en place : la liste se recompose d'elle-même.
       background: Container(
         alignment: Alignment.centerLeft,
@@ -2181,9 +2236,9 @@ class _ActionsViewState extends State<ActionsView> {
         decoration: BoxDecoration(
             color: cs.primary.withOpacity(.14), borderRadius: BorderRadius.circular(14)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Text('Caser demain', style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
+          Text('Viser demain', style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
           const SizedBox(width: 8),
-          Icon(Icons.event_outlined, color: cs.primary),
+          Icon(Icons.wb_sunny_outlined, color: cs.primary),
         ]),
       ),
       confirmDismiss: (dir) async {
@@ -2199,7 +2254,7 @@ class _ActionsViewState extends State<ActionsView> {
               ));
           }
         } else {
-          await _scheduleAction(e, presetDay: today.add(const Duration(days: 1)));
+          await _focusTomorrow(e);
         }
         return false;
       },
@@ -2397,6 +2452,7 @@ class _ActionsViewState extends State<ActionsView> {
           MomentAction('Chrono seul', icon: Icons.timer_outlined, hint: 'sans la page focus', onTap: () => _launch(e)),
         if (!a.done && (next != null || e.chronoActivityId != null))
           MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
+        MomentAction('Viser un jour', icon: Icons.wb_sunny_outlined, hint: a.focusDate == null ? 'l\'avoir sous la main ce jour-là, sans bloc' : focusLabel(a.focusDate!, today), onTap: () => _pickFocusDay(e)),
         MomentAction('Caser dans le programme', icon: Icons.event_rounded, onTap: () => _scheduleAction(e)),
         if (e.project != null)
           MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
@@ -2539,6 +2595,17 @@ class _ActionsViewState extends State<ActionsView> {
               const FicheTitle('DÉTAIL'),
               FicheNote(a.note!),
             ],
+            FicheTitle('JOUR VISÉ',
+                trailing: a.focusDate == null ? null : FicheDelta(focusLabel(a.focusDate!, today), color: isStaleFocus(a, today) ? kPalierAmber : cs.primary)),
+            FicheStep(
+              title: a.focusDate == null ? 'Pas de jour visé' : focusLabel(a.focusDate!, today),
+              detail: a.focusDate == null ? 'le jour où tu veux l\'avoir sous la main · ni créneau, ni retard' : (isStaleFocus(a, today) ? 'passée sans être faite · à re-viser' : 'une intention, pas un créneau'),
+              onTap: () async {
+                await _pickFocusDay(e);
+                refresh();
+              },
+              trailing: Icon(Icons.wb_sunny_outlined, size: 18, color: cs.onSurface.withValues(alpha: .55)),
+            ),
             FicheTitle('ÉCHÉANCE',
                 trailing: due == null ? null : FicheDelta((a.dueDate != null ? '⚑ ' : '') + _dueLabel(due, today), color: late ? kPalierCoral : kPalierGreen)),
             FicheNote(due == null
@@ -2560,6 +2627,10 @@ class _ActionsViewState extends State<ActionsView> {
                 }
               },
               secondary: [
+                (label: a.focusDate == null ? 'Viser un jour' : 'Viser ☀', onTap: () async {
+                  await _pickFocusDay(e);
+                  refresh();
+                }),
                 (label: 'Caser', onTap: () {
                   Navigator.pop(ctx);
                   _scheduleAction(e);

@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -575,6 +575,7 @@ class _FocusScreenState extends State<_FocusScreen> {
                 const SizedBox(width: 8),
                 Text(
                   [
+                    if (bloc.queue[i].focus case final f?) '☀ ${focusLabel(f, today)}',
                     if (bloc.queue[i].due case final d?) actionDueLabel(d, today),
                     if (bloc.queue[i].action.estimatedMin case final m?) fmtMin(m),
                   ].join(' · '),
