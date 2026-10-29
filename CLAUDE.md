@@ -615,12 +615,13 @@ coût / 6, tri « se perd ce soir » d'abord, coupe `kStakesTop` (5) avec plafon
 seul gain, `kStakeRestFamilies` pour la ligne dépliée). Sources : `badgeToday` (séries en cours ou chassées, badges chassés), rythme des
 `ObjectiveDay` (attendu à ce jour = hebdo × jour / 7), `nextInterventionOf` (prépa), `isFocusedOn` / `isStaleFocus`, routines du jour.
 **Lot 2 livré** : `widgets/stakes_section.dart` dans `today_view.dart` (`_stakeBoard()`, calculé une fois par build depuis
-`BadgeCenter.deck` + `todayFacts()`, rien sans deck ni sur Demain) — `StakeScoreboard` au-dessus de MAINTENANT (gagnés · en jeu · perdus,
+`BadgeCenter.deck` + `todayFacts()`, rien sans deck ni sur Demain) — `StakeScoreboard` (sous le programme depuis le 2026-10-30 ; gagnés · en jeu · perdus,
 barre « % de la journée passée » 8 h → 22 h, `dayElapsed`) et `StakesList` sous la zone coach : lignes EN JEU = `MomentItem` (titre ·
 avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / Focus), ouvert = « CE QUE ÇA RAPPORTE » (une jauge
 `StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
 (`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,
-`showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE sous le programme
+`showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE ; depuis le 2026-10-30 (retour user) il est EN TÊTE
+d'Aujourd'hui, au-dessus de MAINTENANT, et le tableau du jour / « Ce soir » passe à sa place sous le programme
 (`_parallelSection(cs, stakes)` → `widgets/dashboard_tiles.dart` `DashboardTiles`, logique pure `utils/dashboard_tiles.dart`) : PROGRAMME
 (`programTile` : bande des blocs, en cours / ensuite ; tap = remonte au programme), ROUTINES (`routinesTile`, tap = fiche Routines),
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à

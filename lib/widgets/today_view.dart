@@ -826,15 +826,9 @@ class TodayViewState extends State<TodayView> {
                 if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
                   if (_morningCard(cs, now, text3) case final card?) card,
-                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
-                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
-                      const SizedBox(height: 12),
-                      EveningLedgerCard(ledger: ledger),
-                    ],
-                  ] else if (stakes case final board? when !board.isEmpty) ...[
-                    const SizedBox(height: 12),
-                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
-                  ],
+                  // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
+                  // sous le programme (retour user 2026-10-30).
+                  ..._parallelSection(cs, stakes),
                   const SizedBox(height: 16),
                   NowCard(
                     badges: widget.badges,
@@ -997,9 +991,15 @@ class TodayViewState extends State<TodayView> {
                     ),
                   ),
                 ] else ...[
-                  // Routines et Objectifs : deux lignes « en parallèle », la
-                  // fiche de chacune héberge la vue du moment (lot 4).
-                  ..._parallelSection(cs, stakes),
+                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
+                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
+                      const SizedBox(height: 14),
+                      EveningLedgerCard(ledger: ledger),
+                    ],
+                  ] else if (stakes case final board? when !board.isEmpty) ...[
+                    const SizedBox(height: 14),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+                  ],
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)
