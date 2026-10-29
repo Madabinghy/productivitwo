@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
+import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -137,6 +138,12 @@ class _ActionsViewState extends State<ActionsView> {
   // Regroupement : par urgence (défaut) ou par projet. Persisté.
   static const _kByProjectPrefKey = 'actions_by_project';
   bool _byProject = false;
+  /// « L'essentiel » (décision user 2026-10-29) : l'onglet ne montre que ce qui
+  /// est à portée de main — les actions libres (sans projet), UNE action par
+  /// projet (la prochaine), plus les en retard et celles au programme du jour.
+  /// « Tout voir » rend le catalogue complet. Persisté.
+  bool _essentials = true;
+  static const _kEssentialsPrefKey = 'actions_essentials';
   // Programme du jour : points « planifiée aujourd'hui » + section Maintenant.
   StreamSubscription<DailySchedule?>? _schedSub;
   List<ScheduleBlock> _todayBlocks = const [];
@@ -163,6 +170,7 @@ class _ActionsViewState extends State<ActionsView> {
     setState(() {
       _time = TimeBucket.values.where((b) => b.name == t).firstOrNull;
       _byProject = prefs.getBool(_kByProjectPrefKey) ?? false;
+      _essentials = prefs.getBool(_kEssentialsPrefKey) ?? true;
     });
   }
 
@@ -174,6 +182,12 @@ class _ActionsViewState extends State<ActionsView> {
     } else {
       await prefs.setString(_kTimePrefKey, b.name);
     }
+  }
+
+  Future<void> _setEssentials(bool v) async {
+    setState(() => _essentials = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEssentialsPrefKey, v);
   }
 
   Future<void> _setByProject(bool v) async {
@@ -1148,7 +1162,14 @@ class _ActionsViewState extends State<ActionsView> {
     // Domaine en veille (Modes et coups) : hors de la carte du moment et des
     // sections, dans une section « EN VEILLE » repliée (sauf action déjà au programme).
     bool resting(_Entry e) => widget.logic.isDomainResting(_domainOf(e)) && !plannedIds.contains(e.action.id);
-    final shown = passing.where((e) => !upcoming(e) && !resting(e)).toList();
+    final nextIds = {for (final p in _allProjects) if (nextAction(p) case final n?) n.action.id};
+    bool essential(_Entry e) =>
+        e.project == null ||
+        plannedIds.contains(e.action.id) ||
+        nextIds.contains(e.action.id) ||
+        isOverdueAction(e.action, e.task, today0);
+    final shown = passing.where((e) => !upcoming(e) && !resting(e) && (!_essentials || essential(e))).toList();
+    final hiddenByEssentials = _essentials ? passing.where((e) => !upcoming(e) && !resting(e) && !essential(e)).length : 0;
     final restingEntries = passing.where((e) => !upcoming(e) && resting(e)).toList();
     final upcomingEntries = passing.where(upcoming).toList()
       ..sort((a, b) => _day(a.task!.startDate).compareTo(_day(b.task!.startDate)));
@@ -1196,6 +1217,24 @@ class _ActionsViewState extends State<ActionsView> {
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: cs.onSurface.withOpacity(.35))),
+            if (all.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: () => _setEssentials(!_essentials),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _essentials ? cs.primary.withOpacity(.14) : cs.onSurface.withOpacity(.07),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _essentials ? (hiddenByEssentials > 0 ? 'L\'essentiel · +$hiddenByEssentials' : 'L\'essentiel') : 'Tout',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: _essentials ? cs.primary : cs.onSurface.withOpacity(.6)),
+                  ),
+                ),
+              ),
+            ],
             // Facteur réel / estimé (médiane des actions faites chronométrées).
             const Spacer(),
             IconButton(
