@@ -34,6 +34,7 @@ import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
+import 'package:productivitwo_v1/widgets/task_picker_sheet.dart' show showTaskPicker, kPickFlowTask;
 
 /// Onglet « Actions » (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10`) :
 /// le canal « pull » GTD du mobile. Jamais vide : toutes les actions ouvertes,
@@ -2696,40 +2697,9 @@ class _ActionsViewState extends State<ActionsView> {
         .toList();
     String? taskId;
     if (openTasks.isNotEmpty) {
-      final picked = await showModalBottomSheet<String>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Dans quelle tâche de « ${p.title} » ?',
-                    maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)),
-              ),
-            ),
-            Flexible(
-              child: ListView(shrinkWrap: true, children: [
-                ListTile(
-                  leading: const Icon(Icons.water_outlined),
-                  title: const Text('Au fil de l\'eau'),
-                  subtitle: const Text('Sans tâche précise'),
-                  onTap: () => Navigator.pop(ctx, ''),
-                ),
-                for (final t in openTasks)
-                  ListTile(
-                    leading: const Icon(Icons.task_alt_outlined),
-                    title: Text(t.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    onTap: () => Navigator.pop(ctx, t.id),
-                  ),
-              ]),
-            ),
-          ]),
-        ),
-      );
+      final picked = await showTaskPicker(context, project: p, includeUpcoming: false);
       if (picked == null || !mounted) return;
-      taskId = picked.isEmpty ? null : picked;
+      taskId = picked == kPickFlowTask ? null : picked;
     }
     final target = await _sync.moveOwnActionToProject(
         activity: a, actionId: e.action.id, projectId: p.id, taskId: taskId);
