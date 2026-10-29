@@ -647,7 +647,7 @@ la fiche du projet `showProjectFiche(onSkipToday:)` avec une section DÉCISIONS 
 (`paused`) ; à la fermeture la tuile se recalcule, le même projet reste s'il est toujours le plus pertinent ; depuis la tuile, `actionsOpenFocus: true` : tap sur une action
 de CETTE SEMAINE = la page focus de l'action (`showActionFocusScreen`) ; DÉCISIONS AU-DESSUS de CETTE SEMAINE ; tap web = onglet Projets).
 Dans toute fiche projet, le bouton principal porte le TITRE de la prochaine action et ouvre sa page focus (jamais de chrono lancé
-d'ici : il se lance explicitement dans le focus), ligne « Prochaine action · Tâche · ouvre la page focus » dessous. **Lot 4 livré** :
+d'ici : il se lance explicitement dans le focus), ligne « Prochaine action · Tâche · ouvre la page focus » dessous. **CRUD des actions dans la fiche projet** (2026-10-30) : CETTE SEMAINE liste toutes les actions échues à 7 j (plus de coupe à 6), « Toutes · + n » déplie les autres actions ouvertes, « Ajouter une action » (titre + tâche, défaut = celle de la prochaine action, sinon « Au fil de l'eau » ; estimation par défaut) ; appui long sur une action = Renommer · Estimation · Note · Jour visé · Marquer faite (`confirmDone`) · Supprimer (confirmation) — une action par `patchActionOf`, ajout / suppression par `saveProjectTasks` ; `FicheStep.onLongPress`. **Lot 4 livré** :
 bilan du soir (`utils/evening_ledger.dart`, `isEvening` = journée vécue ≥ 19 h) — `EveningLedgerCard` remplace le tableau du jour :
 gagnés · encore · perdus, AVANCÉ AUJOURD'HUI (paliers obtenus aujourd'hui `tierDates`, séries tenues, actions faites par projet
 `doneAt`, temps par activité avec l'objectif servi), LAISSÉ FILER (perdus, engagements de temps en retard sans rien aujourd'hui),
