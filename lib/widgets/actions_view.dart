@@ -31,6 +31,7 @@ import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
     show showCreateActionOrProjectSheet;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
+import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet « Actions » (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10`) :
@@ -334,7 +335,8 @@ class _ActionsViewState extends State<ActionsView> {
 
   // ── Mutations ───────────────────────────────────────────────────────────────
 
-  Future<void> _toggleDone(_Entry e, bool done) async {
+  Future<void> _toggleDone(_Entry e, bool done, {bool confirm = true}) async {
+    if (done && confirm && !await confirmDone(context, title: e.action.title)) return;
     e.action.done = done;
     e.action.doneAt = done ? DateTime.now() : null;
     // Décocher depuis « Terminées » : une tâche close (toutes actions faites)
@@ -2246,7 +2248,7 @@ class _ActionsViewState extends State<ActionsView> {
       ),
       confirmDismiss: (dir) async {
         if (dir == DismissDirection.startToEnd) {
-          await _toggleDone(e, true);
+          await _toggleDone(e, true, confirm: false);
           if (mounted) {
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()

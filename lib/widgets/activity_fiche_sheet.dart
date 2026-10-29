@@ -20,6 +20,7 @@ import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/session_template_editor.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
+import 'package:productivitwo_v1/widgets/confirm_done.dart';
 
 /// Fiche d'une activité-temps (refonte 2026-10 « une carte, une fiche »,
 /// remplace `_openActivitySheet` de main.dart) : en-tête d'état, UN geste piloté
@@ -450,6 +451,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
           title: l.action.title,
           detail: '${l.project.title} › ${l.task.title}',
           onTap: () async {
+            if (!await confirmDone(context, title: l.action.title)) return;
             setActionDone(l.action, true);
             try {
               await widget.sync.patchActionOf(l.project, l.action);

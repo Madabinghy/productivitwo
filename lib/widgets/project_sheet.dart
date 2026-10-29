@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/widgets/wall_task.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/task_fiche_sheet.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 // ── Entrée publique ───────────────────────────────────────────────────────────
@@ -146,6 +147,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
 
   Future<void> _toggleStatus(ProjectTask task) async {
     final next = task.status == 'done' ? 'pending' : 'done';
+    if (next == 'done' && !await confirmDone(context, title: task.title, task: true)) return;
     setState(() => task.status = next);
     await _sync.saveProject(_project);
   }
@@ -934,6 +936,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
   }
 
   Future<void> _setActionDone(TaskAction a, bool done) async {
+    if (done && !await confirmDone(context, title: a.title)) return;
     setState(() => setActionDone(a, done));
     await _sync.patchActionOf(_project, a);
   }
