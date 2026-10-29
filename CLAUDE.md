@@ -604,6 +604,18 @@ mobile ouvre sur des chips BLOC D'ACTIVITÉ (`_pickActivity` : titre = nom, `act
 bloc de tâche réservé au daté », et la liste des activités-temps porte la charge « n projets liés · k actions en retard »
 (`activityLoad` / `activityLoadLabel`, pure) ; prompt de la routine auto aligné dans le handoff. **Les 3 lots sont livrés**
 (⚠️ `firebase deploy --only functions` à faire).
+**Aujourd'hui en enjeux** (maquette validée 2026-10-30, « Aujourd'hui en enjeux », 4 lots) : Aujourd'hui devient une interface de
+décision — ce que la journée peut faire gagner ou perdre. **Une ligne = un GESTE** (+1 routine, chrono d'activité, bloc, action), avec
+tout ce qu'il rapporte en étiquettes (série de badge, palier ce soir, chasse, objectif en retard sur le rythme, prépa de séance à 7 j,
+action visée) ; un même geste n'apparaît qu'une fois (fusion par clé `routine:` / `activity:` / `block:` / `action:`) ; il n'existe pas
+de ligne « badge » seule. **Lot 1 livré** : logique pure `utils/stakes.dart` (`buildStakeBoard(deck, facts, hunts, projects,
+activities, dayStartMin)` → `StakeBoard {top, rest, won, lost}` ; `StakeGesture`, `StakeGain` (`StakeGainKind` seriesTonight ·
+tierTonight · series · hunt · objective · session · focus · routine, poids, jauge), `Stake.score` = Σ poids + 5 par gain de plus −
+coût / 6, tri « se perd ce soir » d'abord, coupe `kStakesTop` (5) avec plafond `kStakesFamilyCap` (2) par famille pour les gestes à un
+seul gain, `kStakeRestFamilies` pour la ligne dépliée). Sources : `badgeToday` (séries en cours ou chassées, badges chassés), rythme des
+`ObjectiveDay` (attendu à ce jour = hebdo × jour / 7), `nextInterventionOf` (prépa), `isFocusedOn` / `isStaleFocus`, routines du jour.
+Lots à venir : 2 = tableau du jour + liste EN JEU dans Aujourd'hui (geste ouvert sur place, « + n autres en jeu »), 3 = tuiles de tableau
+de bord + écran « Badges en jeu », 4 = bilan du soir.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
