@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
+import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
@@ -1770,6 +1772,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         block: draft,
         isNew: true,
         activities: acts,
+        domains: widget.logic.state.activeDomains,
         suggestions: _buildSuggestions(),
         onSave: (b) => _sync.addScheduleBlock(
             docForNewBlock(widget.date, DateTime.now(), widget.logic.dayStartMin), b),
@@ -1823,13 +1826,15 @@ class _BlockEditSheet extends StatefulWidget {
   final List<Activity> activities;
   // Suggestions à la frappe (routines, activités, actions) — un tap associe.
   final List<BlockSuggestion> suggestions;
+  final List<Domain> domains;
 
   const _BlockEditSheet(
       {required this.block,
       required this.onSave,
       this.isNew = false,
       this.activities = const [],
-      this.suggestions = const []});
+      this.suggestions = const [],
+      this.domains = const []});
 
   @override
   State<_BlockEditSheet> createState() => _BlockEditSheetState();
@@ -1939,6 +1944,14 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     if (mounted) Navigator.pop(context);
   }
 
+  Widget _activityChip(Activity a) => ChoiceChip(
+        avatar: Icon(Icons.circle, size: 9, color: domainColor(a.domainId, widget.domains)),
+        label: Text(a.name, style: const TextStyle(fontSize: 12.5)),
+        selected: _activityId == a.id && _projectId == null && _actionId == null,
+        visualDensity: VisualDensity.compact,
+        onSelected: (v) => v ? _pickActivity(a) : _clearLink(),
+      );
+
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
@@ -1986,21 +1999,24 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
             Text('Au ▶, l\'app propose la prochaine action de chaque projet lié ; le bloc ne retient que le temps.',
                 style: TextStyle(fontSize: 11.5, height: 1.3, color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
             const SizedBox(height: 8),
-            Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final a in (_allActivities ? widget.activities : widget.activities.take(_kActivityChips)))
-                ChoiceChip(
-                  label: Text(a.name, style: const TextStyle(fontSize: 12.5)),
-                  selected: _activityId == a.id && _projectId == null && _actionId == null,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (v) => v ? _pickActivity(a) : _clearLink(),
-                ),
-              if (!_allActivities && widget.activities.length > _kActivityChips)
-                ActionChip(
-                  label: Text('Toutes · ${widget.activities.length}', style: const TextStyle(fontSize: 12.5)),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => setState(() => _allActivities = true),
-                ),
-            ]),
+            if (_allActivities)
+              // Toutes : rangées par domaine, couleur du domaine.
+              for (final g in groupActivitiesByDomain(widget.activities, widget.domains)) ...[
+                ActivityDomainHeader(name: g.name, color: g.color, padding: const EdgeInsets.only(top: 6, bottom: 4)),
+                Wrap(spacing: 6, runSpacing: 6, children: [
+                  for (final a in g.activities) _activityChip(a),
+                ]),
+              ]
+            else
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final a in widget.activities.take(_kActivityChips)) _activityChip(a),
+                if (widget.activities.length > _kActivityChips)
+                  ActionChip(
+                    label: Text('Toutes · ${widget.activities.length}', style: const TextStyle(fontSize: 12.5)),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _allActivities = true),
+                  ),
+              ]),
             const SizedBox(height: 14),
             Text('OU UN BLOC LIBRE',
                 style: TextStyle(

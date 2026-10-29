@@ -2,6 +2,7 @@
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -871,48 +872,14 @@ Future<bool> pickLinkedActivity(BuildContext context, {required AppState st, req
       .where((a) => !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
       .toList()
     ..sort((a, b) => a.name.compareTo(b.name));
-  final sameDomain = acts.where((a) => a.domainId == act.domainId).toList();
-  final list = sameDomain.isNotEmpty ? sameDomain : acts;
   final currentId = (act.linkedActivityId ?? '').trim();
-
-  final picked = await showModalBottomSheet<String?>(
-    context: context,
-    showDragHandle: true,
-    builder: (ctx) => SafeArea(
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 16),
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
-            child: Text('Activité liée',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.block),
-            title: const Text('Aucune'),
-            trailing:
-                currentId.isEmpty ? const Icon(Icons.check, size: 18) : null,
-            onTap: () => Navigator.pop(ctx, '__none__'),
-          ),
-          if (list.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(20),
-              child: Text('Aucune activité temps disponible.',
-                  style: TextStyle(fontStyle: FontStyle.italic)),
-            ),
-          for (final a in list)
-            ListTile(
-              leading: const Icon(Icons.timer_outlined),
-              title: Text(a.name),
-              trailing:
-                  currentId == a.id ? const Icon(Icons.check, size: 18) : null,
-              onTap: () => Navigator.pop(ctx, a.id),
-            ),
-        ],
-      ),
-    ),
-  );
+  final picked = await showActivityPicker(context,
+      activities: acts,
+      domains: st.activeDomains,
+      title: 'Activité liée',
+      selectedId: currentId,
+      preferDomainId: act.domainId,
+      extras: [ActivityPickerExtra('__none__', 'Aucune', selected: currentId.isEmpty)]);
   if (picked == null) return false; // sheet fermé sans choix
   act.linkedActivityId = picked == '__none__' ? null : picked;
   // Le minuteur survit au déliage : sans activité liée, le décompte tourne

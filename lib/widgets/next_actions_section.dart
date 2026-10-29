@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -29,16 +30,7 @@ Future<void> showCreateActionOrProjectSheet(
   final timeActivities =
       logic.state.activeActivities.where((a) => a.type == 'time').toList();
   // « Sur l'activité » groupé PAR DOMAINE — plus lisible qu'une nappe de chips.
-  final domains = logic.state.activeDomains;
-  final actGroups = <({String label, List<Activity> acts})>[];
-  for (final d in domains) {
-    final acts = timeActivities.where((a) => a.domainId == d.id).toList();
-    if (acts.isNotEmpty) actGroups.add((label: d.name, acts: acts));
-  }
-  final orphans = timeActivities
-      .where((a) => domains.every((d) => d.id != a.domainId))
-      .toList();
-  if (orphans.isNotEmpty) actGroups.add((label: 'Autres', acts: orphans));
+  final actGroups = groupActivitiesByDomain(timeActivities, logic.state.activeDomains);
 
   await showModalBottomSheet<void>(
     context: context,
@@ -137,20 +129,12 @@ Future<void> showCreateActionOrProjectSheet(
                     ),
                   ),
                 for (final g in actGroups) ...[
-                  const SizedBox(height: 8),
-                  Text(g.label.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: .8,
-                          color: Theme.of(ctx).colorScheme.onSurface
-                              .withOpacity(.35))),
-                  const SizedBox(height: 4),
+                  ActivityDomainHeader(name: g.name, color: g.color, padding: const EdgeInsets.only(top: 8, bottom: 4)),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      for (final a in g.acts)
+                      for (final a in g.activities)
                         ChoiceChip(
                           selected: activityId == a.id,
                           onSelected: (_) =>

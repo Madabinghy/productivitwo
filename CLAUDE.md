@@ -797,6 +797,14 @@ d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste util
 
 **Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine. Dans le lanceur « Lancer une routine » (FAB), le tap sur une routine ouvre directement cette fiche (plus de menu intermédiaire Minuteur · Marquer comme fait · Réglages : le minuteur a son bouton ⏱ sur la ligne, le +1 se fait dans la fiche).
 
+**Sélecteur d'activité partagé** (2026-10-30, retour user « partout où je choisis une activité ») : `widgets/activity_picker.dart` —
+`groupActivitiesByDomain` (ordre des domaines, domaine préféré en tête, « Sans domaine » à la fin), `ActivityDomainHeader` (pastille de
+couleur), `showActivityPicker` (feuille défilante, coche sur l'activité courante, entrées « Aucune » / « Juste cocher » via
+`ActivityPickerExtra`), `groupedActivityItems` (liste déroulante web). Branché : Modifier la session (Dernières 24 h), chrono d'un bloc de
+projet, « Où tracer le temps » d'une routine, activité liée (projet, routine, action de tâche), action propre depuis la frise, action visée
+libre, deep work « Autre », tri d'une capture, chrono d'une action (feuille d'action d'Actions : un bouton au lieu de 8 puces), nouvelle
+action simple, Nouveau bloc (« Toutes »), web : « Modifier le chrono » et « Action simple ». Tout nouveau choix d'activité passe par lui.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet

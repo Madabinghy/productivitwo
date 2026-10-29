@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -208,7 +209,8 @@ class SessionsCard extends StatelessWidget {
               DropdownButtonFormField<String>(
                 value: activityId,
                 decoration: const InputDecoration(labelText: 'Activité', border: OutlineInputBorder(), isDense: true),
-                items: [for (final a in acts) DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis))],
+                isExpanded: true,
+                items: groupedActivityItems(groupActivitiesByDomain(acts, domains)),
                 onChanged: (v) => setSt(() => activityId = v ?? activityId),
               ),
               const SizedBox(height: 12),

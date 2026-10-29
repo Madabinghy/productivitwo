@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -987,27 +988,17 @@ class _ActionFicheState extends State<_ActionFiche> {
   }
 
   Future<void> _linkActivity() async {
-    final dom = widget.project.domainId;
-    final acts = widget.activities.where((x) => !x.isHabit && !x.deleted && x.domainId == dom).toList()..sort((x, y) => x.name.compareTo(y.name));
-    final list = acts.isNotEmpty ? acts : (widget.activities.where((x) => !x.isHabit && !x.deleted).toList()..sort((x, y) => x.name.compareTo(y.name)));
+    final list = widget.activities.where((x) => !x.isHabit && !x.deleted).toList();
     if (list.isEmpty) return;
-    final picked = await showModalBottomSheet<Activity?>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView(shrinkWrap: true, children: [
-          const Padding(padding: EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text('Activité liée', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-          for (final x in list)
-            ListTile(leading: const Icon(Icons.timer_outlined), title: Text(x.name), trailing: a.linkedActivityId == x.id ? const Icon(Icons.check) : null, onTap: () => Navigator.pop(ctx, x)),
-          if (a.linkedActivityId != null)
-            ListTile(leading: const Icon(Icons.link_off), title: const Text('Délier'), onTap: () {
-              a.linkedActivityId = null;
-              Navigator.pop(ctx, null);
-            }),
-        ]),
-      ),
-    );
-    if (picked != null) a.linkedActivityId = picked.id;
+    final picked = await showActivityPicker(context,
+        activities: list,
+        domains: widget.logic?.state.activeDomains ?? const [],
+        title: 'Activité liée',
+        selectedId: a.linkedActivityId,
+        preferDomainId: widget.project.domainId,
+        trailingExtras: [if (a.linkedActivityId != null) const ActivityPickerExtra('', 'Délier', icon: Icons.link_off)]);
+    if (picked == null) return;
+    a.linkedActivityId = picked.isEmpty ? null : picked;
     await _persist();
   }
 

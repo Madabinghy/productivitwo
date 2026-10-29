@@ -417,7 +417,7 @@ class _ActionsViewState extends State<ActionsView> {
           icon: Icons.add,
           onTap: () async {
             final ok = await showAddOwnActionDialog(context,
-                sync: widget.sync, activities: widget.activities);
+                sync: widget.sync, activities: widget.activities, domains: widget.domains.where((d) => !d.deleted).toList());
             if (ok && mounted) setState(() {});
           }),
       const SizedBox(height: 10),
