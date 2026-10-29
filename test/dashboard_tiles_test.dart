@@ -82,4 +82,14 @@ void main() {
     await t.tap(find.text('ROUTINES'));
     expect(opened, 'routines');
   });
+
+  testWidgets('« Badges en jeu » en feuille : en-tête des fiches, pas de Scaffold', (t) async {
+    final scroll = ScrollController();
+    await t.pumpWidget(MaterialApp(
+        home: Material(
+            child: BadgesInPlayScreen(data: const BadgesInPlay([], [], [], []), sheetScroll: scroll))));
+    expect(find.text('Badges en jeu'), findsOneWidget);
+    expect(find.text('0 aujourd’hui'), findsOneWidget);
+    expect(find.byType(AppBar), findsNothing);
+  });
 }

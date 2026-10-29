@@ -629,7 +629,7 @@ montre le programme de demain sur la page. Le passage auto en « fait » des blo
 (`_parallelSection(cs, stakes)` → `widgets/dashboard_tiles.dart` `DashboardTiles`, logique pure `utils/dashboard_tiles.dart`) : PROGRAMME
 (`programTile` : bande des blocs, en cours / ensuite ; tap = remonte au programme), ROUTINES (`routinesTile`, tap = fiche Routines),
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
-sauver, plus proche ; tap = écran `BadgesInPlayScreen` — SE PERD CE SOIR · PALIER CE SOIR · CHASSES · PROCHES, `badgesInPlay` —, bouton =
+sauver, plus proche ; tap = feuille `BadgesInPlayScreen(sheetScroll:)` sur mobile (2026-10-30, comme les autres tuiles ; écran / dialog web) — SE PERD CE SOIR · PALIER CE SOIR · CHASSES · PROCHES, `badgesInPlay` —, bouton =
 le geste, « Tous les badges » = galerie), ACTIONS (`actionsTile` : visées aujourd'hui ; tap = onglet Actions, `onOpenActions`),
 PROJETS (`projectsTile` : séance la plus proche + prépa, retards sur le plan ; tap = onglet Projets, `onOpenProjects`). **Lot 4 livré** :
 bilan du soir (`utils/evening_ledger.dart`, `isEvening` = journée vécue ≥ 19 h) — `EveningLedgerCard` remplace le tableau du jour :

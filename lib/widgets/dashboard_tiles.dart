@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
+import 'package:productivitwo_v1/widgets/fiche.dart' show FicheHeader;
 import 'package:productivitwo_v1/widgets/stakes_section.dart' show kStakeLose, kStakeTier, kStakeHunt, StakeGauge;
 
 /// « TON TABLEAU DE BORD » (lot 3) : une tuile par vue, son état en une ligne,
@@ -167,7 +168,10 @@ class BadgesInPlayScreen extends StatelessWidget {
   final BadgesInPlay data;
   final void Function(Stake s)? onRun;
   final VoidCallback? onAll;
-  const BadgesInPlayScreen({super.key, required this.data, this.onRun, this.onAll});
+  /// Feuille (`showFiche`, Aujourd'hui mobile) : liste sans Scaffold, sur le
+  /// défilement de la feuille, avec l'en-tête des fiches.
+  final ScrollController? sheetScroll;
+  const BadgesInPlayScreen({super.key, required this.data, this.onRun, this.onAll, this.sheetScroll});
 
   @override
   Widget build(BuildContext context) {
@@ -198,16 +202,12 @@ class BadgesInPlayScreen extends StatelessWidget {
       );
     }
 
-    return Scaffold(
-      backgroundColor: kBBg,
-      appBar: AppBar(
-        backgroundColor: kBBg,
-        foregroundColor: kBText,
-        title: Text('Badges en jeu · ${data.today}'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+    final sheet = sheetScroll != null;
+    final list = ListView(
+        controller: sheetScroll,
+        padding: sheet ? const EdgeInsets.fromLTRB(20, 14, 20, 32) : const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
+          if (sheet) FicheHeader(title: 'Badges en jeu', chip: '${data.today} aujourd’hui', chipColor: kStakeHunt),
           if (data.today == 0)
             const Padding(
               padding: EdgeInsets.only(top: 24),
@@ -237,7 +237,16 @@ class BadgesInPlayScreen extends StatelessWidget {
             ),
           ],
         ],
+      );
+    if (sheet) return list;
+    return Scaffold(
+      backgroundColor: kBBg,
+      appBar: AppBar(
+        backgroundColor: kBBg,
+        foregroundColor: kBText,
+        title: Text('Badges en jeu · ${data.today}'),
       ),
+      body: list,
     );
   }
 }
