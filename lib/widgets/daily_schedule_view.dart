@@ -20,6 +20,12 @@ import 'package:productivitwo_v1/widgets/domain_session_screen.dart';
 import 'package:productivitwo_v1/widgets/move_block_sheet.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
+import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
+import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistItem;
+import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen;
+import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/moment_item.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -923,41 +929,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   Widget _buildBlock(BuildContext context, ColorScheme cs, ScheduleBlock block,
       {required Key key, bool nowInside = false}) {
     if (block.isPrep) return _buildPrepBlock(context, cs, block, key: key);
-    final isDone = block.status == 'done';
-    final dark = cs.brightness == Brightness.dark;
-    // Défi programmé = teinte dorée distincte (cohérent avec « Challenge me »).
-    final color =
-        block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs);
-    final primary = dark ? kBPrimary : cs.primary;
-    final muted = dark ? kBText3 : cs.onSurface.withOpacity(.6);
-    final hourColor = dark ? kBText4 : cs.onSurface.withOpacity(.45);
-    // Bloc en cours (aujourd'hui, pending, créneau contenant l'heure) :
-    // fond + bordure primaire, heure en primaire, coche cerclée de primaire.
-    final now = DateTime.now();
-    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
-    int toMin(String hm) =>
-        (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
-    final startMin = toMin(block.startTime);
-    final current = _isToday &&
-        block.status == 'pending' &&
-        startMin <= nowMin &&
-        nowMin < startMin + block.durationMin;
-    // Réel loggué du jour sur la source du bloc — visible même en vue liste.
-    final int loggedMin;
-    if (_isToday) {
-      final dayStart = livedDayStart(now, widget.logic.dayStartMin);
-      final w = blockLogWindow(block, _schedule?.blocks ?? const []);
-      loggedMin = _loggedMinFor(block, dayStart.add(Duration(minutes: w.start)),
-          dayStart.add(Duration(minutes: w.end)));
-    } else {
-      loggedMin = 0;
-    }
-    final launchable = widget.onLaunch != null &&
-        !isDone &&
-        !current &&
-        (block.projectId != null || block.activityId != null);
-    final blockCtx = widget.logic.contextOfBlock(block);
-
     return Dismissible(
       key: key,
       direction: DismissDirection.endToStart,
@@ -974,45 +945,153 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       onDismissed: (_) => _deleteBlock(block),
       child: Padding(
         padding: const EdgeInsets.only(bottom: 2),
-        child: GestureDetector(
-          // Appui long : ajuster le bloc — heure et durée se changent SANS
-          // pénalité (la flexibilité intra-journée est libre) ; seul le
-          // changement de DATE compte comme report.
-          onLongPress: block.status == 'pending' && !block.isPrep
-              ? () => _showAdjustSheet(context, block)
-              : null,
-          onTap: () {
-            // Bloc session de définition (onboarding 18b) → lance la session ;
-            // bloc « nommer mes domaines » (21a) → sheet de nommage in-place.
-            if (block.kind == 'session') {
-              if (block.domainId != null) {
-                Domain? d;
-                for (final x in widget.logic.state.domains) {
-                  if (x.id == block.domainId && !x.deleted) d = x;
+        // « Une liste, un seul bloc ouvert » (2026-10) : tap = le bloc s'ouvre à
+        // sa place en carte (MAINTENANT reste la ligne ouverte par défaut en
+        // tête) ; la fiche de la source passe en lien « Détail ». Appui long :
+        // ajuster le bloc — heure et durée se changent SANS pénalité.
+        child: block.kind == 'session'
+            ? GestureDetector(onTap: () => _openSessionBlock(context, block), child: _blockLine(context, cs, block, nowInside: nowInside))
+            : MomentItem(
+                key: _openItem.keyFor(block.id),
+                padding: EdgeInsets.zero,
+                open: _openItem.isOpen(block.id, null),
+                collapsed: _blockLine(context, cs, block, nowInside: nowInside),
+                expanded: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: _blockCard(context, cs, block)),
+                onToggle: () => _openItem.settle(block.id, () => setState(() => _openItem.toggle(block.id, null))),
+                onLongPress: block.status == 'pending' && !block.isPrep ? () => _showAdjustSheet(context, block) : null,
+              ),
+      ),
+    );
+  }
+
+  final _openItem = OpenItem();
+
+  /// Bloc session de définition (onboarding 18b) → lance la session ; bloc
+  /// « nommer mes domaines » (21a) → sheet de nommage in-place.
+  void _openSessionBlock(BuildContext context, ScheduleBlock block) {
+    if (block.domainId != null) {
+      Domain? d;
+      for (final x in widget.logic.state.domains) {
+        if (x.id == block.domainId && !x.deleted) d = x;
+      }
+      if (d != null) {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DomainSessionScreen(logic: widget.logic, domainName: d!.name),
+        ));
+      }
+    } else {
+      showDomainNamingSheet(context, logic: widget.logic);
+    }
+  }
+
+  /// Fiche de la source (tâche / activité), sinon la feuille du bloc.
+  void _openDetail(BuildContext context, ColorScheme cs, ScheduleBlock block) {
+    final hasSource = block.projectId != null || block.activityId != null;
+    if (hasSource && widget.onOpenSource != null) {
+      widget.onOpenSource!(block);
+    } else {
+      _showEditSheet(context, cs, block);
+    }
+  }
+
+  /// Bloc ouvert = carte du bloc (grammaire de Projets) : créneau, « Projet ›
+  /// Tâche », l'action visée et ses étapes, UN bouton (Lancer / Fait /
+  /// Rouvrir), liens Détail · Autres (modifier, ajuster, pas disponible, supprimer).
+  Widget _blockCard(BuildContext context, ColorScheme cs, ScheduleBlock block) {
+    final isDone = block.status == 'done';
+    final now = DateTime.now();
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
+    int toMin(String hm) => (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
+    final startMin = toMin(block.startTime);
+    final endMin = startMin + block.durationMin;
+    String clock(int m) => '${((m ~/ 60) % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
+    final current = _isToday && block.status == 'pending' && startMin <= nowMin && nowMin < endMin;
+    final past = _isToday && endMin <= nowMin;
+    final pt = _taskOf(block);
+    final focusAction = pt == null ? null : blockWork(pt.$2, block.actionId).focus;
+    final activity = block.activityId == null ? null : widget.logic.state.activities.where((a) => a.id == block.activityId).firstOrNull;
+    final ctx = pt != null
+        ? '${pt.$1.title} › ${pt.$2.title}'
+        : activity?.name;
+    final title = focusAction?.title ?? block.title;
+    final nextStep = focusAction == null ? null : nextChecklistItem(focusAction);
+    final steps = focusAction != null && focusAction.checklist.isNotEmpty;
+    final launchable = widget.onLaunch != null && !isDone && (block.projectId != null || block.activityId != null);
+    final accent = isDone ? kPalierGreen : (block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs));
+    final pill = isDone
+        ? 'fait'
+        : current
+            ? 'en cours · reste ${endMin - nowMin} min'
+            : past
+                ? 'passé'
+                : 'à ${clock(startMin)}';
+    return MomentCard(
+      accent: accent,
+      eyebrow: isDone ? 'BLOC FAIT' : (current ? 'BLOC EN COURS' : 'BLOC'),
+      pill: pill,
+      ring: isDone ? 1 : (current ? ((nowMin - startMin) / block.durationMin).clamp(0.0, 1.0) : 0),
+      ringColor: accent,
+      ringBig: fmtMin(block.durationMin),
+      ringSmall: isDone ? 'FAIT' : 'PRÉVU',
+      context_: ctx,
+      contextIcon: pt != null ? Icons.account_tree_outlined : (activity != null ? Icons.bolt_outlined : null),
+      title: title,
+      sub: '${clock(startMin)} → ${clock(endMin)}${nextStep != null ? ' · étape : ${nextStep.title}' : (focusAction != null && title != block.title ? ' · ${block.title}' : '')}',
+      visual: steps
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              StepDots(done: focusAction.checklist.where((c) => c.done).length, total: focusAction.checklist.length, allDone: focusAction.done, size: 12),
+              MomentLegend(nextStep == null ? 'Toutes les étapes sont faites' : 'Étape en cours : ${nextStep.title}',
+                  right: '${focusAction.checklist.where((c) => c.done).length} / ${focusAction.checklist.length}'),
+            ])
+          : null,
+      primaryLabel: isDone ? 'Rouvrir' : (launchable ? (current ? 'Lancer' : 'Commencer') : 'Fait'),
+      primaryIcon: isDone ? Icons.undo_rounded : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded),
+      onPrimary: isDone
+          ? () => _toggleDone(block)
+          : launchable
+              ? () {
+                  HapticFeedback.lightImpact();
+                  widget.onLaunch!(block);
                 }
-                if (d != null) {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => DomainSessionScreen(
-                        logic: widget.logic, domainName: d!.name),
-                  ));
-                  return;
-                }
-              } else {
-                showDomainNamingSheet(context, logic: widget.logic);
-                return;
-              }
-            }
-            // Bloc issu d'une tâche/routine/activité → ouvre sa fiche ;
-            // bloc libre (perso/pause) → sheet de renommage du bloc.
-            final hasSource =
-                block.projectId != null || block.activityId != null;
-            if (hasSource && widget.onOpenSource != null) {
-              widget.onOpenSource!(block);
-            } else {
-              _showEditSheet(context, cs, block);
-            }
-          },
-          child: Container(
+              : () => _toggleDone(block),
+      ficheLabel: 'Détail',
+      onFiche: () => _openDetail(context, cs, block),
+      moreTitle: block.title,
+      moreActions: [
+        if (!isDone && launchable) MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'marquer le bloc fait', onTap: () => _toggleDone(block)),
+        MomentAction('Modifier le bloc', icon: Icons.edit_outlined, onTap: () => _showEditSheet(context, cs, block)),
+        if (block.status == 'pending' && !block.isPrep)
+          MomentAction('Ajuster l\'heure ou la durée', icon: Icons.schedule_rounded, onTap: () => _showAdjustSheet(context, block)),
+        if (block.status == 'pending' && canCancelBlock(block))
+          MomentAction('Pas disponible', icon: Icons.block_rounded, hint: 'annuler sans report', onTap: () => _cancelBlock(block)),
+        MomentAction('Supprimer', icon: Icons.delete_outline, destructive: true, onTap: () => _deleteBlock(block)),
+      ],
+    );
+  }
+
+  Widget _blockLine(BuildContext context, ColorScheme cs, ScheduleBlock block, {bool nowInside = false}) {
+    final isDone = block.status == 'done';
+    final dark = cs.brightness == Brightness.dark;
+    final color = block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs);
+    final primary = dark ? kBPrimary : cs.primary;
+    final muted = dark ? kBText3 : cs.onSurface.withOpacity(.6);
+    final hourColor = dark ? kBText4 : cs.onSurface.withOpacity(.45);
+    final now = DateTime.now();
+    final nowMin = livedNowMin(now, widget.logic.dayStartMin);
+    int toMin(String hm) => (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
+    final startMin = toMin(block.startTime);
+    final current = _isToday && block.status == 'pending' && startMin <= nowMin && nowMin < startMin + block.durationMin;
+    final int loggedMin;
+    if (_isToday) {
+      final dayStart = livedDayStart(now, widget.logic.dayStartMin);
+      final w = blockLogWindow(block, _schedule?.blocks ?? const []);
+      loggedMin = _loggedMinFor(block, dayStart.add(Duration(minutes: w.start)), dayStart.add(Duration(minutes: w.end)));
+    } else {
+      loggedMin = 0;
+    }
+    final launchable = widget.onLaunch != null && !isDone && !current && (block.projectId != null || block.activityId != null);
+    final blockCtx = widget.logic.contextOfBlock(block);
+    return Container(
             constraints: const BoxConstraints(minHeight: 48),
             padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
             decoration: BoxDecoration(
@@ -1186,10 +1265,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 if (nowInside) _nowZone(context, cs, block, now, startMin),
               ],
             ),
-          ),
-        ),
-      ),
-    );
+          );
   }
 
   /// F1 — zone du trait « maintenant » DANS le bloc en cours (~30 px sous le
