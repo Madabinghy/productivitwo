@@ -461,8 +461,8 @@ tâche, remplie par ses actions), tâche = rangée (une par action, remplie par 
 pure `utils/progress_bricks.dart` (`BrickState` done · started · late · running · todo · upcoming, `projectBricks` / `taskBricks`
 → `BrickRow` avec `expected` = trait « attendu aujourd'hui », `taskFill` / `actionFill`, `runningTargets`, `wallDigest`,
 `behindLabel`) ; widgets `widgets/progress_bricks.dart` (`ProgressBricks` painter, tap sur une brique = index ; `StepDots`).
-**Lot 1 livré** : onglet Projets mobile (`goals_view.dart`) = trois chiffres (`_digest`), carte du moment avec la rangée en
-détail, lignes `_wallRow` (nom · k / n · écart au plan, briques, prochaine action ; tap brique = fiche de la tâche).
+**Lot 1 livré** : onglet Projets mobile (`goals_view.dart`) = trois chiffres (`_digest` — retirés le 2026-10-30 à la demande
+de l'user ; `wallDigest` reste en logique pure), carte du moment avec la rangée en détail, lignes `_wallRow` (nom · k / n · écart au plan, briques, prochaine action ; tap brique = fiche de la tâche).
 **Lot 2 livré** : le **projet déplié sur place** remplace le plan d'action — `showProjectSheet` (`project_sheet.dart`, appui long
 sur une ligne de Projets, « Déplier le projet » dans la fiche projet) garde l'en-tête éditable (titre, domaine, dates, activité
 liée, phases, ajouter tâche / phase, documents) mais sa rangée de briques tient lieu de barre (tap sur une brique = déplie cette

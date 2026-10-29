@@ -235,9 +235,6 @@ class _GoalsViewState extends State<GoalsView> {
     BrickRow rowOf(Project p) => projectBricks(p, now, runningTaskIds: running.taskIds, runningActionIds: running.actionIds);
     final liveRows = {for (final m in live) m.project.id: rowOf(m.project)};
     _firstLive = live.firstOrNull;
-    final digest = wallDigest(liveRows.values);
-    final nextSession = live.where((m) => m.session != null).fold<ProjectMoment?>(
-        null, (best, m) => best == null || m.daysToSession! < best.daysToSession! ? m : best);
 
     return Scaffold(
       appBar: AppBar(
@@ -270,7 +267,6 @@ class _GoalsViewState extends State<GoalsView> {
                     child: Text('Aucun projet ne passe les filtres.',
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .5))),
                   ),
-                if (live.isNotEmpty) _digest(cs, digest, nextSession, now),
                 if (live.isNotEmpty) ...[
                   const ListSectionTitle('TOUS LES PROJETS'),
                   for (final m in live) _item(m, liveRows[m.project.id]!, now, defaultId: live.first.project.id, moment: m == live.first),
@@ -386,38 +382,6 @@ class _GoalsViewState extends State<GoalsView> {
       ListSectionTitle(title, onAction: () => _toggle(key), expanded: open),
       if (open) ...rows,
     ];
-  }
-
-  /// Trois chiffres en tête du mur : tâches faites, projets derrière le trait, prochaine séance.
-  Widget _digest(ColorScheme cs, ({int done, int total, int behind}) d, ProjectMoment? nextSession, DateTime now) {
-    Widget tile(String v, String l, {Color? color}) => Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(12)),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(v,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: color ?? cs.onSurface, fontFeatures: const [FontFeature.tabularFigures()])),
-              Text(l, maxLines: 2, style: TextStyle(fontSize: 10.5, height: 1.2, color: cs.onSurface.withValues(alpha: .55))),
-            ]),
-          ),
-        );
-    final s = nextSession?.session;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(children: [
-        tile('${d.done} / ${d.total}', 'tâches faites, tous projets'),
-        const SizedBox(width: 8),
-        tile('${d.behind}', d.behind == 1 ? 'projet derrière le trait' : 'projets derrière le trait',
-            color: d.behind == 0 ? kPalierGreen : (d.behind >= 3 ? kPalierCoral : kPalierAmber)),
-        const SizedBox(width: 8),
-        if (s != null)
-          tile(sessionLabel(s, now).replaceFirst('séance ', ''), 'prochaine séance · ${nextSession!.project.title}')
-        else
-          tile('—', 'aucune séance à venir'),
-      ]),
-    );
   }
 
   /// Tap sur une brique = le projet déplié, CETTE tâche dépliée (même
