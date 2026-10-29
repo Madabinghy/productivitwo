@@ -116,7 +116,7 @@ void _momentCardLinksTests() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('MomentActionIcons : 5 icônes distinctes en ligne, le reste derrière « ⋯ »', (tester) async {
+  testWidgets('MomentActionIcons : cinq ronds au plus, « ⋯ » compris, icônes distinctes', (tester) async {
     final tapped = <String>[];
     MomentAction a(String l, IconData i) => MomentAction(l, icon: i, onTap: () => tapped.add(l));
     await tester.pumpWidget(MaterialApp(
@@ -132,10 +132,11 @@ void _momentCardLinksTests() {
         ]),
       ),
     ));
-    expect(find.byType(OutlinedButton), findsNWidgets(6)); // 5 + « ⋯ »
+    expect(find.byType(OutlinedButton), findsNWidgets(5)); // 4 + « ⋯ » : cinq ronds au plus
     await tester.tap(find.byIcon(Icons.more_horiz_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Chrono B'), findsOneWidget);
+    expect(find.text('Projet'), findsOneWidget);
     expect(find.text('Sixième'), findsOneWidget);
     await tester.tap(find.text('Chrono B'));
     await tester.pumpAndSettle();
