@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
 import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/widgets/objectives_day_view.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
+import 'package:productivitwo_v1/widgets/focused_action_create.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart' show showProjectFiche;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
@@ -1088,8 +1089,20 @@ class TodayViewState extends State<TodayView> {
               title: 'Visées aujourd\'hui',
               chip: '${done.length} / ${items.length} faite${done.length > 1 ? 's' : ''}',
               chipColor: open.isEmpty && items.isNotEmpty ? kPalierGreen : kPalierAmber,
-              kpi: 'touche une action pour l\'ouvrir en focus · appui long pour la re-viser',
+              kpi: 'touche une action pour l\'ouvrir en focus · ⋯ ou appui long pour la gérer',
             ),
+            if (widget.sync != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.tonalIcon(
+                  onPressed: () async {
+                    final created = await showNewFocusedAction(context, logic: widget.logic, sync: widget.sync!);
+                    if (created && ctx.mounted) setLocal(() {});
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Ajouter une action visée'),
+                ),
+              ),
             if (items.isEmpty) const FicheNote('Rien n\'est visé aujourd\'hui.'),
             if (open.isNotEmpty) ...[
               FicheTitle('À FAIRE · ${open.length}'),
@@ -1105,6 +1118,15 @@ class TodayViewState extends State<TodayView> {
                     await _refocusItem(e);
                     if (ctx.mounted) setLocal(() {});
                   },
+                  trailing: IconButton(
+                    tooltip: 'Gérer',
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                    onPressed: () async {
+                      await _refocusItem(e);
+                      if (ctx.mounted) setLocal(() {});
+                    },
+                  ),
                 ),
             ],
             if (done.isNotEmpty) ...[
@@ -1160,13 +1182,71 @@ class TodayViewState extends State<TodayView> {
             ),
           ),
           ListTile(leading: const Icon(Icons.wb_sunny_outlined), title: const Text('Viser demain'), onTap: () => Navigator.pop(c, 'tomorrow')),
-          ListTile(leading: const Icon(Icons.event_busy_outlined), title: const Text('Retirer le jour visé'), onTap: () => Navigator.pop(c, 'clear')),
+          ListTile(leading: const Icon(Icons.event_busy_outlined), title: const Text('Ne plus viser'), subtitle: const Text('l\'action reste dans son projet ou son activité'), onTap: () => Navigator.pop(c, 'clear')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Renommer'), onTap: () => Navigator.pop(c, 'rename')),
+          ListTile(
+              leading: Icon(Icons.delete_outline, color: Theme.of(c).colorScheme.error),
+              title: Text('Supprimer l\'action', style: TextStyle(color: Theme.of(c).colorScheme.error)),
+              onTap: () => Navigator.pop(c, 'delete')),
+          const SizedBox(height: 8),
         ]),
       ),
     );
-    if (choice == null) return;
+    if (choice == null || !mounted) return;
+    if (choice == 'rename') {
+      final ctrl = TextEditingController(text: e.action.title);
+      final name = await showDialog<String>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: const Text('Renommer'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            onSubmitted: (v) => Navigator.pop(d, v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+            FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: const Text('Enregistrer')),
+          ],
+        ),
+      );
+      ctrl.dispose();
+      final t = name?.trim() ?? '';
+      if (t.isEmpty || t == e.action.title) return;
+      e.action.title = t;
+      await _saveFocusedItem(sync, e);
+      return;
+    }
+    if (choice == 'delete') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (d) => AlertDialog(
+          title: const Text('Supprimer l\'action ?'),
+          content: Text('« ${e.action.title} » sera supprimée${e.project != null ? ' du projet ${e.project!.title}' : ''}.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Annuler')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Supprimer')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      if (e.project != null && e.task != null) {
+        e.task!.actions.removeWhere((a) => a.id == e.action.id);
+        await sync.saveProjectTasks(e.project!.id, e.project!.tasks);
+      } else if (e.owner != null) {
+        e.owner!.ownActions.removeWhere((a) => a.id == e.action.id);
+        await sync.updateOwnActions(e.owner!.id, e.owner!.ownActions);
+      }
+      widget.logic.onChange();
+      return;
+    }
     final t = DateTime.now().add(const Duration(days: 1));
     e.action.focusDate = choice == 'tomorrow' ? DateTime(t.year, t.month, t.day) : null;
+    await _saveFocusedItem(sync, e);
+  }
+
+  Future<void> _saveFocusedItem(FirestoreSync sync, _FocusedItem e) async {
     if (e.project != null) {
       await sync.patchActionOf(e.project!, e.action);
     } else if (e.owner != null) {
