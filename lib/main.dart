@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWin
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
@@ -4685,14 +4686,13 @@ class _AppRootState extends State<AppRoot>
     if (picked == null || !mounted) return;
 
     if (picked == '__check__') {
-      final day = DateTime.now();
       final tgt = logic.activeHabitTarget(r);
       if (tgt > 1) {
         await showHabitCountSheet(context, logic: logic, activity: r);
         return;
       }
-      if (tgt > 0 && logic.habitValueOn(r.id, day) >= tgt) return;
-      logic.incHabit(r.id, 1, DateTime(day.year, day.month, day.day));
+      if (tgt > 0 && routineTodayCount(logic, r) >= tgt) return;
+      logic.incHabit(r.id, 1, logic.livedToday);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('✅ Routine validée : ${r.name}'),
         duration: const Duration(seconds: 2),
@@ -4892,8 +4892,9 @@ class _AppRootState extends State<AppRoot>
   }
 
   void _showRoutinesSheet(BuildContext context) {
-    final today = DateTime.now();
-    final todayD = DateTime(today.year, today.month, today.day);
+    // Journée VÉCUE (bascule à dayStartMin), comme le reste de l'app : une
+    // routine faite à 1 h compte pour la veille.
+    final todayD = logic.livedToday;
 
     final domainById = {for (final d in logic.state.activeDomains) d.id: d};
     final domainOrder = logic.state.activeDomains.map((d) => d.id).toList()
@@ -5007,7 +5008,7 @@ class _AppRootState extends State<AppRoot>
                           // Compteur DE PÉRIODE (jour/semaine/mois) — pas juste
                           // aujourd'hui (sinon une routine hebdo affiche 0/4 même
                           // si on l'a faite 2× cette semaine). Le − reste lié au jour.
-                          final todayValue = logic.habitValueOn(r.id, todayD);
+                          final todayValue = routineTodayCount(logic, r);
                           final period = logic.habitPeriod(r);
                           final value = period.done;
                           final target = period.target;

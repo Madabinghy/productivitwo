@@ -1891,12 +1891,17 @@ class AppLogic implements HuntStore {
     // --- après MAJ compteur ---
 
     if (delta > 0) {
+      // Une trace par unité (compteur « +3 » = trois hits) : les comptes du
+      // jour vécu, séries et badges lisent les hits, pas le compteur.
       final running = runningActivity();
-      state.habitHits.add(HabitHit(
-        habitId: activityId,
-        ts: DateTime.now(),
-        contextActivityId: running?.id,
-      ));
+      final now = DateTime.now();
+      for (var i = 0; i < delta; i++) {
+        state.habitHits.add(HabitHit(
+          habitId: activityId,
+          ts: now.add(Duration(milliseconds: i)),
+          contextActivityId: running?.id,
+        ));
+      }
     } else if (delta < 0) {
       // Décrément UNIFIÉ : le compteur ET les hits redescendent ensemble.
       _removeLatestHits(activityId, day, -delta);
