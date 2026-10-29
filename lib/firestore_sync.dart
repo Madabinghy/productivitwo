@@ -440,6 +440,7 @@ class FirestoreSync {
             ?.map((k, v) => MapEntry(k.toString(), v.toString())),
         nowSkippedByYmd: _decodeByYmd(meta['nowSkippedByYmd']),
         nowDoneByYmd: _decodeByYmd(meta['nowDoneByYmd']),
+        routinePushedByYmd: _decodeByYmd(meta['routinePushedByYmd']),
         expeditionPicked:
             (meta['expeditionPicked'] as List?)?.cast<String>(),
         expeditionEntities:
@@ -720,6 +721,9 @@ class FirestoreSync {
       // chaque relance : bug constaté 2026-09-30).
       nowSkippedByYmd:       _unionByYmd(local.nowSkippedByYmd, remote.nowSkippedByYmd),
       nowDoneByYmd:          _unionByYmd(local.nowDoneByYmd, remote.nowDoneByYmd),
+      // Reports d'une routine à un moment (« ce soir ») : absents du meta avant
+      // 2026-10-30, ils se perdaient à chaque relance.
+      routinePushedByYmd:    _mergePushedByYmd(local.routinePushedByYmd, remote.routinePushedByYmd),
       // Checklist routines : union pour ne rien perdre entre appareils.
       // Template (habitId -> items) : on garde la liste la plus longue par habitId.
       habitChecklistByHabitId: () {
@@ -817,6 +821,22 @@ class FirestoreSync {
     return out;
   }
 
+  /// Reports « id:moment » par jour : le local prime pour une routine qu'il
+  /// connaît (dernier geste sur cet appareil), le distant complète les autres.
+  static Map<String, List<String>> _mergePushedByYmd(
+      Map<String, List<String>> local, Map<String, List<String>> remote) {
+    final out = <String, List<String>>{};
+    for (final k in {...local.keys, ...remote.keys}) {
+      final l = local[k] ?? const <String>[];
+      final ids = {for (final e in l) e.split(':').first};
+      out[k] = [...l, for (final e in remote[k] ?? const <String>[]) if (!ids.contains(e.split(':').first)) e];
+    }
+    final c = DateTime.now().subtract(const Duration(days: 14));
+    final cutoff = '${c.year}${c.month.toString().padLeft(2, '0')}${c.day.toString().padLeft(2, '0')}';
+    out.removeWhere((k, _) => k.length == 8 && k.compareTo(cutoff) < 0);
+    return out;
+  }
+
   static Map<String, List<String>>? _decodeByYmd(dynamic raw) => (raw as Map?)?.map(
       (k, v) => MapEntry(k.toString(), (v as List?)?.map((e) => e.toString()).toList() ?? []));
 
@@ -826,6 +846,7 @@ class FirestoreSync {
         // Routines validées ✅ / reculées du jour (« Le meilleur à faire »).
         'nowSkippedByYmd': st.nowSkippedByYmd,
         'nowDoneByYmd': st.nowDoneByYmd,
+        'routinePushedByYmd': st.routinePushedByYmd,
         // Checklist des routines : template (habitId -> items) + coches (habitId ->
         // periodKey -> indices). Synchronisé pour que le dashboard web la voie.
         'habitChecklistByHabitId': st.habitChecklistByHabitId,
