@@ -9,9 +9,11 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart' show minutesByActivity;
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show ActivityDomainHeader;
+import 'package:productivitwo_v1/widgets/status_row.dart' show ExpectedBar;
 
 const _kChrono = Color(0xFF3FC7A0);
 const _kLate = Color(0xFFE8A33D);
+const _kOnTrack = Color(0xFF4CBF75);
 
 /// Une activité lue pour le lanceur : fait aujourd'hui, et sur la fenêtre de
 /// budget face à son minimum (même lecture que la page domaine).
@@ -20,8 +22,11 @@ class LauncherRow {
   final int todayMin;
   final int windowMin;
   final int expectedMin;
+  /// Minimum sur toute la fenêtre (fin de la barre).
+  final int totalMin;
   final bool dormant;
-  const LauncherRow(this.a, {required this.todayMin, required this.windowMin, required this.expectedMin, required this.dormant});
+  const LauncherRow(this.a,
+      {required this.todayMin, required this.windowMin, required this.expectedMin, this.totalMin = 0, required this.dormant});
   /// Un minimum de 1 min / j n'en est pas un (valeur par défaut des activités).
   bool get hasGoal => a.goalMin >= 5;
   bool get behind => hasGoal && windowMin < expectedMin * .95;
@@ -45,8 +50,11 @@ List<LauncherRow> launcherRows(AppLogic logic, DateTime now) {
         todayMin: today[a.id] ?? 0,
         windowMin: window[a.id] ?? 0,
         expectedMin: a.goalMin * idx,
+        totalMin: a.goalMin * days,
         dormant: (month[a.id] ?? 0) == 0);
-    out.add(r.behind && r.dormant ? LauncherRow(a, todayMin: r.todayMin, windowMin: r.windowMin, expectedMin: r.expectedMin, dormant: false) : r);
+    out.add(r.behind && r.dormant
+        ? LauncherRow(a, todayMin: r.todayMin, windowMin: r.windowMin, expectedMin: r.expectedMin, totalMin: r.totalMin, dormant: false)
+        : r);
   }
   return out;
 }
@@ -344,21 +352,11 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final a = r.a;
     final isRunning = running?.id == a.id;
     final color = domainColor(a.domainId, logic.state.activeDomains) ?? cs.primary;
-    final windowDays = logic.budgetWindowDays;
-    final meta = <InlineSpan>[];
-    void add(String t, {Color? c}) {
-      if (meta.isNotEmpty) meta.add(const TextSpan(text: ' · '));
-      meta.add(TextSpan(text: t, style: c == null ? null : TextStyle(color: c)));
-    }
-
-    if (r.behind) {
-      add('${fmtMin(r.windowMin)} / ${fmtMin(r.expectedMin)} attendues ${windowDays == 7 ? 'depuis lundi' : 'sur la quinzaine'}', c: _kLate);
-      add('objectif ${fmtMin(a.goalMin)} / j');
-    } else {
-      add(r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui');
-      if (r.hasGoal) add('au rythme', c: _kChrono);
-    }
-    final ratio = r.expectedMin <= 0 ? 1.0 : (r.windowMin / r.expectedMin).clamp(0.0, 1.0);
+    final late = r.behind;
+    final sub = [
+      r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui',
+      if (r.hasGoal) 'objectif ${fmtMin(a.goalMin)} / j',
+    ].join(' · ');
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => widget.onOpenFiche(a),
@@ -375,26 +373,35 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-              Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(
+                  child: Text(a.name,
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
+                ),
+                if (r.hasGoal) ...[
+                  const SizedBox(width: 8),
+                  Text('${fmtMin(r.windowMin)} / ${fmtMin(r.totalMin)}',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: late ? _kLate : _kOnTrack,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
+                ],
+              ]),
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text.rich(TextSpan(children: meta),
-                    maxLines: 2,
+                child: Text(sub,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .5))),
               ),
+              // Barre de la fiche objectif : fin = minimum de toute la
+              // fenêtre, repère = attendu à ce jour.
               if (r.hasGoal)
                 Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: ratio.toDouble(),
-                      minHeight: 4,
-                      color: r.behind ? _kLate : color,
-                      backgroundColor: cs.onSurface.withValues(alpha: .08),
-                    ),
-                  ),
+                  padding: const EdgeInsets.only(top: 3),
+                  child: ExpectedBar(
+                      done: r.windowMin, total: r.totalMin, expected: r.expectedMin, color: late ? _kLate : _kOnTrack, height: 5),
                 ),
             ]),
           ),

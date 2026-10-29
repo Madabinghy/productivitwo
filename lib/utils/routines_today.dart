@@ -80,3 +80,21 @@ List<RoutineToDo> routinesForToday(
   });
   return out;
 }
+
+/// Semaine calendaire d'une routine (lundi → journée vécue en cours) pour la
+/// barre « fait / attendu à ce jour » du lanceur : quotidienne = cible × 7,
+/// attendu = cible × jours écoulés (aujourd'hui compris) ; hebdo = cible,
+/// attendu au prorata des jours. Mensuelle → null.
+({int done, int total, int expected})? routineCalendarWeek(Activity a, List<HabitHit> hits, DateTime now, int dayStartMin) {
+  final freq = a.habitFreq ?? HabitFreq.daily;
+  if (freq == HabitFreq.monthly) return null;
+  final lived = livedDate(now, dayStartMin);
+  final monday = lived.subtract(Duration(days: lived.weekday - 1));
+  final start = monday.add(Duration(minutes: dayStartMin));
+  final idx = lived.difference(monday).inDays + 1;
+  final done = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(start)).length;
+  final target = a.effHabitTarget;
+  return freq == HabitFreq.daily
+      ? (done: done, total: target * 7, expected: target * idx)
+      : (done: done, total: target, expected: (target * idx / 7).round());
+}
