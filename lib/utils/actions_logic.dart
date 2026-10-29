@@ -341,6 +341,34 @@ DateTime? effectiveDueDate(TaskAction a, ProjectTask? t) {
   return d == null ? null : _dayOnly(d);
 }
 
+/// JOUR VISÉ (2026-10-30) : le jour où l'on veut l'action sous la main. Une
+/// intention, pas une échéance : dépassé, il ne met jamais en retard.
+DateTime? focusDateOf(TaskAction a) => a.focusDate == null ? null : _dayOnly(a.focusDate!);
+
+/// Action ouverte visée pour [day].
+bool isFocusedOn(TaskAction a, DateTime day) =>
+    !a.done && a.focusDate != null && _dayOnly(a.focusDate!) == _dayOnly(day);
+
+/// Action ouverte dont le jour visé est passé sans être faite : « à re-viser »,
+/// jamais « en retard ».
+bool isStaleFocus(TaskAction a, DateTime today) =>
+    !a.done && a.focusDate != null && _dayOnly(a.focusDate!).isBefore(_dayOnly(today));
+
+/// DATE DE TRAVAIL d'une action : le jour visé s'il est posé, sinon l'échéance
+/// effective. C'est elle qui ordonne (prochaine action, file d'un bloc,
+/// groupes d'Actions) ; le retard, lui, ne regarde que l'échéance.
+DateTime? workDate(TaskAction a, ProjectTask? t) => focusDateOf(a) ?? effectiveDueDate(a, t);
+
+/// « visée aujourd'hui » · « visée demain » · « visée hier » · « visée lun. 3 nov. ».
+String focusLabel(DateTime focus, DateTime today) {
+  final d = _dayOnly(focus).difference(_dayOnly(today)).inDays;
+  if (d == 0) return "visée aujourd'hui";
+  if (d == 1) return 'visée demain';
+  if (d == -1) return 'visée hier';
+  if (d < -1) return 'visée il y a ${-d} j';
+  return 'visée ${shortDateFr(focus, today: today)}';
+}
+
 /// Action EN RETARD : ouverte, dans une tâche ouverte (ni faite ni annulée),
 /// dont l'échéance effective est avant [today].
 bool isOverdueAction(TaskAction a, ProjectTask? t, DateTime today) {

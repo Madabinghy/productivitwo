@@ -1169,7 +1169,9 @@ class _ActionsViewState extends State<ActionsView> {
     bool essential(_Entry e) =>
         e.project == null ||
         plannedIds.contains(e.action.id) ||
-        nextIds.contains(e.action.id);
+        nextIds.contains(e.action.id) ||
+        isFocusedOn(e.action, today0) ||
+        isStaleFocus(e.action, today0);
     final shown = passing.where((e) => !upcoming(e) && !resting(e) && (!_essentials || essential(e))).toList();
     final hiddenByEssentials = _essentials ? passing.where((e) => !upcoming(e) && !resting(e) && !essential(e)).length : 0;
     final restingEntries = passing.where((e) => !upcoming(e) && resting(e)).toList();

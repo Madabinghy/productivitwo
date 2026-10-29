@@ -546,6 +546,21 @@ attendent leur tour) ; pilule « L'essentiel · +n » / « Tout » dans l'en-tê
 `actions_essentials`, défaut true). Le reste d'un projet se lit dans Projets. Suite prévue (maquette à valider) : Aujourd'hui = blocs
 d'ACTIVITÉ et de temps, la page focus lancée depuis un bloc d'activité enchaîne la prochaine action de chaque projet lié ;
 `plan_day` posera des blocs d'activité, pas un bloc par action.
+**Jour visé** (décision user 2026-10-30, lot 1 livré = modèle + MCP + logique pure + migration) : `TaskAction.focusDate` (jour,
+`YYYY-MM-DD` en base) = une INTENTION — « je veux l'avoir sous la main ce jour-là » — jamais une échéance (jamais en retard),
+jamais un bloc. C'est la **date par défaut d'une action** ; `dueDate` ne sert qu'aux vraies dates butoirs (séance, rendu,
+démarche). Logique pure `utils/actions_logic.dart` : `focusDateOf`, `isFocusedOn(a, day)`, `isStaleFocus` (visée passée, non
+faite = « à re-viser », pas rouge), `workDate(a, t)` = jour visé sinon échéance effective (c'est elle qui ORDONNE : `nextAction`,
+file d'un bloc, groupes), `focusLabel` (« visée aujourd'hui / demain / hier / il y a n j / 3 nov. ») ; `isOverdueAction` ne
+regarde que l'échéance. File d'un bloc (`block_queue.dart`) : visées aujourd'hui (ou avant) EN TÊTE, puis retards, puis par
+date de travail (`QueueItem.focus` / `focusedToday` / `work`). Actions mobile : l'essentiel inclut les visées aujourd'hui et
+les à re-viser. MCP : `focusDate` sur les objets action de `push_gantt` / `add_task` / `update_task` (préservé au re-push) et
+`add_activity_action`, `update_action {focusDate | clearFocusDate}` (`action_patch.ts`), `DATING_RULES` dans `WRITING_RULES`
+(`title_style.ts`) ; `plan_day` liste « ACTIONS VISÉES POUR CE JOUR » (`focusedActions`, `focus_dates.ts`) et dit de reporter
+par `update_action {focusDate}`, jamais par un bloc ; **`migrate_focus_dates(projectId?, dryRun=true, includeActivities)`** =
+`dueDate` → `focusDate` des actions ouvertes hors tâches de séance (`isInterventionTask`), actions propres comprises. Lots à
+venir : 2 = mobile (feuille d'action « Viser un jour », groupes « Visées aujourd'hui » / « À re-viser », glisser gauche =
+« Viser demain » au lieu de « Caser demain »), 3 = web + badges.
 **Blocs d'activité, lot 1 livré** (maquette validée 2026-10-29) : le ▶ d'un bloc d'ACTIVITÉ (activité-temps, sans
 `actionId`, hors routine et séance) ouvre la page focus en mode « bloc » (`showBlockFocusScreen`, `BlockFocus`,
 `action_focus_screen.dart`) : LA FILE DU BLOC = `blockQueue` (`utils/block_queue.dart` : une action par projet vivant lié à

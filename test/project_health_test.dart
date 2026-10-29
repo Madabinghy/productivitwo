@@ -189,4 +189,14 @@ void main() {
     expect(projectMatches(p, 'ecrire'), isTrue);
     expect(projectMatches(p, 'budget'), isFalse);
   });
+
+  test('nextAction : le jour visé prime sur l\'échéance', () {
+    final p = _proj([
+      _task('t', '2026-09-05', actions: [
+        TaskAction(title: 'échéance proche', dueDate: DateTime(2026, 10, 20)),
+        TaskAction(title: 'visée plus tôt', focusDate: DateTime(2026, 10, 15)),
+      ]),
+    ]);
+    expect(nextAction(p)!.action.title, 'visée plus tôt');
+  });
 }

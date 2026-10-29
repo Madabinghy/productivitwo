@@ -38,7 +38,7 @@ import {
   ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
   LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL, ESTIMATE_ACCURACY_TOOL,
   ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
-  PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
+  PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL, MIGRATE_FOCUS_DATES_TOOL,
   LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, SET_MODE_TOOL, REST_DOMAIN_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
   GENERATE_WEEKLY_REPORT_TOOL,
   LIST_SESSION_TEMPLATES_TOOL, CREATE_SESSION_TEMPLATE_TOOL,
@@ -59,7 +59,7 @@ import {
   executeArchiveProject, executeDeleteProject, executeListProjects, executeGetProject,
   executePushGantt, executeAddTask, executeUpdateTask, executeMarkActionDone, executeMarkChecklistItem,
   executeLinkActionToActivity, executeAddActivityAction, executeManageContexts, executeUpdateAction, executeEstimateAccuracy,
-  executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions,
+  executeAddIntervention, executeUpdateIntervention, executeDeleteIntervention, executeManageInterventionTemplates, executeMigrateInterventions, executeMigrateFocusDates,
   executePlanPrep, executeWeeklyReview, executeUpdateActions,
   executeListSessions, executeDeleteSessions, executeUpdateSession,
   executeLogRoutineHit, executeLogMood, executeSetMode, executeRestDomain, executeListBadges, executeHuntBadge, executeMarkBlockDone, executeUpdateBlock,
@@ -1672,7 +1672,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             ADD_TASK_TOOL, UPDATE_TASK_TOOL, MARK_ACTION_DONE_TOOL, MARK_CHECKLIST_ITEM_TOOL,
             LINK_ACTION_TO_ACTIVITY_TOOL, ADD_ACTIVITY_ACTION_TOOL, MANAGE_CONTEXTS_TOOL, UPDATE_ACTION_TOOL,
             ADD_INTERVENTION_TOOL, UPDATE_INTERVENTION_TOOL, DELETE_INTERVENTION_TOOL, MANAGE_INTERVENTION_TEMPLATES_TOOL, MIGRATE_INTERVENTIONS_TOOL,
-            PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL,
+            PLAN_PREP_TOOL, WEEKLY_REVIEW_TOOL, UPDATE_ACTIONS_TOOL, MIGRATE_FOCUS_DATES_TOOL,
             ESTIMATE_ACCURACY_TOOL,
             LOG_ROUTINE_HIT_TOOL, LOG_MOOD_TOOL, SET_MODE_TOOL, REST_DOMAIN_TOOL, LIST_BADGES_TOOL, HUNT_BADGE_TOOL, MARK_BLOCK_DONE_TOOL, UPDATE_BLOCK_TOOL,
             GENERATE_WEEKLY_REPORT_TOOL,
@@ -1856,6 +1856,7 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
             args.estimatedMin as number | undefined,
             args.dueDate as string | undefined,
             args.note as string | undefined,
+            args.focusDate as string | undefined,
           );
         } else if (toolName === "list_sessions") {
           text = await executeListSessions(uid, {
@@ -1914,6 +1915,8 @@ export const mcpHandler = onRequest({ cors: true, invoker: "public", secrets: ["
           text = await executeManageInterventionTemplates(uid, args as unknown as Parameters<typeof executeManageInterventionTemplates>[1]);
         } else if (toolName === "migrate_interventions") {
           text = await executeMigrateInterventions(uid, args as unknown as Parameters<typeof executeMigrateInterventions>[1]);
+        } else if (toolName === "migrate_focus_dates") {
+          text = await executeMigrateFocusDates(uid, args as unknown as Parameters<typeof executeMigrateFocusDates>[1]);
         } else if (toolName === "manage_contexts") {
           text = await executeManageContexts(uid, {
             action: args.action as string,
