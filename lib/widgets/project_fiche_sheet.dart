@@ -188,8 +188,13 @@ class _ProjectFicheState extends State<_ProjectFiche> {
       _openPlan();
       return;
     }
-    if (widget.actionsOpenFocus && widget.logic != null) {
-      _openAction(n.task, n.action);
+    final logic = widget.logic;
+    if (logic != null) {
+      final chrono = widget.activities.where((a) => a.id == (n.action.linkedActivityId ?? p.linkedActivityId)).firstOrNull;
+      showActionFocusScreen(context, logic: logic, action: n.action, project: p, task: n.task, chronoActivity: chrono, sync: widget.sync)
+          .then((_) {
+        if (mounted) setState(() {});
+      });
       return;
     }
     final act = widget.activities.where((a) => a.id == (n.action.linkedActivityId ?? p.linkedActivityId)).firstOrNull;
@@ -250,6 +255,8 @@ class _ProjectFicheState extends State<_ProjectFiche> {
             chipColor: p.status == 'active' ? st : kPalierMuted,
             kpi: kpiParts.join(' · '),
           ),
+          // Décisions en tête (retour user 2026-10-30) : passer, viser demain, pause.
+          if (p.status == 'active' && widget.onSkipToday != null) _decisions(m),
           if (p.status == 'active') ...[
             FicheTitle('CETTE SEMAINE',
                 trailing: FicheDelta(
@@ -302,10 +309,11 @@ class _ProjectFicheState extends State<_ProjectFiche> {
                 onTap: () => _openPlan(taskId: s.prep!.id),
               ),
           ],
-          if (p.status == 'active' && widget.onSkipToday != null) _decisions(m),
           if (p.status == 'active')
             FicheActions(
-              primaryLabel: m.next == null ? 'Définir la prochaine action' : 'Prochaine action',
+              // Le bouton dit ce qu'il ouvre : la prochaine action, dans sa page
+              // focus (le chrono s'y lance explicitement, jamais d'ici).
+              primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
               primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
               onPrimary: () => _startNext(m),
               secondary: [
@@ -324,7 +332,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
           if (m.next != null && p.status == 'active')
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Text('Prochaine action : ${m.next!.action.title} · ${m.next!.task.title}',
+              child: Text('Prochaine action · ${m.next!.task.title} · ouvre la page focus',
                   style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6))),
             ),
         ],
