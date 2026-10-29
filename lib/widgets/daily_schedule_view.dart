@@ -1831,6 +1831,9 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   String? _linkedLabel; // libellé de la source liée (chip), null = pas de lien
   bool _saving = false;
   bool _allActivities = false;
+  // Activité posée par une chip : le titre est libre, la frappe ne délie pas
+  // (contrairement à une suggestion, dont le texte EST le lien).
+  bool _activityPicked = false;
   static const _kActivityChips = 8;
 
   @override
@@ -1861,6 +1864,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       _taskId = s.taskId;
       _actionId = s.actionId;
       _linkedLabel = s.kindLabel;
+      _activityPicked = false;
     });
   }
 
@@ -1873,11 +1877,13 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
       _taskId = null;
       _actionId = null;
       _linkedLabel = 'activité · ${a.name}';
+      _activityPicked = true;
     });
   }
 
   void _clearLink() {
     setState(() {
+      _activityPicked = false;
       _linkedLabel = null;
       _activityId = null;
       _projectId = null;
@@ -1998,7 +2004,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
             onChanged: (_) {
               // La frappe invalide un lien posé par suggestion (le titre ne
               // correspond plus) et rafraîchit les suggestions.
-              if (_linkedLabel != null) {
+              if (_linkedLabel != null && !_activityPicked) {
                 _clearLink();
               } else {
                 setState(() {});
@@ -2060,7 +2066,9 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Lié : $_linkedLabel — ▶ chrono ciblé, coche synchronisée',
+                    _activityPicked
+                        ? 'Lié : $_linkedLabel — titre libre, ▶ propose les prochaines actions'
+                        : 'Lié : $_linkedLabel — ▶ chrono ciblé, coche synchronisée',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
