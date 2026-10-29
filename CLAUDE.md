@@ -614,8 +614,13 @@ tierTonight · series · hunt · objective · session · focus · routine, poids
 coût / 6, tri « se perd ce soir » d'abord, coupe `kStakesTop` (5) avec plafond `kStakesFamilyCap` (2) par famille pour les gestes à un
 seul gain, `kStakeRestFamilies` pour la ligne dépliée). Sources : `badgeToday` (séries en cours ou chassées, badges chassés), rythme des
 `ObjectiveDay` (attendu à ce jour = hebdo × jour / 7), `nextInterventionOf` (prépa), `isFocusedOn` / `isStaleFocus`, routines du jour.
-Lots à venir : 2 = tableau du jour + liste EN JEU dans Aujourd'hui (geste ouvert sur place, « + n autres en jeu »), 3 = tuiles de tableau
-de bord + écran « Badges en jeu », 4 = bilan du soir.
+**Lot 2 livré** : `widgets/stakes_section.dart` dans `today_view.dart` (`_stakeBoard()`, calculé une fois par build depuis
+`BadgeCenter.deck` + `todayFacts()`, rien sans deck ni sur Demain) — `StakeScoreboard` au-dessus de MAINTENANT (gagnés · en jeu · perdus,
+barre « % de la journée passée » 8 h → 22 h, `dayElapsed`) et `StakesList` sous la zone coach : lignes EN JEU = `MomentItem` (titre ·
+avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / Focus), ouvert = « CE QUE ÇA RAPPORTE » (une jauge
+`StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
+(`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,
+`showActionFocusScreen`). Lots à venir : 3 = tuiles de tableau de bord + écran « Badges en jeu », 4 = bilan du soir.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
