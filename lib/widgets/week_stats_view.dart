@@ -101,8 +101,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _weekCard(cs, week, now),
-        const ListSectionTitle('ÉLAN · CETTE SEMAINE'),
-        _elanRow(cs, now),
         ListSectionTitle(days == 14 ? 'DOMAINES · SUR 14 JOURS' : 'DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
         for (final r in rows) _domainRow(cs, r),
         if (rows.isEmpty)
@@ -118,14 +116,15 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final st = pct == null ? kPalierMuted : palierColor(pct);
     const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+    const letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
     final n = w.engagements.length;
-    final sub = <String>[
-      if (w.chronoMin > 0) '${fmtMin(w.chronoMin)} de chrono',
-      if (n > 0) '${w.kept} / $n engagement${n > 1 ? 's' : ''} au rythme',
-      if (n == 0) 'aucune routine engagée',
-    ].join(' · ');
     final mode = widget.logic.mode;
-    final modeLine = switch (mode) { DayMode.low => 'journée malgré tout · ', DayMode.high => 'journée à fond · ', DayMode.normal => '' };
+    final modeLine = switch (mode) { DayMode.low => 'journée malgré tout', DayMode.high => 'journée à fond', DayMode.normal => null };
+    // Grammaire de Projets (2026-10) : le titre est le chiffre qui compte, la
+    // semaine se voit jour par jour, l'élan remonte en lien.
+    final behind = w.engagements.where((e) => !w.onTrack(e)).length;
+    final maxHits = w.dayHits.fold<int>(1, (m, v) => v > m ? v : m);
+    final elan = _elanMean(now);
     return MomentCard(
       accent: kPalierGreen,
       eyebrow: 'MA SEMAINE',
@@ -134,23 +133,76 @@ class _WeekStatsViewState extends State<WeekStatsView> {
       ringColor: st,
       ringBig: pct == null ? '—' : '$pct %',
       ringSmall: 'DU RYTHME',
-      // Jugée au prorata du jour (2026-10) : un lundi n'est plus « en retard »
-      // sur une cible de 7 jours.
-      context_: '${w.fromObjectives ? 'Engagements des objectifs' : 'Toutes les routines'} · attendu à ce jour',
+      context_: w.fromObjectives ? 'Engagements des objectifs' : 'Toutes les routines',
       contextIcon: Icons.flag_rounded,
-      title: pct == null
-          ? 'Pas d\'engagement cette semaine'
-          : pct >= 85
-              ? 'Semaine au rythme'
-              : pct >= 60
-                  ? 'Semaine à tenir'
-                  : 'Semaine en retard',
-      sub: modeLine + sub,
+      title: pct == null ? 'Pas d\'engagement cette semaine' : '${w.kept} / $n au rythme',
+      sub: [
+        if (pct != null) 'attendu à ce jour',
+        if (w.chronoMin > 0) '${fmtMin(w.chronoMin)} de chrono',
+        if (modeLine != null) modeLine,
+      ].join(' · '),
       subColor: pct != null && pct < 60 ? st : null,
-      primaryLabel: 'Détail de la semaine',
+      visual: n == 0
+          ? null
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              SizedBox(
+                height: 30,
+                child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  for (var i = 0; i < 7; i++) ...[
+                    if (i > 0) const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(
+                        height: i < w.daysElapsed ? (4 + 26 * (w.dayHits[i] / maxHits)).clamp(4.0, 30.0) : 4,
+                        decoration: BoxDecoration(
+                          color: i < w.daysElapsed ? kPalierGreen.withValues(alpha: i == w.daysElapsed - 1 ? 1 : .75) : cs.onSurface.withValues(alpha: .10),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                          border: i == w.daysElapsed - 1 ? Border.all(color: cs.onSurface.withValues(alpha: .9), width: 1.2) : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ]),
+              ),
+              const SizedBox(height: 3),
+              Row(children: [
+                for (var i = 0; i < 7; i++) ...[
+                  if (i > 0) const SizedBox(width: 4),
+                  Expanded(
+                      child: Text(letters[i],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: i == w.daysElapsed - 1 ? .9 : .4)))),
+                ],
+              ]),
+              MomentLegend('Routines tenues par jour · aujourd\'hui en cours',
+                  right: behind == 0 ? 'tout au rythme' : 'à rattraper : $behind'),
+            ]),
+      primaryLabel: 'Détail',
       primaryIcon: Icons.insights_rounded,
       onPrimary: () => _openWeekFiche(w),
+      chainLabel: elan == null ? 'Élan' : 'Élan · $elan / 5',
+      onChain: () => showModeSheet(context, widget.logic, badges: widget.badges),
+      moreTitle: 'Ma semaine',
+      moreActions: [
+        MomentAction('Mode du jour', icon: Icons.wb_sunny_outlined, hint: 'flemme · normal · en forme', onTap: () => showModeSheet(context, widget.logic, badges: widget.badges)),
+        MomentAction('Gérer les domaines', icon: Icons.tune_rounded, onTap: widget.onManageDomains),
+      ],
     );
+  }
+
+  /// Élan moyen de la semaine (pondéré par le temps tenu), « 2,9 » ; null sans pointage.
+  String? _elanMean(DateTime now) {
+    final st = widget.logic.state;
+    final days = buildElanDays(
+      marks: st.moodMarks,
+      schedulesByYmd: {for (final s in _schedules) s.date: s},
+      hits: st.habitHits,
+      activities: st.activities,
+      now: now,
+      dayStartMin: widget.logic.dayStartMin,
+    );
+    final m = elanMetrics(days);
+    if (m.count == 0) return null;
+    return m.mean.toStringAsFixed(1).replaceAll('.', ',');
   }
 
   /// Répartition du chrono par domaine et par jour sur la fenêtre de budget
@@ -220,72 +272,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
 
   /// Ligne Élan (2026-10) : moyenne des 7 jours, pointages, face à la flemme,
   /// créneau difficile, mini-courbe par jour. Tap = la feuille du mode.
-  Widget _elanRow(ColorScheme cs, DateTime now) {
-    final st = widget.logic.state;
-    final days = buildElanDays(
-      marks: st.moodMarks,
-      schedulesByYmd: {for (final s in _schedules) s.date: s},
-      hits: st.habitHits,
-      activities: st.activities,
-      now: now,
-      dayStartMin: widget.logic.dayStartMin,
-    );
-    final m = elanMetrics(days);
-    final hardest = hardestBucket(days);
-    final text3 = cs.onSurface.withValues(alpha: .55);
-    final sub = m.count == 0
-        ? 'aucun pointage cette semaine · le mode du jour en pose un'
-        : [
-            '${m.count} pointage${m.count > 1 ? 's' : ''}',
-            if (m.lowCount > 0) 'face à la flemme ${m.lowWon} / ${m.lowCount}',
-            if (hardest != null) '${kElanBucketLabels[hardest]!.toLowerCase()} = créneau difficile',
-          ].join(' · ');
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => showModeSheet(context, widget.logic, badges: widget.badges),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: .35),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(children: [
-            Container(width: 10, height: 10, decoration: const BoxDecoration(color: Color(0xFFE0A23A), shape: BoxShape.circle)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(m.count == 0 ? 'Élan' : 'Élan · ${fmtElan(m.mean)} / 5', style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(sub, style: TextStyle(fontSize: 12, color: text3)),
-              ]),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 56,
-              height: 22,
-              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                for (var i = 0; i < days.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 2),
-                  Expanded(
-                    child: Container(
-                      height: days[i].mean == null ? 3 : (4 + 18 * (days[i].mean! - 1) / 4).clamp(4.0, 22.0),
-                      decoration: BoxDecoration(
-                        color: days[i].mean == null ? cs.onSurface.withValues(alpha: .12) : elanColor(days[i].mean!.round()),
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
-                      ),
-                    ),
-                  ),
-                ],
-              ]),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
   Widget _domainRow(ColorScheme cs, DomainWeek r) {
     final color = domainColor(r.domain.id, widget.logic.state.activeDomains) ?? cs.primary;
     final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
