@@ -2356,13 +2356,16 @@ class _ActionsViewState extends State<ActionsView> {
     ].join(' › ');
     // Grammaire de Projets (2026-10) : la sous-ligne ne garde que QUAND et
     // COMBIEN ; étapes en points, temps passé et contextes dans la légende.
+    // « Titre d'abord » (2026-10-30) : la ligne de contexte porte estimation et
+    // contextes GTD ; l'échéance n'apparaît qu'une fois, dans la pilule ; le
+    // temps passé va dans la légende de progression.
     final sub = <String>[
-      if (due != null) (a.dueDate != null ? '⚑ ' : 'éch. ') + _dueLabel(due, today),
+      if (a.focusDate != null && !late) '☀ ${focusLabel(a.focusDate!, today)}',
       if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+      if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
     ].join(' · ');
     final legendRight = <String>[
       if (spentMin > 0) '⏱ ${fmtMin(spentMin)}',
-      if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
     ].join(' · ');
     final double? ring;
     final String big, small;
@@ -2428,8 +2431,8 @@ class _ActionsViewState extends State<ActionsView> {
       context_: ctx.isEmpty ? null : ctx,
       contextIcon: e.project != null ? Icons.account_tree_outlined : Icons.bolt_outlined,
       title: a.title,
-      sub: sub.isEmpty ? 'Sans échéance ni estimation' : sub,
-      subColor: late ? kPalierCoral : null,
+      sub: sub,
+      subColor: null,
       visual: steps
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               StepDots(done: a.checklistDone, total: a.checklistTotal, allDone: a.done, size: 12),
