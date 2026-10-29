@@ -3696,6 +3696,8 @@ class _AppRootState extends State<AppRoot>
             },
             onOpenRoutines: () => _showRoutinesSheet(context),
             onOpenActivities: () => _showLaunchActivitySheet(context),
+            onOpenActions: () => setState(() => _tab = _Tab.actions),
+            onOpenProjects: _state?.hideProjectsTab == true ? null : () => setState(() => _tab = _Tab.projets),
             onChallenge: _showChallenge,
             onOpenTask: (project, task) => showProjectSheet(
               context,

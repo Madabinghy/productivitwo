@@ -22,7 +22,6 @@ import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
 import 'package:productivitwo_v1/widgets/fiche.dart';
-import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/chain_screen.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show mergeLivedDay, nextYmd;
 import 'package:productivitwo_v1/widgets/daily_schedule_view.dart';
@@ -41,6 +40,8 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
+import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,6 +76,9 @@ class TodayView extends StatefulWidget {
   // défi ORION de la carte coach ; minuteur d'une routine (« Le meilleur à faire »).
   final void Function(Project project, ProjectTask task)? onOpenTask;
   final VoidCallback? onOpenDayReview;
+  /// Tuiles du tableau de bord (lot 3) : ouvrir l'onglet Actions / Projets.
+  final VoidCallback? onOpenActions;
+  final VoidCallback? onOpenProjects;
   final void Function(Activity activity, int minutes)? onChallengeAccept;
   final Future<void> Function(Activity activity, int minutes)? onChallengeSchedule;
   final void Function(Activity activity, int minutes)? onStartTimed;
@@ -101,6 +105,8 @@ class TodayView extends StatefulWidget {
       this.onChallenge,
       this.onOpenTask,
       this.onOpenDayReview,
+      this.onOpenActions,
+      this.onOpenProjects,
       this.onChallengeAccept,
       this.onChallengeSchedule,
       this.onStartTimed,
@@ -111,6 +117,7 @@ class TodayView extends StatefulWidget {
 }
 
 class TodayViewState extends State<TodayView> {
+  final _programKey = GlobalKey();
   bool _showTomorrow = false;
   // Programme du jour : UNIQUE abonnement de l'onglet (carte MAINTENANT,
   // en-tête « n / N blocs · restantes », zone coach).
@@ -916,7 +923,7 @@ class TodayViewState extends State<TodayView> {
                     StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery),
                 ],
                 const SizedBox(height: 22),
-                _programHeader(cs, link, text3),
+                KeyedSubtree(key: _programKey, child: _programHeader(cs, link, text3)),
                 const SizedBox(height: 8),
                 // key par date : force un nouveau state (nouveau stream Firestore)
                 // quand on bascule aujourd'hui ↔ demain.
@@ -986,7 +993,7 @@ class TodayViewState extends State<TodayView> {
                 ] else ...[
                   // Routines et Objectifs : deux lignes « en parallèle », la
                   // fiche de chacune héberge la vue du moment (lot 4).
-                  ..._parallelSection(cs),
+                  ..._parallelSection(cs, stakes),
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)
@@ -1086,11 +1093,9 @@ class TodayViewState extends State<TodayView> {
     );
   }
 
-  List<Widget> _parallelSection(ColorScheme cs) {
+  List<Widget> _parallelSection(ColorScheme cs, StakeBoard? stakes) {
     final day = _routineDay();
     final all = day.countAll;
-    final queue = day.queue.length;
-    final routinePct = all.total == 0 ? 100 : (all.done / all.total * 100).round();
     final st = widget.logic.state;
     final now = DateTime.now();
     final days = buildObjectiveDays(
@@ -1114,41 +1119,45 @@ class TodayViewState extends State<TodayView> {
       // tête en l'ouvrant.
       mode: widget.logic.mode,
     );
-    final due = _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length;
-    final first = ranked.firstOrNull;
-    final objPct = first?.weekPercent == null ? null : (first!.weekPercent! * 100).round();
+    final current = day.of(day.current.key).where((x) => !x.reached && !day.dismissed.contains(x.id)).map((x) => x.activity.name).toList();
+    final bc = widget.badges;
+    final board = stakes ?? StakeBoard.empty;
+    final today = DateTime(now.year, now.month, now.day);
     return [
-      const ListSectionTitle('EN PARALLÈLE'),
-      if (day.slots.isNotEmpty)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: StatusRow(
-            leading: const Icon(Icons.loop_rounded, color: kRoutineAccent),
-            title: 'Routines · ${all.done} / ${all.total}',
-            sub: day.shortLine.replaceFirst('Routines · ${all.done} / ${all.total}', '').replaceFirst(RegExp(r'^ · '), '').trim().isEmpty
-                ? 'tout est fait pour le moment'
-                : day.shortLine.replaceFirst('Routines · ${all.done} / ${all.total}', '').replaceFirst(RegExp(r'^ · '), '').trim(),
-            bar: (done: all.done, total: all.total, expected: all.done),
-            pct: routinePct,
-            chip: queue > 0 ? '$queue à faire' : 'à jour',
-            onTap: _openRoutinesFiche,
-          ),
-        ),
-      if (widget.sync != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: StatusRow(
-            leading: const Icon(Icons.flag_rounded, color: Color(0xFF00897B)),
-            title: ranked.isEmpty ? 'Objectifs' : 'Objectifs · ${ranked.length}',
-            sub: first == null
-                ? 'aucun objectif en cours'
-                : '${first.objective.title}${objPct != null ? ' · $objPct % du rythme' : ''}${first.remaining.isNotEmpty ? ' · reste ${first.remaining.first}' : ''}',
-            pct: objPct ?? 100,
-            chip: due > 0 ? '$due relevé${due > 1 ? 's' : ''} à noter' : (objPct == null ? null : '$objPct %'),
-            onTap: _openObjectivesFiche,
-          ),
-        ),
+      DashboardTiles(
+        program: programTile(_liveBlocks, widget.logic.livedNowMinNow),
+        routines: day.slots.isEmpty
+            ? null
+            : routinesTile(done: all.done, total: all.total, toDoNow: current, momentLabel: day.current.thisOne, seriesRunning: bc?.deck?.seriesRunning ?? 0),
+        objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
+            readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
+        badges: badgesTile(bc?.deck, board),
+        actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today),
+        projects: projectsTile(widget.logic.currentProjects, today),
+        onProgram: () {
+          final c = _programKey.currentContext;
+          if (c != null) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300), curve: Curves.easeOutCubic);
+        },
+        onRoutines: _openRoutinesFiche,
+        onObjectives: widget.sync == null ? null : _openObjectivesFiche,
+        onBadges: bc == null ? null : () => _openBadgesInPlay(board),
+        onActions: widget.onOpenActions,
+        onProjects: widget.onOpenProjects,
+      ),
     ];
+  }
+
+  void _openBadgesInPlay(StakeBoard board) {
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(
+            builder: (_) => BadgesInPlayScreen(
+                  data: badgesInPlay(board, widget.badges?.deck),
+                  onRun: _runStake,
+                  onAll: _openBadgeGallery,
+                )))
+        .then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _openRoutinesFiche() {
