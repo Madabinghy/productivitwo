@@ -49,10 +49,12 @@ class DashboardTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final small = <(DashTile, VoidCallback?)>[
+      // Journée parfaite à côté de Routines, Objectifs en dessous près de
+      // Badges (retour user 2026-10-30).
       if (routines != null) (routines!, onRoutines),
-      if (objectives != null) (objectives!, onObjectives),
-      if (badges != null) (badges!, onBadges),
       if (perfect != null) (perfect!, onPerfect),
+      if (badges != null) (badges!, onBadges),
+      if (objectives != null) (objectives!, onObjectives),
       if (actions != null) (actions!, onActions),
     ];
     if (row) {
