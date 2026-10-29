@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayStart;
 
 /// Saisie directe d'une routine COMPTÉE (Pompes, Tractions, verres d'eau…
 /// palier > 1).
@@ -18,7 +19,9 @@ Future<int?> showHabitCountSheet(
   required Activity activity,
 }) {
   final target = logic.activeHabitTarget(activity);
-  final done = logic.habitValueOn(activity.id, DateTime.now());
+  // Journée VÉCUE (bascule à dayStartMin) : même compte que le reste de l'app.
+  final start = livedDayStart(DateTime.now(), logic.dayStartMin);
+  final done = logic.state.habitHits.where((h) => h.habitId == activity.id && !h.ts.isBefore(start)).length;
   return showModalBottomSheet<int>(
     context: context,
     showDragHandle: true,
@@ -83,9 +86,7 @@ class _HabitCountSheetState extends State<_HabitCountSheet> {
       return;
     }
     setState(() => _saving = true);
-    final now = DateTime.now();
-    widget.logic
-        .incHabit(widget.activity.id, delta, DateTime(now.year, now.month, now.day));
+    widget.logic.incHabit(widget.activity.id, delta, widget.logic.livedToday);
     if (mounted) Navigator.pop(context, _count);
   }
 

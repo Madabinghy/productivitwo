@@ -688,7 +688,7 @@ pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon 
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant
 (`buildRoutineDay` → avant la bascule on est encore « ce soir »), clés d'état du jour (`AppLogic.livedYmdNow` pour « pas
-maintenant » / « pas aujourd'hui » / reports), `incHabit` sur `livedDate`. Le programme du jour reste sur la date
+maintenant » / « pas aujourd'hui » / reports), `incHabit` sur `livedDate`. **Compte du jour = les hits** (2026-10-30) : `incHabit(+n)` pose n hits (un par unité, plus un seul) ; le lanceur « Lancer une routine » (`_showRoutinesSheet`, main.dart) et le compteur `showHabitCountSheet` lisent `routineTodayCount` / les hits de la journée vécue et écrivent sur `logic.livedToday` — plus le compteur `habitProgress` du jour calendaire. Le programme du jour reste sur la date
 calendaire côté STOCKAGE, mais le mobile le lit sur la journée vécue (lot 2, 2026-10) : `AppLogic.livedToday` /
 `livedTodayYmd` (programme « d'aujourd'hui » = la veille jusqu'à la bascule : Aujourd'hui, Demain, Actions « au
 programme », MAINTENANT, Enchaîner, écran bloc) et `livedNowMinNow` (00:30 → 24 h 30, pour que Sommeil 22:00 → 05:00
