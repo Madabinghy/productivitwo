@@ -558,9 +558,13 @@ les à re-viser. MCP : `focusDate` sur les objets action de `push_gantt` / `add_
 `add_activity_action`, `update_action {focusDate | clearFocusDate}` (`action_patch.ts`), `DATING_RULES` dans `WRITING_RULES`
 (`title_style.ts`) ; `plan_day` liste « ACTIONS VISÉES POUR CE JOUR » (`focusedActions`, `focus_dates.ts`) et dit de reporter
 par `update_action {focusDate}`, jamais par un bloc ; **`migrate_focus_dates(projectId?, dryRun=true, includeActivities)`** =
-`dueDate` → `focusDate` des actions ouvertes hors tâches de séance (`isInterventionTask`), actions propres comprises. Lots à
-venir : 2 = mobile (feuille d'action « Viser un jour », groupes « Visées aujourd'hui » / « À re-viser », glisser gauche =
-« Viser demain » au lieu de « Caser demain »), 3 = web + badges.
+`dueDate` → `focusDate` des actions ouvertes hors tâches de séance (`isInterventionTask`), actions propres comprises. **Lot 2 livré
+(mobile)** : feuille partagée `widgets/focus_day_sheet.dart` (`pickFocusDay` → `FocusDay` / `FocusClear`, aujourd'hui · demain ·
+lundi prochain (`nextMonday`) · date · retirer) ; Actions : sections « VISÉES AUJOURD'HUI » (après Au programme) et « À RE-VISER »
+(ambre, jamais rouge), « ☀ visée … » dans la sous-ligne, « CETTE SEMAINE » sur la date de travail, **glisser gauche = « Viser
+demain »** (`_focusTomorrow`, annulable — plus « Caser demain »), « Viser un jour » dans Autres et dans la feuille d'action
+(section JOUR VISÉ + bouton) ; fiche d'action de la fiche de tâche : section JOUR VISÉ ; file d'un bloc : « ☀ visée … » sur
+la ligne. Lot 3 à venir : web (badge, dialog, filtre) + `plan_day` déjà fait.
 **Blocs d'activité, lot 1 livré** (maquette validée 2026-10-29) : le ▶ d'un bloc d'ACTIVITÉ (activité-temps, sans
 `actionId`, hors routine et séance) ouvre la page focus en mode « bloc » (`showBlockFocusScreen`, `BlockFocus`,
 `action_focus_screen.dart`) : LA FILE DU BLOC = `blockQueue` (`utils/block_queue.dart` : une action par projet vivant lié à

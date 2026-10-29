@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr, rootProjectOf;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show effectiveDueDate, actionDueLabel, shortDateFr, rootProjectOf, focusLabel, isStaleFocus;
+import 'package:productivitwo_v1/widgets/focus_day_sheet.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -941,6 +942,14 @@ class _ActionFicheState extends State<_ActionFiche> {
     estCtrl.dispose();
   }
 
+  Future<void> _pickFocus() async {
+    final now = DateTime.now();
+    final pick = await pickFocusDay(context, current: a.focusDate, today: DateTime(now.year, now.month, now.day));
+    if (pick == null) return;
+    a.focusDate = switch (pick) { FocusDay(:final day) => day, FocusClear() => null };
+    await _persist();
+  }
+
   Future<void> _pickDue() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -1071,6 +1080,13 @@ class _ActionFicheState extends State<_ActionFiche> {
           FicheStep(title: 'Pas de note', detail: 'le détail, les consignes, les codes', onTap: _edit)
         else
           FicheStep(title: a.note!.trim(), onTap: _edit),
+        FicheTitle('JOUR VISÉ', trailing: a.focusDate != null ? FicheDelta(isStaleFocus(a, today) ? 'à re-viser' : 'intention', color: isStaleFocus(a, today) ? kPalierAmber : kPalierMuted) : null),
+        FicheStep(
+          title: a.focusDate == null ? 'Pas de jour visé' : focusLabel(a.focusDate!, today),
+          detail: a.focusDate == null ? 'le jour où tu veux l\'avoir sous la main · ni créneau, ni retard' : 'une intention, pas un créneau',
+          onTap: _pickFocus,
+          trailing: Icon(Icons.wb_sunny_outlined, size: 18, color: text3),
+        ),
         FicheTitle('ÉCHÉANCE', trailing: a.dueDate != null ? const FicheDelta('⚑ propre', color: kPalierMuted) : null),
         FicheStep(
           title: due == null ? 'Aucune échéance' : actionDueLabel(due, today),
