@@ -511,7 +511,9 @@ puis l'anneau en MINIATURE (`MomentRing(size: 30, stroke: 5)`, sans texte dedans
 puis le `visual` et la légende. Plus de gros anneau à gauche. ACTION DU MOMENT : `sub` = ☀ visée · estimation · contextes
 (l'échéance n'apparaît qu'une fois, dans la pilule), légende de progression = étape en cours · ⏱ passé. MAINTENANT
 (`now_card.dart`, carte sur mesure) n'est pas concernée.
-**Bouton fiche en icône** (2026-10-30) : `MomentCard.ficheIcon` → bouton rond 52 px (icône seule, `ficheLabel` en infobulle) ; « Détail » = `Icons.description_outlined` sur Action, Objectif, Bloc et Projet (Projet : icône = fiche, bouton « Projet » = projet déplié).
+**Gestes rares en icônes** (2026-10-30) : « ⋯ Autres » est remplacé par `MomentActionIcons` (`moment_card.dart`) — jusqu'à
+`kMomentInlineActions` (5) gestes aux icônes DISTINCTES en boutons ronds sous la carte (infobulle = libellé · indice), le reste
+derrière un rond « ⋯ » qui ouvre `showMomentActions`. Toutes les cartes du moment et MAINTENANT (`now_card.dart`). **Bouton fiche en icône** (2026-10-30) : `MomentCard.ficheIcon` → bouton rond 52 px (icône seule, `ficheLabel` en infobulle) ; « Détail » = `Icons.description_outlined` sur Action, Objectif, Bloc et Projet (Projet : icône = fiche, bouton « Projet » = projet déplié).
 **« Une liste, un seul bloc ouvert »** (maquette validée 2026-10-29, `widgets/moment_item.dart`) : la ligne et la carte du moment
 sont deux états du MÊME item (`MomentItem(open, collapsed, expanded, onToggle, onLongPress)`), un seul ouvert par page
 (`OpenItem` : le premier du classement par défaut tant que rien n'est touché, puis le choix de l'utilisateur, y compris aucun ;
