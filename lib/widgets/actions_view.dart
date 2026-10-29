@@ -22,6 +22,7 @@ import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
+import 'package:productivitwo_v1/widgets/action_focus_screen.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
@@ -2281,27 +2282,38 @@ class _ActionsViewState extends State<ActionsView> {
       small = 'PASSÉES';
     }
     final running = isRunningEntry;
+    // ▶ = la page focus (maquette « Page focus », 2026-10) ; « Étape faite »
+    // reste à portée en lien.
+    void openFocus() => showActionFocusScreen(context,
+            logic: widget.logic,
+            action: a,
+            project: e.project,
+            task: e.task,
+            ownerActivity: e.project == null ? e.activity : null,
+            chronoActivity: e.chronoActivityId == null ? null : widget.logic.state.activities.where((x) => x.id == e.chronoActivityId).firstOrNull,
+            sync: _sync)
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+    Future<void> stepDone() async {
+      if (next == null) return;
+      final changed = setChecklistItem(a, next.id, true);
+      await _persistEntry(e);
+      if (changed && a.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text('Action faite : ${a.title}')));
+      }
+    }
     final String primary;
     final IconData icon;
     final VoidCallback onPrimary;
     if (running) {
-      primary = 'Arrêter le chrono';
-      icon = Icons.stop_rounded;
-      onPrimary = () => widget.logic.stopActive();
-    } else if (next != null) {
-      primary = 'Étape faite';
-      icon = Icons.check_rounded;
-      onPrimary = () async {
-        final changed = setChecklistItem(a, next.id, true);
-        await _persistEntry(e);
-        if (changed && a.done && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text('Action faite : ${a.title}')));
-        }
-      };
-    } else if (e.chronoActivityId != null) {
-      primary = 'Chrono';
+      primary = 'Focus';
+      icon = Icons.center_focus_strong_rounded;
+      onPrimary = openFocus;
+    } else if (e.chronoActivityId != null || next != null) {
+      primary = 'Focus';
       icon = Icons.play_arrow_rounded;
-      onPrimary = () => _launch(e);
+      onPrimary = openFocus;
     } else {
       primary = 'Fait';
       icon = Icons.check_rounded;
@@ -2331,19 +2343,20 @@ class _ActionsViewState extends State<ActionsView> {
               : MomentLegend(legendRight),
       primaryLabel: primary,
       primaryIcon: icon,
-      primaryOutlined: running,
       onPrimary: onPrimary,
       ficheLabel: 'Détail',
       onFiche: () => _openActionSheet(e),
-      chainLabel: e.project != null ? 'Projet' : null,
-      chainIcon: null,
-      onChain: e.project == null ? null : () => _openProject(e.project!, targetTaskId: e.task?.id),
+      chainLabel: running ? 'Arrêter le chrono' : (next != null ? 'Étape faite' : null),
+      chainIcon: running ? Icons.stop_rounded : Icons.check_rounded,
+      onChain: running ? () => widget.logic.stopActive() : (next != null ? stepDone : null),
       moreActions: [
-        if (!running && e.chronoActivityId != null && next != null)
-          MomentAction('Chrono', icon: Icons.play_arrow_rounded, onTap: () => _launch(e)),
+        if (!running && e.chronoActivityId != null)
+          MomentAction('Chrono seul', icon: Icons.timer_outlined, hint: 'sans la page focus', onTap: () => _launch(e)),
         if (!a.done && (next != null || e.chronoActivityId != null))
           MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
         MomentAction('Caser dans le programme', icon: Icons.event_rounded, onTap: () => _scheduleAction(e)),
+        if (e.project != null)
+          MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
       ],
     );
   }
