@@ -2177,7 +2177,7 @@ class _ActionsViewState extends State<ActionsView> {
           trailing: chip == null ? null : StateChip(chip, color: chipColor),
         ),
         expanded: _momentCardFor(cs, e, _moment?.entry.action.id == a.id ? _moment : null, planned: planned),
-        onToggle: () => _open.settle(a.id, _scroll, () => setState(() => _open.toggle(a.id, _moment?.entry.action.id))),
+        onToggle: () => _open.settle(a.id, () => setState(() => _open.toggle(a.id, _moment?.entry.action.id)), scroll: _scroll),
         onLongPress: () => _openActionSheet(e),
       ),
     );

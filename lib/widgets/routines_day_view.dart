@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/widgets/routine_chrono_pill.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
@@ -299,9 +300,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   Widget build(BuildContext context) {
     final pal = NowPalette.of(context);
     final day = _day();
+    _defaultId = (_heldSlot(day) ?? day.queue.firstOrNull)?.id;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _momentCard(pal, day),
-      const SizedBox(height: 22),
       Row(children: [
         Expanded(
           child: Text('LA JOURNÉE PAR MOMENTS',
@@ -344,12 +344,19 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
         child: Text(text, style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: kBAttention)),
       );
 
-  Widget _momentCard(NowPalette pal, RoutineDay day) {
+  /// « Une liste, un seul bloc ouvert » : la routine en avant (file du moment)
+  /// est l'item ouvert par défaut ; chaque ligne s'ouvre à sa place.
+  final _openItem = OpenItem();
+  String? _defaultId;
+
+  /// Bloc ouvert d'une routine ([slot]) = l'ancienne carte ROUTINE DU MOMENT.
+  Widget _momentCard(NowPalette pal, RoutineDay day, RoutineSlot slot) {
     final cur = day.current;
     final q = day.queue;
     final heldSlot = _heldSlot(day);
-    final first = heldSlot ?? q.firstOrNull;
-    final held = heldSlot != null && heldSlot.reached;
+    final isMoment = slot.id == (heldSlot ?? q.firstOrNull)?.id;
+    final RoutineSlot? first = slot;
+    final held = heldSlot != null && heldSlot.id == slot.id && heldSlot.reached;
     final c = day.countOf(cur.key);
     final progress = c.total == 0 ? 0.0 : (c.done / c.total).clamp(0.0, 1.0);
     final todayN = first == null ? 0 : _todayCount(first.activity);
@@ -364,7 +371,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final left = slots.where((s) => !s.reached).length;
     return MomentCard(
       accent: kRoutineAccent,
-      eyebrow: 'ROUTINE DU MOMENT',
+      eyebrow: isMoment ? 'ROUTINE DU MOMENT' : (slot.moment == cur.key ? 'ROUTINE ${cur.of.toUpperCase()}' : 'ROUTINE ${momentOf(slot.moment).of.toUpperCase()}'),
       pill: '${cur.label} · ${cur.window}',
       // Tap = régler les bornes des moments.
       onPill: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
@@ -522,6 +529,28 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   }
 
   Widget _row(NowPalette pal, RoutineDay day, RoutineSlot s) {
+    final key = '${s.moment}/${s.id}';
+    return MomentItem(
+      key: _openItem.keyFor(key),
+      padding: EdgeInsets.zero,
+      open: _openItem.isOpen(key, _defaultKey(day)),
+      collapsed: _line(pal, day, s),
+      expanded: Padding(padding: const EdgeInsets.all(6), child: _momentCard(pal, day, s)),
+      onToggle: () => _openItem.settle(key, () => setState(() => _openItem.toggle(key, _defaultKey(day)))),
+      onLongPress: () => _openSheet(s.activity),
+    );
+  }
+
+  String? _defaultKey(RoutineDay day) {
+    final id = _defaultId;
+    if (id == null) return null;
+    for (final x in day.slots) {
+      if (x.id == id) return '${x.moment}/${x.id}';
+    }
+    return null;
+  }
+
+  Widget _line(NowPalette pal, RoutineDay day, RoutineSlot s) {
     final a = s.activity;
     final done = s.reached;
     final dismissed = day.dismissed.contains(a.id);
@@ -549,10 +578,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             ],
             const SizedBox(width: 10),
             Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: () => _openSheet(a),
-                child: Padding(
+              child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                     // Nom sur trois lignes au plus : le compte vit dans l'anneau
@@ -572,7 +598,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                       Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
                     if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
                   ]),
-                ),
               ),
             ),
             _round(pal, '−', n > 0 || (s.todo.dayTarget == null && s.todo.weekDone > 0) ? () => _minus(a) : null),
