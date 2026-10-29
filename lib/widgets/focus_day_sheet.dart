@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/block_vs_focus_note.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, shortDateFr;
 
 /// Choix d'un JOUR VISÉ (2026-10-30) : aujourd'hui · demain · lundi prochain ·
@@ -36,6 +37,7 @@ Future<FocusPick?> pickFocusDay(BuildContext context, {DateTime? current, DateTi
     context: context,
     showDragHandle: true,
     useSafeArea: true,
+    isScrollControlled: true,
     builder: (ctx) {
       final cs = Theme.of(ctx).colorScheme;
       final text3 = cs.onSurface.withValues(alpha: .55);
@@ -52,6 +54,8 @@ Future<FocusPick?> pickFocusDay(BuildContext context, {DateTime? current, DateTi
                     : 'Actuellement ${focusLabel(current, t)}. Une intention : ni créneau, ni retard.',
                 style: TextStyle(fontSize: 12.5, color: text3),
               ),
+              const SizedBox(height: 4),
+              const BlockVsFocusNote(side: BlockVsFocusSide.focus),
             ]),
           ),
           ListTile(
