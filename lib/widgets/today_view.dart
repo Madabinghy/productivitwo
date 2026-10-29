@@ -1297,6 +1297,17 @@ class TodayViewState extends State<TodayView> {
               onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
               onStartTimed: widget.onStartTimed,
             ),
+            // Légende (retour user 2026-10-30 : « à quoi correspondent les
+            // flammes ? »).
+            const FicheTitle('À SAVOIR'),
+            FicheNote(
+                '🔥 ${widget.badges?.deck?.seriesRunning ?? 0} sur la tuile Routines = le nombre de routines dont la série est en cours : '
+                'atteintes chaque jour, sans trou, jusqu\'à hier. La journée en cours ne compte qu\'une fois close ; '
+                'manquer un jour casse la série (une braise peut la rallumer le lendemain).'),
+            const SizedBox(height: 6),
+            const FicheNote(
+                'L\'écusson sur chaque ligne est le badge de série de la routine : touche-le pour ses paliers (3 · 7 · 21 · 66 · 100 jours) '
+                'et ses 30 derniers jours.'),
           ],
         );
       });
