@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
-import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
@@ -33,7 +32,6 @@ import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
 import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
-import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
@@ -155,20 +153,14 @@ class TodayViewState extends State<TodayView> {
       if (saved != null && mounted && saved != _timeline) {
         setState(() => _timeline = saved);
       }
-      final snooze = p.getString(_kDayGoalUpSnooze);
       final morning = p.getString(_kMorningDismissed);
-      if (mounted) {
-        setState(() {
-          _dayGoalUpSnoozeUntil = snooze;
-          _morningDismissedYmd = morning;
-        });
-      }
+      if (mounted) setState(() => _morningDismissedYmd = morning);
     });
     _subscribeSchedule();
     if (widget.visible) _tabOpens.add(DateTime.now());
     // Journée gagnée : à l'ouverture, deux journées perdues d'affilée font
     // redescendre le seuil d'un cran (sans rien demander).
-    _dayGoalStepped = widget.logic.adaptDayGoalOnOpen(DateTime.now());
+    widget.logic.adaptDayGoalOnOpen(DateTime.now());
     // La jauge suit le chrono en cours + le trait « maintenant » ; passage de
     // minuit → le stream bascule sur le nouveau jour.
     _gaugeTick = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -218,21 +210,10 @@ class TodayViewState extends State<TodayView> {
     });
   }
 
-  // Seuil descendu à l'ouverture du jour → la carte le dit le matin.
-  DayGoal? _dayGoalStepped;
-  // Proposition « un cran de plus » refusée → on se tait 14 jours.
-  static const _kDayGoalUpSnooze = 'daygoal_up_snooze_until';
-  String? _dayGoalUpSnoozeUntil;
   // « Le matin en trois choses » fermé à la main → plus ce jour-là.
   static const _kMorningDismissed = 'morning_three_dismissed';
   String? _morningDismissedYmd;
 
-  Future<void> _snoozeDayGoalUp(DateTime now) async {
-    final until = ymdKey(now.add(const Duration(days: 14)));
-    setState(() => _dayGoalUpSnoozeUntil = until);
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kDayGoalUpSnooze, until);
-  }
 
   Future<void> _dismissMorning(DateTime now) async {
     final k = ymdKey(now);
@@ -241,46 +222,6 @@ class TodayViewState extends State<TodayView> {
     await p.setString(_kMorningDismissed, k);
   }
 
-  /// Proposition coach « un cran de plus » (7 journées gagnées d'affilée) :
-  /// proposée, jamais imposée ; « Plus tard » = silence 14 jours.
-  Widget? _dayGoalUpRow(ColorScheme cs, DateTime now, int streak) {
-    final logic = widget.logic;
-    final goal = logic.dayGoal;
-    if (!canStepUp(goal: goal, streak: streak)) return null;
-    final until = _dayGoalUpSnoozeUntil;
-    if (until != null && ymdKey(now).compareTo(until) < 0) return null;
-    final next = goal.up();
-    final dark = cs.brightness == Brightness.dark;
-    final primary = dark ? kBPrimary : cs.primary;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Une semaine pleine. On passe à ${next.label} ?',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: cs.onSurface)),
-        const SizedBox(height: 6),
-        Row(children: [
-          TextButton(
-            onPressed: () => _snoozeDayGoalUp(now),
-            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-            child: Text('Plus tard', style: TextStyle(color: cs.onSurface.withOpacity(.6))),
-          ),
-          const SizedBox(width: 4),
-          FilledButton(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              logic.setDayGoal(next, now);
-              setState(() {});
-            },
-            style: FilledButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: dark ? kBBg : Colors.white,
-                visualDensity: VisualDensity.compact),
-            child: const Text('On monte'),
-          ),
-        ]),
-      ]),
-    );
-  }
 
   /// « Le matin en trois choses » : avant 9 h, bloc clé + routine en retard +
   /// action en retard la plus ancienne. Disparaît dès qu'une des trois est
@@ -380,138 +321,7 @@ class TodayViewState extends State<TodayView> {
       ]),
     );
   }
-  // Vibration + carte verte une seule fois par journée gagnée.
-  String? _wonCelebrated;
 
-  DayWinProgress _dayWin(DateTime now) => DayWinProgress(
-        goal: widget.logic.dayGoal,
-        routinesDone: widget.logic.routinesReachedOn(now),
-        blocksDone: _liveBlocks.where((b) => b.status == 'done').length,
-      );
-
-  /// Carte « journée gagnée » sous l'en-tête : la règle du jour, ce qui
-  /// manque, puis l'état gagné avec la série. Masquée tant qu'il n'y a ni
-  /// programme ni routine quotidienne (nouvel utilisateur).
-  Widget? _dayWinCard(ColorScheme cs, DateTime now) {
-    final logic = widget.logic;
-    final hasDaily = logic.state.activeActivities
-        .any((a) => a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily);
-    if (_liveBlocks.isEmpty && !hasDaily) return null;
-    final p = _dayWin(now);
-    final key = ymdKey(now);
-    final already = logic.state.wonDays.contains(key);
-    if (p.won && !already) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        if (logic.markDayWon(now) && _wonCelebrated != key) {
-          _wonCelebrated = key;
-          HapticFeedback.mediumImpact();
-          setState(() {});
-        }
-      });
-    }
-    final won = p.won || already;
-    final streak = logic.dayWinStreak(now) + (p.won && !already ? 1 : 0);
-    final dark = cs.brightness == Brightness.dark;
-    final primary = dark ? kBPrimary : cs.primary;
-    final surface = dark ? kBSurface : cs.surface;
-    final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.6);
-    final track = dark ? kBRaised : cs.onSurface.withOpacity(.08);
-
-    final String title;
-    final String sub;
-    if (won) {
-      title = 'Journée gagnée';
-      sub = streak > 1 ? '${streak}ᵉ d\'affilée · le reste est du bonus' : 'Le reste est du bonus';
-    } else if (p.done == 0) {
-      title = 'Pour gagner la journée';
-      sub = _dayGoalStepped != null
-          ? 'On repart à ${p.goal.label}'
-          : p.goal.label;
-    } else {
-      title = p.missingLabel ?? '';
-      sub = [
-        if (p.routinesLeft == 0) 'Routine${p.goal.routines > 1 ? 's' : ''} faite${p.goal.routines > 1 ? 's' : ''}',
-        if (p.blocksLeft == 0) 'Bloc${p.goal.blocks > 1 ? 's' : ''} terminé${p.goal.blocks > 1 ? 's' : ''}',
-        if (p.blocksLeft > 0) 'termine ${p.blocksLeft == 1 ? 'un bloc' : '${p.blocksLeft} blocs'} du programme',
-        if (p.routinesLeft > 0) 'coche ${p.routinesLeft == 1 ? 'une routine' : '${p.routinesLeft} routines'}',
-      ].join(' · ');
-    }
-
-    final upRow = won ? _dayGoalUpRow(cs, now, streak) : null;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 450),
-      curve: Curves.easeOut,
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      decoration: BoxDecoration(
-        color: won ? primary.withOpacity(dark ? .16 : .12) : surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: won ? primary.withOpacity(.5) : cs.onSurface.withOpacity(.08)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-        SizedBox(
-          width: 44,
-          height: 44,
-          child: Stack(alignment: Alignment.center, children: [
-            if (won)
-              Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(color: primary, shape: BoxShape.circle),
-                  child: Icon(Icons.check_rounded, color: dark ? kBBg : Colors.white, size: 24))
-            else ...[
-              CustomPaint(
-                size: const Size(44, 44),
-                painter: RingPainter(
-                    progress: p.ratio, color: primary, stroke: 5, trackColor: track, cap: StrokeCap.round),
-              ),
-              Text('${p.done}/${p.total}',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSurface,
-                      fontFeatures: const [FontFeature.tabularFigures()])),
-            ],
-          ]),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: cs.onSurface)),
-            const SizedBox(height: 2),
-            Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.5, color: text3)),
-            if (!won) ...[
-              const SizedBox(height: 8),
-              Row(children: [
-                for (var i = 0; i < p.total; i++) ...[
-                  if (i > 0) const SizedBox(width: 6),
-                  Expanded(
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: 5,
-                      decoration: BoxDecoration(
-                          color: i < p.done ? primary : track,
-                          borderRadius: BorderRadius.circular(3)),
-                    ),
-                  ),
-                ],
-              ]),
-            ],
-          ]),
-        ),
-        // (La pilule « 🔥 n j » a été retirée en 2026-10 : les badges Journée
-        // parfaite / Semaine solide tiennent le compte des journées réussies.)
-      ]),
-        if (upRow != null) upRow,
-      ]),
-    );
-  }
 
   List<ScheduleBlock> get _liveBlocks =>
       (_schedule?.blocks ?? const <ScheduleBlock>[])
@@ -828,7 +638,17 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 ...[
                 if (!_showTomorrow) ...[
-                  if (_dayWinCard(cs, now) case final card?) card,
+                  // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
+                  // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
+                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
+                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      EveningLedgerCard(ledger: ledger),
+                    ],
+                  ] else if (stakes case final board? when !board.isEmpty) ...[
+                    const SizedBox(height: 12),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+                  ],
                   if (_morningCard(cs, now, text3) case final card?) card,
                   // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
                   // sous le programme (retour user 2026-10-30).
@@ -951,15 +771,6 @@ class TodayViewState extends State<TodayView> {
                     ),
                   ),
                 ] else ...[
-                  if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
-                    if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
-                      const SizedBox(height: 14),
-                      EveningLedgerCard(ledger: ledger),
-                    ],
-                  ] else if (stakes case final board? when !board.isEmpty) ...[
-                    const SizedBox(height: 14),
-                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
-                  ],
                   const SizedBox(height: 14),
                   Row(children: [
                     if (widget.onOpenDayReview != null)
