@@ -26,6 +26,7 @@ import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen;
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
@@ -366,7 +367,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Un seul message à la fois (plusieurs glissers = pas de file de 5 s
     // chacun) et fermeture forcée au bout de 5 s quoi qu'il arrive.
     final messenger = ScaffoldMessenger.of(context)..clearSnackBars();
-    final ctrl = messenger.showSnackBar(SnackBar(
+    final ctrl = messenger.showClosingSnackBar(SnackBar(
         content: Text('« ${block.title} » supprimé'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,
@@ -747,7 +748,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(carryMessage(placed)),
         duration: const Duration(seconds: 6),
         behavior: SnackBarBehavior.floating,
@@ -1602,7 +1603,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('« ${block.title} » annulé'),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,

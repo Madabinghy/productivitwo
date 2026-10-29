@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/web/project_edit_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 // Fiche projet (refonte web § 4.5) : s'ouvre dans le shell à la place du
 // Gantt. Segmented « Vision · Plan d'action · Réalisation », du plus large au
@@ -323,7 +324,7 @@ class _ProjectPlanViewState extends State<ProjectPlanView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('Échéance reportée au ${_ddmm(day)}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 5),

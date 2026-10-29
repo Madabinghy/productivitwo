@@ -19,6 +19,7 @@ import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 /// Fiche de TÂCHE « une carte, une fiche » (2026-10, maquette « Fiche de
 /// tâche ») : en-tête `FicheHeader` (émoji de rôle en petit, titre sur deux
@@ -200,7 +201,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(v ? 'Action faite : ${a.title}' : 'Action rouverte : ${a.title}'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(label: 'Annuler', onPressed: () => _toggleActionDone(a, !v)),
@@ -303,7 +304,7 @@ class _TaskFicheState extends State<_TaskFiche> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('Action supprimée : ${a.title}'),
         duration: const Duration(seconds: 5),
         action: SnackBarAction(

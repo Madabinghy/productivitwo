@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRou
 import 'package:productivitwo_v1/utils/badges_logic.dart' show routineBadge;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -69,7 +70,7 @@ void routinePlusWithUndo(BuildContext context, AppLogic logic, Activity a) {
   if (messenger == null) return;
   messenger
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
+    ..showClosingSnackBar(SnackBar(
       content: Text(routinePlusLabel(logic, a)),
       duration: const Duration(seconds: 5),
       action: SnackBarAction(
@@ -275,7 +276,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     });
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('Pas aujourd\'hui : ${a.name}'),
         duration: const Duration(seconds: 4),
         action: SnackBarAction(

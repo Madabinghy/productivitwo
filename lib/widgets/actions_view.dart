@@ -33,6 +33,7 @@ import 'package:productivitwo_v1/widgets/next_actions_section.dart'
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/confirm_done.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 /// Onglet « Actions » (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10`) :
 /// le canal « pull » GTD du mobile. Jamais vide : toutes les actions ouvertes,
@@ -542,7 +543,7 @@ class _ActionsViewState extends State<ActionsView> {
     // Petite icône, aucun feedback : des projets se retrouvaient en pause
     // sans qu'on sache pourquoi (taps accidentels) → snackbar + Annuler.
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(p.paused
           ? '⏸ « ${p.title} » mis en pause'
           : '▶ « ${p.title} » repris'),
@@ -2067,7 +2068,7 @@ class _ActionsViewState extends State<ActionsView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         duration: const Duration(seconds: 4),
         content: Text('Visée demain : ${a.title}'),
         action: SnackBarAction(
@@ -2222,7 +2223,7 @@ class _ActionsViewState extends State<ActionsView> {
           if (mounted) {
             ScaffoldMessenger.of(context)
               ..hideCurrentSnackBar()
-              ..showSnackBar(SnackBar(
+              ..showClosingSnackBar(SnackBar(
                 duration: const Duration(seconds: 4),
                 content: Text('Fait : ${a.title}'),
                 action: SnackBarAction(label: 'Annuler', onPressed: () => _toggleDone(e, false)),

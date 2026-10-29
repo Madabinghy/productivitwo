@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/web/ui_scale.dart';
 import 'package:productivitwo_v1/web/views/week_task_popover.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 // Vue « Cette semaine » (handoff cette-semaine-2026-09) : le Gantt 7 / 14 jours
 // des tâches par domaine, en pleine page, où l'on organise la semaine sans
@@ -261,7 +262,7 @@ class _WeekViewState extends State<WeekView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         duration: Duration(milliseconds: actionLabel == null ? 2000 : 5000),
