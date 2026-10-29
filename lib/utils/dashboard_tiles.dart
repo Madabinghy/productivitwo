@@ -1,8 +1,7 @@
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, isFolderProject, shortDateFr;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, shortDateFr;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
-import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
-import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 
@@ -18,7 +17,9 @@ class DashTile {
   final String value;
   final String sub;
   final List<TileMark> mini;
-  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const []});
+  /// Objet que la tuile met en avant (projet du moment), ouvert au tap.
+  final String? targetId;
+  const DashTile({required this.label, this.badge, required this.value, required this.sub, this.mini = const [], this.targetId});
 }
 
 /// Un morceau de la bande du programme : largeur = durée.
@@ -175,31 +176,48 @@ DashTile? actionsTile({required List<Project> projects, required List<Activity> 
 
 bool _sameDay(DateTime? a, DateTime b) => a != null && a.year == b.year && a.month == b.month && a.day == b.day;
 
-/// PROJETS : la séance la plus proche (prépa), le nombre de projets et ceux
-/// en retard sur leur plan.
-DashTile? projectsTile(List<Project> projects, DateTime today) {
-  final live = projects.where((p) => p.status == 'active' && !p.paused && !isFolderProject(p, projects)).toList();
-  if (live.isEmpty) return null;
-  final behind = live.where((p) => projectPlan(p, today).delta < 0).length;
-  ({Project p, DateTime date, int done, int total})? best;
-  final d0 = DateTime(today.year, today.month, today.day);
-  for (final p in live) {
-    final i = nextInterventionOf(p, today);
-    if (i == null || i.date.isBefore(d0)) continue;
-    if (best != null && !i.date.isBefore(best.date)) continue;
-    final prep = i.prep;
-    best = (p: p, date: i.date, done: prep?.actions.where((a) => a.done).length ?? 0, total: prep?.actions.length ?? 0);
+/// PROJETS : le projet du moment (même classement que l'onglet Projets,
+/// `rankProjectMoments`), hors projets passés aujourd'hui ([skipped]) ; sa
+/// raison d'être en tête (séance et prépa, retard sur le plan, prochaine
+/// action), le nombre de projets et ceux en retard.
+DashTile? projectsTile(List<Project> projects, DateTime today, {List<Session> sessions = const [], Set<String> skipped = const {}}) {
+  final ranked = rankProjectMoments(projects, sessions, today);
+  if (ranked.isEmpty) return null;
+  final live = ranked.where((m) => !m.upcoming).toList();
+  final behind = live.where((m) => m.behind).length;
+  final count = '${ranked.length} projet${ranked.length > 1 ? 's' : ''}${behind > 0 ? ', $behind en retard sur le plan' : ''}';
+  final m = live.where((m) => !skipped.contains(m.project.id)).firstOrNull;
+  if (m == null) {
+    return DashTile(
+      label: 'PROJETS',
+      value: count,
+      sub: skipped.isNotEmpty && live.isNotEmpty ? 'tous passés pour aujourd’hui' : 'rien d’urgent',
+    );
   }
-  final count = '${live.length} projet${live.length > 1 ? 's' : ''}${behind > 0 ? ', $behind en retard sur le plan' : ''}';
-  if (best == null) {
-    return DashTile(label: 'PROJETS', value: count, sub: 'aucune séance à venir');
+  final s = m.session;
+  final String badge;
+  final String reason;
+  var mini = <TileMark>[];
+  if (m.sessionSoon && s != null) {
+    badge = 'séance ${shortDateFr(s.date, today: today)}';
+    final total = s.prepTotal, done = s.prepTotal - s.prepOpen;
+    reason = total > 0 ? 'prépa $done / $total' : 'séance à venir';
+    mini = [for (var i = 0; i < total.clamp(0, 12); i++) i < done ? TileMark.on : TileMark.off];
+  } else if (m.behind) {
+    badge = 'en retard';
+    reason = '${m.deltaLabel} sur le plan';
+    mini = [for (var i = 0; i < m.plan.total.clamp(0, 12); i++) i < m.plan.done ? TileMark.on : (i < m.plan.expected ? TileMark.warn : TileMark.off)];
+  } else {
+    badge = m.stateLabel;
+    reason = m.next == null ? 'définir la prochaine action' : 'ensuite : ${m.next!.action.title}';
   }
   return DashTile(
     label: 'PROJETS',
-    badge: 'séance la plus proche',
-    value: '${best.p.title} · ${shortDateFr(best.date, today: today)}',
-    mini: [for (var i = 0; i < best.total.clamp(0, 12); i++) i < best.done ? TileMark.on : TileMark.off],
-    sub: '${best.total > 0 ? 'prépa ${best.done} / ${best.total} · ' : ''}$count',
+    badge: badge,
+    value: m.project.title,
+    mini: mini,
+    sub: '$reason · $count',
+    targetId: m.project.id,
   );
 }
 

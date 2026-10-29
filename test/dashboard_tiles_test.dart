@@ -92,4 +92,21 @@ void main() {
     expect(find.text('0 aujourd’hui'), findsOneWidget);
     expect(find.byType(AppBar), findsNothing);
   });
+
+  test('PROJETS : le projet du moment, puis le suivant quand on le passe', () {
+    Project behind(String id, String title, int lateTasks) => Project(id: id, title: title, startDate: DateTime(2026, 9, 1), createdBy: 'u', tasks: [
+          for (var i = 0; i < lateTasks; i++)
+            ProjectTask(id: '$id-t$i', title: 'T$i', startDate: DateTime(2026, 10, 1), endDate: DateTime(2026, 10, 20), actions: [TaskAction(id: '$id-a$i', title: 'Faire $i')]),
+          ProjectTask(id: '$id-ok', title: 'Fait', startDate: DateTime(2026, 10, 1), endDate: DateTime(2026, 10, 20), status: 'done'),
+        ]);
+    final a = behind('a', 'Alpha', 1), b = behind('b', 'Bravo', 3);
+    final first = projectsTile([a, b], today)!;
+    final second = projectsTile([a, b], today, skipped: {first.targetId!})!;
+    expect(first.targetId, isNotNull);
+    expect(second.targetId, isNot(first.targetId));
+    expect(second.sub, contains('sur le plan'));
+    final none = projectsTile([a, b], today, skipped: {'a', 'b'})!;
+    expect(none.targetId, isNull);
+    expect(none.sub, 'tous passés pour aujourd’hui');
+  });
 }

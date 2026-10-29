@@ -28,6 +28,9 @@ Future<bool> showProjectFiche(
   FirestoreSync? sync,
   AppLogic? logic,
   void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
+  /// Ouverte depuis la tuile PROJETS d'Aujourd'hui : section DÉCISIONS qui
+  /// sort le projet de la tête (passer pour aujourd'hui, viser demain, pause).
+  VoidCallback? onSkipToday,
 }) async {
   final changed = await showFiche<bool>(context,
       builder: (ctx, scroll) => _ProjectFiche(
@@ -39,6 +42,7 @@ Future<bool> showProjectFiche(
             sync: sync ?? FirestoreSync(),
             logic: logic,
             onStartTimer: onStartTimer,
+            onSkipToday: onSkipToday,
             scroll: scroll,
           ));
   return changed ?? false;
@@ -53,6 +57,7 @@ class _ProjectFiche extends StatefulWidget {
   final FirestoreSync sync;
   final AppLogic? logic;
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
+  final VoidCallback? onSkipToday;
   final ScrollController scroll;
   const _ProjectFiche({
     required this.project,
@@ -63,6 +68,7 @@ class _ProjectFiche extends StatefulWidget {
     required this.sync,
     this.logic,
     required this.onStartTimer,
+    this.onSkipToday,
     required this.scroll,
   });
 
@@ -96,6 +102,45 @@ class _ProjectFicheState extends State<_ProjectFiche> {
     await widget.sync.saveProject(p);
     _changed = true;
     if (mounted) Navigator.pop(context, true);
+  }
+
+  void _skipToday() {
+    widget.onSkipToday?.call();
+    Navigator.pop(context, true);
+  }
+
+  Future<void> _focusTomorrow(TaskAction a) async {
+    final t = DateTime.now().add(const Duration(days: 1));
+    a.focusDate = DateTime(t.year, t.month, t.day);
+    await widget.sync.patchActionOf(p, a);
+    _skipToday();
+  }
+
+  Future<void> _pause() async {
+    p.paused = true;
+    await widget.sync.saveProject(p);
+    _changed = true;
+    if (mounted) Navigator.pop(context, true);
+  }
+
+  Widget _decisions(ProjectMoment m) {
+    final next = m.next;
+    final rows = <({IconData icon, String title, String detail, VoidCallback onTap})>[
+      (icon: Icons.skip_next_rounded, title: 'Suivant', detail: 'pas aujourd’hui · un autre projet passe en tête', onTap: _skipToday),
+      if (next != null)
+        (icon: Icons.wb_sunny_outlined, title: 'Viser demain', detail: '« ${next.action.title} » visée demain, le projet sort de la tête', onTap: () => _focusTomorrow(next.action)),
+      (icon: Icons.pause_circle_outline, title: 'Mettre en pause', detail: 'hors des classements jusqu’à la reprise', onTap: _pause),
+    ];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const FicheTitle('DÉCISIONS'),
+      for (final r in rows)
+        FicheStep(
+          title: r.title,
+          detail: r.detail,
+          onTap: r.onTap,
+          trailing: Icon(r.icon, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6)),
+        ),
+    ]);
   }
 
   void _openPlan({String? taskId}) =>
@@ -238,6 +283,7 @@ class _ProjectFicheState extends State<_ProjectFiche> {
                 onTap: () => _openPlan(taskId: s.prep!.id),
               ),
           ],
+          if (p.status == 'active' && widget.onSkipToday != null) _decisions(m),
           if (p.status == 'active')
             FicheActions(
               primaryLabel: m.next == null ? 'Définir la prochaine action' : 'Prochaine action',

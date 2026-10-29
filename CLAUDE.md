@@ -631,7 +631,11 @@ montre le programme de demain sur la page. Le passage auto en « fait » des blo
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
 sauver, plus proche ; tap = feuille `BadgesInPlayScreen(sheetScroll:)` sur mobile (2026-10-30, comme les autres tuiles ; écran / dialog web) — SE PERD CE SOIR · PALIER CE SOIR · CHASSES · PROCHES, `badgesInPlay` —, bouton =
 le geste, « Tous les badges » = galerie), ACTIONS (`actionsTile` : visées aujourd'hui ; tap = onglet Actions, `onOpenActions`),
-PROJETS (`projectsTile` : séance la plus proche + prépa, retards sur le plan ; tap = onglet Projets, `onOpenProjects`). **Lot 4 livré** :
+PROJETS (`projectsTile(sessions:, skipped:)` : depuis le 2026-10-30 le PROJET DU MOMENT, même classement que l'onglet Projets
+(`rankProjectMoments`), raison en tête (séance + prépa, retard sur le plan, prochaine action), `DashTile.targetId` ; tap mobile =
+la fiche du projet `showProjectFiche(onSkipToday:)` avec une section DÉCISIONS — Suivant (passé pour aujourd'hui, `project_tile_skipped`
+= « ymd|ids » en SharedPreferences, jour vécu), Viser demain (prochaine action `focusDate` = demain + passé), Mettre en pause
+(`paused`) ; à la fermeture la tuile se recalcule, le même projet reste s'il est toujours le plus pertinent ; tap web = onglet Projets). **Lot 4 livré** :
 bilan du soir (`utils/evening_ledger.dart`, `isEvening` = journée vécue ≥ 19 h) — `EveningLedgerCard` remplace le tableau du jour :
 gagnés · encore · perdus, AVANCÉ AUJOURD'HUI (paliers obtenus aujourd'hui `tierDates`, séries tenues, actions faites par projet
 `doneAt`, temps par activité avec l'objectif servi), LAISSÉ FILER (perdus, engagements de temps en retard sans rien aujourd'hui),
