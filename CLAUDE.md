@@ -220,7 +220,7 @@ L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussi
 ## Stack
 
 - **Flutter** `>=3.0`, Dart `>=3.0`
-- **Firebase** : Auth (Apple Sign-In + anonyme), Firestore, Cloud Functions (Node 20, 2nd Gen)
+- **Firebase** : Auth (Apple Sign-In + anonyme), Firestore, Cloud Functions (Node 22, 2nd Gen — Node 20 décommissionné le 2026-10-30)
 - **State management** : `AppLogic` (ChangeNotifier) + `FirestoreSync` pour la persistance
 - **Plateforme web** : compilée séparément (`lib/web/`), hébergée sur Firebase Hosting
 - **MCP** : serveur remote (Cloud Function) + serveur local stdio (`mcp-server/index.js`)
