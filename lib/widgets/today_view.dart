@@ -923,17 +923,22 @@ class TodayViewState extends State<TodayView> {
   }
 
   void _openBadgesInPlay(StakeBoard board) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(
-            builder: (_) => BadgesInPlayScreen(
-                  data: badgesInPlay(board, widget.badges?.deck),
-                  onRun: _runStake,
-                  onAll: _openBadgeGallery,
-                )))
-        .then((_) {
+    // Feuille, comme les autres tuiles (retour user 2026-10-30).
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return BadgesInPlayScreen(
+        data: badgesInPlay(board, widget.badges?.deck),
+        sheetScroll: scroll,
+        onRun: _runStake,
+        onAll: () {
+          Navigator.of(ctx).pop();
+          _openBadgeGallery();
+        },
+      );
+    }).then((_) {
       if (mounted) setState(() {});
     });
   }
+
 
   void _openRoutinesFiche() {
     showFiche<void>(context, builder: (ctx, scroll) {
