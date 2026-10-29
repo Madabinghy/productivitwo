@@ -1836,6 +1836,18 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
     });
   }
 
+  void _pickActivity(Activity a) {
+    setState(() {
+      _titleCtrl.text = a.name;
+      _category = 'personal';
+      _activityId = a.id;
+      _projectId = null;
+      _taskId = null;
+      _actionId = null;
+      _linkedLabel = 'activité · ${a.name}';
+    });
+  }
+
   void _clearLink() {
     setState(() {
       _linkedLabel = null;
@@ -1898,6 +1910,28 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
             ],
           ),
           const SizedBox(height: 16),
+          // ── Bloc d'ACTIVITÉ en un tap (2026-10) : l'activité d'abord, le
+          // titre libre ensuite. Au ▶, l'app proposera la prochaine action de
+          // chaque projet lié ; le bloc ne retient que le temps.
+          if (widget.isNew && widget.activities.isNotEmpty) ...[
+            Text('BLOC D\'ACTIVITÉ',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final a in widget.activities)
+                ChoiceChip(
+                  label: Text(a.name, style: const TextStyle(fontSize: 12.5)),
+                  selected: _activityId == a.id && _projectId == null && _actionId == null,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (v) => v ? _pickActivity(a) : _clearLink(),
+                ),
+            ]),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _titleCtrl,
             decoration: const InputDecoration(

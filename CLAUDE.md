@@ -553,8 +553,12 @@ seul comme avant. **Lot 2 livré** : « Terminer le bloc » (lien avant / après
 continue » pendant) → écran BLOC TERMINÉ (`_BlockEndScreen`, `blockOutcome` : temps tenu = sessions de l'activité tronquées
 au créneau, actions de la file faites dans la fenêtre avec leurs minutes, étapes cochées, reste de la file — qui ne va nulle
 part) ; le bloc passe `done` (`doneBy:"focus"`) dès qu'il a du temps ; « Caser un bloc … demain » = NOUVEAU bloc même
-activité / heure / durée sans action (`carriedActivityBlock`, `carriedFromDate`). Lot 3 à venir : ajout « activité +
-durée », règles `plan_day`.
+activité / heure / durée sans action (`carriedActivityBlock`, `carriedFromDate`). **Lot 3 livré** : « Nouveau bloc »
+mobile ouvre sur des chips BLOC D'ACTIVITÉ (`_pickActivity` : titre = nom, `activityId` seul) ; serveur : `BLOCK_RULES`
+(`block_style.ts`) et le workflow de `plan_day` disent « travail de fond = blocs d'activité, jamais un bloc par action,
+bloc de tâche réservé au daté », et la liste des activités-temps porte la charge « n projets liés · k actions en retard »
+(`activityLoad` / `activityLoadLabel`, pure) ; prompt de la routine auto aligné dans le handoff. **Les 3 lots sont livrés**
+(⚠️ `firebase deploy --only functions` à faire).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
