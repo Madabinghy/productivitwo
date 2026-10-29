@@ -540,8 +540,9 @@ base. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'
 en lien, « Chrono seul » et « Ouvrir le projet » dans Autres). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)
 est un autre fichier.
 **Actions = l'essentiel** (décision user 2026-10-29 : « trop de blocs, doublons projets / actions ») : par défaut l'onglet Actions
-ne montre que ce qui est à portée de main — actions libres (sans projet), UNE action par projet (`nextAction`), plus les en retard
-(`isOverdueAction`) et celles au programme du jour ; pilule « L'essentiel · +n » / « Tout » dans l'en-tête (`_essentials`, pref
+ne montre que ce qui est à portée de main — actions libres (sans projet), UNE action par projet (`nextAction`, déjà sa plus en
+retard) et celles au programme du jour (plus « toutes les en retard » depuis le 2026-10-30 : les autres retards d'un projet
+attendent leur tour) ; pilule « L'essentiel · +n » / « Tout » dans l'en-tête (`_essentials`, pref
 `actions_essentials`, défaut true). Le reste d'un projet se lit dans Projets. Suite prévue (maquette à valider) : Aujourd'hui = blocs
 d'ACTIVITÉ et de temps, la page focus lancée depuis un bloc d'activité enchaîne la prochaine action de chaque projet lié ;
 `plan_day` posera des blocs d'activité, pas un bloc par action.
