@@ -1072,6 +1072,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 }
               : () => _toggleDone(block),
       ficheLabel: 'Détail',
+      ficheIcon: Icons.description_outlined,
       onFiche: () => _openDetail(context, cs, block),
       moreTitle: block.title,
       moreActions: [
