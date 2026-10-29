@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
@@ -138,6 +139,11 @@ class _ActionsViewState extends State<ActionsView> {
   // Programme du jour : points « planifiée aujourd'hui » + section Maintenant.
   StreamSubscription<DailySchedule?>? _schedSub;
   List<ScheduleBlock> _todayBlocks = const [];
+  /// « Une liste, un seul bloc ouvert » : l'action du moment est l'item ouvert
+  /// par défaut ; calculée au début de chaque build.
+  final _open = OpenItem();
+  final _scroll = ScrollController();
+  ActionMoment? _moment;
   // Captures en attente (boîte d'entrée) : ligne « n captures à trier ».
   List<CaptureItem> _pendingCaptures = const [];
   StreamSubscription<List<CaptureItem>>? _captureSub;
@@ -208,6 +214,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   @override
   void dispose() {
+    _scroll.dispose();
     widget.logic.removeListener(_onLogicChange);
     _schedSub?.cancel();
     _captureSub?.cancel();
@@ -1167,8 +1174,11 @@ class _ActionsViewState extends State<ActionsView> {
       _ => null,
     };
 
+    _moment = _pickMoment(shown, all);
+
     return SafeArea(
       child: ListView(
+        controller: _scroll,
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
         children: [
           // ── En-tête + création ─────────────────────────────────────────────
@@ -1223,7 +1233,6 @@ class _ActionsViewState extends State<ActionsView> {
           ]),
           const SizedBox(height: 6),
           if (_searchOpen) ...[_searchField(cs), const SizedBox(height: 8)],
-          if (_momentCard(cs, shown, all) case final card?) ...[const SizedBox(height: 6), card, const SizedBox(height: 12)],
           _captureField(cs),
           if (_pendingCaptures.isNotEmpty) ...[const SizedBox(height: 6), _triageRow(cs)],
           const SizedBox(height: 6),
@@ -2150,9 +2159,12 @@ class _ActionsViewState extends State<ActionsView> {
         }
         return false;
       },
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: StatusRow(
+      // « Une liste, un seul bloc ouvert » : la ligne (repliée) et la carte
+      // du moment (ouverte) sont le même item ; tap = ouvrir à sa place.
+      child: MomentItem(
+        key: _open.keyFor(a.id),
+        open: _open.isOpen(a.id, _moment?.entry.action.id),
+        collapsed: StatusRow(
           leading: InkWell(
             onTap: () => _toggleDone(e, true),
             borderRadius: BorderRadius.circular(8),
@@ -2162,22 +2174,11 @@ class _ActionsViewState extends State<ActionsView> {
           sub: sub.isEmpty ? null : sub,
           bar: steps,
           pct: pct,
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (chip != null) StateChip(chip, color: chipColor),
-            if (e.chronoActivityId != null && !running)
-              IconButton(
-                tooltip: 'Lancer le chrono',
-                icon: Icon(Icons.play_circle_fill, size: 24, color: cs.primary),
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                onPressed: () => _launch(e),
-              ),
-            if (chip == null && (e.chronoActivityId == null || running)) Icon(Icons.chevron_right, color: cs.onSurface.withOpacity(.4)),
-          ]),
-          onTap: () => _openActionSheet(e),
-          onLongPress: e.project != null ? () => _openProject(e.project!, targetTaskId: e.task?.id) : null,
+          trailing: chip == null ? null : StateChip(chip, color: chipColor),
         ),
+        expanded: _momentCardFor(cs, e, _moment?.entry.action.id == a.id ? _moment : null, planned: planned),
+        onToggle: () => _open.settle(a.id, _scroll, () => setState(() => _open.toggle(a.id, _moment?.entry.action.id))),
+        onLongPress: () => _openActionSheet(e),
       ),
     );
   }
@@ -2187,7 +2188,7 @@ class _ActionsViewState extends State<ActionsView> {
   /// L'action que le moment désigne (`pickActionMoment`) : chrono en cours,
   /// bloc en cours, retard, programme du jour, prochain bloc, semaine, sinon
   /// la première. Anneau = étapes faites, geste = étape suivante / chrono / fait.
-  Widget? _momentCard(ColorScheme cs, List<_Entry> shown, List<_Entry> all) {
+  ActionMoment? _pickMoment(List<_Entry> shown, List<_Entry> all) {
     final pool = shown.isNotEmpty ? shown : all;
     if (pool.isEmpty) return null;
     final today = _day(DateTime.now());
@@ -2214,25 +2215,41 @@ class _ActionsViewState extends State<ActionsView> {
         return e == null ? null : (action: e.action, project: e.project, task: e.task, activity: e.activity);
       },
     );
-    if (m == null) return null;
-    final e = pool.firstWhere((x) => x.action.id == m.entry.action.id);
+    return m;
+  }
+
+  /// Bloc ouvert d'une action (= l'ancienne carte ACTION DU MOMENT) ; [m]
+  /// non null quand c'est l'action que le moment désigne.
+  Widget _momentCardFor(ColorScheme cs, _Entry e, ActionMoment? m, {bool planned = false}) {
+    final today = _day(DateTime.now());
     final a = e.action;
     final due = _dueOf(e);
     final late = due != null && due.isBefore(today);
     final spentMin = _spent[a.id] ?? 0;
     final steps = a.checklist.isNotEmpty;
     final next = nextChecklistItem(a);
-    final pill = switch (m.kind) {
-      ActionMomentKind.running => 'chrono en cours',
-      ActionMomentKind.block => 'bloc en cours · ${m.block!.startTime}',
-      ActionMomentKind.late => 'en retard · ${_dueLabel(due!, today)}',
-      ActionMomentKind.today => 'au programme · ${m.block!.startTime}',
-      ActionMomentKind.next => 'prochain bloc · ${m.block!.startTime}',
-      ActionMomentKind.week => 'cette semaine',
-      ActionMomentKind.rest => 'prochaine action',
-      ActionMomentKind.short => 'la plus courte · malgré tout',
-      ActionMomentKind.deep => 'à fond · la plus longue',
-    };
+    final isRunningEntry = _running?.actionId == a.id;
+    final pill = m == null
+        ? (isRunningEntry
+            ? 'chrono en cours'
+            : late
+                ? 'en retard · ${_dueLabel(due, today)}'
+                : planned
+                    ? 'au programme'
+                    : due != null
+                        ? 'éch. ${_dueLabel(due, today)}'
+                        : 'à faire')
+        : switch (m.kind) {
+            ActionMomentKind.running => 'chrono en cours',
+            ActionMomentKind.block => 'bloc en cours · ${m.block!.startTime}',
+            ActionMomentKind.late => 'en retard · ${_dueLabel(due!, today)}',
+            ActionMomentKind.today => 'au programme · ${m.block!.startTime}',
+            ActionMomentKind.next => 'prochain bloc · ${m.block!.startTime}',
+            ActionMomentKind.week => 'cette semaine',
+            ActionMomentKind.rest => 'prochaine action',
+            ActionMomentKind.short => 'la plus courte · malgré tout',
+            ActionMomentKind.deep => 'à fond · la plus longue',
+          };
     final accent = late ? kPalierCoral : cs.primary;
     final ctx = [
       if (e.holder.isNotEmpty) e.holder,
@@ -2263,7 +2280,7 @@ class _ActionsViewState extends State<ActionsView> {
       big = fmtMin(spentMin);
       small = 'PASSÉES';
     }
-    final running = m.kind == ActionMomentKind.running;
+    final running = isRunningEntry;
     final String primary;
     final IconData icon;
     final VoidCallback onPrimary;
@@ -2292,7 +2309,7 @@ class _ActionsViewState extends State<ActionsView> {
     }
     return MomentCard(
       accent: accent,
-      eyebrow: 'ACTION DU MOMENT',
+      eyebrow: m != null ? 'ACTION DU MOMENT' : (late ? 'ACTION EN RETARD' : 'ACTION'),
       pill: pill,
       ring: ring,
       ringColor: late ? kPalierCoral : palierColor(steps ? 100 : (ring > 1 ? 40 : 100)),
@@ -2316,15 +2333,17 @@ class _ActionsViewState extends State<ActionsView> {
       primaryIcon: icon,
       primaryOutlined: running,
       onPrimary: onPrimary,
+      ficheLabel: 'Détail',
       onFiche: () => _openActionSheet(e),
+      chainLabel: e.project != null ? 'Projet' : null,
+      chainIcon: null,
+      onChain: e.project == null ? null : () => _openProject(e.project!, targetTaskId: e.task?.id),
       moreActions: [
         if (!running && e.chronoActivityId != null && next != null)
           MomentAction('Chrono', icon: Icons.play_arrow_rounded, onTap: () => _launch(e)),
         if (!a.done && (next != null || e.chronoActivityId != null))
           MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
         MomentAction('Caser dans le programme', icon: Icons.event_rounded, onTap: () => _scheduleAction(e)),
-        if (e.project != null)
-          MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
       ],
     );
   }
