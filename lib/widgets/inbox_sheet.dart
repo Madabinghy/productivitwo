@@ -30,6 +30,12 @@ class _InboxSheet extends StatefulWidget {
 class _InboxSheetState extends State<_InboxSheet> {
   List<CaptureItem> _items = [];
   StreamSubscription<List<CaptureItem>>? _sub;
+  // Propositions ORION en attente, affichées ET validables ici (2026-10-30 :
+  // plus besoin d'ouvrir une tuile pour atteindre la liste).
+  List<OrionProposal> _proposals = [];
+  StreamSubscription<List<OrionProposal>>? _propSub;
+  bool _showProcessed = false;
+  static const _kProcessedShown = 20;
   String? _editingId;
   final _editCtrl = TextEditingController();
 
@@ -71,11 +77,15 @@ class _InboxSheetState extends State<_InboxSheet> {
     _sub = widget.sync.streamCaptures().listen((items) {
       if (mounted) setState(() => _items = items);
     });
+    _propSub = widget.sync.streamProposals().listen((items) {
+      if (mounted) setState(() => _proposals = items);
+    });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _propSub?.cancel();
     _editCtrl.dispose();
     super.dispose();
   }
@@ -83,10 +93,13 @@ class _InboxSheetState extends State<_InboxSheet> {
   List<CaptureItem> get _pending =>
       _items.where((i) => i.status == 'pending').toList();
   // Idées transformées en proposition ORION, en attente dans « À valider ».
-  List<CaptureItem> get _proposed =>
-      _items.where((i) => i.status == 'proposed').toList();
-  List<CaptureItem> get _processed =>
-      _items.where((i) => i.status == 'processed').toList();
+  // Idée « proposée » dont la proposition est déjà affichée : pas de doublon.
+  List<CaptureItem> get _proposed {
+    final shown = {for (final p in _proposals) if (p.sourceCaptureId != null) p.sourceCaptureId};
+    return _items.where((i) => i.status == 'proposed' && !shown.contains(i.id)).toList();
+  }
+  List<CaptureItem> get _processed => _items.where((i) => i.status == 'processed').toList()
+    ..sort((a, b) => (b.processedAt ?? b.createdAt).compareTo(a.processedAt ?? a.createdAt));
 
   Future<void> _delete(CaptureItem item) async {
     await widget.sync.deleteCaptureItem(item.id);
@@ -213,6 +226,16 @@ class _InboxSheetState extends State<_InboxSheet> {
               padding: EdgeInsets.fromLTRB(
                   16, 0, 16, 32 + MediaQuery.of(context).viewInsets.bottom),
               children: [
+                // ── À valider : les propositions ORION, validables sur place ─
+                if (_proposals.isNotEmpty) ...[
+                  _sectionHeader('À VALIDER · ${_proposals.length}', cs),
+                  for (final p in _proposals)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ProposalCard(key: ValueKey(p.id), sync: widget.sync, proposal: p),
+                    ),
+                  const SizedBox(height: 8),
+                ],
                 // ── En attente ───────────────────────────────────────────────
                 if (_pending.isEmpty)
                   Padding(
@@ -262,19 +285,33 @@ class _InboxSheetState extends State<_InboxSheet> {
                         : _buildPendingTile(item, cs),
                 ],
 
-                // ── Propositions en attente de validation ────────────────────
+                // ── Idées proposées dont la proposition n'est plus en file ───
                 if (_proposed.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _sectionHeader('PROPOSÉ — EN ATTENTE DE VALIDATION', cs),
                   for (final item in _proposed) _buildProposedTile(item, cs),
                 ],
 
-                // ── Historique ORION ─────────────────────────────────────────
+                // ── Historique ORION : replié, les plus récents d'abord ──────
                 if (_processed.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  _sectionHeader('TRAITÉ PAR ORION', cs),
-                  for (final item in _processed)
-                    _buildProcessedTile(item, cs),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => setState(() => _showProcessed = !_showProcessed),
+                    child: Row(children: [
+                      Expanded(child: _sectionHeader('TRAITÉ PAR ORION · ${_processed.length}', cs)),
+                      Icon(_showProcessed ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withOpacity(.4)),
+                    ]),
+                  ),
+                  if (_showProcessed) ...[
+                    for (final item in _processed.take(_kProcessedShown)) _buildProcessedTile(item, cs),
+                    if (_processed.length > _kProcessedShown)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 2, 4, 8),
+                        child: Text('${_processed.length - _kProcessedShown} plus ancien(s) non affiché(s)',
+                            style: TextStyle(fontSize: 11.5, color: cs.onSurface.withOpacity(.4))),
+                      ),
+                  ],
                 ],
               ],
             ),

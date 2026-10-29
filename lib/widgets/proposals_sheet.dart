@@ -78,7 +78,7 @@ class _ProposalsSheet extends StatelessWidget {
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) =>
-                            _ProposalCard(sync: sync, proposal: items[i]),
+                            ProposalCard(sync: sync, proposal: items[i]),
                       ),
               ),
             ],
@@ -89,16 +89,18 @@ class _ProposalsSheet extends StatelessWidget {
   }
 }
 
-class _ProposalCard extends StatefulWidget {
+/// Une proposition ORION : type, titre, raison, Accepter / Rediriger / Refuser.
+/// Partagée par la feuille « À valider » et l'Inbox (2026-10-30).
+class ProposalCard extends StatefulWidget {
   final FirestoreSync sync;
   final OrionProposal proposal;
-  const _ProposalCard({required this.sync, required this.proposal});
+  const ProposalCard({super.key, required this.sync, required this.proposal});
 
   @override
-  State<_ProposalCard> createState() => _ProposalCardState();
+  State<ProposalCard> createState() => _ProposalCardState();
 }
 
-class _ProposalCardState extends State<_ProposalCard> {
+class _ProposalCardState extends State<ProposalCard> {
   bool _busy = false;
 
   static const _kindLabels = {
