@@ -1715,19 +1715,31 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       title: '',
       category: 'personal',
     );
+    // Activités-temps triées par usage sur 14 jours : les premières chips
+    // sont celles qu'on bloque vraiment, le reste derrière « Toutes ».
+    final since = DateTime.now().subtract(const Duration(days: 14));
+    final usage = <String, int>{};
+    for (final se in widget.logic.state.sessions) {
+      if (se.deleted || se.startAt.isBefore(since)) continue;
+      usage[se.activityId] = (usage[se.activityId] ?? 0) + se.duration.inMinutes;
+    }
+    final acts = widget.logic.state.activeActivities
+        .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
+        .toList()
+      ..sort((a, b) {
+        final d = (usage[b.id] ?? 0).compareTo(usage[a.id] ?? 0);
+        return d != 0 ? d : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (_) => _BlockEditSheet(
         block: draft,
         isNew: true,
-        activities: widget.logic.state.activeActivities
-            .where((a) => !a.isHabit && a.role != ActivityRole.shopping)
-            .toList()
-          ..sort((a, b) =>
-              a.name.toLowerCase().compareTo(b.name.toLowerCase())),
+        activities: acts,
         suggestions: _buildSuggestions(),
         onSave: (b) => _sync.addScheduleBlock(widget.date, b),
       ),
@@ -1804,6 +1816,8 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
   String? _actionId;
   String? _linkedLabel; // libellé de la source liée (chip), null = pas de lien
   bool _saving = false;
+  bool _allActivities = false;
+  static const _kActivityChips = 8;
 
   @override
   void initState() {
@@ -1890,26 +1904,37 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final canSave = !_saving && _titleCtrl.text.trim().isNotEmpty;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-          24, 20, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(widget.isNew ? 'Nouveau bloc' : 'Modifier le bloc',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700)),
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: mq.size.height * .9),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 12, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(widget.isNew ? 'Nouveau bloc' : 'Modifier le bloc',
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Navigator.pop(context)),
+                ],
               ),
-              IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: () => Navigator.pop(context)),
-            ],
-          ),
-          const SizedBox(height: 16),
+            ),
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
           // ── Bloc d'ACTIVITÉ en un tap (2026-10) : l'activité d'abord, le
           // titre libre ensuite. Au ▶, l'app proposera la prochaine action de
           // chaque projet lié ; le bloc ne retient que le temps.
@@ -1920,17 +1945,33 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1,
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
+            Text('Au ▶, l\'app propose la prochaine action de chaque projet lié ; le bloc ne retient que le temps.',
+                style: TextStyle(fontSize: 11.5, height: 1.3, color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
+            const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final a in widget.activities)
+              for (final a in (_allActivities ? widget.activities : widget.activities.take(_kActivityChips)))
                 ChoiceChip(
                   label: Text(a.name, style: const TextStyle(fontSize: 12.5)),
                   selected: _activityId == a.id && _projectId == null && _actionId == null,
                   visualDensity: VisualDensity.compact,
                   onSelected: (v) => v ? _pickActivity(a) : _clearLink(),
                 ),
+              if (!_allActivities && widget.activities.length > _kActivityChips)
+                ActionChip(
+                  label: Text('Toutes · ${widget.activities.length}', style: const TextStyle(fontSize: 12.5)),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => setState(() => _allActivities = true),
+                ),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            Text('OU UN BLOC LIBRE',
+                style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(.55))),
+            const SizedBox(height: 8),
           ],
           TextField(
             controller: _titleCtrl,
@@ -1938,7 +1979,7 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
                 labelText: 'Titre',
                 border: OutlineInputBorder(),
                 isDense: true),
-            autofocus: true,
+            autofocus: !widget.isNew || widget.activities.isEmpty,
             textCapitalization: TextCapitalization.sentences,
             onChanged: (_) {
               // La frappe invalide un lien posé par suggestion (le titre ne
@@ -2044,67 +2085,42 @@ class _BlockEditSheetState extends State<_BlockEditSheet> {
               ),
             ],
           ),
+          if (widget.isNew) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final m in const [30, 45, 60, 90, 120])
+                ChoiceChip(
+                  label: Text(fmtMin(m), style: const TextStyle(fontSize: 12)),
+                  selected: _durationMin == m,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => _durationMin = m),
+                ),
+            ]),
+          ],
           const SizedBox(height: 12),
           _CategorySelector(
             value: _category,
             onChanged: (v) => setState(() => _category = v),
           ),
-          if (widget.isNew &&
-              widget.activities.isNotEmpty &&
-              _linkedLabel == null) ...[
-            const SizedBox(height: 12),
-            InputDecorator(
-              decoration: const InputDecoration(
-                  labelText: 'Activité (optionnel)',
-                  border: OutlineInputBorder(),
-                  isDense: true),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String?>(
-                  isExpanded: true,
-                  value: _activityId,
-                  items: [
-                    const DropdownMenuItem<String?>(
-                        value: null, child: Text('Aucune')),
-                    for (final a in widget.activities)
-                      DropdownMenuItem<String?>(
-                          value: a.id,
-                          child:
-                              Text(a.name, overflow: TextOverflow.ellipsis)),
                   ],
-                  onChanged: (v) => setState(() {
-                    _activityId = v;
-                    if (v != null && _titleCtrl.text.trim().isEmpty) {
-                      for (final a in widget.activities) {
-                        if (a.id == v) {
-                          _titleCtrl.text = a.name;
-                          break;
-                        }
-                      }
-                    }
-                  }),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                  'Lié à une activité → bouton ▶ pour chronométrer ; se coche au temps loggué.',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(.5))),
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+              child: SizedBox(
+                height: 48,
+                child: FilledButton(
+                  onPressed: canSave ? _save : null,
+                  style: FilledButton.styleFrom(shape: const StadiumBorder()),
+                  child: Text(_saving
+                      ? 'Enregistrement…'
+                      : (widget.isNew ? 'Ajouter le bloc' : 'Enregistrer')),
+                ),
+              ),
             ),
           ],
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving
-                ? 'Enregistrement…'
-                : (widget.isNew ? 'Ajouter' : 'Enregistrer')),
-          ),
-        ],
+        ),
       ),
     );
   }
