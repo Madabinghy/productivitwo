@@ -106,7 +106,6 @@ class RoutinesDayView extends StatefulWidget {
 class _RoutinesDayViewState extends State<RoutinesDayView> {
   // Sections dépliées à la main (null = défaut : le moment courant).
   final Map<String, bool> _open = {};
-  bool _laterMenu = false;
   // Routine gardée dans la carte une fois sa cible atteinte (série de +1 :
   // « Pompes » cible 1, dix pompes d'affilée), jusqu'à « Suivante ».
   String? _held;
@@ -252,7 +251,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final moved = slot != null && momentOf(slot.moment).timed && slot.moment != day.current.key;
     if (moved) logic.setRoutinePushed(ymd, logic.routinePushed(ymd)..[a.id] = day.current.key);
     setState(() {
-      _laterMenu = false;
       _held = null;
     });
     _toast(moved ? 'Reculée à ${day.current.thisOne} : ${a.name}' : 'Reculée en fin de file : ${a.name}');
@@ -263,7 +261,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final pushed = logic.routinePushed(ymd)..[a.id] = m.key;
     logic.setRoutinePushed(ymd, pushed);
     setState(() {
-      _laterMenu = false;
       _held = null;
     });
     _toast('Reportée à ${m.thisOne} : ${a.name}');
@@ -273,7 +270,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final ymd = _ymd;
     logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
     setState(() {
-      _laterMenu = false;
       _held = null;
     });
     ScaffoldMessenger.of(context)
@@ -358,6 +354,14 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final progress = c.total == 0 ? 0.0 : (c.done / c.total).clamp(0.0, 1.0);
     final todayN = first == null ? 0 : _todayCount(first.activity);
     final restee = first != null && first.moment != cur.key ? 'Restée ${momentOf(first.moment).of}' : null;
+    final nextSlot = first == null ? null : q.where((s) => s.id != first.id).firstOrNull;
+    final linked = first == null ? null : RoutineChronoPill.linkedOf(logic, first.activity);
+    final chronoRunning = linked != null && RoutineChronoPill.isRunning(logic, linked);
+    // Grammaire de Projets (2026-10) : UN visuel = un point par routine du
+    // moment (la routine en avant cerclée), UN bouton « +1 », les gestes rares
+    // dans « ⋯ Autres », « Enchaîner · n » en lien.
+    final slots = day.of(cur.key).where((s) => !day.dismissed.contains(s.id)).toList();
+    final left = slots.where((s) => !s.reached).length;
     return MomentCard(
       accent: kRoutineAccent,
       eyebrow: 'ROUTINE DU MOMENT',
@@ -366,7 +370,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
       onPill: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
       ring: progress,
       ringBig: '${c.done} / ${c.total}',
-      ringSmall: 'FAITES',
+      ringSmall: cur.label.toUpperCase(),
       context_: first == null
           ? null
           : [if (restee != null) restee, _domainName(first.activity)].where((x) => x.isNotEmpty).join(' · '),
@@ -379,166 +383,74 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           : [
               first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
               if (todayMark(first.activity.habitFreq, todayN) case final mark?) mark,
+              if (nextSlot != null) 'ensuite ${nextSlot.activity.name}',
             ].join(' · '),
       subColor: first != null && first.reached ? kRoutineAccent : null,
-      detail: first == null
+      detail: chronoRunning ? RoutineChronoPill(logic: logic, routine: first!.activity, onChanged: () => setState(() {})) : null,
+      visual: slots.isEmpty
           ? null
-          : Row(children: [
-              Flexible(child: RoutineChronoPill(logic: logic, routine: first.activity, onChanged: () => setState(() {}))),
-              if (widget.onStartTimed != null) ...[
-                const SizedBox(width: 6),
-                _miniRound(pal, Icons.timer_outlined,
-                    tooltip: (first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
-                    badge: (first.activity.timerMin ?? 0) > 0 ? '${first.activity.timerMin}' : null,
-                    onTap: () => _timer(first.activity)),
-              ],
-              const SizedBox(width: 6),
-              _miniRound(pal, Icons.tune_rounded, tooltip: 'Réglages de la routine', onTap: () => _openSheet(first.activity)),
-            ]),
-      primaryLabel: '+1',
-      actions: first == null
-          ? const SizedBox.shrink()
           : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Expanded(
-              child: SizedBox(
-                height: 54,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: kRoutineAccent,
-                      foregroundColor: kBBg,
-                      shape: const StadiumBorder(),
-                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-                  onPressed: () => _plus(first.activity, hold: true),
-                  child: const Text('+1'),
-                ),
-              ),
-            ),
-            if (todayN > 0) ...[
-              const SizedBox(width: 8),
-              _round(pal, '−1', () => _minus(first.activity), size: 54),
-            ],
-            const SizedBox(width: 8),
-            if (held)
-              SizedBox(
-                height: 54,
-                child: OutlinedButton(
-                  onPressed: () => setState(() {
-                    _held = null;
-                    _laterMenu = false;
-                  }),
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: kRoutineAccent,
-                      side: BorderSide(color: kRoutineAccent.withOpacity(.5)),
-                      shape: const StadiumBorder(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      textStyle: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700)),
-                  child: const Text('Suivante'),
-                ),
-              )
-            else
-              SizedBox(
-                height: 54,
-                child: Material(
-                  color: _laterMenu ? pal.track : pal.chip,
-                  borderRadius: BorderRadius.circular(999),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: () => setState(() => _laterMenu = !_laterMenu),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Text('Pas maintenant', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: pal.text)),
-                        const SizedBox(width: 4),
-                        Icon(_laterMenu ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text2),
-                      ]),
+              Wrap(spacing: 6, runSpacing: 4, children: [
+                for (final s in slots)
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: s.reached ? kRoutineAccent : pal.track,
+                      border: first != null && s.id == first.id && !s.reached ? Border.all(color: kRoutineAccent, width: 2) : null,
                     ),
                   ),
-                ),
+              ]),
+              MomentLegend(
+                first == null ? 'Les routines ${cur.of}, toutes atteintes' : 'Les routines ${cur.of} · ${first.activity.name} en cours',
+                right: left == 0 ? null : (left == 1 ? '1 reste' : '$left restent'),
               ),
-          ]),
-          if (_laterMenu) ...[
-            const SizedBox(height: 10),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              _chip('Plus tard ${cur.thisOne}', () => _defer(first.activity)),
-              for (final m in day.laterMoments) _chip(_cap(m.thisOne), () => _pushTo(first.activity, m)),
-              _chip('Pas aujourd\'hui', () => _dismiss(first.activity), muted: true),
             ]),
-          ],
-          if (widget.onChain != null) ...[
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: () => widget.onChain!(day),
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: kRoutineAccent,
-                    side: BorderSide(color: kRoutineAccent.withOpacity(.5)),
-                    shape: const StadiumBorder(),
-                    textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
-                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                label: Text('Enchaîner les routines ${cur.of} · ${q.length}', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ),
-          ],
-        ]),
+      primaryLabel: first == null ? 'Tout est fait' : (held ? 'Suivante' : '+1'),
+      primaryIcon: first == null ? Icons.check_rounded : (held ? Icons.skip_next_rounded : null),
+      onPrimary: first == null
+          ? null
+          : held
+              ? () => setState(() {
+                    _held = null;
+                  })
+              : () => _plus(first.activity, hold: true),
+      chainLabel: widget.onChain != null && q.isNotEmpty ? 'Enchaîner · ${q.length}' : null,
+      onChain: widget.onChain == null ? null : () => widget.onChain!(day),
+      moreTitle: first == null ? 'Routines ${cur.of}' : first.activity.name,
+      moreActions: first == null
+          ? const []
+          : [
+              if (held) MomentAction('+1 encore', icon: Icons.add, onTap: () => _plus(first.activity, hold: true)),
+              if (todayN > 0) MomentAction('−1', icon: Icons.remove, hint: 'retirer la dernière occurrence', onTap: () => _minus(first.activity)),
+              if (linked != null)
+                MomentAction(chronoRunning ? 'Arrêter le chrono' : 'Chrono',
+                    icon: chronoRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                    hint: linked.name,
+                    onTap: () {
+                      RoutineChronoPill.toggleChrono(logic, linked);
+                      setState(() {});
+                    }),
+              if (widget.onStartTimed != null)
+                MomentAction((first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
+                    icon: Icons.timer_outlined, onTap: () => _timer(first.activity)),
+              MomentAction('Plus tard ${cur.thisOne}', icon: Icons.schedule_rounded, onTap: () => _defer(first.activity)),
+              for (final m in day.laterMoments)
+                MomentAction(_cap(m.thisOne), icon: Icons.arrow_forward_rounded, onTap: () => _pushTo(first.activity, m)),
+              MomentAction('Pas aujourd\'hui', icon: Icons.block_rounded, onTap: () => _dismiss(first.activity)),
+              MomentAction('Réglages de la routine', icon: Icons.tune_rounded, onTap: () => _openSheet(first.activity)),
+            ],
     );
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
-  /// Petit bouton rond à icône à côté de la pilule chrono (⏱, réglages) ;
-  /// `badge` = durée du minuteur réglée.
-  Widget _miniRound(NowPalette pal, IconData icon, {required String tooltip, required VoidCallback onTap, String? badge}) =>
-      Tooltip(
-        message: tooltip,
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Material(
-            color: pal.chip,
-            shape: const CircleBorder(),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: Stack(alignment: Alignment.center, children: [
-                Icon(icon, size: 17, color: pal.text2),
-                if (badge != null)
-                  Positioned(
-                    right: 1,
-                    bottom: 1,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                      decoration: BoxDecoration(color: kRoutineAccent, borderRadius: BorderRadius.circular(5)),
-                      child: Text(badge,
-                          style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: kBBg, height: 1.2)),
-                    ),
-                  ),
-              ]),
-            ),
-          ),
-        ),
-      );
 
   String _nextLabel(Moment cur) {
     final n = nextMomentAfter(cur, logic.moments);
     if (n == null) return 'La suite : demain matin.';
     return 'La suite : à ${n.window.split(' → ').first} (${n.label.toLowerCase()}).';
   }
-
-  Widget _chip(String label, VoidCallback onTap, {bool muted = false}) => SizedBox(
-        height: 40,
-        child: OutlinedButton(
-          onPressed: onTap,
-          style: OutlinedButton.styleFrom(
-              foregroundColor: muted ? kBText3 : kRoutineAccent,
-              side: BorderSide(color: muted ? kBLine : kRoutineAccent.withOpacity(.4)),
-              shape: const StadiumBorder(),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-          child: Text(label),
-        ),
-      );
 
   Widget _round(NowPalette pal, String label, VoidCallback? onTap,
           {double size = 44, Color? bg, Color? fg}) =>

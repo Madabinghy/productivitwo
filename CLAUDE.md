@@ -486,7 +486,10 @@ place d'une sous-ligne dense (`MomentCard.visual` + `MomentLegend`) · UN bouton
 ligne de liens discrets (fiche · geste secondaire `chainLabel` · « ⋯ Autres » = feuille `showMomentActions` des gestes rares,
 `MomentCard.moreActions` de `MomentAction`). Le bouton contour « Fiche » à côté du bouton plein n'existe plus. **Lot 1 livré** :
 squelette + ACTION DU MOMENT (sous-ligne = échéance · estimation ; `StepDots` + légende « Étape en cours : … · ⏱ · @contextes » ;
-« Étape faite » ; Autres = Chrono · Fait · Caser · Ouvrir le projet). Lots suivants : Routines, Objectifs, Ma semaine, MAINTENANT.
+« Étape faite » ; Autres = Chrono · Fait · Caser · Ouvrir le projet). **Lot 2 livré** : ROUTINE DU MOMENT (`routines_day_view.dart`) — un point par routine du moment (atteinte pleine, en avant cerclée),
+légende « Les routines ce matin · X en cours · n restent », sous-ligne « 0 / 1 aujourd'hui · ensuite Y », bouton « +1 » (« Suivante »
+quand la cible vient d'être atteinte), lien « Enchaîner · n », Autres = −1 · Chrono · Minuteur · Plus tard / moments suivants · Pas
+aujourd'hui · Réglages ; la pilule chrono n'apparaît que si un chrono tourne. Lots suivants : Objectifs, Ma semaine, MAINTENANT.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
