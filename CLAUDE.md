@@ -564,7 +564,9 @@ lundi prochain (`nextMonday`) · date · retirer) ; Actions : sections « VISÉE
 (ambre, jamais rouge), « ☀ visée … » dans la sous-ligne, « CETTE SEMAINE » sur la date de travail, **glisser gauche = « Viser
 demain »** (`_focusTomorrow`, annulable — plus « Caser demain »), « Viser un jour » dans Autres et dans la feuille d'action
 (section JOUR VISÉ + bouton) ; fiche d'action de la fiche de tâche : section JOUR VISÉ ; file d'un bloc : « ☀ visée … » sur
-la ligne. Lot 3 à venir : web (badge, dialog, filtre) + `plan_day` déjà fait.
+la ligne. **Lot 3 livré (web)** : dialog d'action (`web/action_dialogs.dart`) champ « Jour visé » (date · Aujourd'hui · Demain · retirer)
+au-dessus de « Échéance propre · seulement une vraie date butoir » ; badge « ☀ visée … » sur la ligne d'Actions (ambre si à
+re-viser). **Les 3 lots sont livrés** (⚠️ `firebase deploy --only functions` puis `migrate_focus_dates`).
 **Blocs d'activité, lot 1 livré** (maquette validée 2026-10-29) : le ▶ d'un bloc d'ACTIVITÉ (activité-temps, sans
 `actionId`, hors routine et séance) ouvre la page focus en mode « bloc » (`showBlockFocusScreen`, `BlockFocus`,
 `action_focus_screen.dart`) : LA FILE DU BLOC = `blockQueue` (`utils/block_queue.dart` : une action par projet vivant lié à

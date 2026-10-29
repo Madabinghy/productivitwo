@@ -1,4 +1,4 @@
-import 'package:productivitwo_v1/utils/actions_logic.dart' show shortDateFr;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show shortDateFr, focusLabel;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -30,6 +30,7 @@ Future<bool> showEditActionDialog(
   final noteCtrl = TextEditingController(text: action.note ?? '');
   int? est = action.estimatedMin;
   DateTime? due = action.dueDate;
+  DateTime? focus = action.focusDate;
   final taskDue = task?.endDate;
   // Brouillon de checklist : la règle d'achèvement s'applique à l'enregistrement.
   final draft = TaskAction(
@@ -84,7 +85,54 @@ Future<bool> showEditActionDialog(
                 onChanged: (v) => setLocal(() => est = v),
               ),
               const SizedBox(height: 12),
-              Text('Échéance propre',
+              // Jour visé (2026-10-30) : l'intention — la date par défaut d'une
+              // action ; jamais un retard, jamais un bloc.
+              Text('Jour visé · quand tu veux l\'avoir sous la main (ni créneau, ni retard)',
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.55))),
+              const SizedBox(height: 4),
+              Row(children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.wb_sunny_outlined, size: 16),
+                  label: Text(focus != null ? focusLabel(focus!, DateTime.now()) : 'Aucun'),
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: focus ?? now,
+                      firstDate: now.subtract(const Duration(days: 365)),
+                      lastDate: now.add(const Duration(days: 365 * 3)),
+                      locale: const Locale('fr'),
+                    );
+                    if (d != null) setLocal(() => focus = DateTime(d.year, d.month, d.day));
+                  },
+                ),
+                const SizedBox(width: 6),
+                TextButton(
+                  onPressed: () => setLocal(() {
+                    final n = DateTime.now();
+                    focus = DateTime(n.year, n.month, n.day);
+                  }),
+                  child: const Text("Aujourd'hui"),
+                ),
+                TextButton(
+                  onPressed: () => setLocal(() {
+                    final n = DateTime.now();
+                    focus = DateTime(n.year, n.month, n.day + 1);
+                  }),
+                  child: const Text('Demain'),
+                ),
+                if (focus != null)
+                  IconButton(
+                    tooltip: 'Retirer le jour visé',
+                    icon: const Icon(Icons.close, size: 16),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setLocal(() => focus = null),
+                  ),
+              ]),
+              const SizedBox(height: 12),
+              Text('Échéance propre · seulement une vraie date butoir',
                   style: TextStyle(
                       fontSize: 12.5,
                       color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.55))),
@@ -207,6 +255,7 @@ Future<bool> showEditActionDialog(
     action.estimatedMin = est != null && est! > 0 ? est : null;
     action.note = newNote.isEmpty ? null : newNote;
     action.dueDate = due;
+    action.focusDate = focus;
     action.checklist
       ..clear()
       ..addAll(draft.checklist);
