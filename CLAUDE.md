@@ -489,7 +489,11 @@ squelette + ACTION DU MOMENT (sous-ligne = échéance · estimation ; `StepDots`
 « Étape faite » ; Autres = Chrono · Fait · Caser · Ouvrir le projet). **Lot 2 livré** : ROUTINE DU MOMENT (`routines_day_view.dart`) — un point par routine du moment (atteinte pleine, en avant cerclée),
 légende « Les routines ce matin · X en cours · n restent », sous-ligne « 0 / 1 aujourd'hui · ensuite Y », bouton « +1 » (« Suivante »
 quand la cible vient d'être atteinte), lien « Enchaîner · n », Autres = −1 · Chrono · Minuteur · Plus tard / moments suivants · Pas
-aujourd'hui · Réglages ; la pilule chrono n'apparaît que si un chrono tourne. Lots suivants : Objectifs, Ma semaine, MAINTENANT.
+aujourd'hui · Réglages ; la pilule chrono n'apparaît que si un chrono tourne. **Lot 3 livré** : OBJECTIF DU MOMENT (`objective_moment_card.dart`) — les morceaux du jour en briques violettes (`_pieces` : temps
+engagés fait / attendu, routines compte / cible, blocs, relevé dû ; `ProgressBricks(accent:)`), légende « Aujourd'hui : … », sous-ligne =
+état du rythme · relevé dû, boutons courts (Arrêter · Lancer · HH:MM · Chrono · n min · +1 · X · Noter un relevé · Ouvrir l'action),
+lien « Enchaîner · n », Autres = Bloc de 90 min · relevé · chronos des autres temps · +1 des autres routines · prochaines actions.
+Lots suivants : Ma semaine, MAINTENANT.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

@@ -5,8 +5,8 @@ import 'package:productivitwo_v1/utils/progress_bricks.dart';
 /// Couleur « chrono dessus » des briques (bleu-vert, distinct du vert fait).
 const kBrickRunning = Color(0xFF2FB3A3);
 
-Color brickColor(BrickState s) => switch (s) {
-      BrickState.done || BrickState.started || BrickState.todo || BrickState.upcoming => kPalierGreen,
+Color brickColor(BrickState s, {Color accent = kPalierGreen}) => switch (s) {
+      BrickState.done || BrickState.started || BrickState.todo || BrickState.upcoming => accent,
       BrickState.late => kPalierCoral,
       BrickState.running => kBrickRunning,
     };
@@ -27,8 +27,17 @@ class ProgressBricks extends StatelessWidget {
   final int? highlight;
   /// Titre du sélecteur (« Les tâches du projet »).
   final String pickerTitle;
+  /// Couleur du « fait » (vert par défaut ; violet pour un objectif).
+  final Color accent;
   const ProgressBricks(
-      {super.key, required this.row, this.height = 12, this.gap = 3, this.onBrick, this.highlight, this.pickerTitle = 'Choisir une brique'});
+      {super.key,
+      required this.row,
+      this.height = 12,
+      this.gap = 3,
+      this.onBrick,
+      this.highlight,
+      this.pickerTitle = 'Choisir une brique',
+      this.accent = kPalierGreen});
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +49,7 @@ class ProgressBricks extends StatelessWidget {
       tick: cs.onSurface.withValues(alpha: .92),
       highlight: highlight,
       highlightColor: cs.onSurface,
+      accent: accent,
     );
     final child = SizedBox(height: height, width: double.infinity, child: CustomPaint(painter: painter));
     if (onBrick == null || row.total == 0) return child;
@@ -174,7 +184,9 @@ class _BricksPainter extends CustomPainter {
   final Color tick;
   final int? highlight;
   final Color highlightColor;
-  _BricksPainter({required this.row, required this.gap, required this.dim, required this.tick, this.highlight, required this.highlightColor});
+  final Color accent;
+  _BricksPainter(
+      {required this.row, required this.gap, required this.dim, required this.tick, this.highlight, required this.highlightColor, this.accent = kPalierGreen});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -190,7 +202,7 @@ class _BricksPainter extends CustomPainter {
       final b = row.bricks[i];
       final rect = Rect.fromLTWH(i * (w + g), 0, w, size.height);
       final rr = RRect.fromRectAndRadius(rect, r);
-      final c = brickColor(b.state);
+      final c = brickColor(b.state, accent: accent);
       switch (b.state) {
         case BrickState.done:
           canvas.drawRRect(rr, Paint()..color = c);
@@ -234,7 +246,7 @@ class _BricksPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BricksPainter o) =>
-      o.row != row || o.gap != gap || o.dim != dim || o.tick != tick || o.highlight != highlight;
+      o.row != row || o.gap != gap || o.dim != dim || o.tick != tick || o.highlight != highlight || o.accent != accent;
 }
 
 /// Dernier niveau : une action = ses étapes, un point par étape ; le cerclé =
