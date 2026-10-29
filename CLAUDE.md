@@ -69,6 +69,8 @@ par défaut, 20 plus récents.
   **App bar mobile** (2026-10-30) : titre = pilule 24 h + `ModePill` (dans un `FittedBox`, jamais de débordement) ; `actions`
 = Inbox (point ambre si captures) + menu ⋯ (Propositions à valider, Orion, Revue, Filtres, Nouveautés, Catalogue, Paramètres).
 La pilule sommeil a été retirée de la barre (le sommeil se lit dans Stats). Ne rien rajouter dans le titre.
+**Question d'état retirée** (2026-10-30) : la carte « ORION · ÉTAT » (À fond · Correct · À plat, `EnergyQuestionCard`) n'est plus
+posée par `now_coach_zone.dart` (fichier `energy_cards.dart` supprimé) : le mode Flemme / Normal / En forme la remplace.
 **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
   MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
   `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé ; programme du jour en liste 48 px
