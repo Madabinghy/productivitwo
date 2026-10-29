@@ -182,7 +182,7 @@ class MomentCard extends StatelessWidget {
             ),
         ]),
         const SizedBox(height: 14),
-        Row(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           MomentRing(value: ring, color: ringColor ?? accent, big: ringBig, small: ringSmall),
           const SizedBox(width: 16),
           Expanded(
@@ -191,14 +191,15 @@ class MomentCard extends StatelessWidget {
                 Row(children: [
                   Icon(contextIcon ?? Icons.circle, size: contextIcon == null ? 8 : 13, color: accent),
                   const SizedBox(width: 6),
+                  // Plus d'ellipse (retour user 2026-10) : contexte sur trois
+                  // lignes au plus, titre en entier.
                   Flexible(
-                      child: Text(context_!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2))),
+                      child: Text(context_!, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2))),
                 ]),
               const SizedBox(height: 4),
               Text(title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
+                  softWrap: true,
+                  style: TextStyle(fontSize: title.length > 60 ? 17 : 19, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
               const SizedBox(height: 5),
               Text(sub,
                   style: TextStyle(
