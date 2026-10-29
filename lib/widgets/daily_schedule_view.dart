@@ -65,6 +65,24 @@ class DailyScheduleView extends StatefulWidget {
 class _DailyScheduleViewState extends State<DailyScheduleView> {
   final _sync = FirestoreSync();
   DailySchedule? _schedule;
+  // Journée vécue : le doc du lendemain apporte les blocs de la nuit (avant la
+  // bascule) ; `_schedule` est la fusion des deux (`mergeLivedDay`).
+  DailySchedule? _dayDoc, _nextDoc;
+  StreamSubscription<DailySchedule?>? _nextSub;
+
+  /// Doc Firestore qui porte vraiment [b] (bloc de la nuit = doc du lendemain).
+  String _docOf(ScheduleBlock b) => b.docDate ?? widget.date;
+
+  void _recompose() {
+    final merged = mergeLivedDay(widget.date, _dayDoc, _nextDoc, widget.logic.dayStartMin);
+    if (merged != null) {
+      final day = DateTime.tryParse(widget.date);
+      if (day != null) linkMirrorsToSessions(merged.blocks, widget.logic.currentProjects, day);
+      applyMirrorMemory(merged.blocks, _mirrorMemory);
+    }
+    setState(() => _schedule = merged);
+    if (_isToday) widget.logic.todayBlocks = merged?.blocks ?? [];
+  }
   StreamSubscription<DailySchedule?>? _sub;
   StreamSubscription<Map<String, dynamic>>? _metaSub;
   /// Mémoire « titre de rendez-vous → activité » (`data/meta.mirrorActivities`).
@@ -100,13 +118,10 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   void _scrollToMinute(int minute) {
     final blocks =
         (_schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
-          ..sort((a, b) => a.startTime.compareTo(b.startTime));
+          ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
     if (blocks.isEmpty) return;
-    int toMin(String hm) =>
-        (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
-        (int.tryParse(hm.substring(3, 5)) ?? 0);
     final target = blocks.firstWhere(
-      (b) => toMin(b.startTime) >= minute,
+      (b) => blockStartMin(b) >= minute,
       orElse: () => blocks.last,
     );
     final ctx = _blockKeys[target.id]?.currentContext;
@@ -130,16 +145,14 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Expose « scroll vers HH:mm » au parent (saut minimap de la jauge).
     widget.onRegisterScrollToMinute?.call(_scrollToMinute);
     _sub = _sync.streamDailySchedule(widget.date).listen((s) {
-      if (mounted) {
-        // Miroirs agenda du jour d'une séance → reliés à la séance (en mémoire).
-        final day = DateTime.tryParse(widget.date);
-        if (s != null && day != null) {
-          linkMirrorsToSessions(s.blocks, widget.logic.currentProjects, day);
-        }
-        if (s != null) applyMirrorMemory(s.blocks, _mirrorMemory);
-        setState(() => _schedule = s);
-        if (_isToday) widget.logic.todayBlocks = s?.blocks ?? [];
-      }
+      if (!mounted) return;
+      _dayDoc = s;
+      _recompose();
+    });
+    _nextSub = _sync.streamDailySchedule(nextYmd(widget.date)).listen((s) {
+      if (!mounted) return;
+      _nextDoc = s;
+      _recompose();
     });
     _metaSub = _sync.streamMetaDoc().listen((m) {
       final raw = m['mirrorActivities'];
@@ -160,6 +173,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   void dispose() {
     _nowTick?.cancel();
     _sub?.cancel();
+    _nextSub?.cancel();
     _metaSub?.cancel();
     super.dispose();
   }
@@ -197,7 +211,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     // Geste manuel : décocher interdit à l'automatisme de recocher ce bloc
     // (sinon il revenait « fait » à la prochaine ouverture, temps loggué aidant).
     if (newStatus == 'pending') block.noAutoWin = true;
-    await _sync.updateBlockStatus(widget.date, block.id, newStatus, manual: true);
+    await _sync.updateBlockStatus(_docOf(block), block.id, newStatus, manual: true);
     // Défi coché → plus rien à rappeler.
     if (newStatus == 'done') await cancelChallengeNotifications(block);
     if (block.challenge && newStatus == 'done' && !_won.contains(block.id)) {
@@ -231,7 +245,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     if (validated == true) {
       task.status = 'done';
       await _sync.saveProjectTasks(project.id, project.tasks);
-      await _sync.updateBlockStatus(widget.date, block.id, 'done');
+      await _sync.updateBlockStatus(_docOf(block), block.id, 'done');
     }
   }
 
@@ -256,7 +270,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
       final pt = _taskOf(b);
       if (pt != null && pt.$2.status == 'done') {
         _projectSynced.add(b.id); // garde : 1 seule écriture avant le retour stream
-        _sync.updateBlockStatus(widget.date, b.id, 'done');
+        _sync.updateBlockStatus(_docOf(b), b.id, 'done');
       }
     }
   }
@@ -331,11 +345,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         if (mounted) setState(() {}); // ré-affiche le bloc swipé
         return;
       }
-      await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
+      await _sync.updateBlockStatus(_docOf(block), block.id, 'deleted');
       if (choice == 'both') await gcalDeleteEvent(_sync, block.gcalEventId!);
       return;
     }
-    await _sync.updateBlockStatus(widget.date, block.id, 'deleted');
+    await _sync.updateBlockStatus(_docOf(block), block.id, 'deleted');
     if (block.challenge) {
       NotificationService.cancelChallengeAll(block.id);
     }
@@ -358,7 +372,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         action: SnackBarAction(
           label: 'Annuler',
           onPressed: () async {
-            await _sync.updateBlockStatus(widget.date, block.id, 'pending');
+            await _sync.updateBlockStatus(_docOf(block), block.id, 'pending');
             if (block.activityId != null) {
               widget.logic.setActivityTodayFlag(block.activityId!, true);
               await _sync.toggleActivityTodayFlag(block.activityId!, true);
@@ -459,7 +473,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Future<void> _saveBlock(ScheduleBlock updated) async {
-    final schedule = _schedule;
+    // Bloc de la nuit (doc du lendemain) : écriture ciblée sur SON doc.
+    if (updated.docDate != null) {
+      await _sync.upsertScheduleBlock(updated.docDate!, updated);
+      return;
+    }
+    final schedule = _dayDoc;
     if (schedule == null) return;
     final blocks = schedule.blocks.map((b) => b.id == updated.id ? updated : b).toList();
     // Préserver les faits du doc (dayReason, planifié quand, mode soirée) —
@@ -495,7 +514,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 .where((b) => b.status != 'deleted' && b.status != 'skipped')
                 .toList() ??
             [])
-      ..sort((a, b) => a.startTime.compareTo(b.startTime));
+      ..sort((a, b) => blockStartMin(a).compareTo(blockStartMin(b)));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_isToday) return;
       _maybeAutoWin();
@@ -559,9 +578,6 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             // ce qui vient. Aujourd'hui uniquement (demain n'a pas de présent).
             final now = DateTime.now();
             final nowMin = livedNowMin(now, widget.logic.dayStartMin);
-            int toMin(String hm) =>
-                (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 +
-                (int.tryParse(hm.substring(3, 5)) ?? 0);
             // Aujourd'hui : les blocs finis depuis un moment sont repliés en
             // une ligne « Plus tôt » — l'écran reste sur ce qui vient, le
             // passé reste dans le programme (rattachement après coup, bilan).
@@ -573,7 +589,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
             // sinon (trou), il se dessine entre les blocs.
             final nowBlock = _isToday ? nowLineBlock(rows, nowMin) : null;
             var nowIndex = _isToday && nowBlock == null
-                ? rows.indexWhere((b) => toMin(b.startTime) > nowMin)
+                ? rows.indexWhere((b) => blockStartMin(b) > nowMin)
                 : -1;
             final nowAtEnd = _isToday && nowBlock == null && nowIndex == -1;
             if (nowAtEnd) nowIndex = rows.length;
@@ -658,7 +674,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               block.noAutoWin = true;
               _suggested.remove(block.id);
             });
-            await _sync.updateBlockStatus(widget.date, block.id, 'pending', manual: true);
+            await _sync.updateBlockStatus(_docOf(block), block.id, 'pending', manual: true);
           },
         ),
       ]),
@@ -718,12 +734,11 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   }
 
   Future<void> _carryAll(List<ScheduleBlock> carry) async {
-    final date = widget.date;
     final placed = <({String startTime, bool conflict})?>[];
     for (final b in carry) {
-      placed.add(await _sync.reportBlockToTomorrow(date, b));
-      await _sync.updateBlockStatus(date, b.id, 'skipped');
-      await _sync.updateBlockSkipReason(date, b.id, 'reporte');
+      placed.add(await _sync.reportBlockToTomorrow(_docOf(b), b));
+      await _sync.updateBlockStatus(_docOf(b), b.id, 'skipped');
+      await _sync.updateBlockSkipReason(_docOf(b), b.id, 'reporte');
       if (b.challenge) await cancelChallengeNotifications(b);
     }
     if (!mounted) return;
@@ -737,7 +752,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
           label: 'Annuler',
           onPressed: () async {
             for (final b in carry) {
-              await _sync.undoReportToTomorrow(date, b.id);
+              await _sync.undoReportToTomorrow(_docOf(b), b.id);
             }
           },
         ),
@@ -759,7 +774,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             ),
             for (final b in [...a.moved, ...a.cancelled, ...a.skipped]
-              ..sort((x, y) => x.startTime.compareTo(y.startTime)))
+              ..sort((x, y) => blockStartMin(x).compareTo(blockStartMin(y))))
               ListTile(
                 dense: true,
                 leading: Icon(
@@ -775,7 +790,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                     ? TextButton(
                         onPressed: () async {
                           Navigator.of(context).pop();
-                          await _sync.setBlockCancelled(widget.date, b.id, false);
+                          await _sync.setBlockCancelled(_docOf(b), b.id, false);
                         },
                         child: const Text('Rétablir'),
                       )
@@ -1001,8 +1016,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final isDone = block.status == 'done';
     final now = DateTime.now();
     final nowMin = livedNowMin(now, widget.logic.dayStartMin);
-    int toMin(String hm) => (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
-    final startMin = toMin(block.startTime);
+    final startMin = blockStartMin(block);
     final endMin = startMin + block.durationMin;
     String clock(int m) => '${((m ~/ 60) % 24).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
     final current = _isToday && block.status == 'pending' && startMin <= nowMin && nowMin < endMin;
@@ -1078,8 +1092,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final hourColor = dark ? kBText4 : cs.onSurface.withOpacity(.45);
     final now = DateTime.now();
     final nowMin = livedNowMin(now, widget.logic.dayStartMin);
-    int toMin(String hm) => (int.tryParse(hm.substring(0, 2)) ?? 0) * 60 + (int.tryParse(hm.substring(3, 5)) ?? 0);
-    final startMin = toMin(block.startTime);
+    final startMin = blockStartMin(block);
     final current = _isToday && block.status == 'pending' && startMin <= nowMin && nowMin < startMin + block.durationMin;
     final int loggedMin;
     if (_isToday) {
@@ -1539,7 +1552,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                 'créneau libre réel — sans pénalité, rien n\'est compté', () {
               Navigator.pop(sctx);
               showMoveBlockSheet(context,
-                  logic: widget.logic, block: block, date: widget.date);
+                  logic: widget.logic, block: block, date: _docOf(block));
             }),
             row(Icons.timelapse, 'Changer la durée',
                 '${block.durationMin} min actuellement — sans pénalité', () {
@@ -1558,9 +1571,9 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
               Navigator.pop(sctx);
               // Report EFFECTIF : copie dans le doc de demain (décision
               // explicite ≠ simple oubli), puis annotation sur l'original.
-              final placed = await _sync.reportBlockToTomorrow(widget.date, block);
-              await _sync.updateBlockStatus(widget.date, block.id, 'skipped');
-              await _sync.updateBlockSkipReason(widget.date, block.id, 'reporte');
+              final placed = await _sync.reportBlockToTomorrow(_docOf(block), block);
+              await _sync.updateBlockStatus(_docOf(block), block.id, 'skipped');
+              await _sync.updateBlockSkipReason(_docOf(block), block.id, 'reporte');
               // Défi reporté → l'alarme du jour n'a plus lieu d'être.
               await cancelChallengeNotifications(block);
               if (context.mounted) {
@@ -1580,7 +1593,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
   /// « Pas disponible » : le bloc sort du programme (compteur de pied « 1 annulé »),
   /// sans report ni déplacement. « Annuler » 5 s le remet tel quel.
   Future<void> _cancelBlock(ScheduleBlock block) async {
-    await _sync.setBlockCancelled(widget.date, block.id, true);
+    await _sync.setBlockCancelled(_docOf(block), block.id, true);
     if (block.challenge) await cancelChallengeNotifications(block);
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -1591,7 +1604,7 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         behavior: SnackBarBehavior.floating,
         action: SnackBarAction(
           label: 'Annuler',
-          onPressed: () => _sync.setBlockCancelled(widget.date, block.id, false),
+          onPressed: () => _sync.setBlockCancelled(_docOf(block), block.id, false),
         ),
       ));
   }
@@ -1741,7 +1754,8 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
         isNew: true,
         activities: acts,
         suggestions: _buildSuggestions(),
-        onSave: (b) => _sync.addScheduleBlock(widget.date, b),
+        onSave: (b) => _sync.addScheduleBlock(
+            docForNewBlock(widget.date, DateTime.now(), widget.logic.dayStartMin), b),
       ),
     );
   }

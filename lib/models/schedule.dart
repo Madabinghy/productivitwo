@@ -120,6 +120,15 @@ class ScheduleBlock {
   })  : id = id ?? _uuid.v4(),
         reminders = reminders ?? [];
 
+  // ── Journée vécue (runtime, JAMAIS sérialisé) ──────────────────────────────
+  // Après minuit et avant la bascule (5 h), la nuit appartient encore à la
+  // veille : les blocs du doc du LENDEMAIN qui commencent avant la bascule
+  // sont affichés dans la journée vécue en cours. `docDate` = le doc qui porte
+  // vraiment le bloc (null = celui de la vue) ; `dayOffset` = 1 pour un bloc
+  // de la nuit (ses minutes comptent +24 h, cf. `blockStartMin`).
+  String? docDate;
+  int dayOffset = 0;
+
   bool get isPrep => kind == 'prep';
 
   Map<String, dynamic> toJson() => {

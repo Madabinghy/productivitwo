@@ -1,4 +1,4 @@
-import 'package:productivitwo_v1/models.dart' show yyyymmdd;
+import 'package:productivitwo_v1/models.dart' show yyyymmdd, DailySchedule, ScheduleBlock;
 
 /// Journée vécue (2026-10) : la journée des ROUTINES ne bascule pas à minuit
 /// mais à l'heure réglée par l'utilisateur (`data/meta.dayStartMin`, défaut
@@ -50,3 +50,68 @@ int livedNowMin(DateTime now, int dayStartMin) {
 /// « 5 h » / « 5 h 30 ».
 String dayStartLabel(int min) =>
     min % 60 == 0 ? '${min ~/ 60} h' : '${min ~/ 60} h ${(min % 60).toString().padLeft(2, '0')}';
+
+/// Lendemain d'un `YYYY-MM-DD`.
+String nextYmd(String ymd) {
+  final d = DateTime.parse(ymd).add(const Duration(days: 1));
+  return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+}
+
+int _rawStartMin(ScheduleBlock b) {
+  final p = b.startTime.split(':');
+  return (int.tryParse(p[0]) ?? 0) * 60 + (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
+}
+
+/// Blocs de la JOURNÉE VÉCUE [day] (doc du jour) : ses blocs qui commencent à
+/// la bascule ou après, puis ceux du doc du lendemain [next] qui commencent
+/// AVANT la bascule — la nuit après minuit — marqués `dayOffset = 1` et
+/// `docDate` = le doc du lendemain, pour que l'affichage les place après le
+/// soir et que les écritures visent le bon doc. Les blocs du jour avant la
+/// bascule appartiennent à la nuit de la veille : ils ne sont pas ici.
+List<ScheduleBlock> livedDayBlocks(DailySchedule? day, DailySchedule? next, int dayStartMin) {
+  final out = <ScheduleBlock>[];
+  for (final b in day?.blocks ?? const <ScheduleBlock>[]) {
+    if (_rawStartMin(b) < dayStartMin) continue;
+    b.docDate = null;
+    b.dayOffset = 0;
+    out.add(b);
+  }
+  for (final b in next?.blocks ?? const <ScheduleBlock>[]) {
+    if (_rawStartMin(b) >= dayStartMin) continue;
+    b.docDate = next!.date;
+    b.dayOffset = 1;
+    out.add(b);
+  }
+  return out;
+}
+
+/// `DailySchedule` de la journée vécue [ymd] : les faits du doc du jour
+/// (généré par, planifié quand, mode soirée…) et les blocs de `livedDayBlocks`.
+/// Null si aucun des deux docs n'existe.
+DailySchedule? mergeLivedDay(String ymd, DailySchedule? day, DailySchedule? next, int dayStartMin) {
+  if (day == null && next == null) return null;
+  final blocks = livedDayBlocks(day, next, dayStartMin);
+  if (day == null && blocks.isEmpty) return null;
+  return DailySchedule(
+    date: ymd,
+    generatedBy: day?.generatedBy ?? 'claude',
+    generatedAt: day?.generatedAt,
+    blocks: blocks,
+    dayReason: day?.dayReason,
+    plannedAt: day?.plannedAt,
+    plannedSameDay: day?.plannedSameDay ?? false,
+    dayMode: day?.dayMode ?? 'normal',
+    dayModeActivatedAt: day?.dayModeActivatedAt,
+    unavailableUntil: day?.unavailableUntil,
+    unavailableReason: day?.unavailableReason,
+    reviewedAt: day?.reviewedAt,
+    energyState: day?.energyState,
+    recoverySequence: day?.recoverySequence,
+  );
+}
+
+/// Doc qui doit recevoir un bloc CRÉÉ maintenant dans la vue de la journée
+/// vécue [viewYmd] : après minuit (minute vécue ≥ 24 h) c'est le doc du
+/// lendemain, à l'heure de l'horloge ; sinon le doc de la vue.
+String docForNewBlock(String viewYmd, DateTime now, int dayStartMin) =>
+    livedNowMin(now, dayStartMin) >= 24 * 60 ? nextYmd(viewYmd) : viewYmd;

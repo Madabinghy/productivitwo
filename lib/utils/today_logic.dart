@@ -9,8 +9,8 @@ import 'package:productivitwo_v1/models.dart';
 /// Minute de début d'un bloc ("HH:mm" → minutes). Format invalide → 0.
 int blockStartMin(ScheduleBlock b) {
   final parts = b.startTime.split(':');
-  if (parts.length < 2) return 0;
-  return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0);
+  if (parts.length < 2) return b.dayOffset * 24 * 60;
+  return (int.tryParse(parts[0]) ?? 0) * 60 + (int.tryParse(parts[1]) ?? 0) + b.dayOffset * 24 * 60;
 }
 
 int blockEndMin(ScheduleBlock b) => blockStartMin(b) + b.durationMin;

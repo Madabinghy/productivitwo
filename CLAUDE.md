@@ -62,7 +62,10 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
   Actions ; jamais « Définir la prochaine action » sur un dossier. Filtre « Pour… » (`inClient`, `actions_logic.dart`) :
   un client choisi ne montre QUE ses projets (les actions simples d'activité disparaissent) ; entrée **« Perso »**
   (`kPersoClientId`) = les actions sans projet ; « Tous » = tout.
-  **Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
+  **App bar mobile** (2026-10-30) : titre = pilule 24 h + `ModePill` (dans un `FittedBox`, jamais de débordement) ; `actions`
+= Inbox (point ambre si captures) + menu ⋯ (Propositions à valider, Orion, Revue, Filtres, Nouveautés, Catalogue, Paramètres).
+La pilule sommeil a été retirée de la barre (le sommeil se lit dans Stats). Ne rien rajouter dans le titre.
+**Fusion Aujourd'hui + Maintenant** (handoff `docs/specs/ios-aujourdhui-2026-09/README.md`) : la carte
   MAINTENANT (`lib/widgets/now_card.dart`) + zone coach (`now_coach_zone.dart`) sont en tête de
   `lib/widgets/today_view.dart` ; `focus_view.dart` a été supprimé ; programme du jour en liste 48 px
   (`daily_schedule_view.dart`, titre vide = nouveau style) — handoff livré (3 PR). Toute navigation « vers Maintenant » passe par `_goNowTab()` (Aujourd'hui + scroll haut).
@@ -570,7 +573,16 @@ calendaire côté STOCKAGE, mais le mobile le lit sur la journée vécue (lot 2,
 `livedTodayYmd` (programme « d'aujourd'hui » = la veille jusqu'à la bascule : Aujourd'hui, Demain, Actions « au
 programme », MAINTENANT, Enchaîner, écran bloc) et `livedNowMinNow` (00:30 → 24 h 30, pour que Sommeil 22:00 → 05:00
 soit « en cours » : bloc courant, auto-coche, « Caser demain », trait « maintenant » — masqué dans la frise après
-minuit). **Web** (2026-10) : le shell suit `data/meta.dayStartMin` (`streamMetaDoc`) et passe `dayStartMin` à Aujourd'hui
+minuit). **La nuit appartient à la journée vécue** (2026-10-30, mobile) : le stockage reste par date calendaire, mais Aujourd'hui
+(`daily_schedule_view.dart`, `today_view.dart`) lit DEUX docs — celui du jour vécu et celui du lendemain — et fusionne via
+`mergeLivedDay` / `livedDayBlocks` (`utils/lived_day.dart`) : les blocs du lendemain qui commencent AVANT la bascule (la nuit
+après minuit) entrent dans la journée vécue avec `ScheduleBlock.dayOffset = 1` et `docDate` (champs RUNTIME, jamais
+sérialisés) ; `blockStartMin` ajoute +24 h, donc tri, bloc en cours, trait « maintenant », « Plus tôt » les placent après le
+soir ; `startTime` reste « 00:20 » à l'affichage. Les blocs du doc du jour qui commencent avant la bascule appartiennent à la
+nuit de la veille et ne sont pas montrés dans sa vue. Toute écriture sur un bloc passe par son doc (`_docOf(b)` =
+`b.docDate ?? widget.date`, `_saveBlock` → `upsertScheduleBlock` sur `docDate`) ; un bloc CRÉÉ après minuit va sur le doc du
+lendemain à l'heure de l'horloge (`docForNewBlock`). La frise (`day_timeline_view.dart`) reste sur le jour calendaire.
+**Web** (2026-10) : le shell suit `data/meta.dayStartMin` (`streamMetaDoc`) et passe `dayStartMin` à Aujourd'hui
 (date du flux, minute vécue, Demain, routines, cartes retard / échéances), Cette semaine, Projets et Actions ; les moments
 réglés ne sont pas lus par le web (pas d'UI moments). **Moments réglables** : bornes dans `data/meta.momentWindows`
 (`timedMomentsWith`, `parseMomentWindows`, `validateMoments` ; `AppLogic.moments` / `allMoments`, `RoutineDay.moments`) ;
