@@ -505,6 +505,12 @@ pleins, bloc en avant marqué d'un trait, légende « le 3ᵉ est en avant · 3 
 Commencer / « 10 min, malgré tout » en Flemme / Terminer + Pause / Arrêter / Bloc ▾) ; lien « Enchaîner · n » / « n petites choses » /
 « Reprendre · k faites » (`_chainLink`) ; « ⋯ Autres » = Lancer sans minuteur ou 10 min malgré tout, Fait, Deep work 90 min, Enchaîner
 tout, Voir la source ; « Ton élan, là ? » passe sous les liens. **Les 5 lots sont livrés.**
+**« Titre d'abord »** (maquette validée 2026-10-30, `MomentCard`, TOUTES les cartes du moment) : le titre prend toute la largeur
+(21 px, 18 au-delà de 60 car.), UNE ligne de contexte dessous = `context_` · `sub` (3 lignes max, jamais d'ellipse du titre),
+puis l'anneau en MINIATURE (`MomentRing(size: 30, stroke: 5)`, sans texte dedans) avec « ringBig ringSmall » en minuscules à côté,
+puis le `visual` et la légende. Plus de gros anneau à gauche. ACTION DU MOMENT : `sub` = ☀ visée · estimation · contextes
+(l'échéance n'apparaît qu'une fois, dans la pilule), légende de progression = étape en cours · ⏱ passé. MAINTENANT
+(`now_card.dart`, carte sur mesure) n'est pas concernée.
 **« Une liste, un seul bloc ouvert »** (maquette validée 2026-10-29, `widgets/moment_item.dart`) : la ligne et la carte du moment
 sont deux états du MÊME item (`MomentItem(open, collapsed, expanded, onToggle, onLongPress)`), un seul ouvert par page
 (`OpenItem` : le premier du classement par défaut tant que rien n'est touché, puis le choix de l'utilisateur, y compris aucun ;

@@ -184,37 +184,59 @@ class MomentCard extends StatelessWidget {
               ),
             ),
         ]),
-        const SizedBox(height: 14),
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          MomentRing(value: ring, color: ringColor ?? accent, big: ringBig, small: ringSmall),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (context_ != null)
-                Row(children: [
-                  Icon(contextIcon ?? Icons.circle, size: contextIcon == null ? 8 : 13, color: accent),
-                  const SizedBox(width: 6),
-                  // Plus d'ellipse (retour user 2026-10) : contexte sur trois
-                  // lignes au plus, titre en entier.
-                  Flexible(
-                      child: Text(context_!, maxLines: 3, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text2))),
+        const SizedBox(height: 10),
+        // « Titre d'abord » (maquette validée 2026-10-30) : le titre prend toute
+        // la largeur, UNE ligne de contexte dessous (contexte · sous-ligne), et
+        // l'anneau passe en miniature en tête de la ligne de progression, le
+        // chiffre à côté. Trois lignes de texte au lieu de cinq.
+        Text(title,
+            softWrap: true,
+            style: TextStyle(fontSize: title.length > 60 ? 18 : 21, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
+        if (context_ != null || sub.isNotEmpty) ...[
+          const SizedBox(height: 5),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (context_ != null) ...[
+              Padding(
+                padding: EdgeInsets.only(top: contextIcon == null ? 5 : 2),
+                child: Icon(contextIcon ?? Icons.circle, size: contextIcon == null ? 8 : 13, color: accent),
+              ),
+              const SizedBox(width: 6),
+            ],
+            // Plus d'ellipse (retour user 2026-10) : contexte sur trois lignes
+            // au plus, titre en entier.
+            Expanded(
+              child: Text.rich(
+                TextSpan(children: [
+                  if (context_ != null) TextSpan(text: context_, style: TextStyle(color: pal.text2)),
+                  if (context_ != null && sub.isNotEmpty) TextSpan(text: ' · ', style: TextStyle(color: pal.text3)),
+                  if (sub.isNotEmpty)
+                    TextSpan(
+                        text: sub,
+                        style: TextStyle(color: subColor ?? pal.text3, fontWeight: subColor == null ? null : FontWeight.w700)),
                 ]),
-              const SizedBox(height: 4),
-              Text(title,
-                  softWrap: true,
-                  style: TextStyle(fontSize: title.length > 60 ? 17 : 19, fontWeight: FontWeight.w700, height: 1.15, color: pal.text)),
-              const SizedBox(height: 5),
-              Text(sub,
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: subColor == null ? null : FontWeight.w700,
-                      color: subColor ?? pal.text3,
-                      fontFeatures: const [FontFeature.tabularFigures()])),
-              if (detail != null) ...[const SizedBox(height: 8), detail!],
-            ]),
-          ),
-        ]),
-        if (visual != null) ...[const SizedBox(height: 12), visual!],
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, height: 1.3, fontFeatures: const [FontFeature.tabularFigures()]),
+              ),
+            ),
+          ]),
+        ],
+        if (detail != null) ...[const SizedBox(height: 8), detail!],
+        if (ring != null || ringBig.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(children: [
+            MomentRing(value: ring, color: ringColor ?? accent, big: '', small: '', size: 30, stroke: 5),
+            const SizedBox(width: 10),
+            Text.rich(
+              TextSpan(children: [
+                TextSpan(text: ringBig, style: TextStyle(fontWeight: FontWeight.w800, color: pal.text)),
+                if (ringSmall.isNotEmpty) TextSpan(text: ' ${ringSmall.toLowerCase()}', style: TextStyle(color: pal.text3)),
+              ]),
+              style: TextStyle(fontSize: 13, fontFeatures: const [FontFeature.tabularFigures()]),
+            ),
+          ]),
+        ],
+        if (visual != null) ...[const SizedBox(height: 10), visual!],
         const SizedBox(height: 14),
         if (actions != null)
           actions!
@@ -316,7 +338,8 @@ class MomentRing extends StatelessWidget {
   final String big;
   final String small;
   final double size;
-  const MomentRing({super.key, required this.value, required this.color, required this.big, required this.small, this.size = 96});
+  final double stroke;
+  const MomentRing({super.key, required this.value, required this.color, required this.big, required this.small, this.size = 96, this.stroke = 9});
 
   @override
   Widget build(BuildContext context) {
@@ -327,13 +350,14 @@ class MomentRing extends StatelessWidget {
       child: Stack(alignment: Alignment.center, children: [
         CustomPaint(
           size: Size(size, size),
-          painter: RingPainter(progress: (value ?? 0).clamp(0.0, 1.0), color: color, stroke: 9, trackColor: pal.track, cap: StrokeCap.round),
+          painter: RingPainter(progress: (value ?? 0).clamp(0.0, 1.0), color: color, stroke: stroke, trackColor: pal.track, cap: StrokeCap.round),
         ),
-        Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(big,
-              style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
-          Text(small, style: TextStyle(fontSize: 9.5, letterSpacing: 1.1, color: pal.text3)),
-        ]),
+        if (big.isNotEmpty || small.isNotEmpty)
+          Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(big,
+                style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
+            Text(small, style: TextStyle(fontSize: 9.5, letterSpacing: 1.1, color: pal.text3)),
+          ]),
       ]),
     );
   }
