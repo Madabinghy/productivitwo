@@ -239,7 +239,9 @@ class _ActivityFicheState extends State<_ActivityFiche> {
         const SizedBox(height: 14),
         IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Expanded(child: _primaryButton(primary, icon, onPrimary, accent, outlined: running)),
+          // Chrono / Arrêter à la couleur du domaine ; les gestes de mode
+          // (malgré tout, deep work) gardent l'ambiance du mode.
+          Expanded(child: _primaryButton(primary, icon, onPrimary, running || mode == DayMode.normal ? domColor : accent, outlined: running)),
           if (!running && mode == DayMode.normal && widget.onLaunchTimed != null) ...[
             const SizedBox(width: 8),
             OutlinedButton(
@@ -328,7 +330,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
     }
     return FilledButton(
       onPressed: onTap,
-      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: const StadiumBorder(), backgroundColor: accent, foregroundColor: Colors.white, textStyle: style),
+      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52), shape: const StadiumBorder(), backgroundColor: accent, foregroundColor: accent.computeLuminance() > .55 ? Colors.black87 : Colors.white, textStyle: style),
       child: child,
     );
   }
