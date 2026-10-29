@@ -1306,6 +1306,17 @@ async function executeUpdateProject(uid, projectId, updates) {
             }
         }
     }
+    // Activité-temps liée : doit exister, être une activité-temps vivante.
+    let activityNote = "";
+    if (updates.linkedActivityId !== undefined && updates.linkedActivityId) {
+        const a = await db_1.db.doc(`users/${uid}/activities/${updates.linkedActivityId}`).get();
+        const ad = a.data();
+        if (!a.exists || (ad === null || ad === void 0 ? void 0 : ad.deleted) === true)
+            return `❌ Activité introuvable : ${updates.linkedActivityId}`;
+        if ((ad === null || ad === void 0 ? void 0 : ad.type) === "habit")
+            return `❌ « ${ad.name} » est une routine : un projet se lie à une activité-TEMPS.`;
+        activityNote = ` · liée à « ${ad === null || ad === void 0 ? void 0 : ad.name} »`;
+    }
     const title = (_e = updates.title) !== null && _e !== void 0 ? _e : ((_g = (_f = snap.data()) === null || _f === void 0 ? void 0 : _f.title) !== null && _g !== void 0 ? _g : projectId);
     if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
         return `❌ status invalide : "${updates.status}". Valeurs acceptées : active, archived, done`;
@@ -1320,10 +1331,12 @@ async function executeUpdateProject(uid, projectId, updates) {
         patch.status = updates.status === "completed" ? "done" : updates.status;
     if (updates.parentProjectId !== undefined)
         patch.parentProjectId = updates.parentProjectId || null;
+    if (updates.linkedActivityId !== undefined)
+        patch.linkedActivityId = updates.linkedActivityId || null;
     if (phasesPatch !== undefined)
         patch.phases = phasesPatch;
     await ref.update(patch);
-    return `✅ Projet "${title}" mis à jour${phasesNote}.`;
+    return `✅ Projet "${title}" mis à jour${phasesNote}${activityNote}.`;
 }
 async function executeUpdateTaskStatus(uid, projectId, taskId, status) {
     var _a;

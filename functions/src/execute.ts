@@ -1374,6 +1374,7 @@ async function executeUpdateProject(
   projectId: string,
   updates: {
     domainId?: string; title?: string; description?: string; status?: string; parentProjectId?: string | null;
+    linkedActivityId?: string | null;
     phases?: Array<{ id: string; label?: string; color?: string; startDate?: string; endDate?: string }>;
   }
 ): Promise<string> {
@@ -1423,6 +1424,15 @@ async function executeUpdateProject(
       }
     }
   }
+  // Activité-temps liée : doit exister, être une activité-temps vivante.
+  let activityNote = "";
+  if (updates.linkedActivityId !== undefined && updates.linkedActivityId) {
+    const a = await db.doc(`users/${uid}/activities/${updates.linkedActivityId}`).get();
+    const ad = a.data() as Record<string, unknown> | undefined;
+    if (!a.exists || ad?.deleted === true) return `❌ Activité introuvable : ${updates.linkedActivityId}`;
+    if (ad?.type === "habit") return `❌ « ${ad.name} » est une routine : un projet se lie à une activité-TEMPS.`;
+    activityNote = ` · liée à « ${ad?.name} »`;
+  }
   const title = updates.title ?? (snap.data()?.title ?? projectId);
 
   if (updates.status !== undefined && !PROJECT_STATUSES.has(updates.status))
@@ -1434,10 +1444,11 @@ async function executeUpdateProject(
   if (updates.description !== undefined) patch.description = clampStr(updates.description, 5000, "description");
   if (updates.status      !== undefined) patch.status      = updates.status === "completed" ? "done" : updates.status;
   if (updates.parentProjectId !== undefined) patch.parentProjectId = updates.parentProjectId || null;
+  if (updates.linkedActivityId !== undefined) patch.linkedActivityId = updates.linkedActivityId || null;
   if (phasesPatch !== undefined) patch.phases = phasesPatch;
 
   await ref.update(patch);
-  return `✅ Projet "${title}" mis à jour${phasesNote}.`;
+  return `✅ Projet "${title}" mis à jour${phasesNote}${activityNote}.`;
 }
 
 async function executeUpdateTaskStatus(

@@ -555,7 +555,8 @@ const UPDATE_PROJECT_TOOL = {
     name: "update_project",
     description: "Modifie les métadonnées d'un projet Gantt existant sans toucher aux tâches/phases. " +
         "Utilise cet outil pour changer le domaine, le titre, la description, le statut ou le projet parent " +
-        "(parentProjectId : rattacher un projet sous un projet « client/dossier », \"\" pour détacher). " +
+        "(parentProjectId : rattacher un projet sous un projet « client/dossier », \"\" pour détacher), ou l'activité-temps " +
+        "liée (linkedActivityId : le chrono du projet et la file des blocs d'activité passent par elle ; \"\" pour délier). " +
         "Utilise list_projects pour obtenir le projectId.",
     inputSchema: {
         type: "object",
@@ -567,6 +568,7 @@ const UPDATE_PROJECT_TOOL = {
             description: { type: "string", description: "CONCIS : 2-3 phrases (~300 caractères max) — le cap et le contexte essentiel. JAMAIS d'audit, de spec ou d'historique ici : ce détail va dans un DOCUMENT du projet (save_document, category 'notes' ou 'brief'). La fiche mobile tronque au-delà de 4 lignes." },
             status: { type: "string", enum: ["active", "archived", "done"] },
             parentProjectId: { type: "string", description: "id du projet parent (client / dossier) ; chaîne vide = détacher (projet racine)" },
+            linkedActivityId: { type: "string", description: "id d'une activité-temps (get_user_context, type time) : le projet est lié à cette activité — chrono ciblé, et un bloc de cette activité propose sa prochaine action ; chaîne vide = délier" },
             phases: {
                 type: "array",
                 description: "Retouche UNITAIRE de phases existantes (par id, get_project → phases[].id) : seuls les champs fournis changent, les autres phases ne bougent pas. Pour ajouter / supprimer des phases, passer par push_gantt.",
