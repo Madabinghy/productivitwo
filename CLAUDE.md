@@ -523,8 +523,19 @@ bloc du programme (hors blocs `session` d'onboarding et prépa) est un `MomentIt
 `_blockCard` ouverte (étiquette BLOC · BLOC EN COURS · BLOC FAIT, pilule « à HH:MM » / « en cours · reste n min » / « fait », anneau
 durée, « Projet › Tâche », l'action visée et ses étapes, bouton Lancer / Commencer / Fait / Rouvrir, lien « Détail » = fiche de la
 source ou feuille du bloc, Autres = Fait · Modifier · Ajuster · Pas disponible · Supprimer) ; aucun bloc ouvert par défaut ; appui
-long = ajuster ; glisser gauche = supprimer. La frise (mode timeline) est inchangée. **Les 4 lots sont livrés** ; le ▶ lance la
-page focus (maquette « Page focus »).
+long = ajuster ; glisser gauche = supprimer. La frise (mode timeline) est inchangée. **Les 4 lots sont livrés.**
+**Page focus** (maquette validée « Page focus », 2026-10, `widgets/action_focus_screen.dart`, `showActionFocusScreen(logic, action,
+project?, task?, ownerActivity?, chronoActivity?)`) : ▶ sur une action ouvre un écran plein (pas un onglet) en trois états — AVANT
+(contexte en entier, titre, « ≈ est · déjà passées · k / n étapes », anneau étapes ou temps / estimation, étapes `StepsSection`,
+note, bouton « Lancer le chrono » si une activité de chrono existe sinon « Étape faite » / « Action faite », lien « Durée · Deep
+work 90 min » = feuille 25 / estimation / 90 → `deepWorkBlock` posé dans le programme du jour puis chrono) ; PENDANT (anneau =
+chrono sur l'estimation, étape en cours en avant, `StepDots`, « Ensuite : … », bouton « Étape faite » / « Action faite », liens
+Pause · Action faite · Terminer ; écran allumé) ; APRÈS (trace : ce chrono, total sur estimé, étapes ; « La tâche avance » = barre
+actions faites + reste ; « C'était comment ? » = `logMood(kMoodEffort)` ; « Enchaîner · action suivante » rouvre la page dessus).
+Chrono ciblé `logic.start(activityId, taskId:, actionId:)`, écriture `patchActionOf` / `updateOwnActions`, rien de nouveau en
+base. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'ACTION DU MOMENT (« Étape faite » / « Arrêter le chrono »
+en lien, « Chrono seul » et « Ouvrir le projet » dans Autres). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)
+est un autre fichier.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
+import 'package:productivitwo_v1/widgets/action_focus_screen.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart';
@@ -192,13 +193,17 @@ class _GoalsViewState extends State<GoalsView> {
       return;
     }
     final act = widget.activities.where((a) => a.id == (n.action.linkedActivityId ?? m.project.linkedActivityId)).firstOrNull;
-    if (act != null && widget.onStartTimer != null) {
-      widget.onStartTimer!(act, m.project, n.task);
+    final logic = widget.logic;
+    if (logic == null) {
+      _openPlan(m.project, taskId: n.task.id);
       return;
     }
-    // Un seul niveau dans Projets (retour user 2026-10) : sans chrono possible,
-    // la prochaine action s'ouvre dans le projet déplié, sa tâche dépliée.
-    _openPlan(m.project, taskId: n.task.id);
+    // ▶ = la page focus (maquette « Page focus », 2026-10) : l'action devant
+    // soi, le chrono dessus, les étapes, la trace à la fin.
+    showActionFocusScreen(context, logic: logic, action: n.action, project: m.project, task: n.task, chronoActivity: act, sync: _sync)
+        .then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);
