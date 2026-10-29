@@ -2799,27 +2799,26 @@ async function executeProcessInboxItem(uid, itemId, note) {
 // vient d'une idée inbox, la capture passe en "proposed" → disparaît de l'inbox
 // (executeGetInbox ne lit que status=="pending") et n'est pas re-proposée.
 async function executeProposeChange(uid, args) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const valid = ["new_project", "attach_idea_as_task", "create_subproject", "archive_project", "add_phase", "attach_action_to_task", "add_own_action", "restructure_project"];
     if (!valid.includes(args.kind)) {
         return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
     }
+    const captureIds = [...new Set([args.sourceCaptureId, ...((_a = args.sourceCaptureIds) !== null && _a !== void 0 ? _a : [])].filter((x) => typeof x === "string" && x.length > 0))];
     const id = db_1.db.collection(`users/${uid}/orion_proposals`).doc().id;
     await db_1.db.collection(`users/${uid}/orion_proposals`).doc(id).set({
         id,
         kind: args.kind,
         title: args.title,
-        rationale: (_a = args.rationale) !== null && _a !== void 0 ? _a : "",
-        sourceCaptureId: (_b = args.sourceCaptureId) !== null && _b !== void 0 ? _b : null,
-        payload: (_c = args.payload) !== null && _c !== void 0 ? _c : {},
+        rationale: (_b = args.rationale) !== null && _b !== void 0 ? _b : "",
+        sourceCaptureId: (_c = args.sourceCaptureId) !== null && _c !== void 0 ? _c : null,
+        sourceCaptureIds: captureIds,
+        payload: (_d = args.payload) !== null && _d !== void 0 ? _d : {},
         status: "pending",
         createdBy: "orion",
         createdAt: db_1.FieldValue.serverTimestamp(),
     });
-    if (args.sourceCaptureId) {
-        await db_1.db.collection(`users/${uid}/captures`).doc(args.sourceCaptureId)
-            .set({ status: "proposed" }, { merge: true });
-    }
+    await Promise.all(captureIds.map((cid) => db_1.db.collection(`users/${uid}/captures`).doc(cid).set({ status: "proposed" }, { merge: true })));
     return `✅ Proposition enregistrée (« ${args.title} ») — en attente de validation par l'utilisateur.`;
 }
 // ── Programme horaire journalier ─────────────────────────────────────────────

@@ -350,6 +350,7 @@ export async function processInboxToProjects(
       title: `Créer le projet « ${np.title} »`,
       rationale: np.description ?? origin.map((o) => o.text).join(" · "),
       sourceCaptureId: ids[0],
+      sourceCaptureIds: ids,
       payload: {
         projectTitle: np.title,
         domainId: np.domainId ?? undefined,
@@ -382,6 +383,7 @@ export async function processInboxToProjects(
         title: `Ajouter « ${t.title} » à « ${proj.title} »`,
         rationale: ids.map((id) => ideaById.get(id)?.text).filter(Boolean).join(" · "),
         sourceCaptureId: ids[0],
+        sourceCaptureIds: ids,
         payload: {
           projectId: ap.projectId,
           taskTitle: t.title,

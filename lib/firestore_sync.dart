@@ -1660,8 +1660,7 @@ class FirestoreSync {
   Future<void> rejectProposal(OrionProposal p) async {
     if (uid == null) return;
     await _setProposalStatus(p.id, 'rejected');
-    final cid = p.sourceCaptureId;
-    if (cid != null) {
+    for (final cid in p.captureIds) {
       await _col('captures').doc(cid).set({
         'status': 'processed',
         'orionNote': 'Proposition refusée : ${p.title}',
@@ -1884,9 +1883,10 @@ class FirestoreSync {
     }
 
     await _setProposalStatus(p.id, 'accepted');
-    // L'idée source est devenue un objet réel → on la retire de l'inbox.
-    if (cid != null) {
-      await _col('captures').doc(cid).delete();
+    // Les idées sources sont devenues un objet réel → retirées de l'inbox
+    // (toutes, pas seulement la première d'un regroupement).
+    for (final id in p.captureIds) {
+      await _col('captures').doc(id).delete();
     }
   }
 

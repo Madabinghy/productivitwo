@@ -3073,6 +3073,8 @@ async function executeProposeChange(
     title: string;
     rationale?: string;
     sourceCaptureId?: string;
+    /** Toutes les idées regroupées (l'app les consomme toutes à l'acceptation). */
+    sourceCaptureIds?: string[];
     payload?: Record<string, unknown>;
   }
 ): Promise<string> {
@@ -3080,6 +3082,7 @@ async function executeProposeChange(
   if (!valid.includes(args.kind)) {
     return `❌ kind invalide : ${args.kind} (attendu : ${valid.join(", ")})`;
   }
+  const captureIds = [...new Set([args.sourceCaptureId, ...(args.sourceCaptureIds ?? [])].filter((x): x is string => typeof x === "string" && x.length > 0))];
   const id = db.collection(`users/${uid}/orion_proposals`).doc().id;
   await db.collection(`users/${uid}/orion_proposals`).doc(id).set({
     id,
@@ -3087,15 +3090,14 @@ async function executeProposeChange(
     title: args.title,
     rationale: args.rationale ?? "",
     sourceCaptureId: args.sourceCaptureId ?? null,
+    sourceCaptureIds: captureIds,
     payload: args.payload ?? {},
     status: "pending",
     createdBy: "orion",
     createdAt: FieldValue.serverTimestamp(),
   });
-  if (args.sourceCaptureId) {
-    await db.collection(`users/${uid}/captures`).doc(args.sourceCaptureId)
-      .set({ status: "proposed" }, { merge: true });
-  }
+  await Promise.all(captureIds.map((cid) =>
+    db.collection(`users/${uid}/captures`).doc(cid).set({ status: "proposed" }, { merge: true })));
   return `✅ Proposition enregistrée (« ${args.title} ») — en attente de validation par l'utilisateur.`;
 }
 
