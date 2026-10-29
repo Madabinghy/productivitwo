@@ -45,7 +45,6 @@ class NowCard extends StatefulWidget {
   final VoidCallback onStopCountdown;
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
-  final VoidCallback? onChallenge;
   /// Écran Focus plein écran (PR 3 Focus) : la carte entière s'ouvre quand un
   /// chrono tourne ; null = pas d'écran.
   final VoidCallback? onOpenFocus;
@@ -75,7 +74,6 @@ class NowCard extends StatefulWidget {
     this.onOpenSource,
     this.onOpenRoutines,
     this.onOpenActivities,
-    this.onChallenge,
     this.onOpenFocus,
     this.onChain,
     this.onLaunchTimed,
@@ -297,7 +295,6 @@ class _NowCardState extends State<NowCard> {
           logic: widget.logic,
           onOpenRoutines: widget.onOpenRoutines,
           onOpenActivities: widget.onOpenActivities,
-          onChallenge: widget.onChallenge,
         ),
       );
     }
@@ -910,20 +907,17 @@ class NowEmptyPanel extends StatelessWidget {
   final AppLogic logic;
   final VoidCallback? onOpenRoutines;
   final VoidCallback? onOpenActivities;
-  final VoidCallback? onChallenge;
 
   const NowEmptyPanel({
     super.key,
     required this.logic,
     this.onOpenRoutines,
     this.onOpenActivities,
-    this.onChallenge,
   });
 
   @override
   Widget build(BuildContext context) {
     final pal = NowPalette.of(context);
-    final hasChallenge = onChallenge != null && logic.challengeActivity() != null;
     return Column(children: [
       Icon(Icons.self_improvement, size: 36, color: pal.text4),
       const SizedBox(height: 10),
@@ -940,8 +934,6 @@ class NowEmptyPanel extends StatelessWidget {
             _chip(pal, Icons.loop, 'Mes routines', onOpenRoutines!),
           if (onOpenActivities != null)
             _chip(pal, Icons.timer_outlined, 'Mes activités', onOpenActivities!),
-          if (hasChallenge)
-            _chip(pal, Icons.local_fire_department_rounded, 'Défi ORION', onChallenge!),
         ],
       ),
     ]);
