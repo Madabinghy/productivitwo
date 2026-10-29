@@ -795,7 +795,13 @@ la dernière écriture gagne pour cette tâche. Hors connexion / transaction > 1
 d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste utilisable sans réseau. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
 « ✓ Action faite » (coche + arrête, annulable).
 
-**Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine. Dans le lanceur « Lancer une routine » (FAB), le tap sur une routine ouvre directement cette fiche (plus de menu intermédiaire Minuteur · Marquer comme fait · Réglages : le minuteur a son bouton ⏱ sur la ligne, le +1 se fait dans la fiche).
+**Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine. **Lanceur de routines (FAB)** (maquette validée 2026-10-30, `widgets/routine_launcher_sheet.dart`, `showRoutineLauncher` / `RoutineLauncher`,
+appelé par `_showRoutinesSheet` de main.dart) : en-tête « Routines » + Nouvelle, « 15 / 30 aujourd'hui · n à faire cet après-midi · 🔥 n
+séries en cours » + barre, recherche ; routines À FAIRE rangées par domaine (couleur, compte du domaine), « Faites · n » replié en bas (atteintes
+et « pas aujourd'hui »). Données = `buildRoutineDay` (même état que la vue Routines). Une ligne = anneau (compte, « + » si rien) qui ouvre le
+**compteur** (− compte + au jour ou aux 7 j, part du moment, puis Chrono sur l'activité liée · Minuteur · Mettre au / Retirer du programme ·
+Réglages), nom + UNE ligne d'infos (compte, part du moment « 0 / 10 ce soir » ou moment, « 🔥 n j ») qui ouvre la fiche routine, au plus UN
+lanceur (▶ activité liée, sinon ⏱ minuteur) ; appui long = compteur. Plus de ☆, −, +, pastille « Quotidien » ni flammes répétées sur la ligne.
 
 **Sélecteur d'activité partagé** (2026-10-30, retour user « partout où je choisis une activité ») : `widgets/activity_picker.dart` —
 `groupActivitiesByDomain` (ordre des domaines, domaine préféré en tête, « Sans domaine » à la fin), `ActivityDomainHeader` (pastille de
