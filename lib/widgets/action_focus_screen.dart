@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
@@ -638,15 +639,8 @@ class _FocusScreenState extends State<_FocusScreen> {
       case 'remove':
         await _mutate(() => removeChecklistItem(a, c.id));
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text('Étape supprimée : ${c.title}'),
-            duration: const Duration(seconds: 5),
-            action: SnackBarAction(
-                label: 'Annuler',
-                onPressed: () => _mutate(() => a.checklist.insert(i.clamp(0, a.checklist.length), c))),
-          ));
+        showUndoSnackBar(context, 'Étape supprimée : ${c.title}',
+            () => _mutate(() => a.checklist.insert(i.clamp(0, a.checklist.length), c)));
     }
   }
 
