@@ -801,7 +801,7 @@ séries en cours » + barre, recherche ; routines À FAIRE rangées par domaine 
 et « pas aujourd'hui »). Données = `buildRoutineDay` (même état que la vue Routines). Une ligne = anneau (compte, « + » si rien) qui ouvre le
 **compteur** (− compte + au jour ou aux 7 j, part du moment, puis Chrono sur l'activité liée · Minuteur · Mettre au / Retirer du programme ·
 Réglages), nom + UNE ligne d'infos (compte, part du moment « 0 / 10 ce soir » ou moment, « 🔥 n j ») qui ouvre la fiche routine, au plus UN
-lanceur (▶ activité liée, sinon ⏱ minuteur) ; appui long = compteur. Plus de ☆, −, +, pastille « Quotidien » ni flammes répétées sur la ligne.
+lanceur (▶ activité liée, sinon ⏱ minuteur) ; appui long = compteur. Plus de ☆, pastille « Quotidien » ni flammes répétées sur la ligne ; seules les routines FAITES (repli « Faites ») gardent − / + sur la ligne (retour user 2026-10-30 : corriger sans ouvrir la fiche).
 
 **Sélecteur d'activité partagé** (2026-10-30, retour user « partout où je choisis une activité ») : `widgets/activity_picker.dart` —
 `groupActivitiesByDomain` (ordre des domaines, domaine préféré en tête, « Sans domaine » à la fin), `ActivityDomainHeader` (pastille de
@@ -813,8 +813,9 @@ action simple, Nouveau bloc (« Toutes »), web : « Modifier le chrono » et «
 
 **Lanceur d'activités (FAB)** (maquette validée 2026-10-30, `widgets/activity_launcher_sheet.dart`, `showActivityLauncher` /
 `ActivityLauncher`, appelé par `_showLaunchActivitySheet` de main.dart) : « n chronométré aujourd'hui · k en retard », carte EN COURS (seul
-élément hero : nom, temps qui défile, domaine · depuis, Arrêter · Fiche), recherche, À RATTRAPER (minimum ≥ 5 min / j et < 95 % de l'attendu sur
-la fenêtre de budget, `launcherRows` / `LauncherRow`, même lecture que la page domaine), puis par domaine (temps du jour dans l'en-tête), « Peu
+élément hero : nom, temps qui défile, domaine · depuis, Arrêter · Fiche), recherche, puis par domaine (plus de section « À rattraper » depuis le 2026-10-30, retour user :
+on vient lancer une activité déjà choisie ; une activité en retard — minimum ≥ 5 min / j et < 95 % de l'attendu sur la fenêtre de budget,
+`launcherRows` / `LauncherRow` — le dit dans sa ligne, jauge orange) (temps du jour dans l'en-tête), « Peu
 utilisées » repliées (aucun chrono sur 30 j). Ligne = icône du domaine, nom + infos + jauge (tap = fiche), **▶ lance le chrono tout de suite**
 (■ si elle tourne) ; appui long = Lancer · 10 / 20 / 30 / 45 min · Deep work 90 (`showDeepWorkSheet(preferActivityId:)`) · Fiche. Activités en
 pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de bouton doré « Challenge me », de puce « Défi ORION » dans MAINTENANT,

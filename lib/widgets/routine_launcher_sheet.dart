@@ -326,6 +326,14 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               ]),
             ),
           ),
+          // Routine faite (retour user 2026-10-30) : − / + sur la ligne pour
+          // corriger ou en ajouter sans ouvrir la fiche ni le compteur.
+          if (s.reached && !dismissed) ...[
+            const SizedBox(width: 6),
+            _miniBtn(cs, Icons.remove_rounded, t.dayDone > 0 ? () => _bump(a, -1) : null),
+            const SizedBox(width: 6),
+            _miniBtn(cs, Icons.add_rounded, () => _bump(a, 1), accent: true),
+          ],
           if (!s.reached && !dismissed && (linked != null || hasTimer)) ...[
             const SizedBox(width: 8),
             Tooltip(
@@ -349,6 +357,25 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       ),
     );
   }
+
+  void _bump(Activity a, int d) {
+    logic.incHabitWithAssocEvent(a.id, d, logic.livedToday);
+    _changed();
+  }
+
+  Widget _miniBtn(ColorScheme cs, IconData icon, VoidCallback? onTap, {bool accent = false}) => Material(
+        color: accent ? kRoutineAccent.withValues(alpha: .14) : cs.onSurface.withValues(alpha: .07),
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(
+            width: 36,
+            height: 36,
+            child: Icon(icon, size: 19, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? kRoutineAccent : cs.onSurface.withValues(alpha: .7))),
+          ),
+        ),
+      );
 
   Widget _ring(ColorScheme cs, RoutineSlot s, {required bool dismissed}) {
     final t = s.todo;

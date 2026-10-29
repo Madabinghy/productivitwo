@@ -36,4 +36,24 @@ void main() {
     expect(find.text('1 / 20'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('RoutineLauncher : une routine faite garde − / + sur sa ligne', (tester) async {
+    final cafe = Activity(id: 'Café', domainId: 's', name: 'Café', role: ActivityRole.generic, type: 'habit', goalMin: 1, habitFreq: HabitFreq.daily, habitTarget: 1, createdAt: DateTime(2026, 1, 1));
+    final st = AppState(domains: [Domain(id: 's', name: 'Santé')], activities: [cafe], sessions: [], habitProgress: []);
+    final logic = AppLogic(st, () {})..dayStartMin = 0;
+    logic.incHabit('Café', 1, logic.livedToday);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: RoutineLauncher(logic: logic, sync: FirestoreSync(), onNew: () {}, onChrono: (_) {}, onTimer: (_) {})),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Faites · 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.add_rounded).last);
+    await tester.pumpAndSettle();
+    expect(logic.state.habitHits.where((h) => h.habitId == 'Café').length, 2);
+    await tester.tap(find.byIcon(Icons.remove_rounded).last);
+    await tester.pumpAndSettle();
+    expect(logic.state.habitHits.where((h) => h.habitId == 'Café').length, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
