@@ -34,7 +34,7 @@ function normalizeSplitMoments(input) {
     const set = new Set();
     const unknown = [];
     for (const raw of list) {
-        const k = String(raw !== null && raw !== void 0 ? raw : "").trim().toLowerCase();
+        const k = String(raw !== null && raw !== void 0 ? raw : "").replace(/[\[\]"']/g, "").trim().toLowerCase();
         if (!k)
             continue;
         const key = ALIASES[k];
