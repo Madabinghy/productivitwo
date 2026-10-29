@@ -542,6 +542,15 @@ ne montre que ce qui est à portée de main — actions libres (sans projet), UN
 `actions_essentials`, défaut true). Le reste d'un projet se lit dans Projets. Suite prévue (maquette à valider) : Aujourd'hui = blocs
 d'ACTIVITÉ et de temps, la page focus lancée depuis un bloc d'activité enchaîne la prochaine action de chaque projet lié ;
 `plan_day` posera des blocs d'activité, pas un bloc par action.
+**Blocs d'activité, lot 1 livré** (maquette validée 2026-10-29) : le ▶ d'un bloc d'ACTIVITÉ (activité-temps, sans
+`actionId`, hors routine et séance) ouvre la page focus en mode « bloc » (`showBlockFocusScreen`, `BlockFocus`,
+`action_focus_screen.dart`) : LA FILE DU BLOC = `blockQueue` (`utils/block_queue.dart` : une action par projet vivant lié à
+l'activité — `linkedActivityId` du projet ou d'une action ouverte, `projectServesActivity` —, prochaine action par échéance
+effective, en retard d'abord, puis datées, puis actions propres de l'activité ; tâches à venir, dossiers, projets en pause
+exclus), tap = choisir, « Commencer · … » = chrono ciblé sur l'activité du bloc, « Suivante › » passe à la prochaine sans
+sortir, « Enchaîner · … » après une action faite ; en-tête « bloc · reste n min » (`blockRemainingMin`). File vide = chrono
+seul comme avant. Lots suivants : écran de fin de bloc + « Caser un bloc demain », ajout « activité + durée », règles
+`plan_day`.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
