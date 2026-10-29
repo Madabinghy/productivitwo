@@ -549,7 +549,9 @@ est un autre fichier.
 **Actions = l'essentiel** (décision user 2026-10-29 : « trop de blocs, doublons projets / actions ») : par défaut l'onglet Actions
 ne montre que ce qui est à portée de main — actions libres (sans projet), UNE action par projet (`nextAction`, déjà sa plus en
 retard) et celles au programme du jour (plus « toutes les en retard » depuis le 2026-10-30 : les autres retards d'un projet
-attendent leur tour) ; pilule « L'essentiel · +n » / « Tout » dans l'en-tête (`_essentials`, pref
+attendent leur tour) ; en vue par urgence, plus de section « Plus tard · par projet » (2026-10-30) : les actions restantes sont des
+cartes simples sous « ENSUITE » (« Projet › Tâche » sur chacune), sans en-tête de projet ni « Définir la prochaine action » (vue
+par projet et onglet Projets seulement) ; pilule « L'essentiel · +n » / « Tout » dans l'en-tête (`_essentials`, pref
 `actions_essentials`, défaut true). Le reste d'un projet se lit dans Projets. Suite prévue (maquette à valider) : Aujourd'hui = blocs
 d'ACTIVITÉ et de temps, la page focus lancée depuis un bloc d'activité enchaîne la prochaine action de chaque projet lié ;
 `plan_day` posera des blocs d'activité, pas un bloc par action.
