@@ -811,38 +811,6 @@ class TodayViewState extends State<TodayView> {
                           color: cs.onSurface.withOpacity(.55)),
                     ),
                   ),
-                ] else ...[
-                  const SizedBox(height: 14),
-                  Row(children: [
-                    if (widget.onOpenDayReview != null)
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.bar_chart_rounded, size: 18),
-                          label: const Text('Résumé du jour'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size.fromHeight(44),
-                            side: BorderSide(color: link.withOpacity(.4)),
-                            foregroundColor: link,
-                          ),
-                          onPressed: widget.onOpenDayReview,
-                        ),
-                      ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.explore_outlined, size: 18),
-                        label: const Text('Où on va'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(44),
-                          side: BorderSide(color: cs.onSurface.withOpacity(.2)),
-                          foregroundColor: cs.onSurface.withOpacity(.7),
-                        ),
-                        onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => WhereWeGoScreen(logic: widget.logic),
-                        )),
-                      ),
-                    ),
-                  ]),
                 ],
                 ],
               ],
@@ -961,9 +929,44 @@ class TodayViewState extends State<TodayView> {
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
         onPerfect: bc == null ? null : _openPerfectDaySheet,
         onActions: _openFocusedActionsSheet,
+        // Résumé du jour + Où on va : une tuile dans la case libre (retour
+        // user 2026-10-30), à la place des deux boutons du bas de page.
+        review: const DashTile(label: 'RECUL', value: 'Bilan · cap', sub: 'résumé du jour · où on va'),
+        onReview: _openReviewChoice,
         onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
     ];
+  }
+
+  void _openReviewChoice() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (widget.onOpenDayReview != null)
+            ListTile(
+              leading: const Icon(Icons.bar_chart_rounded),
+              title: const Text('Résumé du jour'),
+              subtitle: const Text('ce que la journée a donné'),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onOpenDayReview!();
+              },
+            ),
+          ListTile(
+            leading: const Icon(Icons.explore_outlined),
+            title: const Text('Où on va'),
+            subtitle: const Text('objectifs et cap à long terme'),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => WhereWeGoScreen(logic: widget.logic)));
+            },
+          ),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
   }
 
   /// Feuille de la tuile JOURNÉE PARFAITE : ce qui manque (routines à
