@@ -518,8 +518,13 @@ lien « Détail ») ; `objectives_card.dart` : plus de carte en tête, chaque `_
 (`routines_day_view.dart`) : plus de carte en tête, chaque ligne des sections par moment = `MomentItem` (clé `moment/id`, padding
 zéro), bloc ouvert = `_momentCard(pal, day, slot)` (étiquette ROUTINE DU MOMENT si c'est la routine en avant, sinon ROUTINE CE
 MATIN…), défaut = la routine en avant de la file ; le nom de la ligne n'ouvre plus la fiche (appui long). `OpenItem.settle(id, apply,
-{scroll})` : sans contrôleur, recale le `Scrollable` englobant. Lot suivant : Aujourd'hui (MAINTENANT = ligne ouverte par défaut,
-blocs du programme = les autres lignes) ; le ▶ lancera la page focus (maquette « Page focus »).
+{scroll})` : sans contrôleur, recale le `Scrollable` englobant. **Lot 4 livré = Aujourd'hui** (`daily_schedule_view.dart`, mode liste) : MAINTENANT reste la ligne ouverte par défaut en tête ; chaque
+bloc du programme (hors blocs `session` d'onboarding et prépa) est un `MomentItem` : ligne `_blockLine` repliée (inchangée) / carte
+`_blockCard` ouverte (étiquette BLOC · BLOC EN COURS · BLOC FAIT, pilule « à HH:MM » / « en cours · reste n min » / « fait », anneau
+durée, « Projet › Tâche », l'action visée et ses étapes, bouton Lancer / Commencer / Fait / Rouvrir, lien « Détail » = fiche de la
+source ou feuille du bloc, Autres = Fait · Modifier · Ajuster · Pas disponible · Supprimer) ; aucun bloc ouvert par défaut ; appui
+long = ajuster ; glisser gauche = supprimer. La frise (mode timeline) est inchangée. **Les 4 lots sont livrés** ; le ▶ lance la
+page focus (maquette « Page focus »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
