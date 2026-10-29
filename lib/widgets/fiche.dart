@@ -141,8 +141,9 @@ class FicheStep extends StatelessWidget {
   final bool done;
   final bool current;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final Widget? trailing;
-  const FicheStep({super.key, required this.title, this.detail, this.done = false, this.current = false, this.onTap, this.trailing});
+  const FicheStep({super.key, required this.title, this.detail, this.done = false, this.current = false, this.onTap, this.onLongPress, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +155,7 @@ class FicheStep extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

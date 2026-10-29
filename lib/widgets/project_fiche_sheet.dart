@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, effectiveDueDate, flowTaskOf, focusLabel, kFlowTaskId;
+import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
+import 'package:productivitwo_v1/utils/default_estimate.dart' show defaultEstimateFor;
+import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
+import 'package:productivitwo_v1/widgets/confirm_done.dart' show confirmDone;
+import 'package:productivitwo_v1/widgets/focus_day_sheet.dart' show pickFocusDay, FocusDay, FocusClear;
 import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
-import 'package:productivitwo_v1/utils/project_health.dart' show HealthKind;
+import 'package:productivitwo_v1/utils/project_health.dart' show HealthKind, ganttOrder;
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
@@ -150,6 +155,228 @@ class _ProjectFicheState extends State<_ProjectFiche> {
     ]);
   }
 
+  // ── CRUD des actions (retour user 2026-10-30) ─────────────────────────────
+  // Ajouter (choix de la tâche), appui long = renommer · estimation · note ·
+  // jour visé · faite · supprimer. Une action seule passe par patchActionOf,
+  // la structure (ajout / suppression) par saveProjectTasks (fusion 3 voies).
+
+  bool _showAll = false;
+
+  Future<void> _saveTasks() async {
+    await widget.sync.saveProjectTasks(p.id, p.tasks);
+    _changed = true;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _patch(TaskAction a) async {
+    await widget.sync.patchActionOf(p, a);
+    _changed = true;
+    if (mounted) setState(() {});
+  }
+
+  List<ProjectTask> get _openTasks => [
+        for (final t in ganttOrder(p))
+          if (t.status != 'done' && t.status != 'skipped') t,
+      ];
+
+  Future<String?> _askText(String title, {String initial = '', String hint = '', bool multiline = false}) async {
+    final ctrl = TextEditingController(text: initial);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          minLines: multiline ? 3 : 1,
+          maxLines: multiline ? 8 : 1,
+          decoration: InputDecoration(hintText: hint),
+          onSubmitted: multiline ? null : (v) => Navigator.pop(d, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: const Text('OK')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    return v?.trim();
+  }
+
+  Future<void> _addAction(ProjectMoment m) async {
+    final tasks = _openTasks;
+    ProjectTask? target = m.next?.task ?? tasks.firstOrNull;
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, setD) => AlertDialog(
+          scrollable: true,
+          title: const Text('Nouvelle action'),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Verbe + objet, ≤ 8 mots'),
+              onSubmitted: (v) {
+                if (v.trim().isNotEmpty) Navigator.pop(d, true);
+              },
+            ),
+            const SizedBox(height: 14),
+            const Text('Dans la tâche', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            DropdownButton<ProjectTask?>(
+              isExpanded: true,
+              value: target,
+              items: [
+                for (final t in tasks) DropdownMenuItem(value: t, child: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (!tasks.any((t) => t.id == kFlowTaskId)) const DropdownMenuItem(value: null, child: Text('Au fil de l\'eau')),
+              ],
+              onChanged: (t) => setD(() => target = t),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Annuler')),
+            FilledButton(
+                onPressed: () {
+                  if (ctrl.text.trim().isNotEmpty) Navigator.pop(d, true);
+                },
+                child: const Text('Ajouter')),
+          ],
+        ),
+      ),
+    );
+    final title = ctrl.text.trim();
+    ctrl.dispose();
+    if (ok != true || title.isEmpty) return;
+    final task = target ?? flowTaskOf(p);
+    task.actions.add(TaskAction(title: title, estimatedMin: defaultEstimateFor(title)));
+    await _saveTasks();
+  }
+
+  Future<void> _editAction(ProjectTask task, TaskAction a) async {
+    final cs = Theme.of(context).colorScheme;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(a.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Renommer'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(
+              leading: const Icon(Icons.timer_outlined),
+              title: const Text('Estimation'),
+              subtitle: a.estimatedMin == null ? null : Text(fmtMin(a.estimatedMin!)),
+              onTap: () => Navigator.pop(ctx, 'estimate')),
+          ListTile(
+              leading: const Icon(Icons.notes_outlined),
+              title: const Text('Note'),
+              subtitle: a.note == null || a.note!.isEmpty ? null : Text(a.note!, maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.pop(ctx, 'note')),
+          ListTile(
+              leading: const Icon(Icons.wb_sunny_outlined),
+              title: const Text('Jour visé'),
+              subtitle: a.focusDate == null ? null : Text(focusLabel(a.focusDate!, DateTime.now())),
+              onTap: () => Navigator.pop(ctx, 'focus')),
+          ListTile(leading: const Icon(Icons.check_circle_outline), title: const Text('Marquer faite'), onTap: () => Navigator.pop(ctx, 'done')),
+          ListTile(
+              leading: Icon(Icons.delete_outline, color: cs.error),
+              title: Text('Supprimer l\'action', style: TextStyle(color: cs.error)),
+              onTap: () => Navigator.pop(ctx, 'delete')),
+        ]),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case 'rename':
+        final v = await _askText('Renommer l\'action', initial: a.title);
+        if (v != null && v.isNotEmpty && v != a.title) {
+          a.title = v;
+          await _patch(a);
+        }
+      case 'estimate':
+        final v = await _pickEstimate(a.estimatedMin);
+        if (v != null) {
+          a.estimatedMin = v == 0 ? null : v;
+          await _patch(a);
+        }
+      case 'note':
+        final v = await _askText('Note', initial: a.note ?? '', hint: 'Le détail, les consignes…', multiline: true);
+        if (v != null && v != (a.note ?? '')) {
+          a.note = v.isEmpty ? null : v;
+          await _patch(a);
+        }
+      case 'focus':
+        final pick = await pickFocusDay(context, current: a.focusDate);
+        if (pick == null) return;
+        a.focusDate = switch (pick) {
+          FocusDay(:final day) => day,
+          FocusClear() => null,
+        };
+        await _patch(a);
+      case 'done':
+        if (!await confirmDone(context, title: a.title)) return;
+        setActionDone(a, true);
+        await _patch(a);
+      case 'delete':
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (d) => AlertDialog(
+            title: const Text('Supprimer l\'action ?'),
+            content: Text('« ${a.title} » sera retirée de « ${task.title} ».'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Annuler')),
+              FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Supprimer')),
+            ],
+          ),
+        );
+        if (ok != true) return;
+        task.actions.removeWhere((x) => identical(x, a) || x.id == a.id);
+        await _saveTasks();
+    }
+  }
+
+  /// 0 = retirer l'estimation ; null = annulé.
+  Future<int?> _pickEstimate(int? current) => showModalBottomSheet<int>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Estimation', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final v in const [5, 10, 15, 25, 45, 60, 90, 120])
+                  ChoiceChip(label: Text(fmtMin(v)), selected: current == v, onSelected: (_) => Navigator.pop(ctx, v)),
+                if (current != null) ActionChip(label: const Text('Retirer'), onPressed: () => Navigator.pop(ctx, 0)),
+              ]),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _actionStep(ProjectMoment m, ProjectTask task, TaskAction a, DateTime? due, DateTime now) => FicheStep(
+        title: a.title,
+        detail: [
+          task.id == kFlowTaskId ? 'Au fil de l\'eau' : task.title,
+          if (due != null) actionDueLabel(due, now),
+          if (a.focusDate != null) '☀ ${focusLabel(a.focusDate!, now)}',
+          if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
+        ].join(' · '),
+        current: identical(a, m.next?.action) || a.id == m.next?.action.id,
+        onTap: () => _openAction(task, a),
+        onLongPress: () => _editAction(task, a),
+      );
+
   void _openPlan({String? taskId}) =>
       showProjectSheet(context,
           project: p,
@@ -240,6 +467,12 @@ class _ProjectFicheState extends State<_ProjectFiche> {
       if (p.endDate != null && s == null) 'échéance ${_date(p.endDate!)}',
     ];
     final week = m.weekActions;
+    final inWeek = {for (final a in week) a.action.id};
+    final rest = [
+      for (final t in _openTasks)
+        for (final a in t.actions)
+          if (!a.done && !inWeek.contains(a.id)) (task: t, action: a),
+    ];
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -264,18 +497,24 @@ class _ProjectFicheState extends State<_ProjectFiche> {
                     color: week.any((a) => a.due != null && a.due!.isBefore(DateTime(now.year, now.month, now.day))) ? kPalierCoral : st)),
             if (week.isEmpty)
               FicheNote(m.next == null
-                  ? 'Aucune action ouverte : définis la prochaine action dans le plan.'
-                  : 'Prochaine action : ${m.next!.action.title} (${m.next!.task.title}).')
+                  ? 'Aucune action ouverte : ajoute la prochaine.'
+                  : 'Rien d\'échu cette semaine. Prochaine action : ${m.next!.action.title}.')
             else
-              for (final a in week.take(6))
-                FicheStep(
-                  title: a.action.title,
-                  detail: '${a.task.title}${a.due != null ? ' · ${actionDueLabel(a.due!, now)}' : ''}',
-                  current: identical(a.action, m.next?.action) || a.action.id == m.next?.action.id,
-                  onTap: () => _openAction(a.task, a.action),
+              for (final a in week) _actionStep(m, a.task, a.action, a.due, now),
+            if (_showAll)
+              for (final e in rest) _actionStep(m, e.task, e.action, effectiveDueDate(e.action, e.task), now),
+            Row(children: [
+              TextButton.icon(onPressed: () => _addAction(m), icon: const Icon(Icons.add, size: 18), label: const Text('Ajouter une action')),
+              const Spacer(),
+              if (rest.isNotEmpty)
+                TextButton(
+                  onPressed: () => setState(() => _showAll = !_showAll),
+                  child: Text(_showAll ? 'Masquer les autres' : 'Toutes · + ${rest.length}'),
                 ),
-            if (week.length > 6)
-              FicheNote('+ ${week.length - 6} autre${week.length - 6 > 1 ? 's' : ''} dans le plan d\'action.'),
+            ]),
+            if (week.isNotEmpty || rest.isNotEmpty)
+              Text('Appui long sur une action : renommer, estimer, noter, supprimer.',
+                  style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .5))),
           ],
           FicheTitle('DEPUIS LE DÉBUT · AVANCEMENT', trailing: FicheDelta(m.upcoming ? 'démarre plus tard' : m.deltaLabel, color: st)),
           ExpectedBar(done: plan.done, total: plan.total, expected: plan.expected, color: st),
