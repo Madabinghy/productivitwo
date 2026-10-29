@@ -226,31 +226,48 @@ class MomentCard extends StatelessWidget {
     );
   }
 
-  /// Ligne de liens discrets sous le bouton : fiche à gauche, geste secondaire
-  /// (Enchaîner…) et « ⋯ Autres » à droite.
+  /// Sous le bouton plein : deux boutons contour (fiche · geste secondaire,
+  /// retour user 2026-10 : « plus joli que du texte ») et « ⋯ Autres » en lien.
   Widget _links(BuildContext context, NowPalette pal) {
-    Widget link(String label, VoidCallback? onTap, {IconData? icon, Color? color}) => TextButton(
-          onPressed: onTap,
-          style: TextButton.styleFrom(
-            foregroundColor: color ?? pal.text2,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            minimumSize: const Size(0, 36),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+    Widget btn(String label, VoidCallback? onTap, {IconData? icon, Color? color}) => Expanded(
+          child: SizedBox(
+            height: 42,
+            child: OutlinedButton(
+              onPressed: onTap,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: color ?? pal.text2,
+                side: BorderSide(color: (color ?? pal.text2).withValues(alpha: color == null ? .25 : .45)),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (icon != null) ...[Icon(icon, size: 17), const SizedBox(width: 5)],
+                Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ]),
+            ),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 4)],
-            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis)),
-          ]),
         );
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.only(top: 8),
       child: Row(children: [
-        if (onFiche != null) link(ficheLabel, onFiche, color: pal.text2),
-        const Spacer(),
-        if (chainLabel != null) Flexible(child: link(chainLabel!, onChain, icon: chainIcon, color: accent)),
-        if (moreActions.isNotEmpty)
-          link('⋯ Autres', () => showMomentActions(context, title: moreTitle ?? title, actions: moreActions), color: pal.text3),
+        if (onFiche != null) btn(ficheLabel, onFiche),
+        if (onFiche != null && chainLabel != null) const SizedBox(width: 8),
+        if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
+        if (moreActions.isNotEmpty) ...[
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: () => showMomentActions(context, title: moreTitle ?? title, actions: moreActions),
+            style: TextButton.styleFrom(
+              foregroundColor: pal.text3,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 42),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+            ),
+            child: const Text('⋯ Autres'),
+          ),
+        ],
       ]),
     );
   }
