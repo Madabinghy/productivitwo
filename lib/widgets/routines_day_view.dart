@@ -367,7 +367,9 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   final _openItem = OpenItem();
   String? _defaultId;
 
-  /// Bloc ouvert d'une routine ([slot]) = l'ancienne carte ROUTINE DU MOMENT.
+  /// Bloc ouvert d'une routine ([slot]) : ne parle QUE de cette routine
+  /// (retour user 2026-10-30) — le moment, sa fenêtre, son compte et
+  /// « Enchaîner » vivent dans l'en-tête de la section.
   Widget _momentCard(NowPalette pal, RoutineDay day, RoutineSlot slot) {
     final cur = day.current;
     final q = day.queue;
@@ -375,64 +377,45 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     final isMoment = slot.id == (heldSlot ?? q.firstOrNull)?.id;
     final RoutineSlot? first = slot;
     final held = heldSlot != null && heldSlot.id == slot.id && heldSlot.reached;
-    final c = day.countOf(cur.key);
-    final progress = c.total == 0 ? 0.0 : (c.done / c.total).clamp(0.0, 1.0);
-    final todayN = first == null ? 0 : _todayCount(first.activity);
-    final restee = first != null && first.moment != cur.key ? 'Restée ${momentOf(first.moment).of}' : null;
-    final nextSlot = first == null ? null : q.where((s) => s.id != first.id).firstOrNull;
-    final linked = first == null ? null : RoutineChronoPill.linkedOf(logic, first.activity);
+    final todayN = _todayCount(slot.activity);
+    final restee = slot.moment != cur.key && !slot.reached ? 'restée ${momentOf(slot.moment).of}' : null;
+    final linked = RoutineChronoPill.linkedOf(logic, slot.activity);
     final chronoRunning = linked != null && RoutineChronoPill.isRunning(logic, linked);
-    // Grammaire de Projets (2026-10) : UN visuel = un point par routine du
-    // moment (la routine en avant cerclée), UN bouton « +1 », les gestes rares
-    // dans « ⋯ Autres », « Enchaîner · n » en lien.
-    final slots = day.of(cur.key).where((s) => !day.dismissed.contains(s.id)).toList();
-    final left = slots.where((s) => !s.reached).length;
+    // Anneau = la progression de CETTE routine : sa part du moment si elle est
+    // répartie, sinon le jour (quotidienne) ou les 7 jours.
+    final t = slot.todo;
+    final share = slot.reached ? null : slot.share;
+    final int ringDone, ringTarget;
+    final String ringWhen;
+    if (share != null) {
+      ringDone = share.done;
+      ringTarget = share.target;
+      ringWhen = momentOf(share.moment).thisOne;
+    } else if (t.dayTarget != null) {
+      ringDone = t.dayDone;
+      ringTarget = t.dayTarget!;
+      ringWhen = 'aujourd\'hui';
+    } else {
+      ringDone = t.weekDone;
+      ringTarget = t.weekTarget;
+      ringWhen = 'sur 7 j';
+    }
+    final ring = ringTarget <= 0 ? 0.0 : (ringDone / ringTarget).clamp(0.0, 1.0).toDouble();
     return MomentCard(
       accent: kRoutineAccent,
-      eyebrow: isMoment ? 'ROUTINE DU MOMENT' : (slot.moment == cur.key ? 'ROUTINE ${cur.of.toUpperCase()}' : 'ROUTINE ${momentOf(slot.moment).of.toUpperCase()}'),
-      pill: '${cur.label} · ${cur.window}',
-      // Tap = régler les bornes des moments.
-      onPill: () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
-      ring: progress,
-      ringBig: '${c.done} / ${c.total}',
-      ringSmall: cur.label.toUpperCase(),
-      context_: first == null
-          ? null
-          : [if (restee != null) restee, _domainName(first.activity)].where((x) => x.isNotEmpty).join(' · '),
-      contextIcon: first == null
-          ? null
-          : (first.activity.iconCode != null ? IconData(first.activity.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded),
-      title: first == null ? '✓ ${cur.label} terminé · ${c.done} sur ${c.total}' : first.activity.name,
-      sub: first == null
-          ? _nextLabel(cur)
-          : [
-              if (first.share case final share? when !first.reached) share.label,
-              first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
-              if (todayMark(first.activity.habitFreq, todayN) case final mark?) mark,
-              if (nextSlot != null) 'ensuite ${nextSlot.activity.name}',
-            ].join(' · '),
-      subColor: first != null && first.reached ? kRoutineAccent : null,
-      detail: chronoRunning ? RoutineChronoPill(logic: logic, routine: first!.activity, onChanged: () => setState(() {})) : null,
-      visual: slots.isEmpty
-          ? null
-          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Wrap(spacing: 6, runSpacing: 4, children: [
-                for (final s in slots)
-                  Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: s.reached ? kRoutineAccent : pal.track,
-                      border: first != null && s.id == first.id && !s.reached ? Border.all(color: kRoutineAccent, width: 2) : null,
-                    ),
-                  ),
-              ]),
-              MomentLegend(
-                first == null ? 'Les routines ${cur.of}, toutes atteintes' : 'Les routines ${cur.of} · ${first.activity.name} en cours',
-                right: left == 0 ? null : (left == 1 ? '1 reste' : '$left restent'),
-              ),
-            ]),
+      eyebrow: isMoment ? 'ROUTINE DU MOMENT' : 'ROUTINE',
+      pill: slot.reached ? 'atteinte' : null,
+      ring: ring,
+      ringBig: '${slot.reached ? '✓ ' : ''}$ringDone / $ringTarget',
+      ringSmall: ringWhen,
+      context_: [_domainName(slot.activity), if (restee != null) restee].where((x) => x.isNotEmpty).join(' · '),
+      contextIcon: slot.activity.iconCode != null ? IconData(slot.activity.iconCode!, fontFamily: 'MaterialIcons') : Icons.repeat_rounded,
+      title: slot.activity.name,
+      sub: [
+        if (share != null && t.dayTarget != null) '${t.dayDone} / ${t.dayTarget} aujourd\'hui',
+        if (todayMark(slot.activity.habitFreq, todayN) case final mark?) mark,
+      ].join(' · '),
+      detail: chronoRunning ? RoutineChronoPill(logic: logic, routine: slot.activity, onChanged: () => setState(() {})) : null,
       primaryLabel: first == null ? 'Tout est fait' : (held ? 'Suivante' : '+1'),
       primaryIcon: first == null ? Icons.check_rounded : (held ? Icons.skip_next_rounded : null),
       onPrimary: first == null
@@ -442,9 +425,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                     _held = null;
                   })
               : () => _plus(first.activity, hold: true),
-      chainLabel: widget.onChain != null && q.isNotEmpty ? 'Enchaîner · ${q.length}' : null,
-      onChain: widget.onChain == null ? null : () => widget.onChain!(day),
-      moreTitle: first == null ? 'Routines ${cur.of}' : first.activity.name,
+      moreTitle: slot.activity.name,
       moreActions: first == null
           ? const []
           : [
@@ -471,12 +452,6 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   }
 
   String _cap(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
-  String _nextLabel(Moment cur) {
-    final n = nextMomentAfter(cur, logic.moments);
-    if (n == null) return 'La suite : demain matin.';
-    return 'La suite : à ${n.window.split(' → ').first} (${n.label.toLowerCase()}).';
-  }
 
   Widget _round(NowPalette pal, String label, VoidCallback? onTap,
           {double size = 44, Color? bg, Color? fg}) =>
@@ -527,9 +502,30 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                         fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: isCur ? kRoutineAccent : pal.text3)),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(m.window, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text4)),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      // Tap sur les horaires = régler les bornes des moments.
+                      onTap: always ? null : () => showMomentsEditor(context, logic: logic, sync: logic.sync ?? FirestoreSync()),
+                      child: Text(m.window, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, color: pal.text4)),
+                    ),
+                  ),
                 ),
                 if (left > 0) ...[_tag('$left restée${left > 1 ? 's' : ''}'), const SizedBox(width: 10)],
+                if (isCur && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty) ...[
+                  TextButton.icon(
+                    onPressed: () => widget.onChain!(day),
+                    style: TextButton.styleFrom(
+                      foregroundColor: kRoutineAccent,
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                    ),
+                    icon: const Icon(Icons.playlist_play_rounded, size: 18),
+                    label: Text('Enchaîner · ${day.queue.length}'),
+                  ),
+                  const SizedBox(width: 4),
+                ],
                 Text(widget.onlyMissing ? '${rows.length} à faire' : '${c.done} / ${c.total}',
                     style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700, color: pal.text2, fontFeatures: const [FontFeature.tabularFigures()])),

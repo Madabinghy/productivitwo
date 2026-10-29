@@ -537,7 +537,7 @@ bloc ouvert d'UN objectif (étiquette OBJECTIF DU MOMENT / COUP EN COURS si prem
 lien « Détail ») ; `objectives_card.dart` : plus de carte en tête, chaque `_row` = `MomentItem` (appui long = éditer). Routines
 (`routines_day_view.dart`) : plus de carte en tête, chaque ligne des sections par moment = `MomentItem` (clé `moment/id`, padding
 zéro), bloc ouvert = `_momentCard(pal, day, slot)` (étiquette ROUTINE DU MOMENT si c'est la routine en avant, sinon ROUTINE CE
-MATIN…), défaut = la routine en avant de la file ; le nom de la ligne n'ouvre plus la fiche (appui long). `OpenItem.settle(id, apply,
+MATIN…), défaut = la routine en avant de la file ; le nom de la ligne n'ouvre plus la fiche (appui long). **Bloc ouvert = la routine seule** (retour user 2026-10-30, plus de doublon avec l'en-tête de section) : étiquette ROUTINE DU MOMENT / ROUTINE, pilule « atteinte » seulement, anneau = SA progression (part du moment si répartie, sinon jour ou 7 j), contexte domaine · « restée ce matin », plus de pilule du moment, plus de points des routines du moment ni de légende ; l'en-tête de section porte le moment, sa fenêtre (tap = `showMomentsEditor`), son compte et « Enchaîner · n » (moment courant). `OpenItem.settle(id, apply,
 {scroll})` : sans contrôleur, recale le `Scrollable` englobant. **Lot 4 livré = Aujourd'hui** (`daily_schedule_view.dart`, mode liste) : MAINTENANT reste la ligne ouverte par défaut en tête ; chaque
 bloc du programme (hors blocs `session` d'onboarding et prépa) est un `MomentItem` : ligne `_blockLine` repliée (inchangée) / carte
 `_blockCard` ouverte (étiquette BLOC · BLOC EN COURS · BLOC FAIT, pilule « à HH:MM » / « en cours · reste n min » / « fait », anneau
