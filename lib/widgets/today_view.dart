@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/widgets/objectives_day_view.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart' show showProjectFiche;
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/day_win.dart';
@@ -154,6 +155,8 @@ class TodayViewState extends State<TodayView> {
         setState(() => _timeline = saved);
       }
       final morning = p.getString(_kMorningDismissed);
+      final skip = p.getString(_kProjectSkipped);
+      if (skip != null && mounted) setState(() => _projectSkippedRaw = skip);
       if (mounted) setState(() => _morningDismissedYmd = morning);
     });
     _subscribeSchedule();
@@ -212,6 +215,47 @@ class TodayViewState extends State<TodayView> {
 
   // « Le matin en trois choses » fermé à la main → plus ce jour-là.
   static const _kMorningDismissed = 'morning_three_dismissed';
+  // Tuile PROJETS : projets « passés » aujourd'hui (« ymd|id,id »), jour vécu.
+  static const _kProjectSkipped = 'project_tile_skipped';
+  String? _projectSkippedRaw;
+
+  Set<String> get _projectSkipped {
+    final raw = _projectSkippedRaw;
+    if (raw == null) return const {};
+    final parts = raw.split('|');
+    if (parts.length != 2 || parts[0] != widget.logic.livedTodayYmd || parts[1].isEmpty) return const {};
+    return parts[1].split(',').toSet();
+  }
+
+  Future<void> _skipProjectToday(String id) async {
+    final raw = '${widget.logic.livedTodayYmd}|${{..._projectSkipped, id}.join(',')}';
+    setState(() => _projectSkippedRaw = raw);
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kProjectSkipped, raw);
+  }
+
+  /// Tuile PROJETS : la fiche du projet du moment, avec ses DÉCISIONS ; à la
+  /// fermeture la tuile se recalcule (un autre projet, ou le même s'il reste
+  /// le plus pertinent).
+  Future<void> _openProjectTile(String? id) async {
+    final p = widget.logic.currentProjects.where((x) => x.id == id).firstOrNull;
+    if (p == null) {
+      widget.onOpenProjects?.call();
+      return;
+    }
+    final st = widget.logic.state;
+    await showProjectFiche(context,
+        project: p,
+        allProjects: widget.logic.currentProjects,
+        domains: st.activeDomains,
+        activities: st.activeActivities,
+        sessions: st.sessions,
+        sync: widget.sync,
+        logic: widget.logic,
+        onStartTimer: (act, project, task) => widget.logic.start(act.id, taskId: task.id),
+        onSkipToday: () => _skipProjectToday(p.id));
+    if (mounted) setState(() {});
+  }
   String? _morningDismissedYmd;
 
 
@@ -900,6 +944,7 @@ class TodayViewState extends State<TodayView> {
     final bc = widget.badges;
     final board = stakes ?? StakeBoard.empty;
     final today = DateTime(now.year, now.month, now.day);
+    final projectTile = projectsTile(widget.logic.currentProjects, today, sessions: st.sessions, skipped: _projectSkipped);
     return [
       DashboardTiles(
         program: programTile(_liveBlocks, widget.logic.livedNowMinNow) ??
@@ -911,13 +956,13 @@ class TodayViewState extends State<TodayView> {
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: badgesTile(bc?.deck, board),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today),
-        projects: projectsTile(widget.logic.currentProjects, today),
+        projects: projectTile,
         onProgram: _openProgramSheet,
         onRoutines: _openRoutinesFiche,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
         onActions: widget.onOpenActions,
-        onProjects: widget.onOpenProjects,
+        onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
     ];
   }

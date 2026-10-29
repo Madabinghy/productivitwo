@@ -969,7 +969,7 @@ class TodayViewState extends State<TodayView> {
       ]),
       badges: badgesTile(_deck(), board),
       actions: actionsTile(projects: widget.projects, activities: active, today: today),
-      projects: projectsTile(widget.projects, today),
+      projects: projectsTile(widget.projects, today, sessions: _sessions),
       onProgram: scrollToNow,
       onRoutines: () => _unfold('routines'),
       onObjectives: () => _unfold('objectives'),
