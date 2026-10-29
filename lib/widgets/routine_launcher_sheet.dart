@@ -4,11 +4,9 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
-import 'package:productivitwo_v1/utils/routines_today.dart' show routineCalendarWeek;
 import 'package:productivitwo_v1/widgets/activity_picker.dart' show ActivityDomainHeader;
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show kRoutineAccent;
-import 'package:productivitwo_v1/widgets/status_row.dart' show ExpectedBar;
 import 'package:productivitwo_v1/widgets/task_schedule.dart' show toggleRoutineTodayAndSchedule;
 
 /// Lanceur de routines du FAB (maquette validée 2026-10-30) : rangé par
@@ -298,8 +296,6 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       if (!s.reached && s.moment != kMomentAllDay && s.moment != kMomentAny) add(momentOf(s.moment).thisOne, color: kRoutineAccent);
     }
     if (streak > 0) add('🔥 $streak j', color: kRoutineAccent);
-    final week = dismissed ? null : routineCalendarWeek(a, logic.state.habitHits, DateTime.now(), logic.dayStartMin);
-    final weekColor = week == null || week.done >= week.expected ? const Color(0xFF4CBF75) : const Color(0xFFE8A33D);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -318,18 +314,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
             child: Opacity(
               opacity: dismissed ? .5 : 1,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(
-                    child: Text(a.name,
-                        maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
-                  ),
-                  if (week != null) ...[
-                    const SizedBox(width: 8),
-                    Text('${week.done} / ${week.total}',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w900, color: weekColor, fontFeatures: const [FontFeature.tabularFigures()])),
-                  ],
-                ]),
+                Text(a.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, height: 1.2)),
                 if (meta.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
@@ -337,13 +322,6 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .5))),
-                  ),
-                // Semaine calendaire, comme la fiche objectif : fin = cible de
-                // la semaine, repère = attendu à ce jour.
-                if (week != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: ExpectedBar(done: week.done, total: week.total, expected: week.expected, color: weekColor, height: 5),
                   ),
               ]),
             ),

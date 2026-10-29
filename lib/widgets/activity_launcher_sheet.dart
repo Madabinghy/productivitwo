@@ -364,12 +364,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
         child: Row(children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(11)),
-            child: Icon(a.iconCode != null ? IconData(a.iconCode!, fontFamily: 'MaterialIcons') : Icons.timer_outlined, size: 18, color: color),
-          ),
+          _dayRing(cs, r, color),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -428,6 +423,47 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
               ),
             ),
           ),
+        ]),
+      ),
+    );
+  }
+
+  /// Icône dans un anneau = la cible du JOUR (fait aujourd'hui / minimum par
+  /// jour), comme l'anneau des routines ; plein vert une fois atteinte.
+  Widget _dayRing(ColorScheme cs, LauncherRow r, Color color) {
+    final a = r.a;
+    final icon = a.iconCode != null ? IconData(a.iconCode!, fontFamily: 'MaterialIcons') : Icons.timer_outlined;
+    const size = 40.0;
+    if (!r.hasGoal) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: color.withValues(alpha: .16), shape: BoxShape.circle),
+        child: Icon(icon, size: 18, color: color),
+      );
+    }
+    final reached = r.todayMin >= a.goalMin;
+    return Tooltip(
+      message: '${fmtMin(r.todayMin)} / ${fmtMin(a.goalMin)} aujourd\'hui',
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(alignment: Alignment.center, children: [
+          if (reached)
+            Container(decoration: const BoxDecoration(color: _kOnTrack, shape: BoxShape.circle))
+          else
+            SizedBox(
+              width: size,
+              height: size,
+              child: CircularProgressIndicator(
+                value: (r.todayMin / a.goalMin).clamp(0.0, 1.0).toDouble(),
+                strokeWidth: 4,
+                strokeCap: StrokeCap.round,
+                color: color,
+                backgroundColor: cs.onSurface.withValues(alpha: .1),
+              ),
+            ),
+          Icon(reached ? Icons.check_rounded : icon, size: 18, color: reached ? const Color(0xFF0D1A12) : color),
         ]),
       ),
     );
