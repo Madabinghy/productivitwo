@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
+import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
@@ -122,7 +123,8 @@ class BadgeState {
 }
 
 /// Une case du graphique d'avancement.
-enum TrackCell { hit, miss, neutral, current, future }
+/// `bridged` = jour comblé par une braise (série de routine seulement).
+enum TrackCell { hit, miss, neutral, current, future, bridged }
 
 /// Bande de cases de la plus ancienne à la plus récente, avec sa légende.
 class BadgeTrack {
@@ -136,7 +138,9 @@ class BadgeTrack {
 
 class BadgeDeck {
   final List<BadgeState> badges;
-  const BadgeDeck(this.badges);
+  /// Braises (réserve, rallumages) ; vide quand le deck vient d'un instantané.
+  final EmberLedger embers;
+  const BadgeDeck(this.badges, {this.embers = EmberLedger.empty});
 
   /// Le compteur « n sur N » compte les paliers de toutes les familles SAUF les
   /// séries de routine (décision 2026-10-26) : un badge par routine gonflait le
@@ -268,8 +272,11 @@ Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin
   return counts.entries.where((e) => e.value >= target).map((e) => e.key).toSet();
 }
 
-RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
-  final days = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+/// [bridged] = jours comblés par une braise : ils tiennent la série, mais ne
+/// comptent pas comme « jours atteints ».
+RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}}) {
+  final reachedOnly = routineReachedDays(a, hits, dayStartMin: dayStartMin);
+  final days = {...reachedOnly, ...bridged};
   final runs = _runsOf(days);
   final longest = runs.fold(0, (m, r) => r.$2 > m ? r.$2 : m);
   final today = livedDate(now, dayStartMin);
@@ -282,7 +289,7 @@ RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int 
   return RoutineSeries(
     current: _currentRun(days, today),
     longest: longest,
-    reachedDays: days.length,
+    reachedDays: reachedOnly.length,
     sinceDays: since,
     tierDates: _tierDatesFromRuns(kRoutineTiers, runs),
   );
@@ -291,8 +298,8 @@ RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int 
 /// Le badge de série d'une routine quotidienne, complet (paliers, faits, bande
 /// des 30 derniers jours) : le deck et la fiche routine / le segment Routines
 /// d'Aujourd'hui l'affichent tel quel.
-BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin}) {
-  final s = routineSeries(a, hits, now, dayStartMin: dayStartMin);
+BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}}) {
+  final s = routineSeries(a, hits, now, dayStartMin: dayStartMin, bridged: bridged);
   final reached = routineReachedDays(a, hits, dayStartMin: dayStartMin);
   final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
   final today = livedDate(now, dayStartMin);
@@ -304,10 +311,11 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayS
     } else if (first == null || y.compareTo(first) < 0) {
       cells.add(TrackCell.neutral);
     } else {
-      cells.add(reached.contains(y) ? TrackCell.hit : TrackCell.miss);
+      cells.add(reached.contains(y) ? TrackCell.hit : (bridged.contains(y) ? TrackCell.bridged : TrackCell.miss));
     }
   }
   final hits30 = cells.where((c) => c == TrackCell.hit).length;
+  final bridged30 = cells.where((c) => c == TrackCell.bridged).length;
   return BadgeState(
     def: BadgeDef(id: 'serie-${a.id}', family: BadgeFamily.routines, name: a.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: a.id),
     level: _levelOf(kRoutineTiers, s.longest),
@@ -317,8 +325,9 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayS
       ('Série en cours', _plural(s.current, 'jour', 'jours')),
       ('Série la plus longue', _plural(s.longest, 'jour', 'jours')),
       if (s.sinceDays > 0) ('Jours atteints sur ${s.sinceDays}', '${s.reachedDays}'),
+      if (bridged.isNotEmpty) ('Jours rallumés', '${bridged.length}'),
     ],
-    track: BadgeTrack(cells: cells, caption: '30 derniers jours · $hits30 jours atteints'),
+    track: BadgeTrack(cells: cells, caption: '30 derniers jours · $hits30 jours atteints${bridged30 > 0 ? ' · $bridged30 rallumé${bridged30 > 1 ? 's' : ''}' : ''}'),
   );
 }
 
@@ -547,14 +556,24 @@ BadgeDeck computeBadges({
   List<MoodMark> moodMarks = const [],
   List<ChainRun> chainRuns = const [],
   int dayStartMin = kDefaultDayStartMin,
+  List<EmberSpend> emberSpends = const [],
 }) {
   final out = <BadgeState>[];
+  // Journées closes : les journées parfaites forgent les braises, qui
+  // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
+  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin);
 
   // Séries de routine : un badge par routine quotidienne active, par nom.
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  final embers = emberLedger(
+    perfectYmds: [for (final d in days) if (d.perfect) d.ymd],
+    spends: emberSpends,
+    reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
+    todayYmd: ymdOf(livedDate(now, dayStartMin)),
+  );
   for (final a in routines) {
-    out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin));
+    out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin, bridged: embers.bridged[a.id] ?? const {}));
   }
 
   // Objectifs.
@@ -635,8 +654,7 @@ BadgeDeck computeBadges({
     facts: [('Objectifs terminés à la cible', '${hit.length}')],
   ));
 
-  // Journées.
-  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin);
+  // Journées (`days` calculées en tête).
   final perfect = days.where((d) => d.perfect).toList();
   out.add(BadgeState(
     def: const BadgeDef(id: 'journee-parfaite', family: BadgeFamily.days, name: 'Journée parfaite', symbol: 'sun', tiers: [1], label: 'Parfaite'),
@@ -939,7 +957,7 @@ BadgeDeck computeBadges({
     }
   }
 
-  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))]);
+  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers);
 }
 
 int _currentSolidRun(List<DayScore> days) {

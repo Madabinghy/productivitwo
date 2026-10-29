@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/routine_context.dart' show TimeContextDef, timeContextsWith;
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/embers.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart' show routineReachedDays;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
@@ -1782,6 +1784,48 @@ class AppLogic implements HuntStore {
     state.moodMarks.add(mark);
     onChange();
     return mark;
+  }
+
+  // ── Braises (2026-10-30, `utils/embers.dart`) ─────────────────────────────
+  /// Rallumages (`data/meta.emberSpends`, alimentés par le flux meta).
+  List<EmberSpend> emberSpends = const [];
+  /// Registre posé par `BadgeCenter` à chaque calcul du deck.
+  EmberLedger embers = EmberLedger.empty;
+
+  /// Jours comblés d'une routine (séries des fiches, lignes, pages domaine).
+  Set<String> bridgedOf(String activityId) => embers.bridged[activityId] ?? const {};
+
+  /// Registre recalculé maintenant : journées parfaites du dernier deck,
+  /// rallumages et +1 de l'état local (un +1 rend effectif un rallumage en
+  /// attente sans attendre le prochain calcul du deck).
+  EmberLedger emberLedgerNow() {
+    final routines = state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily);
+    return emberLedger(
+      perfectYmds: embers.perfectYmds,
+      spends: emberSpends,
+      reached: {for (final a in routines) a.id: routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin)},
+      todayYmd: livedTodayYmd,
+    );
+  }
+
+  /// Séries cassées hier, rallumables ou non.
+  List<LostSeries> lostSeriesYesterday() {
+    final routines = state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily).toList();
+    final ledger = emberLedgerNow();
+    final reached = {for (final a in routines) a.id: routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin)};
+    return lostYesterday(routines: [for (final a in routines) (a.id, a.name)], reached: reached, ledger: ledger, todayYmd: livedTodayYmd);
+  }
+
+  Future<void> rekindle(String activityId) async {
+    emberSpends = withRekindle(emberSpends, activityId, livedTodayYmd);
+    onChange();
+    await (sync ?? FirestoreSync()).setEmberSpends(emberSpends.map((s) => s.toJson()).toList());
+  }
+
+  Future<void> cancelRekindle(String activityId) async {
+    emberSpends = withoutPending(emberSpends, activityId, livedTodayYmd);
+    onChange();
+    await (sync ?? FirestoreSync()).setEmberSpends(emberSpends.map((s) => s.toJson()).toList());
   }
 
   // ── Chasse aux badges (lot A, 2026-10) ────────────────────────────────────

@@ -651,7 +651,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   /// Le badge de série de la routine (36 px) ; tap = sa fiche (paliers, bande
   /// des 30 derniers jours, comment l'obtenir).
   Widget _seriesBadge(Activity a) {
-    final b = routineBadge(a, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin);
+    final b = routineBadge(a, logic.state.habitHits, DateTime.now(), dayStartMin: logic.dayStartMin, bridged: logic.bridgedOf(a.id));
     return InkWell(
       customBorder: const CircleBorder(),
       onTap: () => showBadgeSheet(context, b, logic: logic),

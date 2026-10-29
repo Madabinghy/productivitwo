@@ -3104,6 +3104,12 @@ class FirestoreSync {
     await _meta().set({'badgeHunts': hunts}, SetOptions(merge: true));
   }
 
+  /// Rallumages de séries par les braises (`data/meta.emberSpends`, 2026-10-30).
+  Future<void> setEmberSpends(List<Map<String, dynamic>> spends) async {
+    if (uid == null) return;
+    await _meta().set({'emberSpends': spends}, SetOptions(merge: true));
+  }
+
   /// Réglage « Élan : demander à chaque moment » (`data/meta.elanPromptsAll`).
   Future<void> setElanPromptsAll(bool enabled) async {
     if (uid == null) return;

@@ -816,6 +816,7 @@ class TodayViewState extends State<TodayView> {
         moodMarks: _moodMarks,
         chainRuns: _chainRuns,
         dayStartMin: widget.dayStartMin,
+        emberSpends: _huntStore.emberSpends,
       );
 
   String _stakesKey = '';

@@ -651,6 +651,22 @@ recentre la frise, Routines / Objectifs = déplient leur module, Badges = dialog
 (`onOpenActions`). Colonne MAINTENANT : tableau du jour (ou « Ce soir » après 19 h) en tête, puis MAINTENANT, puis la liste EN JEU,
 puis « Au programme · concrètement ». Gestes `_runStake` : `_incRoutine`, `_startActivityChrono`, `_startChrono`, chrono sur l'action
 (`_startActionChrono`, sinon fiche projet sur la tâche). Pas d'enjeux en disposition active ni en bande Focus.
+**Braises** (maquette validée 2026-10-30, « Braises de rattrapage », recommandations retenues) : une **journée parfaite** forge une
+braise (réserve `kEmberCap` = 3) ; une braise **rallume une série de routine cassée HIER**, à condition d'atteindre la routine AUJOURD'HUI
+(sinon elle ne coûte rien) ; une série ne se rallume qu'une fois tous les 30 jours (`kRekindleCooldownDays`) ; le jour comblé compte pour
+la SÉRIE seulement, jamais pour Journée parfaite / solide (donc jamais de braise qui se recharge elle-même) ; séries de routines seulement.
+**Lot 1 livré (logique + données)** : logique pure `utils/embers.dart` (`EmberSpend {activityId, lostYmd, spentYmd}`, `emberLedger` rejoue
+journées parfaites et rallumages → `EmberLedger {stock, pending, bridged, used, history, perfectYmds}`, `lostYesterday` → `LostSeries`
+(rallumable / en attente / bloquée : déjà rallumée · braise déjà en attente · aucune braise), `withRekindle` / `withoutPending`). Stockage
+`data/meta.emberSpends` (`FirestoreSync.setEmberSpends`, flux meta → `AppLogic.emberSpends`) ; la réserve n'est JAMAIS stockée.
+`computeBadges(emberSpends:)` calcule les journées d'abord, puis le registre, puis les séries avec `bridged` (`routineSeries` /
+`routineBadge(bridged:)`, case `TrackCell.bridged` couleur `kEmberColor`, fait « Jours rallumés ») ; `BadgeDeck.embers` ; `BadgeCenter`
+pose `logic.embers` ; `AppLogic.bridgedOf`, `emberLedgerNow` (registre frais : un +1 rend effectif un rallumage en attente),
+`lostSeriesYesterday`, `rekindle` / `cancelRekindle`. Séries comblées aussi dans la page domaine, la fiche routine (`RoutineTiersLine(bridged:)`),
+les routines du jour et le web (`WebHuntStore.emberSpends` → `WebDeckSource.deck(emberSpends:)`). Coach : instantané `data/badges.embers
+{stock, rekindled[{name, ymd, domainId}]}` (30 j), filtré par domaine partagé (`badgesForCoach`), résumé `badgesSummary.embers`, ligne
+« Braises » du rapport de pré-séance (⚠️ `firebase deploy --only functions`). Lot à venir : 2 = écrans (Perdu hier + Rallumer, feuille de
+confirmation, braise gagnée au bilan du soir, réserve et historique dans « Badges en jeu »).
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut

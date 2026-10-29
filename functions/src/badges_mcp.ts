@@ -21,11 +21,18 @@ export interface BadgeSnapshotItem {
   domainId?: string | null; // séries de routine : domaine de la routine (vue coach)
 }
 
+/** Braises (2026-10-30) : réserve et rallumages de séries des 30 derniers jours. */
+export interface EmberSnapshot {
+  stock: number;
+  rekindled: { name: string; ymd: string; domainId?: string | null }[];
+}
+
 export interface BadgeSnapshot {
   updatedAt?: string;
   acquired: number;
   total: number;
   badges: BadgeSnapshotItem[];
+  embers?: EmberSnapshot;
 }
 
 export interface BadgeHuntDoc {
@@ -54,7 +61,20 @@ export function parseSnapshot(raw: unknown): BadgeSnapshot | null {
     acquired: Number(r.acquired) || 0,
     total: Number(r.total) || 0,
     badges,
+    ...(parseEmbers(r.embers) ? { embers: parseEmbers(r.embers) as EmberSnapshot } : {}),
   };
+}
+
+function parseEmbers(raw: unknown): EmberSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const rekindled = Array.isArray(r.rekindled)
+    ? (r.rekindled as unknown[])
+        .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+        .filter((x) => typeof x.name === "string" && typeof x.ymd === "string")
+        .map((x) => ({ name: String(x.name), ymd: String(x.ymd), domainId: typeof x.domainId === "string" ? x.domainId : null }))
+    : [];
+  return { stock: Math.max(0, Number(r.stock) || 0), rekindled };
 }
 
 function parseItem(raw: unknown): BadgeSnapshotItem | null {
@@ -150,6 +170,7 @@ export function badgesSummary(snap: BadgeSnapshot | null, hunts: BadgeHuntDoc[])
     ...(last ? { lastObtained: `${last.name} (${last.obtained})` } : {}),
     hunts: huntLines(snap, hunts),
     closeToTier: close,
+    ...(snap.embers ? { embers: { stock: snap.embers.stock, rekindled: snap.embers.rekindled.map((e) => `${e.name} (${e.ymd})`) } } : {}),
     _hint: "Une chasse se PROPOSE (hunt_badge) quand un palier est proche et que l'utilisateur en parle ou le demande ; jamais imposée, trois au plus. Un badge est un fait : cite-le, ne le commente pas.",
   };
 }
@@ -191,5 +212,8 @@ export function badgesForCoach(snap: BadgeSnapshot | null, sharedDomains: Set<st
   return {
     ...snap,
     badges: snap.badges.filter((b) => b.family !== "routines" || (b.domainId != null && sharedDomains.has(b.domainId))),
+    ...(snap.embers
+      ? { embers: { stock: snap.embers.stock, rekindled: snap.embers.rekindled.filter((e) => e.domainId != null && sharedDomains.has(e.domainId)) } }
+      : {}),
   };
 }
