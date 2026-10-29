@@ -910,6 +910,14 @@ class _ActionsViewState extends State<ActionsView> {
               const SizedBox(width: 6),
               _badge('${a.estimatedMin} min', kBText4),
             ],
+            if (a.focusDate != null) ...[
+              const SizedBox(width: 6),
+              Tooltip(
+                message: 'Jour visé : quand tu veux l\'avoir sous la main (ni créneau, ni retard)',
+                child: _badge('☀ ${focusLabel(a.focusDate!, _livedToday)}',
+                    isStaleFocus(a, _livedToday) ? kBAttention : kBPrimary),
+              ),
+            ],
             if (a.dueDate != null) ...[
               const SizedBox(width: 6),
               Tooltip(
