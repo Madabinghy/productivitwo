@@ -40,7 +40,9 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
-import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection;
+import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
+import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
+import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen, kPalierAmber;
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/dashboard_tiles.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
@@ -957,16 +959,93 @@ class TodayViewState extends State<TodayView> {
         objectives: widget.sync == null ? null : objectivesTile([for (final r in ranked) (r.objective.title, r.weekPercent)],
             readingsDue: _objectives.where((o) => o.status == 'active' && isReadingDue(o, now)).length),
         badges: badgesTile(bc?.deck, board),
+        perfect: perfectDayTile(bc?.todayFacts(), widget.logic.emberLedgerNow()),
         actions: actionsTile(projects: widget.logic.currentProjects, activities: st.activeActivities, today: today),
         projects: projectTile,
         onProgram: _openProgramSheet,
         onRoutines: _openRoutinesFiche,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
+        onPerfect: bc == null ? null : _openPerfectDaySheet,
         onActions: widget.onOpenActions,
         onProjects: () => _openProjectTile(projectTile?.targetId),
       ),
     ];
+  }
+
+  /// Feuille de la tuile JOURNÉE PARFAITE : ce qui manque (routines à
+  /// atteindre avec +1, blocs à faire) et les braises en réserve.
+  void _openPerfectDaySheet() {
+    final bc = widget.badges;
+    if (bc == null) return;
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        final facts = bc.todayFacts();
+        final ledger = widget.logic.emberLedgerNow();
+        final routines = [for (final r in facts.routines) if (!r.reached) r];
+        final blocks = facts.pendingBlocks..sort((a, b) => a.startTime.compareTo(b.startTime));
+        final missing = routines.length + blocks.length;
+        final total = facts.routines.length + facts.countedBlocks.length;
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          children: [
+            FicheHeader(
+              title: 'Journée parfaite',
+              chip: total == 0 ? 'rien à tenir' : (missing == 0 ? 'parfaite' : 'il manque $missing'),
+              chipColor: missing == 0 && total > 0 ? kPalierGreen : kPalierAmber,
+              kpi: 'routines ${facts.routinesReached} / ${facts.routines.length} · blocs ${facts.blocksDone} / ${facts.countedBlocks.length}',
+            ),
+            if (routines.isNotEmpty) ...[
+              FicheTitle('ROUTINES À ATTEINDRE · ${routines.length}'),
+              for (final r in routines)
+                FicheStep(
+                  title: r.activity.name,
+                  detail: '${r.done} / ${r.target} aujourd\'hui',
+                  trailing: TextButton(
+                    onPressed: () {
+                      routinePlusWithUndo(context, widget.logic, r.activity);
+                      setLocal(() {});
+                    },
+                    child: const Text('+1'),
+                  ),
+                ),
+            ],
+            if (blocks.isNotEmpty) ...[
+              FicheTitle('BLOCS À FAIRE · ${blocks.length}'),
+              for (final b in blocks)
+                FicheStep(
+                  title: b.title.isEmpty ? 'Bloc' : b.title,
+                  detail: '${b.startTime} · ${fmtMin(b.durationMin)}',
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _openProgramSheet();
+                  },
+                ),
+            ],
+            if (total > 0 && missing == 0)
+              FicheNote(ledger.stock >= kEmberCap
+                  ? 'Tout est tenu. La réserve est pleine : pas de braise de plus ce soir.'
+                  : 'Tout est tenu : une braise s\'ajoute à la bascule de la journée.'),
+            const FicheTitle('BRAISES'),
+            Row(children: [
+              EmberDots(stock: ledger.available),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('${ledger.available} sur $kEmberCap en réserve${ledger.pending != null ? ' · une en attente' : ''}',
+                    style: TextStyle(fontSize: 13, color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .7))),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const FicheNote('Une journée parfaite forge une braise (3 au plus). Une braise rallume une série de routine cassée hier, si la routine est atteinte aujourd\'hui.'),
+            const SizedBox(height: 8),
+            EmberLedgerPanel(ledger: ledger, names: {for (final a in widget.logic.state.activities) a.id: a.name}),
+          ],
+        );
+      });
+    }).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   void _openBadgesInPlay(StakeBoard board) {

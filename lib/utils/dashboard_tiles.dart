@@ -1,6 +1,8 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, shortDateFr;
+import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/embers.dart' show EmberLedger, kEmberCap;
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/stakes.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
@@ -130,13 +132,12 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     value = '${deck.acquired} paliers';
     sub = 'rien ne se joue ce soir';
   }
-  final e = deck.embers.available;
   return DashTile(
     label: 'BADGES',
     badge: '${deck.acquired} / ${deck.total}',
     value: value,
     mini: [for (var i = 0; i < (tonight.length + losing.length).clamp(0, 8); i++) i < tonight.length ? TileMark.on : TileMark.warn],
-    sub: e > 0 ? '$sub · 🔥 $e braise${e > 1 ? 's' : ''}' : sub,
+    sub: sub,
   );
 }
 
@@ -255,4 +256,46 @@ BadgesInPlay badgesInPlay(StakeBoard board, BadgeDeck? deck) {
   final inPlay = {for (final (_, g) in [...losing, ...tiers, ...hunts]) g.sourceId};
   final near = deck == null ? const <BadgeState>[] : nearBadges(deck).where((b) => !inPlay.contains(b.def.id)).take(8).toList();
   return BadgesInPlay(losing, tiers, hunts, near);
+}
+
+/// JOURNÉE PARFAITE (2026-10-30) : ce qui manque pour la journée parfaite
+/// (routines non atteintes + blocs à faire) et les braises en réserve. La
+/// mini-jauge = une case par chose à tenir, pleine si tenue (16 au plus).
+DashTile? perfectDayTile(TodayFacts? facts, EmberLedger ledger) {
+  if (facts == null) return null;
+  final missingRoutines = [for (final r in facts.routines) if (!r.reached) r.activity.name];
+  final blocks = facts.countedBlocks;
+  final pending = facts.pendingBlocks.length;
+  final total = facts.routines.length + blocks.length;
+  final done = facts.routinesReached + facts.blocksDone;
+  final embers = '🔥 ${ledger.available} / $kEmberCap';
+  if (total == 0) {
+    return DashTile(label: 'JOURNÉE PARFAITE', badge: embers, value: 'Rien à tenir', sub: 'aucune routine ni bloc aujourd\'hui');
+  }
+  const cap = 16;
+  final cells = total <= cap ? total : cap;
+  final filled = (done * cells / total).floor();
+  final mini = [for (var i = 0; i < cells; i++) i < filled ? TileMark.on : TileMark.off];
+  final missing = missingRoutines.length + pending;
+  if (missing == 0) {
+    return DashTile(
+      label: 'JOURNÉE PARFAITE',
+      badge: embers,
+      value: 'Parfaite ✓',
+      sub: ledger.stock >= kEmberCap ? 'réserve pleine : pas de braise de plus' : 'une braise à la bascule',
+      mini: mini,
+    );
+  }
+  final parts = <String>[
+    if (missingRoutines.isNotEmpty)
+      missingRoutines.length <= 2 ? missingRoutines.join(', ') : '${missingRoutines.length} routines',
+    if (pending > 0) '$pending bloc${pending > 1 ? 's' : ''}',
+  ];
+  return DashTile(
+    label: 'JOURNÉE PARFAITE',
+    badge: embers,
+    value: 'Il manque $missing',
+    sub: parts.join(' · '),
+    mini: mini,
+  );
 }

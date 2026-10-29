@@ -14,12 +14,14 @@ class DashboardTiles extends StatelessWidget {
   final DashTile? routines;
   final DashTile? objectives;
   final DashTile? badges;
+  final DashTile? perfect;
   final DashTile? actions;
   final DashTile? projects;
   final VoidCallback? onProgram;
   final VoidCallback? onRoutines;
   final VoidCallback? onObjectives;
   final VoidCallback? onBadges;
+  final VoidCallback? onPerfect;
   final VoidCallback? onActions;
   final VoidCallback? onProjects;
   /// Web large : toutes les tuiles sur une rangée (Programme et Projets
@@ -32,12 +34,14 @@ class DashboardTiles extends StatelessWidget {
     this.routines,
     this.objectives,
     this.badges,
+    this.perfect,
     this.actions,
     this.projects,
     this.onProgram,
     this.onRoutines,
     this.onObjectives,
     this.onBadges,
+    this.onPerfect,
     this.onActions,
     this.onProjects,
   });
@@ -48,6 +52,7 @@ class DashboardTiles extends StatelessWidget {
       if (routines != null) (routines!, onRoutines),
       if (objectives != null) (objectives!, onObjectives),
       if (badges != null) (badges!, onBadges),
+      if (perfect != null) (perfect!, onPerfect),
       if (actions != null) (actions!, onActions),
     ];
     if (row) {
