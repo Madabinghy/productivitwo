@@ -673,7 +673,7 @@ class TodayViewState extends State<TodayView> {
     final today = _livedToday;
     _hit.add(block.id);
     final tgt = logic.activeHabitTarget(act);
-    if (tgt > 0 && logic.habitValueOn(id, today) >= tgt) return;
+    if (tgt > 0 && livedHitCount(logic.state.habitHits, id, DateTime.now(), widget.dayStartMin) >= tgt) return;
     logic.incHabit(id, 1, today);
     final key = yyyymmdd(today);
     HabitProgress? hp;

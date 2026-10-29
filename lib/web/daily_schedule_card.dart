@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate, livedHitCount, kDefaultDayStartMin;
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 
 const _kCategoryColor = {
@@ -78,9 +79,9 @@ class _WebDailyScheduleCardState extends State<WebDailyScheduleCard> {
     }
     if (act == null || !act.isHabit) return;
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = livedDate(now, kDefaultDayStartMin);
     final tgt = logic.activeHabitTarget(act);
-    if (tgt > 0 && logic.habitValueOn(id, today) >= tgt) {
+    if (tgt > 0 && livedHitCount(logic.state.habitHits, id, now, kDefaultDayStartMin) >= tgt) {
       _hit.add(block.id); // déjà atteinte → on marque, sans incrémenter
       return;
     }

@@ -1,4 +1,4 @@
-import 'package:productivitwo_v1/models.dart' show yyyymmdd, DailySchedule, ScheduleBlock;
+import 'package:productivitwo_v1/models.dart' show yyyymmdd, DailySchedule, ScheduleBlock, HabitHit;
 
 /// Journée vécue (2026-10) : la journée des ROUTINES ne bascule pas à minuit
 /// mais à l'heure réglée par l'utilisateur (`data/meta.dayStartMin`, défaut
@@ -115,3 +115,11 @@ DailySchedule? mergeLivedDay(String ymd, DailySchedule? day, DailySchedule? next
 /// lendemain, à l'heure de l'horloge ; sinon le doc de la vue.
 String docForNewBlock(String viewYmd, DateTime now, int dayStartMin) =>
     livedNowMin(now, dayStartMin) >= 24 * 60 ? nextYmd(viewYmd) : viewYmd;
+
+/// Compte du jour d'une routine = ses hits depuis le début de la journée vécue
+/// (même règle que `routineTodayCount` côté mobile ; jamais le compteur du jour
+/// calendaire `habitProgress`).
+int livedHitCount(List<HabitHit> hits, String habitId, DateTime now, int dayStartMin) {
+  final start = livedDayStart(now, dayStartMin);
+  return hits.where((h) => h.habitId == habitId && !h.ts.isBefore(start)).length;
+}
