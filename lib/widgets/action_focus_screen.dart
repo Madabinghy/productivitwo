@@ -546,6 +546,12 @@ class _FocusScreenState extends State<_FocusScreen> {
               decoration: steps[k].done ? TextDecoration.lineThrough : null,
             ),
           ),
+          trailing: IconButton(
+            tooltip: 'Modifier l’étape',
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.more_horiz, size: 20, color: cs.onSurface.withValues(alpha: .5)),
+            onPressed: () => _editStep(steps[k]),
+          ),
           onTap: () => _mutate(() => setChecklistItem(a, steps[k].id, !steps[k].done)),
           onLongPress: () => _editStep(steps[k]),
         ),
@@ -588,21 +594,59 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   Future<void> _editStep(ChecklistItem c) async {
+    final i = a.checklist.indexWhere((x) => x.id == c.id);
+    if (i < 0) return;
+    final n = a.checklist.length;
+    final err = Theme.of(context).colorScheme.error;
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            ),
+          ),
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Renommer'), onTap: () => Navigator.pop(ctx, 'rename')),
-          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Retirer l’étape'), onTap: () => Navigator.pop(ctx, 'remove')),
+          ListTile(
+              leading: Icon(c.done ? Icons.radio_button_unchecked : Icons.check_circle_outline),
+              title: Text(c.done ? 'Décocher' : 'Cocher'),
+              onTap: () => Navigator.pop(ctx, 'toggle')),
+          if (i > 0) ListTile(leading: const Icon(Icons.arrow_upward_rounded), title: const Text('Monter'), onTap: () => Navigator.pop(ctx, 'up')),
+          if (i < n - 1) ListTile(leading: const Icon(Icons.arrow_downward_rounded), title: const Text('Descendre'), onTap: () => Navigator.pop(ctx, 'down')),
+          ListTile(
+              leading: Icon(Icons.delete_outline, color: err),
+              title: Text('Supprimer l’étape', style: TextStyle(color: err)),
+              onTap: () => Navigator.pop(ctx, 'remove')),
         ]),
       ),
     );
-    if (choice == 'rename') {
-      final v = await _askText('Renommer l’étape', initial: c.title);
-      if (v != null) await _mutate(() => renameChecklistItem(a, c.id, v));
-    } else if (choice == 'remove') {
-      await _mutate(() => removeChecklistItem(a, c.id));
+    if (!mounted) return;
+    switch (choice) {
+      case 'rename':
+        final v = await _askText('Renommer l’étape', initial: c.title);
+        if (v != null) await _mutate(() => renameChecklistItem(a, c.id, v));
+      case 'toggle':
+        await _mutate(() => setChecklistItem(a, c.id, !c.done));
+      case 'up':
+        await _mutate(() => moveChecklistItem(a, i, i - 1));
+      case 'down':
+        await _mutate(() => moveChecklistItem(a, i, i + 2));
+      case 'remove':
+        await _mutate(() => removeChecklistItem(a, c.id));
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text('Étape supprimée : ${c.title}'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+                label: 'Annuler',
+                onPressed: () => _mutate(() => a.checklist.insert(i.clamp(0, a.checklist.length), c))),
+          ));
     }
   }
 
