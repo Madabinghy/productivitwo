@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/project_health.dart' show HealthKind;
 import 'package:productivitwo_v1/utils/project_moment.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
+import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:productivitwo_v1/widgets/project_sheet.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart' show ExpectedBar;
@@ -31,6 +32,9 @@ Future<bool> showProjectFiche(
   /// Ouverte depuis la tuile PROJETS d'Aujourd'hui : section DÉCISIONS qui
   /// sort le projet de la tête (passer pour aujourd'hui, viser demain, pause).
   VoidCallback? onSkipToday,
+  /// Tap sur une action (et « Prochaine action ») = la page focus de l'action,
+  /// pour la travailler tout de suite (tuile PROJETS d'Aujourd'hui).
+  bool actionsOpenFocus = false,
 }) async {
   final changed = await showFiche<bool>(context,
       builder: (ctx, scroll) => _ProjectFiche(
@@ -43,6 +47,7 @@ Future<bool> showProjectFiche(
             logic: logic,
             onStartTimer: onStartTimer,
             onSkipToday: onSkipToday,
+            actionsOpenFocus: actionsOpenFocus,
             scroll: scroll,
           ));
   return changed ?? false;
@@ -58,6 +63,7 @@ class _ProjectFiche extends StatefulWidget {
   final AppLogic? logic;
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
   final VoidCallback? onSkipToday;
+  final bool actionsOpenFocus;
   final ScrollController scroll;
   const _ProjectFiche({
     required this.project,
@@ -69,6 +75,7 @@ class _ProjectFiche extends StatefulWidget {
     this.logic,
     required this.onStartTimer,
     this.onSkipToday,
+    this.actionsOpenFocus = false,
     required this.scroll,
   });
 
@@ -153,8 +160,16 @@ class _ProjectFicheState extends State<_ProjectFiche> {
           logic: widget.logic,
           onStartTimer: widget.onStartTimer);
 
-  /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan).
+  /// Tap sur une action = SA tâche, l'action dépliée (pas tout le plan) ;
+  /// depuis la tuile PROJETS, la page focus de l'action.
   Future<void> _openAction(ProjectTask task, TaskAction action) async {
+    final logic = widget.logic;
+    if (widget.actionsOpenFocus && logic != null) {
+      final chrono = widget.activities.where((a) => a.id == (action.linkedActivityId ?? p.linkedActivityId)).firstOrNull;
+      await showActionFocusScreen(context, logic: logic, action: action, project: p, task: task, chronoActivity: chrono, sync: widget.sync);
+      if (mounted) setState(() {});
+      return;
+    }
     await showTaskDetail(context,
         project: p,
         task: task,
@@ -171,6 +186,10 @@ class _ProjectFicheState extends State<_ProjectFiche> {
     final n = m.next;
     if (n == null) {
       _openPlan();
+      return;
+    }
+    if (widget.actionsOpenFocus && widget.logic != null) {
+      _openAction(n.task, n.action);
       return;
     }
     final act = widget.activities.where((a) => a.id == (n.action.linkedActivityId ?? p.linkedActivityId)).firstOrNull;

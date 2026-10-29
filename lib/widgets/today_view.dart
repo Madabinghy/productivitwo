@@ -254,7 +254,8 @@ class TodayViewState extends State<TodayView> {
         sync: widget.sync,
         logic: widget.logic,
         onStartTimer: (act, project, task) => widget.logic.start(act.id, taskId: task.id),
-        onSkipToday: () => _skipProjectToday(p.id));
+        onSkipToday: () => _skipProjectToday(p.id),
+        actionsOpenFocus: true);
     if (mounted) setState(() {});
   }
   String? _morningDismissedYmd;
