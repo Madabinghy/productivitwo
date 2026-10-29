@@ -274,14 +274,34 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
     _toast(moved ? 'Reculée à ${day.current.thisOne} : ${a.name}' : 'Reculée en fin de file : ${a.name}');
   }
 
-  void _pushTo(Activity a, Moment m) {
+  /// Reporte la routine à un moment plus tard de la journée, après
+  /// confirmation (retour user 2026-10-30 : la flèche seule ne disait pas ce
+  /// qu'elle faisait) ; « Annuler » la remet dans son moment.
+  Future<void> _pushTo(Activity a, Moment m) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Reporter à ${m.thisOne} ?'),
+        content: Text('« ${a.name} » quitte ce moment et revient ${m.thisOne} (${m.window}). Le compte du jour ne change pas.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(d, true), child: Text('Reporter à ${m.thisOne}')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
     final ymd = _ymd;
     final pushed = logic.routinePushed(ymd)..[a.id] = m.key;
     logic.setRoutinePushed(ymd, pushed);
     setState(() {
       _held = null;
     });
-    _toast('Reportée à ${m.thisOne} : ${a.name}');
+    showUndoSnackBar(context, 'Reportée à ${m.thisOne} : ${a.name}', () => _clearPush(a));
+  }
+
+  void _clearPush(Activity a) {
+    logic.clearRoutinePushed(_ymd, a.id);
+    if (mounted) setState(() => _held = null);
   }
 
   void _dismiss(Activity a) {
@@ -443,8 +463,10 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                 MomentAction((first.activity.timerMin ?? 0) > 0 ? 'Minuteur ${first.activity.timerMin} min' : 'Minuteur',
                     icon: Icons.timer_outlined, onTap: () => _timer(first.activity)),
               MomentAction('Plus tard ${cur.thisOne}', icon: Icons.schedule_rounded, onTap: () => _defer(first.activity)),
+              if (slot.pushed)
+                MomentAction('Annuler le report', icon: Icons.undo_rounded, hint: 'revient ${momentOf(slot.home).of}', onTap: () => _clearPush(first.activity)),
               for (final m in day.laterMoments)
-                MomentAction(_cap(m.thisOne), icon: Icons.arrow_forward_rounded, onTap: () => _pushTo(first.activity, m)),
+                MomentAction('Reporter à ${m.thisOne}', icon: Icons.arrow_forward_rounded, hint: m.window, onTap: () => _pushTo(first.activity, m)),
               MomentAction('Pas aujourd\'hui', icon: Icons.block_rounded, onTap: () => _dismiss(first.activity)),
               MomentAction('Réglages de la routine', icon: Icons.tune_rounded, onTap: () => _openSheet(first.activity)),
             ],
@@ -512,20 +534,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                   ),
                 ),
                 if (left > 0) ...[_tag('$left restée${left > 1 ? 's' : ''}'), const SizedBox(width: 10)],
-                if (isCur && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty) ...[
-                  TextButton.icon(
-                    onPressed: () => widget.onChain!(day),
-                    style: TextButton.styleFrom(
-                      foregroundColor: kRoutineAccent,
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
-                    ),
-                    icon: const Icon(Icons.playlist_play_rounded, size: 18),
-                    label: Text('Enchaîner · ${day.queue.length}'),
-                  ),
-                  const SizedBox(width: 4),
-                ],
+
                 Text(widget.onlyMissing ? '${rows.length} à faire' : '${c.done} / ${c.total}',
                     style: TextStyle(
                         fontSize: 13, fontWeight: FontWeight.w700, color: pal.text2, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -537,6 +546,25 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
             ),
           ),
         ),
+        // « Enchaîner » sur sa propre ligne : dans l'en-tête, il écrasait la
+        // fenêtre du moment (« 14 h → 1… »).
+        if (isCur && open && !widget.onlyMissing && widget.onChain != null && day.queue.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => widget.onChain!(day),
+                style: TextButton.styleFrom(
+                  foregroundColor: kRoutineAccent,
+                  visualDensity: VisualDensity.compact,
+                  textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+                icon: const Icon(Icons.playlist_play_rounded, size: 20),
+                label: Text(day.queue.length == 1 ? 'Enchaîner la routine ${m.of}' : 'Enchaîner les ${day.queue.length} routines ${m.of}'),
+              ),
+            ),
+          ),
         if (open)
           for (final s in rows) _row(pal, day, s),
       ]),
@@ -612,7 +640,11 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                     if (s.share case final share? when !done)
                       Text(share.label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
                     if (s.pushed)
-                      Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
+                      GestureDetector(
+                        onTap: () => _clearPush(a),
+                        child: Text('reportée · revenir ${momentOf(s.home).of}',
+                            style: const TextStyle(fontSize: 11, color: kBAttention, decoration: TextDecoration.underline, decorationColor: kBAttention)),
+                      ),
                     if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
                   ]),
               ),

@@ -3390,6 +3390,9 @@ class SuggestedActivity {
 // ===================  EXTENSIONS  ====================
 // =====================================================
 
+/// Valeur d'un report annulé dans `routinePushedByYmd` (voir `routinePushed`).
+const kPushCleared = '-';
+
 extension TodayLogic on AppLogic {
   Set<String> nowSkippedSet(String ymd) =>
       (state.nowSkippedByYmd[ymd] ?? const <String>[]).toSet();
@@ -3469,13 +3472,37 @@ extension TodayLogic on AppLogic {
   }
 
   /// Vue Routines : reports du jour routine → moment (« Cet après-midi »).
+  /// Reports du jour (routine → moment). Un report annulé est gardé en base
+  /// sous la valeur [kPushCleared] : la fusion entre appareils fait primer le
+  /// local par routine, une simple suppression ressusciterait le report.
   Map<String, String> routinePushed(String ymd) => {
         for (final e in state.routinePushedByYmd[ymd] ?? const <String>[])
-          if (e.contains(':')) e.substring(0, e.indexOf(':')): e.substring(e.indexOf(':') + 1),
+          if (e.contains(':') && e.substring(e.indexOf(':') + 1) != kPushCleared)
+            e.substring(0, e.indexOf(':')): e.substring(e.indexOf(':') + 1),
       };
 
+
   void setRoutinePushed(String ymd, Map<String, String> pushed) {
-    state.routinePushedByYmd[ymd] = [for (final e in pushed.entries) '${e.key}:${e.value}'];
+    final cleared = {
+      for (final e in state.routinePushedByYmd[ymd] ?? const <String>[])
+        if (e.endsWith(':$kPushCleared')) e.substring(0, e.indexOf(':')),
+    }..removeAll(pushed.keys);
+    state.routinePushedByYmd[ymd] = [
+      for (final e in pushed.entries) '${e.key}:${e.value}',
+      for (final id in cleared) '$id:$kPushCleared',
+    ];
+    onChange();
+  }
+
+  /// Annule le report d'une routine : elle revient dans son moment.
+  void clearRoutinePushed(String ymd, String routineId) {
+    final pushed = routinePushed(ymd)..remove(routineId);
+    final raw = [for (final e in pushed.entries) '${e.key}:${e.value}'];
+    for (final e in state.routinePushedByYmd[ymd] ?? const <String>[]) {
+      if (e.endsWith(':$kPushCleared') && !e.startsWith('$routineId:')) raw.add(e);
+    }
+    raw.add('$routineId:$kPushCleared');
+    state.routinePushedByYmd[ymd] = raw;
     onChange();
   }
 
