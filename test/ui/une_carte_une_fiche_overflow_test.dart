@@ -16,6 +16,7 @@ Widget app(Widget child, {double width = 360}) => MaterialApp(
     );
 
 void main() {
+  _momentCardLinksTests();
   testWidgets('MomentCard : titre, contexte, bouton et pastille longs', (tester) async {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
@@ -71,6 +72,49 @@ void main() {
       ]),
     ])));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+}
+
+void _momentCardLinksTests() {
+  testWidgets('MomentCard : visuel, liens sous le bouton, feuille « Autres »', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    var tapped = '';
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: MomentCard(
+            accent: Colors.green,
+            eyebrow: 'ACTION DU MOMENT',
+            ring: .4,
+            ringBig: '2 / 5',
+            ringSmall: 'ÉTAPES',
+            title: 'Corriger les copies',
+            sub: 'au programme · 14:00',
+            visual: const MomentLegend('Étape en cours : Sloann', right: '⏱ 31 min'),
+            primaryLabel: 'Étape faite',
+            onPrimary: () => tapped = 'primary',
+            onFiche: () => tapped = 'fiche',
+            chainLabel: 'Enchaîner · 4',
+            onChain: () => tapped = 'chain',
+            moreActions: [MomentAction('Chrono', icon: Icons.play_arrow_rounded, onTap: () => tapped = 'chrono')],
+          ),
+        ),
+      ),
+    ));
+    expect(find.text('Étape en cours : Sloann'), findsOneWidget);
+    expect(find.text('⋯ Autres'), findsOneWidget);
+    await tester.tap(find.text('Fiche'));
+    expect(tapped, 'fiche');
+    await tester.tap(find.text('Enchaîner · 4'));
+    expect(tapped, 'chain');
+    await tester.tap(find.text('⋯ Autres'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chrono'), findsOneWidget);
+    await tester.tap(find.text('Chrono'));
+    await tester.pumpAndSettle();
+    expect(tapped, 'chrono');
     expect(tester.takeException(), isNull);
   });
 }

@@ -480,6 +480,15 @@ toujours le sélecteur ; aide « Touche une brique… » une fois dans Projets (
 lignes et leurs briques mènent TOUS au projet déplié (`_openPlan(p, taskId:)`, la tâche visée dépliée) ; « Déplier » remplace
 « Fiche » sur la carte ; ▶ lance le chrono si une activité est liée, sinon ouvre le projet déplié sur la tâche de la prochaine
 action. La fiche projet ne s'ouvre plus que par appui long sur une ligne ; la fiche de tâche depuis le projet déplié (↗).
+**Cartes du moment, grammaire de Projets** (maquette validée « Cartes du moment », 2026-10) : chaque carte du moment suit les
+cinq couches de PROJET DU MOMENT — étiquette + pilule · anneau + UNE ligne de contexte + titre · un **visuel** pleine largeur à la
+place d'une sous-ligne dense (`MomentCard.visual` + `MomentLegend`) · UN bouton de deux ou trois mots sur toute la largeur · une
+ligne de liens discrets (fiche · geste secondaire `chainLabel` · « ⋯ Autres » = feuille `showMomentActions` des gestes rares,
+`MomentCard.moreActions` de `MomentAction`). Le bouton contour « Fiche » à côté du bouton plein n'existe plus. **Lot 1 livré** :
+squelette + ACTION DU MOMENT (sous-ligne = échéance · estimation ; `StepDots` + légende « Étape en cours : … · ⏱ · @contextes » ;
+« Étape faite » ; Autres = Chrono · Fait · Caser · Ouvrir le projet). Lots suivants : Routines, Objectifs, Ma semaine, MAINTENANT.
+**Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
+pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
 5 h, réglable dans Paramètres « La journée commence à », 0 → 12 h ; `AppLogic.dayStartMin`, alimenté par
 `FirestoreSync.streamDayStartMin`), pas à minuit : compte du jour (`routinesForToday`, `routineTodayCount`), moment courant

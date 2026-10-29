@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/context_picker.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
@@ -2237,12 +2238,15 @@ class _ActionsViewState extends State<ActionsView> {
       if (e.holder.isNotEmpty) e.holder,
       if (e.task != null && e.task!.id != _flowTaskId) e.task!.title,
     ].join(' › ');
+    // Grammaire de Projets (2026-10) : la sous-ligne ne garde que QUAND et
+    // COMBIEN ; étapes en points, temps passé et contextes dans la légende.
     final sub = <String>[
       if (due != null) (a.dueDate != null ? '⚑ ' : 'éch. ') + _dueLabel(due, today),
       if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
-      if (spentMin > 0) '⏱ ${fmtMin(spentMin)} passées',
+    ].join(' · ');
+    final legendRight = <String>[
+      if (spentMin > 0) '⏱ ${fmtMin(spentMin)}',
       if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
-      if (steps && next != null) 'étape : ${next.title}',
     ].join(' · ');
     final double? ring;
     final String big, small;
@@ -2268,7 +2272,7 @@ class _ActionsViewState extends State<ActionsView> {
       icon = Icons.stop_rounded;
       onPrimary = () => widget.logic.stopActive();
     } else if (next != null) {
-      primary = 'Étape faite : ${next.title}';
+      primary = 'Étape faite';
       icon = Icons.check_rounded;
       onPrimary = () async {
         final changed = setChecklistItem(a, next.id, true);
@@ -2299,11 +2303,29 @@ class _ActionsViewState extends State<ActionsView> {
       title: a.title,
       sub: sub.isEmpty ? 'Sans échéance ni estimation' : sub,
       subColor: late ? kPalierCoral : null,
+      visual: steps
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              StepDots(done: a.checklistDone, total: a.checklistTotal, allDone: a.done, size: 12),
+              MomentLegend(next == null ? 'Toutes les étapes sont faites' : 'Étape en cours : ${next.title}',
+                  right: legendRight.isEmpty ? null : legendRight),
+            ])
+          : legendRight.isEmpty
+              ? null
+              : MomentLegend(legendRight),
       primaryLabel: primary,
       primaryIcon: icon,
       primaryOutlined: running,
       onPrimary: onPrimary,
       onFiche: () => _openActionSheet(e),
+      moreActions: [
+        if (!running && e.chronoActivityId != null && next != null)
+          MomentAction('Chrono', icon: Icons.play_arrow_rounded, onTap: () => _launch(e)),
+        if (!a.done && (next != null || e.chronoActivityId != null))
+          MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
+        MomentAction('Caser dans le programme', icon: Icons.event_rounded, onTap: () => _scheduleAction(e)),
+        if (e.project != null)
+          MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
+      ],
     );
   }
 
