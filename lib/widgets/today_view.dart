@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/game_rules.dart';
+import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -988,6 +990,7 @@ class TodayViewState extends State<TodayView> {
           children: [
             FicheHeader(
               title: 'Journée parfaite',
+              info: const InfoDot(kRulePerfectDay),
               chip: total == 0 ? 'rien à tenir' : (missing == 0 ? 'parfaite' : 'il manque $missing'),
               chipColor: missing == 0 && total > 0 ? kPalierGreen : kPalierAmber,
               kpi: 'routines ${facts.routinesReached} / ${facts.routines.length} · blocs ${facts.blocksDone} / ${facts.countedBlocks.length}',
@@ -1280,6 +1283,7 @@ class TodayViewState extends State<TodayView> {
           children: [
             FicheHeader(
               title: 'Routines',
+              info: const InfoDot(kRuleSeries),
               chip: '${all.done} / ${all.total}',
               chipColor: kRoutineAccent,
               kpi: day.shortLine,
@@ -1291,17 +1295,6 @@ class TodayViewState extends State<TodayView> {
               onOrganize: () => showRoutinesOrganizeScreen(context, logic: widget.logic),
               onStartTimed: widget.onStartTimed,
             ),
-            // Légende (retour user 2026-10-30 : « à quoi correspondent les
-            // flammes ? »).
-            const FicheTitle('À SAVOIR'),
-            FicheNote(
-                '🔥 ${widget.badges?.deck?.seriesRunning ?? 0} sur la tuile Routines = le nombre de routines dont la série est en cours : '
-                'atteintes chaque jour, sans trou, jusqu\'à hier. La journée en cours ne compte qu\'une fois close ; '
-                'manquer un jour casse la série (une braise peut la rallumer le lendemain).'),
-            const SizedBox(height: 6),
-            const FicheNote(
-                'L\'écusson sur chaque ligne est le badge de série de la routine : touche-le pour ses paliers (3 · 7 · 21 · 66 · 100 jours) '
-                'et ses 30 derniers jours.'),
           ],
         );
       });
@@ -1411,6 +1404,7 @@ class TodayViewState extends State<TodayView> {
           children: [
             FicheHeader(
               title: evening ? 'Ce soir' : 'Ta journée',
+              info: const InfoDot(kRuleStakes),
               chip: board.inPlay == 0 ? 'rien en jeu' : '${board.inPlay} en jeu',
               chipColor: kStakeHunt,
             ),

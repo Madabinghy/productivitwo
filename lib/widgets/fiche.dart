@@ -94,7 +94,9 @@ class FicheHeader extends StatelessWidget {
   final Color? chipColor;
   final String? kpi;
   final Widget? leading;
-  const FicheHeader({super.key, required this.title, this.chip, this.chipColor, this.kpi, this.leading});
+  /// Petit ⓘ de règle du jeu (`InfoDot`) collé au titre.
+  final Widget? info;
+  const FicheHeader({super.key, required this.title, this.chip, this.chipColor, this.kpi, this.leading, this.info});
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +105,16 @@ class FicheHeader extends StatelessWidget {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (leading != null) ...[leading!, const SizedBox(width: 10)],
         // Titre long (tâche de séance, action détaillée) : un cran plus petit pour tenir en deux ou trois lignes.
-        Expanded(child: Text(title, style: TextStyle(fontSize: title.length > 40 ? 17 : 20, fontWeight: FontWeight.w800, height: 1.15))),
+        Expanded(
+          child: info == null
+              ? Text(title, style: TextStyle(fontSize: title.length > 40 ? 17 : 20, fontWeight: FontWeight.w800, height: 1.15))
+              : Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: title),
+                    WidgetSpan(alignment: PlaceholderAlignment.middle, child: Transform.translate(offset: const Offset(0, -1), child: info!)),
+                  ]),
+                  style: TextStyle(fontSize: title.length > 40 ? 17 : 20, fontWeight: FontWeight.w800, height: 1.15)),
+        ),
         if (chip != null) ...[
           const SizedBox(width: 10),
           Flexible(flex: 0, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip(chip!, color: chipColor ?? cs.primary))),
