@@ -88,7 +88,6 @@ class NowCard extends StatefulWidget {
 class _NowCardState extends State<NowCard> {
   final _sync = FirestoreSync();
   Timer? _tick;
-  bool _expanded = false;
   // Routine liée déjà validée pour ce bloc (1 incrément max par bloc).
   final Set<String> _routineHit = {};
 
@@ -548,30 +547,6 @@ class _NowCardState extends State<NowCard> {
         if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
           const SizedBox(height: 10),
           row,
-        ],
-        if (session != null) ...[
-          const SizedBox(height: 6),
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Text(_expanded ? 'Masquer les étapes' : 'Étapes de la session',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: pal.text3)),
-                const SizedBox(width: 4),
-                Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: pal.text3),
-              ]),
-            ),
-          ),
-          if (_expanded)
-            NowSessionPanel(
-              logic: widget.logic,
-              project: widget.focusProject,
-              task: widget.focusTask,
-              activity: running,
-              palette: pal,
-            ),
         ],
       ]),
     );

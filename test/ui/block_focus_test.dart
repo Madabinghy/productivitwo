@@ -60,7 +60,8 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('bloc Enseignement'), findsOneWidget);
+    // findsWidgets : en fin de journée, un second libellé « bloc Enseignement » s'affiche.
+    expect(find.textContaining('bloc Enseignement'), findsWidgets);
     expect(find.text('LA FILE DU BLOC · 3'), findsOneWidget);
     expect(find.textContaining('bloc · reste'), findsOneWidget);
     expect(find.text('Commencer · Corriger les copies'), findsOneWidget);

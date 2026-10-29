@@ -117,6 +117,7 @@ class _ChainScreenState extends State<_ChainScreen> {
   final Set<String> _overrunIgnored = {};
   bool _paused = false;
   bool _summary = false;
+  bool _leaving = false;
   bool _busy = false;
   // Session d'Enchaîner (badges, 2026-10) : premier bloc réel de la file au
   // départ, dernier bloc réel épuisé, sortie avant la fin, écrite une fois au récap.
@@ -494,15 +495,24 @@ class _ChainScreenState extends State<_ChainScreen> {
     final items = _ordered();
     final cur = items.firstOrNull;
     final showSummary = _summary || (_loaded && cur == null && _between == null);
-    if (showSummary && !_recorded) WidgetsBinding.instance.addPostFrameCallback((_) => _recordRun());
+    // Plus d'écran récap (retour user 2026-10-30 : « il ne sert à rien ») :
+    // la session s'enregistre et l'écran se ferme.
+    if (showSummary) {
+      if (!_leaving) {
+        _leaving = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_recorded) _recordRun();
+          if (mounted) Navigator.of(context).maybePop();
+        });
+      }
+      return Scaffold(backgroundColor: Theme.of(context).scaffoldBackgroundColor, body: const SizedBox.shrink());
+    }
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: !_loaded
             ? const Center(child: CircularProgressIndicator())
-            : showSummary
-                ? _summaryView(pal, items)
-                : _between != null
+            : _between != null
                     ? _transition(pal, _between!, cur)
                     : _focus(pal, cur!, items),
       ),
@@ -996,7 +1006,7 @@ class _ChainScreenState extends State<_ChainScreen> {
             })),
           ]),
         ] else
-          _primary('Voir le récap', () => setState(() => _summary = true), icon: Icons.flag_rounded),
+          _primary('Terminer', () => setState(() => _summary = true), icon: Icons.flag_rounded),
       ]),
     );
   }
@@ -1030,110 +1040,6 @@ class _ChainScreenState extends State<_ChainScreen> {
     if (!_exited) _closeSession();
   }
 
-  Widget _summaryView(NowPalette pal, List<ChainItem> remaining) {
-    final now = DateTime.now();
-    var chrono = 0;
-    for (final s in logic.state.sessions) {
-      if (s.deleted || s.startAt.isBefore(_startedAt)) continue;
-      chrono += (s.endAt ?? now).difference(s.startAt).inMinutes;
-    }
-    final byBlock = <String, ({ScheduleBlock block, int n})>{};
-    for (final i in remaining) {
-      final cur = byBlock[i.block.id];
-      byBlock[i.block.id] = (block: i.block, n: (cur?.n ?? 0) + 1);
-    }
-    final total = _totalAtStart <= 0 ? _doneCount : _totalAtStart;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          const Spacer(),
-          IconButton(
-              tooltip: 'Fermer', icon: Icon(Icons.close_rounded, color: pal.text3), onPressed: () => Navigator.of(context).pop()),
-        ]),
-        const SizedBox(height: 10),
-        Text('SESSION TERMINÉE',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.4, color: pal.primary)),
-        const SizedBox(height: 6),
-        Text('$_doneCount sur $total',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, color: pal.text, fontFeatures: const [FontFeature.tabularFigures()])),
-        Text(
-          'depuis ${_clock(_startedAt.hour * 60 + _startedAt.minute)}${chrono > 0 ? ' · ${fmtMin(chrono)} de chrono' : ''}',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()]),
-        ),
-        if (_modeRecap() case final r?) ...[
-          const SizedBox(height: 8),
-          Center(child: r),
-        ],
-        if (widget.objective == null) ...[
-          const SizedBox(height: 8),
-          Text(
-            chainCountLine(_doneCount) + (_resumedCount > 0 ? ' · $_resumedCount faite${_resumedCount > 1 ? 's' : ''} pendant la pause' : ''),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _doneCount >= kChainCountedMin ? pal.primary : pal.text3),
-          ),
-        ],
-        const SizedBox(height: 24),
-        Expanded(
-          child: byBlock.isEmpty
-              ? Center(
-                  child: Text('Plus rien dans la file. Belle journée.',
-                      style: TextStyle(fontSize: 15, color: pal.text2)))
-              : ListView(children: [
-                  Text('RESTE À FAIRE',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: pal.text3)),
-                  const SizedBox(height: 8),
-                  for (final e in byBlock.values)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-                      decoration: BoxDecoration(color: pal.surface, borderRadius: BorderRadius.circular(14)),
-                      child: Row(children: [
-                        Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(e.block.title,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: pal.text)),
-                            Text(
-                                '${_clock(blockStartMin(e.block))} · ${e.n} ${e.n > 1 ? 'choses' : 'chose'}',
-                                style: TextStyle(fontSize: 12, color: pal.text3, fontFeatures: const [FontFeature.tabularFigures()])),
-                          ]),
-                        ),
-                        if (e.block.gcalEventId == null && !e.block.id.startsWith(kSyntheticPrefix))
-                          TextButton(onPressed: () => _carry(e.block), child: const Text('Caser demain')),
-                      ]),
-                    ),
-                ]),
-        ),
-        const SizedBox(height: 8),
-        if (byBlock.isEmpty || widget.objective != null || widget.small)
-          _primary('Revenir à Aujourd\'hui', () => Navigator.of(context).pop(), icon: Icons.arrow_back_rounded)
-        else ...[
-          // Sortie = pause : la session reste reprenable 45 min depuis MAINTENANT.
-          _primary('Reprendre plus tard', () {
-            _persist();
-            Navigator.of(context).pop();
-          }, icon: Icons.pause_circle_outline),
-          const SizedBox(height: 8),
-          Center(
-            child: TextButton(
-              onPressed: () {
-                _closeSession();
-                Navigator.of(context).pop();
-              },
-              child: Text('Terminer la session', style: TextStyle(color: pal.text3, fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ],
-      ]),
-    );
-  }
-
-  /// « 3 malgré tout » / « 2 à fond » : choses faites pendant un mode Flemme / En forme.
   Widget? _modeRecap() {
     var low = 0, high = 0;
     for (final t in _doneAts) {
