@@ -3,9 +3,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/coach_moments.dart';
-import 'package:productivitwo_v1/utils/energy_state.dart';
 import 'package:productivitwo_v1/widgets/coach_moment_card.dart';
-import 'package:productivitwo_v1/widgets/energy_cards.dart';
 import 'package:productivitwo_v1/widgets/habit_count_sheet.dart';
 import 'package:productivitwo_v1/widgets/renegotiate_sheet.dart';
 
@@ -56,61 +54,10 @@ class _NowCoachZoneState extends State<NowCoachZone> {
     });
   }
 
-  bool _sameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
-  List<ScheduleBlock> get _live =>
-      (widget.schedule?.blocks.where((b) => b.status != 'deleted').toList() ?? [])
-        ..sort((a, b) => a.startTime.compareTo(b.startTime));
-
+  // La question d'état « ORION · ÉTAT » (À fond · Correct · À plat) est retirée
+  // le 2026-10-30 : le mode Flemme / Normal / En forme la remplace.
   @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final s = widget.schedule;
-    final energy = s?.energyState;
-    final live = _live;
-    final sessionsToday = st.sessions.where((x) => _sameDay(x.startAt, now)).toList();
-    final trigger = energyAskTrigger(
-      now,
-      state: energy,
-      reviewedAt: s?.reviewedAt,
-      idleOpens: idleOpenCount(now, widget.tabOpens, lastActionAt(now, st, live)),
-      drifting: driftingBlock(now, st, live, sessionsToday),
-      requested: false,
-    );
-    if (trigger != null) return _energyQuestion(now, trigger, live, sessionsToday);
-    return _coachCard(now);
-  }
-
-  Widget _energyQuestion(DateTime now, EnergyAskTrigger trigger, List<ScheduleBlock> live,
-      List<Session> sessionsToday) {
-    final lastAction = lastActionAt(now, st, live);
-    final idle = widget.tabOpens
-        .where((o) =>
-            now.difference(o).inMinutes <= 90 && (lastAction == null || o.isAfter(lastAction)))
-        .toList();
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: EnergyQuestionCard(
-        message: energyAskMessage(trigger,
-            idleOpens: idle.length,
-            firstOpen: idle.isNotEmpty ? idle.first : null,
-            drifting: driftingBlock(now, st, live, sessionsToday)),
-        onPick: (level, note) async {
-          await _sync.setEnergyState(widget.date, level, note: note);
-          if (!mounted) return;
-          setState(() {});
-          if (level == 'ok') {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Noté — on continue, rien ne change.'),
-              duration: Duration(seconds: 2),
-              behavior: SnackBarBehavior.floating,
-            ));
-          }
-        },
-      ),
-    );
-  }
+  Widget build(BuildContext context) => _coachCard(DateTime.now());
 
   ChallengeProposal? _challengeProposal(DateTime now) {
     final a = logic.challengeActivity(exclude: _scheduledChallengeIds);
