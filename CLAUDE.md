@@ -357,7 +357,7 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
 - `update_domain(domainId, name?, goalMinDay?, autoGoal?, colorValue?)` — retouche un domaine (renommage sûr : tout
   référence le domaine par id) ; la fiche intention / minimum vital reste dans `save_domain_definition`, qui ne renomme
   jamais. **Retouches unitaires** (2026-10) : `update_task {description}` (`""` = effacer), `update_project {phases:[{id,
-  label?, color?, startDate?, endDate?}]}` (par id, jamais d'ajout / suppression : `push_gantt`), `update_block(date,
+  label?, color?, startDate?, endDate?}]}` (par id, jamais d'ajout / suppression : `push_gantt`), `update_project {linkedActivityId}` (activité-temps liée, `""` = délier), `update_block(date,
   blockId, title?, startTime?, durationMin?, category?, status?, skipReason?, delete?, projectId?, taskId?, activityId?,
   actionId?)` (`""` sur un lien = le retirer ; `status:"skipped"` + `skipReason` ou `delete:true` libèrent le créneau d'un
   bloc passé non fait ; `moveTo {date, startTime}` = déplacement ATOMIQUE (copie à destination, origine tracée
