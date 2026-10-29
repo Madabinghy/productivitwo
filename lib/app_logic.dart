@@ -1069,6 +1069,17 @@ class AppLogic implements HuntStore {
     //    Coupé depuis le 2026-10-30 (`askBlockOnChrono`, retour user : « il me
     //    demande systématiquement si ça correspond au bloc ») : le chrono fait
     //    foi ; rattachement à la main par « Bloc ▾ ».
+    // 4) bloc LIBRE en cours (agenda, perso sans source) : revendiqué en
+    //    silence par ce chrono (essai 2026-10-30) — il compte pour lui.
+    final live0 = todayBlocks.where((b) => b.status != 'deleted').toList();
+    final free = freeBlockToClaim(live0, livedNowMinNow);
+    if (free != null) {
+      claimFreeBlock(free, session);
+      final date = free.docDate ?? livedTodayYmd;
+      unawaited(sync?.upsertScheduleBlock(date, free, rememberMirror: false).catchError((_) {}));
+      onChange();
+    }
+
     final hook = onSessionOffBlock;
     if (hook != null && askBlockOnChrono) {
       final live = todayBlocks.where((b) => b.status != 'deleted').toList();

@@ -211,6 +211,33 @@ ScheduleBlock? currentBlockAt(List<ScheduleBlock> blocks, int nowMin) {
   return null;
 }
 
+/// Bloc LIBRE en cours (essai 2026-10-30, retour user) : un chrono lancé
+/// pendant un rendez-vous Google Agenda ou un bloc perso SANS source le
+/// revendique en silence — le bloc prend l'activité du chrono et compte pour
+/// lui. Libre = à faire, ni projet, ni tâche, ni activité, ni déroulé, bloc
+/// normal (pas prép / séance / bilan / deep work), pas une pause, 3 h au plus
+/// (jamais « Sommeil » 22:00 → 05:00), et DÉJÀ commencé à [nowMin].
+const kFreeBlockClaimMaxMin = 180;
+
+ScheduleBlock? freeBlockToClaim(List<ScheduleBlock> blocks, int nowMin) {
+  for (final b in blocks) {
+    if (b.status != 'pending') continue;
+    if (b.projectId != null || b.taskId != null || b.activityId != null || b.sessionTemplateId != null) continue;
+    if (b.kind != 'normal' || b.category == 'break') continue;
+    if (b.durationMin > kFreeBlockClaimMaxMin) continue;
+    final s = blockStartMin(b);
+    if (s <= nowMin && nowMin < s + b.durationMin) return b;
+  }
+  return null;
+}
+
+/// Revendique [b] pour le chrono [s] : le bloc prend l'activité (et l'action)
+/// du chrono ; la session ne change pas (elle garde sa tâche / son action).
+void claimFreeBlock(ScheduleBlock b, Session s) {
+  b.activityId = s.activityId;
+  b.actionId = s.taskId == null ? s.actionId : null;
+}
+
 /// F1 — bloc qui porte le trait « maintenant » À L'INTÉRIEUR de sa carte
 /// (liste mobile) : un bloc pending dont le créneau contient [nowMin]. Deux
 /// blocs qui se chevauchent : celui qui a commencé en dernier. Null = trou

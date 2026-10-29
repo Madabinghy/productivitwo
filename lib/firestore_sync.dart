@@ -3651,11 +3651,13 @@ class FirestoreSync {
   /// Remplace un bloc par son id (ou l'ajoute s'il est absent) en ne
   /// réécrivant que `blocks` — les autres champs du doc (dayReason, plannedAt,
   /// dayMode…) restent intacts. Crée le doc si le jour n'a pas de programme.
-  Future<void> upsertScheduleBlock(String date, ScheduleBlock block) async {
+  Future<void> upsertScheduleBlock(String date, ScheduleBlock block, {bool rememberMirror = true}) async {
     if (uid == null) return;
     // Miroir d'agenda rattaché à une activité (sans tâche) : on retient
-    // « titre → activité » pour les prochaines occurrences (2026-10).
-    if (block.gcalEventId != null && block.activityId != null && block.taskId == null) {
+    // « titre → activité » pour les prochaines occurrences (2026-10). Pas pour
+    // une revendication automatique (`rememberMirror: false`) : elle ne vaut
+    // que pour cette occurrence.
+    if (rememberMirror && block.gcalEventId != null && block.activityId != null && block.taskId == null) {
       unawaited(_meta().set({
         'mirrorActivities': {mirrorKey(block.title): block.activityId},
       }, SetOptions(merge: true)).catchError((_) {}));

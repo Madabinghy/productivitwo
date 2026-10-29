@@ -656,7 +656,10 @@ de la routine, sinon activité liée du projet ; l'action n'est pas regardée). 
 bloc en cours **ou celui qui commence dans les 15 min** (`blockToAttachAt`, cours de 14 h lancé à 13 h 55)
 est sur une autre source, l'UI proposait « Pour ce bloc » = `attachSessionToBlock` → `AttachResult` — **question COUPÉE depuis le
 2026-10-30** (`AppLogic.askBlockOnChrono = false`, retour user, sans réglage : au lancement ET au changement de bloc ; le chrono fait
-foi, rattachement à la main par « Bloc ▾ » de la carte mobile). **Le chrono
+foi, rattachement à la main par « Bloc ▾ » de la carte mobile). **Bloc libre revendiqué** (essai 2026-10-30) : au `start()`, un bloc LIBRE déjà
+commencé (`freeBlockToClaim` : à faire, ni projet / tâche / activité / déroulé, `kind` normal, pas une pause, ≤ 3 h — jamais Sommeil)
+prend en silence l'activité du chrono (`claimFreeBlock` ; la session garde sa tâche / action) et compte pour lui ; écrit par
+`upsertScheduleBlock(rememberMirror: false)` — pas de mémoire « titre → activité » pour un rendez-vous récurrent. **Le chrono
 fait foi** (2026-10) : la session GARDE son activité (c'est elle qui alimente les stats, l'utilisateur l'a choisie)
 et prend la tâche/action du bloc ; un bloc **sans tâche** sur une autre activité ou **libre** (miroir Google Agenda,
 bloc perso, projet sans activité liée) prend l'activité du chrono (`AttachResult.sessionAndBlock`, persisté par

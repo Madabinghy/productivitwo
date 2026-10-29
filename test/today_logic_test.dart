@@ -218,4 +218,28 @@ void main() {
     expect(c['c'], (col: 0, cols: 2));
     expect(c['d'], (col: 0, cols: 1));
   });
+
+  test('freeBlockToClaim / claimFreeBlock : bloc libre en cours, jamais une pause, un bloc lié, ni plus de 3 h', () {
+    ScheduleBlock blk(String id, String start, int dur, {String cat = 'personal', String? act, String? proj, String kind = 'normal', String status = 'pending'}) =>
+        ScheduleBlock(id: id, startTime: start, durationMin: dur, title: id, category: cat, activityId: act, projectId: proj, kind: kind, status: status);
+    final now = 10 * 60 + 15; // 10:15
+    expect(freeBlockToClaim([blk('rdv', '10:00', 60)], now)?.id, 'rdv');
+    expect(freeBlockToClaim([blk('futur', '10:30', 60)], now), isNull); // pas encore commencé
+    expect(freeBlockToClaim([blk('pause', '10:00', 30, cat: 'break')], now), isNull);
+    expect(freeBlockToClaim([blk('lie', '10:00', 60, act: 'a')], now), isNull);
+    expect(freeBlockToClaim([blk('projet', '10:00', 60, proj: 'p')], now), isNull);
+    expect(freeBlockToClaim([blk('prep', '10:00', 60, kind: 'prep')], now), isNull);
+    expect(freeBlockToClaim([blk('fait', '10:00', 60, status: 'done')], now), isNull);
+    expect(freeBlockToClaim([blk('sommeil', '06:00', 420)], now), isNull); // > 3 h
+    final b = blk('rdv', '10:00', 60);
+    final s = Session(activityId: 'contenu', startAt: DateTime(2026, 10, 30, 10, 15), taskId: 't1', actionId: 'a1');
+    claimFreeBlock(b, s);
+    expect(b.activityId, 'contenu');
+    expect(b.actionId, isNull); // action de tâche : reste sur la session
+    expect((s.taskId, s.actionId), ('t1', 'a1'));
+    final own = Session(activityId: 'contenu', startAt: DateTime(2026, 10, 30, 10, 15), actionId: 'own1');
+    final b2 = blk('perso', '10:00', 60);
+    claimFreeBlock(b2, own);
+    expect(b2.actionId, 'own1');
+  });
 }
