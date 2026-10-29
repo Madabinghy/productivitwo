@@ -406,6 +406,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
       sub: first == null
           ? _nextLabel(cur)
           : [
+              if (first.share case final share? when !first.reached) share.label,
               first.reached ? '✓ ${first.todo.progressLabel}' : first.todo.progressLabel,
               if (todayMark(first.activity.habitFreq, todayN) case final mark?) mark,
               if (nextSlot != null) 'ensuite ${nextSlot.activity.name}',
@@ -612,6 +613,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
                             decorationColor: pal.text3)),
                     if (todayMark(a.habitFreq, n) case final mark?)
                       Text('$mark · ${s.todo.progressLabel}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
+                    if (s.share case final share? when !done)
+                      Text(share.label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: kRoutineAccent)),
                     if (s.pushed)
                       Text('reportée ${momentOf(s.home).of}', style: const TextStyle(fontSize: 11, color: kBAttention)),
                     if (dismissed) Text('pas aujourd\'hui', style: TextStyle(fontSize: 11, color: pal.text4)),
