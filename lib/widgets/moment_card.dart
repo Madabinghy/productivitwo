@@ -1,9 +1,13 @@
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierCoral;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
 /// Geste rare d'une carte du moment, rangé dans la feuille « ⋯ Autres ».
+/// Gestes rares affichés en ligne sous une carte du moment (le reste derrière « ⋯ »).
+const kMomentInlineActions = 5;
+
 class MomentAction {
   final String label;
   final IconData? icon;
@@ -295,25 +299,19 @@ class MomentCard extends StatelessWidget {
             ),
           ),
         );
+    final hasMain = onFiche != null || chainLabel != null;
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Row(children: [
-        if (onFiche != null) ficheIcon != null ? iconBtn(ficheIcon!, ficheLabel, onFiche) : btn(ficheLabel, onFiche),
-        if (onFiche != null && chainLabel != null) const SizedBox(width: 8),
-        if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (hasMain)
+          Row(children: [
+            if (onFiche != null) ficheIcon != null ? iconBtn(ficheIcon!, ficheLabel, onFiche) : btn(ficheLabel, onFiche),
+            if (onFiche != null && chainLabel != null) const SizedBox(width: 8),
+            if (chainLabel != null) btn(chainLabel!, onChain, icon: chainIcon, color: accent),
+          ]),
         if (moreActions.isNotEmpty) ...[
-          const SizedBox(width: 4),
-          TextButton(
-            onPressed: () => showMomentActions(context, title: moreTitle ?? title, actions: moreActions),
-            style: TextButton.styleFrom(
-              foregroundColor: pal.text3,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: const Size(0, 42),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
-            ),
-            child: const Text('⋯ Autres'),
-          ),
+          if (hasMain) const SizedBox(height: 8),
+          MomentActionIcons(actions: moreActions, title: moreTitle ?? title),
         ],
       ]),
     );
@@ -385,5 +383,64 @@ class MomentRing extends StatelessWidget {
           ]),
       ]),
     );
+  }
+}
+
+/// Gestes rares d'une carte du moment en boutons ronds à icône (retour user
+/// 2026-10-30, remplace « ⋯ Autres ») : jusqu'à `kMomentInlineActions` gestes
+/// aux icônes DISTINCTES en ligne (infobulle = libellé · indice), le reste
+/// derrière un rond « ⋯ » qui ouvre la feuille des gestes.
+class MomentActionIcons extends StatelessWidget {
+  final List<MomentAction> actions;
+  final String title;
+  const MomentActionIcons({super.key, required this.actions, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = NowPalette.of(context);
+    final inline = <MomentAction>[];
+    final overflow = <MomentAction>[];
+    final usedIcons = <IconData>{};
+    for (final m in actions) {
+      final ic = m.icon;
+      if (ic != null && inline.length < kMomentInlineActions && !usedIcons.contains(ic)) {
+        inline.add(m);
+        usedIcons.add(ic);
+      } else {
+        overflow.add(m);
+      }
+    }
+    Widget btn(MomentAction m) => Tooltip(
+          message: m.hint == null ? m.label : '${m.label} · ${m.hint}',
+          child: Semantics(
+            button: true,
+            label: m.label,
+            excludeSemantics: true,
+            child: SizedBox(
+              width: 46,
+              height: 40,
+              child: OutlinedButton(
+                onPressed: m.onTap,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: m.destructive ? kPalierCoral : pal.text2,
+                  side: BorderSide(color: (m.destructive ? kPalierCoral : pal.text2).withValues(alpha: .22)),
+                  shape: const StadiumBorder(),
+                  padding: EdgeInsets.zero,
+                ),
+                child: Icon(m.icon, size: 19),
+              ),
+            ),
+          ),
+        );
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      for (final m in inline) btn(m),
+      if (overflow.isNotEmpty)
+        btn(MomentAction(
+          'Autres gestes',
+          icon: Icons.more_horiz_rounded,
+          hint: '${overflow.length}',
+          onTap: () => showMomentActions(context, title: title, actions: overflow),
+        )),
+    ]);
   }
 }

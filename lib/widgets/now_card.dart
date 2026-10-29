@@ -18,7 +18,7 @@ import 'package:productivitwo_v1/chain_session_store.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/utils/block_work.dart' show blockWork;
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
-import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, showMomentActions;
+import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, MomentLegend, MomentActionIcons;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/ring_painter.dart';
 
@@ -512,11 +512,11 @@ class _NowCardState extends State<NowCard> {
         if (strip != null) ...[const SizedBox(height: 12), strip],
         const SizedBox(height: 14),
         Row(children: buttons),
-        if (chain != null || more.isNotEmpty)
+        if (chain != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Row(children: [
-              if (chain != null)
+              // lien « Enchaîner »
                 Flexible(
                   child: TextButton.icon(
                     onPressed: () {
@@ -537,20 +537,12 @@ class _NowCardState extends State<NowCard> {
                     label: Text(chain.label, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
-              const Spacer(),
-              if (more.isNotEmpty)
-                TextButton(
-                  onPressed: () => showMomentActions(context, title: title, actions: more),
-                  style: TextButton.styleFrom(
-                      foregroundColor: pal.text3,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      minimumSize: const Size(0, 36),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
-                  child: const Text('⋯ Autres'),
-                ),
             ]),
           ),
+        if (more.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          MomentActionIcons(actions: more, title: title),
+        ],
         if (_elanRow(pal, b, session == null && !countdown) case final row?) ...[
           const SizedBox(height: 10),
           row,

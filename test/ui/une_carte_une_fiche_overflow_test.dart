@@ -104,17 +104,42 @@ void _momentCardLinksTests() {
       ),
     ));
     expect(find.text('Étape en cours : Sloann'), findsOneWidget);
-    expect(find.text('⋯ Autres'), findsOneWidget);
+    expect(find.text('⋯ Autres'), findsNothing);
     await tester.tap(find.text('Fiche'));
     expect(tapped, 'fiche');
     await tester.tap(find.text('Enchaîner · 4'));
     expect(tapped, 'chain');
-    await tester.tap(find.text('⋯ Autres'));
-    await tester.pumpAndSettle();
-    expect(find.text('Chrono'), findsOneWidget);
-    await tester.tap(find.text('Chrono'));
-    await tester.pumpAndSettle();
+    // Geste rare = bouton rond à icône, libellé en infobulle.
+    await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     expect(tapped, 'chrono');
+    expect(find.byTooltip('Chrono'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('MomentActionIcons : 5 icônes distinctes en ligne, le reste derrière « ⋯ »', (tester) async {
+    final tapped = <String>[];
+    MomentAction a(String l, IconData i) => MomentAction(l, icon: i, onTap: () => tapped.add(l));
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: MomentActionIcons(title: 'T', actions: [
+          a('Chrono A', Icons.play_arrow_rounded),
+          a('Chrono B', Icons.play_arrow_rounded), // même icône → derrière « ⋯ »
+          a('Fait', Icons.check_circle_outline),
+          a('Viser', Icons.wb_sunny_outlined),
+          a('Caser', Icons.event_rounded),
+          a('Projet', Icons.account_tree_outlined),
+          a('Sixième', Icons.bolt_rounded), // au-delà de 5 → derrière « ⋯ »
+        ]),
+      ),
+    ));
+    expect(find.byType(OutlinedButton), findsNWidgets(6)); // 5 + « ⋯ »
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Chrono B'), findsOneWidget);
+    expect(find.text('Sixième'), findsOneWidget);
+    await tester.tap(find.text('Chrono B'));
+    await tester.pumpAndSettle();
+    expect(tapped, ['Chrono B']);
     expect(tester.takeException(), isNull);
   });
 }
