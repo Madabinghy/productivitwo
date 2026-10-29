@@ -40,6 +40,9 @@ import 'package:productivitwo_v1/widgets/routine_chain_screen.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
+import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/utils/stakes.dart';
+import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showActionFocusScreen;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Onglet « Aujourd'hui » : carte MAINTENANT (bloc en cours + chrono) en tête,
@@ -787,6 +790,7 @@ class TodayViewState extends State<TodayView> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final stakes = _showTomorrow ? null : _stakeBoard();
     final now = DateTime.now();
     // Journée vécue : avant la bascule (5 h), « aujourd'hui » = la veille.
     final date = _showTomorrow
@@ -814,6 +818,10 @@ class TodayViewState extends State<TodayView> {
                 if (!_showTomorrow) ...[
                   if (_dayWinCard(cs, now) case final card?) card,
                   if (_morningCard(cs, now, text3) case final card?) card,
+                  if (stakes case final board? when !board.isEmpty) ...[
+                    const SizedBox(height: 12),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+                  ],
                   const SizedBox(height: 16),
                   NowCard(
                     badges: widget.badges,
@@ -904,6 +912,8 @@ class TodayViewState extends State<TodayView> {
                     onChallengeAccept: widget.onChallengeAccept,
                     onChallengeSchedule: widget.onChallengeSchedule,
                   ),
+                  if (stakes case final board? when !board.isEmpty)
+                    StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery),
                 ],
                 const SizedBox(height: 22),
                 _programHeader(cs, link, text3),
@@ -1225,6 +1235,62 @@ class TodayViewState extends State<TodayView> {
     });
   }
 
+  /// Le tableau du jour (« Aujourd'hui en enjeux », lot 2) : recalculé à
+  /// chaque build depuis le deck chargé et l'état local ; null sans deck.
+  StakeBoard? _stakeBoard() {
+    final bc = widget.badges;
+    if (bc == null) return null;
+    try {
+      return buildStakeBoard(
+        deck: bc.deck,
+        facts: bc.todayFacts(),
+        hunts: widget.logic.badgeHunts,
+        projects: widget.logic.currentProjects,
+        activities: widget.logic.state.activeActivities,
+        dayStartMin: widget.logic.dayStartMin,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openBadgeGallery() {
+    final bc = widget.badges;
+    if (bc == null) return;
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: bc.sync, center: bc, showSamples: false)))
+        .then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  /// Fait le geste d'un enjeu : +1, chrono, bloc, page focus.
+  void _runStake(Stake s) {
+    final g = s.gesture;
+    final logic = widget.logic;
+    switch (g.kind) {
+      case StakeGestureKind.routine:
+        if (g.activity != null) routinePlusWithUndo(context, logic, g.activity!);
+      case StakeGestureKind.activity:
+        if (g.activity != null) logic.start(g.activity!.id);
+      case StakeGestureKind.block:
+        if (g.block != null) (widget.onNowLaunch ?? widget.onLaunch)?.call(g.block!);
+      case StakeGestureKind.action:
+        final a = g.action;
+        if (a == null) break;
+        final acts = logic.state.activeActivities;
+        Activity? byId(String? id) => id == null ? null : acts.where((x) => x.id == id).firstOrNull;
+        final chrono = byId(a.linkedActivityId) ?? byId(g.project?.linkedActivityId) ?? g.owner;
+        showActionFocusScreen(context,
+                logic: logic, action: a, project: g.project, task: g.task, ownerActivity: g.owner, chronoActivity: chrono, sync: widget.sync ?? FirestoreSync())
+            .then((_) {
+          if (mounted) setState(() {});
+        });
+        return;
+    }
+    if (mounted) setState(() {});
+  }
+
   /// Déblocages à signaler : calculés à l'ouverture de l'onglet, marqués vus
   /// aussitôt (le signal ne revient jamais), affichés jusqu'au « × » / « Voir ».
   Future<void> _loadBadgeSignals() async {
@@ -1233,7 +1299,8 @@ class TodayViewState extends State<TodayView> {
     try {
       final d = await bc.load();
       final s = await bc.takeSignals(d);
-      if (mounted && s.isNotEmpty) setState(() => _badgeSignals = s);
+      // Le tableau des enjeux attend le deck : on redessine même sans signal.
+      if (mounted) setState(() => _badgeSignals = s.isNotEmpty ? s : _badgeSignals);
     } catch (_) {}
   }
 

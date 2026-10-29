@@ -6,10 +6,12 @@ list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   cloud_firestore
   connectivity_plus
+  file_selector_windows
   firebase_auth
   firebase_core
   flutter_timezone
   printing
+  share_plus
   url_launcher_windows
 )
 
