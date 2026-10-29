@@ -10,6 +10,7 @@ import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin;
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
+import 'package:productivitwo_v1/widgets/confirm_done.dart';
 
 /// Fiche « bloc » (2026-10 ; feuille depuis « une carte, une fiche », lot 4) :
 /// toucher un bloc de tâche dans Aujourd'hui ouvre ce qu'il y a à FAIRE, pas
@@ -137,7 +138,10 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
               tooltip: a.done ? 'Rouvrir' : 'Marquer faite',
               icon: Icon(a.done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
                   color: a.done ? Colors.green : cs.onSurface.withOpacity(.4)),
-              onPressed: () => _mutate(() => setActionDone(a, !a.done)),
+              onPressed: () async {
+                if (!a.done && !await confirmDone(context, title: a.title)) return;
+                _mutate(() => setActionDone(a, !a.done));
+              },
             ),
             Expanded(
               child: Text(a.title,
@@ -245,7 +249,10 @@ class _BlockWorkScreenState extends State<_BlockWorkScreen> {
                         tooltip: focus.done ? 'Rouvrir l\'action' : 'Action faite',
                         icon: Icon(focus.done ? Icons.check_circle_rounded : Icons.check_circle_outline,
                             size: 28, color: focus.done ? Colors.green : cs.primary),
-                        onPressed: () => _mutate(() => setActionDone(focus, !focus.done)),
+                        onPressed: () async {
+                          if (!focus.done && !await confirmDone(context, title: focus.title)) return;
+                          _mutate(() => setActionDone(focus, !focus.done));
+                        },
                       ),
                     ]),
                     if (focus.note != null)

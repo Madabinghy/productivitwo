@@ -706,6 +706,14 @@ la dernière écriture gagne pour cette tâche. Hors connexion / transaction > 1
 d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste utilisable sans réseau. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
 « ✓ Action faite » (coche + arrête, annulable).
 
+## Confirmation avant de cocher (2026-10-30)
+
+Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet
+déplié, fiche de tâche, fiche d'action, fiche d'activité, écran bloc) passe par `confirmDone(context, title:, task:)`
+(`widgets/confirm_done.dart` : « Action faite ? / Tâche faite ? » · Annuler · « Oui, c'est fait »). Exceptions : le glisser vers la
+droite dans Actions (geste délibéré qui propose déjà « Annuler », `_toggleDone(confirm: false)`), « Étape faite » et les écrans
+d'exécution (page focus, Enchaîner, séance). Décocher ne demande jamais confirmation.
+
 ## Suppression : soft-delete partout
 
 Ne jamais faire `delete()` direct sauf cas explicite.

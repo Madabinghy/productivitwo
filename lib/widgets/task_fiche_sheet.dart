@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/widgets/project_sheet.dart' show showDocList;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/task_schedule.dart';
+import 'package:productivitwo_v1/widgets/confirm_done.dart';
 
 /// Fiche de TÂCHE « une carte, une fiche » (2026-10, maquette « Fiche de
 /// tâche ») : en-tête `FicheHeader` (émoji de rôle en petit, titre sur deux
@@ -193,6 +194,7 @@ class _TaskFicheState extends State<_TaskFiche> {
   }
 
   Future<void> _toggleActionDone(TaskAction a, bool v) async {
+    if (v && !await confirmDone(context, title: a.title)) return;
     setActionDone(a, v);
     await _patchAction(a);
     if (!mounted) return;
@@ -1046,7 +1048,8 @@ class _ActionFicheState extends State<_ActionFiche> {
           kpi: kpi,
           leading: InkWell(
             customBorder: const CircleBorder(),
-            onTap: () {
+            onTap: () async {
+              if (!a.done && !await confirmDone(context, title: a.title)) return;
               setActionDone(a, !a.done);
               _persist();
             },
@@ -1109,7 +1112,7 @@ class _ActionFicheState extends State<_ActionFiche> {
               ? 'Rouvrir'
               : (widget.onStart != null && linked != null ? 'Lancer le chrono' : 'Marquer faite'),
           primaryIcon: a.done ? Icons.undo_rounded : (widget.onStart != null && linked != null ? Icons.play_arrow_rounded : Icons.check_rounded),
-          onPrimary: () {
+          onPrimary: () async {
             if (a.done) {
               setActionDone(a, false);
               _persist();
@@ -1117,16 +1120,18 @@ class _ActionFicheState extends State<_ActionFiche> {
               Navigator.pop(context);
               widget.onStart!();
             } else {
+              if (!await confirmDone(context, title: a.title)) return;
               setActionDone(a, true);
               _persist();
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
             }
           },
           secondary: [
-            if (!a.done && widget.onStart != null && linked != null) (label: 'Marquer faite', onTap: () {
+            if (!a.done && widget.onStart != null && linked != null) (label: 'Marquer faite', onTap: () async {
+              if (!await confirmDone(context, title: a.title)) return;
               setActionDone(a, true);
               _persist();
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
             }),
             (label: 'Modifier', onTap: _edit),
             if (widget.onOrganize != null)
