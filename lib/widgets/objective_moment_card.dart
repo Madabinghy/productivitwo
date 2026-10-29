@@ -10,7 +10,9 @@ import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWork
 import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/objective_progress.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/utils/progress_bricks.dart' show Brick, BrickRow, BrickState;
 import 'package:productivitwo_v1/widgets/moment_card.dart';
+import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
 import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlusWithUndo, routineTodayCount;
 
@@ -116,6 +118,25 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
             preferObjectiveId: o.id),
       );
     }
+    // Grammaire de Projets (2026-10) : les morceaux du jour (temps engagés,
+    // routines, blocs, relevé) en briques — la même brique que Projets — avec
+    // la liste « Aujourd'hui : … » en légende ; la sous-ligne ne dit que l'état.
+    final pieces = _pieces(m);
+    final stateLine = pctInt == null
+        ? 'sans rythme hebdo'
+        : pctInt >= 110
+            ? 'en avance sur le rythme'
+            : pctInt >= 85
+                ? 'au rythme'
+                : 'en retard sur le rythme';
+    final deepPossible = widget.onLaunch != null && (m.day.times.isNotEmpty || m.day.nextActions.isNotEmpty);
+    void openDeep() => showDeepWorkSheet(context,
+        logic: widget.logic,
+        sync: widget.sync,
+        date: widget.logic.livedTodayYmd,
+        onLaunch: widget.onLaunch!,
+        objectives: widget.objectives,
+        preferObjectiveId: o.id);
     return MomentCard(
       accent: kObjectiveAccent,
       eyebrow: o.isTactical ? 'COUP EN COURS' : 'OBJECTIF DU MOMENT',
@@ -130,18 +151,69 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
       title: o.title,
       sub: m.allDone
           ? '✓ Tout est fait pour aujourd’hui'
-          : remaining.isEmpty
-              ? _hint(m.move)
-              : 'Reste aujourd’hui : ${remaining.join(' · ')}',
-      subColor: m.allDone ? kPalierGreen : null,
+          : [stateLine, if (m.readingDue) 'relevé dû', if (remaining.isEmpty && !m.readingDue) _hint(m.move)].join(' · '),
+      subColor: m.allDone ? kPalierGreen : (pctInt != null && pctInt < 60 ? palierColor(pctInt) : null),
+      visual: pieces.isEmpty
+          ? null
+          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ProgressBricks(row: BrickRow(bricks: pieces, expected: 0), height: 12, accent: kObjectiveAccent),
+              MomentLegend(remaining.isEmpty ? 'Aujourd’hui : tout est fait' : 'Aujourd’hui : ${remaining.join(' · ')}',
+                  right: '${pieces.where((b) => b.state == BrickState.done).length} / ${pieces.length}'),
+            ]),
       primaryLabel: move.label,
       primaryIcon: move.icon,
       primaryOutlined: m.move.kind == ObjectiveMoveKind.running,
       onPrimary: move.onTap,
       onFiche: () => _fiche(o),
-      chainLabel: chainN > 0 ? 'Enchaîner · $chainN ${chainN > 1 ? 'choses' : 'chose'} pour cet objectif' : null,
+      chainLabel: chainN > 0 ? 'Enchaîner · $chainN' : null,
       onChain: chainN > 0 ? () => widget.onChainObjective!(o) : null,
+      moreTitle: o.title,
+      moreActions: [
+        if (deepPossible && !deep) MomentAction('Bloc de 90 min', icon: Icons.bolt_rounded, hint: 'deep work sur cet objectif', onTap: openDeep),
+        if (m.readingDue && m.move.kind != ObjectiveMoveKind.reading)
+          MomentAction('Noter un relevé', icon: Icons.edit_rounded, onTap: () => _fiche(o)),
+        for (final t in m.day.times)
+          if (t.activity != null && !(m.move.kind == ObjectiveMoveKind.time && m.move.time?.activityId == t.activityId))
+            MomentAction('Chrono · ${t.name}',
+                icon: Icons.play_arrow_rounded,
+                hint: '${fmtMin(t.doneTodayMin)} / ${fmtMin(t.expectedTodayMin)} aujourd’hui',
+                onTap: () => widget.logic.start(t.activityId)),
+        for (final a in m.day.routines)
+          if (!(m.move.kind == ObjectiveMoveKind.routine && m.move.routine?.id == a.id))
+            MomentAction('+1 · ${a.name}', icon: Icons.add, onTap: () => routinePlusWithUndo(context, widget.logic, a)),
+        for (final n in m.day.nextActions.take(3))
+          if (widget.onOpenTask != null && !(m.move.kind == ObjectiveMoveKind.nextAction && m.move.next?.action.id == n.action.id))
+            MomentAction(n.action.title, icon: Icons.arrow_forward_rounded, hint: n.project.title, onTap: () => widget.onOpenTask!(n.project, n.task)),
+      ],
     );
+  }
+
+  /// Les morceaux du jour en briques : chaque temps engagé (fait / attendu
+  /// aujourd'hui), chaque routine (compte / cible), chaque bloc à faire ou
+  /// fait, le relevé s'il est dû.
+  List<Brick> _pieces(ObjectiveMoment m) {
+    final d = m.day;
+    final out = <Brick>[];
+    Brick brick(String id, String title, double fill) => Brick(
+        id: id, title: title, state: fill >= 1 ? BrickState.done : (fill > 0 ? BrickState.started : BrickState.todo), fill: fill.clamp(0, 1));
+    for (final t in d.times) {
+      out.add(brick('t-${t.activityId}', t.name, t.expectedTodayMin <= 0 ? 1 : t.doneTodayMin / t.expectedTodayMin));
+    }
+    for (final a in d.routines) {
+      final target = a.habitFreq == HabitFreq.daily ? ((a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1)) : 1;
+      out.add(brick('r-${a.id}', a.name, routineTodayCount(widget.logic, a) / target));
+    }
+    for (final b in d.blocks) {
+      if (b.status == 'skipped' || b.status == 'deleted') continue;
+      out.add(brick('b-${b.id}', b.title, b.status == 'done' ? 1 : 0));
+    }
+    if (m.readingDue) out.add(brick('reading', 'Relevé', 0));
+    return out;
+  }
+
+  String _minLeft(ObjectiveTimeToday t) {
+    final left = t.expectedTodayMin - t.doneTodayMin;
+    return left > 0 ? fmtMin(left) : t.name;
   }
 
   String _hint(ObjectiveMove mv) => switch (mv.kind) {
@@ -155,14 +227,14 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
     final mv = m.move;
     switch (mv.kind) {
       case ObjectiveMoveKind.running:
-        return (label: 'Arrêter · ${mv.time!.name}', icon: Icons.stop_rounded, onTap: () => widget.logic.stopActive());
+        return (label: 'Arrêter', icon: Icons.stop_rounded, onTap: () => widget.logic.stopActive());
       case ObjectiveMoveKind.block:
         final b = mv.block!;
         final launch = widget.onLaunch ?? widget.onOpenSource;
-        return (label: '${b.startTime} · ${b.title}', icon: Icons.play_arrow_rounded, onTap: launch == null ? null : () => launch(b));
+        return (label: 'Lancer · ${b.startTime}', icon: Icons.play_arrow_rounded, onTap: launch == null ? null : () => launch(b));
       case ObjectiveMoveKind.time:
         final t = mv.time!;
-        return (label: 'Chrono · ${t.name}', icon: Icons.play_arrow_rounded, onTap: t.activity == null ? null : () => widget.logic.start(t.activityId));
+        return (label: 'Chrono · ${_minLeft(t)}', icon: Icons.play_arrow_rounded, onTap: t.activity == null ? null : () => widget.logic.start(t.activityId));
       case ObjectiveMoveKind.routine:
         final a = mv.routine!;
         return (label: '+1 · ${a.name}', icon: null, onTap: () => routinePlusWithUndo(context, widget.logic, a));
@@ -170,7 +242,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
         return (label: 'Noter un relevé', icon: Icons.edit_rounded, onTap: () => _fiche(m.objective));
       case ObjectiveMoveKind.nextAction:
         final n = mv.next!;
-        return (label: n.action.title, icon: Icons.arrow_forward_rounded, onTap: widget.onOpenTask == null ? null : () => widget.onOpenTask!(n.project, n.task));
+        return (label: 'Ouvrir l’action', icon: Icons.arrow_forward_rounded, onTap: widget.onOpenTask == null ? null : () => widget.onOpenTask!(n.project, n.task));
       case ObjectiveMoveKind.none:
         return (label: m.allDone ? 'Rien de plus aujourd’hui' : 'Rien d’engagé aujourd’hui', icon: null, onTap: null);
     }
