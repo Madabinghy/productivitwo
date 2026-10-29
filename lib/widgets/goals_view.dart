@@ -448,10 +448,24 @@ class _GoalsViewState extends State<GoalsView> {
               border: Border.all(color: dark ? kBLine : cs.outlineVariant.withValues(alpha: .4)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Projet dans un dossier (retour user 2026-10-30) : « Chérubins › »
+              // en petit sur la ligne du compteur, le nom du projet seul dessous,
+              // sur toute la largeur.
+              Row(crossAxisAlignment: m.rootTitle == null ? CrossAxisAlignment.start : CrossAxisAlignment.center, children: [
                 Expanded(
-                  child: Text(m.rootTitle == null ? p.title : '${m.rootTitle} › ${p.title}',
-                      maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                  child: m.rootTitle == null
+                      ? Text(p.title,
+                          maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: cs.onSurface))
+                      : Row(children: [
+                          Icon(Icons.folder_outlined, size: 13, color: text3),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text('${m.rootTitle} ›',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: text3)),
+                          ),
+                        ]),
                 ),
                 const SizedBox(width: 8),
                 Text('${row.done} / ${row.total}',
@@ -459,6 +473,12 @@ class _GoalsViewState extends State<GoalsView> {
                 const SizedBox(width: 8),
                 StateChip(chip, color: m.upcoming ? kPalierMuted : st),
               ]),
+              if (m.rootTitle != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(p.title,
+                      maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: cs.onSurface)),
+                ),
               const SizedBox(height: 2),
               // Retour user 2026-10 : la ligne entière ouvre le bloc, les briques ne
               // sont plus un geste à part (elles le restent dans le bloc ouvert).
