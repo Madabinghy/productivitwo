@@ -579,7 +579,9 @@ re-viser). **Les 3 lots sont livrés** (⚠️ `firebase deploy --only functions
 l'activité — `linkedActivityId` du projet ou d'une action ouverte, `projectServesActivity` —, prochaine action par échéance
 effective, en retard d'abord, puis datées, puis actions propres de l'activité ; tâches à venir, dossiers, projets en pause
 exclus), tap = choisir, « Commencer · … » = chrono ciblé sur l'activité du bloc, « Suivante › » passe à la prochaine sans
-sortir, « Enchaîner · … » après une action faite ; en-tête « bloc · reste n min » (`blockRemainingMin`). File vide = chrono
+sortir, « Enchaîner · … » après une action faite ; en-tête « bloc · reste n min » (`BlockFocus.remainingMin(now, dayStartMin:)`,
+sur la journée vécue : un bloc de la nuit compte +24 h). **Changer d'action = sur place** (2026-10-30) : tap dans la file,
+« Suivante » et « Enchaîner » changent `_index` de l'état (`_goTo` → `setState`), jamais de fermeture / réouverture de la page. File vide = chrono
 seul comme avant. **Lot 2 livré** : « Terminer le bloc » (lien avant / après, bandeau « Le bloc est fini · le chrono
 continue » pendant) → écran BLOC TERMINÉ (`_BlockEndScreen`, `blockOutcome` : temps tenu = sessions de l'activité tronquées
 au créneau, actions de la file faites dans la fenêtre avec leurs minutes, étapes cochées, reste de la file — qui ne va nulle
