@@ -1163,11 +1163,13 @@ class _ActionsViewState extends State<ActionsView> {
     // sections, dans une section « EN VEILLE » repliée (sauf action déjà au programme).
     bool resting(_Entry e) => widget.logic.isDomainResting(_domainOf(e)) && !plannedIds.contains(e.action.id);
     final nextIds = {for (final p in _allProjects) if (nextAction(p) case final n?) n.action.id};
+    // L'essentiel (2026-10-30) : libres + UNE action par projet (sa prochaine,
+    // déjà la plus en retard) + celles au programme du jour. Les autres retards
+    // d'un projet attendent leur tour : Projets ou « Tout » pour les voir.
     bool essential(_Entry e) =>
         e.project == null ||
         plannedIds.contains(e.action.id) ||
-        nextIds.contains(e.action.id) ||
-        isOverdueAction(e.action, e.task, today0);
+        nextIds.contains(e.action.id);
     final shown = passing.where((e) => !upcoming(e) && !resting(e) && (!_essentials || essential(e))).toList();
     final hiddenByEssentials = _essentials ? passing.where((e) => !upcoming(e) && !resting(e) && !essential(e)).length : 0;
     final restingEntries = passing.where((e) => !upcoming(e) && resting(e)).toList();
