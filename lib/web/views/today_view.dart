@@ -46,6 +46,7 @@ import 'package:productivitwo_v1/utils/objective_progress.dart' show computeObje
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
 import 'package:productivitwo_v1/widgets/dashboard_tiles.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 // Vue Aujourd'hui (refonte web, § 2 du handoff) : MAINTENANT (bloc en cours +
 // chrono) · PROGRAMME DU JOUR (frise horaire à l'échelle) · CETTE SEMAINE
@@ -250,7 +251,7 @@ class TodayViewState extends State<TodayView> {
     if (b == null || open == null) return;
     final attachable = _canAttach(b);
     final who = _activityName(open.activityId) ?? 'ton chrono';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('« ${b.title} » commence — $who, c\'est pour ce bloc ?'),
       duration: const Duration(seconds: 12),
       action: attachable
@@ -558,7 +559,7 @@ class TodayViewState extends State<TodayView> {
       await _stopChrono();
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('Action faite : ${t.action.title}'),
       duration: const Duration(seconds: 5),
       action: wasDone
@@ -611,7 +612,7 @@ class TodayViewState extends State<TodayView> {
     });
     await widget.sync.upsertScheduleBlock(date, updated);
     if (cancelled && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
         content: Text('« ${updated.title} » annulé — il sort du programme'),
         duration: const Duration(seconds: 6),
         action: SnackBarAction(
@@ -2003,7 +2004,7 @@ class TodayViewState extends State<TodayView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(resize
             ? '« ${b.title} » : ${fmtMin(dur)}, fin ${_clockOf(start + dur)}'
             : '« ${b.title} » déplacé à ${_clockOf(start)}'),
@@ -2936,7 +2937,7 @@ class TodayViewState extends State<TodayView> {
               setState(() => setActionDone(a, true));
               await widget.sync.updateOwnActions(act.id, act.ownActions);
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
                 content: Text('Action faite : ${a.title}'),
                 duration: const Duration(seconds: 4),
                 action: SnackBarAction(
@@ -3011,7 +3012,7 @@ class TodayViewState extends State<TodayView> {
     logic.incHabit(act.id, 1, today);
     persist();
     if (logic.state.habitHits.isNotEmpty) widget.sync.saveHabitHit(logic.state.habitHits.last);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('+1 : ${act.name}'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(

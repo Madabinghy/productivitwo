@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/web/action_dialogs.dart';
 import 'package:productivitwo_v1/web/session_preview_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 const _tabular = [FontFeature.tabularFigures()];
 
@@ -142,7 +143,7 @@ class _ProjectChecklistsViewState extends State<ProjectChecklistsView> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('Étape retirée : ${c.title}'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 5),

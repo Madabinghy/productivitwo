@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 /// « Le meilleur à faire » — TOUTES les routines du jour (2026-10 : plus de
 /// limite à 3, retour user) : d'abord celles PAS ENCORE ATTEINTES
@@ -93,7 +94,7 @@ class _BestToDoCardState extends State<BestToDoCard> {
     final ymd = yyyymmdd(DateTime.now());
     logic.setNowDone(ymd, logic.nowDoneSet(ymd)..add(a.id));
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text('Validée pour aujourd\'hui : ${a.name}'),
       duration: const Duration(seconds: 4),
       action: SnackBarAction(

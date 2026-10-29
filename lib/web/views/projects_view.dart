@@ -23,6 +23,7 @@ import 'package:productivitwo_v1/web/quick_add_action_dialog.dart';
 import 'package:productivitwo_v1/web/session_preview_dialog.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/objective_edit_sheet.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 // Onglet Projets (refonte web § 4.1–4.4) : en-tête + recherche + Nouveau
 // projet · carte Objectif · filtres domaine / En veille / Archivés · tableau
@@ -258,7 +259,7 @@ class _ProjectsViewState extends State<ProjectsView> {
     await widget.sync.saveProject(p);
     widget.onRefresh();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showClosingSnackBar(SnackBar(
       content: Text(done ? '« ${p.title} » terminé — rangé dans Terminés' : '« ${p.title} » rouvert'),
       action: SnackBarAction(label: 'Annuler', onPressed: () => _setDone(p, !done)),
     ));

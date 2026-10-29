@@ -21,6 +21,7 @@ import 'package:productivitwo_v1/web/gantt_pdf_exporter.dart';
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import 'package:productivitwo_v1/widgets/undo_snack.dart';
 
 const _uuid = Uuid();
 
@@ -359,7 +360,7 @@ class _GanttScreenState extends State<GanttScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text(msg),
         behavior: SnackBarBehavior.floating,
         duration: Duration(milliseconds: actionLabel == null ? 2000 : 5000),
@@ -2921,7 +2922,7 @@ class _TaskDetailDialogState extends State<_TaskDetailDialog>
 
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
+      ..showClosingSnackBar(SnackBar(
         content: Text('Tâche « ${removed.title} » supprimée'),
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 6),
