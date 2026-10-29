@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show shortDateFr, focusLabel;
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -370,6 +371,7 @@ Future<bool> showAddOwnActionDialog(
   BuildContext context, {
   required FirestoreSync sync,
   required List<Activity> activities,
+  List<Domain> domains = const [],
 }) async {
   final timeActivities =
       activities.where((a) => !a.deleted && a.type == 'time').toList();
@@ -413,20 +415,23 @@ Future<bool> showAddOwnActionDialog(
                       letterSpacing: .8,
                       color: Theme.of(ctx).colorScheme.onSurface.withOpacity(.45))),
               const SizedBox(height: 6),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final a in timeActivities)
-                    ChoiceChip(
-                      selected: activityId == a.id,
-                      onSelected: (_) => setLocal(() => activityId = a.id),
-                      showCheckmark: false,
-                      label: Text(a.name),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                ],
-              ),
+              for (final g in groupActivitiesByDomain(timeActivities, domains)) ...[
+                ActivityDomainHeader(name: g.name, color: g.color, padding: const EdgeInsets.only(top: 6, bottom: 4)),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final a in g.activities)
+                      ChoiceChip(
+                        selected: activityId == a.id,
+                        onSelected: (_) => setLocal(() => activityId = a.id),
+                        showCheckmark: false,
+                        label: Text(a.name),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

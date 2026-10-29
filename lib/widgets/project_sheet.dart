@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone, setChecklistItem;
@@ -384,53 +385,15 @@ class _ProjectSheetState extends State<_ProjectSheet> {
 
   Future<void> _pickLinkedActivity() async {
     // Activités-temps, celles du domaine du projet en premier.
-    final candidates = widget.activities
-        .where((a) => a.type == 'time')
-        .toList()
-      ..sort((a, b) {
-        final ad = a.domainId == _project.domainId ? 0 : 1;
-        final bd = b.domainId == _project.domainId ? 0 : 1;
-        return ad != bd ? ad - bd : a.name.compareTo(b.name);
-      });
+    final candidates = widget.activities.where((a) => a.type == 'time' && !a.deleted).toList();
     if (candidates.isEmpty) return;
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: Text('Activité liée au projet',
-                  style:
-                      TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            ),
-            if (_project.linkedActivityId != null)
-              ListTile(
-                dense: true,
-                leading: const Icon(Icons.link_off, size: 20),
-                title: const Text('Aucune (délier)'),
-                onTap: () => Navigator.pop(ctx, ''),
-              ),
-            for (final a in candidates)
-              ListTile(
-                dense: true,
-                leading: Icon(
-                    _project.linkedActivityId == a.id
-                        ? Icons.radio_button_checked
-                        : Icons.radio_button_off,
-                    size: 20),
-                title: Text(a.name),
-                onTap: () => Navigator.pop(ctx, a.id),
-              ),
-          ],
-        ),
-      ),
-    );
+    final picked = await showActivityPicker(context,
+        activities: candidates,
+        domains: widget.domains,
+        title: 'Activité liée au projet',
+        selectedId: _project.linkedActivityId,
+        preferDomainId: _project.domainId,
+        extras: [if (_project.linkedActivityId != null) const ActivityPickerExtra('', 'Aucune (délier)', icon: Icons.link_off)]);
     if (picked == null) return;
     setState(() =>
         _project.linkedActivityId = picked.isEmpty ? null : picked);

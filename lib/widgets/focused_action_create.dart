@@ -4,7 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show flowTaskOf, isFolderProject, isUpcomingTask, kFlowTaskId;
 import 'package:productivitwo_v1/utils/default_estimate.dart';
-import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/widgets/task_fiche_sheet.dart' show stripLeadingEmoji;
 import 'package:productivitwo_v1/widgets/task_picker_sheet.dart';
 
@@ -38,42 +38,11 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
     ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
   _Owner? owner;
 
-  Future<_Owner?> pickActivity(BuildContext c) => showModalBottomSheet<_Owner>(
-        context: c,
-        showDragHandle: true,
-        isScrollControlled: true,
-        builder: (s) => _PickList(
-          title: 'Action libre · sur quelle activité ?',
-          children: [
-            for (final g in _byDomain(timeActs, logic.state.activeDomains)) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
-                child: Row(children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(color: g.color ?? Theme.of(s).colorScheme.primary, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(g.name.toUpperCase(),
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: .6,
-                          color: Theme.of(s).colorScheme.onSurface.withValues(alpha: .55))),
-                ]),
-              ),
-              for (final a in g.activities)
-                ListTile(
-                  dense: true,
-                  leading: Icon(Icons.timer_outlined, color: g.color),
-                  title: Text(a.name, style: const TextStyle(fontSize: 15)),
-                  onTap: () => Navigator.pop(s, _Owner.activity(a)),
-                ),
-            ],
-          ],
-        ),
-      );
+  Future<_Owner?> pickActivity(BuildContext c) async {
+    final id = await showActivityPicker(c, activities: timeActs, domains: logic.state.activeDomains, title: 'Action libre · sur quelle activité ?');
+    final a = timeActs.where((x) => x.id == id).firstOrNull;
+    return a == null ? null : _Owner.activity(a);
+  }
 
   Future<_Owner?> pickProject(BuildContext c) async {
     final p = await showModalBottomSheet<Project>(
@@ -184,19 +153,6 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
   }
   logic.onChange();
   return true;
-}
-
-/// Activités groupées par domaine, dans l'ordre des domaines (sans domaine à la fin).
-List<({String name, Color? color, List<Activity> activities})> _byDomain(List<Activity> acts, List<Domain> domains) {
-  final out = <({String name, Color? color, List<Activity> activities})>[];
-  for (final d in domains) {
-    final list = acts.where((a) => a.domainId == d.id).toList();
-    if (list.isNotEmpty) out.add((name: d.name, color: domainColor(d.id, domains), activities: list));
-  }
-  final known = domains.map((d) => d.id).toSet();
-  final rest = acts.where((a) => !known.contains(a.domainId)).toList();
-  if (rest.isNotEmpty) out.add((name: 'Sans domaine', color: null, activities: rest));
-  return out;
 }
 
 class _PickList extends StatelessWidget {

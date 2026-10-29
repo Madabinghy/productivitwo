@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
@@ -646,21 +647,28 @@ class _ActionsViewState extends State<ActionsView> {
                             .onSurface
                             .withOpacity(.45))),
                 const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final a in timeActivities.take(8))
-                      ChoiceChip(
-                        selected: linkedId == a.id,
-                        onSelected: (_) => setLocal(() =>
-                            linkedId = linkedId == a.id ? null : a.id),
-                        showCheckmark: false,
-                        label: Text(a.name),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                  ],
-                ),
+                // Une ligne qui ouvre le sélecteur groupé par domaine (au lieu
+                // de 8 puces sans ordre).
+                Builder(builder: (_) {
+                  final cur = timeActivities.where((a) => a.id == linkedId).firstOrNull;
+                  final color = cur == null ? null : domainColor(cur.domainId, _state.activeDomains);
+                  return OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft, visualDensity: VisualDensity.compact),
+                    onPressed: () async {
+                      final id = await showActivityPicker(ctx,
+                          activities: timeActivities,
+                          domains: _state.activeDomains,
+                          title: 'Chrono sur l\'activité',
+                          selectedId: linkedId,
+                          preferDomainId: e.project?.domainId,
+                          extras: [ActivityPickerExtra('', inherited != null ? 'Aucune · hérite du projet' : 'Aucune', selected: linkedId == null)]);
+                      if (id == null) return;
+                      setLocal(() => linkedId = id.isEmpty ? null : id);
+                    },
+                    icon: Icon(Icons.timer_outlined, size: 18, color: color),
+                    label: Text(cur?.name ?? 'Choisir une activité', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  );
+                }),
                 if (linkedId == null && inherited != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

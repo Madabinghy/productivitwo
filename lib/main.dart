@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
@@ -1077,25 +1078,17 @@ class _EditSessionSheetState extends State<_EditSessionSheet> {
     });
   }
 
-  Future<String?> _pickActivity(BuildContext context) async {
-    return showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (_) {
-        final acts = widget.logic.state.activities;
-
-        return ListView.builder(
-          itemCount: acts.length,
-          itemBuilder: (_, i) {
-            final a = acts[i];
-            return ListTile(
-              title: Text(a.name),
-              onTap: () => Navigator.pop(context, a.id),
-            );
-          },
-        );
-      },
-    );
+  Future<String?> _pickActivity(BuildContext context) {
+    final st = widget.logic.state;
+    // Activités-temps (celle de la session en plus si c'est une routine).
+    final acts = st.activities.where((a) => !a.deleted && (!a.isHabit || a.id == _activityId)).toList();
+    final cur = st.activities.where((a) => a.id == _activityId).firstOrNull;
+    return showActivityPicker(context,
+        activities: acts,
+        domains: st.activeDomains,
+        title: 'Activité de la session',
+        selectedId: _activityId,
+        preferDomainId: cur?.domainId);
   }
 
   String _activityName(BuildContext context, String activityId) {
@@ -3184,33 +3177,11 @@ class _AppRootState extends State<AppRoot>
     if (domainActs.length == 1) {
       activity = domainActs.first;
     } else if (domainActs.isNotEmpty) {
-      activity = await showModalBottomSheet<Activity>(
-        context: context,
-        showDragHandle: true,
-        builder: (ctx) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('Sur quelle activité chronométrer ?',
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w800)),
-                ),
-              ),
-              for (final a in domainActs)
-                ListTile(
-                  leading: const Icon(Icons.timer_outlined),
-                  title: Text(a.name),
-                  onTap: () => Navigator.pop(ctx, a),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      );
+      final id = await showActivityPicker(context,
+          activities: domainActs,
+          domains: _state?.activeDomains ?? const [],
+          title: 'Sur quelle activité chronométrer ?');
+      activity = domainActs.firstWhereOrNull((a) => a.id == id);
     }
     if (activity == null) {
       if (mounted) {
@@ -4644,50 +4615,13 @@ class _AppRootState extends State<AppRoot>
             !a.isHabit && !a.deleted && a.role != ActivityRole.shopping)
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
-    final sameDomain = acts.where((a) => a.domainId == r.domainId).toList();
-    final list = sameDomain.isNotEmpty ? sameDomain : acts;
-
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            padding: const EdgeInsets.only(bottom: 16),
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
-                child: Text('Où tracer le temps de « ${r.name} » ?',
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800)),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text(
-                  'Le chrono tournera sur l\'activité choisie, la routine se '
-                  'cochera comme d\'habitude — choix mémorisé.',
-                  style: TextStyle(
-                      fontSize: 12.5, color: cs.onSurface.withOpacity(.55)),
-                ),
-              ),
-              for (final a in list)
-                ListTile(
-                  leading: const Icon(Icons.av_timer_rounded),
-                  title: Text(a.name),
-                  onTap: () => Navigator.pop(ctx, a.id),
-                ),
-              ListTile(
-                leading: const Icon(Icons.check_rounded),
-                title: const Text('Juste cocher — pas de chrono'),
-                onTap: () => Navigator.pop(ctx, '__check__'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    final picked = await showActivityPicker(context,
+        activities: acts,
+        domains: logic.state.activeDomains,
+        title: 'Où tracer le temps de « ${r.name} » ?',
+        subtitle: 'Le chrono tournera sur l\'activité choisie, la routine se cochera comme d\'habitude — choix mémorisé.',
+        preferDomainId: r.domainId,
+        trailingExtras: const [ActivityPickerExtra('__check__', 'Juste cocher — pas de chrono', icon: Icons.check_rounded)]);
     if (picked == null || !mounted) return;
 
     if (picked == '__check__') {

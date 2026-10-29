@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -219,17 +220,12 @@ class _TriageSheetState extends State<_TriageSheet> {
           if (acts.isEmpty)
             Text('Aucune activité-temps.', style: TextStyle(fontSize: 13, color: cs.onSurface.withOpacity(.5)))
           else
-            for (final d in [...domains.map((d) => (d.name, acts.where((a) => a.domainId == d.id).toList())),
-              ('Autres', acts.where((a) => domains.every((d) => d.id != a.domainId)).toList())])
-              if (d.$2.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 4),
-                  child: Text(d.$1, style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(.55))),
-                ),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  for (final a in d.$2) chip(a.name, _activityId == a.id, () => setState(() => _activityId = a.id)),
-                ]),
-              ],
+            for (final g in groupActivitiesByDomain(acts, domains)) ...[
+              ActivityDomainHeader(name: g.name, color: g.color, padding: const EdgeInsets.only(top: 8, bottom: 4)),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (final a in g.activities) chip(a.name, _activityId == a.id, () => setState(() => _activityId = a.id)),
+              ]),
+            ],
         ],
         const SizedBox(height: 18),
         Row(children: [

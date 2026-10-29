@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -538,34 +539,11 @@ class _DayTimelineViewState extends State<DayTimelineView> {
                         .toList()
                       ..sort((a, b) => a.name.compareTo(b.name));
                     if (acts.isEmpty) return;
-                    final chosen = await showModalBottomSheet<Activity>(
-                      context: ctx,
-                      showDragHandle: true,
-                      builder: (actx) => SafeArea(
-                        child: ListView(
-                          shrinkWrap: true,
-                          padding: const EdgeInsets.only(bottom: 16),
-                          children: [
-                            Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                              child: Text(
-                                  '« $t » — action de quelle activité ?',
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800)),
-                            ),
-                            for (final a in acts)
-                              ListTile(
-                                leading:
-                                    const Icon(Icons.av_timer_rounded),
-                                title: Text(a.name),
-                                onTap: () => Navigator.pop(actx, a),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
+                    final chosenId = await showActivityPicker(ctx,
+                        activities: acts,
+                        domains: widget.logic.state.activeDomains,
+                        title: '« $t » — action de quelle activité ?');
+                    final chosen = acts.where((a) => a.id == chosenId).firstOrNull;
                     if (chosen == null) return;
                     final action = widget.logic.addOwnAction(chosen.id, t);
                     if (action == null) return;

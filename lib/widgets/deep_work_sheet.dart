@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -243,14 +244,17 @@ class _DeepWorkPickerState extends State<_DeepWorkPicker> {
             },
           ),
         if (acts.isNotEmpty) _title(cs, 'ACTIVITÉS'),
-        for (final a in acts)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.timer_outlined, size: 18),
-            title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.pop(context, DeepWorkCandidate(kind: 'other', title: a.name, subtitle: '', activityId: a.id)),
-          ),
+        for (final g in groupActivitiesByDomain(acts, widget.logic.state.activeDomains)) ...[
+          ActivityDomainHeader(name: g.name, color: g.color, padding: const EdgeInsets.fromLTRB(0, 10, 0, 2)),
+          for (final a in g.activities)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.timer_outlined, size: 18, color: g.color),
+              title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () => Navigator.pop(context, DeepWorkCandidate(kind: 'other', title: a.name, subtitle: '', activityId: a.id)),
+            ),
+        ],
       ]),
     );
   }
