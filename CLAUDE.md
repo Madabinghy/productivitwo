@@ -620,7 +620,14 @@ barre « % de la journée passée » 8 h → 22 h, `dayElapsed`) et `StakesList`
 avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / Focus), ouvert = « CE QUE ÇA RAPPORTE » (une jauge
 `StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
 (`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,
-`showActionFocusScreen`). Lots à venir : 3 = tuiles de tableau de bord + écran « Badges en jeu », 4 = bilan du soir.
+`showActionFocusScreen`). **Lot 3 livré** : « TON TABLEAU DE BORD » REMPLACE la section EN PARALLÈLE sous le programme
+(`_parallelSection(cs, stakes)` → `widgets/dashboard_tiles.dart` `DashboardTiles`, logique pure `utils/dashboard_tiles.dart`) : PROGRAMME
+(`programTile` : bande des blocs, en cours / ensuite ; tap = remonte au programme), ROUTINES (`routinesTile`, tap = fiche Routines),
+OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
+sauver, plus proche ; tap = écran `BadgesInPlayScreen` — SE PERD CE SOIR · PALIER CE SOIR · CHASSES · PROCHES, `badgesInPlay` —, bouton =
+le geste, « Tous les badges » = galerie), ACTIONS (`actionsTile` : visées aujourd'hui ; tap = onglet Actions, `onOpenActions`),
+PROJETS (`projectsTile` : séance la plus proche + prépa, retards sur le plan ; tap = onglet Projets, `onOpenProjects`). Lot à venir :
+4 = bilan du soir.
 **Vision à terme (backlog, user 2026-10-29)** : la carte du moment de chaque onglet prend toute la page par défaut (l'essentiel
 pour voir où on en est et agir), et ce qu'il y a autour se découvre de façon fluide ; pour l'instant on améliore l'existant.
 **Journée vécue** (2026-10, `utils/lived_day.dart`) : la journée des ROUTINES bascule à `data/meta.dayStartMin` (défaut
