@@ -687,11 +687,11 @@ class TodayViewState extends State<TodayView> {
                   if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[
                     if (_eveningLedger(board) case final ledger when !ledger.isEmpty) ...[
                       const SizedBox(height: 12),
-                      EveningLedgerCard(ledger: ledger),
+                      EveningLedgerCard(ledger: ledger, compact: true, onTap: _openStakesSheet),
                     ],
                   ] else if (stakes case final board? when !board.isEmpty) ...[
                     const SizedBox(height: 12),
-                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet),
                   ],
                   if (_morningCard(cs, now, text3) case final card?) card,
                   // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
@@ -787,8 +787,6 @@ class TodayViewState extends State<TodayView> {
                     onChallengeAccept: widget.onChallengeAccept,
                     onChallengeSchedule: widget.onChallengeSchedule,
                   ),
-                  if (stakes case final board? when !board.isEmpty)
-                    StakesList(board: board, onRun: _runStake, onOpenBadges: _openBadgeGallery, evening: isEvening(widget.logic.livedNowMinNow)),
                 ],
                 // Programme du jour : dans une feuille ouverte par la tuile
                 // PROGRAMME (retour user 2026-10-30) ; Demain reste sur la page.
@@ -1086,6 +1084,55 @@ class TodayViewState extends State<TodayView> {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Les enjeux du jour dans une feuille (tap sur « Ta journée » / « Ce soir »,
+  /// retour user 2026-10-30) : le tableau (ou le bilan complet du soir) puis la
+  /// liste EN JEU. Un +1 garde la feuille ouverte ; un chrono ou la page focus
+  /// la ferment.
+  void _openStakesSheet() {
+    showFiche<void>(context, builder: (ctx, scroll) {
+      return StatefulBuilder(builder: (ctx, setLocal) {
+        final board = _stakeBoard() ?? StakeBoard.empty;
+        final evening = isEvening(widget.logic.livedNowMinNow);
+        final ledger = evening ? _eveningLedger(board) : null;
+        return ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+          children: [
+            FicheHeader(
+              title: evening ? 'Ce soir' : 'Ta journée',
+              chip: board.inPlay == 0 ? 'rien en jeu' : '${board.inPlay} en jeu',
+              chipColor: kStakeHunt,
+            ),
+            const SizedBox(height: 12),
+            if (ledger != null && !ledger.isEmpty)
+              EveningLedgerCard(ledger: ledger)
+            else if (!evening)
+              StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+            StakesList(
+              board: board,
+              evening: evening,
+              onOpenBadges: () {
+                Navigator.of(ctx).pop();
+                _openBadgeGallery();
+              },
+              onRun: (s) {
+                if (s.gesture.kind == StakeGestureKind.routine) {
+                  _runStake(s);
+                  setLocal(() {});
+                } else {
+                  Navigator.of(ctx).pop();
+                  _runStake(s);
+                }
+              },
+            ),
+          ],
+        );
+      });
+    }).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   EveningLedger _eveningLedger(StakeBoard board) {

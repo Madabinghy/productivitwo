@@ -54,7 +54,9 @@ double dayElapsed(int livedNowMin, {int startMin = 8 * 60, int endMin = 22 * 60}
 class StakeScoreboard extends StatelessWidget {
   final StakeBoard board;
   final double elapsed;
-  const StakeScoreboard({super.key, required this.board, required this.elapsed});
+  /// Tap = la feuille des enjeux (Aujourd'hui mobile, 2026-10-30).
+  final VoidCallback? onTap;
+  const StakeScoreboard({super.key, required this.board, required this.elapsed, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +68,7 @@ class StakeScoreboard extends StatelessWidget {
             Text(label, style: const TextStyle(fontSize: 10, letterSpacing: .8, fontWeight: FontWeight.w700, color: kBText3)),
           ]),
         );
-    return Container(
+    return _tappable(onTap, Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -74,6 +76,7 @@ class StakeScoreboard extends StatelessWidget {
           const Text('Ta journée', style: TextStyle(fontSize: 13, color: kBText3, fontWeight: FontWeight.w600)),
           const Spacer(),
           Text('$total enjeu${total > 1 ? 'x' : ''}', style: const TextStyle(fontSize: 13, color: kBText, fontWeight: FontWeight.w700)),
+          if (onTap != null) const Icon(Icons.chevron_right_rounded, size: 20, color: kBText3),
         ]),
         const SizedBox(height: 8),
         Row(children: [
@@ -93,9 +96,16 @@ class StakeScoreboard extends StatelessWidget {
           if (total > 0) Text('tenu $won sur $total', style: const TextStyle(fontSize: 11.5, color: kBText3)),
         ]),
       ]),
-    );
+    ));
   }
 }
+
+Widget _tappable(VoidCallback? onTap, Widget child) => onTap == null
+    ? child
+    : Material(
+        color: Colors.transparent,
+        child: InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: child),
+      );
 
 /// La liste EN JEU, le reste replié par famille, puis gagné / perdu.
 class StakesList extends StatefulWidget {
@@ -416,7 +426,10 @@ class StakeGauge extends StatelessWidget {
 /// perdus ; AVANCÉ AUJOURD'HUI ; LAISSÉ FILER ; demain en jeu.
 class EveningLedgerCard extends StatelessWidget {
   final EveningLedger ledger;
-  const EveningLedgerCard({super.key, required this.ledger});
+  /// Sur la page : seulement les compteurs, le détail est dans la feuille.
+  final bool compact;
+  final VoidCallback? onTap;
+  const EveningLedgerCard({super.key, required this.ledger, this.compact = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -449,7 +462,7 @@ class EveningLedgerCard extends StatelessWidget {
             ),
           ]),
         );
-    return Container(
+    return _tappable(onTap, Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(color: kBSurface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -457,6 +470,7 @@ class EveningLedgerCard extends StatelessWidget {
           const Text('Ce soir · ta journée', style: TextStyle(fontSize: 13, color: kBText3, fontWeight: FontWeight.w600)),
           const Spacer(),
           if (l.total > 0) Text('tenu ${l.won} sur ${l.total}', style: const TextStyle(fontSize: 13, color: kBText, fontWeight: FontWeight.w700)),
+          if (onTap != null) const Icon(Icons.chevron_right_rounded, size: 20, color: kBText3),
         ]),
         const SizedBox(height: 8),
         Row(children: [
@@ -464,9 +478,9 @@ class EveningLedgerCard extends StatelessWidget {
           counter(l.stillPossible.length, 'ENCORE', kStakeHunt),
           counter(l.lost, l.lost > 1 ? 'PERDUS' : 'PERDU', kStakeLose),
         ]),
-        if (l.advanced.isNotEmpty) ...[sec('AVANCÉ AUJOURD’HUI'), for (final x in l.advanced) line(x, kBPrimary)],
-        if (l.slipped.isNotEmpty) ...[sec('LAISSÉ FILER'), for (final x in l.slipped) line(x, kStakeLose)],
-        if (l.tomorrow.isNotEmpty || l.stillPossible.isNotEmpty) ...[
+        if (!compact && l.advanced.isNotEmpty) ...[sec('AVANCÉ AUJOURD’HUI'), for (final x in l.advanced) line(x, kBPrimary)],
+        if (!compact && l.slipped.isNotEmpty) ...[sec('LAISSÉ FILER'), for (final x in l.slipped) line(x, kStakeLose)],
+        if (!compact && (l.tomorrow.isNotEmpty || l.stillPossible.isNotEmpty)) ...[
           const SizedBox(height: 6),
           Container(
             padding: const EdgeInsets.all(10),
@@ -487,6 +501,6 @@ class EveningLedgerCard extends StatelessWidget {
           ),
         ],
       ]),
-    );
+    ));
   }
 }

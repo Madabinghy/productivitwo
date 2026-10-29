@@ -80,4 +80,13 @@ void main() {
     expect(find.text('ENCORE'), findsOneWidget);
     expect(find.textContaining('Encore possible ce soir'), findsOneWidget);
   });
+
+  testWidgets('sur la page : carte du soir compacte et touchable', (t) async {
+    var tapped = false;
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: EveningLedgerCard(ledger: ledger, compact: true, onTap: () => tapped = true))));
+    expect(find.text('AVANCÉ AUJOURD’HUI'), findsNothing);
+    expect(find.text('GAGNÉS'), findsOneWidget);
+    await t.tap(find.text('GAGNÉS'));
+    expect(tapped, isTrue);
+  });
 }
