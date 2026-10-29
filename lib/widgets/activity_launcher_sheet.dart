@@ -52,8 +52,8 @@ List<LauncherRow> launcherRows(AppLogic logic, DateTime now) {
 }
 
 /// Lanceur d'activités du FAB (maquette validée 2026-10-30) : le chrono en
-/// cours en carte hero, « À rattraper » (sous 95 % de l'attendu), puis par
-/// domaine, « Peu utilisées » repliées. ▶ lance tout de suite ; le nom ouvre
+/// cours en carte hero, puis par domaine (une activité en retard le dit dans
+/// sa ligne), « Peu utilisées » repliées. ▶ lance tout de suite ; le nom ouvre
 /// la fiche ; l'appui long propose une durée ou un Deep work.
 Future<void> showActivityLauncher(
   BuildContext context, {
@@ -159,11 +159,10 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     final rows = all.where((r) => q.isEmpty || r.a.name.toLowerCase().contains(q)).toList();
     final running = logic.runningActivity();
     final todayTotal = all.fold<int>(0, (s, r) => s + r.todayMin);
-    final behind = rows.where((r) => r.behind).toList()
-      ..sort((x, y) => (x.windowMin / (x.expectedMin == 0 ? 1 : x.expectedMin)).compareTo(y.windowMin / (y.expectedMin == 0 ? 1 : y.expectedMin)));
-    final behindIds = behind.map((r) => r.a.id).toSet();
-    final active = rows.where((r) => !behindIds.contains(r.a.id) && !r.dormant).toList();
-    final dormant = rows.where((r) => !behindIds.contains(r.a.id) && r.dormant).toList()
+    // Pas de section « À rattraper » (retour user 2026-10-30) : on vient au
+    // lanceur pour une activité déjà choisie, on la trouve par son domaine.
+    final active = rows.where((r) => !r.dormant).toList();
+    final dormant = rows.where((r) => r.dormant).toList()
       ..sort((x, y) => x.a.name.toLowerCase().compareTo(y.a.name.toLowerCase()));
     final domains = logic.state.activeDomains;
 
@@ -200,7 +199,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         Text.rich(
           TextSpan(children: [
             TextSpan(text: todayTotal == 0 ? 'Rien' : fmtMin(todayTotal), style: TextStyle(fontWeight: FontWeight.w900, color: cs.onSurface)),
-            TextSpan(text: ' chronométré aujourd\'hui${behind.isEmpty ? '' : ' · ${behind.length} en retard sur leur minimum'}'),
+            const TextSpan(text: ' chronométré aujourd\'hui'),
           ]),
           style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .65)),
         ),
@@ -227,10 +226,6 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
             child: Text(q.isEmpty ? 'Aucune activité.' : 'Aucune activité ne correspond.',
                 style: TextStyle(color: cs.onSurface.withValues(alpha: .5), fontStyle: FontStyle.italic)),
           ),
-        if (behind.isNotEmpty) ...[
-          _sectionHeader(cs, 'À rattraper', _kLate, '${behind.length}', textColor: _kLate),
-          for (final r in behind) _row(cs, r, running),
-        ],
         for (final g in byDomain(active)) ...[
           _sectionHeader(cs, g.domain?.name ?? 'Sans domaine', g.domain == null ? null : domainColor(g.domain!.id, domains),
               domainToday(g.domain) == 0 ? null : '${fmtMin(domainToday(g.domain))} aujourd\'hui'),
