@@ -795,7 +795,7 @@ la dernière écriture gagne pour cette tâche. Hors connexion / transaction > 1
 d'avant (`_mergedOrDirect`), mise en file par Firestore — le mobile reste utilisable sans réseau. Bande Focus web : « Arrêter le chrono » (geste principal, l'action reste ouverte) ≠
 « ✓ Action faite » (coche + arrête, annulable).
 
-**Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine.
+**Fiche routine glissable** (2026-10-30) : `showRoutineSheet` passe par `showFiche` (85 %, tirer vers le bas = fermer), comme la fiche activité et la page domaine. Dans le lanceur « Lancer une routine » (FAB), le tap sur une routine ouvre directement cette fiche (plus de menu intermédiaire Minuteur · Marquer comme fait · Réglages : le minuteur a son bouton ⏱ sur la ligne, le +1 se fait dans la fiche).
 
 ## Confirmation avant de cocher (2026-10-30)
 

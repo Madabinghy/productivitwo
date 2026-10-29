@@ -4767,74 +4767,6 @@ class _AppRootState extends State<AppRoot>
   }
 
   /// Mini-menu d'actions au tap d'une routine dans le lanceur (FAB).
-  Future<void> _showRoutineActions(BuildContext sheetCtx, Activity r,
-      DateTime todayD, void Function(VoidCallback) setS) async {
-    final linkedId = (r.linkedActivityId ?? '').trim();
-    final linked = linkedId.isEmpty
-        ? null
-        : logic.state.activities.firstWhereOrNull((a) => a.id == linkedId);
-    final canTimer = (r.timerMin ?? 0) > 0;
-    await showModalBottomSheet<void>(
-      context: sheetCtx,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(r.name,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w800)),
-              ),
-            ),
-            if (canTimer)
-              ListTile(
-                leading: const Icon(Icons.play_circle_outline),
-                title: Text('Démarrer le minuteur (${r.timerMin} min)'),
-                subtitle: Text(linked != null
-                    ? 'Sur « ${linked.name} »'
-                    : 'cochée à la fin du décompte'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.pop(sheetCtx); // ferme aussi le lanceur
-                  _startRoutineTimer(r);
-                },
-              ),
-            ListTile(
-              leading: const Icon(Icons.check_circle_outline),
-              title: const Text('Marquer comme fait'),
-              onTap: () {
-                logic.incHabit(r.id, 1, todayD);
-                _saveAndRefresh();
-                Navigator.pop(ctx);
-                setS(() {});
-                setState(() {});
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune),
-              title: const Text('Réglages'),
-              onTap: () {
-                Navigator.pop(ctx);
-                showRoutineSheet(
-                  sheetCtx,
-                  logic: logic,
-                  habitId: r.id,
-                  day: todayD,
-                  onSaved: () => setS(() {}),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// Pastille de fréquence affichée sur chaque carte de routine.
   // Délégué aux briques partagées (routine_tile_bits) — même rendu dans
   // « Le meilleur à faire ».
@@ -5025,8 +4957,17 @@ class _AppRootState extends State<AppRoot>
                             padding: const EdgeInsets.only(bottom: 8),
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () =>
-                                  _showRoutineActions(ctx, r, todayD, setS),
+                              onTap: () => showRoutineSheet(
+                                ctx,
+                                logic: logic,
+                                habitId: r.id,
+                                day: todayD,
+                                onSaved: () => setS(() {}),
+                              ).then((_) {
+                                if (!mounted) return;
+                                setS(() {});
+                                setState(() {});
+                              }),
                               child: Container(
                                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                                 decoration: BoxDecoration(
