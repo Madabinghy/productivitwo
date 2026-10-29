@@ -130,12 +130,13 @@ DashTile? badgesTile(BadgeDeck? deck, StakeBoard board) {
     value = '${deck.acquired} paliers';
     sub = 'rien ne se joue ce soir';
   }
+  final e = deck.embers.available;
   return DashTile(
     label: 'BADGES',
     badge: '${deck.acquired} / ${deck.total}',
     value: value,
     mini: [for (var i = 0; i < (tonight.length + losing.length).clamp(0, 8); i++) i < tonight.length ? TileMark.on : TileMark.warn],
-    sub: sub,
+    sub: e > 0 ? '$sub · 🔥 $e braise${e > 1 ? 's' : ''}' : sub,
   );
 }
 

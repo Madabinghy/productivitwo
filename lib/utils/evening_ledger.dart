@@ -4,6 +4,8 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/objective_day.dart';
 import 'package:productivitwo_v1/utils/stakes.dart';
+import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
+import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
 
 /// « Aujourd'hui en enjeux », lot 4 : le bilan du soir. À partir de 19 h (sur
 /// la journée vécue), le tableau du jour se retourne — ce que la journée a fait
@@ -47,11 +49,24 @@ EveningLedger buildEveningLedger({
   required List<ObjectiveDay> objectiveDays,
   required DateTime dayStart,
   required DateTime now,
+  /// Journée en cours parfaite (toutes les routines, tous les blocs) : une braise à la bascule.
+  bool perfectToday = false,
+  /// Braises libres maintenant (pour « n sur 3 »).
+  int emberStock = 0,
 }) {
   final advanced = <LedgerLine>[];
   final slipped = <LedgerLine>[];
   final tomorrow = <String>[];
   final calToday = DateTime(dayStart.year, dayStart.month, dayStart.day);
+
+  // ── Braise : la journée parfaite en forge une à la bascule ────────────────
+  if (perfectToday) {
+    advanced.add(LedgerLine(
+      '+1',
+      'Journée parfaite · une braise',
+      emberStock >= kEmberCap ? 'réserve pleine ($kEmberCap sur $kEmberCap) : rien de plus' : 'acquise à la bascule · ${emberStock + 1} sur $kEmberCap en réserve',
+    ));
+  }
 
   // ── Badges : paliers obtenus aujourd'hui, puis séries / chasses tenues ─────
   final tiered = <String>{};
@@ -169,4 +184,12 @@ EveningLedger buildEveningLedger({
     won: board.won.length + tiered.length,
     lost: board.lost.length,
   );
+}
+
+/// Journée en cours parfaite, d'après les faits du jour (même règle que
+/// `DayScore.perfect` : rien de neutre, tout atteint, tout fait).
+bool isPerfectSoFar(TodayFacts f) {
+  final blocks = f.countedBlocks;
+  if (f.routines.isEmpty && blocks.isEmpty) return false;
+  return f.routines.every((r) => r.reached) && f.blocksDone == blocks.length;
 }
