@@ -352,8 +352,8 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
     }
 
     if (r.behind) {
-      add('${fmtMin(r.windowMin)} / ${fmtMin(r.expectedMin)} ${windowDays == 7 ? 'cette semaine' : 'sur $windowDays j'}', c: _kLate);
-      add('min ${fmtMin(a.goalMin)} / j');
+      add('${fmtMin(r.windowMin)} / ${fmtMin(r.expectedMin)} attendues ${windowDays == 7 ? 'depuis lundi' : 'sur la quinzaine'}', c: _kLate);
+      add('objectif ${fmtMin(a.goalMin)} / j');
     } else {
       add(r.todayMin == 0 ? 'rien aujourd\'hui' : '${fmtMin(r.todayMin)} aujourd\'hui');
       if (r.hasGoal) add('au rythme', c: _kChrono);

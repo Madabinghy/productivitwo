@@ -815,7 +815,7 @@ action simple, Nouveau bloc (« Toutes »), web : « Modifier le chrono » et «
 `ActivityLauncher`, appelé par `_showLaunchActivitySheet` de main.dart) : « n chronométré aujourd'hui · k en retard », carte EN COURS (seul
 élément hero : nom, temps qui défile, domaine · depuis, Arrêter · Fiche), recherche, puis par domaine (plus de section « À rattraper » depuis le 2026-10-30, retour user :
 on vient lancer une activité déjà choisie ; une activité en retard — minimum ≥ 5 min / j et < 95 % de l'attendu sur la fenêtre de budget,
-`launcherRows` / `LauncherRow` — le dit dans sa ligne, jauge orange) (temps du jour dans l'en-tête), « Peu
+`launcherRows` / `LauncherRow` — le dit dans sa ligne, jauge orange : « 18 min / 24 min attendues depuis lundi · objectif 6 min / j », attendu = minimum × jours écoulés de la fenêtre, aujourd'hui compris ; « sur la quinzaine » en fenêtre de 14 j) (temps du jour dans l'en-tête), « Peu
 utilisées » repliées (aucun chrono sur 30 j). Ligne = icône du domaine, nom + infos + jauge (tap = fiche), **▶ lance le chrono tout de suite**
 (■ si elle tourne) ; appui long = Lancer · 10 / 20 / 30 / 45 min · Deep work 90 (`showDeepWorkSheet(preferActivityId:)`) · Fiche. Activités en
 pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de bouton doré « Challenge me », de puce « Défi ORION » dans MAINTENANT,
