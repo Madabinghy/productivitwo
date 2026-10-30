@@ -3,6 +3,18 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show routineSeries;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, rootProjectOf;
+import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/objective_progress.dart';
+import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
+import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
+import 'package:productivitwo_v1/utils/project_moment.dart' show projectPlan;
+import 'package:productivitwo_v1/widgets/domain_session_screen.dart' show DomainSessionScreen;
+import 'package:productivitwo_v1/widgets/objective_trajectory_sheet.dart' show showObjectiveTrajectorySheet;
+import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart' show showProjectFiche;
+import 'package:productivitwo_v1/widgets/project_sheet.dart' show showProjectSheet;
+import 'package:productivitwo_v1/widgets/rest_sheet.dart' show liftRest, showRestSheet;
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -14,14 +26,13 @@ import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineMinus, routineTodayCount;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 
-/// Page d'un domaine (tap sur une ligne de Stats ; `domain` null = toutes les
-/// activités), refonte 2026-10 « une carte, une fiche » : en-tête = la ligne de
-/// Stats dépliée (minimum sur la fenêtre de budget, fait, attendu, routines
-/// tenues), lignes `StatusRow` par activité (moyenne / j, barre
-/// fait / attendu avec repère, chip, ▶), sections À RATTRAPER · AU RYTHME ·
-/// EN PAUSE ; segment Temps / Routines. La courbe 60 j et la heatmap vivent
-/// dans la fiche d'activité. Renvoie `true` quand un chrono a été lancé (la
-/// racine bascule sur Aujourd'hui).
+/// Page d'un domaine (tap sur une ligne de Domaines ; `domain` null = toutes
+/// les activités ou routines), refonte 2026-10-30 « le domaine vu par toute
+/// l'app » : en-tête = intention + minimum vital (⚙ = intention, veille, nom /
+/// couleur), puis une liste par type — OBJECTIFS · ROUTINES · ACTIVITÉS ·
+/// PROJETS —, l'état en chip sur la ligne, tap = la fiche. Plus de segment
+/// Temps / Routines ni d'en-tête chiffré (c'est la ligne de l'onglet).
+/// Renvoie `true` quand un chrono a été lancé (la racine bascule sur Aujourd'hui).
 Future<bool?> showDomainPage(
   BuildContext context, {
   required AppLogic logic,
@@ -32,6 +43,9 @@ Future<bool?> showDomainPage(
   required Future<bool> Function(Activity a) onOpenActivity,
   void Function(Activity a, int minutes)? onLaunchTimed,
   void Function(ScheduleBlock block)? onLaunchBlock,
+  List<Project> projects = const [],
+  VoidCallback? onManageDomains,
+  void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
 }) {
   return showFiche<bool>(
     context,
@@ -45,6 +59,9 @@ Future<bool?> showDomainPage(
       onOpenActivity: onOpenActivity,
       onLaunchTimed: onLaunchTimed,
       onLaunchBlock: onLaunchBlock,
+      projects: projects,
+      onManageDomains: onManageDomains,
+      onStartTimer: onStartTimer,
     ),
   );
 }
@@ -59,6 +76,9 @@ class _DomainPage extends StatefulWidget {
   final Future<bool> Function(Activity a) onOpenActivity;
   final void Function(Activity a, int minutes)? onLaunchTimed;
   final void Function(ScheduleBlock block)? onLaunchBlock;
+  final List<Project> projects;
+  final VoidCallback? onManageDomains;
+  final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
   const _DomainPage({
     required this.logic,
     required this.sync,
@@ -69,6 +89,9 @@ class _DomainPage extends StatefulWidget {
     required this.onOpenActivity,
     this.onLaunchTimed,
     this.onLaunchBlock,
+    this.projects = const [],
+    this.onManageDomains,
+    this.onStartTimer,
   });
 
   @override
@@ -92,8 +115,8 @@ class _TimeRow {
 }
 
 class _DomainPageState extends State<_DomainPage> {
-  late String _tab = widget.focus == 'habit' ? 'habit' : 'time';
   bool _showPaused = false;
+  List<StrategicObjective>? _objectives;
 
   AppLogic get logic => widget.logic;
 
@@ -101,6 +124,14 @@ class _DomainPageState extends State<_DomainPage> {
   void initState() {
     super.initState();
     logic.addListener(_onLogic);
+    if (widget.domain != null) _loadObjectives();
+  }
+
+  Future<void> _loadObjectives() async {
+    try {
+      final all = await widget.sync.fetchStrategicObjectives();
+      if (mounted) setState(() => _objectives = all);
+    } catch (_) {}
   }
 
   @override
@@ -211,22 +242,15 @@ class _DomainPageState extends State<_DomainPage> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final d = widget.domain;
+    final habitsFirst = d != null || widget.focus == 'habit';
     return ListView(
       controller: widget.scroll,
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
       children: [
         _header(now),
-        const SizedBox(height: 12),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'time', icon: Icon(Icons.access_time_rounded, size: 18), label: Text('Temps')),
-            ButtonSegment(value: 'habit', icon: Icon(Icons.repeat_rounded, size: 18), label: Text('Routines')),
-          ],
-          selected: {_tab},
-          showSelectedIcon: false,
-          onSelectionChanged: (s) => setState(() => _tab = s.first),
-        ),
-        if (_tab == 'time') ..._timeBody(now, d) else ..._habitBody(now, d),
+        if (d != null) ..._objectiveBody(now, d),
+        if (habitsFirst) ...[..._habitBody(now, d), ..._timeBody(now, d)] else ...[..._timeBody(now, d), ..._habitBody(now, d)],
+        if (d != null) ..._projectBody(now, d),
       ],
     );
   }
@@ -236,78 +260,222 @@ class _DomainPageState extends State<_DomainPage> {
     final d = widget.domain;
     final st = logic.state;
     if (d == null) {
-      final n = _acts(_tab == 'habit').length;
+      final n = _acts(widget.focus == 'habit').length;
       return FicheHeader(
-        title: _tab == 'habit' ? 'Toutes les routines' : 'Toutes les activités',
-        kpi: '$n ${_tab == 'habit' ? 'routine' : 'activité'}${n > 1 ? 's' : ''} · tous domaines',
+        title: widget.focus == 'habit' ? 'Toutes les routines' : 'Toutes les activités',
+        kpi: '$n ${widget.focus == 'habit' ? 'routine' : 'activité'}${n > 1 ? 's' : ''} · tous domaines',
       );
     }
     final rows = domainWeeks(
         domains: [d], activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: logic.restDomains, windowDays: logic.budgetWindowDays);
     final r = rows.single;
     final color = domainColor(d.id, st.activeDomains) ?? cs.primary;
-    final String chip;
+    final String? chip;
     final Color chipColor;
     if (r.resting) {
       chip = 'en veille';
       chipColor = kPalierMuted;
     } else if (!r.hasGoal) {
-      chip = 'sans minimum';
+      chip = null;
       chipColor = kPalierMuted;
     } else {
-      chip = r.pctInt >= 85 ? 'au rythme' : (r.pctInt >= 60 ? 'à surveiller' : 'en retard');
+      chip = r.pctInt >= 85 ? 'au rythme' : (r.pctInt >= 60 ? 'à surveiller' : 'à rattraper');
       chipColor = palierColor(r.pctInt);
     }
+    final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
     final win = r.windowDays == 14 ? 'sur 14 j' : 'cette semaine';
-    final kpi = <String>[
-      if (r.hasGoal) 'minimum ${fmtMin(r.goalMinDay)} / j',
-      '${fmtMin(r.doneMin)} $win',
-      if (r.hasGoal) 'attendu ${fmtMin(r.expectedMin)}',
-      if (r.routinesTotal > 0) '${r.routinesReached} / ${r.routinesTotal} routine${r.routinesTotal > 1 ? 's' : ''} tenue${r.routinesReached > 1 ? 's' : ''}',
-    ].join(' · ');
+    final pills = <String>[
+      if (r.hasGoal) 'Minimum vital · ${fmtMin(r.goalMinDay)} / j',
+      if (r.hasGoal) '${fmtMin(r.doneMin)} / ${fmtMin(r.weekMin)} $win' else if (r.doneMin > 0) '${fmtMin(r.doneMin)} $win',
+      if (r.resting && restUntil != null) 'en veille jusqu\'au ${dayMonthFr(restUntil)}',
+    ];
+    final intention = d.intention?.trim() ?? '';
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      FicheHeader(
-        leading: Container(width: 12, height: 12, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        title: d.name,
-        chip: chip,
-        chipColor: chipColor,
-        kpi: kpi,
-      ),
-      if (r.hasGoal) ...[
-        const SizedBox(height: 8),
-        ExpectedBar(done: r.doneMin, total: r.weekMin, expected: r.expectedMin, color: palierColor(r.pctInt)),
-      ],
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: FicheHeader(
+            leading: Container(width: 12, height: 12, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            title: d.name,
+            chip: chip,
+            chipColor: chipColor,
+          ),
+        ),
+        IconButton(
+          tooltip: 'Réglages du domaine',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: () => _settings(d),
+        ),
+      ]),
+      if (intention.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('« $intention »',
+              style: TextStyle(fontSize: 14, height: 1.4, fontStyle: FontStyle.italic, color: cs.onSurface.withValues(alpha: .72))),
+        ),
+      if (pills.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final t in pills)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .06), borderRadius: BorderRadius.circular(999)),
+                child: Text(t, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .72))),
+              ),
+          ]),
+        ),
     ]);
   }
 
-  // ── Temps ───────────────────────────────────────────────────────────────────
+  /// ⚙ : intention et minimum vital (session Orion), veille, puis la gestion
+  /// des domaines (nom, couleur) quand elle est branchée.
+  Future<void> _settings(Domain d) async {
+    final resting = logic.isDomainResting(d.id);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+              leading: const Icon(Icons.explore_outlined),
+              title: const Text('Intention et minimum vital'),
+              subtitle: const Text('Avec Orion'),
+              onTap: () => Navigator.pop(c, 'define')),
+          ListTile(
+              leading: Icon(resting ? Icons.wb_sunny_outlined : Icons.bedtime_outlined),
+              title: Text(resting ? 'Lever la veille' : 'Mettre en veille…'),
+              onTap: () => Navigator.pop(c, resting ? 'lift' : 'rest')),
+          if (widget.onManageDomains != null)
+            ListTile(
+                leading: const Icon(Icons.palette_outlined),
+                title: const Text('Nom, couleur, domaines'),
+                onTap: () => Navigator.pop(c, 'manage')),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case 'define':
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => DomainSessionScreen(logic: logic, domainName: d.name)));
+      case 'lift':
+        await liftRest(logic, widget.sync, d.id);
+      case 'rest':
+        final now = DateTime.now();
+        final until = await showDatePicker(
+            context: context,
+            initialDate: now.add(const Duration(days: 7)),
+            firstDate: now,
+            lastDate: now.add(const Duration(days: 365)),
+            locale: const Locale('fr', 'FR'),
+            helpText: 'En veille jusqu\'au');
+        if (until == null || !mounted) return;
+        await showRestSheet(context,
+            logic: logic,
+            sync: widget.sync,
+            untilYmd: ymdOf(until),
+            excludeDomainIds: {for (final o in logic.state.activeDomains) if (o.id != d.id) o.id});
+      case 'manage':
+        widget.onManageDomains!();
+    }
+    if (mounted) setState(() {});
+  }
+
+  // ── Objectifs ───────────────────────────────────────────────────────────────
+
+  List<Widget> _objectiveBody(DateTime now, Domain d) {
+    final st = logic.state;
+    final list = (_objectives ?? const <StrategicObjective>[]).where((o) => o.status == 'active' && o.domainId == d.id).toList();
+    if (list.isEmpty) return const [];
+    int pctOf(ObjectiveProgress p) => p.weekPercent == null ? 100 : (p.weekPercent! * 100).round();
+    final rows = [for (final o in list) (o: o, p: computeObjectiveProgress(o, st.activities, st.sessions, st.habitHits, now))]
+      ..sort((a, b) => comparePct(pctOf(a.p), pctOf(b.p)));
+    return [
+      ListSectionTitle('OBJECTIFS · ${rows.length}'),
+      for (final r in rows)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: StatusRow(
+            leading: Icon(r.o.isTactical ? Icons.bolt_rounded : Icons.flag_outlined),
+            title: r.o.title,
+            sub: [
+              if (r.o.isTactical) 'coup',
+              if (r.p.daysLeft != null) r.p.daysLeft! <= 0 ? 'échéance passée' : 'encore ${r.p.daysLeft} j',
+              if (isReadingDue(r.o, now)) 'relevé dû',
+            ].join(' · '),
+            bar: r.p.weekPercent == null ? null : (done: r.p.weekPercent!.clamp(0.0, 1.0), total: 1, expected: r.p.weekElapsed),
+            pct: pctOf(r.p),
+            chip: r.p.weekPercent == null ? null : '${pctOf(r.p)} % du rythme',
+            onTap: () async {
+              final changed = await showObjectiveTrajectorySheet(context, logic: logic, sync: widget.sync, objective: r.o, projects: widget.projects);
+              if (changed) _loadObjectives();
+            },
+          ),
+        ),
+    ];
+  }
+
+  // ── Projets ─────────────────────────────────────────────────────────────────
+
+  List<Widget> _projectBody(DateTime now, Domain d) {
+    final st = logic.state;
+    final all = widget.projects;
+    final list = all
+        .where((p) => p.status == 'active' && !p.paused && !isFolderProject(p, all) && (p.domainId ?? rootProjectOf(p, all).domainId) == d.id)
+        .map((p) => (p: p, plan: projectPlan(p, now)))
+        .toList()
+      ..sort((a, b) => comparePct(a.plan.pctInt, b.plan.pctInt));
+    if (list.isEmpty) return const [];
+    return [
+      ListSectionTitle('PROJETS · ${list.length}'),
+      for (final r in list)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: StatusRow(
+            leading: const Icon(Icons.view_timeline_outlined),
+            title: r.p.title,
+            sub: [
+              '${r.plan.done} / ${r.plan.total} tâche${r.plan.total > 1 ? 's' : ''}',
+              if (nextAction(r.p) case final n?) 'prochaine : ${n.action.title}',
+            ].join(' · '),
+            bar: r.plan.total > 0 ? (done: r.plan.done, total: r.plan.total, expected: r.plan.expected) : null,
+            pct: r.plan.pctInt,
+            chip: r.plan.expected <= 0 ? null : (r.plan.delta >= 0 ? 'au plan' : '${r.plan.delta} au plan'),
+            onTap: () => showProjectSheet(context,
+                project: r.p, domains: st.activeDomains, activities: st.activities, sessions: st.sessions, logic: logic, onStartTimer: widget.onStartTimer),
+            onLongPress: () => showProjectFiche(context,
+                project: r.p,
+                allProjects: all,
+                domains: st.activeDomains,
+                activities: st.activities,
+                sessions: st.sessions,
+                sync: widget.sync,
+                logic: logic,
+                onStartTimer: widget.onStartTimer),
+          ),
+        ),
+    ];
+  }
+
+  // ── Activités ───────────────────────────────────────────────────────────────
 
   List<Widget> _timeBody(DateTime now, Domain? d) {
     final cs = Theme.of(context).colorScheme;
     final rows = _timeRows(now);
-    final live = rows.where((r) => !r.paused).toList();
+    final live = rows.where((r) => !r.paused).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
     final paused = rows.where((r) => r.paused).toList();
-    // Même ordre que Stats : sous l'attendu, le plus proche en tête ; au rythme, en ordre croissant.
-    final behind = live.where((r) => !r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
-    final ok = live.where((r) => r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
-    // Plus de carte ACTIVITÉ DU MOMENT (2026-10-30) : la liste À RATTRAPER la montre déjà en tête.
     return [
-      ListSectionTitle('À RATTRAPER · ${behind.length}', action: '+ Nouvelle activité', onAction: () async {
+      ListSectionTitle('ACTIVITÉS · ${live.length}', action: '+ Activité', onAction: () async {
         await widget.onCreate(domainId: d?.id, isHabit: false);
         if (mounted) setState(() {});
       }),
-      if (behind.isEmpty)
+      if (live.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(live.isEmpty ? 'Aucune activité-temps ici.' : 'Tout est au rythme de l\'attendu.',
-              style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
+          child: Text('Aucune activité-temps ici.', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
         )
       else
-        for (final r in behind) _timeRow(r, now),
-      if (ok.isNotEmpty) ...[
-        ListSectionTitle('AU RYTHME · ${ok.length}'),
-        for (final r in ok) _timeRow(r, now),
-      ],
+        for (final r in live) _timeRow(r, now),
       if (paused.isNotEmpty) ...[
         ListSectionTitle('EN PAUSE · ${paused.length}', onAction: () => setState(() => _showPaused = !_showPaused), expanded: _showPaused),
         if (_showPaused) for (final r in paused) _timeRow(r, now),
@@ -337,7 +505,7 @@ class _DomainPageState extends State<_DomainPage> {
         sub: sub,
         bar: r.hasGoal && !r.paused ? (done: r.doneMin, total: r.totalMin, expected: r.expectedMin) : null,
         pct: r.pctInt,
-        chip: r.paused ? null : (r.hasGoal ? '${r.pctInt} %' : null),
+        chip: r.paused || !r.hasGoal ? null : (r.onTrack ? 'au rythme' : 'à rattraper'),
         muted: r.paused,
         trailing: r.paused || !r.hasGoal ? Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)) : null,
         onTap: () async {
@@ -359,25 +527,21 @@ class _DomainPageState extends State<_DomainPage> {
       return t <= 0 ? 0 : (logic.activeHabitDone(a) / t).clamp(0.0, 1.0);
     }
     int pctOf(Activity a) => (ratio(a) * 100).round();
+    // À faire d'abord (la moins avancée en tête), puis les atteintes.
     final todo = all.where((a) => !logic.habitReached(a)).toList()..sort((x, y) => comparePct(pctOf(x), pctOf(y)));
-    final done = all.where(logic.habitReached).toList()..sort((x, y) => comparePct(pctOf(x), pctOf(y)));
+    final done = all.where(logic.habitReached).toList()..sort((x, y) => x.name.compareTo(y.name));
     return [
-      ListSectionTitle('À FAIRE · ${todo.length}', action: '+ Nouvelle routine', onAction: () async {
+      ListSectionTitle('ROUTINES · ${all.length}', action: '+ Routine', onAction: () async {
         await widget.onCreate(domainId: d?.id, isHabit: true);
         if (mounted) setState(() {});
       }),
-      if (todo.isEmpty)
+      if (all.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Text(all.isEmpty ? 'Aucune routine ici.' : 'Toutes les routines de la période sont atteintes.',
-              style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
-        )
-      else
-        for (final a in todo) _habitRow(a, now),
-      if (done.isNotEmpty && d != null) ...[
-        ListSectionTitle('ATTEINTES · ${done.length}'),
-        for (final a in done) _habitRow(a, now),
-      ],
+          child: Text('Aucune routine ici.', style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
+        ),
+      for (final a in todo) _habitRow(a, now),
+      for (final a in done) _habitRow(a, now),
     ];
   }
 

@@ -47,7 +47,6 @@ import 'package:productivitwo_v1/widgets/activity_fiche_sheet.dart';
 import 'package:productivitwo_v1/widgets/goals_view.dart';
 import 'package:productivitwo_v1/widgets/week_stats_view.dart';
 import 'package:productivitwo_v1/widgets/new_routine_sheet.dart';
-import 'package:productivitwo_v1/widgets/pest_counter.dart';
 import 'package:productivitwo_v1/widgets/objectives_home_view.dart';
 import 'package:productivitwo_v1/widgets/actions_view.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -77,7 +76,6 @@ import 'dart:async';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:productivitwo_v1/widgets/routine_tile_bits.dart';
 import 'package:productivitwo_v1/widgets/time_report_card.dart';
-import 'package:productivitwo_v1/widgets/today_logged_pie.dart';
 import 'package:productivitwo_v1/widgets/changelog_sheet.dart';
 import 'package:productivitwo_v1/widgets/privacy_policy_screen.dart';
 import 'package:productivitwo_v1/web/web_app_stub.dart'
@@ -3583,13 +3581,6 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
-  String _fmtHoursHM(double h) {
-    final totalMin = (h * 60).round();
-    final hh = totalMin ~/ 60;
-    final mm = totalMin % 60;
-    return "${hh}h ${mm}m";
-  }
-
 // 1) Helpers d'index <-> enum
   /// Onglets visibles dans la barre. Deux rôles distincts (2026-09) :
   /// « Actions » = l'EXÉCUTION (les actions des projets actifs, non en
@@ -5515,164 +5506,7 @@ class _AppRootState extends State<AppRoot>
     }
   }
 
-  ({double prog7, double haloAbs, double prog90, double bigAll, String label, double todayProgress, String centerText, String subText})
-      _computeGlobalTimeGauges(DateTime now) {
-    final today = DateTime(now.year, now.month, now.day);
 
-    final start7Inc = today.subtract(const Duration(days: 6));
-    final end7Inc = today.add(const Duration(days: 1));
-
-    final start90Inc = today.subtract(const Duration(days: 89));
-    final end90Inc = today.add(const Duration(days: 1));
-
-    final totalsToday = logic.timeTotalsByDomain(today, now);
-    final totalTodayDur =
-        totalsToday.values.fold<Duration>(Duration.zero, (a, b) => a + b);
-    final totalTodayHours = totalTodayDur.inMinutes / 60.0;
-
-    final dailyTargetMinRaw = _state!.activeActivities
-        .where((a) => a.type == 'time' && a.goalMin > 0)
-        .fold<int>(0, (sum, a) => sum + a.goalMin);
-    // Plafond 24h : la cible globale = somme des cibles p90 de chaque domaine
-    // (on vise le meilleur jour de chacun), ce qui peut dépasser une journée.
-    // On bride l'objectif VISIBLE à 24h pour que le % reste lisible.
-    final dailyTargetMinAll =
-        dailyTargetMinRaw > 24 * 60 ? 24 * 60 : dailyTargetMinRaw;
-
-    final dailyTargetHoursAll = dailyTargetMinAll / 60.0;
-
-    double totalHoursOverRange(DateTime start, DateTime endExcl) {
-      final totals = logic.timeTotalsByDomain(start, endExcl);
-      final dur = totals.values.fold<Duration>(Duration.zero, (a, b) => a + b);
-      return dur.inMinutes / 60.0;
-    }
-
-    final done7HoursAll = totalHoursOverRange(start7Inc, end7Inc);
-    final done90HoursAll = totalHoursOverRange(start90Inc, end90Inc);
-
-    final target7HoursAll = dailyTargetHoursAll * 7.0;
-
-    final total7HoursAbs = 7.0 * 24.0;
-    final progTimeAll7 = (done7HoursAll / total7HoursAbs).clamp(0.0, 1.0);
-
-    final total24Hours = 24.0;
-    final haloAllAbs = (totalTodayHours / total24Hours).clamp(0.0, 1.0);
-
-    final bigAll = (target7HoursAll > 0)
-        ? (done7HoursAll / target7HoursAll).clamp(0.0, 1.0)
-        : 0.0;
-
-    final total90HoursAbs = 90.0 * 24.0;
-    final progTimeAll90 = (done90HoursAll / total90HoursAbs).clamp(0.0, 1.0);
-
-    final labelAll = _fmtHoursHM(totalTodayHours);
-
-    // Pour GaugeRing : progression aujourd'hui vs objectif journalier
-    final todayProg = dailyTargetHoursAll > 0
-        ? (totalTodayHours / dailyTargetHoursAll).clamp(0.0, 1.5)
-        : 0.0;
-    final totalTodayMin = totalTodayDur.inMinutes;
-    final doneH = totalTodayMin ~/ 60;
-    final doneM = totalTodayMin % 60;
-    final centerTxt = doneH > 0
-        ? '${doneH}h${doneM.toString().padLeft(2, '0')}'
-        : '${doneM}min';
-    final goalH = dailyTargetMinAll ~/ 60;
-    final goalM = dailyTargetMinAll % 60;
-    final subTxt = goalH > 0
-        ? 'Objectif ${goalH}h${goalM > 0 ? goalM.toString().padLeft(2, '0') : ''}'
-        : 'Objectif ${dailyTargetMinAll}min';
-
-    return (
-      prog7: progTimeAll7,
-      haloAbs: haloAllAbs,
-      prog90: progTimeAll90,
-      bigAll: bigAll,
-      label: labelAll,
-      todayProgress: todayProg,
-      centerText: centerTxt,
-      subText: subTxt,
-    );
-  }
-
-  ({
-    double bigForGauge,
-    double rate90,
-    double outerPrimary,
-    String label,
-    String centerText,
-    String subText,
-  }) _computeGlobalHabitsGauge(DateTime now) {
-    final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-
-    // Fenêtres (calendaires)
-    final start7Inc = today.subtract(const Duration(days: 6));
-    final end7Inc = tomorrow;
-
-    final start90 = today.subtract(const Duration(days: 89));
-    final end90 = tomorrow;
-
-    int doneHabitsAllCalendar(DateTime start, DateTime end) {
-      int sum = 0;
-      for (final d in _state!.activeDomains) {
-        // done par domaine
-        DateTime day = DateTime(start.year, start.month, start.day);
-        while (day.isBefore(end)) {
-          for (final a in _state!.activeActivities
-              .where((a) => a.isHabit && a.domainId == d.id)) {
-            sum += logic.habitValueOn(a.id, day);
-          }
-          day = day.add(const Duration(days: 1));
-        }
-      }
-      return sum;
-    }
-
-    int targetHabitsAllCalendar(DateTime start, DateTime end) {
-      final days = end.difference(start).inDays;
-      int sum = 0;
-      for (final a in _state!.activeActivities.where((a) => a.isHabit)) {
-        sum += logic.dayQuotaFor(a) * days;
-      }
-      return sum;
-    }
-
-    // Today / Week
-    final doneToday = doneHabitsAllCalendar(today, tomorrow);
-    final tgtToday = targetHabitsAllCalendar(today, tomorrow);
-
-    final done7 = doneHabitsAllCalendar(start7Inc, end7Inc);
-    final tgt7 = targetHabitsAllCalendar(start7Inc, end7Inc);
-
-    final rateToday = tgtToday == 0 ? 0.0 : (doneToday / tgtToday);
-    final rateWeek = tgt7 == 0 ? 0.0 : (done7 / tgt7);
-
-    final bigForGauge = (done7 == 0 && doneToday > 0) ? rateToday : rateWeek;
-
-    // 90j
-    final done90 = doneHabitsAllCalendar(start90, end90);
-    final tgt90 = targetHabitsAllCalendar(start90, end90);
-    final rate90 = tgt90 == 0 ? 0.0 : (done90 / tgt90).clamp(0.0, 1.0);
-
-    // Comptage binaire : routines atteintes / total
-    final routineItems = logic.routineProgressItemsForCurrentPeriod();
-    final totalRoutines = routineItems.length;
-    final reachedRoutines = routineItems.where((it) => it.isReached).length;
-    final label = "$reachedRoutines / $totalRoutines";
-    final outerPrimary = totalRoutines == 0
-        ? 0.0
-        : (reachedRoutines / totalRoutines).clamp(0.0, 1.0);
-
-    return (
-      bigForGauge: bigForGauge.clamp(0.0, 1.0),
-      rate90: rate90,
-      outerPrimary: outerPrimary,
-      label: label,
-      centerText: label,
-      subText: 'Routines',
-    );
-  }
 
   // ── Priorités du jour ──────────────────────────────────────────────────────
 
@@ -6105,179 +5939,7 @@ class _AppRootState extends State<AppRoot>
           return ListView(children: _statsCacheChildren!);
         }
         _statsCacheKey = cacheKey;
-        final now = DateTime.now();
-        final g = _computeGlobalTimeGauges(now);
-        final h = _computeGlobalHabitsGauge(now);
-        final cs = Theme.of(context).colorScheme;
 
-        // Sections nommées de la fiche « Ma semaine » (2026-10) : chacune est
-        // repliable, plus de lectures empilées en vrac.
-        List<WeekDetailSection> weekDetails(BuildContext ctx) => [
-        (title: 'JAUGES DU JOUR · COURBE DE LA SEMAINE', child: SectionCard(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          child: Builder(
-            builder: (context) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Builder(builder: (context) {
-                    final today2 = DateTime.now();
-                    final todayD2 = DateTime(today2.year, today2.month, today2.day);
-                    final activeProjects = _dashboardProjects
-                        .where((p) => p.status != 'archived' && p.status != 'done')
-                        .toList();
-                    final ganttTasks = activeProjects
-                        .expand((p) => p.tasks)
-                        .where((t) =>
-                            t.startDate.isBefore(todayD2.add(const Duration(days: 1))) &&
-                            t.status != 'skipped')
-                        .toList();
-                    // Tâches sans sous-actions : comptées au niveau tâche.
-                    // Tâches avec sous-actions : comptées au niveau sous-action.
-                    int ganttDone = 0, ganttTotal = 0;
-                    for (final t in ganttTasks) {
-                      if (t.actions.isEmpty) {
-                        ganttTotal += 1;
-                        if (t.status == 'done') ganttDone += 1;
-                      } else {
-                        ganttTotal += t.actions.length;
-                        ganttDone += t.stepsDone;
-                      }
-                    }
-                    final ganttProg = ganttTotal == 0 ? 0.0 : (ganttDone / ganttTotal).clamp(0.0, 1.0);
-
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        GaugeRing(
-                          label: 'Activités',
-                          labelIcon: Icons.timer_outlined,
-                          progress: g.todayProgress,
-                          centerText: g.centerText,
-                          color: _colorForProgress(g.todayProgress, context),
-                          size: 115,
-                          onTap: () async {
-                            final goNow = await _showDomainDetail(
-                                null, startCal, endCal, days,
-                                focus: 'time');
-                            if (!mounted) return;
-                            if (goNow == true) setState(() => _tab = _goNowTab());
-                          },
-                        ),
-                        GaugeRing(
-                          label: 'Routines',
-                          labelIcon: Icons.repeat_rounded,
-                          progress: h.outerPrimary,
-                          centerText: h.centerText,
-                          color: _colorForProgress(h.outerPrimary, context),
-                          size: 115,
-                          onTap: () => _showDomainDetail(
-                              null, startCal, endCal, days,
-                              focus: 'habit'),
-                        ),
-                        // Jauge Projets gatée avec l'onglet : quand le Gantt
-                        // est en retrait, le user ne pilote plus par actions.
-                        if (!logic.state.hideProjectsTab)
-                          GaugeRing(
-                            label: 'Projets',
-                            labelIcon: Icons.account_tree_outlined,
-                            progress: ganttProg,
-                            centerText: ganttTotal == 0 ? '—' : '$ganttDone/$ganttTotal',
-                            color: _colorForProgress(ganttProg, context),
-                            size: 115,
-                            onTap: () => setState(() => _tab = _Tab.projets),
-                          ),
-                      ],
-                    );
-                  }),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  Builder(builder: (_) {
-                    final weekData = logic.weeklyScoreData();
-                    final current = weekData.current;
-                    final previous = weekData.previous;
-                    final diff = current - previous;
-                    final currentPct = (current * 100).round();
-                    final previousPct = (previous * 100).round();
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _WeekScoreChart(
-                          scores: weekData.days7,
-                          target: logic.state.weeklyScoreTarget / 100.0,
-                          todayIndex: now.weekday - 1,
-                          cs: cs,
-                          onDayTap: (i) {
-                            setState(() {
-                              _tab = _Tab.dashboard;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Cette semaine : $currentPct%',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: cs.onSurface.withOpacity(.5),
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                'Sem. préc. : $previousPct%',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: cs.onSurface.withOpacity(.4),
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Icon(
-                                diff >= 0
-                                    ? Icons.arrow_upward_rounded
-                                    : Icons.arrow_downward_rounded,
-                                size: 13,
-                                color: diff >= 0
-                                    ? cs.primary
-                                    : cs.error.withOpacity(.7),
-                              ),
-                              Text(
-                                '${diff >= 0 ? '+' : ''}${(diff * 100).round()}%',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: diff >= 0
-                                      ? cs.primary
-                                      : cs.error.withOpacity(.7),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
-              );
-            },
-          ),
-        )),
-        // Lecture du temps (venue d'Objectifs, allègement 2026-10) : heatmap par
-        // domaine, 12 semaines, camembert du jour.
-        (title: 'TEMPS PAR DOMAINE · 12 SEMAINES', child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: AccueilTimeStats(logic: logic),
-        )),
-        (title: 'AUJOURD\'HUI · TEMPS LOGGUÉ', child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TodayLoggedPie(logic: logic),
-        )),
-        (title: 'RETARDS', child: PestCounterCard(logic: logic)),
-        ];
         _statsCacheChildren = [
           WeekStatsView(
             logic: logic,
@@ -6290,7 +5952,6 @@ class _AppRootState extends State<AppRoot>
               return goNow;
             },
             onManageDomains: () => _showDomainsSheet(context),
-            weekDetails: weekDetails,
           ),
         ];
         return ListView(children: _statsCacheChildren!);
@@ -6980,13 +6641,9 @@ class _AppRootState extends State<AppRoot>
         _startCountdown(m, a.name);
       },
       onLaunchBlock: (b) => _launchScheduledBlock(b, goToNow: false),
+      projects: _dashboardProjects,
+      onManageDomains: () => _showDomainsSheet(context),
     );
-  }
-  Color _colorForProgress(double p, BuildContext ctx) {
-    //if (p >= 0.99) return Colors.transparent;
-    if (p >= 0.50) return Colors.green;
-    if (p >= 0.25) return Colors.orange;
-    return Colors.redAccent;
   }
 
 }
