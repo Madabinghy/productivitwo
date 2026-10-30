@@ -125,7 +125,13 @@ class StakesList extends StatefulWidget {
   /// Le soir (lot 4) : le bilan porte gagné / perdu ; la liste ne garde que
   /// ce qui reste possible.
   final bool evening;
-  const StakesList({super.key, required this.board, required this.onRun, this.onOpenBadges, this.evening = false});
+  /// Montre suisse hors de portée : ouvre « Tes minimums » (mobile). Sans
+  /// lui, la ligne n'apparaît pas.
+  final VoidCallback? onWatchSettings;
+  /// Parmi les activités en retard, celles qui coûtent souvent la montre.
+  final int watchBlocking;
+  const StakesList(
+      {super.key, required this.board, required this.onRun, this.onOpenBadges, this.evening = false, this.onWatchSettings, this.watchBlocking = 0});
 
   @override
   State<StakesList> createState() => _StakesListState();
@@ -138,7 +144,8 @@ class _StakesListState extends State<StakesList> {
   @override
   Widget build(BuildContext context) {
     final b = widget.board;
-    if (b.isEmpty || (widget.evening && b.inPlay == 0)) return const SizedBox.shrink();
+    final watch = b.watchOutOfReach > 0 && widget.onWatchSettings != null;
+    if (b.isEmpty || (widget.evening && b.inPlay == 0 && !watch)) return const SizedBox.shrink();
     final ev = widget.evening;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (b.top.isNotEmpty) ...[
@@ -147,6 +154,7 @@ class _StakesListState extends State<StakesList> {
       ],
       if (b.rest.isNotEmpty) _restToggle(b.rest),
       if (_restOpen) ..._restList(b.rest),
+      if (watch) ...[const SizedBox(height: 8), _watchRow(b.watchOutOfReach)],
       if (!ev && b.won.isNotEmpty) ...[
         _sec('GAGNÉ AUJOURD’HUI', '${b.won.length}'),
         _summary(Icons.check_rounded, kBPrimary, b.won.join(' · ')),
@@ -156,6 +164,42 @@ class _StakesListState extends State<StakesList> {
         _summary(Icons.close_rounded, kStakeLose, b.lost.join(' · ')),
       ],
     ]);
+  }
+
+  /// « Montre suisse · n activités en retard » : la journée n'est plus
+  /// jouable ce soir, on propose de régler les minimums.
+  Widget _watchRow(int behind) {
+    final blocking = widget.watchBlocking;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: widget.onWatchSettings,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: kBSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kBText4.withValues(alpha: .5)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.watch_later_outlined, size: 22, color: kBText3),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Montre suisse · $behind activités en retard',
+                  style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: kBText)),
+              Text(
+                blocking > 0
+                    ? 'Hors de portée ce soir. ${blocking == 1 ? '1 d’entre elles te la coûte' : '$blocking d’entre elles te la coûtent'} souvent.'
+                    : 'Hors de portée ce soir.',
+                style: const TextStyle(fontSize: 12, height: 1.3, color: kBText2),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          const Text('Régler ›', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kBPrimary)),
+        ]),
+      ),
+    );
   }
 
   Widget _sec(String t, String n) => Padding(

@@ -47,6 +47,7 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
 import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
 import 'package:productivitwo_v1/utils/palier_colors.dart' show kPalierGreen, kPalierAmber;
@@ -1407,6 +1408,7 @@ class TodayViewState extends State<TodayView> {
   /// liste EN JEU. Un +1 garde la feuille ouverte ; un chrono ou la page focus
   /// la ferment.
   void _openStakesSheet() {
+    WatchKeepStore.load();
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
         final board = _stakeBoard() ?? StakeBoard.empty;
@@ -1442,6 +1444,11 @@ class TodayViewState extends State<TodayView> {
             StakesList(
               board: board,
               evening: evening,
+              watchBlocking: board.watchOutOfReach > 0 ? watchBlockersOf(widget.logic).length : 0,
+              onWatchSettings: () async {
+                await showWatchMinimumsSheet(ctx, widget.logic);
+                setLocal(() {});
+              },
               onOpenBadges: () {
                 Navigator.of(ctx).pop();
                 _openBadgeGallery();

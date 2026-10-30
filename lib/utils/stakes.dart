@@ -146,10 +146,14 @@ class StakeBoard {
   final List<String> won;
   /// Perdu aujourd'hui : plus rien ne peut sauver la journée pour eux.
   final List<String> lost;
-  const StakeBoard({this.top = const [], this.rest = const [], this.won = const [], this.lost = const []});
+  /// Montre suisse hors de portée ce soir : nombre d'activités en retard
+  /// (au-delà de [kWatchMaxBehind]), 0 sinon. La liste propose alors de
+  /// régler les minimums au lieu d'une ligne par activité.
+  final int watchOutOfReach;
+  const StakeBoard({this.top = const [], this.rest = const [], this.won = const [], this.lost = const [], this.watchOutOfReach = 0});
 
   int get inPlay => top.length + rest.length;
-  bool get isEmpty => inPlay == 0 && won.isEmpty && lost.isEmpty;
+  bool get isEmpty => inPlay == 0 && won.isEmpty && lost.isEmpty && watchOutOfReach == 0;
   static const empty = StakeBoard();
 }
 
@@ -177,6 +181,7 @@ StakeBoard buildStakeBoard({
   final gestures = <String, StakeGesture>{};
   final gains = <String, List<StakeGain>>{};
   final won = <String>[];
+  var watchOutOfReach = 0;
   final lost = <String>[];
   final routineById = {for (final r in facts.routines) r.activity.id: r};
 
@@ -351,7 +356,9 @@ StakeBoard buildStakeBoard({
       final behind = [for (final p in pace) if (!p.onPace) p];
       if (pace.isNotEmpty && behind.isEmpty) {
         won.add('Montre suisse');
-      } else if (pace.isNotEmpty && behind.length <= kWatchMaxBehind) {
+      } else if (behind.length > kWatchMaxBehind) {
+        watchOutOfReach = behind.length;
+      } else if (pace.isNotEmpty) {
         // Au-delà de [kWatchMaxBehind] activités en retard, la journée n'est plus
         // jouable ce soir : pas une ligne par activité (2026-10-30, retour user :
         // « tenu 25 sur 54 », gonflé par une ligne Montre suisse par activité).
@@ -585,7 +592,7 @@ StakeBoard buildStakeBoard({
       tail.add(s);
     }
   }
-  return StakeBoard(top: head, rest: tail, won: won, lost: lost);
+  return StakeBoard(top: head, rest: tail, won: won, lost: lost, watchOutOfReach: watchOutOfReach);
 }
 
 /// Familles de la ligne dépliée, dans l'ordre d'affichage.

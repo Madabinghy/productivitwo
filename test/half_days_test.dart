@@ -89,6 +89,7 @@ void main() {
     ]);
     final board = buildStakeBoard(deck: deck, facts: facts, activities: acts);
     expect(board.top.length + board.rest.length, 0);
+    expect(board.watchOutOfReach, 5);
     final few = TodayFacts(ymd: '2026-10-30', now: DateTime(2026, 10, 30, 18), pace: [ActivityPace(acts[0], 0, 30), ActivityPace(acts[1], 40, 30)]);
     final b2 = buildStakeBoard(deck: deck, facts: few, activities: acts);
     expect(b2.top.length + b2.rest.length, 1);

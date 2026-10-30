@@ -844,7 +844,15 @@ jours glissants** (maquette validée 2026-10-30 « Montre suisse glissante » ; 
 d'avant la création ne réclament rien ; `ActivityPace.pastMin` / `todayMin` / `aheadMin` / `leavingMin` / `tomorrowNeedMin`) — plus de
 mur le lundi, indépendant de la fenêtre de budget des Domaines. Fiche du badge : `WatchPaceView` (`widgets/watch_pace_view.dart`,
 « k / n couvertes », une barre par activité : gris = 6 jours passés, vert = aujourd'hui, « reste n min » / « ✓ couverte · n d'avance »,
-Chrono), ⓘ `kRuleWatch` ; `badgeToday` annonce « Demain : … » (jour qui sort de la fenêtre). **Métronome** (`metronome`, symbole `metronome`) :
+Chrono), ⓘ `kRuleWatch` ; `badgeToday` annonce « Demain : … » (jour qui sort de la fenêtre). **Donner la main sur les minimums** (maquette validée 2026-10-30) :
+logique pure `utils/watch_minimums.dart` (`watchBlockers` : activité à minimum en retard un soir de montre perdue ≥ `kBlockerLostDays` (3)
+fois sur `kBlockerWindowDays` (30) jours clos, `avgMin`, `suggestedMin` = ce que tu fais vraiment) ; `widgets/watch_minimums_sheet.dart` :
+`WatchBlockerCard` sous la barre de l'activité dans la fiche du badge (« Courses te coûte souvent la Montre suisse » · Pas de minimum ·
+Baisser à n min · Garder), `setActivityMinimum` (pose `goalMin` + `targetSource:"user"`, « Annuler »), « Garder » = 30 j sans redemander
+(`WatchKeepStore`, SharedPreferences), feuille « Tes minimums » (`showWatchMinimumsSheet` : TE COÛTENT LA MONTRE · TENUS · SANS MINIMUM,
+tap = `pickDurationMin`) ; `WatchPaceView(logic:)` se recalcule elle-même ; au-delà de `kWatchMaxBehind`, `StakeBoard.watchOutOfReach` →
+ligne « Montre suisse · n activités en retard · Régler › » dans la feuille Ta journée (`StakesList(onWatchSettings:)`) ; ⓘ carte « Tes
+minimums ». Jamais « épingler » ni « calage » à l'écran. **Métronome** (`metronome`, symbole `metronome`) :
 toutes les routines quotidiennes dues atteintes. Hors domaines en veille (jours gelés, `frozenOf`) et routines acquises ; jour sans rien
 à tenir = neutre. Aujourd'hui : `TodayFacts.pace` (activités face à l'attendu, `composeTodayFacts(budgetWindowDays:,
 restingDomainIds:)`) et `metronomeRoutines` ; `badgeToday` (`_montre`, `_metronome`) ; enjeux = section dédiée de `buildStakeBoard`

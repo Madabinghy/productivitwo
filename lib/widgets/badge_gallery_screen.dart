@@ -568,7 +568,7 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
         ],
         if (today != null) _todayBlock(ctx, b, today, actions, () => setSheet(() {})),
         if (facts != null && b.def.id == 'montre-suisse' && facts.pace.isNotEmpty)
-          WatchPaceView(pace: facts.pace, onChrono: actions?.startChrono),
+          WatchPaceView(pace: facts.pace, onChrono: actions?.startChrono, logic: logic is AppLogic ? logic : null),
         if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
