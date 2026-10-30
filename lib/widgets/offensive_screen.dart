@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistItem, setActionDone, setChecklistItem;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -10,6 +11,8 @@ import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleOffensive;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
+import 'package:productivitwo_v1/utils/run_session.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
 
@@ -28,15 +31,17 @@ const _track = Color(0xFF3A2418);
 const _text2 = Color(0xFFD4C4BA);
 const _text3 = Color(0xFFB8A69A);
 
-Future<void> showOffensiveScreen(BuildContext context, AppLogic logic) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic)));
+/// [resume] = une offensive en attente (quittée en route) : elle reprend au coup suivant.
+Future<void> showOffensiveScreen(BuildContext context, AppLogic logic, {PendingRun? resume}) {
+  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => OffensiveScreen(logic: logic, resume: resume)));
 }
 
 enum _Phase { setup, coup, pause, end }
 
 class OffensiveScreen extends StatefulWidget {
   final AppLogic logic;
-  const OffensiveScreen({super.key, required this.logic});
+  final PendingRun? resume;
+  const OffensiveScreen({super.key, required this.logic, this.resume});
 
   @override
   State<OffensiveScreen> createState() => _OffensiveScreenState();
@@ -51,6 +56,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   int _index = 0;
   int _won = 0;
   int _remaining = 15 * 60;
+  DateTime? _endsAt;
   Timer? _timer;
   DateTime? _startedAt;
   bool _ownChrono = false;
@@ -61,7 +67,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   final _actionsDone = <String, List<String>>{}; // projet → titres
   final _stepsDone = <String, int>{}; // action → étapes cochées
   final _before = <String, ({int done, int total, int behind})>{};
-  final String _runId = ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
+  late final String _runId = widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
 
   AppLogic get logic => widget.logic;
   OffensiveTarget? get _cur => _index < _queue.length ? _queue[_index] : null;
@@ -72,13 +78,80 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     WakelockPlus.enable().catchError((_) {});
     _fronts = offensiveFronts(logic.currentProjects, DateTime.now());
     if (_fronts.isNotEmpty) _front = _fronts.first.project.id;
+    final r = widget.resume;
+    if (r != null) _restore(r);
+  }
+
+  void _restore(PendingRun r) {
+    final front = r.extra['front']?.toString();
+    _front = front == null || front.isEmpty ? null : front;
+    _duration = r.intOf('duration') ?? 15;
+    _won = r.done;
+    _chronoSec = r.intOf('chronoSec') ?? 0;
+    _startedAt = r.startedAt;
+    _passed.addAll(r.strings('passed'));
+    for (final e in r.strings('actionsDone')) {
+      final i = e.indexOf('|');
+      if (i > 0) _actionsDone.putIfAbsent(e.substring(0, i), () => []).add(e.substring(i + 1));
+    }
+    final before = r.extra['before'];
+    if (before is Map) {
+      for (final e in before.entries) {
+        final v = e.value;
+        if (v is List && v.length == 3) {
+          _before[e.key.toString()] = (done: (v[0] as num).toInt(), total: (v[1] as num).toInt(), behind: (v[2] as num).toInt());
+        }
+      }
+    }
+    // Le chrono d'un coup interrompu tourne encore : il s'arrête, le coup repart.
+    if (logic.state.sessions.any((x) => x.endAt == null && !x.startAt.isBefore(r.startedAt))) logic.stopActive(notify: false);
+    _queue = _previewQueue();
+    final i = _queue.indexWhere((t) => !_passed.contains(t.action.id) && !t.action.done);
+    if (i < 0) {
+      _phase = _Phase.end;
+      return;
+    }
+    _index = i;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startCoup();
+    });
+  }
+
+  /// Le chrono lancé à la main avant l'offensive (il s'arrête au lancement).
+  Session? get _runningBefore => logic.state.sessions.where((x) => x.endAt == null).firstOrNull;
+
+  void _saveSession() {
+    if (_startedAt == null) return;
+    final now = DateTime.now();
+    RunSessionStore.save(PendingRun(
+      kind: kOffensiveKind,
+      runId: _runId,
+      date: ymdOf(livedDate(now, logic.dayStartMin)),
+      startedAt: _startedAt!,
+      lastActiveAt: now,
+      done: _won,
+      extra: {
+        'front': _front ?? '',
+        'duration': _duration,
+        'chronoSec': _chronoSec + (_chronoFrom == null ? 0 : now.difference(_chronoFrom!).inSeconds),
+        'passed': _passed.toList(),
+        'actionsDone': [for (final e in _actionsDone.entries) for (final t in e.value) '${e.key}|$t'],
+        'total': _actionsDone.values.fold(0, (s, l) => s + l.length),
+        'before': {for (final e in _before.entries) e.key: [e.value.done, e.value.total, e.value.behind]},
+      },
+    ));
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    if (_phase != _Phase.pause) CoupAlarm.cancel();
     _stopOwnChrono();
-    if (!_saved && _won > 0) _save();
+    // Quittée en route : l'offensive reste en attente (reprenable) ; au bilan, elle se clôt.
+    if (!_saved && _phase == _Phase.end) {
+      if (_won > 0) _save();
+      RunSessionStore.clear();
+    }
     WakelockPlus.disable().catchError((_) {});
     super.dispose();
   }
@@ -91,6 +164,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     final now = DateTime.now();
     _queue = _previewQueue();
     if (_queue.isEmpty) return;
+    if (_runningBefore != null) logic.stopActive(notify: false);
     _startedAt = now;
     for (final t in _queue) {
       _before.putIfAbsent(t.project.id, () => planSnapshot(t.project, now));
@@ -100,24 +174,45 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   }
 
   void _startCoup() {
+    _endsAt = DateTime.now().add(Duration(minutes: _duration));
     _remaining = _duration * 60;
     _phase = _Phase.coup;
     _startChrono();
+    _armAlarm();
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (_remaining > 1) {
-        setState(() => _remaining--);
+      final left = _endsAt!.difference(DateTime.now()).inSeconds;
+      if (left > 0) {
+        setState(() => _remaining = left);
       } else {
         _coupWon();
       }
     });
+    _saveSession();
     setState(() {});
+  }
+
+  /// Alarme de fin du coup (le minuteur se lit sur l'heure de fin : il continue en veille).
+  void _armAlarm() {
+    final t = _cur;
+    CoupAlarm.schedule(logic,
+        endsAt: _endsAt!,
+        title: '🎯 Coup gagné',
+        body: '$_duration min${t == null ? '' : ' sur ${t.action.title}'}${offensivePauseDue(_won + 1) ? ' · point d’étape' : ' · le suivant démarre'}');
+  }
+
+  void _moreTime() {
+    _endsAt = _endsAt!.add(Duration(minutes: _duration));
+    CoupAlarm.cancel(all: false);
+    _armAlarm();
+    setState(() => _remaining = _endsAt!.difference(DateTime.now()).inSeconds);
   }
 
   void _coupWon() {
     _timer?.cancel();
     _won++;
+    _saveSession();
     if (offensivePauseDue(_won)) {
       _stopOwnChrono();
       setState(() => _phase = _Phase.pause);
@@ -159,6 +254,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     }
     setState(() => _index = i);
     _startChrono();
+    _saveSession();
   }
 
   void _persist(OffensiveTarget t) => logic.sync?.patchActionOf(t.project, t.action);
@@ -197,6 +293,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   void _end({bool lastCoupWon = false}) {
     _timer?.cancel();
+    CoupAlarm.cancel();
     if (lastCoupWon) _won++;
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
@@ -222,6 +319,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   void _finish() {
     if (_won > 0) _save();
     _saved = true;
+    RunSessionStore.clear();
     Navigator.of(context).pop();
   }
 
@@ -377,6 +475,11 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             ),
         ]),
       ),
+      if (_runningBefore case final r?) ...[
+        const SizedBox(height: 10),
+        Text('Le chrono « ${logic.state.activities.where((a) => a.id == r.activityId).firstOrNull?.name ?? 'en cours'} » s’arrête au lancement : l’offensive prend la main.',
+            style: const TextStyle(fontSize: 13, height: 1.4, color: kOffensiveAccent)),
+      ],
       const SizedBox(height: 12),
       _primary(preview.isEmpty ? 'Rien à attaquer' : 'Lancer l’offensive · ${preview.length} action${preview.length > 1 ? 's' : ''}', preview.isEmpty ? null : _launch),
     ]);
@@ -505,7 +608,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           Expanded(child: _outline('Action faite', _actionDone)),
           const SizedBox(width: 8),
         ],
-        Expanded(child: _outline('+$_duration min', () => setState(() => _remaining += _duration * 60))),
+        Expanded(child: _outline('+$_duration min', _moreTime)),
         const SizedBox(width: 8),
         Expanded(child: _outline('Pas ça', _skip)),
       ]),

@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleGuerilla;
 import 'package:productivitwo_v1/utils/guerilla.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/routine_moments.dart' show buildRoutineDay;
+import 'package:productivitwo_v1/utils/run_session.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 
 /// Écran Guérilla (maquette validée 2026-10-30) : le corps de 1 à 5, puis un
@@ -23,15 +26,17 @@ const _card = Color(0xFF12241B);
 const _text2 = Color(0xFFB9CFC4);
 const _text3 = Color(0xFFA3B8AD);
 
-Future<void> showGuerillaScreen(BuildContext context, AppLogic logic) {
-  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => GuerillaScreen(logic: logic)));
+/// [resume] = une guérilla en attente (quittée en route) : elle reprend au coup suivant.
+Future<void> showGuerillaScreen(BuildContext context, AppLogic logic, {PendingRun? resume}) {
+  return Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => GuerillaScreen(logic: logic, resume: resume)));
 }
 
 enum _Phase { intro, coup, pause, end }
 
 class GuerillaScreen extends StatefulWidget {
   final AppLogic logic;
-  const GuerillaScreen({super.key, required this.logic});
+  final PendingRun? resume;
+  const GuerillaScreen({super.key, required this.logic, this.resume});
 
   @override
   State<GuerillaScreen> createState() => _GuerillaScreenState();
@@ -40,16 +45,18 @@ class GuerillaScreen extends StatefulWidget {
 class _GuerillaScreenState extends State<GuerillaScreen> {
   late final List<GuerillaCoup> _queue;
   final _passed = <String>{};
-  final _done = <GuerillaCoup>[];
+  final _done = <String>[]; // libellés des coups faits
+  final _doneKeys = <String>{};
   _Phase _phase = _Phase.intro;
   int _index = 0;
   int? _before, _after;
   int _remaining = kGuerillaCoupMin * 60;
+  DateTime? _endsAt;
   Timer? _timer;
   bool _ownChrono = false;
   bool _saved = false;
   DateTime? _startedAt;
-  final String _runId = ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
+  late final String _runId = widget.resume?.runId ?? ChainRun(date: '', startedAt: DateTime(0), endedAt: DateTime(0), doneCount: 0, total: 0, completed: false).id;
 
   AppLogic get logic => widget.logic;
 
@@ -75,13 +82,58 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
         if (DateTime.tryParse(e.value)?.isAfter(now) ?? false) e.key,
     };
     _queue = buildGuerillaQueue(day: day, activities: st.activeActivities, projects: logic.currentProjects, now: now, pausedActivityIds: paused);
+    final r = widget.resume;
+    if (r != null) {
+      _before = r.intOf('bodyBefore');
+      _startedAt = r.startedAt;
+      _passed.addAll(r.strings('passed'));
+      _doneKeys.addAll(r.strings('doneKeys'));
+      _done.addAll(r.strings('doneTitles'));
+      // Le chrono d'un coup interrompu tourne encore : il s'arrête, le coup repart.
+      if (st.sessions.any((x) => x.endAt == null && !x.startAt.isBefore(r.startedAt))) logic.stopActive(notify: false);
+      final n = nextCoupIndex(_queue, -1, _passed);
+      if (n == null) {
+        _phase = _Phase.end;
+      } else {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _enter(n);
+        });
+      }
+    }
+  }
+
+  /// Le chrono lancé à la main avant la guérilla (il s'arrête au lancement).
+  Session? get _runningBefore => logic.state.sessions.where((x) => x.endAt == null).firstOrNull;
+
+  void _persist() {
+    if (_startedAt == null) return;
+    final now = DateTime.now();
+    RunSessionStore.save(PendingRun(
+      kind: kGuerillaKind,
+      runId: _runId,
+      date: ymdOf(livedDate(now, logic.dayStartMin)),
+      startedAt: _startedAt!,
+      lastActiveAt: now,
+      done: _done.length,
+      extra: {
+        'passed': _passed.toList(),
+        'doneKeys': _doneKeys.toList(),
+        'doneTitles': _done,
+        if (_before != null) 'bodyBefore': _before,
+      },
+    ));
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    CoupAlarm.cancel();
     _stopOwnChrono();
-    if (!_saved && _done.isNotEmpty) _save();
+    // Quittée en route : la guérilla reste en attente (reprenable) ; au bilan, elle se clôt.
+    if (!_saved && _phase == _Phase.end) {
+      if (_done.isNotEmpty) _save();
+      RunSessionStore.clear();
+    }
     WakelockPlus.disable().catchError((_) {});
     super.dispose();
   }
@@ -89,15 +141,18 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   // ── Coups ────────────────────────────────────────────────────────────────
 
   void _start() {
+    if (_runningBefore != null) logic.stopActive(notify: false);
     _startedAt = DateTime.now();
     _enter(0);
   }
 
   void _enter(int i) {
     _index = i;
+    _endsAt = DateTime.now().add(const Duration(minutes: kGuerillaCoupMin));
     _remaining = kGuerillaCoupMin * 60;
     _phase = _Phase.coup;
     final c = _queue[i];
+    _armAlarm(c);
     if (c.kind == GuerillaKind.action && c.activityId != null && !logic.state.sessions.any((s) => s.endAt == null)) {
       logic.start(c.activityId!, taskId: c.taskId, actionId: c.action?.id);
       _ownChrono = true;
@@ -105,9 +160,28 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => _remaining = _remaining > 0 ? _remaining - 1 : 0);
+      setState(_tick);
     });
+    _persist();
     setState(() {});
+  }
+
+  /// Le reste se lit sur l'heure de fin : il continue de décompter téléphone en veille.
+  void _tick() {
+    final left = _endsAt?.difference(DateTime.now()).inSeconds ?? 0;
+    _remaining = left > 0 ? left : 0;
+  }
+
+  void _armAlarm(GuerillaCoup c) => CoupAlarm.schedule(logic,
+      endsAt: _endsAt!, title: '⚡ Coup terminé', body: '${c.kind == GuerillaKind.action ? '5 min sur ${c.title}' : c.title} · fait, ou encore 5 min ?');
+
+  void _moreTime() {
+    final now = DateTime.now();
+    final base = _endsAt == null || _endsAt!.isBefore(now) ? now : _endsAt!;
+    _endsAt = base.add(const Duration(minutes: kGuerillaCoupMin));
+    CoupAlarm.cancel(all: false);
+    _armAlarm(_queue[_index]);
+    setState(_tick);
   }
 
   void _stopOwnChrono() {
@@ -128,12 +202,15 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
 
   void _doneCoup() {
     final c = _queue[_index];
+    CoupAlarm.cancel();
     _stopOwnChrono();
     if (c.kind == GuerillaKind.routine && c.activityId != null) {
       logic.incHabit(c.activityId!, c.delta, livedDate(DateTime.now(), logic.dayStartMin));
     }
-    _done.add(c);
+    _done.add(c.kind == GuerillaKind.action ? '${c.title} 5 min' : c.title);
+    _doneKeys.add(c.key);
     _passed.add(c.key);
+    _persist();
     if (guerillaPauseDue(_done.length) && nextCoupIndex(_queue, _index, _passed) != null) {
       _timer?.cancel();
       setState(() => _phase = _Phase.pause);
@@ -143,13 +220,16 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   }
 
   void _skipCoup() {
+    CoupAlarm.cancel();
     _stopOwnChrono();
     _passed.add(_queue[_index].key);
+    _persist();
     _next();
   }
 
   void _stop() {
     _timer?.cancel();
+    CoupAlarm.cancel();
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
   }
@@ -176,6 +256,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   void _finish() {
     if (_done.isNotEmpty) _save();
     _saved = true;
+    RunSessionStore.clear();
     Navigator.of(context).pop();
   }
 
@@ -295,6 +376,11 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
           else
             Text(_queue.map((c) => c.kind == GuerillaKind.action ? '5 min sur ${c.title}' : c.title).join(' · '),
                 style: const TextStyle(fontSize: 13.5, height: 1.5, color: _text2)),
+          if (_runningBefore case final r?) ...[
+            const SizedBox(height: 14),
+            Text('Le chrono « ${logic.state.activities.where((a) => a.id == r.activityId).firstOrNull?.name ?? 'en cours'} » s’arrête au lancement : la guérilla prend la main.',
+                style: const TextStyle(fontSize: 13, height: 1.4, color: kGuerillaAccent)),
+          ],
           const SizedBox(height: 18),
           const Text('Fièvre, vertiges, douleur forte : ce n’est pas un jour de guérilla. Repos, ça compte aussi.',
               style: TextStyle(fontSize: 12.5, height: 1.4, color: _text3)),
@@ -367,7 +453,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
       Row(children: [
         Expanded(child: _outline('Pas ça', _skipCoup)),
         const SizedBox(width: 10),
-        Expanded(child: _outline('Encore 5 min', () => setState(() => _remaining += kGuerillaCoupMin * 60))),
+        Expanded(child: _outline('Encore 5 min', _moreTime)),
       ]),
       const SizedBox(height: 8),
       const Text('« Pas ça » passe au suivant, sans question.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _text3)),
@@ -430,7 +516,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
         ChainRun(date: '', startedAt: DateTime.now(), endedAt: DateTime.now(), doneCount: _done.length, total: _done.length, completed: false, kind: kGuerillaKind, bodyBefore: _before, bodyAfter: _after),
     ];
     final lift = guerillaLiftLine(previews);
-    final passed = _queue.where((c) => _passed.contains(c.key) && !_done.contains(c)).toList();
+    final passed = _queue.where((c) => _passed.contains(c.key) && !_doneKeys.contains(c.key)).toList();
     final more = nextCoupIndex(_queue, _index, _passed) != null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(
@@ -463,7 +549,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
           ),
           if (_done.isNotEmpty) ...[
             _label('FAIT'),
-            Text(_done.map((c) => c.kind == GuerillaKind.action ? '${c.title} 5 min' : c.title).join(' · '), style: const TextStyle(fontSize: 14, height: 1.5)),
+            Text(_done.join(' · '), style: const TextStyle(fontSize: 14, height: 1.5)),
           ],
           if (passed.isNotEmpty) ...[
             const SizedBox(height: 6),
