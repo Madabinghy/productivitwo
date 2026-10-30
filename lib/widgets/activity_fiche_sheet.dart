@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show setActionDone;
 import 'package:productivitwo_v1/utils/coups.dart' show coupLabel;
@@ -66,8 +67,10 @@ class _ActivityFicheState extends State<_ActivityFiche> {
   bool _timerOpen = false;
   bool _tplOpen = false;
   bool _setOpen = false;
-  List<StrategicObjective> _objectives = const [];
-  List<SessionTemplate>? _templates;
+  late List<StrategicObjective> _objectives = _active(FicheCache.objectives ?? const []);
+  late List<SessionTemplate>? _templates = FicheCache.templates[widget.activity.id];
+
+  static List<StrategicObjective> _active(List<StrategicObjective> all) => all.where((o) => o.status == 'active').toList();
 
   AppLogic get logic => widget.logic;
   Activity get a => widget.activity;
@@ -83,15 +86,15 @@ class _ActivityFicheState extends State<_ActivityFiche> {
 
   Future<void> _loadObjectives() async {
     try {
-      final all = await widget.sync.fetchStrategicObjectives();
-      if (mounted) setState(() => _objectives = all.where((o) => o.status == 'active').toList());
+      final all = _active(await FicheCache.loadObjectives(widget.sync));
+      if (mounted && !FicheCache.sameObjectives(_objectives, all)) setState(() => _objectives = all);
     } catch (_) {}
   }
 
   Future<void> _loadTemplates() async {
     try {
-      final t = await widget.sync.fetchSessionTemplates(activityId: a.id);
-      if (mounted) setState(() => _templates = t);
+      final t = await FicheCache.loadTemplates(widget.sync, a.id);
+      if (mounted && !FicheCache.sameTemplates(_templates, t)) setState(() => _templates = t);
     } catch (_) {}
   }
 
