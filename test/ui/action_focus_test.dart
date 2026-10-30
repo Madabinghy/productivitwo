@@ -38,7 +38,8 @@ void main() {
     // Grammaire de l'écran séance : en-tête titre + contexte, « Étape k / n »,
     // l'étape en cours en grand, Précédente · Action faite, liste complète.
     expect(find.text('Corriger les copies'), findsOneWidget);
-    expect(find.text('5e — Mathématiques › Corriger les DM Ch2'), findsOneWidget);
+    expect(find.text('5e — Mathématiques'), findsOneWidget);
+    expect(find.text('Corriger les DM Ch2'), findsOneWidget);
     expect(find.text('Étape 2 / 2'), findsOneWidget);
     expect(find.text('Dylan'), findsNWidgets(2));
     expect(find.text('Précédente'), findsOneWidget);

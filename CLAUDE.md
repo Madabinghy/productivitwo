@@ -557,7 +557,7 @@ base. **Grammaire de l'écran séance** (retour user 2026-10-30) : en-tête ✕ 
 quand le chrono peut partir), bandeau « Étape k / n » + temps (≈ estimé · déjà passé, chrono en cours, ou reste du bloc) + barre des étapes
 (barre fine du chrono par-dessus), l'étape en cours en GRAND (28 px) + « Ensuite : … », Précédente · Étape suivante / Action faite, la
 liste complète des étapes (tap = cocher, ⋯ ou appui long = Renommer · Cocher · Monter · Descendre · Supprimer avec « Annuler », « Ajouter une étape »), DÉTAIL ; en bas : « Lancer le chrono »
-/ « Commencer · … » (bloc) puis « Pause » pendant, liens Durée · Deep work / Terminer le bloc / Terminer · bilan / Suivante ›. L'anneau
+/ « Commencer · … » (bloc) puis « Pause » pendant, liens « Mode d'exécution » (icône vitesse, feuille Sprint 25 · Estimation · Deep work 90) / Terminer le bloc / Terminer · bilan / Suivante ›. **Où j'en suis** (2026-10-30, `_whereAmI`) : la barre du haut n'a plus de fil d'Ariane tronqué (titre seulement en APRÈS) ; en tête de page, un encart BLOC · PROJET · TÂCHE · (ACTION quand l'étape est en grand), une ligne chacun, en entier. L'anneau
 et `StepsSection` ne sont plus sur cette page. Entrées : ▶ de PROJET DU MOMENT (`_startNext`) et bouton « Focus » d'ACTION DU MOMENT (« Étape faite » / « Arrêter le chrono »
 en lien, « Ouvrir le projet » dans les gestes rares ; « Chrono seul » RETIRÉ le 2026-10-30 — sur la carte, le chrono part toujours
 de la page focus). ⚠️ `widgets/focus_screen.dart` (écran focus de session, Aujourd'hui)

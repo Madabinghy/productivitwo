@@ -332,7 +332,7 @@ class _FocusScreenState extends State<_FocusScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
               child: Row(children: [
-                const Expanded(child: Text('Combien de temps ?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
+                const Expanded(child: Text('Mode d\'exécution', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800))),
                 if (est != null) Text('estimé ${fmtMin(est)}', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
               ]),
             ),
@@ -362,15 +362,11 @@ class _FocusScreenState extends State<_FocusScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text3 = cs.onSurface.withValues(alpha: .55);
-    final ctx = _project != null
-        ? '${_project!.title}${_task != null ? ' › ${_task!.title}' : ''}'
-        : _owner?.name;
     final spentBefore = spentByAction(logic.state.sessions)[a.id] ?? 0;
     final stepsDone = a.checklist.where((c) => c.done).length;
     final stepsTotal = a.checklist.length;
     final next = nextChecklistItem(a);
     final after = _phase == _Phase.after;
-    final bloc = widget.bloc;
     final canChrono = widget.chronoActivity != null;
 
     return Scaffold(
@@ -378,18 +374,10 @@ class _FocusScreenState extends State<_FocusScreen> {
         backgroundColor: Colors.transparent,
         leading: IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).maybePop()),
         titleSpacing: 0,
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${a.title}${after && a.done ? ' ✓' : ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-          Text(
-            [
-              if (bloc != null) 'bloc ${bloc.activity.name}',
-              if (ctx != null) ctx,
-            ].join(' · '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11.5, color: text3),
-          ),
-        ]),
+        // Après : le titre fait de l'action en tête ; avant / pendant, il est en grand dans la page.
+        title: after
+            ? Text('${a.title}${a.done ? ' ✓' : ''}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800))
+            : null,
         actions: [
           if (!after && canChrono && _phase == _Phase.before)
             IconButton(tooltip: 'Lancer le chrono', icon: const Icon(Icons.timer_outlined), onPressed: () => _start(minutes: a.estimatedMin)),
@@ -400,7 +388,10 @@ class _FocusScreenState extends State<_FocusScreen> {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              children: after ? _trace(cs, text3, spentBefore, stepsDone, stepsTotal) : _session(cs, text3, spentBefore, stepsDone, stepsTotal, next),
+              children: [
+                _whereAmI(cs, text3),
+                ...after ? _trace(cs, text3, spentBefore, stepsDone, stepsTotal) : _session(cs, text3, spentBefore, stepsDone, stepsTotal, next),
+              ],
             ),
           ),
           Padding(
@@ -409,6 +400,42 @@ class _FocusScreenState extends State<_FocusScreen> {
           ),
         ]),
       ),
+    );
+  }
+
+  /// Où on en est (retour user 2026-10-30 : le fil d'Ariane tronqué dans la
+  /// barre ne se lisait pas) : projet, tâche, bloc, chacun sur sa ligne et
+  /// en entier.
+  Widget _whereAmI(ColorScheme cs, Color text3) {
+    final rows = <(String, String)>[
+      if (widget.bloc case final b?) ('BLOC', b.activity.name),
+      if (_project case final p?) ('PROJET', p.title),
+      if (_task case final t?) ('TÂCHE', t.title),
+      if (_project == null && _owner != null) ('ACTIVITÉ', _owner!.name),
+      // Avec des étapes, c'est l'étape qui est en grand : l'action se lit ici.
+      if (a.checklist.isNotEmpty && _phase != _Phase.after) ('ACTION', a.title),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .05), borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final (i, r) in rows.indexed)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 64,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(r.$1, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .8, color: text3)),
+                ),
+              ),
+              Expanded(child: Text(r.$2, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, height: 1.3))),
+            ]),
+          ),
+      ]),
     );
   }
 
@@ -798,7 +825,20 @@ class _FocusScreenState extends State<_FocusScreen> {
               ),
             ),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            if (widget.bloc != null) link('Terminer le bloc', _endBlock, color: text3) else if (canChrono) link('Durée · Deep work 90 min', _chooseDuration, color: kPalierAmber),
+            if (widget.bloc != null)
+              link('Terminer le bloc', _endBlock, color: text3)
+            else if (canChrono)
+              Flexible(
+                child: TextButton.icon(
+                  onPressed: _chooseDuration,
+                  icon: const Icon(Icons.speed_rounded, size: 18),
+                  label: const Text('Mode d\'exécution', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  style: TextButton.styleFrom(
+                      foregroundColor: kPalierAmber,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                ),
+              ),
             link('Terminer · bilan', _finish, color: text3),
           ]),
         ];
