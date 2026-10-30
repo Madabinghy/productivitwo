@@ -52,7 +52,7 @@ void main() {
       home: Builder(
         builder: (ctx) => Scaffold(
           body: TextButton(
-            onPressed: () => showBlockFocusScreen(ctx, logic: logic, block: block, activity: act, queue: queue, ymd: '2026-10-29', sync: FirestoreSync()),
+            onPressed: () => showBlockFocusScreen(ctx, logic: logic, block: block, activity: act, queue: queue, ymd: '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}', sync: FirestoreSync()),
             child: const Text('open'),
           ),
         ),
@@ -60,8 +60,8 @@ void main() {
     ));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
-    // findsWidgets : en fin de journée, un second libellé « bloc Enseignement » s'affiche.
-    expect(find.textContaining('bloc Enseignement'), findsWidgets);
+    expect(find.text('BLOC'), findsOneWidget);
+    expect(find.text('Enseignement'), findsWidgets);
     expect(find.text('LA FILE DU BLOC · 3'), findsOneWidget);
     expect(find.textContaining('bloc · reste'), findsOneWidget);
     expect(find.text('Commencer · Corriger les copies'), findsOneWidget);
