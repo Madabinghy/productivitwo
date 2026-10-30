@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/widgets/pull_down_to_close.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
@@ -38,7 +39,7 @@ Future<void> showActionFocusScreen(
 }) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
-    builder: (_) => _FocusScreen(
+    builder: (_) => PullDownToClose(child: _FocusScreen(
       logic: logic,
       action: action,
       project: project,
@@ -46,7 +47,7 @@ Future<void> showActionFocusScreen(
       ownerActivity: ownerActivity,
       chronoActivity: chronoActivity,
       sync: sync ?? FirestoreSync(),
-    ),
+    )),
   ));
 }
 
@@ -88,7 +89,7 @@ Future<void> showBlockFocusScreen(
   final bf = BlockFocus(block: block, activity: activity, queue: queue, ymd: ymd);
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
-    builder: (_) => _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true),
+    builder: (_) => PullDownToClose(child: _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true)),
   ));
 }
 
@@ -182,7 +183,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     if (r != null) logic.stopActive();
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
       fullscreenDialog: true,
-      builder: (_) => _BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync),
+      builder: (_) => PullDownToClose(child: _BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync)),
     ));
   }
 
@@ -876,14 +877,14 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
               Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
                 fullscreenDialog: true,
-                builder: (_) => _FocusScreen(
+                builder: (_) => PullDownToClose(child: _FocusScreen(
                   logic: logic,
                   action: nextAction,
                   project: _project,
                   task: t,
                   chronoActivity: widget.chronoActivity,
                   sync: widget.sync,
-                ),
+                )),
               ));
             })
           else
