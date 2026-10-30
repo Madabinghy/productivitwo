@@ -856,6 +856,10 @@ Les anciens rappels du modèle `DayBlock` (ids 10–29) sont annulés ; `schedul
 1 bloc »), faits du jour vécu `_badges.todayFacts()` (routines non atteintes, blocs qui comptent encore à faire, séries en cours en
 jeu). Réglage « Ce soir · journée parfaite » = nouveau champ `AppState.eveningNotifEnabled` (ACTIVÉ par défaut, merge local) ;
 `streakNotifEnabled`, `scheduleStreakReminder` et `streakAtRiskNames` ne servent plus (champ gardé en base). Tap = feuille Journée parfaite.
+**Résumé du jour** (PR 5) : inchangé (21 h, id 2), tap = bilan du soir. **Retirés** (PR 6) : « Score mi-journée » (id 5, réglage
+supprimé, annulé au démarrage comme l'id 4 du Défi du jour), les alarmes / rappels des **défis programmés** (`scheduleChallengeAt`
+et `challengeReminderIds` supprimés ; `rescheduleChallengeNotifications` ne fait plus qu'annuler ; `_programChallenge` n'arme plus
+rien). Restent : minuteur de fin (id 30 / alarme `alarm` 42) et messages ORION / coach (FCM, id 100 au premier plan).
 
 ## Confirmation avant de cocher (2026-10-30)
 

@@ -70,18 +70,13 @@ class NotificationService {
   static const _reviewNotifId = 2;
   static const _streakChannelId = 'streak_danger';
   static const _streakNotifId = 3;
-  static const _challengeChannelId = 'challenge_daily';
-  static const _challengeNotifId = 4;
-  static const _midDayChannelId = 'midday_score';
-  static const _midDayNotifId = 5;
-  // IDs 10–29 réservés aux rappels de blocs
+  // 4 (Défi du jour) et 5 (Score mi-journée) : retirés le 2026-10-30,
+  // annulés au démarrage. 10–29 : anciens rappels de blocs (annulés).
   // Canal d'alarme : un par sonnerie (le son d'un canal Android est figé à sa
   // création) — voir AlarmRingtone.androidChannel + _alarmDetails.
   static const _timerEndNotifId = 30;
-  // Challenges programmés : notif-alarme à l'heure (réutilise le canal alarme) +
-  // rappel en amont (canal dédié, importance haute, sans son d'alarme).
-  // IDs dérivés du block.id (plages 40000 / 50000 — voir challengeNotifIds).
-  static const _challengeSchedChannelId = 'challenge_scheduled';
+  // Défis programmés (ids 40000 / 50000 / 60000 dérivés du block.id) : plus
+  // armés depuis le 2026-10-30, seulement annulés (`cancelChallengeAll`).
 
   static bool get _supported => !kIsWeb && (Platform.isAndroid || Platform.isIOS);
 
@@ -253,67 +248,6 @@ class NotificationService {
     );
   }
 
-  /// Défi du jour — si non encore fait.
-  static Future<void> scheduleChallengeReminder({
-    int hour = 16,
-    int minute = 0,
-  }) async {
-    if (!_supported) return;
-    if (!_initialized) await init();
-    await _plugin.cancel(_challengeNotifId);
-
-    await _plugin.zonedSchedule(
-      _challengeNotifId,
-      'Productivitwo — Défi du jour ⚡',
-      'Tu n\'as pas encore relevé ton défi du jour !',
-      _nextOccurrence(hour, minute),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _challengeChannelId, 'Défi du jour',
-          channelDescription: 'Rappel pour le défi quotidien',
-          importance: Importance.defaultImportance,
-          priority: Priority.defaultPriority,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.inexact,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-    );
-  }
-
-  /// Score à mi-journée.
-  static Future<void> scheduleMidDayScore({
-    int hour = 13,
-    int minute = 0,
-  }) async {
-    if (!_supported) return;
-    if (!_initialized) await init();
-    await _plugin.cancel(_midDayNotifId);
-
-    await _plugin.zonedSchedule(
-      _midDayNotifId,
-      'Productivitwo — Mi-journée 📊',
-      'Jette un œil à ton score du jour',
-      _nextOccurrence(hour, minute),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          _midDayChannelId, 'Score mi-journée',
-          channelDescription: 'Rappel de mi-journée',
-          importance: Importance.low,
-          priority: Priority.low,
-        ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.inexact,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload: kPayloadProgram,
-    );
-  }
-
   /// IDs des rappels des blocs du programme (aujourd'hui et demain).
   static const _blockAlertBase = 200;
   static const _blockAlertMax = 60;
@@ -451,55 +385,6 @@ class NotificationService {
       String blockId) {
     final h = blockId.hashCode & 0x7fff;
     return (atTime: 40000 + h, reminder: 50000 + h, reminder2: 60000 + h);
-  }
-
-  /// IDs des rappels (max 2) d'un défi, dans l'ordre.
-  static List<int> challengeReminderIds(String blockId) {
-    final ids = challengeNotifIds(blockId);
-    return [ids.reminder, ids.reminder2];
-  }
-
-  /// Planifie une notification one-shot à une date absolue (pas de répétition).
-  /// [alarm] true → son d'alarme + plein écran (l'instant du défi) ; false →
-  /// rappel discret en amont. Ne fait rien si [when] est déjà passé.
-  static Future<void> scheduleChallengeAt({
-    required int id,
-    required DateTime when,
-    required String title,
-    required String body,
-    bool alarm = false,
-    AlarmRingtone? ringtone,
-  }) async {
-    if (!_supported) return;
-    if (!_initialized) await init();
-    final fireAt = tz.TZDateTime.from(when, tz.local);
-    if (fireAt.isBefore(tz.TZDateTime.now(tz.local))) return;
-    await _plugin.cancel(id);
-
-    final details = alarm
-        ? _alarmDetails(
-            ringtone ?? kAlarmRingtones.first, 'Alarme de défi programmé')
-        : const NotificationDetails(
-            android: AndroidNotificationDetails(
-              _challengeSchedChannelId, 'Défi programmé',
-              channelDescription: 'Rappel d\'un défi programmé',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(),
-          );
-
-    await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      fireAt,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      payload: kPayloadProgram,
-    );
   }
 
   /// Annule toutes les notifications (alarme + rappels) d'un défi programmé.
