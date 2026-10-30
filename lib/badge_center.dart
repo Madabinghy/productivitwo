@@ -81,6 +81,7 @@ class BadgeCenter extends ChangeNotifier {
       restDomains: logic.restDomains,
       seasons: logic.seasons,
       acquired: logic.acquired,
+      budgetWindowDays: logic.budgetWindowDays,
     );
     deck = d;
     logic.embers = d.embers;
@@ -119,6 +120,8 @@ class BadgeCenter extends ChangeNotifier {
       schedule: _schedules.where((s) => s.date == ymd).firstOrNull,
       pendingChain: pending != null && pending.isLive(now, ymd) ? pending : null,
       acquired: logic.acquired,
+      budgetWindowDays: logic.budgetWindowDays,
+      restingDomainIds: {for (final d in st.activeDomains) if (logic.isDomainResting(d.id)) d.id},
     );
   }
 

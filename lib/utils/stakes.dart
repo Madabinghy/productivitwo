@@ -78,6 +78,8 @@ enum StakeGainKind {
   week,
   /// Un relevé de métrique dû (`reading_due.dart`), sans série à sauver.
   reading,
+  /// Montre suisse / Métronome : la demi-journée se joue ce soir (`half_days.dart`).
+  halfDay,
 }
 
 /// Ce qu'un geste rapporte.
@@ -124,6 +126,7 @@ class Stake {
     if (gains.length >= 2) return 'multi';
     return switch (gains.first.kind) {
       StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise || StakeGainKind.week => 'series',
+      StakeGainKind.halfDay => 'hunt',
       StakeGainKind.hunt => 'hunt',
       StakeGainKind.objective || StakeGainKind.reading => 'objective',
       StakeGainKind.session => 'session',
@@ -220,6 +223,7 @@ StakeBoard buildStakeBoard({
   // ── 1. Badges : séries en cours, paliers de ce soir, chasses ────────────────
   if (deck != null) {
     for (final b in deck.badges) {
+      if (kHalfDayIds.contains(b.def.id)) continue; // section dédiée plus bas
       final hunted = hunts.any((h) => h.badgeId == b.def.id);
       final series = b.def.family == BadgeFamily.routines;
       final t = badgeToday(b, facts);
@@ -306,6 +310,63 @@ StakeBoard buildStakeBoard({
           gauge: (done: rp.held, after: rp.afterToday, total: kRepriseHold),
         ),
       );
+    }
+  }
+
+  // ── 1 quinquies. Montre suisse et Métronome : la journée se joue ce soir ──
+  if (deck != null) {
+    final watch = deck.byId('montre-suisse');
+    final metro = deck.byId('metronome');
+    String tierNote(BadgeState? b) {
+      final next = b?.nextTarget;
+      return next != null && (b!.value + 1) >= next ? ' · palier $next ce soir' : '';
+    }
+
+    if (metro != null) {
+      final rs = facts.metronomeRoutines;
+      final missing = [for (final r in rs) if (!r.reached) r];
+      if (rs.isNotEmpty && missing.isEmpty) {
+        won.add('Métronome');
+      } else if (rs.isNotEmpty) {
+        for (var i = 0; i < missing.length; i++) {
+          final r = routineById[missing[i].activity.id];
+          if (r == null) continue;
+          final last = missing.length == 1;
+          add(
+            routineGesture(r),
+            StakeGain(
+              kind: StakeGainKind.halfDay,
+              label: last ? 'Métronome · la dernière${tierNote(metro)}' : 'Métronome · ${i + 1} sur ${missing.length}',
+              detail: 'Toutes les routines du jour atteintes : la journée compte pour Métronome (${rs.length - missing.length} / ${rs.length}).',
+              weight: last ? 22 : 10,
+              sourceId: 'metronome',
+              gauge: (done: rs.length - missing.length, after: rs.length - missing.length + 1, total: rs.length),
+            ),
+          );
+        }
+      }
+    }
+    if (watch != null) {
+      final pace = facts.pace;
+      final behind = [for (final p in pace) if (!p.onPace) p];
+      if (pace.isNotEmpty && behind.isEmpty) {
+        won.add('Montre suisse');
+      } else if (pace.isNotEmpty) {
+        for (final p in behind) {
+          final last = behind.length == 1;
+          add(
+            activityGesture(p.activity, p.missingMin),
+            StakeGain(
+              kind: StakeGainKind.halfDay,
+              label: last ? 'Montre suisse · la dernière${tierNote(watch)}' : 'Montre suisse · ${pace.length - behind.length} / ${pace.length}',
+              detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} attendu à ce jour : encore ${fmtMin(p.missingMin)} pour que toutes les activités soient au rythme.',
+              weight: last ? 22 : 10,
+              sourceId: 'montre-suisse',
+              gauge: (done: pace.length - behind.length, after: pace.length - behind.length + (last ? 1 : 0), total: pace.length),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -525,6 +586,9 @@ StakeBoard buildStakeBoard({
 }
 
 /// Familles de la ligne dépliée, dans l'ordre d'affichage.
+/// Badges de demi-journée (section dédiée de [buildStakeBoard]).
+const kHalfDayIds = {'montre-suisse', 'metronome'};
+
 const kStakeRestFamilies = [
   ('series', 'SÉRIES'),
   ('hunt', 'CHASSES'),

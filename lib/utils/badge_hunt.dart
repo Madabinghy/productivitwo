@@ -106,6 +106,10 @@ class HuntView {
     switch (id) {
       case 'journee-parfaite':
         return HuntLever(LeverKind.day, 'Aujourd’hui : $todayRoutinesReached / $todayRoutinesDue routines, $todayBlocksDone / $todayBlocks blocs · tout faire');
+      case 'metronome':
+        return HuntLever(LeverKind.day, 'Aujourd’hui : $todayRoutinesReached / $todayRoutinesDue routines · toutes atteintes');
+      case 'montre-suisse':
+        return const HuntLever(LeverKind.time, 'Chaque activité au niveau attendu de la semaine, ce soir');
       case 'semaine-solide':
       case 'mois-solide':
       case 'vent-contraire':
