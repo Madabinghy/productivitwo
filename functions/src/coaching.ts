@@ -624,6 +624,7 @@ export const coachApi = onRequest(
           condition: { type: "always" },
           characterName: coachName,
           expiresAfterDays: 5,
+          sender: "coach",
         });
         res.status(200).json({ ok: true });
         return;
@@ -689,6 +690,7 @@ export const coachAlertsCron = onSchedule(
           condition: { type: "always" },
           characterName: "Espace coach",
           expiresAfterDays: 3,
+          sender: "coach",
         });
         await coachingRef(doc.id).set(
           { lastAlertAt: new Date().toISOString() }, { merge: true });

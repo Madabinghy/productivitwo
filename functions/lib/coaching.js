@@ -606,6 +606,7 @@ exports.coachApi = (0, https_1.onRequest)({ cors: true, invoker: "public" }, asy
                 condition: { type: "always" },
                 characterName: coachName,
                 expiresAfterDays: 5,
+                sender: "coach",
             });
             res.status(200).json({ ok: true });
             return;
@@ -668,6 +669,7 @@ exports.coachAlertsCron = (0, scheduler_1.onSchedule)({ schedule: "0 7 * * *", t
                 condition: { type: "always" },
                 characterName: "Espace coach",
                 expiresAfterDays: 3,
+                sender: "coach",
             });
             await coachingRef(doc.id).set({ lastAlertAt: new Date().toISOString() }, { merge: true });
         }

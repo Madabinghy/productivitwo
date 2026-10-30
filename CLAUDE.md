@@ -860,6 +860,11 @@ jeu). Réglage « Ce soir · journée parfaite » = nouveau champ `AppState.even
 supprimé, annulé au démarrage comme l'id 4 du Défi du jour), les alarmes / rappels des **défis programmés** (`scheduleChallengeAt`
 et `challengeReminderIds` supprimés ; `rescheduleChallengeNotifications` ne fait plus qu'annuler ; `_programChallenge` n'arme plus
 rien). Restent : minuteur de fin (id 30 / alarme `alarm` 42) et messages ORION / coach (FCM, id 100 au premier plan).
+**Push ORION / coach** (PR 7, serveur, ⚠️ `firebase deploy --only functions`) : logique pure `functions/src/push_rules.ts` —
+`pushTitleFor(sender, characterName)` (un coach signe « 🎓 Marie » / « 🎓 Espace coach », sinon « ◉ ORION ») via le nouvel argument
+`sender: "coach"` de `executePushAssistantMessage` (posé par `coaching.ts`) ; `shouldPushNow` : un message daté d'un jour à venir
+n'est PAS poussé (il s'affiche ce jour-là dans l'app) ; `pushAllowed` : interrupteur « Messages ORION / coach » de Paramètres ›
+Notifications = `orion_config/main.pushEnabled` (absent = activé ; `FirestoreSync.fetchOrionPushEnabled` / `setOrionPushEnabled`).
 
 ## Confirmation avant de cocher (2026-10-30)
 
