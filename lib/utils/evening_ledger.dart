@@ -147,6 +147,12 @@ EveningLedger buildEveningLedger({
   for (final l in board.lost) {
     slipped.add(LedgerLine('✕', l, 'plus rien ne peut sauver la journée pour lui'));
   }
+  // Relevé du dernier jour pas encore noté : la suite du badge Relevé fidèle se perd à la bascule.
+  for (final s in [...board.top, ...board.rest]) {
+    if (s.gesture.kind != StakeGestureKind.reading || !s.losesTonight) continue;
+    final n = s.gains.first.gauge?.done;
+    slipped.add(LedgerLine('!', s.gesture.title, 'dernier jour : sans relevé ce soir, ${n == null ? 'la suite' : 'la suite de $n relevés'} repart à 0'));
+  }
   for (final d in objectiveDays) {
     for (final t in d.times) {
       final expected = t.weeklyMin * weekday ~/ 7;
@@ -164,7 +170,7 @@ EveningLedger buildEveningLedger({
     for (final s in [...board.top, ...board.rest]) {
       for (final g in s.gains) {
         if ((g.kind == StakeGainKind.seriesTonight || g.kind == StakeGainKind.tierTonight) && g.gauge != null) {
-          tomorrow.add('${s.gesture.title} ${g.gauge!.after} / ${g.gauge!.total} j si fait ce soir');
+          tomorrow.add('${s.gesture.title} ${g.gauge!.after} / ${g.gauge!.total}${s.gesture.kind == StakeGestureKind.reading ? ' relevés' : ' j'} si fait ce soir');
         }
       }
     }

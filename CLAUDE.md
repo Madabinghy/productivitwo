@@ -826,6 +826,15 @@ pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de b
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+## Relevés en jeu (2026-10-30)
+
+Un relevé de métrique dû devient un enjeu d'Aujourd'hui (logique pure `utils/reading_due.dart`, `readingsDue` : jours depuis le
+dernier relevé, suite en cours du badge Relevé fidèle ; `lastDay` = écart déjà à `checkInEvery` + 1 j, la suite se perd à la bascule).
+`buildStakeBoard` pose un geste `StakeGestureKind.reading` « Noter le relevé · … » (bouton « Noter » = `noteReadingQuick`,
+`objective_readings_card.dart`, mobile et web) : gain `seriesTonight` le dernier jour (donc tuile Badges « à sauver »), `series` avant,
+`tierTonight` si un palier tombe, `reading` (sans série). Bilan du soir : ligne dans LAISSÉ FILER le dernier jour ; notification du soir
+(`eveningDigest(readingsLastDay:)`) : « 📏 relevé … : dernier jour », seule quand rien d'autre ne manque.
+
 ## Rush (ex-« coup », 2026-10-30)
 
 À l'écran et dans les textes MCP on dit **rush**, jamais « coup » (le code garde `coup*`, `horizon:"tactical"` et le champ

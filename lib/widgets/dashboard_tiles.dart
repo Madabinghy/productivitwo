@@ -216,6 +216,7 @@ class BadgesInPlayScreen extends StatelessWidget {
           StakeGestureKind.activity => 'Chrono',
           StakeGestureKind.block => 'Lancer',
           StakeGestureKind.action => 'Focus',
+          StakeGestureKind.reading => 'Noter',
         },
       );
     }

@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/web/badges_web.dart';
 import 'package:productivitwo_v1/web/objectives_web.dart';
+import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/elan_stats_card.dart';
 import 'package:productivitwo_v1/widgets/elan_rows.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -910,6 +911,12 @@ class TodayViewState extends State<TodayView> {
         if (g.block != null) _startChrono(g.block!);
       case StakeGestureKind.action:
         _startActionChrono(g);
+      case StakeGestureKind.reading:
+        final o = g.objective;
+        if (o == null) return;
+        noteReadingQuick(context, sync: widget.sync, objective: o).then((ok) {
+          if (ok && mounted) setState(() => _stakesKey = '');
+        });
     }
   }
 

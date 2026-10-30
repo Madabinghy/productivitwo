@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWork
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
+import 'package:productivitwo_v1/utils/reading_due.dart' show readingsDue;
 import 'package:productivitwo_v1/utils/notif_digest.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
@@ -2177,7 +2178,12 @@ class _AppRootState extends State<AppRoot>
         await NotificationService.scheduleEveningPerfect(
           hour: st.streakNotifHour,
           minute: st.streakNotifMinute,
-          digest: eveningDigest(routines: missingRoutines.length, blocks: facts.pendingBlocks.length, seriesAtRisk: atRisk),
+          digest: eveningDigest(
+            routines: missingRoutines.length,
+            blocks: facts.pendingBlocks.length,
+            seriesAtRisk: atRisk,
+            readingsLastDay: [for (final r in readingsDue(facts.objectives, DateTime.now())) if (r.lastDay) r.name],
+          ),
         );
       } else {
         await NotificationService.cancelById(3);

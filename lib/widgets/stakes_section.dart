@@ -30,6 +30,7 @@ Color stakeGainColor(StakeGain g) {
     StakeGainKind.routine => kBText3,
     StakeGainKind.reprise => kStakeReprise,
     StakeGainKind.week => kStakeTier,
+    StakeGainKind.reading => kStakeObjective,
   };
 }
 
@@ -38,6 +39,7 @@ IconData stakeIcon(StakeGestureKind k) => switch (k) {
       StakeGestureKind.activity => Icons.timer_outlined,
       StakeGestureKind.block => Icons.view_agenda_outlined,
       StakeGestureKind.action => Icons.check_circle_outline,
+      StakeGestureKind.reading => Icons.straighten_rounded,
     };
 
 /// Libellé du bouton d'un geste.
@@ -46,6 +48,7 @@ String stakeButtonLabel(StakeGesture g) => switch (g.kind) {
       StakeGestureKind.activity => 'Chrono',
       StakeGestureKind.block => 'Lancer',
       StakeGestureKind.action => 'Focus',
+      StakeGestureKind.reading => 'Noter',
     };
 
 /// Part de la journée active passée (8 h → 22 h par défaut), 0..1.
