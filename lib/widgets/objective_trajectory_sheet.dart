@@ -60,6 +60,21 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
     super.initState();
     o = widget.objective;
     _loadSessions();
+    _refreshObjective();
+  }
+
+  /// L'objectif reçu peut venir d'une liste en cache, alors qu'un relevé vient
+  /// d'être noté ailleurs (Ta journée, fiche Objectifs) : on relit la version
+  /// en base et on la prend si elle est plus récente (2026-10-30, retour user :
+  /// le graphe ne montrait le relevé du jour qu'après une relance de l'app).
+  Future<void> _refreshObjective() async {
+    try {
+      final all = await widget.sync.fetchStrategicObjectives();
+      final fresh = all.where((x) => x.id == o.id).firstOrNull;
+      if (fresh == null || !mounted) return;
+      final newer = (fresh.updatedAt ?? fresh.createdAt).isAfter(o.updatedAt ?? o.createdAt) || fresh.readings.length != o.readings.length;
+      if (newer) setState(() => o = fresh);
+    } catch (_) {}
   }
 
   /// L'état local ne garde pas forcément tout l'historique : on relit les
@@ -87,11 +102,13 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
   String _fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
   String _withUnit(double v) => '${_fmt(v)}${o.metric?.unit == null ? '' : ' ${o.metric!.unit}'}';
 
+  /// Redessine AVANT l'écriture : le graphe montre le relevé tout de suite,
+  /// même si la confirmation du serveur tarde (réseau lent, hors connexion).
   Future<void> _save() async {
     o.updatedAt = DateTime.now();
-    await widget.sync.saveStrategicObjective(o);
     _changed = true;
     if (mounted) setState(() {});
+    await widget.sync.saveStrategicObjective(o);
   }
 
   Future<void> _edit() async {
