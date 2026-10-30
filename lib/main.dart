@@ -4868,9 +4868,9 @@ class _AppRootState extends State<AppRoot>
                   activeIcon: Icon(Icons.track_changes),
                   label: 'Objectifs'),
               _Tab.stats => const BottomNavigationBarItem(
-                  icon: Icon(Icons.query_stats),
-                  activeIcon: Icon(Icons.query_stats),
-                  label: 'Stats'),
+                  icon: Icon(Icons.donut_small_outlined),
+                  activeIcon: Icon(Icons.donut_small),
+                  label: 'Domaines'),
               _Tab.projets => const BottomNavigationBarItem(
                   icon: Icon(Icons.account_tree_outlined),
                   activeIcon: Icon(Icons.account_tree),

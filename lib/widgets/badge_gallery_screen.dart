@@ -18,6 +18,24 @@ import 'package:productivitwo_v1/utils/badge_today.dart';
 /// 400 derniers jours, projets, objectifs, sessions). Ouvert depuis
 /// Paramètres ; pas d'onglet, pas de signal : le deck de l'onglet Objectifs
 /// viendra au lot 3.
+/// Tous les badges en feuille (2026-10-30 : bouton Badges d'Aujourd'hui, tuile
+/// Badges d'Objectifs) ; tirer vers le bas ferme.
+Future<void> showBadgeGallerySheet(BuildContext context, {required AppLogic logic, required FirestoreSync sync, BadgeCenter? center}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => FractionallySizedBox(
+      heightFactor: .94,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: BadgeGalleryScreen(logic: logic, sync: sync, center: center, showSamples: false),
+      ),
+    ),
+  );
+}
+
 class BadgeGalleryScreen extends StatefulWidget {
   final AppLogic logic;
   final FirestoreSync sync;

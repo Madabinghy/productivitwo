@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
-import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -16,7 +15,6 @@ import 'package:productivitwo_v1/utils/week_stats.dart';
 import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show kBadgeBrass, kBadgeLockedBand, kBadgeLockedRim, kBadgeGaugeFill, kFrozenColor;
 import 'package:productivitwo_v1/widgets/fiche.dart';
-import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -97,10 +95,19 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final days = widget.logic.budgetWindowDays;
     final rows = domainWeeks(
         domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: widget.logic.restDomains, windowDays: days);
+    // Temps par jour et par domaine sur la fenêtre (mêmes données que « Répartition »).
+    final perDay = dailyMinutesByDomain(st.sessions, st.activeActivities, budgetWindowStart(now, days), days, now: now);
+    final todayIdx = budgetDayIndex(now, days) - 1;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _weekCard(cs, week, now,
+        // Onglet « Domaines » (ex-Stats, 2026-10-30) : une liste, une fiche.
+        Row(children: [
+          Expanded(child: Text('Domaines', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface))),
+          TextButton(onPressed: widget.onManageDomains, child: const Text('Gérer')),
+        ]),
+        const SizedBox(height: 8),
+        _weekLine(cs, week, now,
             heldWeeks(
                 activities: st.activities,
                 hits: st.habitHits,
@@ -108,8 +115,8 @@ class _WeekStatsViewState extends State<WeekStatsView> {
                 now: now,
                 dayStartMin: widget.logic.dayStartMin,
                 frozenOf: (a) => widget.logic.frozenOf(a.id))),
-        ListSectionTitle(days == 14 ? 'DOMAINES · SUR 14 JOURS' : 'DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
-        for (final r in rows) _domainRow(cs, r),
+        ListSectionTitle('${days == 14 ? 'SUR 14 JOURS' : 'CETTE SEMAINE'} · ${rows.length}'),
+        for (final r in rows) _domainRow(cs, r, perDay[r.domain.id], todayIdx, days),
         if (rows.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),
@@ -119,81 +126,66 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
-  Widget _weekCard(ColorScheme cs, WeekSummary w, DateTime now, HeldWeeks hw) {
+  /// MA SEMAINE en une ligne (2026-10-30) : « 5 / 6 au rythme · 5 semaines
+  /// tenues », l'élan, les sept jours en petit ; tap = fiche Ma semaine.
+  Widget _weekLine(ColorScheme cs, WeekSummary w, DateTime now, HeldWeeks hw) {
     final pct = w.engagements.isEmpty ? null : w.pct;
-    final st = pct == null ? kPalierMuted : palierColor(pct);
-    const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
-    const letters = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    const days = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE'];
     final n = w.engagements.length;
-    final mode = widget.logic.mode;
-    final modeLine = switch (mode) { DayMode.low => 'journée malgré tout', DayMode.high => 'journée à fond', DayMode.normal => null };
-    // Grammaire de Projets (2026-10) : le titre est le chiffre qui compte, la
-    // semaine se voit jour par jour, l'élan remonte en lien.
-    final behind = w.engagements.where((e) => !w.onTrack(e)).length;
     final maxHits = w.dayHits.fold<int>(1, (m, v) => v > m ? v : m);
     final elan = _elanMean(now);
-    return MomentCard(
-      accent: kPalierGreen,
-      eyebrow: 'MA SEMAINE',
-      pill: '${days[now.weekday - 1]} · jour ${w.daysElapsed} / 7',
-      ring: pct == null ? 0 : pct / 100,
-      ringColor: st,
-      ringBig: pct == null ? '—' : '$pct %',
-      ringSmall: 'DU RYTHME',
-      context_: w.fromObjectives ? 'Engagements des objectifs' : 'Toutes les routines',
-      contextIcon: Icons.flag_rounded,
-      title: pct == null ? 'Pas d\'engagement cette semaine' : '${w.kept} / $n au rythme',
-      sub: [
-        if (pct != null) 'attendu à ce jour',
-        if (w.chronoMin > 0) '${fmtMin(w.chronoMin)} de chrono',
-        if (modeLine != null) modeLine,
-      ].join(' · '),
-      subColor: pct != null && pct < 60 ? st : null,
-      visual: n == 0
-          ? null
-          : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final muted = cs.onSurface.withValues(alpha: .55);
+    return Material(
+      color: cs.surfaceContainerHighest.withValues(alpha: .35),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _openWeekFiche(w, hw),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: Text('MA SEMAINE · ${days[now.weekday - 1]}', style: TextStyle(fontSize: 10.5, letterSpacing: .6, fontWeight: FontWeight.w700, color: muted))),
+              GestureDetector(
+                onTap: () => showModeSheet(context, widget.logic, badges: widget.badges),
+                child: Text(elan == null ? 'Élan' : 'Élan $elan / 5', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .75))),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+              Text(pct == null ? 'Pas d\'engagement' : '${w.kept} / $n au rythme',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: pct == null ? muted : cs.onSurface)),
+              const SizedBox(width: 10),
+              if (hw.current > 0)
+                Text('${hw.current} semaine${hw.current > 1 ? 's' : ''} tenue${hw.current > 1 ? 's' : ''}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: kBadgeBrass)),
+              const Spacer(),
+              Icon(Icons.chevron_right_rounded, color: muted),
+            ]),
+            if (n > 0) ...[
+              const SizedBox(height: 8),
               SizedBox(
-                height: 30,
+                height: 22,
                 child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   for (var i = 0; i < 7; i++) ...[
                     if (i > 0) const SizedBox(width: 4),
                     Expanded(
                       child: Container(
-                        height: i < w.daysElapsed ? (4 + 26 * (w.dayHits[i] / maxHits)).clamp(4.0, 30.0) : 4,
+                        height: i < w.daysElapsed ? (3 + 19 * (w.dayHits[i] / maxHits)).clamp(3.0, 22.0) : 3,
                         decoration: BoxDecoration(
-                          color: i < w.daysElapsed ? kPalierGreen.withValues(alpha: i == w.daysElapsed - 1 ? 1 : .75) : cs.onSurface.withValues(alpha: .10),
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-                          border: i == w.daysElapsed - 1 ? Border.all(color: cs.onSurface.withValues(alpha: .9), width: 1.2) : null,
+                          color: i < w.daysElapsed ? kPalierGreen.withValues(alpha: i == w.daysElapsed - 1 ? .45 : 1) : cs.onSurface.withValues(alpha: .10),
+                          borderRadius: BorderRadius.circular(2),
+                          border: i == w.daysElapsed - 1 ? Border.all(color: kPalierGreen) : null,
                         ),
                       ),
                     ),
                   ],
                 ]),
               ),
-              const SizedBox(height: 3),
-              Row(children: [
-                for (var i = 0; i < 7; i++) ...[
-                  if (i > 0) const SizedBox(width: 4),
-                  Expanded(
-                      child: Text(letters[i],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: i == w.daysElapsed - 1 ? .9 : .4)))),
-                ],
-              ]),
-              MomentLegend('Routines tenues par jour · aujourd\'hui en cours',
-                  right: behind == 0 ? 'tout au rythme' : 'à rattraper : $behind'),
-              if (hw.weeks.isNotEmpty) _heldWeeksStrip(cs, hw),
-            ]),
-      primaryLabel: 'Détail',
-      primaryIcon: Icons.insights_rounded,
-      onPrimary: () => _openWeekFiche(w),
-      chainLabel: elan == null ? 'Élan' : 'Élan · $elan / 5',
-      onChain: () => showModeSheet(context, widget.logic, badges: widget.badges),
-      moreTitle: 'Ma semaine',
-      moreActions: [
-        MomentAction('Mode du jour', icon: Icons.wb_sunny_outlined, hint: 'flemme · normal · en forme', onTap: () => showModeSheet(context, widget.logic, badges: widget.badges)),
-        MomentAction('Gérer les domaines', icon: Icons.tune_rounded, onTap: widget.onManageDomains),
-      ],
+            ],
+          ]),
+        ),
+      ),
     );
   }
 
@@ -330,7 +322,31 @@ class _WeekStatsViewState extends State<WeekStatsView> {
 
   /// Ligne Élan (2026-10) : moyenne des 7 jours, pointages, face à la flemme,
   /// créneau difficile, mini-courbe par jour. Tap = la feuille du mode.
-  Widget _domainRow(ColorScheme cs, DomainWeek r) {
+  /// Les jours de la fenêtre sous la barre d'un domaine : hauteur = temps du
+  /// jour (échelle propre au domaine), aujourd'hui plus vif, jours à venir en filet.
+  Widget _dayBars(ColorScheme cs, Color color, List<int>? mins, int today, int days) {
+    final m = mins ?? List<int>.filled(days, 0);
+    final max = m.fold<int>(60, (a, b) => b > a ? b : a);
+    return SizedBox(
+      height: 22,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        for (var i = 0; i < days; i++) ...[
+          if (i > 0) SizedBox(width: days > 7 ? 2 : 4),
+          Expanded(
+            child: Container(
+              height: i > today ? 2 : (3 + 19 * m[i] / max).clamp(3.0, 22.0),
+              decoration: BoxDecoration(
+                color: i > today ? cs.onSurface.withValues(alpha: .10) : color.withValues(alpha: m[i] == 0 ? .15 : (i == today ? 1 : .6)),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _domainRow(ColorScheme cs, DomainWeek r, List<int>? perDay, int today, int days) {
     final color = domainColor(r.domain.id, widget.logic.state.activeDomains) ?? cs.primary;
     final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
     final sub = <String>[
@@ -354,6 +370,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
         trailing: r.hasGoal || r.resting ? null : Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)),
         onTap: () => widget.onOpenDomain(r.domain, focus: 'time'),
         onLongPress: r.routinesTotal > 0 ? () => widget.onOpenDomain(r.domain, focus: 'habit') : null,
+        below: _dayBars(cs, color, perDay, today, days),
       ),
     );
   }
@@ -369,7 +386,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
   /// attendu au prorata + rappel de la semaine entière), puis des sections
   /// REPLIABLES — répartition, jauges + courbe, élan, temps, camembert,
   /// retards — au lieu des lectures empilées en vrac.
-  void _openWeekFiche(WeekSummary w) {
+  void _openWeekFiche(WeekSummary w, HeldWeeks hw) {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final n = w.engagements.length;
     showFiche<void>(context, builder: (ctx, scroll) {
@@ -392,6 +409,15 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               chip: pct == null ? 'sans engagement' : '$pct % du rythme',
               chipColor: pct == null ? kPalierMuted : palierColor(pct),
               kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
+            ),
+            if (hw.weeks.isNotEmpty) _heldWeeksStrip(cs, hw),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => showModeSheet(context, widget.logic, badges: widget.badges),
+                icon: const Icon(Icons.wb_sunny_outlined, size: 18),
+                label: const Text('Mode du jour · élan'),
+              ),
             ),
             FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS · À CE JOUR' : 'ROUTINES DE LA SEMAINE · À CE JOUR',
                 trailing: n == 0 ? null : FicheDelta('${w.kept} / $n au rythme', color: palierColor(pct ?? 0))),

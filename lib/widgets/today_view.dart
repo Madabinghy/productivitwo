@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -866,8 +867,9 @@ class TodayViewState extends State<TodayView> {
                   fontSize: 13, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       ),
-      if (widget.onOpenActivities != null)
-        _roundBtn(cs, Icons.timer_outlined, 'Chrono libre', widget.onOpenActivities!),
+      // Badges (2026-10-30, remplace « Chrono libre », doublon du FAB) : tous les badges en feuille.
+      if (widget.badges case final bc?)
+        _roundBtn(cs, Icons.military_tech_outlined, 'Badges', () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc)),
       const SizedBox(width: 8),
       _roundBtn(cs, Icons.auto_awesome, 'ORION',
           () => OrionScreen.show(context, FirestoreSync()),

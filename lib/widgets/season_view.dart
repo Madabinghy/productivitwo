@@ -225,6 +225,95 @@ class _SeasonCardState extends State<SeasonCard> {
   }
 }
 
+/// Petite tuile de l'onglet Objectifs (surtitre + une ligne, tap).
+class SmallTile extends StatelessWidget {
+  final String eyebrow;
+  final Widget child;
+  final VoidCallback onTap;
+  final Color? border;
+  const SmallTile({super.key, required this.eyebrow, required this.child, required this.onTap, this.border});
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: kBSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: border ?? kBLine)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(eyebrow, style: _eyebrow(kBText3), maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 3),
+              DefaultTextStyle.merge(style: const TextStyle(color: kBText), child: child),
+            ]),
+          ),
+        ),
+      );
+}
+
+/// Tuile Saison (refonte Objectifs 2026-10-30) : « SAISON 1 · SEM. 2 / 6 ·
+/// 2 / 3 en bonne voie › » ; tap = la carte de saison en feuille, l'ouverture
+/// d'une saison, ou le bilan (qui s'ouvre aussi de lui-même une fois).
+class SeasonTile extends StatefulWidget {
+  final AppLogic logic;
+  final BadgeCenter center;
+  const SeasonTile({super.key, required this.logic, required this.center});
+
+  @override
+  State<SeasonTile> createState() => _SeasonTileState();
+}
+
+class _SeasonTileState extends State<SeasonTile> {
+  static bool _autoShown = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.center,
+      builder: (context, _) {
+        final deck = widget.center.deck;
+        final today = widget.logic.livedTodayYmd;
+        final s = widget.logic.season;
+        final unseen = unseenBilan(widget.logic.seasons, today);
+        if (deck != null && unseen != null && s == null && !_autoShown) {
+          _autoShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) showSeasonBilan(context, widget.logic, widget.center, unseen);
+          });
+        }
+        final n = widget.logic.seasons.isEmpty ? 1 : widget.logic.seasons.last.n + (s == null ? 1 : 0);
+        if (s != null && deck != null) {
+          final views = seasonViews(s, deck, today);
+          final good = views.where((v) => v.state == SeasonHuntState.caught || v.state == SeasonHuntState.onTrack).length;
+          return SmallTile(
+            eyebrow: 'SAISON ${s.n} · SEM. ${s.weekOf(today)} / ${s.weeks}',
+            onTap: () => showFiche<void>(context,
+                builder: (ctx, scroll) => ListView(controller: scroll, padding: const EdgeInsets.only(top: 8, bottom: 24), children: [
+                      SeasonCard(logic: widget.logic, center: widget.center),
+                    ])),
+            child: Text('$good / ${s.hunts.length} en bonne voie ›', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+          );
+        }
+        if (unseen != null && deck != null) {
+          final k = caughtCount(seasonViews(unseen, deck, today));
+          return SmallTile(
+            eyebrow: 'SAISON ${unseen.n} · TERMINÉE',
+            border: kBadgeBrass.withValues(alpha: .45),
+            onTap: () => showSeasonBilan(context, widget.logic, widget.center, unseen),
+            child: Text('$k / ${unseen.hunts.length} · bilan ›', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          );
+        }
+        return SmallTile(
+          eyebrow: 'SAISON $n',
+          onTap: () => showSeasonOpenSheet(context, widget.logic, widget.center),
+          child: const Text('Ouvrir · 6 semaines ›', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        );
+      },
+    );
+  }
+}
+
 /// Feuille « Saison n · trois chasses pour six semaines ».
 Future<void> showSeasonOpenSheet(BuildContext context, AppLogic logic, BadgeCenter center) async {
   final deck = center.deck ?? await center.load();

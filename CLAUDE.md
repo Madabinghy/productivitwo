@@ -19,7 +19,7 @@ tower-defense XP/⚡/💎) n'est **pas retenue** côté jeu.
 - **Purgée progressivement** : orphelins mobiles, écrans Flame/Rive, `social.ts` backend
   (leaderboards, batailles, invasions), règles/index Firestore du jeu — déjà supprimés.
   Le reste (`lib/web/unified_world_sheet.dart` etc.) partira par lots.
-- Onglets mobiles actuels : **Objectifs / Stats / Projets / Actions / Aujourd'hui** (5 ; 4 avec
+- Onglets mobiles actuels : **Objectifs / Domaines (ex-Stats) / Projets / Actions / Aujourd'hui** (5 ; 4 avec
   `hideProjectsTab` ; `_Tab` dans `lib/main.dart`, onglet d'arrivée = Aujourd'hui). Ne pas réintroduire d'UI de jeu.
   **Actions mobile** (refonte 2026-10, handoff `docs/specs/actions-mobile-2026-10/README.md`,
   `lib/widgets/actions_view.dart`) : jamais vide, groupée par urgence (Maintenant · Aujourd'hui · En retard · Cette
@@ -849,6 +849,17 @@ l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥
 une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),
 du matin et des moments (`buildRoutineDay(exclude:)`), reste cochable (section ACQUISES), compte toujours dans le contrat ;
 décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4 sem.). `data/meta.acquired` + `acquireAsked`.
+
+## Objectifs et Domaines : une liste, une fiche (2026-10-30, maquette « Objectifs et Domaines »)
+
+Onglet **Objectifs** (`objectives_home_view.dart`) : titre, deux tuiles (`SeasonTile` : saison en cours / bilan / ouvrir, tap =
+carte de saison en feuille ; Badges : acquis / total, tap = `showBadgeGallerySheet`), puis `ObjectivesCard` (coups, veille,
+objectifs, archivés) — **tap sur une ligne = fiche de l'objectif** (`showObjectiveTrajectorySheet`), appui long = édition ; plus de
+bloc déplié sur place. Retirés : intention du jour, prochain bloc, carte des engagements 7 j (`WeekDashboardCard`), entrée vers
+l'ancien Accueil. Onglet **Domaines** (ex-Stats, `week_stats_view.dart`) : titre + « Gérer », MA SEMAINE en une ligne (`_weekLine` :
+k / n au rythme, semaines tenues, élan, sept jours ; tap = fiche Ma semaine, qui porte désormais la bande des semaines tenues et
+« Mode du jour »), puis les domaines (tap = page du domaine), chacun avec la rangée de ses jours sous la barre (`_dayBars`, `StatusRow.below`, échelle propre au domaine). **Aujourd'hui** : le bouton rond « Chrono libre » (doublon du FAB)
+est remplacé par **Badges** → `showBadgeGallerySheet` (tous les badges en feuille, 94 %).
 
 ## Règles du jeu en place (2026-10-30)
 
