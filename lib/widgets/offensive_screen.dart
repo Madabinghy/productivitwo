@@ -13,6 +13,7 @@ import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
 
@@ -64,6 +65,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   int _chronoSec = 0;
   bool _saved = false;
   final _passed = <String>{};
+  final _asked = <String>{}; // actions sans activité déjà questionnées
   final _actionsDone = <String, List<String>>{}; // projet → titres
   final _stepsDone = <String, int>{}; // action → étapes cochées
   final _before = <String, ({int done, int total, int behind})>{};
@@ -115,6 +117,15 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _startCoup();
     });
+  }
+
+  /// Le projet choisi comme front, quand aucune de ses actions prêtes n'a
+  /// d'activité où compter le temps.
+  Project? _unlinkedFront() {
+    if (_front == null) return null;
+    final q = _previewQueue();
+    if (q.isEmpty || q.any((t) => t.chronoActivityId != null)) return null;
+    return q.first.project;
   }
 
   /// Le chrono lancé à la main avant l'offensive (il s'arrête au lancement).
@@ -223,8 +234,14 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   void _startChrono() {
     final t = _cur;
-    final act = t?.chronoActivityId;
-    if (t == null || act == null) return;
+    if (t == null) return;
+    final act = t.chronoActivityId;
+    if (act == null) {
+      // Le chrono de l'action précédente ne doit pas compter pour celle-ci.
+      _stopOwnChrono();
+      if (_asked.add(t.action.id)) _askActivity(t);
+      return;
+    }
     final running = logic.state.sessions.where((s) => s.endAt == null).firstOrNull;
     if (running != null && !_ownChrono) return; // un chrono à toi tourne : on n'y touche pas
     if (running != null && running.actionId == t.action.id) return;
@@ -232,6 +249,15 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     logic.start(act, taskId: t.task.id, actionId: t.action.id);
     _ownChrono = true;
     _chronoFrom = DateTime.now();
+  }
+
+  /// Action sans activité : « Où compter ce temps ? » (une fois par action),
+  /// puis le chrono part sur l'activité choisie.
+  Future<void> _askActivity(OffensiveTarget t) async {
+    final id = await askCoupActivity(context, logic, project: t.project, action: t.action);
+    if (!mounted || id == null || _cur != t || _phase != _Phase.coup) return;
+    _startChrono();
+    setState(() {});
   }
 
   void _stopOwnChrono() {
@@ -475,6 +501,29 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
             ),
         ]),
       ),
+      if (_unlinkedFront() case final p?) ...[
+        const SizedBox(height: 10),
+        Material(
+          color: kOffensiveAccent.withValues(alpha: .10),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              await linkProjectActivity(context, logic, p);
+              if (mounted) setState(() {});
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(children: [
+                const Icon(Icons.link, size: 18, color: kOffensiveAccent),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('Le temps de ce projet ne compte nulle part', style: TextStyle(fontSize: 13, color: _text2))),
+                Text('Lier une activité', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: kOffensiveAccent.withValues(alpha: .95))),
+              ]),
+            ),
+          ),
+        ),
+      ],
       if (_runningBefore case final r?) ...[
         const SizedBox(height: 10),
         Text('Le chrono « ${logic.state.activities.where((a) => a.id == r.activityId).firstOrNull?.name ?? 'en cours'} » s’arrête au lancement : l’offensive prend la main.',

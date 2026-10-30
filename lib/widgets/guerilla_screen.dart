@@ -12,6 +12,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/routine_moments.dart' show buildRoutineDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 
 /// Écran Guérilla (maquette validée 2026-10-30) : le corps de 1 à 5, puis un
@@ -45,6 +46,7 @@ class GuerillaScreen extends StatefulWidget {
 class _GuerillaScreenState extends State<GuerillaScreen> {
   late final List<GuerillaCoup> _queue;
   final _passed = <String>{};
+  final _asked = <String>{}; // actions sans activité déjà questionnées
   final _done = <String>[]; // libellés des coups faits
   final _doneKeys = <String>{};
   _Phase _phase = _Phase.intro;
@@ -153,10 +155,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     _phase = _Phase.coup;
     final c = _queue[i];
     _armAlarm(c);
-    if (c.kind == GuerillaKind.action && c.activityId != null && !logic.state.sessions.any((s) => s.endAt == null)) {
-      logic.start(c.activityId!, taskId: c.taskId, actionId: c.action?.id);
-      _ownChrono = true;
-    }
+    _startChrono(c);
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -182,6 +181,31 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     CoupAlarm.cancel(all: false);
     _armAlarm(_queue[_index]);
     setState(_tick);
+  }
+
+  /// Le chrono du coup : l'activité de l'action, ou l'activité liée de la
+  /// routine (2026-10-30) ; une action de projet sans activité demande où
+  /// compter ce temps (une fois par action). Jamais par-dessus un chrono qui tourne.
+  void _startChrono(GuerillaCoup c) {
+    if (logic.state.sessions.any((s) => s.endAt == null)) return;
+    final String? act;
+    if (c.kind == GuerillaKind.routine) {
+      act = logic.state.activities.where((a) => a.id == c.activityId).firstOrNull?.linkedActivityId;
+    } else {
+      act = c.activityId ?? c.action?.linkedActivityId;
+    }
+    if (act != null) {
+      logic.start(act, taskId: c.taskId, actionId: c.action?.id);
+      _ownChrono = true;
+      return;
+    }
+    final project = c.projectId == null ? null : logic.currentProjects.where((p) => p.id == c.projectId).firstOrNull;
+    final action = c.action;
+    if (c.kind != GuerillaKind.action || project == null || action == null || !_asked.add(action.id)) return;
+    askCoupActivity(context, logic, project: project, action: action).then((id) {
+      if (!mounted || id == null || _phase != _Phase.coup || _queue[_index].key != c.key) return;
+      _startChrono(c);
+    });
   }
 
   void _stopOwnChrono() {

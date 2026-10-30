@@ -895,6 +895,14 @@ lancé à la main s'arrête au lancement de la guérilla / de l'offensive (annon
 `NotificationService.scheduleCoupEnd` (id 31) si l'app est tuée ; annulée au « Fait », « Pas ça », à l'arrêt, re-posée par « Encore
 5 min » / « +N min ». Le minuteur se lit sur l'heure de fin (`_endsAt`) : il continue de décompter téléphone en veille.
 
+**Temps des coups** (2026-10-30, retour user) : le chrono d'un coup tourne sur l'activité de l'action (sinon celle du projet) ; un
+coup de ROUTINE lance aussi le chrono sur l'activité liée de la routine (`Activity.linkedActivityId`) ; une action de projet sans
+activité demande, au moment du coup et une fois par action, « Où compter ce temps ? » (`askCoupActivity`,
+`widgets/coup_activity_sheet.dart` : pour cette action = `linkedActivityId` via `patchActionOf` · pour tout le projet =
+`linkProjectActivity` → `Project.linkedActivityId` via `saveProject` · Sans chrono). Offensive : ligne « Le temps de ce projet ne
+compte nulle part · Lier une activité » au départ quand aucune action prête du front n'a d'activité (`_unlinkedFront`) ; le chrono
+de l'action précédente s'arrête quand la suivante n'a pas d'activité.
+
 ## Offensive (2026-10-30, maquette validée « Offensive »)
 
 L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête
