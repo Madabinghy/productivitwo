@@ -323,12 +323,13 @@ RoutineDay buildRoutineDay({
   Set<String> dismissed = const {},
   int dayStartMin = kDefaultDayStartMin,
   List<Moment>? moments,
+  Set<String> exclude = const {},
 }) {
   final ms = moments ?? timedMomentsWith(const {}, dayStartMin: dayStartMin);
   // Journée vécue : avant la bascule, le moment courant reste « ce soir ».
   final nowMin = livedNowMin(now, dayStartMin);
   final current = currentMoment(nowMin, ms);
-  final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin);
+  final todos = routinesForToday(activities, hits, now, dayStartMin: dayStartMin).where((t) => !exclude.contains(t.activity.id)).toList();
   final slots = <RoutineSlot>[
     for (final t in todos)
       if (momentShareOf(t.activity, dayDone: t.dayDone, dayTarget: t.dayTarget, nowMin: nowMin, moments: ms) case final share?)

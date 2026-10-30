@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -702,6 +703,11 @@ class TodayViewState extends State<TodayView> {
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
                   LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged, onPlus: _emberPlus),
+                  // Routine acquise : la proposition à 66 jours, l'alerte de décrochage.
+                  AcquiredPrompts(logic: widget.logic, onChanged: () {
+                    widget.badges?.load(refresh: true);
+                    if (mounted) setState(() {});
+                  }),
                   if (_morningCard(cs, now, text3) case final card?) card,
                   // Tableau de bord en tête, le tableau du jour (ou « Ce soir »)
                   // sous le programme (retour user 2026-10-30).
@@ -883,6 +889,7 @@ class TodayViewState extends State<TodayView> {
       dismissed: widget.logic.nowDoneSet(ymd),
       dayStartMin: widget.logic.dayStartMin,
       moments: widget.logic.moments,
+      exclude: widget.logic.acquiredIds,
     );
   }
 

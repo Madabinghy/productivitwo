@@ -18,6 +18,7 @@ import 'package:productivitwo_v1/utils/badges_logic.dart' show routineBadge;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
+import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredSection;
 
 /// Orange des routines (handoff « Segment Routines », 2026-10).
 const kRoutineAccent = Color(0xFFE07B39);
@@ -140,6 +141,7 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
         dismissed: logic.nowDoneSet(_ymd),
         dayStartMin: logic.dayStartMin,
         moments: logic.moments,
+        exclude: logic.acquiredIds,
       );
 
   // ── Gestes ──────────────────────────────────────────────────────────────────
@@ -364,6 +366,8 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           _momentSection(pal, day, m),
           const SizedBox(height: 10),
         ],
+      // Routines acquises (2026-10-30) : cochables, hors journée parfaite.
+      if (!widget.onlyMissing) AcquiredSection(logic: logic, onPlus: (a) => _plus(a)),
     ]);
   }
 

@@ -844,6 +844,11 @@ carte MA SEMAINE (série + 10 semaines), gain `StakeGainKind.week` le dimanche, 
 `widgets/season_view.dart`) : six semaines, trois chasses figées (remplacent `badgeHunts`, date visée = fin), lâcher sans
 remplacer, attrapée = palier tombé pendant la saison, bilan une fois à la fin ; `data/meta.seasons` ; carte en tête de
 l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥ 2 chasses sur 3, 1 / 4 / 8). Web : badge seul.
+**Routine acquise** (handoff `docs/specs/routine-acquise-2026-10/README.md`, logique pure `utils/acquired.dart`, écrans
+`widgets/acquired_view.dart`) : proposée une fois au palier de 66 j (carte Aujourd'hui, interrupteur de la fiche routine) ;
+une acquise sort de la journée parfaite / solide (`scoreDay(acquired:)`), des faits du jour (`composeTodayFacts(acquired:)`),
+du matin et des moments (`buildRoutineDay(exclude:)`), reste cochable (section ACQUISES), compte toujours dans le contrat ;
+décroche = 2 semaines closes < 4 / 7 → carte (remettre active / c'est voulu 4 sem.). `data/meta.acquired` + `acquireAsked`.
 
 ## Règles du jeu en place (2026-10-30)
 

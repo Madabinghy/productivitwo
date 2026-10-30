@@ -66,6 +66,7 @@ import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
 import 'package:productivitwo_v1/utils/rest_periods.dart' show parseRestPeriods;
 import 'package:productivitwo_v1/utils/seasons.dart' show parseSeasons;
+import 'package:productivitwo_v1/utils/acquired.dart' show parseAcquired, parseAcquireAsked;
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1979,6 +1980,8 @@ class _AppRootState extends State<AppRoot>
       final rest = parseRestDomains(m['restDomains']);
       final periods = parseRestPeriods(m['restPeriods']);
       final seasons = parseSeasons(m['seasons']);
+      final acquired = parseAcquired(m['acquired']);
+      final asked = parseAcquireAsked(m['acquireAsked']);
       final budget = parseBudgetWindowDays(m['budgetWindowDays']);
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
@@ -1989,7 +1992,9 @@ class _AppRootState extends State<AppRoot>
           logic.budgetWindowDays == budget &&
           rest.toString() == logic.restDomains.toString() &&
           periods.map((x) => x.toJson().toString()).join('|') == logic.restPeriods.map((x) => x.toJson().toString()).join('|') &&
-          seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|');
+          seasons.map((x) => x.toJson().toString()).join('|') == logic.seasons.map((x) => x.toJson().toString()).join('|') &&
+          acquired.map((k, v) => MapEntry(k, v.toJson())).toString() == logic.acquired.map((k, v) => MapEntry(k, v.toJson())).toString() &&
+          asked.length == logic.acquireAsked.length && asked.containsAll(logic.acquireAsked);
       if (same) return;
       logic.dayStartMin = start;
       logic.momentWindows = windows;
@@ -1999,6 +2004,8 @@ class _AppRootState extends State<AppRoot>
       logic.restDomains = rest;
       logic.restPeriods = periods;
       logic.seasons = seasons;
+      logic.acquired = acquired;
+      logic.acquireAsked = asked;
       logic.budgetWindowDays = budget;
       logic.onChange();
     });
@@ -2142,7 +2149,7 @@ class _AppRootState extends State<AppRoot>
         final schedule = await _sync.fetchDailySchedule(ymdOf(day));
         final blocks = (schedule?.blocks ?? const <ScheduleBlock>[]).where((b) => countsForBadges(b) && b.status == 'pending').length;
         final daily = logic.state.activities
-            .where((a) => !a.deleted && a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily && !logic.isActivitySnoozed(a.id, day))
+            .where((a) => !a.deleted && a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily && !logic.isActivitySnoozed(a.id, day) && !logic.isAcquired(a.id))
             .toList();
         var focused = 0;
         for (final p in logic.currentProjects) {

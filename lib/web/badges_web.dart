@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
 import 'package:productivitwo_v1/utils/mode.dart' show parseRestDomains;
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/seasons.dart' show Season, parseSeasons;
+import 'package:productivitwo_v1/utils/acquired.dart' show Acquired, parseAcquired;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
@@ -30,6 +31,8 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
   Map<String, String> restDomains = const {};
   /// Saisons (`data/meta.seasons`) : le badge Saisons du web.
   List<Season> seasons = const [];
+  /// Routines acquises (`data/meta.acquired`) : hors journée parfaite, comme sur le mobile.
+  Map<String, Acquired> acquired = const {};
   WebHuntStore(this.sync) {
     _sub = sync.streamMetaDoc().listen((m) {
       _hunts = parseBadgeHunts(m['badgeHunts']);
@@ -37,6 +40,7 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
       restPeriods = parseRestPeriods(m['restPeriods']);
       restDomains = parseRestDomains(m['restDomains']);
       seasons = parseSeasons(m['seasons']);
+      acquired = parseAcquired(m['acquired']);
       notifyListeners();
     });
   }
@@ -104,9 +108,10 @@ class WebDeckSource extends ChangeNotifier {
     List<RestPeriod> restPeriods = const [],
     Map<String, String> restDomains = const {},
     List<Season> seasons = const [],
+    Map<String, Acquired> acquired = const {},
   }) {
     final key =
-        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.dropped.length}';
+        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains|${seasons.length}|${seasons.isEmpty ? '' : seasons.last.dropped.length}|${acquired.length}';
     if (_deck != null && key == _key) return _deck!;
     _key = key;
     return _deck = computeBadges(
@@ -124,6 +129,7 @@ class WebDeckSource extends ChangeNotifier {
       restPeriods: restPeriods,
       restDomains: restDomains,
       seasons: seasons,
+      acquired: acquired,
     );
   }
 }
@@ -210,6 +216,7 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
         restPeriods: widget.huntStore?.restPeriods ?? const [],
         restDomains: widget.huntStore?.restDomains ?? const {},
         seasons: widget.huntStore?.seasons ?? const [],
+        acquired: widget.huntStore?.acquired ?? const {},
       );
 
   @override

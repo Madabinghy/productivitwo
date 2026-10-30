@@ -821,6 +821,7 @@ class TodayViewState extends State<TodayView> {
         restPeriods: _huntStore.restPeriods,
         restDomains: _huntStore.restDomains,
         seasons: _huntStore.seasons,
+        acquired: _huntStore.acquired,
       );
 
   String _stakesKey = '';
@@ -849,6 +850,7 @@ class TodayViewState extends State<TodayView> {
       objectives: widget.objectives,
       projects: widget.projects,
       schedule: DailySchedule(date: _today, blocks: _allBlocks),
+      acquired: _huntStore.acquired,
     );
     return _stakes = buildStakeBoard(
       deck: deck,

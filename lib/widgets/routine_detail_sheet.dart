@@ -285,6 +285,22 @@ class _RoutineDetailSheetState extends State<RoutineDetailSheet> {
                 bridged: logic.bridgedOf(act.id),
                 frozen: logic.frozenOf(act.id),
               ),
+              // Routine acquise (2026-10-30) : hors journée parfaite et enjeux, toujours dans le contrat.
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                value: logic.acquired.containsKey(act.id),
+                title: const Text('Routine acquise'),
+                subtitle: const Text('Hors journée parfaite et enjeux · reste cochable et compte dans ton objectif'),
+                onChanged: (v) async {
+                  if (v) {
+                    await logic.acquireRoutine(act.id);
+                  } else {
+                    await logic.releaseRoutine(act.id);
+                  }
+                  setState(() {});
+                },
+              ),
             ] else ...[
             if (currentStreak > 0 || bestStreak > 1) ...[
               const SizedBox(height: 10),
