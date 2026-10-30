@@ -3,7 +3,7 @@ import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
-import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show EngagementStat, ymdOf;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -299,6 +299,17 @@ class _WeekStatsViewState extends State<WeekStatsView> {
   /// jour (attendu au prorata + rappel de la semaine entière) puis les semaines
   /// tenues. Répartition, jauges, temps, élan et retards vivent ailleurs
   /// (lignes de domaine, Aujourd'hui, fiche d'activité, feuille du mode, Actions).
+  /// Ordre « au plus près de la cible » (`comparePct`) : sous l'attendu à ce
+  /// jour, le plus proche en tête ; à l'attendu ou au-delà, en ordre croissant.
+  /// Pourcentage NON plafonné, pour départager ce qui dépasse.
+  List<EngagementStat> _byNearest(WeekSummary w) {
+    int pctOf(EngagementStat e) {
+      final x = w.expectedOf(e);
+      return x <= 0 ? 100 : (e.done / x * 100).round();
+    }
+    return [...w.engagements]..sort((a, b) => comparePct(pctOf(a), pctOf(b)));
+  }
+
   void _openWeekFiche(WeekSummary w, HeldWeeks hw) {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final n = w.engagements.length;
@@ -320,7 +331,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
             if (n == 0)
               const FicheNote('Rattache des routines à un objectif pour que la semaine les juge ; sinon toutes les routines comptent.')
             else ...[
-              for (final e in w.engagements) ...[
+              for (final e in _byNearest(w)) ...[
                 FicheStep(
                   title: e.label,
                   detail: '${e.done} / ${w.expectedOf(e)} attendu${w.expectedOf(e) > 1 ? 's' : ''} à ce jour · ${e.target} sur la semaine',
