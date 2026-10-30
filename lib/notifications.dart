@@ -43,12 +43,26 @@ class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
-  /// Appelé quand l'utilisateur tape sur une notification.
-  /// L'int est l'ID de la notification (ex: 2 = résumé du jour).
-  static void Function(int notificationId)? onNotificationTap;
+  /// Appelé quand l'utilisateur tape sur une notification : son id et sa
+  /// charge utile (`kPayload*`, `block:<ymd>|<id>`, URL…). Seul point d'entrée
+  /// des taps : le plugin est partagé (FCM compris), un second `initialize`
+  /// écraserait ce routage.
+  static void Function(int notificationId, String? payload)? onNotificationTap;
 
-  // Bufferise l'ID si le callback n'est pas encore assigné (race condition background).
-  static int? _pendingId;
+  // Bufferise le tap si le callback n'est pas encore assigné (race condition background).
+  static ({int id, String? payload})? _pending;
+
+  static const kPayloadProgram = 'program';
+  static const kPayloadPerfect = 'perfect';
+  static const kPayloadReview = 'review';
+  static const kPayloadToday = 'today';
+  static const kPayloadOrion = 'orion';
+
+  /// Le plugin, initialisé une seule fois (FCM l'utilise pour ses affichages).
+  static Future<FlutterLocalNotificationsPlugin> plugin() async {
+    if (!_initialized) await init();
+    return _plugin;
+  }
 
   static const _channelId = 'routines_daily';
   static const _notifId = 1;
@@ -97,9 +111,9 @@ class NotificationService {
       onDidReceiveNotificationResponse: (response) {
         final id = response.id ?? 0;
         if (onNotificationTap != null) {
-          onNotificationTap!.call(id);
+          onNotificationTap!.call(id, response.payload);
         } else {
-          _pendingId = id;
+          _pending = (id: id, payload: response.payload);
         }
       },
     );
@@ -152,6 +166,7 @@ class NotificationService {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
+      payload: kPayloadProgram,
     );
   }
 
@@ -193,6 +208,7 @@ class NotificationService {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
+      payload: kPayloadReview,
     );
   }
 
@@ -232,6 +248,7 @@ class NotificationService {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
+      payload: kPayloadPerfect,
     );
   }
 
@@ -292,6 +309,7 @@ class NotificationService {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       matchDateTimeComponents: DateTimeComponents.time,
+      payload: kPayloadProgram,
     );
   }
 
@@ -333,6 +351,7 @@ class NotificationService {
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
+        payload: kPayloadProgram,
       );
     }
   }
@@ -340,9 +359,9 @@ class NotificationService {
   /// À appeler juste après avoir assigné [onNotificationTap] pour traiter
   /// un éventuel tap bufferisé (race condition app en background).
   static void drainPending() {
-    final id = _pendingId;
-    _pendingId = null;
-    if (id != null) onNotificationTap?.call(id);
+    final p = _pending;
+    _pending = null;
+    if (p != null) onNotificationTap?.call(p.id, p.payload);
   }
 
   /// À appeler après le premier frame pour gérer le cas "app terminée lancée
@@ -351,8 +370,8 @@ class NotificationService {
     if (!_supported || !_initialized) return;
     final details = await _plugin.getNotificationAppLaunchDetails();
     if (details?.didNotificationLaunchApp == true) {
-      final id = details!.notificationResponse?.id ?? 0;
-      onNotificationTap?.call(id);
+      final r = details!.notificationResponse;
+      onNotificationTap?.call(r?.id ?? 0, r?.payload);
     }
   }
 
@@ -472,6 +491,7 @@ class NotificationService {
       androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
+      payload: kPayloadProgram,
     );
   }
 
