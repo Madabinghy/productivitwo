@@ -70,7 +70,7 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('ACTIVITÉ DU MOMENT'), findsOneWidget);
+    expect(find.text('ACTIVITÉ DU MOMENT'), findsNothing); // carte retirée (2026-10-30)
     expect(find.textContaining('À RATTRAPER'), findsOneWidget);
     await tester.tap(find.text('Routines'));
     await tester.pump(const Duration(milliseconds: 300));

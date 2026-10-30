@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
@@ -7,13 +6,9 @@ import 'package:productivitwo_v1/utils/badges_logic.dart' show routineSeries;
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
-import 'package:productivitwo_v1/utils/mode.dart';
-import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart';
-import 'package:productivitwo_v1/widgets/deep_work_sheet.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
-import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart' show showRoutineSheet;
 import 'package:productivitwo_v1/utils/routines_today.dart' show todayMark;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlus, routineMinus, routineTodayCount;
@@ -22,8 +17,7 @@ import 'package:productivitwo_v1/widgets/status_row.dart';
 /// Page d'un domaine (tap sur une ligne de Stats ; `domain` null = toutes les
 /// activités), refonte 2026-10 « une carte, une fiche » : en-tête = la ligne de
 /// Stats dépliée (minimum sur la fenêtre de budget, fait, attendu, routines
-/// tenues), carte ACTIVITÉ DU MOMENT (la plus en retard sur son objectif, UN
-/// geste selon le mode), lignes `StatusRow` par activité (moyenne / j, barre
+/// tenues), lignes `StatusRow` par activité (moyenne / j, barre
 /// fait / attendu avec repère, chip, ▶), sections À RATTRAPER · AU RYTHME ·
 /// EN PAUSE ; segment Temps / Routines. La courbe 60 j et la heatmap vivent
 /// dans la fiche d'activité. Renvoie `true` quand un chrono a été lancé (la
@@ -151,14 +145,6 @@ class _DomainPageState extends State<_DomainPage> {
   void _start(Activity a) {
     logic.start(a.id);
     Navigator.of(context).pop(true);
-  }
-
-  Future<void> _deepWork(Activity a) async {
-    final launch = widget.onLaunchBlock;
-    if (launch == null) return _start(a);
-    final ok = await showDeepWorkSheet(context,
-        logic: logic, sync: widget.sync, date: logic.livedTodayYmd, onLaunch: launch, preferActivityId: a.id);
-    if (ok && mounted) Navigator.of(context).pop(true);
   }
 
   Future<void> _rowMenu(Activity a, DateTime now) async {
@@ -304,9 +290,8 @@ class _DomainPageState extends State<_DomainPage> {
     // Même ordre que Stats : sous l'attendu, le plus proche en tête ; au rythme, en ordre croissant.
     final behind = live.where((r) => !r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
     final ok = live.where((r) => r.onTrack).toList()..sort((a, b) => comparePct(a.pctInt, b.pctInt));
-    final moment = behind.isNotEmpty ? behind.first : (live.where((r) => r.hasGoal).firstOrNull ?? live.firstOrNull);
+    // Plus de carte ACTIVITÉ DU MOMENT (2026-10-30) : la liste À RATTRAPER la montre déjà en tête.
     return [
-      if (moment != null) ...[const SizedBox(height: 14), _momentCard(moment, now, d)],
       ListSectionTitle('À RATTRAPER · ${behind.length}', action: '+ Nouvelle activité', onAction: () async {
         await widget.onCreate(domainId: d?.id, isHabit: false);
         if (mounted) setState(() {});
@@ -328,71 +313,6 @@ class _DomainPageState extends State<_DomainPage> {
         if (_showPaused) for (final r in paused) _timeRow(r, now),
       ],
     ];
-  }
-
-  Widget _momentCard(_TimeRow r, DateTime now, Domain? d) {
-    final a = r.a;
-    final st = logic.state;
-    final mode = logic.mode;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final accent = modeAccentOverride(mode, dark: dark) ?? (domainColor(a.domainId, st.activeDomains) ?? Theme.of(context).colorScheme.primary);
-    final running = logic.runningActivity()?.id == a.id;
-    final pct = r.hasGoal ? (r.expectedMin <= 0 ? 1.0 : (r.doneMin / r.expectedMin).clamp(0.0, 1.0)) : 0.0;
-    final domName = st.activeDomains.where((x) => x.id == a.domainId).firstOrNull?.name;
-    final String primary;
-    final IconData icon;
-    final VoidCallback onPrimary;
-    if (running) {
-      primary = 'Arrêter';
-      icon = Icons.stop_rounded;
-      onPrimary = () => logic.stopActive();
-    } else if (mode == DayMode.low && widget.onLaunchTimed != null) {
-      primary = '10 min, malgré tout';
-      icon = Icons.timer_outlined;
-      onPrimary = () {
-        widget.onLaunchTimed!(a, 10);
-        Navigator.of(context).pop(true);
-      };
-    } else if (mode == DayMode.high) {
-      primary = 'Deep work 90 min · sur quoi ?';
-      icon = Icons.bolt_rounded;
-      onPrimary = () => _deepWork(a);
-    } else {
-      primary = 'Chrono';
-      icon = Icons.play_arrow_rounded;
-      onPrimary = () => _start(a);
-    }
-    return MomentCard(
-      accent: accent,
-      eyebrow: 'ACTIVITÉ DU MOMENT',
-      pill: r.onTrack ? (r.hasGoal ? 'au rythme' : 'sans objectif') : 'la plus en retard',
-      ring: pct,
-      ringColor: r.hasGoal ? palierColor(r.pctInt) : accent,
-      ringBig: r.hasGoal ? '${r.pctInt} %' : fmtMin(r.doneMin),
-      ringSmall: r.hasGoal ? 'DE L\'ATTENDU' : (logic.budgetWindowDays == 14 ? 'SUR 14 J' : 'CETTE SEM.'),
-      context_: [if (d == null && domName != null) domName, if (r.hasGoal) 'objectif ${fmtMin(r.goalMinDay)} / j'].join(' · '),
-      contextIcon: Icons.access_time_rounded,
-      title: a.name,
-      sub: _timeSub(r),
-      subColor: r.hasGoal && !r.onTrack ? palierColor(r.pctInt) : null,
-      primaryLabel: primary,
-      primaryIcon: icon,
-      primaryOutlined: running,
-      onPrimary: onPrimary,
-      onFiche: () async {
-        final changed = await widget.onOpenActivity(a);
-        if (changed && mounted) setState(() {});
-      },
-    );
-  }
-
-  String _timeSub(_TimeRow r) {
-    final win = logic.budgetWindowDays == 14 ? 'sur 14 j' : 'cette semaine';
-    return [
-      '${fmtMin(r.avg7)} / j en moyenne',
-      '${fmtMin(r.doneMin)} $win',
-      if (r.hasGoal) 'attendu ${fmtMin(r.expectedMin)}',
-    ].join(' · ');
   }
 
   Widget _timeRow(_TimeRow r, DateTime now) {
