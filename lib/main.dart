@@ -3546,6 +3546,7 @@ class _AppRootState extends State<AppRoot>
         children: [
           _buildObjectivesBody(context),
           GoalsView(
+            visible: _tab == _Tab.projets,
             logic: logic,
             domains: _state?.domains ?? [],
             activities: _state?.activities ?? [],
