@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBad
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show BadgeView;
 import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 
 /// Feuille « Mode du jour » (lot 1 Modes et coups ; vue d'élan 2026-10,
@@ -153,7 +154,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           ],
         ]),
         const SizedBox(height: 10),
-        _guerillaCard(cs),
+        if (cur == DayMode.high) ...[_offensiveCard(cs), const SizedBox(height: 8), _guerillaCard(cs)] else ...[_guerillaCard(cs), const SizedBox(height: 8), _offensiveCard(cs)],
         title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday créneau${pointedToday > 1 ? 'x' : ''} pointé${pointedToday > 1 ? 's' : ''}'}'),
         Row(children: [
           for (final s in slots) ...[
@@ -228,24 +229,35 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     );
   }
 
-  /// Guérilla : pas bien, mais debout — des coups de 5 min, l'app choisit.
-  Widget _guerillaCard(ColorScheme cs) {
+  /// Offensive : en forme, à fond — des coups de 10 / 15 min sur un front.
+  Widget _offensiveCard(ColorScheme cs) => _launchCard(
+        cs,
+        accent: kOffensiveAccent,
+        lightAccent: const Color(0xFFB4532A),
+        icon: Icons.north_east,
+        title: 'Offensive · en forme, à fond',
+        sub: 'Des coups de 10 ou 15 min sur un projet, l’un après l’autre.',
+        onTap: () => showOffensiveScreen(context, widget.logic),
+      );
+
+  Widget _launchCard(ColorScheme cs,
+      {required Color accent, required Color lightAccent, required IconData icon, required String title, required String sub, required VoidCallback onTap}) {
     return Material(
-      color: kGuerillaAccent.withValues(alpha: .10),
+      color: accent.withValues(alpha: .10),
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => showGuerillaScreen(context, widget.logic),
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: kGuerillaAccent.withValues(alpha: .5))),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: accent.withValues(alpha: .5))),
           child: Row(children: [
-            Icon(Icons.bolt, color: cs.brightness == Brightness.dark ? kGuerillaAccent : const Color(0xFF5E6B2A)),
+            Icon(icon, color: cs.brightness == Brightness.dark ? accent : lightAccent),
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('Guérilla · la flemme ou moi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
-                Text('Pas bien, mais debout : des coups de 5 min, sans réfléchir.', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
+                Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                Text(sub, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
               ]),
             ),
             Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .5)),
@@ -254,6 +266,17 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
       ),
     );
   }
+
+  /// Guérilla : pas bien, mais debout — des coups de 5 min, l'app choisit.
+  Widget _guerillaCard(ColorScheme cs) => _launchCard(
+        cs,
+        accent: kGuerillaAccent,
+        lightAccent: const Color(0xFF5E6B2A),
+        icon: Icons.bolt,
+        title: 'Guérilla · la flemme ou moi',
+        sub: 'Pas bien, mais debout : des coups de 5 min, sans réfléchir.',
+        onTap: () => showGuerillaScreen(context, widget.logic),
+      );
 
   String _modeShort(DayMode m) => switch (m) { DayMode.low => 'petites choses', DayMode.normal => 'le programme', DayMode.high => 'deep work' };
 

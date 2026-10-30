@@ -882,6 +882,23 @@ ne tourne ; jamais un besoin de base ni une activité en pause). Stockage = `Cha
 (`chain_runs`), jamais compté pour Enchaîneur ni Plein jour (`chainRunCounts`, `fullDay`). Badge **Guérilla** (`guerilla`, Discipline,
 symbole `bolt`, paliers 1 / 5 / 15) : une guérilla compte dès 3 coups faits (`guerillaCounts`). ⓘ `kRuleGuerilla`.
 
+## Offensive (2026-10-30, maquette validée « Offensive »)
+
+L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête
+quand le mode est En forme, sinon sous la Guérilla ; `_launchCard`) → écran `widgets/offensive_screen.dart` (`showOffensiveScreen`) :
+durée d'un coup (10 / 15 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
+`frontLine` « 2 en retard · séance le 9 nov · 4 actions prêtes » — ou « Tout mélanger » = la prochaine action de chaque projet, en
+retard d'abord). Puis les actions l'une après l'autre (`buildOffensiveQueue` / `openTargets` : hors tâches à venir, par date de travail
+puis ordre Gantt) : « Projet › Tâche », titre, minuteur du coup, étape en cours + « Ensuite », liste des étapes ; « Étape faite »
+(`setChecklistItem`, dernière = action faite) · « Action faite » · « +N min » · « Pas ça » ; chrono ciblé sur l'activité de l'action
+sinon du projet (jamais par-dessus un chrono déjà lancé à la main). Un coup est GAGNÉ au bout de son minuteur, même sans finir.
+Point d'étape tous les 3 coups (3 min debout, « déjà gagné », À fond · Je ralentis = coups de 10 min · C'est bon pour aujourd'hui).
+Bilan : coups · durée · chrono, par projet touché la rangée de briques, « x → y tâches faites », retard sur le plan avant → après
+(`planSnapshot`), badge, « Caser la suite demain » (`focusDate` = demain sur l'action en cours). Écritures `patchActionOf`. Stockage
+`ChainRun` `kind:"offensive"` (doneCount = coups gagnés, total = actions finies). Badge **Offensive** (`offensive`, Discipline, symbole
+`arrow`, 1 / 5 / 15) dès 3 coups (`offensiveCounts`). Le deep work 90 min reste à part (un seul gros bloc). ⓘ `kRuleOffensive`.
+Logique pure `utils/offensive.dart`.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
@@ -1351,9 +1368,6 @@ actions: [
   avec « Réactiver », et une confirmation sur « Archiver ».
 
 - **Modes et coups tactiques** (noté 2026-10-27, handoff `docs/specs/modes-et-coups-2026-10/README.md`, maquette à valider) : mode Flemme / Normal / En forme changeable à tout moment (= pointage d'élan), ambiance par mode, chips « malgré tout » / « à fond » dérivés, coups = `StrategicObjective.horizon:"tactical"` (3–10 j, même fiche / graphe), veille de domaines `data/meta.restDomains`, budget de domaine sur 14 j, carte du moment pilotée par le mode, `plan_day` par jours de focus. Maquette validée le 2026-10-27. **Lot 0 livré** : `lib/utils/mode.dart` ↔ `functions/src/mode.ts` (`modeOf` = dernier élan du jour vécu, `malgreTout` / `aFond` dérivés, `isResting`, `parseBudgetWindowDays`), `StrategicObjective.horizon`, `AppLogic.mode` / `setMode` / `restDomains` / `budgetWindowDays`, MCP `set_mode`, `rest_domain`, `save_objective {horizon}`, `list_objectives.coups`, `get_user_context.mode`, règles `plan_day` par mode. **Lot 1 livré** : `ModePill` / `showModeSheet` / `modeChipFor` (`widgets/mode_sheet.dart`), `utils/mode_colors.dart` (thème par `AppLogic.modeNotifier`, `NowPalette.primary` sombre par mode), chips « malgré tout » / « à fond » (programme, actions faites, récap Enchaîner), badge « Deep work » (`deepWorkSessions(sessions, schedules)` : **strict depuis le 2026-10-27** — seul un bloc `kind:"deepwork"` posé par « Deep work 90 min » et couvert ≥ 60 min par un chrono de sa source compte ; jamais un chrono long seul). **Lot 2 livré** : `utils/mode_moves.dart` (`deepWorkCandidates`, `deepWorkBlock`, `smallChain`), feuille « Sur quoi ? » `widgets/deep_work_sheet.dart` (propose, jamais de chrono sans geste), MAINTENANT « 10 min, malgré tout » / « n petites choses » / « Deep work 90 min », `pickActionMoment(mode:, focusProjectId:)`, `rankObjectiveMoments(mode:)`, « Bloc de 90 min » sur la carte Objectif. **Lot 3 livré** : `utils/coups.dart` (`coupLabel`, `validateCoup`, `coupProjectIds`…), section « COUPS · n » + `widgets/coup_sheet.dart` (quoi · cible · jusqu'à quand · pour) + `widgets/rest_sheet.dart` (veille par domaine, `liftRest`), veille dans Stats (`domainWeeks(rest:)`), Actions (section « EN VEILLE »), Projets (`rankProjectMoments(priorityIds:)`), deep work et `plan_day` (`restLines`). **Lot 4 livré** : `utils/budget_window.dart` (`budgetWindowStart` 7 = lundi / 14 = quinzaine à départ fixe, `dailyMinutesByDomain`), `domainWeeks(windowDays:)`, Stats sur la fenêtre + section « Répartition sur n j » de la fiche Ma semaine, tuile Paramètres « Budget des minimums », `plan_day` jours de focus (`modeRules`) + `budgetRules`. **Lot 5 livré (web)** : `lib/web/mode_web.dart` (`moodMarkForMode`, `showWebModeDialog`, `WebModePill`, `webModeChip`), « Mode du jour » dans le menu ⋯ + pilule de la barre, chips sur les blocs faits d'Aujourd'hui, coups en tête de la carte Objectifs du jour et cartes « COUP » dans Projets. **Les 6 lots sont livrés.**
-- **Guérilla en forme** (noté 2026-10-30, à reprendre plus tard) : l'équivalent de la Guérilla quand on est EN FORME — des
-  coups de 10 ou 15 min au lieu de 5, pour avancer à fond sur des choses (actions de projet plutôt que routines). Nom à trouver
-  (« rush » est déjà pris par les objectifs tactiques). Rien n'est décidé : maquette d'abord.
 - **Export / import des données** (noté 2026-07-19, **cadré 2026-07-24**) : handoff design + produit
   dans `docs/specs/export-import-donnees/README.md` (lot « Coffre » : sauvegarde .json complète +
   restauration Fusionner/Remplacer ; export CSV et import de migration **écartés**, ne pas les

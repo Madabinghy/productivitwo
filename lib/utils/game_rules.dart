@@ -89,6 +89,13 @@ const kRuleGuerilla = GameRule('La guérilla', [
   RuleCard('🏅', 'Le badge', 'Une guérilla compte dès 3 coups faits. Fièvre, vertiges, douleur forte : repos, ça compte aussi.'),
 ]);
 
+const kRuleOffensive = GameRule('L’offensive', [
+  RuleCard('🎯', 'Tu choisis le front', 'Un projet, ou « tout mélanger » : la prochaine action de chaque projet, la plus en retard d’abord. L’app enchaîne les actions, une étape en avant.'),
+  RuleCard('⏱️', 'Des coups de 10 ou 15 min', 'Au bout du minuteur, le coup est gagné, même sans finir l’action. Le chrono tourne sur l’activité liée.'),
+  RuleCard('☕', 'Tous les 3 coups', 'Trois minutes debout. Puis : à fond, je ralentis (coups de 10 min) ou c’est bon pour aujourd’hui.'),
+  RuleCard('🏅', 'Le badge', 'Une offensive compte dès 3 coups gagnés. Le deep work 90 min reste à part : un seul gros bloc.'),
+]);
+
 const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
   RuleCard('🔢', 'Le chiffre du jour', 'Ce que tes objectifs demandent aujourd’hui : temps du jour, routines, blocs, relevés. Le trait = l’heure qu’il est.'),
   RuleCard('🧭', 'Où j’en suis', 'Une ligne par objectif : son rythme de la semaine et ce qui reste aujourd’hui. Touche-la pour la fiche.'),
