@@ -830,7 +830,7 @@ champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥)
 
 `AppLogic.autoAdjustStandardsRealtime` (au lancement mobile) cale `goalMin` des activités-temps sur la moyenne 30 j (monte ≥ 120 %,
 descend ≤ 50 %, ±max(5, 20 %), cooldown 48 h) ; jamais une cible épinglée (`targetSource:"user"`, réglage de la fiche activité).
-**Aucun chrono depuis 30 j** (`kIdleZeroDays`, activité d'au moins cet âge) ⇒ `goalMin = 0` = plus de minimum (sort de Montre suisse,
+**Aucun chrono ou activité occasionnelle sur 30 j** (moyenne < `kOccasionalMin` = 3 min/j, ex. 30 min toutes les deux semaines ; `kIdleZeroDays`, activité d'au moins cet âge) ⇒ `goalMin = 0` = plus de minimum (sort de Montre suisse,
 du minimum du domaine) ; le plancher 1 min ne s'applique plus à un 0, et la branche « seed » le remonte si l'activité revit.
 MCP : `update_activity_goal` / `update_activity` acceptent `goalMin: 0` et `pinGoal` (true = épinglée comme à la main, false = rendue
 à la calibration ; seulement à la demande de l'utilisateur, ⚠️ `firebase deploy --only functions`).
