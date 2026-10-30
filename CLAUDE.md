@@ -888,7 +888,7 @@ SharedPreferences `run_pending`, une seule à la fois, Guérilla ou Offensive). 
 l'inactivité < 45 min (`isLive`) : carte « GUÉRILLA EN COURS · n COUPS » en tête d'Aujourd'hui (`PendingRunCard`, sous `RechargeCard` :
 Reprendre · Terminer ici) et carte de la feuille du mode « Reprendre la guérilla · n coups » ; la reprise repart au coup suivant
 (coups faits / passés restaurés, chrono du coup interrompu arrêté puis relancé). Expirée = close telle quelle (`expiredRunOf` →
-`ChainRun`, ses coups comptent). Seul le bilan (« Terminer », ou quitter le bilan) clôt la session. **Chrono** : un chrono déjà
+`ChainRun`, ses coups comptent). **Rouverte d'elle-même** au premier affichage d'Aujourd'hui après un lancement de l'app (`PendingRunCard._autoResumed`) ; fermer telle quelle arrête le chrono d'un coup resté ouvert ; un coup passé ou fait en < 1 min ne laisse pas de session « 0 min » (`dropShortSession`). ⚠️ `isLive` compare les dates sans tirets (bug du 2026-10-30 : `livedYmd` = `YYYYMMDD` contre `YYYY-MM-DD` stocké, toute session semblait expirée) ; appelants sur `livedTodayYmd`. Seul le bilan (« Terminer », ou quitter le bilan) clôt la session. **Chrono** : un chrono déjà
 lancé à la main s'arrête au lancement de la guérilla / de l'offensive (annoncé sur l'écran de départ), sans la feuille « c'était pour quoi ».
 **Alarme de fin de coup** (2026-10-30) : `CoupAlarm` (`lib/coup_alarm.dart`) = même sonnerie que le minuteur d'une routine
 (`alarmSound`, package `alarm`, sans boucle, ids 43 / 44 qui alternent pour ne pas couper la fin du coup précédent) + filet

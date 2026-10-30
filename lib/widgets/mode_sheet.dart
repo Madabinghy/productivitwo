@@ -253,7 +253,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
   /// La session en attente de ce mode, si elle est reprenable.
   PendingRun? _pending(String kind) {
     final p = RunSessionStore.current;
-    return p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedYmdNow) ? p : null;
+    return p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
   }
 
   Widget _launchCard(ColorScheme cs,
