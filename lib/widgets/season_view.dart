@@ -234,54 +234,88 @@ Future<void> showSeasonOpenSheet(BuildContext context, AppLogic logic, BadgeCent
   final end = seasonEndFor(today);
   final hadHunts = logic.badgeHunts.isNotEmpty;
   if (!context.mounted) return;
-  final chosen = <String>{};
+  // Chasse choisie → palier visé (une série peut viser plus haut que son prochain palier).
+  final chosen = <String, int>{};
+  final expanded = <SeasonPickGroup>{};
+  const shown = 4;
   final ok = await showFiche<bool>(
     context,
     builder: (ctx, scroll) => StatefulBuilder(builder: (ctx, setSt) {
+      Widget row(SeasonPick p) {
+        final id = p.badge.def.id;
+        final on = chosen.containsKey(id);
+        final t = chosen[id] ?? p.tier;
+        final full = !on && chosen.length >= kSeasonHunts;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Opacity(
+            opacity: full ? .5 : 1,
+            child: Material(
+              color: on ? kBActive : Colors.transparent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: on ? kBPrimary : kBLine)),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: full
+                    ? null
+                    : () => setSt(() {
+                          if (on) {
+                            chosen.remove(id);
+                          } else {
+                            chosen[id] = p.tier;
+                          }
+                        }),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Row(children: [
+                    Icon(on ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded, color: on ? kBPrimary : kBText4, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(p.labelOf(t), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: kBText)),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                              value: (p.badge.value / p.targetOf(t)).clamp(0.0, 1.0).toDouble(), minHeight: 4, backgroundColor: kBRaised, color: kBPrimary),
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(width: 10),
+                    // Palier visé : touche pour viser plus haut (paliers tenables en six semaines).
+                    if (on && p.tiers.length > 1)
+                      OutlinedButton(
+                        onPressed: () => setSt(() => chosen[id] = p.nextTier(t)),
+                        style: OutlinedButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            foregroundColor: kBPrimary,
+                            side: const BorderSide(color: kBPrimary)),
+                        child: Text('${fmtInt(p.targetOf(t))}${p.badge.def.unit.isEmpty ? '' : ' ${p.badge.def.unit}'} ▾', style: const TextStyle(fontSize: 12.5)),
+                      )
+                    else
+                      Text(p.remainingOf(t), style: const TextStyle(fontSize: 12, color: kBText2)),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       Widget group(SeasonPickGroup g, String title) {
         final items = picks.where((p) => p.group == g).toList();
         if (items.isEmpty) return const SizedBox.shrink();
+        final open = expanded.contains(g) || items.length <= shown + 1;
+        // Les choisies restent visibles même repliées.
+        final visible = open ? items : [...items.take(shown), ...items.skip(shown).where((p) => chosen.containsKey(p.badge.def.id))];
+        final hidden = items.length - visible.length;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(padding: const EdgeInsets.only(top: 14, bottom: 6), child: Text(title, style: _eyebrow(kBText3))),
-          for (final p in items)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Material(
-                color: chosen.contains(p.badge.def.id) ? kBActive : Colors.transparent,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12), side: BorderSide(color: chosen.contains(p.badge.def.id) ? kBPrimary : kBLine)),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => setSt(() {
-                    final id = p.badge.def.id;
-                    if (chosen.contains(id)) {
-                      chosen.remove(id);
-                    } else if (chosen.length < kSeasonHunts) {
-                      chosen.add(id);
-                    }
-                  }),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    child: Row(children: [
-                      Icon(chosen.contains(p.badge.def.id) ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                          color: chosen.contains(p.badge.def.id) ? kBPrimary : kBText4, size: 24),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(p.label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: kBText)),
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(value: p.badge.progress ?? 0, minHeight: 4, backgroundColor: kBRaised, color: kBPrimary),
-                          ),
-                        ]),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(p.remaining, style: const TextStyle(fontSize: 12, color: kBText2)),
-                    ]),
-                  ),
-                ),
-              ),
+          Padding(padding: const EdgeInsets.only(top: 14, bottom: 6), child: Text('$title · ${items.length}', style: _eyebrow(kBText3))),
+          for (final p in visible) row(p),
+          if (hidden > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(onPressed: () => setSt(() => expanded.add(g)), child: Text('Afficher les $hidden autres')),
             ),
         ]);
       }
@@ -295,6 +329,8 @@ Future<void> showSeasonOpenSheet(BuildContext context, AppLogic logic, BadgeCent
             const SizedBox(height: 2),
             Text('${_short(today)} → ${_short(end)} · ${chosen.length} / $kSeasonHunts choisie${chosen.length > 1 ? 's' : ''}',
                 style: const TextStyle(fontSize: 13, color: kBText3)),
+            const SizedBox(height: 2),
+            const Text('Une fois choisie, le bouton du palier (« 7 j ▾ ») vise plus haut.', style: TextStyle(fontSize: 12, color: kBText4)),
             if (picks.isEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: 24),
@@ -335,7 +371,7 @@ Future<void> showSeasonOpenSheet(BuildContext context, AppLogic logic, BadgeCent
   if (ok != true) return;
   await logic.openSeason([
     for (final p in picks)
-      if (chosen.contains(p.badge.def.id)) SeasonHunt(badgeId: p.badge.def.id, tier: p.tier, name: p.label)
+      if (chosen[p.badge.def.id] case final t?) SeasonHunt(badgeId: p.badge.def.id, tier: t, name: p.labelOf(t))
   ]);
   center.load(refresh: true);
 }

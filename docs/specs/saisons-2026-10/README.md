@@ -25,5 +25,5 @@ série casse) ; cadre naturel des cohortes de 8-12 semaines (phase 2).
 
 `data/meta.seasons` = `[{n, start, end, hunts[{badgeId, tier, name}], dropped[], bilanSeen}]` (40 gardées).
 Aucun résultat stocké : tout se relit sur les dates des paliers du deck. Logique pure `lib/utils/seasons.dart`,
-écrans `lib/widgets/season_view.dart` (`SeasonCard`, `showSeasonOpenSheet`, `showSeasonBilan`), `AppLogic.openSeason`
+écrans `lib/widgets/season_view.dart` (`SeasonCard`, `showSeasonOpenSheet` : TOUS les candidats, quatre par groupe puis « Afficher les n autres », bouton de palier « 7 j ▾ » pour viser plus haut tant que ça tient en six semaines, `SeasonPick.tiers` ; `showSeasonBilan`), `AppLogic.openSeason`
 / `dropSeasonHunt` / `markSeasonBilanSeen`. Web : badge seulement (pas d'ouverture de saison sur le web).
