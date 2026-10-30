@@ -1,27 +1,44 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
-import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 
 /// Montre suisse et Métronome (maquette validée 2026-10-30) : les deux moitiés
 /// de la Journée parfaite. Montre suisse = à la bascule, chaque activité avec
-/// un minimum vital est au niveau attendu à ce jour de la fenêtre de budget
-/// (minimum × jours écoulés) ; Métronome = toutes les routines quotidiennes
+/// un minimum vital a fait 7 × son minimum sur les 7 derniers jours (fenêtre
+/// GLISSANTE, maquette « Montre suisse glissante » : pas de mur le lundi, le
+/// week-end compte encore) ; Métronome = toutes les routines quotidiennes
 /// du jour atteintes. Hors domaines en veille et routines acquises ; un jour
 /// sans rien à tenir est neutre. On compte les journées gagnées (paliers
 /// [kHalfDayTiers]) et le record d'affilée. Aucune braise. Logique pure.
 const kHalfDayTiers = [5, 20, 50, 100];
 
+/// Fenêtre glissante de Montre suisse, aujourd'hui compris.
+const kWatchWindowDays = 7;
+
 DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
-/// Une activité-temps face à l'attendu de sa fenêtre, à la fin d'un jour (ou maintenant).
+/// Une activité-temps face à sa fenêtre glissante, à la fin d'un jour (ou maintenant).
 class ActivityPace {
   final Activity activity;
+  /// Minutes sur la fenêtre, aujourd'hui compris.
   final int doneMin;
+  /// Minimum × jours comptés de la fenêtre (jours gelés et jours d'avant la création exclus).
   final int expectedMin;
-  const ActivityPace(this.activity, this.doneMin, this.expectedMin);
+  /// Dont aujourd'hui (le reste vient des jours passés de la fenêtre).
+  final int todayMin;
+  /// Minutes du jour le plus ancien, qui sort de la fenêtre ce soir.
+  final int leavingMin;
+  const ActivityPace(this.activity, this.doneMin, this.expectedMin, {this.todayMin = 0, this.leavingMin = 0});
   bool get onPace => doneMin >= expectedMin;
   int get missingMin => onPace ? 0 : expectedMin - doneMin;
+  int get pastMin => doneMin - todayMin;
+  int get aheadMin => onPace ? doneMin - expectedMin : 0;
+  /// Ce qu'il faudra demain pour rester couverte, si rien d'autre n'est fait
+  /// aujourd'hui (le jour le plus ancien sort, demain entre avec son minimum).
+  int get tomorrowNeedMin {
+    final need = expectedMin - (doneMin - leavingMin);
+    return need > 0 ? need : 0;
+  }
 }
 
 /// Minutes de chrono par activité et par jour calendaire (session coupée à minuit).
@@ -47,29 +64,35 @@ Map<String, Map<String, int>> minutesByActivityDay(List<Session> sessions, DateT
 }
 
 /// Les activités qui comptent pour Montre suisse le jour [day] (temps, minimum
-/// vital > 0, créées avant, domaine pas en veille ce jour) et leur avance.
+/// vital > 0, créées avant, domaine pas en veille ce jour) et leur fenêtre des
+/// [kWatchWindowDays] derniers jours : un jour gelé ou d'avant la création ne
+/// réclame rien.
 List<ActivityPace> paceOn(
   DateTime day, {
   required List<Activity> activities,
   required Map<String, Map<String, int>> minutes,
-  required int windowDays,
   Set<String> Function(Activity a)? frozenOf,
 }) {
   final d = _day(day);
   final ymd = ymdOf(d);
-  final start = budgetWindowStart(d, windowDays);
-  final idx = budgetDayIndex(d, windowDays);
   final out = <ActivityPace>[];
   for (final a in activities) {
     if (a.deleted || a.isHabit || a.goalMin <= 0) continue;
-    if (_day(a.createdAt).isAfter(d)) continue;
-    if (frozenOf != null && frozenOf(a).contains(ymd)) continue;
+    final created = _day(a.createdAt);
+    if (created.isAfter(d)) continue;
+    final frozen = frozenOf?.call(a) ?? const <String>{};
+    if (frozen.contains(ymd)) continue;
     final byDay = minutes[a.id] ?? const {};
-    var done = 0;
-    for (var x = start; !x.isAfter(d); x = x.add(const Duration(days: 1))) {
-      done += byDay[ymdOf(x)] ?? 0;
+    var done = 0, counted = 0, leaving = 0;
+    for (var i = kWatchWindowDays - 1; i >= 0; i--) {
+      final x = d.subtract(Duration(days: i));
+      final k = ymdOf(x);
+      final m = byDay[k] ?? 0;
+      done += m;
+      if (i == kWatchWindowDays - 1) leaving = m;
+      if (!x.isBefore(created) && !frozen.contains(k)) counted++;
     }
-    out.add(ActivityPace(a, done, a.goalMin * idx));
+    out.add(ActivityPace(a, done, a.goalMin * counted, todayMin: byDay[ymd] ?? 0, leavingMin: leaving));
   }
   return out;
 }
@@ -120,14 +143,13 @@ HalfDays watchDays({
   required List<Activity> activities,
   required List<Session> sessions,
   required DateTime now,
-  required int windowDays,
   Set<String> Function(Activity a)? frozenOf,
 }) {
   final minutes = minutesByActivityDay(sessions, now);
   return halfDaysFrom([
     for (final ymd in ymds)
       () {
-        final pace = paceOn(DateTime.parse(ymd), activities: activities, minutes: minutes, windowDays: windowDays, frozenOf: frozenOf);
+        final pace = paceOn(DateTime.parse(ymd), activities: activities, minutes: minutes, frozenOf: frozenOf);
         return (ymd, pace.isEmpty ? null : pace.every((p) => p.onPace));
       }(),
   ]);

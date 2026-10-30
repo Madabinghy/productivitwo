@@ -267,26 +267,32 @@ BadgeToday _parfaite(BadgeState b, TodayFacts f) {
   );
 }
 
-/// Montre suisse : chaque activité au niveau attendu de sa fenêtre ce soir.
+/// Montre suisse : chaque activité couverte sur ses 7 derniers jours ce soir.
 BadgeToday _montre(BadgeState b, TodayFacts f) {
   final all = f.pace;
   if (all.isEmpty) return const BadgeToday(stake: TodayStake.none, chip: 'journée neutre', notes: ['Aucune activité avec un minimum vital aujourd’hui.']);
   final behind = all.where((p) => !p.onPace).toList()..sort((x, y) => x.missingMin.compareTo(y.missingMin));
   final ok = all.length - behind.length;
-  final gauges = [(label: 'Activités au rythme', done: ok, need: all.length, total: all.length)];
+  final gauges = [(label: 'Activités couvertes sur 7 jours', done: ok, need: all.length, total: all.length)];
+  final tomorrow = [for (final p in all) if (p.tomorrowNeedMin > 0) p]..sort((x, y) => y.tomorrowNeedMin.compareTo(x.tomorrowNeedMin));
+  final notes = [
+    if (tomorrow.isNotEmpty)
+      'Demain : ${tomorrow.take(3).map((p) => '${p.activity.name} ${fmtMin(p.tomorrowNeedMin)}').join(' · ')} pour rester couvertes.',
+    'Comptée demain à la bascule, une fois la journée close.',
+  ];
   if (behind.isEmpty) {
     return BadgeToday(
         stake: TodayStake.saved,
-        chip: 'toutes au rythme · pour l’instant',
+        chip: 'toutes couvertes · pour l’instant',
         gauges: gauges,
         dayDone: ok,
         dayTotal: all.length,
         gain: 1,
-        notes: const ['Comptée demain à la bascule.']);
+        notes: notes);
   }
   return BadgeToday(
     stake: TodayStake.reachable,
-    chip: '$ok / ${all.length} activités au rythme',
+    chip: '$ok / ${all.length} couvertes · reste ${behind.length}',
     gauges: gauges,
     dayDone: ok,
     dayTotal: all.length,
@@ -294,9 +300,9 @@ BadgeToday _montre(BadgeState b, TodayFacts f) {
     items: [
       for (final p in behind)
         GapItem(GapKind.time, 'Encore ${fmtMin(p.missingMin)} de ${p.activity.name}',
-            detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} attendu à ce jour', activityId: p.activity.id, minutes: p.missingMin),
+            detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} sur 7 jours', activityId: p.activity.id, minutes: p.missingMin),
     ],
-    notes: const ['Comptée demain à la bascule, une fois la journée close.'],
+    notes: notes,
   );
 }
 

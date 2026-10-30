@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/web/theme_tokens.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart';
 import 'package:productivitwo_v1/widgets/badge_track_view.dart';
+import 'package:productivitwo_v1/widgets/watch_pace_view.dart';
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show showModeSheet;
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routinePlusWithUndo;
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
@@ -566,6 +567,8 @@ Future<void> showBadgeSheet(BuildContext context, BadgeState b, {HuntStore? logi
           Text(b.def.what, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14.5, height: 1.35, color: kBText2)),
         ],
         if (today != null) _todayBlock(ctx, b, today, actions, () => setSheet(() {})),
+        if (facts != null && b.def.id == 'montre-suisse' && facts.pace.isNotEmpty)
+          WatchPaceView(pace: facts.pace, onChrono: actions?.startChrono),
         if (logic != null && !b.complete && b.def.measured) _huntBlock(ctx, logic, b, () => setSheet(() {})),
         if (b.def.tiers.length > 1) ...[
           const SizedBox(height: 12),
