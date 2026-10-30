@@ -162,12 +162,12 @@ void main() {
       expect(a.goalMin, 0);
     });
 
-    test('un chrono il y a 20 j → on garde', () async {
+    test('2 h il y a 20 j (4 min/j en moyenne) → on garde', () async {
       final a = old('a1', goalMin: 4, src: 'orion');
       final s = Session(
           activityId: 'a1',
           startAt: now.subtract(const Duration(days: 20)),
-          endAt: now.subtract(const Duration(days: 20)).add(const Duration(minutes: 30)));
+          endAt: now.subtract(const Duration(days: 20)).add(const Duration(minutes: 120)));
       await _logic([a], [s]).autoAdjustStandardsRealtime(now: now);
       expect(a.goalMin, isNot(0));
     });
@@ -184,6 +184,45 @@ void main() {
       final a = old('a1', goalMin: 0, src: 'orion');
       await _logic([a], _daily('a1', now, 40)).autoAdjustStandardsRealtime(now: now);
       expect(a.goalMin, 30);
+    });
+  });
+
+  group('activité occasionnelle (< 3 min/j sur 30 j)', () {
+    Activity old(String id, {int goalMin = 2}) => Activity(
+        id: id,
+        name: 'Voiture',
+        domainId: 'd1',
+        type: 'time',
+        goalMin: goalMin,
+        targetSource: 'orion',
+        createdAt: now.subtract(const Duration(days: 90)));
+
+    List<Session> every(String id, int everyDays, int min) => [
+          for (var d = 1; d < 30; d += everyDays)
+            Session(
+                activityId: id,
+                startAt: DateTime(now.year, now.month, now.day - d, 10),
+                endAt: DateTime(now.year, now.month, now.day - d, 10, min)),
+        ];
+
+    test('20 min toutes les deux semaines → plus de minimum, et ça tient',
+        () async {
+      final a = old('a1');
+      final l = _logic([a], every('a1', 14, 20));
+      final notes = await l.autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, 0);
+      expect(notes.single, contains('occasionnelle : 60 min sur 30 j'));
+      expect(
+          await l.autoAdjustStandardsRealtime(
+              now: now.add(const Duration(days: 3))),
+          isEmpty);
+      expect(a.goalMin, 0);
+    });
+
+    test('30 min par semaine (~5 min/j) → on garde un minimum', () async {
+      final a = old('a1', goalMin: 4);
+      await _logic([a], every('a1', 7, 30)).autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, greaterThan(0));
     });
   });
 }

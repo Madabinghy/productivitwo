@@ -36,6 +36,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
 const int kIdleZeroDays = 30; // sans chrono depuis n jours → plus de minimum
+const int kOccasionalMin = 3; // moyenne < n min/j sur 30 j = occasionnelle → plus de minimum
 
 // ---------- Périodes / compteurs ----------
 class PeriodCount {
@@ -2308,21 +2309,25 @@ class AppLogic implements HuntStore {
     for (final a in state.activeActivities.where((x) => !x.isHabit)) {
       // Épinglée à la main = vérité utilisateur — la calibration n'y touche pas.
       if (a.targetSource == 'user' || a.role == ActivityRole.shopping) continue;
-      // Aucun chrono depuis 30 jours (activité qui a au moins cet âge) : plus
-      // de minimum. Il remonte tout seul dès qu'elle revit (branche « seed »).
-      if (a.goalMin > 0 &&
-          t.difference(a.createdAt).inDays >= kIdleZeroDays &&
-          totalForRangeByActivity(
-                  a.id, t.subtract(const Duration(days: kIdleZeroDays)), t) ==
-              Duration.zero) {
-        final old = a.goalMin;
-        a.goalMin = 0;
-        a.targetSource = 'orion';
-        a.lastTuneAt = t;
-        touched = true;
-        notes.add('${a.name} : cible $old → aucune (pas de chrono depuis '
-            '$kIdleZeroDays j)');
-        continue;
+      // Activité d'au moins 30 jours, sans chrono ou occasionnelle sur 30 j
+      // (< kOccasionalMin min/j en moyenne : une demi-heure toutes les deux
+      // semaines) : plus de minimum. Il remonte tout seul si elle revit
+      // vraiment (branche « seed », dès ~3,2 min/j).
+      if (a.goalMin > 0 && t.difference(a.createdAt).inDays >= kIdleZeroDays) {
+        final done = totalForRangeByActivity(
+                a.id, t.subtract(const Duration(days: kIdleZeroDays)), t)
+            .inMinutes;
+        if (done < kOccasionalMin * kIdleZeroDays) {
+          final old = a.goalMin;
+          a.goalMin = 0;
+          a.targetSource = 'orion';
+          a.lastTuneAt = t;
+          touched = true;
+          notes.add(done == 0
+              ? '${a.name} : cible $old → aucune (pas de chrono depuis $kIdleZeroDays j)'
+              : '${a.name} : cible $old → aucune (occasionnelle : $done min sur $kIdleZeroDays j)');
+          continue;
+        }
       }
       // Micro-cible potentielle (< 10 min, jamais réglée) : peut être un
       // déclencheur VOULU (10 pompes en 1 min) — c'est une QUESTION pour le
