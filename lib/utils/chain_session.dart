@@ -13,7 +13,7 @@ const kChainCountedMin = 3;
 const kChainResumeWindowMin = 45;
 const kChainTiers = [5, 20, 50];
 
-bool chainRunCounts(ChainRun r) => r.doneCount >= kChainCountedMin;
+bool chainRunCounts(ChainRun r) => r.kind == null && r.doneCount >= kChainCountedMin;
 
 /// « Session comptée · 4 choses » / « Encore 1 chose pour qu'elle compte ».
 String chainCountLine(int doneCount) {

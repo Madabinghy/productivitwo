@@ -869,6 +869,19 @@ en Flemme (`DailyScheduleView.onLaunchTimed`) → bouton principal « 10 min, ma
 `doneAt` = fin de son créneau (`updateBlockStatus(doneAt:)`), plus 5 h le lendemain. Serveur (`elan.ts`) : besoins de base exclus des blocs et
 routines ; chronos et actions comptés côté app seulement.
 
+## Guérilla (2026-10-30, maquette validée « Mode Guérilla »)
+
+« La flemme ou moi » : pas bien, mais debout. Carte « Guérilla · la flemme ou moi » sous les trois modes de la feuille du mode
+(`_guerillaCard`, `mode_sheet.dart`) → écran plein `widgets/guerilla_screen.dart` (`showGuerillaScreen`) : le corps de 1 à 5 (requis
+pour lancer), puis UN coup à la fois (minuteur 5 min, « Fait · suivant » · « Pas ça » sans question · « Encore 5 min » · « Je m'arrête »),
+un point d'étape tous les 3 coups (eau + respirations, Mieux / Pareil → on continue, Moins bien → bilan), bilan : coups gagnés, corps
+avant → après, « Sur tes n guérillas, k t'ont fait remonter », badge. File = logique pure `utils/guerilla.dart` (`buildGuerillaQueue` :
+routines non atteintes de la file du moment puis « toute la journée » et libres, +1 ou +5 pour une cible ≥ 10 (`guerillaDelta`), en
+alternance deux routines / une action — visées aujourd'hui puis actions propres des activités, « 5 min sur … » avec chrono ciblé si rien
+ne tourne ; jamais un besoin de base ni une activité en pause). Stockage = `ChainRun` `kind:"guerilla"` + `bodyBefore` / `bodyAfter`
+(`chain_runs`), jamais compté pour Enchaîneur ni Plein jour (`chainRunCounts`, `fullDay`). Badge **Guérilla** (`guerilla`, Discipline,
+symbole `bolt`, paliers 1 / 5 / 15) : une guérilla compte dès 3 coups faits (`guerillaCounts`). ⓘ `kRuleGuerilla`.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

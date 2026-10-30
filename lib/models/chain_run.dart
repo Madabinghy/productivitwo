@@ -4,6 +4,8 @@ part of '../models.dart';
 /// récap s'affiche. `completed` = la file s'est vidée (pas « Sortir »).
 /// `fullDay` = du premier au dernier bloc du programme du jour. Collection
 /// `users/{uid}/chain_runs/{id}`. Alimente les badges Enchaîneur et Plein jour.
+/// `kind:"guerilla"` = une guérilla (`utils/guerilla.dart`, badge Guérilla),
+/// avec l'état du corps avant / après (1 → 5) ; jamais comptée pour Enchaîner.
 class ChainRun {
   String id;
   String date; // jour vécu, YYYY-MM-DD
@@ -16,6 +18,9 @@ class ChainRun {
   String? lastBlockId; // dernier bloc réel épuisé
   String? programFirstBlockId; // premier bloc du programme du jour
   String? programLastBlockId; // dernier bloc du programme du jour
+  String? kind; // null = Enchaîner · "guerilla"
+  int? bodyBefore; // guérilla : le corps avant, 1 → 5
+  int? bodyAfter; // guérilla : le corps après
 
   ChainRun({
     String? id,
@@ -29,10 +34,14 @@ class ChainRun {
     this.lastBlockId,
     this.programFirstBlockId,
     this.programLastBlockId,
+    this.kind,
+    this.bodyBefore,
+    this.bodyAfter,
   }) : id = id ?? _uuid.v4();
 
   /// Un Enchaîner du premier au dernier bloc du programme, mené au bout.
   bool get fullDay =>
+      kind == null &&
       completed &&
       firstBlockId != null &&
       lastBlockId != null &&
@@ -51,6 +60,9 @@ class ChainRun {
         if (lastBlockId != null) 'lastBlockId': lastBlockId,
         if (programFirstBlockId != null) 'programFirstBlockId': programFirstBlockId,
         if (programLastBlockId != null) 'programLastBlockId': programLastBlockId,
+        if (kind != null) 'kind': kind,
+        if (bodyBefore != null) 'bodyBefore': bodyBefore,
+        if (bodyAfter != null) 'bodyAfter': bodyAfter,
       };
 
   static ChainRun from(Map j) => ChainRun(
@@ -65,5 +77,8 @@ class ChainRun {
         lastBlockId: j['lastBlockId'] as String?,
         programFirstBlockId: j['programFirstBlockId'] as String?,
         programLastBlockId: j['programLastBlockId'] as String?,
+        kind: j['kind'] as String?,
+        bodyBefore: (j['bodyBefore'] as num?)?.toInt(),
+        bodyAfter: (j['bodyAfter'] as num?)?.toInt(),
       );
 }

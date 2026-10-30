@@ -240,8 +240,8 @@ void main() {
       expect(a.obtained, DateTime(2026, 10, 10));
       expect(a.ribbonLabel, '10');
       expect(a.nextTarget, 50);
-      // 1 + 3 + 2 + 1 (objectifs) + 1 + 1 + 1 (journées) + 4 + 4 (Montre suisse, Métronome) + 3 + 1 + 1 + 3 + 3 + 3 (discipline, dont Deep work et Reprise) + 3 + 1 (enchaîner) + 4 (semaines tenues) + 3 (saisons) + 8 (actions)
-      expect(deck.total, 51);
+      // 1 + 3 + 2 + 1 (objectifs) + 1 + 1 + 1 (journées) + 4 + 4 (Montre suisse, Métronome) + 3 + 1 + 1 + 3 + 3 + 3 + 3 (discipline, dont Deep work, Reprise et Guérilla) + 3 + 1 (enchaîner) + 4 (semaines tenues) + 3 (saisons) + 8 (actions)
+      expect(deck.total, 54);
       expect(deck.acquired, 1);
       // Les séries de routine ne comptent pas dans « n sur N » : elles se montrent à part.
       final withRoutine = computeBadges(
@@ -253,7 +253,7 @@ void main() {
         sessions: const [],
         now: now,
       );
-      expect(withRoutine.total, 51);
+      expect(withRoutine.total, 54);
       // actions 1 + Journée parfaite 1 + Semaine solide 1 + Métronome 1 (10 jours de routine atteinte, sans bloc) ; la série (palier 2) ne compte pas
       expect(withRoutine.acquired, 4);
       expect(withRoutine.series.length, 1);
