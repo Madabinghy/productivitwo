@@ -14,6 +14,7 @@ import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWork
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
+import 'package:productivitwo_v1/utils/notif_digest.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart' show parseMomentWindows, momentWindowsToJson;
 import 'package:productivitwo_v1/widgets/moments_editor_sheet.dart';
 import 'package:productivitwo_v1/utils/block_queue.dart';
@@ -22,7 +23,9 @@ import 'package:productivitwo_v1/utils/habit_reconcile.dart';
 import 'package:productivitwo_v1/widgets/routines_day_view.dart' show routineTodayCount;
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart' show showBlockFocusScreen;
 import 'package:productivitwo_v1/utils/time_scope.dart';
-import 'package:productivitwo_v1/utils/actions_logic.dart' show overdueActionCount, stopTargetCandidates;
+import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, overdueActionCount, stopTargetCandidates;
+import 'package:productivitwo_v1/utils/badges_logic.dart' show countsForBadges;
+import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/claude_link.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/session_player_screen.dart';
@@ -2108,6 +2111,52 @@ class _AppRootState extends State<AppRoot>
     NotificationService.drainPending();
   }
 
+  Timer? _dayNotifsDebounce;
+
+  /// Après un changement (routine, bloc, action visée…), replanifie les
+  /// notifications du jour une fois l'agitation retombée.
+  void _scheduleDayNotifsRefresh() {
+    _dayNotifsDebounce?.cancel();
+    _dayNotifsDebounce = Timer(const Duration(seconds: 20), () {
+      if (mounted) _refreshDayNotifs();
+    });
+  }
+
+  /// Notifications du jour (2026-10-30) : leur texte est calculé pour le jour
+  /// de leur prochaine occurrence, à chaque ouverture, retour dans l'app et
+  /// changement (`_scheduleDayNotifsRefresh`).
+  Future<void> _refreshDayNotifs() async {
+    final st = _state;
+    if (st == null) return;
+    try {
+      if (st.notifEnabled) {
+        final day = NotificationService.nextOccurrenceDay(st.notifHour, st.notifMinute);
+        final schedule = await _sync.fetchDailySchedule(ymdOf(day));
+        final blocks = (schedule?.blocks ?? const <ScheduleBlock>[]).where((b) => countsForBadges(b) && b.status == 'pending').length;
+        final daily = logic.state.activities
+            .where((a) => !a.deleted && a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily && !logic.isActivitySnoozed(a.id, day))
+            .toList();
+        var focused = 0;
+        for (final p in logic.currentProjects) {
+          for (final t in p.tasks) {
+            focused += t.actions.where((a) => isFocusedOn(a, day)).length;
+          }
+        }
+        for (final a in logic.state.activities) {
+          if (!a.deleted) focused += a.ownActions.where((x) => isFocusedOn(x, day)).length;
+        }
+        final series = daily.where((a) => logic.habitCurrentStreak(a.id) > 0).length;
+        await NotificationService.scheduleDailyReminder(
+          hour: st.notifHour,
+          minute: st.notifMinute,
+          body: morningDigest(blocks: blocks, routines: daily.length, focused: focused, series: series),
+        );
+      }
+    } catch (e) {
+      devLog.error('refreshDayNotifs', tag: 'NOTIF', error: e);
+    }
+  }
+
   void _onNotificationTap(int id, String? payload) {
     final ctx = _navigatorKey.currentState?.overlay?.context;
     if (ctx == null) return;
@@ -2172,6 +2221,7 @@ class _AppRootState extends State<AppRoot>
   void dispose() {
     softpopShellEnabled.removeListener(_onSoftpopFlag);
     _heartbeat?.cancel();
+    _dayNotifsDebounce?.cancel();
     _countdownTimer?.cancel();
     _alarmRingSub?.cancel();
     _authSub?.cancel();
@@ -2311,6 +2361,7 @@ class _AppRootState extends State<AppRoot>
         logic.reconcileLiveGold(_sync); // gains du jour dispo de suite au retour
       }
       _restoreCountdownFromAlarm(); // le minuteur survit au quitter/rouvrir
+      unawaited(_refreshDayNotifs());
       // évite de scanner trop souvent (ex: toutes les 6h)
       if (DateTime.now().difference(_lastGlobalScan) >
           const Duration(hours: 6)) {
@@ -2595,14 +2646,9 @@ class _AppRootState extends State<AppRoot>
     // Notifications : demande permission + planifie rappel quotidien 9h
     unawaited(() async {
       await NotificationService.requestPermissions();
-      final routineCount = logic.state.activities
-          .where((a) =>
-              a.isHabit &&
-              logic.effectiveHabitFreq(a) == HabitFreq.daily)
-          .length;
       final st = logic.state;
-      if (st.notifEnabled) await NotificationService.scheduleDailyReminder(
-        hour: st.notifHour, minute: st.notifMinute, routineCount: routineCount);
+      await _refreshDayNotifs();
+      logic.addListener(_scheduleDayNotifsRefresh);
       if (st.reviewNotifEnabled) await NotificationService.scheduleDailyReview(
         hour: st.reviewNotifHour, minute: st.reviewNotifMinute);
       if (st.streakNotifEnabled) await NotificationService.scheduleStreakReminder(
@@ -6627,7 +6673,7 @@ class _AppRootState extends State<AppRoot>
                   const Divider(height: 1),
                   _notifSettingRow(ctx, cs,
                     icon: Icons.notifications_outlined,
-                    label: 'Rappel quotidien',
+                    label: 'Ta journée (matin)',
                     hour: _state!.notifHour,
                     minute: _state!.notifMinute,
                     enabled: _state!.notifEnabled,
@@ -6635,18 +6681,12 @@ class _AppRootState extends State<AppRoot>
                       setState(() => _state!.notifEnabled = v);
                       logic.onChange(); rebuild();
                       if (!v) { await NotificationService.cancelById(1); return; }
-                      final count = logic.state.activities.where((a) =>
-                          a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily).length;
-                      await NotificationService.scheduleDailyReminder(
-                          hour: _state!.notifHour, minute: _state!.notifMinute, routineCount: count);
+                      await _refreshDayNotifs();
                     },
                     onPicked: (picked) async {
                       setState(() { _state!.notifHour = picked.hour; _state!.notifMinute = picked.minute; });
                       logic.onChange(); rebuild();
-                      final count = logic.state.activities.where((a) =>
-                          a.isHabit && logic.effectiveHabitFreq(a) == HabitFreq.daily).length;
-                      await NotificationService.scheduleDailyReminder(
-                          hour: picked.hour, minute: picked.minute, routineCount: count);
+                      await _refreshDayNotifs();
                     },
                   ),
                   const Divider(height: 1),

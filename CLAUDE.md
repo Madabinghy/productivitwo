@@ -841,6 +841,11 @@ taps qui n'ouvraient rien une fois connecté). Chaque notification porte une cha
 Programme → feuille Programme d'Aujourd'hui (`TodayViewState.openProgramSheet`), Perfect → feuille Journée parfaite
 (`openPerfectDaySheet`), Review → bilan du soir, Orion → écran ORION, URL → navigateur ; l'id sert de repli pour les anciennes
 notifications planifiées.
+**Matin « Ta journée »** (PR 2, id 1, réglage « Ta journée (matin) ») : « 4 blocs · 12 routines · 2 actions visées · 🔥 1 série à tenir »
+(`morningDigest`, `utils/notif_digest.dart`) pour le jour de la prochaine occurrence (`nextOccurrenceDay`) — blocs à faire qui comptent
+(`countsForBadges`, programme relu), routines quotidiennes hors pause, actions visées ce jour (`isFocusedOn`), séries en cours.
+`_refreshDayNotifs` (main.dart) recalcule au démarrage, au retour dans l'app et 20 s après un changement (`logic` écouté,
+`_scheduleDayNotifsRefresh`). Limite : sans ouverture de l'app, le texte répété peut dater.
 
 ## Confirmation avant de cocher (2026-10-30)
 
