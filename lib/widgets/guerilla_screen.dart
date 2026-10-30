@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/game_rules.dart' show kRuleGuerilla;
@@ -50,6 +51,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   int _index = 0;
   int? _before, _after;
   int _remaining = kGuerillaCoupMin * 60;
+  DateTime? _endsAt;
   Timer? _timer;
   bool _ownChrono = false;
   bool _saved = false;
@@ -125,6 +127,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    CoupAlarm.cancel();
     _stopOwnChrono();
     // Quittée en route : la guérilla reste en attente (reprenable) ; au bilan, elle se clôt.
     if (!_saved && _phase == _Phase.end) {
@@ -145,9 +148,11 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
 
   void _enter(int i) {
     _index = i;
+    _endsAt = DateTime.now().add(const Duration(minutes: kGuerillaCoupMin));
     _remaining = kGuerillaCoupMin * 60;
     _phase = _Phase.coup;
     final c = _queue[i];
+    _armAlarm(c);
     if (c.kind == GuerillaKind.action && c.activityId != null && !logic.state.sessions.any((s) => s.endAt == null)) {
       logic.start(c.activityId!, taskId: c.taskId, actionId: c.action?.id);
       _ownChrono = true;
@@ -155,10 +160,28 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      setState(() => _remaining = _remaining > 0 ? _remaining - 1 : 0);
+      setState(_tick);
     });
     _persist();
     setState(() {});
+  }
+
+  /// Le reste se lit sur l'heure de fin : il continue de décompter téléphone en veille.
+  void _tick() {
+    final left = _endsAt?.difference(DateTime.now()).inSeconds ?? 0;
+    _remaining = left > 0 ? left : 0;
+  }
+
+  void _armAlarm(GuerillaCoup c) => CoupAlarm.schedule(logic,
+      endsAt: _endsAt!, title: '⚡ Coup terminé', body: '${c.kind == GuerillaKind.action ? '5 min sur ${c.title}' : c.title} · fait, ou encore 5 min ?');
+
+  void _moreTime() {
+    final now = DateTime.now();
+    final base = _endsAt == null || _endsAt!.isBefore(now) ? now : _endsAt!;
+    _endsAt = base.add(const Duration(minutes: kGuerillaCoupMin));
+    CoupAlarm.cancel(all: false);
+    _armAlarm(_queue[_index]);
+    setState(_tick);
   }
 
   void _stopOwnChrono() {
@@ -179,6 +202,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
 
   void _doneCoup() {
     final c = _queue[_index];
+    CoupAlarm.cancel();
     _stopOwnChrono();
     if (c.kind == GuerillaKind.routine && c.activityId != null) {
       logic.incHabit(c.activityId!, c.delta, livedDate(DateTime.now(), logic.dayStartMin));
@@ -196,6 +220,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   }
 
   void _skipCoup() {
+    CoupAlarm.cancel();
     _stopOwnChrono();
     _passed.add(_queue[_index].key);
     _persist();
@@ -204,6 +229,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
 
   void _stop() {
     _timer?.cancel();
+    CoupAlarm.cancel();
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
   }
@@ -427,7 +453,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
       Row(children: [
         Expanded(child: _outline('Pas ça', _skipCoup)),
         const SizedBox(width: 10),
-        Expanded(child: _outline('Encore 5 min', () => setState(() => _remaining += kGuerillaCoupMin * 60))),
+        Expanded(child: _outline('Encore 5 min', _moreTime)),
       ]),
       const SizedBox(height: 8),
       const Text('« Pas ça » passe au suivant, sans question.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: _text3)),

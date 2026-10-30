@@ -75,6 +75,7 @@ class NotificationService {
   // Canal d'alarme : un par sonnerie (le son d'un canal Android est figé à sa
   // création) — voir AlarmRingtone.androidChannel + _alarmDetails.
   static const _timerEndNotifId = 30;
+  static const _coupEndNotifId = 31;
   // Défis programmés (ids 40000 / 50000 / 60000 dérivés du block.id) : plus
   // armés depuis le 2026-10-30, seulement annulés (`cancelChallengeAll`).
 
@@ -374,6 +375,28 @@ class NotificationService {
   static Future<void> cancelTimerEnd() async {
     if (!_supported) return;
     await _plugin.cancel(_timerEndNotifId);
+  }
+
+  /// Fin d'un coup de Guérilla / Offensive : filet de secours si l'app est tuée.
+  static Future<void> scheduleCoupEnd({required String title, required String body, required DateTime at, AlarmRingtone? ringtone}) async {
+    if (!_supported) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_coupEndNotifId);
+    if (!at.isAfter(DateTime.now())) return;
+    await _plugin.zonedSchedule(
+      _coupEndNotifId,
+      title,
+      body,
+      tz.TZDateTime.from(at, tz.local),
+      _alarmDetails(ringtone ?? kAlarmRingtones.first, 'Fin d\'un coup de guérilla ou d\'offensive'),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+    );
+  }
+
+  static Future<void> cancelCoupEnd() async {
+    if (!_supported) return;
+    await _plugin.cancel(_coupEndNotifId);
   }
 
   // ── Challenge programmé ─────────────────────────────────────────────────────

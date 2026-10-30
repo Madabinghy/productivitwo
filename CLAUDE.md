@@ -890,6 +890,10 @@ Reprendre · Terminer ici) et carte de la feuille du mode « Reprendre la guéri
 (coups faits / passés restaurés, chrono du coup interrompu arrêté puis relancé). Expirée = close telle quelle (`expiredRunOf` →
 `ChainRun`, ses coups comptent). Seul le bilan (« Terminer », ou quitter le bilan) clôt la session. **Chrono** : un chrono déjà
 lancé à la main s'arrête au lancement de la guérilla / de l'offensive (annoncé sur l'écran de départ), sans la feuille « c'était pour quoi ».
+**Alarme de fin de coup** (2026-10-30) : `CoupAlarm` (`lib/coup_alarm.dart`) = même sonnerie que le minuteur d'une routine
+(`alarmSound`, package `alarm`, sans boucle, ids 43 / 44 qui alternent pour ne pas couper la fin du coup précédent) + filet
+`NotificationService.scheduleCoupEnd` (id 31) si l'app est tuée ; annulée au « Fait », « Pas ça », à l'arrêt, re-posée par « Encore
+5 min » / « +N min ». Le minuteur se lit sur l'heure de fin (`_endsAt`) : il continue de décompter téléphone en veille.
 
 ## Offensive (2026-10-30, maquette validée « Offensive »)
 

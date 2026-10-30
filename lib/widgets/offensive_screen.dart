@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/coup_alarm.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart' show nextChecklistItem, setActionDone, setChecklistItem;
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
@@ -55,6 +56,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   int _index = 0;
   int _won = 0;
   int _remaining = 15 * 60;
+  DateTime? _endsAt;
   Timer? _timer;
   DateTime? _startedAt;
   bool _ownChrono = false;
@@ -143,6 +145,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    if (_phase != _Phase.pause) CoupAlarm.cancel();
     _stopOwnChrono();
     // Quittée en route : l'offensive reste en attente (reprenable) ; au bilan, elle se clôt.
     if (!_saved && _phase == _Phase.end) {
@@ -171,20 +174,39 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
   }
 
   void _startCoup() {
+    _endsAt = DateTime.now().add(Duration(minutes: _duration));
     _remaining = _duration * 60;
     _phase = _Phase.coup;
     _startChrono();
+    _armAlarm();
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
-      if (_remaining > 1) {
-        setState(() => _remaining--);
+      final left = _endsAt!.difference(DateTime.now()).inSeconds;
+      if (left > 0) {
+        setState(() => _remaining = left);
       } else {
         _coupWon();
       }
     });
     _saveSession();
     setState(() {});
+  }
+
+  /// Alarme de fin du coup (le minuteur se lit sur l'heure de fin : il continue en veille).
+  void _armAlarm() {
+    final t = _cur;
+    CoupAlarm.schedule(logic,
+        endsAt: _endsAt!,
+        title: '🎯 Coup gagné',
+        body: '$_duration min${t == null ? '' : ' sur ${t.action.title}'}${offensivePauseDue(_won + 1) ? ' · point d’étape' : ' · le suivant démarre'}');
+  }
+
+  void _moreTime() {
+    _endsAt = _endsAt!.add(Duration(minutes: _duration));
+    CoupAlarm.cancel(all: false);
+    _armAlarm();
+    setState(() => _remaining = _endsAt!.difference(DateTime.now()).inSeconds);
   }
 
   void _coupWon() {
@@ -271,6 +293,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   void _end({bool lastCoupWon = false}) {
     _timer?.cancel();
+    CoupAlarm.cancel();
     if (lastCoupWon) _won++;
     _stopOwnChrono();
     setState(() => _phase = _Phase.end);
@@ -585,7 +608,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
           Expanded(child: _outline('Action faite', _actionDone)),
           const SizedBox(width: 8),
         ],
-        Expanded(child: _outline('+$_duration min', () => setState(() => _remaining += _duration * 60))),
+        Expanded(child: _outline('+$_duration min', _moreTime)),
         const SizedBox(width: 8),
         Expanded(child: _outline('Pas ça', _skip)),
       ]),
