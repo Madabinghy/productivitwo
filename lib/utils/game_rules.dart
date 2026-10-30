@@ -82,6 +82,13 @@ const kRuleModes = GameRule('Les modes', [
   RuleCard('📈', 'Ton élan', 'Chaque changement de mode est noté : c’est ce qui trace ton élan dans le temps.'),
 ]);
 
+const kRuleGuerilla = GameRule('La guérilla', [
+  RuleCard('⚡', 'La flemme ou moi', 'Pas bien, mais debout. L’app choisit, tu enchaînes des coups de 5 min au plus : une routine, 5 min sur une action. Pas ça ? On passe, sans question.'),
+  RuleCard('💧', 'Un point d’étape', 'Tous les 3 coups : un verre d’eau, trois respirations. Moins bien ? On s’arrête, rien n’est perdu.'),
+  RuleCard('📈', 'Avant, après', 'Tu notes ton corps de 1 à 5 au début et à la fin. Au fil des guérillas, tu vois si ça te fait remonter.'),
+  RuleCard('🏅', 'Le badge', 'Une guérilla compte dès 3 coups faits. Fièvre, vertiges, douleur forte : repos, ça compte aussi.'),
+]);
+
 const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
   RuleCard('🔢', 'Le chiffre du jour', 'Ce que tes objectifs demandent aujourd’hui : temps du jour, routines, blocs, relevés. Le trait = l’heure qu’il est.'),
   RuleCard('🧭', 'Où j’en suis', 'Une ligne par objectif : son rythme de la semaine et ce qui reste aujourd’hui. Touche-la pour la fiche.'),

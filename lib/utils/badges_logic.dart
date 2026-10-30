@@ -3,6 +3,7 @@ import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
+import 'package:productivitwo_v1/utils/guerilla.dart' show guerillaCounts, guerillaLift, isGuerillaRun, kGuerillaTiers;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
@@ -918,7 +919,7 @@ BadgeDeck computeBadges({
     tierDates: [for (final t in kChainTiers) t <= countedRuns.length ? _day(countedRuns[t - 1].endedAt) : null],
     facts: [
       ('Sessions de 3 choses et plus', '${countedRuns.length}'),
-      ('Sessions commencées', '${chainRuns.length}'),
+      ('Sessions commencées', '${chainRuns.where((r) => r.kind == null).length}'),
       if (countedRuns.isNotEmpty) ('La dernière', _fmtDate(countedRuns.last.endedAt)),
     ],
   ));
@@ -928,6 +929,21 @@ BadgeDeck computeBadges({
     value: fullDays.length,
     tierDates: [fullDays.isEmpty ? null : _day(fullDays.first.endedAt)],
     facts: [('Journées entières enchaînées', '${fullDays.length}'), if (fullDays.isNotEmpty) ('La première', _fmtDate(fullDays.first.endedAt))],
+  ));
+  // Guérilla (2026-10-30) : pas bien, mais debout — une guérilla compte dès 3 coups faits.
+  final guerillas = chainRuns.where(guerillaCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  final lift = guerillaLift(chainRuns);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'guerilla', family: BadgeFamily.discipline, name: 'Guérilla', symbol: 'bolt', tiers: kGuerillaTiers, unit: 'guérillas', unitLong: 'guérillas de 3 coups et plus'),
+    level: _levelOf(kGuerillaTiers, guerillas.length),
+    value: guerillas.length,
+    tierDates: [for (final t in kGuerillaTiers) t <= guerillas.length ? _day(guerillas[t - 1].endedAt) : null],
+    facts: [
+      ('Guérillas de 3 coups et plus', '${guerillas.length}'),
+      ('Coups gagnés', '${guerillas.fold(0, (s, r) => s + r.doneCount)}'),
+      if (lift.rated > 0) ('T\'ont fait remonter', '${lift.lifted} / ${lift.rated}'),
+      if (guerillas.isNotEmpty) ('La dernière', _fmtDate(guerillas.last.endedAt)),
+    ],
   ));
 
   // Actions accomplies : une ligne à paliers.
@@ -1094,12 +1110,18 @@ BadgeDeck computeBadges({
         return daysTrack((y) => (disc.meanByYmd[y] ?? 0) >= 4, neutral: (y) => !disc.meanByYmd.containsKey(y), what: 'jours à élan ≥ 4', hitLabel: 'élan ≥ 4', missLabel: 'élan < 4');
       case 'enchaineur':
       case 'plein-jour':
-        final runs = chainRuns.toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+        final runs = chainRuns.where((r) => r.kind == null).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
         final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
         if (last.isEmpty) return null;
         final full = id == 'plein-jour';
         final cells = [for (final r in last) (full ? r.fullDay : chainRunCounts(r)) ? TrackCell.hit : TrackCell.miss];
         return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} ${full ? 'journée(s) entière(s)' : 'comptée(s)'}', hitLabel: full ? 'journée entière' : 'comptée (3 choses et plus)', missLabel: full ? 'partielle' : 'moins de 3 choses');
+      case 'guerilla':
+        final runs = chainRuns.where(isGuerillaRun).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+        final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
+        if (last.isEmpty) return null;
+        final cells = [for (final r in last) guerillaCounts(r) ? TrackCell.hit : TrackCell.miss];
+        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} guérilla${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} comptée(s)', hitLabel: 'comptée (3 coups et plus)', missLabel: 'moins de 3 coups');
       default:
         return null;
     }

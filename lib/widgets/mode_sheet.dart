@@ -15,6 +15,7 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show BadgeView;
 import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
 
 /// Feuille « Mode du jour » (lot 1 Modes et coups ; vue d'élan 2026-10,
@@ -151,6 +152,8 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
             })),
           ],
         ]),
+        const SizedBox(height: 10),
+        _guerillaCard(cs),
         title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday créneau${pointedToday > 1 ? 'x' : ''} pointé${pointedToday > 1 ? 's' : ''}'}'),
         Row(children: [
           for (final s in slots) ...[
@@ -221,6 +224,33 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           Text(kModeLabels[m]!, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: selected ? c : cs.onSurface)),
           Text(_modeShort(m), textAlign: TextAlign.center, style: TextStyle(fontSize: 10.5, color: cs.onSurface.withValues(alpha: .55))),
         ]),
+      ),
+    );
+  }
+
+  /// Guérilla : pas bien, mais debout — des coups de 5 min, l'app choisit.
+  Widget _guerillaCard(ColorScheme cs) {
+    return Material(
+      color: kGuerillaAccent.withValues(alpha: .10),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => showGuerillaScreen(context, widget.logic),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), border: Border.all(color: kGuerillaAccent.withValues(alpha: .5))),
+          child: Row(children: [
+            Icon(Icons.bolt, color: cs.brightness == Brightness.dark ? kGuerillaAccent : const Color(0xFF5E6B2A)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Guérilla · la flemme ou moi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                Text('Pas bien, mais debout : des coups de 5 min, sans réfléchir.', style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6))),
+              ]),
+            ),
+            Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .5)),
+          ]),
+        ),
       ),
     );
   }
