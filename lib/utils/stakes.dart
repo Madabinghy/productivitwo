@@ -611,3 +611,14 @@ const kStakeRestFamilies = [
   ('multi', 'PLUSIEURS GAINS'),
   ('routine', 'ROUTINES DU JOUR'),
 ];
+
+/// Où en est la journée face à l'heure (retour user 2026-10-30) : attendu à
+/// cette heure = total × part de la journée passée (arrondi) ; écart = tenus −
+/// attendu. Libellé « en avance de n » / « en retard de n » / « dans le rythme ».
+({int expected, int delta, String label}) stakesPace(int won, int total, double elapsed) {
+  if (total <= 0) return (expected: 0, delta: 0, label: '');
+  final expected = (total * elapsed.clamp(0.0, 1.0)).round();
+  final delta = won - expected;
+  final label = delta > 0 ? 'en avance de $delta' : (delta < 0 ? 'en retard de ${-delta}' : 'dans le rythme');
+  return (expected: expected, delta: delta, label: label);
+}
