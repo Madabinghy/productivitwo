@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
-import 'package:productivitwo_v1/utils/mode.dart';
-import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/utils/project_health.dart' show nextAction;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart' show modeChipFor;
 import 'package:productivitwo_v1/app_logic.dart';
@@ -28,7 +26,6 @@ import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/action_focus_screen.dart';
-import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 import 'package:productivitwo_v1/widgets/status_row.dart';
 import 'package:productivitwo_v1/widgets/steps_section.dart';
 import 'package:productivitwo_v1/widgets/next_actions_section.dart'
@@ -163,7 +160,6 @@ class _ActionsViewState extends State<ActionsView> {
   /// par défaut ; calculée au début de chaque build.
   final _open = OpenItem();
   final _scroll = ScrollController();
-  ActionMoment? _moment;
   // Captures en attente (boîte d'entrée) : ligne « n captures à trier ».
   List<CaptureItem> _pendingCaptures = const [];
   StreamSubscription<List<CaptureItem>>? _captureSub;
@@ -1253,7 +1249,6 @@ class _ActionsViewState extends State<ActionsView> {
       _ => null,
     };
 
-    _moment = _pickMoment(shown, all);
 
     return SafeArea(
       child: ListView(
@@ -2291,7 +2286,7 @@ class _ActionsViewState extends State<ActionsView> {
       // du moment (ouverte) sont le même item ; tap = ouvrir à sa place.
       child: MomentItem(
         key: _open.keyFor(a.id),
-        open: _open.isOpen(a.id, _moment?.entry.action.id),
+        open: false,
         collapsed: StatusRow(
           leading: InkWell(
             onTap: () => _toggleDone(e, true),
@@ -2304,193 +2299,40 @@ class _ActionsViewState extends State<ActionsView> {
           pct: pct,
           trailing: chip == null ? null : StateChip(chip, color: chipColor),
         ),
-        expanded: _momentCardFor(cs, e, _moment?.entry.action.id == a.id ? _moment : null, planned: planned),
-        onToggle: () => _open.settle(a.id, () => setState(() => _open.toggle(a.id, _moment?.entry.action.id)), scroll: _scroll),
+        // Tap = la page focus de l'action (retour user 2026-10-30) : plus de
+        // carte ouverte sur place ; ses gestes sont dans le ⋯ de la page.
+        expanded: const SizedBox.shrink(),
+        onToggle: () => _openFocus(e),
         onLongPress: () => _openActionSheet(e),
       ),
     );
   }
 
-  // ── Carte ACTION DU MOMENT (« une carte, une fiche », lot 2) ────────────────
-
-  /// L'action que le moment désigne (`pickActionMoment`) : chrono en cours,
-  /// bloc en cours, retard, programme du jour, prochain bloc, semaine, sinon
-  /// la première. Anneau = étapes faites, geste = étape suivante / chrono / fait.
-  ActionMoment? _pickMoment(List<_Entry> shown, List<_Entry> all) {
-    final pool = shown.isNotEmpty ? shown : all;
-    if (pool.isEmpty) return null;
-    final today = _day(DateTime.now());
-    final entries = <ActionEntry>[for (final e in pool) (action: e.action, project: e.project, task: e.task, activity: e.activity)];
-    final mode = widget.logic.mode;
-    String? focusProjectId;
-    if (mode == DayMode.high) {
-      for (final pm in rankProjectMoments(widget.logic.currentProjects, widget.logic.state.sessions, DateTime.now())) {
-        if (pm.upcoming) continue;
-        focusProjectId = pm.project.id;
-        break;
-      }
-    }
-    final m = pickActionMoment(
-      entries,
-      blocks: _todayBlocks,
-      nowMin: widget.logic.livedNowMinNow,
-      today: today,
-      runningActionId: _running?.actionId,
-      mode: mode,
-      focusProjectId: focusProjectId,
-      entryForBlock: (b) {
-        final e = _entryForBlock(b, pool);
-        return e == null ? null : (action: e.action, project: e.project, task: e.task, activity: e.activity);
-      },
-    );
-    return m;
-  }
-
-  /// Bloc ouvert d'une action (= l'ancienne carte ACTION DU MOMENT) ; [m]
-  /// non null quand c'est l'action que le moment désigne.
-  Widget _momentCardFor(ColorScheme cs, _Entry e, ActionMoment? m, {bool planned = false}) {
-    final today = _day(DateTime.now());
+  /// Page focus d'une action, avec les gestes de l'ancienne carte ouverte
+  /// (Détail, Fait, Viser un jour, Caser, Ouvrir le projet) derrière son ⋯.
+  void _openFocus(_Entry e) {
     final a = e.action;
-    final due = _dueOf(e);
-    final late = due != null && due.isBefore(today);
-    final spentMin = _spent[a.id] ?? 0;
-    final steps = a.checklist.isNotEmpty;
-    final next = nextChecklistItem(a);
-    final isRunningEntry = _running?.actionId == a.id;
-    final pill = m == null
-        ? (isRunningEntry
-            ? 'chrono en cours'
-            : late
-                ? 'en retard · ${_dueLabel(due, today)}'
-                : planned
-                    ? 'au programme'
-                    : due != null
-                        ? 'éch. ${_dueLabel(due, today)}'
-                        : 'à faire')
-        : switch (m.kind) {
-            ActionMomentKind.running => 'chrono en cours',
-            ActionMomentKind.block => 'bloc en cours · ${m.block!.startTime}',
-            ActionMomentKind.late => 'en retard · ${_dueLabel(due!, today)}',
-            ActionMomentKind.today => 'au programme · ${m.block!.startTime}',
-            ActionMomentKind.next => 'prochain bloc · ${m.block!.startTime}',
-            ActionMomentKind.week => 'cette semaine',
-            ActionMomentKind.rest => 'prochaine action',
-            ActionMomentKind.short => 'la plus courte · malgré tout',
-            ActionMomentKind.deep => 'à fond · la plus longue',
-          };
-    final accent = late ? kPalierCoral : cs.primary;
-    final ctx = [
-      if (e.holder.isNotEmpty) e.holder,
-      if (e.task != null && e.task!.id != _flowTaskId) e.task!.title,
-    ].join(' › ');
-    // Grammaire de Projets (2026-10) : la sous-ligne ne garde que QUAND et
-    // COMBIEN ; étapes en points, temps passé et contextes dans la légende.
-    // « Titre d'abord » (2026-10-30) : la ligne de contexte porte estimation et
-    // contextes GTD ; l'échéance n'apparaît qu'une fois, dans la pilule ; le
-    // temps passé va dans la légende de progression.
-    final sub = <String>[
-      if (a.focusDate != null && !late) '☀ ${focusLabel(a.focusDate!, today)}',
-      if (a.estimatedMin != null) '≈ ${fmtMin(a.estimatedMin!)}',
-      if (a.allContexts.isNotEmpty) (a.allContexts.toList()..sort()).join(' '),
-    ].join(' · ');
-    final legendRight = <String>[
-      if (spentMin > 0) '⏱ ${fmtMin(spentMin)}',
-    ].join(' · ');
-    final double? ring;
-    final String big, small;
-    if (steps) {
-      ring = a.checklistTotal == 0 ? 0 : a.checklistDone / a.checklistTotal;
-      big = '${a.checklistDone} / ${a.checklistTotal}';
-      small = 'ÉTAPES';
-    } else if (a.estimatedMin != null && a.estimatedMin! > 0) {
-      ring = spentMin / a.estimatedMin!;
-      big = fmtMin(spentMin);
-      small = 'SUR ≈ ${fmtMin(a.estimatedMin!)}';
-    } else {
-      ring = 0;
-      big = fmtMin(spentMin);
-      small = 'PASSÉES';
-    }
-    final running = isRunningEntry;
-    // ▶ = la page focus (maquette « Page focus », 2026-10) ; « Étape faite »
-    // reste à portée en lien.
-    void openFocus() => showActionFocusScreen(context,
-            logic: widget.logic,
-            action: a,
-            project: e.project,
-            task: e.task,
-            ownerActivity: e.project == null ? e.activity : null,
-            chronoActivity: e.chronoActivityId == null ? null : widget.logic.state.activities.where((x) => x.id == e.chronoActivityId).firstOrNull,
-            sync: _sync)
-        .then((_) {
+    final today = _day(DateTime.now());
+    final hasSteps = a.checklist.isNotEmpty;
+    showActionFocusScreen(context,
+        logic: widget.logic,
+        action: a,
+        project: e.project,
+        task: e.task,
+        ownerActivity: e.project == null ? e.activity : null,
+        chronoActivity: e.chronoActivityId == null ? null : widget.logic.state.activities.where((x) => x.id == e.chronoActivityId).firstOrNull,
+        sync: _sync,
+        moreActions: [
+          MomentAction('Détail de l\'action', icon: Icons.description_outlined, hint: 'contextes, échéance, note, rattacher', onTap: () => _openActionSheet(e)),
+          if (!a.done && hasSteps)
+            MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
+          MomentAction('Viser un jour', icon: Icons.wb_sunny_outlined, hint: a.focusDate == null ? 'l\'avoir sous la main ce jour-là, sans bloc' : focusLabel(a.focusDate!, today), onTap: () => _pickFocusDay(e)),
+          MomentAction('Caser dans le programme', icon: Icons.event_rounded, hint: 'un bloc à une heure : un engagement', onTap: () => _scheduleAction(e)),
+          if (e.project != null)
+            MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
+        ]).then((_) {
       if (mounted) setState(() {});
     });
-    Future<void> stepDone() async {
-      if (next == null) return;
-      final changed = setChecklistItem(a, next.id, true);
-      await _persistEntry(e);
-      if (changed && a.done && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(duration: const Duration(seconds: 2), content: Text('Action faite : ${a.title}')));
-      }
-    }
-    final String primary;
-    final IconData icon;
-    final VoidCallback onPrimary;
-    if (running) {
-      primary = 'Focus';
-      icon = Icons.center_focus_strong_rounded;
-      onPrimary = openFocus;
-    } else if (e.chronoActivityId != null || next != null) {
-      primary = 'Focus';
-      icon = Icons.play_arrow_rounded;
-      onPrimary = openFocus;
-    } else {
-      primary = 'Fait';
-      icon = Icons.check_rounded;
-      onPrimary = () => _toggleDone(e, true);
-    }
-    return MomentCard(
-      accent: accent,
-      eyebrow: m != null ? 'ACTION DU MOMENT' : (late ? 'ACTION EN RETARD' : 'ACTION'),
-      pill: pill,
-      ring: ring,
-      ringColor: late ? kPalierCoral : palierColor(steps ? 100 : (ring > 1 ? 40 : 100)),
-      ringBig: big,
-      ringSmall: small,
-      context_: ctx.isEmpty ? null : ctx,
-      contextIcon: e.project != null ? Icons.account_tree_outlined : Icons.bolt_outlined,
-      title: a.title,
-      sub: sub,
-      subColor: null,
-      visual: steps
-          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              StepDots(done: a.checklistDone, total: a.checklistTotal, allDone: a.done, size: 12),
-              MomentLegend(next == null ? 'Toutes les étapes sont faites' : 'Étape en cours : ${next.title}',
-                  right: legendRight.isEmpty ? null : legendRight),
-            ])
-          : legendRight.isEmpty
-              ? null
-              : MomentLegend(legendRight),
-      primaryLabel: primary,
-      primaryIcon: icon,
-      onPrimary: onPrimary,
-      ficheLabel: 'Détail',
-      ficheIcon: Icons.description_outlined,
-      onFiche: () => _openActionSheet(e),
-      chainLabel: running ? 'Arrêter le chrono' : (next != null ? 'Étape faite' : null),
-      chainIcon: running ? Icons.stop_rounded : Icons.check_rounded,
-      onChain: running ? () => widget.logic.stopActive() : (next != null ? stepDone : null),
-      moreActions: [
-        // Plus de « Chrono seul » (retour user 2026-10-30 : chrono lancé sans le
-        // vouloir) : le chrono part toujours de la page focus.
-        if (!a.done && (next != null || e.chronoActivityId != null))
-          MomentAction('Fait', icon: Icons.check_circle_outline, hint: 'sans passer par les étapes', onTap: () => _toggleDone(e, true)),
-        MomentAction('Viser un jour', icon: Icons.wb_sunny_outlined, hint: a.focusDate == null ? 'l\'avoir sous la main ce jour-là, sans bloc' : focusLabel(a.focusDate!, today), onTap: () => _pickFocusDay(e)),
-        MomentAction('Caser dans le programme', icon: Icons.event_rounded, onTap: () => _scheduleAction(e)),
-        if (e.project != null)
-          MomentAction('Ouvrir le projet', icon: Icons.account_tree_outlined, onTap: () => _openProject(e.project!, targetTaskId: e.task?.id)),
-      ],
-    );
   }
 
   /// Bouton « Filtrer » de l'en-tête (retour user 2026-10-30, comme Projets) :

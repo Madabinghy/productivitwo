@@ -11,9 +11,7 @@ import 'package:productivitwo_v1/utils/coups.dart' show coupProjectIds;
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart';
 import 'package:productivitwo_v1/utils/project_moment.dart';
-import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
-import 'package:productivitwo_v1/widgets/action_focus_screen.dart';
 import 'package:productivitwo_v1/widgets/new_project_sheet.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart';
 import 'package:productivitwo_v1/widgets/project_fiche_sheet.dart';
@@ -156,13 +154,6 @@ class _GoalsViewState extends State<GoalsView> {
     super.dispose();
   }
 
-  void _toggleItem(String id, String? defaultId) {
-    if (!_hintSeen) {
-      _hintSeen = true;
-      SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
-    }
-    _open.settle(id, () => setState(() => _open.toggle(id, defaultId)), scroll: _scroll);
-  }
 
   Future<void> _toggle(String key) async {
     setState(() => _folded.contains(key) ? _folded.remove(key) : _folded.add(key));
@@ -193,25 +184,6 @@ class _GoalsViewState extends State<GoalsView> {
           logic: widget.logic,
           onStartTimer: widget.onStartTimer);
 
-  void _startNext(ProjectMoment m) {
-    final n = m.next;
-    if (n == null) {
-      _openPlan(m.project);
-      return;
-    }
-    final act = widget.activities.where((a) => a.id == (n.action.linkedActivityId ?? m.project.linkedActivityId)).firstOrNull;
-    final logic = widget.logic;
-    if (logic == null) {
-      _openPlan(m.project, taskId: n.task.id);
-      return;
-    }
-    // ▶ = la page focus (maquette « Page focus », 2026-10) : l'action devant
-    // soi, le chrono dessus, les étapes, la trace à la fin.
-    showActionFocusScreen(context, logic: logic, action: n.action, project: m.project, task: n.task, chronoActivity: act, sync: _sync)
-        .then((_) {
-      if (mounted) setState(() {});
-    });
-  }
 
   void _newProject() => showNewProjectSheet(context, domains: domains, onCreated: () {}, sync: _sync, activities: widget.activities);
 
@@ -417,29 +389,22 @@ class _GoalsViewState extends State<GoalsView> {
     ];
   }
 
-  /// Tap sur une brique = le projet déplié, CETTE tâche dépliée (même
-  /// destination que la ligne : un seul niveau à retenir).
-  void _openBrick(Project p, BrickRow row, int i) {
-    if (!_hintSeen) {
-      setState(() => _hintSeen = true);
-      SharedPreferences.getInstance().then((prefs) => prefs.setBool(_kHintKey, true));
-    }
-    if (i < 0 || i >= row.total) return;
-    _openPlan(p, taskId: row.bricks[i].id);
-  }
 
   /// Ligne du mur : nom · k / n · état, la rangée de briques, puis la prochaine action.
   /// Un projet = un item à deux états : la ligne du mur (repliée) ou la carte
   /// du moment (ouverte), à sa place dans la liste.
   Widget _item(ProjectMoment m, BrickRow row, DateTime now, {required String? defaultId, bool moment = false}) {
     final id = m.project.id;
+    // Tap = la fiche du projet (retour user 2026-10-30) : prochaine action en
+    // page focus, décisions, actions, « Déplier le projet » ; appui long = le
+    // projet déplié.
     return MomentItem(
       key: _open.keyFor(id),
-      open: _open.isOpen(id, defaultId),
+      open: false,
       collapsed: _wallRow(m, row, now),
-      expanded: _momentCard(m, row, now, eyebrow: moment ? 'PROJET DU MOMENT' : (m.upcoming ? 'PROJET À VENIR' : 'PROJET')),
-      onToggle: () => _toggleItem(id, defaultId),
-      onLongPress: () => _openFiche(m.project),
+      expanded: const SizedBox.shrink(),
+      onToggle: () => _openFiche(m.project),
+      onLongPress: () => _openPlan(m.project),
     );
   }
 
@@ -547,60 +512,6 @@ class _GoalsViewState extends State<GoalsView> {
     );
   }
 
-  /// Bloc ouvert d'un projet (= l'ancienne carte PROJET DU MOMENT) : anneau =
-  /// tâches faites / total, rangée de briques en détail, geste = la prochaine
-  /// action, liens Déplier · Fiche · Autres.
-  Widget _momentCard(ProjectMoment m, BrickRow row, DateTime now, {required String eyebrow}) {
-    final p = m.project;
-    final plan = m.plan;
-    final st = palierColor(m.pctInt);
-    final s = m.session;
-    final subParts = <String>[
-      if (s != null && m.sessionSoon)
-        '${m.weekActions.length} action${m.weekActions.length > 1 ? 's' : ''} avant la séance'
-      else if (m.weekActions.isNotEmpty)
-        '${m.weekActions.length} action${m.weekActions.length > 1 ? 's' : ''} cette semaine',
-      if (s?.prep != null && m.sessionSoon) 'prépa ${s!.prepTotal - s.prepOpen} / ${s.prepTotal}',
-      m.upcoming ? 'démarre plus tard' : (plan.delta == 0 ? 'à jour sur le plan' : '${m.deltaLabel} sur le plan'),
-    ];
-    final ctx = [
-      if (m.rootTitle != null) 'Pour ${m.rootTitle}',
-      if (s != null) sessionLabel(s, now) else if (p.endDate != null) 'échéance ${_date(p.endDate!)}',
-    ].join(' · ');
-    return MomentCard(
-        accent: kPalierGreen,
-        eyebrow: eyebrow,
-        pill: s != null && m.sessionSoon ? sessionLabel(s, now) : (m.upcoming ? 'à venir' : (m.plan.delta == 0 ? 'à jour' : '${m.deltaLabel} sur le plan')),
-        ring: plan.total == 0 ? 0 : plan.done / plan.total,
-        ringColor: st,
-        ringBig: '${plan.done} / ${plan.total}',
-        ringSmall: 'TÂCHES',
-        context_: ctx.isEmpty ? null : ctx,
-        contextIcon: s != null ? Icons.event_rounded : null,
-        title: p.title,
-        sub: subParts.join(' · '),
-        subColor: m.behind ? st : null,
-        detail: row.total == 0
-            ? null
-            : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                ProgressBricks(row: row, height: 14, onBrick: (i) => _openBrick(p, row, i), pickerTitle: 'Tâches · ${p.title}'),
-                if (behindLabel(row) != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(behindLabel(row)!, style: const TextStyle(fontSize: 11.5, color: kPalierCoral, fontWeight: FontWeight.w600)),
-                  ),
-              ]),
-        primaryLabel: m.next == null ? 'Définir la prochaine action' : m.next!.action.title,
-        primaryIcon: m.next == null ? Icons.add : Icons.play_arrow_rounded,
-        onPrimary: () => _startNext(m),
-        ficheLabel: 'Détail',
-        ficheIcon: Icons.description_outlined,
-        onFiche: () => _openFiche(p),
-        chainLabel: 'Projet',
-        chainIcon: Icons.account_tree_outlined,
-        onChain: () => _openPlan(p),
-      );
-  }
 
   Widget _plainRow(Project p, String chip, {bool muted = false}) {
     final plan = projectPlan(p, DateTime.now());
