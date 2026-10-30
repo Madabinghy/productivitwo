@@ -2152,6 +2152,23 @@ class _AppRootState extends State<AppRoot>
           body: morningDigest(blocks: blocks, routines: daily.length, focused: focused, series: series),
         );
       }
+      // Soir : ce qu'il manque AUJOURD'HUI pour une journée parfaite.
+      if (st.eveningNotifEnabled) {
+        final facts = _badges.todayFacts();
+        final missingRoutines = facts.routines.where((r) => !r.reached).toList();
+        final atRisk = [
+          for (final r in missingRoutines)
+            if (logic.effectiveHabitFreq(r.activity) == HabitFreq.daily && logic.habitCurrentStreak(r.activity.id) > 0) r.activity.name,
+        ];
+        await NotificationService.scheduleEveningPerfect(
+          hour: st.streakNotifHour,
+          minute: st.streakNotifMinute,
+          digest: eveningDigest(routines: missingRoutines.length, blocks: facts.pendingBlocks.length, seriesAtRisk: atRisk),
+        );
+      } else {
+        await NotificationService.cancelById(3);
+      }
+
       // Rappels des blocs : aujourd'hui et demain (jours calendaires), hors
       // miroirs d'agenda (l'agenda prévient déjà) et pauses.
       final now = DateTime.now();
@@ -2683,9 +2700,6 @@ class _AppRootState extends State<AppRoot>
       logic.addListener(_scheduleDayNotifsRefresh);
       if (st.reviewNotifEnabled) await NotificationService.scheduleDailyReview(
         hour: st.reviewNotifHour, minute: st.reviewNotifMinute);
-      if (st.streakNotifEnabled) await NotificationService.scheduleStreakReminder(
-        hour: st.streakNotifHour, minute: st.streakNotifMinute,
-        routineNames: logic.streakAtRiskNames());
       // Défi ORION retiré (2026-10-30) : on annule le rappel quotidien encore
       // programmé sur les appareils.
       await NotificationService.cancelById(4);
@@ -6734,23 +6748,19 @@ class _AppRootState extends State<AppRoot>
                   const Divider(height: 1),
                   _notifSettingRow(ctx, cs,
                     icon: Icons.local_fire_department_outlined,
-                    label: 'Streak en danger',
+                    label: 'Ce soir · journée parfaite',
                     hour: _state!.streakNotifHour,
                     minute: _state!.streakNotifMinute,
-                    enabled: _state!.streakNotifEnabled,
+                    enabled: _state!.eveningNotifEnabled,
                     onToggled: (v) async {
-                      setState(() => _state!.streakNotifEnabled = v);
+                      setState(() => _state!.eveningNotifEnabled = v);
                       logic.onChange(); rebuild();
-                      if (!v) { await NotificationService.cancelById(3); return; }
-                      await NotificationService.scheduleStreakReminder(
-                          hour: _state!.streakNotifHour, minute: _state!.streakNotifMinute,
-                          routineNames: logic.streakAtRiskNames());
+                      await _refreshDayNotifs();
                     },
                     onPicked: (picked) async {
                       setState(() { _state!.streakNotifHour = picked.hour; _state!.streakNotifMinute = picked.minute; });
                       logic.onChange(); rebuild();
-                      await NotificationService.scheduleStreakReminder(
-                          hour: picked.hour, minute: picked.minute, routineNames: logic.streakAtRiskNames());
+                      await _refreshDayNotifs();
                     },
                   ),
                   const Divider(height: 1),

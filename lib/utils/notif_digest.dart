@@ -14,3 +14,17 @@ String morningDigest({required int blocks, required int routines, required int f
   ];
   return parts.isEmpty ? 'Rien de prévu : pose ta journée.' : parts.join(' · ');
 }
+
+/// Soir, « Journée parfaite » : ce qu'il manque encore, séries en jeu
+/// d'abord. Null quand il ne manque rien (pas de notification).
+({String title, String body})? eveningDigest({required int routines, required int blocks, required List<String> seriesAtRisk}) {
+  final missing = routines + blocks;
+  if (missing == 0) return null;
+  final parts = [
+    if (seriesAtRisk.isNotEmpty)
+      '🔥 ${seriesAtRisk.length <= 2 ? seriesAtRisk.join(', ') : '${seriesAtRisk.take(2).join(', ')} +${seriesAtRisk.length - 2}'} à tenir ce soir',
+    if (routines > 0) _n(routines, 'routine', 'routines'),
+    if (blocks > 0) _n(blocks, 'bloc', 'blocs'),
+  ];
+  return (title: 'Journée parfaite : il manque $missing', body: parts.join(' · '));
+}

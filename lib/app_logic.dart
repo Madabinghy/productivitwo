@@ -2504,19 +2504,6 @@ class AppLogic implements HuntStore {
     }
   }
 
-  /// Routines quotidiennes avec streak ≥ 3 non encore validées aujourd'hui.
-  List<String> streakAtRiskNames() {
-    return state.activeActivities
-        .where((a) =>
-            a.isHabit &&
-            effectiveHabitFreq(a) == HabitFreq.daily &&
-            habitStreakInfo(a.id).streak >= 3 &&
-            !habitStreakInfo(a.id).jokerAvailable && // un joker couvrirait
-            !habitReached(a))
-        .map((a) => a.name)
-        .toList();
-  }
-
   void unskipChallengeForToday(String todayYmd) {
     if (state.skippedChallengeDates.remove(todayYmd)) onChange();
   }

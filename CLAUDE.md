@@ -851,6 +851,11 @@ hors miroirs d'agenda (`gcalEventId`), pauses et blocs prépa / session ; notifi
 (`NotificationService.scheduleBlockAlerts`, replanifiées par `_refreshDayNotifs`), « Dans 5 min · 14:00 → 15:00 », charge utile
 `block:<ymd>|<id>` → `_openBlockFromNotif` → `_openBlockSource` (page focus d'un bloc d'activité, écran bloc d'une tâche, séance).
 Les anciens rappels du modèle `DayBlock` (ids 10–29) sont annulés ; `scheduleBlockReminders` est retiré. Pas de réglage dédié.
+**Soir « Journée parfaite : il manque n »** (PR 4, id 3, remplace « Streak en danger ») : PONCTUELLE, aujourd'hui seulement (heure
+`streakNotifHour`, 20 h), annulée quand rien ne manque — texte `eveningDigest` (« 🔥 Pompes, Lecture à tenir ce soir · 2 routines ·
+1 bloc »), faits du jour vécu `_badges.todayFacts()` (routines non atteintes, blocs qui comptent encore à faire, séries en cours en
+jeu). Réglage « Ce soir · journée parfaite » = nouveau champ `AppState.eveningNotifEnabled` (ACTIVÉ par défaut, merge local) ;
+`streakNotifEnabled`, `scheduleStreakReminder` et `streakAtRiskNames` ne servent plus (champ gardé en base). Tap = feuille Journée parfaite.
 
 ## Confirmation avant de cocher (2026-10-30)
 
