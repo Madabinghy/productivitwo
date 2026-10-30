@@ -80,6 +80,7 @@ class BadgeCenter extends ChangeNotifier {
       restPeriods: logic.restPeriods,
       restDomains: logic.restDomains,
       seasons: logic.seasons,
+      acquired: logic.acquired,
     );
     deck = d;
     logic.embers = d.embers;
@@ -117,6 +118,7 @@ class BadgeCenter extends ChangeNotifier {
       projects: _projects,
       schedule: _schedules.where((s) => s.date == ymd).firstOrNull,
       pendingChain: pending != null && pending.isLive(now, ymd) ? pending : null,
+      acquired: logic.acquired,
     );
   }
 

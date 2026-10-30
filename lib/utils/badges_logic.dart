@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
@@ -401,12 +402,15 @@ DayScore scoreDay(DateTime day, {
   required List<Activity> activities,
   required Map<String, Set<String>> reachedDaysByRoutine,
   DailySchedule? schedule,
+  Map<String, Acquired> acquired = const {},
 }) {
   final ymd = ymdOf(day);
   var due = 0, reached = 0;
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
     if (_day(a.createdAt).isAfter(day)) continue;
+    // Acquise (2026-10-30) : hors journée parfaite / solide à partir de son passage.
+    if (isAcquiredOn(acquired, a.id, ymd)) continue;
     due++;
     if (reachedDaysByRoutine[a.id]?.contains(ymd) ?? false) reached++;
   }
@@ -429,6 +433,7 @@ List<DayScore> scoreDays({
   required List<DailySchedule> schedules,
   required DateTime now,
   int dayStartMin = kDefaultDayStartMin,
+  Map<String, Acquired> acquired = const {},
 }) {
   final reached = <String, Set<String>>{};
   for (final a in activities) {
@@ -451,7 +456,7 @@ List<DayScore> scoreDays({
   if (first.isBefore(floor)) first = floor;
   final out = <DayScore>[];
   for (var d = first; !d.isAfter(yesterday); d = d.add(const Duration(days: 1))) {
-    out.add(scoreDay(d, activities: activities, reachedDaysByRoutine: reached, schedule: byDate[ymdOf(d)]));
+    out.add(scoreDay(d, activities: activities, reachedDaysByRoutine: reached, schedule: byDate[ymdOf(d)], acquired: acquired));
   }
   return out;
 }
@@ -603,11 +608,12 @@ BadgeDeck computeBadges({
   List<RestPeriod> restPeriods = const [],
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
+  Map<String, Acquired> acquired = const {},
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
   // comblent ensuite les séries (les jours comblés ne comptent jamais ici).
-  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin);
+  final days = scoreDays(activities: activities, hits: habitHits, schedules: schedules, now: now, dayStartMin: dayStartMin, acquired: acquired);
 
   // Séries de routine : un badge par routine quotidienne active, par nom.
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()

@@ -3102,6 +3102,12 @@ class FirestoreSync {
 
   /// Veille d'un domaine (modes et coups, lot 0) : `data/meta.restDomains
   /// {domainId: "YYYY-MM-DD"}` ; `untilYmd` null = lever la veille.
+  /// Routines acquises (`data/meta.acquired`, `acquireAsked`, `utils/acquired.dart`).
+  Future<void> setAcquired(Map<String, dynamic> acquired, List<String> asked) async {
+    // mergeFields : la map est REMPLACÉE (une routine remise en active disparaît vraiment).
+    await _meta().set({'acquired': acquired, 'acquireAsked': asked}, SetOptions(mergeFields: ['acquired', 'acquireAsked']));
+  }
+
   /// Saisons (`data/meta.seasons`, `utils/seasons.dart`).
   Future<void> setSeasons(List<Map<String, dynamic>> seasons) async {
     await _meta().set({'seasons': seasons}, SetOptions(merge: true));

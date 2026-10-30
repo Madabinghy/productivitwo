@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/acquired.dart' show Acquired, isAcquiredOn;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show PendingChain;
@@ -19,6 +20,7 @@ TodayFacts composeTodayFacts({
   required List<Project> projects,
   DailySchedule? schedule,
   PendingChain? pendingChain,
+  Map<String, Acquired> acquired = const {},
 }) {
   final dayStart = livedDayStart(now, dayStartMin);
   final active = activities.where((a) => !a.deleted).toList();
@@ -26,6 +28,7 @@ TodayFacts composeTodayFacts({
   for (final a in active) {
     if (!a.isHabit || a.habitFreq != HabitFreq.daily) continue;
     if (a.createdAt.isAfter(now)) continue;
+    if (isAcquiredOn(acquired, a.id, ymd)) continue; // acquise : plus réclamée
     final t = a.habitTarget ?? 1;
     final done = hits.where((h) => h.habitId == a.id && !h.ts.isBefore(dayStart)).length;
     routines.add(RoutineToday(a, done, t <= 0 ? 1 : t));

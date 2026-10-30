@@ -17,6 +17,7 @@ import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
+import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
@@ -1868,6 +1869,48 @@ class AppLogic implements HuntStore {
     badgeHunts = list;
     onChange();
     await (sync ?? FirestoreSync()).setBadgeHunts(list.map((x) => x.toJson()).toList());
+  }
+
+  // ── Routine acquise (2026-10-30, `utils/acquired.dart`) ────────────────────
+  /// `data/meta.acquired` et `data/meta.acquireAsked`, alimentés par le flux meta.
+  Map<String, Acquired> acquired = const {};
+  Set<String> acquireAsked = const {};
+
+  /// Routines acquises aujourd'hui (journée vécue) : hors journée parfaite et enjeux.
+  Set<String> get acquiredIds => acquiredOn(acquired, livedTodayYmd);
+  bool isAcquired(String id) => isAcquiredOn(acquired, id, livedTodayYmd);
+
+  Future<void> _saveAcquired() async {
+    onChange();
+    await (sync ?? FirestoreSync()).setAcquired({for (final e in acquired.entries) e.key: e.value.toJson()}, acquireAsked.toList());
+  }
+
+  /// Passe la routine en acquise à partir d'aujourd'hui.
+  Future<void> acquireRoutine(String id) async {
+    acquired = {...acquired, id: Acquired(livedTodayYmd)};
+    acquireAsked = {...acquireAsked, id};
+    await _saveAcquired();
+  }
+
+  /// La remet en routine active.
+  Future<void> releaseRoutine(String id) async {
+    acquired = {...acquired}..remove(id);
+    acquireAsked = {...acquireAsked, id};
+    await _saveAcquired();
+  }
+
+  /// « La garder comme maintenant » : la question ne revient plus.
+  Future<void> declineAcquire(String id) async {
+    acquireAsked = {...acquireAsked, id};
+    await _saveAcquired();
+  }
+
+  /// « C'est voulu » : plus d'alerte de décrochage pendant quatre semaines.
+  Future<void> quietAcquired(String id) async {
+    final a = acquired[id];
+    if (a == null) return;
+    acquired = {...acquired, id: Acquired(a.since, quietUntil: quietUntilFrom(livedToday))};
+    await _saveAcquired();
   }
 
   // ── Saisons (lot 3, 2026-10-30, `utils/seasons.dart`) ──────────────────────
