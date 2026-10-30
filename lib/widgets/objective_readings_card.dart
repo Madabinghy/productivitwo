@@ -196,3 +196,59 @@ class _ObjectiveReadingsCardState extends State<ObjectiveReadingsCard> {
     );
   }
 }
+
+/// Saisie rapide d'un relevé (geste « Noter » d'un enjeu, Aujourd'hui mobile et
+/// web) : une valeur, enregistrée au jour même. Renvoie true si noté.
+Future<bool> noteReadingQuick(BuildContext context, {required FirestoreSync sync, required StrategicObjective objective}) async {
+  final m = objective.metric;
+  if (m == null) return false;
+  final ctrl = TextEditingController();
+  final last = latestReading(objective);
+  String fmt(double v) => v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
+  final value = await showDialog<double>(
+    context: context,
+    builder: (d) {
+      void submit() {
+        final v = double.tryParse(ctrl.text.trim().replaceAll(',', '.'));
+        if (v != null) Navigator.pop(d, v);
+      }
+
+      return AlertDialog(
+        title: Text('Relevé · ${m.label.isEmpty ? objective.title : m.label}'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(objective.title, style: TextStyle(fontSize: 13, color: Theme.of(d).colorScheme.onSurface.withValues(alpha: .6))),
+          const SizedBox(height: 10),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+            onSubmitted: (_) => submit(),
+            decoration: InputDecoration(
+              border: const OutlineInputBorder(),
+              suffixText: m.unit,
+              hintText: last == null ? 'valeur du jour' : 'dernier : ${fmt(last.value)}',
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Annuler')),
+          FilledButton(onPressed: submit, child: const Text('Noter')),
+        ],
+      );
+    },
+  );
+  ctrl.dispose();
+  if (value == null) return false;
+  objective.readings = upsertReading(objective.readings, ObjectiveReading(date: todayYmd(DateTime.now()), value: value));
+  objective.updatedAt = DateTime.now();
+  try {
+    await sync.saveStrategicObjective(objective);
+  } catch (_) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erreur de sauvegarde — réessaie.')));
+    return false;
+  }
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Relevé noté : ${fmt(value)}${m.unit == null || m.unit!.isEmpty ? '' : ' ${m.unit}'}')));
+  }
+  return true;
+}

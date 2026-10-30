@@ -17,10 +17,14 @@ String morningDigest({required int blocks, required int routines, required int f
 
 /// Soir, « Journée parfaite » : ce qu'il manque encore, séries en jeu
 /// d'abord. Null quand il ne manque rien (pas de notification).
-({String title, String body})? eveningDigest({required int routines, required int blocks, required List<String> seriesAtRisk}) {
+({String title, String body})? eveningDigest({required int routines, required int blocks, required List<String> seriesAtRisk, List<String> readingsLastDay = const []}) {
   final missing = routines + blocks;
-  if (missing == 0) return null;
+  final readings = readingsLastDay.isEmpty
+      ? null
+      : '📏 relevé ${readingsLastDay.length <= 2 ? readingsLastDay.join(', ') : '${readingsLastDay.take(2).join(', ')} +${readingsLastDay.length - 2}'} : dernier jour';
+  if (missing == 0) return readings == null ? null : (title: 'Relevé à noter ce soir', body: readings);
   final parts = [
+    if (readings != null) readings,
     if (seriesAtRisk.isNotEmpty)
       '🔥 ${seriesAtRisk.length <= 2 ? seriesAtRisk.join(', ') : '${seriesAtRisk.take(2).join(', ')} +${seriesAtRisk.length - 2}'} à tenir ce soir',
     if (routines > 0) _n(routines, 'routine', 'routines'),

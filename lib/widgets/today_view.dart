@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/utils/game_rules.dart';
@@ -1513,6 +1514,14 @@ class TodayViewState extends State<TodayView> {
         showActionFocusScreen(context,
                 logic: logic, action: a, project: g.project, task: g.task, ownerActivity: g.owner, chronoActivity: chrono, sync: widget.sync ?? FirestoreSync())
             .then((_) {
+          if (mounted) setState(() {});
+        });
+        return;
+      case StakeGestureKind.reading:
+        final o = g.objective;
+        if (o == null) break;
+        noteReadingQuick(context, sync: widget.sync ?? FirestoreSync(), objective: o).then((ok) async {
+          if (ok) await widget.badges?.load(refresh: true);
           if (mounted) setState(() {});
         });
         return;

@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/reading_due.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show focusLabel, isFocusedOn, isStaleFocus, shortDateFr;
 import 'package:productivitwo_v1/utils/badge_hunt.dart' show BadgeHunt;
 import 'package:productivitwo_v1/utils/badge_today.dart';
@@ -18,7 +19,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 /// famille pour les gestes qui ne servent qu'une chose ; le reste se replie.
 /// Logique pure : l'UI vit dans Aujourd'hui.
 
-enum StakeGestureKind { routine, activity, block, action }
+enum StakeGestureKind { routine, activity, block, action, reading }
 
 /// Le geste à faire.
 class StakeGesture {
@@ -34,6 +35,8 @@ class StakeGesture {
   final TaskAction? action;
   /// Porteur d'une action PROPRE (sans projet).
   final Activity? owner;
+  /// Objectif dont le relevé de métrique est dû (geste `reading`).
+  final StrategicObjective? objective;
   /// Avancement court du geste lui-même : « 0 / 8 », « reste 1 h 20 ».
   final String? progress;
   const StakeGesture({
@@ -47,6 +50,7 @@ class StakeGesture {
     this.task,
     this.action,
     this.owner,
+    this.objective,
     this.progress,
   });
 }
@@ -72,6 +76,8 @@ enum StakeGainKind {
   reprise,
   /// Le dimanche, la semaine (contrat à 80 %) se joue ce soir (`held_weeks.dart`).
   week,
+  /// Un relevé de métrique dû (`reading_due.dart`), sans série à sauver.
+  reading,
 }
 
 /// Ce qu'un geste rapporte.
@@ -119,7 +125,7 @@ class Stake {
     return switch (gains.first.kind) {
       StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise || StakeGainKind.week => 'series',
       StakeGainKind.hunt => 'hunt',
-      StakeGainKind.objective => 'objective',
+      StakeGainKind.objective || StakeGainKind.reading => 'objective',
       StakeGainKind.session => 'session',
       StakeGainKind.focus => 'focus',
       StakeGainKind.routine => 'routine',
@@ -298,6 +304,51 @@ StakeBoard buildStakeBoard({
           weight: rp.tonight ? 22 : 12,
           sourceId: 'reprise',
           gauge: (done: rp.held, after: rp.afterToday, total: kRepriseHold),
+        ),
+      );
+    }
+  }
+
+  // ── 1 quater. Relevés dus : la série du badge Relevé fidèle ─────────────────
+  for (final r in readingsDue(facts.objectives, now)) {
+    final o = r.objective;
+    final g = StakeGesture(
+      key: 'reading:${o.id}',
+      kind: StakeGestureKind.reading,
+      title: 'Noter le relevé · ${r.name}',
+      costMin: 2,
+      objective: o,
+      progress: r.lastDay ? 'dernier jour' : 'dû',
+    );
+    final readingTier = deck?.byId('releve-fidele');
+    final next = readingTier?.nextTarget;
+    final tierTonight = r.series > 0 && next != null && r.series + 1 >= next && (readingTier?.value ?? 0) <= r.series;
+    if (r.series > 0) {
+      add(
+        g,
+        StakeGain(
+          kind: tierTonight ? StakeGainKind.tierTonight : (r.lastDay ? StakeGainKind.seriesTonight : StakeGainKind.series),
+          label: tierTonight
+              ? 'palier $next relevés'
+              : (r.lastDay ? 'Relevé fidèle · ${r.series} → se perd ce soir' : 'Relevé fidèle · ${r.series} relevés'),
+          detail: r.lastDay
+              ? 'Dernier relevé il y a ${r.daysSince} j (un tous les ${r.every} j) : sans relevé ce soir, la suite repart à 0.'
+              : 'Un relevé tous les ${r.every} j · ${o.title}.',
+          losesTonight: r.lastDay,
+          weight: (r.lastDay ? 30 + (r.series > 20 ? 20 : r.series) : 12) + (tierTonight ? 25 : 0),
+          sourceId: 'releve-fidele',
+          gauge: next == null ? null : (done: r.series, after: r.series + 1, total: next),
+        ),
+      );
+    } else {
+      add(
+        g,
+        StakeGain(
+          kind: StakeGainKind.reading,
+          label: 'relevé dû · ${_short(o.title, 22)}',
+          detail: 'Un relevé tous les ${r.every} j : il situe l\'objectif sur sa trajectoire.',
+          weight: 8,
+          sourceId: o.id,
         ),
       );
     }
