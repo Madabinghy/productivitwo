@@ -836,7 +836,8 @@ toutes les routines quotidiennes dues atteintes. Hors domaines en veille (jours 
 à tenir = neutre. Aujourd'hui : `TodayFacts.pace` (activités face à l'attendu, `composeTodayFacts(budgetWindowDays:,
 restingDomainIds:)`) et `metronomeRoutines` ; `badgeToday` (`_montre`, `_metronome`) ; enjeux = section dédiée de `buildStakeBoard`
 (gain `StakeGainKind.halfDay` « Métronome · la dernière · palier 5 ce soir » sur les routines manquantes, « Montre suisse · k / n » sur
-les activités en retard ; gagnée → `won`). Web : fenêtre de 7 j.
+les activités en retard, seulement s'il y en a au plus `kWatchMaxBehind` (3) — au-delà la journée n'est plus jouable et rien
+n'est posé ; gagnée → `won`). Web : fenêtre de 7 j.
 
 ## Relevés en jeu (2026-10-30)
 
