@@ -1,0 +1,92 @@
+import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/run_session.dart';
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
+
+/// Une Guérilla / Offensive quittée en route (app fermée, écran quitté) :
+/// « Reprendre » rouvre l'écran au coup suivant, « Terminer ici » la clôt
+/// telle quelle (ses coups comptent). Rien quand aucune n'attend ; une
+/// session expirée (autre journée, 45 min sans rien) est close en silence.
+class PendingRunCard extends StatefulWidget {
+  final AppLogic logic;
+  const PendingRunCard({super.key, required this.logic});
+
+  @override
+  State<PendingRunCard> createState() => _PendingRunCardState();
+}
+
+class _PendingRunCardState extends State<PendingRunCard> {
+  @override
+  void initState() {
+    super.initState();
+    RunSessionStore.live(widget.logic).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _resume(PendingRun p) async {
+    if (p.kind == kGuerillaKind) {
+      await showGuerillaScreen(context, widget.logic, resume: p);
+    } else {
+      await showOffensiveScreen(context, widget.logic, resume: p);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _close(PendingRun p) async {
+    await RunSessionStore.closeAsIs(widget.logic, p);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = RunSessionStore.current;
+    if (p == null || !p.isLive(DateTime.now(), widget.logic.livedYmdNow)) return const SizedBox.shrink();
+    final guerilla = p.kind == kGuerillaKind;
+    final accent = guerilla ? kGuerillaAccent : kOffensiveAccent;
+    final cs = Theme.of(context).colorScheme;
+    final at = '${p.lastActiveAt.hour.toString().padLeft(2, '0')}:${p.lastActiveAt.minute.toString().padLeft(2, '0')}';
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: .10),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: .5)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(guerilla ? Icons.bolt : Icons.north_east, size: 18, color: cs.brightness == Brightness.dark ? accent : cs.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(pendingRunLabel(p, name: guerilla ? 'Guérilla' : 'Offensive').toUpperCase(),
+                style: TextStyle(fontSize: 11, letterSpacing: .8, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .7))),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text('Quittée à $at. Elle reprend au coup suivant.', style: TextStyle(fontSize: 13.5, color: cs.onSurface.withValues(alpha: .75))),
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: FilledButton(
+              onPressed: () => _resume(p),
+              style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: const Color(0xFF141C0C), minimumSize: const Size.fromHeight(44)),
+              child: const Text('Reprendre', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => _close(p),
+              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+              child: const Text('Terminer ici'),
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+}

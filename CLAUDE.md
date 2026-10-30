@@ -882,6 +882,15 @@ ne tourne ; jamais un besoin de base ni une activité en pause). Stockage = `Cha
 (`chain_runs`), jamais compté pour Enchaîneur ni Plein jour (`chainRunCounts`, `fullDay`). Badge **Guérilla** (`guerilla`, Discipline,
 symbole `bolt`, paliers 1 / 5 / 15) : une guérilla compte dès 3 coups faits (`guerillaCounts`). ⓘ `kRuleGuerilla`.
 
+**Reprenable** (2026-10-30, retour user : quitter l'app annulait tout, et un chrono lancé avant restait allumé) : la session est écrite
+sur l'appareil après chaque coup (`PendingRun`, logique pure `utils/run_session.dart` ; `RunSessionStore`, `lib/run_session_store.dart`,
+SharedPreferences `run_pending`, une seule à la fois, Guérilla ou Offensive). Reprenable tant que la journée vécue est la même et
+l'inactivité < 45 min (`isLive`) : carte « GUÉRILLA EN COURS · n COUPS » en tête d'Aujourd'hui (`PendingRunCard`, sous `RechargeCard` :
+Reprendre · Terminer ici) et carte de la feuille du mode « Reprendre la guérilla · n coups » ; la reprise repart au coup suivant
+(coups faits / passés restaurés, chrono du coup interrompu arrêté puis relancé). Expirée = close telle quelle (`expiredRunOf` →
+`ChainRun`, ses coups comptent). Seul le bilan (« Terminer », ou quitter le bilan) clôt la session. **Chrono** : un chrono déjà
+lancé à la main s'arrête au lancement de la guérilla / de l'offensive (annoncé sur l'écran de départ), sans la feuille « c'était pour quoi ».
+
 ## Offensive (2026-10-30, maquette validée « Offensive »)
 
 L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête

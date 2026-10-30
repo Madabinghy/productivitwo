@@ -15,6 +15,10 @@ import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show BadgeView;
 import 'package:productivitwo_v1/widgets/elan_rows.dart' show elanColor;
+import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
+import 'package:productivitwo_v1/utils/run_session.dart' show PendingRun;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/now_card.dart' show NowPalette;
@@ -60,6 +64,9 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     super.initState();
     widget.logic.addListener(_onLogic);
     _loadSchedules();
+    RunSessionStore.live(widget.logic).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -230,15 +237,24 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
   }
 
   /// Offensive : en forme, à fond — des coups de 10 / 15 min sur un front.
-  Widget _offensiveCard(ColorScheme cs) => _launchCard(
-        cs,
-        accent: kOffensiveAccent,
-        lightAccent: const Color(0xFFB4532A),
-        icon: Icons.north_east,
-        title: 'Offensive · en forme, à fond',
-        sub: 'Des coups de 10 ou 15 min sur un projet, l’un après l’autre.',
-        onTap: () => showOffensiveScreen(context, widget.logic),
-      );
+  Widget _offensiveCard(ColorScheme cs) {
+    final p = _pending(kOffensiveKind);
+    return _launchCard(
+      cs,
+      accent: kOffensiveAccent,
+      lightAccent: const Color(0xFFB4532A),
+      icon: Icons.north_east,
+      title: p != null ? 'Reprendre l’offensive · ${p.done} coup${p.done > 1 ? 's' : ''}' : 'Offensive · en forme, à fond',
+      sub: p != null ? 'Quittée en route : elle reprend au coup suivant.' : 'Des coups de 10 ou 15 min sur un projet, l’un après l’autre.',
+      onTap: () => showOffensiveScreen(context, widget.logic, resume: p).then((_) => mounted ? setState(() {}) : null),
+    );
+  }
+
+  /// La session en attente de ce mode, si elle est reprenable.
+  PendingRun? _pending(String kind) {
+    final p = RunSessionStore.current;
+    return p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedYmdNow) ? p : null;
+  }
 
   Widget _launchCard(ColorScheme cs,
       {required Color accent, required Color lightAccent, required IconData icon, required String title, required String sub, required VoidCallback onTap}) {
@@ -268,15 +284,18 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
   }
 
   /// Guérilla : pas bien, mais debout — des coups de 5 min, l'app choisit.
-  Widget _guerillaCard(ColorScheme cs) => _launchCard(
-        cs,
-        accent: kGuerillaAccent,
-        lightAccent: const Color(0xFF5E6B2A),
-        icon: Icons.bolt,
-        title: 'Guérilla · la flemme ou moi',
-        sub: 'Pas bien, mais debout : des coups de 5 min, sans réfléchir.',
-        onTap: () => showGuerillaScreen(context, widget.logic),
-      );
+  Widget _guerillaCard(ColorScheme cs) {
+    final p = _pending(kGuerillaKind);
+    return _launchCard(
+      cs,
+      accent: kGuerillaAccent,
+      lightAccent: const Color(0xFF5E6B2A),
+      icon: Icons.bolt,
+      title: p != null ? 'Reprendre la guérilla · ${p.done} coup${p.done > 1 ? 's' : ''}' : 'Guérilla · la flemme ou moi',
+      sub: p != null ? 'Quittée en route : elle reprend au coup suivant.' : 'Pas bien, mais debout : des coups de 5 min, sans réfléchir.',
+      onTap: () => showGuerillaScreen(context, widget.logic, resume: p).then((_) => mounted ? setState(() {}) : null),
+    );
+  }
 
   String _modeShort(DayMode m) => switch (m) { DayMode.low => 'petites choses', DayMode.normal => 'le programme', DayMode.high => 'deep work' };
 
