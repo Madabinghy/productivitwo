@@ -3561,7 +3561,7 @@ class FirestoreSync {
   /// passage automatique en « fait » ne recochera plus ce bloc), cocher le
   /// lève. L'automatisme appelle sans [manual].
   Future<void> updateBlockStatus(
-      String date, String blockId, String status, {bool manual = false, String? doneBy}) async {
+      String date, String blockId, String status, {bool manual = false, String? doneBy, DateTime? doneAt}) async {
     if (uid == null) return;
     final ref = _db.doc('users/$uid/daily_schedules/$date');
     final snap = await ref.get();
@@ -3574,7 +3574,7 @@ class FirestoreSync {
     for (final b in blocks) {
       if (b['id'] == blockId) {
         b['status'] = status;
-        if (status == 'done') b['doneAt'] = DateTime.now().toIso8601String();
+        if (status == 'done') b['doneAt'] = (doneAt ?? DateTime.now()).toIso8601String();
         if (manual && status == 'pending') b['noAutoWin'] = true;
         if (manual && status == 'done') b['noAutoWin'] = false;
         if (manual) b.remove('doneBy');

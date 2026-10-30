@@ -76,7 +76,7 @@ const kRuleWatch = GameRule('Montre suisse', [
 ]);
 
 const kRuleModes = GameRule('Les modes', [
-  RuleCard('🌙', 'Flemme', 'Petits pas : « 10 min, malgré tout ». Ce qui est fait malgré la flemme est compté à part.'),
+  RuleCard('🌙', 'Flemme', 'Petits pas : « 10 min, malgré tout ». Démarrer et tenir 10 min, cocher une action, finir un bloc ou une routine : chaque geste est une victoire sur la flemme.'),
   RuleCard('☀️', 'Normal', 'Le programme tel quel. Le mode repart en Normal chaque matin.'),
   RuleCard('⚡', 'En forme', 'Les gros morceaux d’abord, deep work proposé.'),
   RuleCard('📈', 'Ton élan', 'Chaque changement de mode est noté : c’est ce qui trace ton élan dans le temps.'),

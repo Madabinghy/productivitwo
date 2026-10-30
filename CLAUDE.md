@@ -853,6 +853,22 @@ une fenêtre de recharge ne compte ni dans l'élan moyen, ni dans les créneaux,
 de recharge en bleu nuit. **Sieste** : un bloc de repos fait (`isRestBlock` : sommeil ou « Sieste ») n'est jamais une victoire
 sur la flemme (`winsIn`, app et serveur). Jamais stocké.
 
+## Malgré tout (2026-10-30, maquette validée « Malgré tout »)
+
+En Flemme, c'est DÉMARRER qui compte. Une victoire sur la flemme (`flemmeWinsIn` → `FlemmeWin {at, what, how}`, `utils/elan_logic.dart` ;
+`winsIn` = ses instants) = dans une fenêtre d'élan bas : un **chrono lancé dans la fenêtre et tenu `kFlemmeChronoMin` (10) min** (« 10 min,
+malgré tout » comme « Tout le bloc », chrono en cours compris), une **action cochée** (`doneActionsOf(projects, activities)` : projets et
+actions propres), un **bloc fait** (sauf si un chrono compté porte déjà sur son activité : une seule victoire), une **routine atteinte**.
+Jamais un besoin de base (`isBasicNeedName` / `isBasicNeedBlock`, `utils/recharge.dart` : repos + Manger · Repas · Déjeuner · Dîner ·
+Petit-déjeuner · Goûter ; **Cuisiner compte**, décision user). Branché : badges (`disciplineStats(sessions:, doneActions:)`), faits du jour
+(`TodayFacts.flemmeWins`, `disciplineWinsToday`), feuille du mode (`buildElanDays` / `todayElanSlots`). **Écrans** : carte d'un bloc du programme
+en Flemme (`DailyScheduleView.onLaunchTimed`) → bouton principal « 10 min, malgré tout », lien « Tout le bloc · n min » ; `ModePill` en Flemme =
+« Flemme | n victoires » (calcul au plus une fois par minute) ; SnackBar « Victoire sur la flemme · 10 min tenues sur … · n aujourd'hui » à la
+10ᵉ minute (`AppLogic.onFlemmeVictory`, `_checkFlemmeChrono` dans le tick minute, une fois par session) ; fiche du badge = la liste du jour
+(`badgeToday` notes « 17:30 · Rédiger · chrono tenu 25 min ») et la règle. **Règlement du soir** : un bloc coché `doneBy:"chrono"` prend
+`doneAt` = fin de son créneau (`updateBlockStatus(doneAt:)`), plus 5 h le lendemain. Serveur (`elan.ts`) : besoins de base exclus des blocs et
+routines ; chronos et actions comptés côté app seulement.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

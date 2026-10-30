@@ -1,5 +1,6 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/half_days.dart' show ActivityPace;
+import 'package:productivitwo_v1/utils/elan_logic.dart' show FlemmeWin;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show PendingChain, kChainCountedMin;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
@@ -35,6 +36,8 @@ class TodayFacts {
   final List<ObjectiveDay> objectiveDays;
   final List<StrategicObjective> objectives;
   final int disciplineWinsToday;
+  /// Les victoires sur la flemme du jour, en détail (quoi, comment, quand).
+  final List<FlemmeWin> flemmeWins;
   /// Activités-temps face à l'attendu de leur fenêtre, maintenant (Montre suisse).
   final List<ActivityPace> pace;
   /// Domaines en veille aujourd'hui (hors Montre suisse / Métronome).
@@ -49,6 +52,7 @@ class TodayFacts {
     this.objectiveDays = const [],
     this.objectives = const [],
     this.disciplineWinsToday = 0,
+    this.flemmeWins = const [],
     this.pace = const [],
     this.restingDomainIds = const {},
   });
@@ -440,10 +444,18 @@ BadgeToday _barometre(TodayFacts f) {
 BadgeToday _malgreTout(TodayFacts f) {
   final mean = f.elanMean;
   if (mean == null || mean > 2) {
-    return const BadgeToday(stake: TodayStake.none, chip: '', notes: ['Se gagne les jours de Flemme : une routine ou un bloc fait après avoir pointé un élan bas.']);
+    return const BadgeToday(stake: TodayStake.none, chip: '', notes: ['Se gagne en mode Flemme : un chrono tenu 10 min, une action cochée, un bloc fait ou une routine atteinte.']);
   }
   if (f.disciplineWinsToday > 0) {
-    return BadgeToday(stake: TodayStake.saved, chip: '${f.disciplineWinsToday} victoire${f.disciplineWinsToday > 1 ? 's' : ''} aujourd’hui');
+    String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return BadgeToday(
+      stake: TodayStake.saved,
+      chip: '${f.disciplineWinsToday} victoire${f.disciplineWinsToday > 1 ? 's' : ''} aujourd’hui',
+      notes: [
+        for (final w in f.flemmeWins) '${hm(w.at)} · ${w.what} · ${w.how}',
+        'Comptent en Flemme : un chrono tenu 10 min, une action cochée, un bloc fait, une routine atteinte. Pas les besoins de base (sommeil, sieste, repas).',
+      ],
+    );
   }
   final missing = _missingRoutines(f);
   return BadgeToday(

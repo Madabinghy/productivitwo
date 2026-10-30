@@ -30,6 +30,20 @@ bool isSleepName(String? s) {
 /// Un repos : sommeil de nuit ou sieste.
 bool isRestName(String? s) => isSleepName(s) || _norm(s).startsWith('sieste');
 
+/// Un besoin de base (2026-10-30, retour user) : repos ou repas (« Manger »,
+/// « Repas », « Déjeuner », « Dîner », « Petit-déjeuner », « Goûter »). Ne vaut
+/// jamais une victoire sur la flemme. « Cuisiner » n'en est pas un : c'est un effort.
+bool isBasicNeedName(String? s) {
+  if (isRestName(s)) return true;
+  final n = _norm(s);
+  return n.startsWith('manger') || n.startsWith('repas') || n.startsWith('dejeuner') || n.startsWith('diner') ||
+      n.startsWith('petit-dej') || n.startsWith('petit dej') || n.startsWith('gouter');
+}
+
+/// Un bloc de besoin de base (titre ou activité).
+bool isBasicNeedBlock(ScheduleBlock b, Map<String, Activity> activitiesById) =>
+    isBasicNeedName(b.title) || isBasicNeedName(activitiesById[b.activityId]?.name);
+
 /// Un bloc de repos (titre ou activité) : ne compte jamais comme une chose
 /// faite malgré la flemme.
 bool isRestBlock(ScheduleBlock b, Map<String, Activity> activitiesById) =>

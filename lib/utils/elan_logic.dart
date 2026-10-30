@@ -1,7 +1,7 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
-import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue, isRestBlock;
+import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue, isBasicNeedBlock, isBasicNeedName;
 
 /// Élan (lot 2 badges, 2026-10) : logique pure des pointages d'état.
 /// Trois créneaux d'élan par jour vécu (matin < 12 h, après-midi < 18 h,
@@ -126,36 +126,101 @@ List<ElanWindow> elanWindows(List<MoodMark> marks, String ymd, {int dayStartMin 
   ];
 }
 
-/// Ce qui a été fait dans une fenêtre : blocs terminés (hors supprimés) et
-/// routines quotidiennes dont la cible du jour est atteinte PAR un hit de la
-/// fenêtre. Retourne les instants des faits (un par bloc, un par routine).
-List<DateTime> winsIn(
+/// Une victoire sur la flemme (maquette « Malgré tout », 2026-10-30) : quoi,
+/// comment, quand. Dérivée, jamais stockée.
+class FlemmeWin {
+  final DateTime at;
+  final String what;
+  final String how;
+  const FlemmeWin(this.at, this.what, this.how);
+}
+
+/// Minutes de chrono, lancé dans la fenêtre, qui font une victoire : en Flemme,
+/// c'est démarrer qui compte (« 10 min, malgré tout » comme « Tout le bloc »).
+const kFlemmeChronoMin = 10;
+
+/// Une action faite (projet ou action propre d'une activité), pour les victoires.
+typedef DoneAction = ({DateTime at, String title});
+
+/// Les actions faites des projets et des activités (`doneAt` connu).
+List<DoneAction> doneActionsOf(Iterable<Project> projects, Iterable<Activity> activities) => [
+      for (final p in projects)
+        for (final t in p.tasks)
+          for (final a in t.actions)
+            if (a.done && a.doneAt != null) (at: a.doneAt!, title: a.title),
+      for (final act in activities)
+        for (final a in act.ownActions)
+          if (a.done && a.doneAt != null) (at: a.doneAt!, title: a.title),
+    ];
+
+/// Ce qui a été fait dans une fenêtre, en détail : un chrono lancé dans la
+/// fenêtre et tenu [kFlemmeChronoMin] min, une action cochée, un bloc fait (sauf
+/// si un chrono compté porte déjà sur son activité), une routine quotidienne
+/// atteinte par un hit de la fenêtre. Jamais un besoin de base (repos, repas).
+List<FlemmeWin> flemmeWinsIn(
   ElanWindow w, {
   required List<ScheduleBlock> blocks,
   required List<HabitHit> hits,
   required List<Activity> activities,
+  List<Session> sessions = const [],
+  List<DoneAction> doneActions = const [],
   int dayStartMin = kDefaultDayStartMin,
+  DateTime? now,
 }) {
-  final out = <DateTime>[];
+  final out = <FlemmeWin>[];
   if (w.mark.value == kRechargeValue) return out;
   final byId = {for (final a in activities) a.id: a};
+  final t0 = now ?? DateTime.now();
+  final chronoActs = <String>{};
+  for (final s in sessions) {
+    if (s.deleted || !w.contains(s.startAt)) continue;
+    final name = byId[s.activityId]?.name;
+    if (isBasicNeedName(name)) continue;
+    final mins = (s.endAt ?? t0).difference(s.startAt).inMinutes;
+    if (mins < kFlemmeChronoMin) continue;
+    chronoActs.add(s.activityId);
+    out.add(FlemmeWin(s.startAt.add(const Duration(minutes: kFlemmeChronoMin)), name ?? 'Chrono', 'chrono tenu $mins min'));
+  }
   for (final b in blocks) {
     final t = b.doneAt;
-    // Une sieste ou le sommeil ne sont pas des choses faites malgré la flemme.
-    if (b.status == 'done' && t != null && w.contains(t) && !isRestBlock(b, byId)) out.add(t);
+    if (b.status != 'done' || t == null || !w.contains(t)) continue;
+    if (isBasicNeedBlock(b, byId)) continue;
+    if (b.activityId != null && chronoActs.contains(b.activityId)) continue; // déjà compté par son chrono
+    out.add(FlemmeWin(t, b.title.isEmpty ? (byId[b.activityId]?.name ?? 'Bloc') : b.title, 'bloc fait'));
+  }
+  for (final a in doneActions) {
+    if (w.contains(a.at)) out.add(FlemmeWin(a.at, a.title, 'action cochée'));
   }
   final ymd = w.mark.ymd;
   for (final a in activities) {
     if (a.deleted || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
+    if (isBasicNeedName(a.name)) continue;
     final target = (a.habitTarget ?? 1) <= 0 ? 1 : (a.habitTarget ?? 1);
     final dayHits = hits.where((h) => h.habitId == a.id && ymdOf(livedDate(h.ts, dayStartMin)) == ymd).toList()
       ..sort((x, y) => x.ts.compareTo(y.ts));
     if (dayHits.length < target) continue;
     final reachedAt = dayHits[target - 1].ts;
-    if (w.contains(reachedAt)) out.add(reachedAt);
+    if (w.contains(reachedAt)) out.add(FlemmeWin(reachedAt, a.name, 'routine atteinte'));
   }
-  return out;
+  return out..sort((x, y) => x.at.compareTo(y.at));
 }
+
+/// Les instants de [flemmeWinsIn].
+List<DateTime> winsIn(
+  ElanWindow w, {
+  required List<ScheduleBlock> blocks,
+  required List<HabitHit> hits,
+  required List<Activity> activities,
+  List<Session> sessions = const [],
+  List<DoneAction> doneActions = const [],
+  int dayStartMin = kDefaultDayStartMin,
+  DateTime? now,
+}) =>
+    [
+      for (final x in flemmeWinsIn(w,
+          blocks: blocks, hits: hits, activities: activities, sessions: sessions, doneActions: doneActions, dayStartMin: dayStartMin, now: now))
+        x.at
+    ];
 
 class ElanMarkView {
   final String bucket;
@@ -196,6 +261,8 @@ List<ElanDay> buildElanDays({
   required DateTime now,
   int days = 7,
   int dayStartMin = kDefaultDayStartMin,
+  List<Session> sessions = const [],
+  List<DoneAction> doneActions = const [],
 }) {
   final today = livedDate(now, dayStartMin);
   final out = <ElanDay>[];
@@ -205,7 +272,8 @@ List<ElanDay> buildElanDays({
     final views = <ElanMarkView>[];
     for (final w in elanWindows(marks, ymd, dayStartMin: dayStartMin)) {
       if (w.mark.value == kRechargeValue) continue; // la nuit ne pèse pas
-      final wins = winsIn(w, blocks: schedulesByYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin);
+      final wins = winsIn(w,
+          blocks: schedulesByYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, sessions: sessions, doneActions: doneActions, dayStartMin: dayStartMin, now: now);
       final end = w.end.isAfter(now) ? now : w.end;
       final minutes = end.difference(w.mark.at).inMinutes;
       views.add(ElanMarkView(w.mark.moment ?? elanBucket(w.mark.at.hour * 60 + w.mark.at.minute), w.mark.value, wins.isNotEmpty, minutes: minutes < 0 ? 0 : minutes));
@@ -260,6 +328,8 @@ DisciplineStats disciplineStats({
   required List<HabitHit> hits,
   required List<Activity> activities,
   int dayStartMin = kDefaultDayStartMin,
+  List<Session> sessions = const [],
+  List<DoneAction> doneActions = const [],
 }) {
   final byYmd = {for (final s in schedules) s.date: s};
   marks = dedupeMoodMarks(marks);
@@ -286,7 +356,8 @@ DisciplineStats disciplineStats({
     mean[ymd] = minutes > 0 ? weighted / minutes : real.fold(0, (s, w) => s + w.mark.value) / real.length;
     for (final w in ws) {
       if (!w.low) continue;
-      wins.addAll(winsIn(w, blocks: byYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin));
+      wins.addAll(winsIn(w,
+          blocks: byYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, sessions: sessions, doneActions: doneActions, dayStartMin: dayStartMin, now: now));
     }
   }
   wins.sort();

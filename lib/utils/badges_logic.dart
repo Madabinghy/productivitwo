@@ -791,7 +791,8 @@ BadgeDeck computeBadges({
   }
 
   // Discipline : ce que je fais quand l'élan est bas.
-  final disc = disciplineStats(marks: moodMarks, schedules: schedules, hits: habitHits, activities: activities, dayStartMin: dayStartMin);
+  final disc = disciplineStats(
+      marks: moodMarks, schedules: schedules, hits: habitHits, activities: activities, dayStartMin: dayStartMin, sessions: sessions, doneActions: doneActionsOf(projects, activities));
   out.add(BadgeState(
     def: const BadgeDef(id: 'malgre-tout', family: BadgeFamily.discipline, name: 'Malgré tout', symbol: 'anvil', tiers: kDisciplineTiers, unit: 'victoires', unitLong: 'victoires sur la flemme'),
     level: _levelOf(kDisciplineTiers, disc.wins.length),

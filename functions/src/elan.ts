@@ -158,6 +158,12 @@ export function isSleepName(s: string | null | undefined): boolean {
 export function isRestName(s: string | null | undefined): boolean {
   return isSleepName(s) || normName(s).startsWith("sieste");
 }
+/** Besoin de base (repos ou repas) : jamais une victoire sur la flemme. « Cuisiner » compte. */
+export function isBasicNeedName(s: string | null | undefined): boolean {
+  if (isRestName(s)) return true;
+  const n = normName(s);
+  return ["manger", "repas", "dejeuner", "diner", "petit-dej", "petit dej", "gouter"].some((p) => n.startsWith(p));
+}
 
 function blockMin(b: BlockLite): number | null {
   const p = (b.startTime ?? "").split(":");
@@ -225,13 +231,13 @@ export function winsIn(
   const names = new Map(activities.map((a) => [a.id, a.name ?? ""]));
   for (const b of blocks) {
     if (b.status !== "done" || !b.doneAt) continue;
-    // Une sieste ou le sommeil ne sont pas des choses faites malgré la flemme.
-    if (isRestName(b.title) || isRestName(names.get(b.activityId ?? ""))) continue;
+    // Un besoin de base (sommeil, sieste, repas) n'est pas une chose faite malgré la flemme.
+    if (isBasicNeedName(b.title) || isBasicNeedName(names.get(b.activityId ?? ""))) continue;
     const t = Date.parse(b.doneAt);
     if (t >= w.startMs && t < w.endMs) n++;
   }
   for (const a of activities) {
-    if (!isDailyRoutine(a)) continue;
+    if (!isDailyRoutine(a) || isBasicNeedName(a.name)) continue;
     const target = Math.max(1, a.habitTarget ?? 1);
     const dayHits = hits
       .filter((h) => h.habitId === a.id && livedParts(h.ts, offsetMin, dayStartMin).ymd === w.mark.ymd)

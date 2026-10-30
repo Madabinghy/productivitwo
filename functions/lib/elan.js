@@ -21,6 +21,7 @@ exports.dedupeMoodMarks = dedupeMoodMarks;
 exports.elanWindows = elanWindows;
 exports.isSleepName = isSleepName;
 exports.isRestName = isRestName;
+exports.isBasicNeedName = isBasicNeedName;
 exports.rechargeStartMs = rechargeStartMs;
 exports.winsIn = winsIn;
 exports.elanSummary = elanSummary;
@@ -137,6 +138,13 @@ function isSleepName(s) {
 function isRestName(s) {
     return isSleepName(s) || normName(s).startsWith("sieste");
 }
+/** Besoin de base (repos ou repas) : jamais une victoire sur la flemme. « Cuisiner » compte. */
+function isBasicNeedName(s) {
+    if (isRestName(s))
+        return true;
+    const n = normName(s);
+    return ["manger", "repas", "dejeuner", "diner", "petit-dej", "petit dej", "gouter"].some((p) => n.startsWith(p));
+}
 function blockMin(b) {
     var _a;
     const p = ((_a = b.startTime) !== null && _a !== void 0 ? _a : "").split(":");
@@ -190,15 +198,15 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
     for (const b of blocks) {
         if (b.status !== "done" || !b.doneAt)
             continue;
-        // Une sieste ou le sommeil ne sont pas des choses faites malgré la flemme.
-        if (isRestName(b.title) || isRestName(names.get((_a = b.activityId) !== null && _a !== void 0 ? _a : "")))
+        // Un besoin de base (sommeil, sieste, repas) n'est pas une chose faite malgré la flemme.
+        if (isBasicNeedName(b.title) || isBasicNeedName(names.get((_a = b.activityId) !== null && _a !== void 0 ? _a : "")))
             continue;
         const t = Date.parse(b.doneAt);
         if (t >= w.startMs && t < w.endMs)
             n++;
     }
     for (const a of activities) {
-        if (!isDailyRoutine(a))
+        if (!isDailyRoutine(a) || isBasicNeedName(a.name))
             continue;
         const target = Math.max(1, (_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1);
         const dayHits = hits

@@ -106,11 +106,16 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     // La nuit (recharge) ferme le dernier pointage du jour : elle ne pèse pas.
     final marks = logic.elanMarksWithRecharge(byYmd);
     final rechargeSince = logic.rechargeSinceNow;
-    final days60 = buildElanDays(marks: marks, schedulesByYmd: byYmd, hits: st.habitHits, activities: st.activities, now: now, days: 60, dayStartMin: logic.dayStartMin);
+    final doneActions = doneActionsOf(logic.currentProjects, st.activities);
+    final days60 = buildElanDays(
+        marks: marks, schedulesByYmd: byYmd, hits: st.habitHits, activities: st.activities, now: now, days: 60, dayStartMin: logic.dayStartMin,
+        sessions: st.sessions, doneActions: doneActions);
     final week = days60.sublist(days60.length - 7);
     final wm = elanMetrics(week);
     final month = elanMonth(days60);
-    final slots = todayElanSlots(marks: marks, schedule: byYmd[logic.livedTodayYmd], hits: st.habitHits, activities: st.activities, now: now, dayStartMin: logic.dayStartMin);
+    final slots = todayElanSlots(
+        marks: marks, schedule: byYmd[logic.livedTodayYmd], hits: st.habitHits, activities: st.activities, now: now, dayStartMin: logic.dayStartMin,
+        sessions: st.sessions, doneActions: doneActions);
     final pointedToday = slots.where((s) => s.pointed).length;
     final text3 = cs.onSurface.withValues(alpha: .55);
     final hardest = hardestBucket(week);
@@ -597,6 +602,7 @@ class ModePill extends StatelessWidget {
     final accent = modeAccentOverride(m, dark: dark);
     final fg = accent ?? pal.text3;
     final trail = todayElanValues(logic.state.moodMarks, DateTime.now(), logic.dayStartMin);
+    final wins = m == DayMode.low ? _flemmeWinsToday(badges) : 0;
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: () => showModeSheet(context, logic, badges: badges),
@@ -611,12 +617,36 @@ class ModePill extends StatelessWidget {
           const SizedBox(width: 4),
           Text(kModeLabels[m]!, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: fg)),
           Container(width: 1, height: 10, margin: const EdgeInsets.symmetric(horizontal: 6), color: fg.withValues(alpha: .35)),
-          ElanTrail(values: trail.values, current: trail.current, empty: fg.withValues(alpha: .22), ring: fg),
+          if (wins > 0)
+            Text('$wins victoire${wins > 1 ? 's' : ''}',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: fg, fontFeatures: const [FontFeature.tabularFigures()]))
+          else
+            ElanTrail(values: trail.values, current: trail.current, empty: fg.withValues(alpha: .22), ring: fg),
         ]),
       ),
     );
   }
 }
+
+/// Victoires sur la flemme du jour (pilule du mode), recalculées au plus une
+/// fois par minute : la pilule se redessine souvent.
+int _flemmeWinsToday(BadgeCenter? badges) {
+  if (badges == null) return 0;
+  final now = DateTime.now();
+  final key = now.millisecondsSinceEpoch ~/ 60000;
+  if (key != _winsCacheKey) {
+    _winsCacheKey = key;
+    try {
+      _winsCache = badges.todayFacts().disciplineWinsToday;
+    } catch (_) {
+      _winsCache = 0;
+    }
+  }
+  return _winsCache;
+}
+
+int _winsCacheKey = -1;
+int _winsCache = 0;
 
 /// Chip « malgré tout » (fait en mode Flemme) ou « à fond » (En forme) pour une
 /// chose validée à [doneAt]. Dérivé, jamais stocké. Null en Normal.
