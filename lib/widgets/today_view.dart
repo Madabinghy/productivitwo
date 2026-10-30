@@ -50,6 +50,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
+import 'package:productivitwo_v1/widgets/mode_sheet.dart' show ModePill;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
@@ -875,6 +876,11 @@ class TodayViewState extends State<TodayView> {
           Text(sub,
               style: TextStyle(
                   fontSize: 13, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+          // Le mode du jour (2026-10-30, venu de la barre du haut qui accueille le sommeil).
+          if (!_showTomorrow) ...[
+            const SizedBox(height: 8),
+            ModePill(logic: widget.logic, badges: widget.badges),
+          ],
         ]),
       ),
       // Lanceurs Guérilla et Offensive (2026-10-30, à la place de Badges et ORION : les badges restent sur la
