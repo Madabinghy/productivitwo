@@ -43,6 +43,8 @@ import 'package:productivitwo_v1/widgets/ring_painter.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show supersededMoodMarks;
+import 'package:productivitwo_v1/widgets/sleep_pill.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show isSleepName;
 import 'package:productivitwo_v1/widgets/mode_sheet.dart';
 import 'package:productivitwo_v1/widgets/domain_page.dart';
 import 'package:productivitwo_v1/widgets/activity_fiche_sheet.dart';
@@ -4633,7 +4635,15 @@ class _AppRootState extends State<AppRoot>
                 alignment: Alignment.centerLeft,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 6),
-                  child: ModePill(logic: logic, badges: _badges),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    ModePill(logic: logic, badges: _badges),
+                    // Sommeil de la dernière nuit (retour user 2026-10-30), dans le
+                    // même FittedBox : il rétrécit avec le titre, jamais de débordement.
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: SleepPill(logic: logic, onTap: _openSleepActivity),
+                    ),
+                  ]),
                 ),
               ),
             ),
@@ -6630,6 +6640,12 @@ class _AppRootState extends State<AppRoot>
 
     final under = base.where((a) => !reached(a)).toList();
     return under.isEmpty ? null : under.first;
+  }
+
+  /// Pastille sommeil : la fiche de l'activité de sommeil (nuits sur 14 jours, tendance).
+  void _openSleepActivity() {
+    final a = logic.state.activeActivities.where((x) => x.type == 'time' && isSleepName(x.name)).firstOrNull;
+    if (a != null) _openActivitySheet(a);
   }
 
   /// Fiche d'une activité-temps (refonte 2026-10, `widgets/activity_fiche_sheet.dart`).
