@@ -2152,9 +2152,39 @@ class _AppRootState extends State<AppRoot>
           body: morningDigest(blocks: blocks, routines: daily.length, focused: focused, series: series),
         );
       }
+      // Rappels des blocs : aujourd'hui et demain (jours calendaires), hors
+      // miroirs d'agenda (l'agenda prévient déjà) et pauses.
+      final now = DateTime.now();
+      final alerts = <({String ymd, String id, String title, DateTime start, int durationMin})>[];
+      for (final d in [DateTime(now.year, now.month, now.day), DateTime(now.year, now.month, now.day + 1)]) {
+        final ymd = ymdOf(d);
+        final sched = await _sync.fetchDailySchedule(ymd);
+        for (final b in sched?.blocks ?? const <ScheduleBlock>[]) {
+          if (b.status != 'pending' || b.gcalEventId != null || b.category == 'break' || b.kind != 'normal' && b.kind != 'deepwork') continue;
+          final hm = b.startTime.split(':');
+          if (hm.length < 2) continue;
+          final h = int.tryParse(hm[0]), m = int.tryParse(hm[1]);
+          if (h == null || m == null) continue;
+          alerts.add((ymd: ymd, id: b.id, title: b.title.isEmpty ? 'Bloc' : b.title, start: DateTime(d.year, d.month, d.day, h, m), durationMin: b.durationMin));
+        }
+      }
+      await NotificationService.scheduleBlockAlerts(alerts);
     } catch (e) {
       devLog.error('refreshDayNotifs', tag: 'NOTIF', error: e);
     }
+  }
+
+  /// Tap sur le rappel d'un bloc : relit le programme et ouvre la source du
+  /// bloc (page focus d'un bloc d'activité, écran bloc d'une tâche, séance…).
+  Future<void> _openBlockFromNotif(String payload) async {
+    final rest = payload.substring('block:'.length);
+    final sep = rest.indexOf('|');
+    if (sep < 0) return;
+    final sched = await _sync.fetchDailySchedule(rest.substring(0, sep));
+    final b = sched?.blocks.firstWhereOrNull((x) => x.id == rest.substring(sep + 1));
+    if (!mounted) return;
+    setState(() => _tab = _goNowTab());
+    if (b != null) _openBlockSource(b);
   }
 
   void _onNotificationTap(int id, String? payload) {
@@ -2184,6 +2214,8 @@ class _AppRootState extends State<AppRoot>
       showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
     } else if (p == NotificationService.kPayloadProgram) {
       onToday((t) => t.openProgramSheet());
+    } else if (p.startsWith('block:')) {
+      _openBlockFromNotif(p);
     } else if (p == NotificationService.kPayloadPerfect) {
       onToday((t) => t.openPerfectDaySheet());
     } else {
@@ -2659,16 +2691,6 @@ class _AppRootState extends State<AppRoot>
       await NotificationService.cancelById(4);
       if (st.midDayNotifEnabled) await NotificationService.scheduleMidDayScore(
         hour: st.midDayNotifHour, minute: st.midDayNotifMinute);
-      final blocksWithTime = st.blocks
-          .where((b) => b.startHour != null)
-          .map((b) => (
-                id: b.id,
-                label: '${b.emoji != null ? "${b.emoji} " : ""}${b.name}',
-                hour: b.startHour!,
-                minute: b.startMinute ?? 0,
-              ))
-          .toList();
-      await NotificationService.scheduleBlockReminders(blocks: blocksWithTime);
 
       // FCM — enregistre le token et écoute les notifications ORION
       final uid = _sync.uid;
