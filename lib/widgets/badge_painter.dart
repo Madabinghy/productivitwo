@@ -421,6 +421,10 @@ class BadgePainter extends CustomPainter {
         c.drawArc(Rect.fromCircle(center: const Offset(50, 42), radius: 14), 0, 1.5 * math.pi, false, stroke(6));
         c.drawPath(_poly([50, 19, 61, 28, 50, 37]), fill);
         c.drawPath(_poly([50, 19, 61, 28, 50, 37]), stroke(2));
+      case 'arrow':
+        // Offensive : une flèche qui monte.
+        line(34, 58, 64, 28, 6);
+        polyline([48, 28, 64, 28, 64, 44], 6);
       case 'bolt':
         // Guérilla : un éclair.
         c.drawPath(_poly([56, 18, 38, 46, 50, 46, 44, 68, 64, 38, 52, 38]), fill);

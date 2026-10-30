@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
 import 'package:productivitwo_v1/utils/guerilla.dart' show guerillaCounts, guerillaLift, isGuerillaRun, kGuerillaTiers;
+import 'package:productivitwo_v1/utils/offensive.dart' show isOffensiveRun, kOffensiveTiers, offensiveCounts;
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
@@ -946,6 +947,21 @@ BadgeDeck computeBadges({
     ],
   ));
 
+  // Offensive (2026-10-30) : en forme, à fond — une offensive compte dès 3 coups gagnés.
+  final offensives = chainRuns.where(offensiveCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'offensive', family: BadgeFamily.discipline, name: 'Offensive', symbol: 'arrow', tiers: kOffensiveTiers, unit: 'offensives', unitLong: 'offensives de 3 coups et plus'),
+    level: _levelOf(kOffensiveTiers, offensives.length),
+    value: offensives.length,
+    tierDates: [for (final t in kOffensiveTiers) t <= offensives.length ? _day(offensives[t - 1].endedAt) : null],
+    facts: [
+      ('Offensives de 3 coups et plus', '${offensives.length}'),
+      ('Coups gagnés', '${offensives.fold(0, (s, r) => s + r.doneCount)}'),
+      ('Actions finies en offensive', '${offensives.fold(0, (s, r) => s + r.total)}'),
+      if (offensives.isNotEmpty) ('La dernière', _fmtDate(offensives.last.endedAt)),
+    ],
+  ));
+
   // Actions accomplies : une ligne à paliers.
   final doneAt = <DateTime>[];
   var doneCount = 0;
@@ -1116,6 +1132,12 @@ BadgeDeck computeBadges({
         final full = id == 'plein-jour';
         final cells = [for (final r in last) (full ? r.fullDay : chainRunCounts(r)) ? TrackCell.hit : TrackCell.miss];
         return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} session${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} ${full ? 'journée(s) entière(s)' : 'comptée(s)'}', hitLabel: full ? 'journée entière' : 'comptée (3 choses et plus)', missLabel: full ? 'partielle' : 'moins de 3 choses');
+      case 'offensive':
+        final runs = chainRuns.where(isOffensiveRun).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
+        final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
+        if (last.isEmpty) return null;
+        final cells = [for (final r in last) offensiveCounts(r) ? TrackCell.hit : TrackCell.miss];
+        return BadgeTrack(cells: cells, caption: '${last.length} dernière${last.length > 1 ? 's' : ''} offensive${last.length > 1 ? 's' : ''} · ${cells.where((c) => c == TrackCell.hit).length} comptée(s)', hitLabel: 'comptée (3 coups et plus)', missLabel: 'moins de 3 coups');
       case 'guerilla':
         final runs = chainRuns.where(isGuerillaRun).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
         final last = runs.length > 20 ? runs.sublist(runs.length - 20) : runs;
