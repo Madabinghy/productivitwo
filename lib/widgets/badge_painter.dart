@@ -389,6 +389,12 @@ class BadgePainter extends CustomPainter {
         c.drawCircle(const Offset(50, 44), 4.5, fill);
         line(38, 56, 41, 53, 4);
         line(62, 56, 59, 53, 4);
+      case 'season':
+        // Saisons : six arcs, un par semaine, autour d'un point.
+        for (var i = 0; i < 6; i++) {
+          c.drawArc(Rect.fromCircle(center: const Offset(50, 42), radius: 18), -math.pi / 2 + i * math.pi / 3 + .18, math.pi / 3 - .36, false, stroke(5));
+        }
+        c.drawCircle(const Offset(50, 42), 6, fill);
       case 'week':
         // Semaines tenues : une page de calendrier, une coche.
         c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(31, 26, 38, 34), const Radius.circular(5)), stroke(5));

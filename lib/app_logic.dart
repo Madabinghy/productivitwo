@@ -16,6 +16,7 @@ import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
+import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
@@ -1867,6 +1868,43 @@ class AppLogic implements HuntStore {
     badgeHunts = list;
     onChange();
     await (sync ?? FirestoreSync()).setBadgeHunts(list.map((x) => x.toJson()).toList());
+  }
+
+  // ── Saisons (lot 3, 2026-10-30, `utils/seasons.dart`) ──────────────────────
+  /// `data/meta.seasons`, alimentées par le flux meta.
+  List<Season> seasons = const [];
+
+  Season? get season => currentSeason(seasons, livedTodayYmd);
+
+  Future<void> _saveSeasons() async {
+    onChange();
+    await (sync ?? FirestoreSync()).setSeasons(seasons.map((s) => s.toJson()).toList());
+  }
+
+  /// Ouvre une saison : ses chasses REMPLACENT les chasses en cours (trois au
+  /// plus), date visée = fin de saison.
+  Future<void> openSeason(List<SeasonHunt> hunts) async {
+    final today = livedTodayYmd;
+    seasons = withSeasonOpened(seasons, hunts, today);
+    final s = seasons.last;
+    badgeHunts = [for (final h in s.hunts) BadgeHunt(badgeId: h.badgeId, tier: h.tier, since: today, targetDate: s.end)];
+    await (sync ?? FirestoreSync()).setBadgeHunts(badgeHunts.map((x) => x.toJson()).toList());
+    await _saveSeasons();
+  }
+
+  /// Lâche une chasse de la saison en cours (comptée non réussie).
+  Future<void> dropSeasonHunt(String badgeId) async {
+    final s = season;
+    if (s == null) return;
+    seasons = withSeasonReplaced(seasons, s.copyWith(dropped: {...s.dropped, badgeId}));
+    await stopHunts([badgeId]);
+    await _saveSeasons();
+  }
+
+  Future<void> markSeasonBilanSeen(Season s) async {
+    if (s.bilanSeen) return;
+    seasons = withSeasonReplaced(seasons, s.copyWith(bilanSeen: true));
+    await _saveSeasons();
   }
 
   Future<void> stopHunts(Iterable<String> badgeIds) async {

@@ -820,6 +820,7 @@ class TodayViewState extends State<TodayView> {
         emberSpends: _huntStore.emberSpends,
         restPeriods: _huntStore.restPeriods,
         restDomains: _huntStore.restDomains,
+        seasons: _huntStore.seasons,
       );
 
   String _stakesKey = '';

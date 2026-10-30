@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
+import 'package:productivitwo_v1/widgets/season_view.dart';
 import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
 /// Onglet OBJECTIFS (remplace l'Accueil) — la pyramide des 3 horizons :
@@ -437,6 +438,8 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
               onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(
                   builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: widget.sync, center: bc, showSamples: false))),
             ),
+          // Saisons (lot 3) : saison en cours, bilan à voir, ou « Ouvrir une saison ».
+          if (widget.badges case final bc?) SeasonCard(logic: widget.logic, center: bc),
           // (« Le meilleur à faire » a déménagé dans Maintenant — actionnable
           // là où on agit : lib/widgets/best_to_do_card.dart.)
           // Objectifs stratégiques : progression hebdo mesurée — l'étage où

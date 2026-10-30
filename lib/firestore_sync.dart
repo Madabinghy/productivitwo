@@ -3102,6 +3102,11 @@ class FirestoreSync {
 
   /// Veille d'un domaine (modes et coups, lot 0) : `data/meta.restDomains
   /// {domainId: "YYYY-MM-DD"}` ; `untilYmd` null = lever la veille.
+  /// Saisons (`data/meta.seasons`, `utils/seasons.dart`).
+  Future<void> setSeasons(List<Map<String, dynamic>> seasons) async {
+    await _meta().set({'seasons': seasons}, SetOptions(merge: true));
+  }
+
   /// Historique des veilles (`data/meta.restPeriods`, `utils/rest_periods.dart`).
   Future<void> setRestPeriods(List<Map<String, dynamic>> periods) async {
     await _meta().set({'restPeriods': periods}, SetOptions(merge: true));

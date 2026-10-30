@@ -79,6 +79,7 @@ class BadgeCenter extends ChangeNotifier {
       emberSpends: logic.emberSpends,
       restPeriods: logic.restPeriods,
       restDomains: logic.restDomains,
+      seasons: logic.seasons,
     );
     deck = d;
     logic.embers = d.embers;
