@@ -8,6 +8,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, focusLabel;
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
+import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, showMomentActions;
 import 'package:productivitwo_v1/widgets/pull_down_to_close.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
@@ -36,6 +37,9 @@ Future<void> showActionFocusScreen(
   /// Activité du chrono (liée à l'action, sinon au projet, sinon la porteuse).
   Activity? chronoActivity,
   FirestoreSync? sync,
+  /// Gestes de l'appelant (viser un jour, caser, détail, projet…), derrière
+  /// le ⋯ de la barre.
+  List<MomentAction> moreActions = const [],
 }) {
   return Navigator.of(context).push(MaterialPageRoute<void>(
     fullscreenDialog: true,
@@ -47,6 +51,7 @@ Future<void> showActionFocusScreen(
       ownerActivity: ownerActivity,
       chronoActivity: chronoActivity,
       sync: sync ?? FirestoreSync(),
+      moreActions: moreActions,
     )),
   ));
 }
@@ -107,7 +112,9 @@ class _FocusScreen extends StatefulWidget {
   final int index;
   /// Mode bloc, à l'entrée : la file est montrée avant de choisir.
   final bool picking;
+  final List<MomentAction> moreActions;
   const _FocusScreen({
+    this.moreActions = const [],
     required this.logic,
     required this.action,
     this.project,
@@ -382,6 +389,14 @@ class _FocusScreenState extends State<_FocusScreen> {
         actions: [
           if (!after && canChrono && _phase == _Phase.before)
             IconButton(tooltip: 'Lancer le chrono', icon: const Icon(Icons.timer_outlined), onPressed: () => _start(minutes: a.estimatedMin)),
+          if (widget.moreActions.isNotEmpty)
+            IconButton(
+              tooltip: 'Autres gestes',
+              icon: const Icon(Icons.more_horiz_rounded),
+              onPressed: () => showMomentActions(context, title: a.title, actions: widget.moreActions).then((_) {
+                if (mounted) setState(() {});
+              }),
+            ),
         ],
       ),
       body: SafeArea(
