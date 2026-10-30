@@ -4,6 +4,7 @@ import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show flowTaskOf, isFolderProject, isUpcomingTask, kFlowTaskId;
 import 'package:productivitwo_v1/utils/default_estimate.dart';
+import 'package:productivitwo_v1/utils/project_moment.dart' show rankProjectMoments;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/widgets/task_fiche_sheet.dart' show stripLeadingEmoji;
 import 'package:productivitwo_v1/widgets/task_picker_sheet.dart';
@@ -26,22 +27,38 @@ class _Owner {
   }
 }
 
-/// « Ajouter une action visée » (feuille Visées aujourd'hui, 2026-10-30) :
-/// titre, puis action libre (sur une activité-temps) ou projet › tâche ;
-/// l'action est créée avec `focusDate` = aujourd'hui. Renvoie true si créée.
-Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic, required FirestoreSync sync}) async {
+/// « Ajouter une action visée » (feuille Visées aujourd'hui, puis le bouton
+/// « + » d'Aujourd'hui, 2026-10-30) : un titre, et « Pour » déjà rempli — le
+/// chrono qui tourne, sinon la dernière activité chronométrée — avec en raccourci
+/// les projets du moment ; « Autre activité » / « Autre projet » pour le reste.
+/// L'action est créée avec `focusDate` = aujourd'hui. `onOther` = lien discret
+/// vers la création d'un projet / d'une action sans jour. Renvoie true si créée.
+Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic, required FirestoreSync sync, VoidCallback? onOther}) async {
   final ctrl = TextEditingController();
   final timeActs = logic.state.activeActivities.where((a) => !a.isHabit).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
   final all = logic.currentProjects;
   final projects = all.where((p) => p.status == 'active' && !p.paused && !isFolderProject(p, all)).toList()
     ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-  _Owner? owner;
+  final now0 = DateTime.now();
+  final quickProjects = [for (final m in rankProjectMoments(projects, logic.state.sessions, now0).take(3)) m.project];
+  _Owner? owner = _defaultOwner(logic, timeActs);
+  final quickActivity = owner?.activity;
+  var other = false;
 
   Future<_Owner?> pickActivity(BuildContext c) async {
     final id = await showActivityPicker(c, activities: timeActs, domains: logic.state.activeDomains, title: 'Action libre · sur quelle activité ?');
     final a = timeActs.where((x) => x.id == id).firstOrNull;
     return a == null ? null : _Owner.activity(a);
+  }
+
+  Future<_Owner?> pickTask(BuildContext c, Project p) async {
+    final today = DateTime.now();
+    final hasTasks = p.tasks.any((t) => t.status == 'pending' && t.id != kFlowTaskId && !isUpcomingTask(t, DateTime(today.year, today.month, today.day)));
+    if (!hasTasks) return _Owner.project(p, null);
+    final id = await showTaskPicker(c, project: p, includeUpcoming: false);
+    if (id == null) return null;
+    return _Owner.project(p, id == kPickFlowTask ? null : p.tasks.where((t) => t.id == id).firstOrNull);
   }
 
   Future<_Owner?> pickProject(BuildContext c) async {
@@ -54,7 +71,7 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
         children: [
           for (final p in projects)
             ListTile(
-              leading: const Icon(Icons.folder_outlined),
+              leading: const Icon(Icons.view_timeline_outlined),
               title: Text(p.title, maxLines: 2, overflow: TextOverflow.ellipsis),
               onTap: () => Navigator.pop(s, p),
             ),
@@ -62,72 +79,126 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
       ),
     );
     if (p == null || !c.mounted) return null;
-    final today = DateTime.now();
-    final hasTasks = p.tasks.any((t) => t.status == 'pending' && t.id != kFlowTaskId && !isUpcomingTask(t, DateTime(today.year, today.month, today.day)));
-    if (!hasTasks) return _Owner.project(p, null);
-    final id = await showTaskPicker(c, project: p, includeUpcoming: false);
-    if (id == null) return null;
-    return _Owner.project(p, id == kPickFlowTask ? null : p.tasks.where((t) => t.id == id).firstOrNull);
+    return pickTask(c, p);
   }
 
-  final ok = await showDialog<bool>(
+  final ok = await showModalBottomSheet<bool>(
     context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
     builder: (d) => StatefulBuilder(builder: (d, setD) {
       final cs = Theme.of(d).colorScheme;
-      Widget choice(IconData icon, String label, Future<_Owner?> Function(BuildContext) pick) => Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                final o = await pick(d);
-                if (o != null) setD(() => owner = o);
-              },
-              icon: Icon(icon, size: 18),
-              label: Text(label),
-            ),
+      final canSave = ctrl.text.trim().isNotEmpty && owner != null;
+      void save() {
+        if (ctrl.text.trim().isEmpty || owner == null) return;
+        Navigator.pop(d, true);
+      }
+
+      Widget chip(String label, IconData icon, bool selected, VoidCallback onTap) => ChoiceChip(
+            avatar: Icon(icon, size: 16, color: selected ? cs.primary : null),
+            label: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: Text(label, overflow: TextOverflow.ellipsis)),
+            selected: selected,
+            showCheckmark: false,
+            onSelected: (_) => onTap(),
           );
-      return AlertDialog(
-        scrollable: true,
-        title: const Text('Action visée aujourd\'hui'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          TextField(
-            controller: ctrl,
-            autofocus: true,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(hintText: 'Verbe + objet, ≤ 8 mots'),
-          ),
-          const SizedBox(height: 14),
-          const Text('Pour', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          if (owner != null)
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(color: cs.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
-              child: Row(children: [
-                Icon(owner!.activity != null ? Icons.timer_outlined : Icons.folder_outlined, size: 18, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(child: Text(owner!.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+      final o = owner;
+      final isQuick = o != null &&
+          ((o.activity != null && o.activity!.id == quickActivity?.id) || (o.project != null && quickProjects.any((p) => p.id == o.project!.id)));
+      return Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(d).viewInsets.bottom),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('☀ À faire aujourd\'hui', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              Text('L\'action est visée aujourd\'hui : elle t\'attend dans ta journée.',
+                  style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .6))),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => setD(() {}),
+                onSubmitted: (_) => save(),
+                decoration: const InputDecoration(hintText: 'Verbe + objet, ≤ 8 mots', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 14),
+              Text('POUR', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: cs.onSurface.withValues(alpha: .55))),
+              const SizedBox(height: 6),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                if (quickActivity != null)
+                  chip(quickActivity.name, Icons.timer_outlined, o?.activity?.id == quickActivity.id, () => setD(() => owner = _Owner.activity(quickActivity))),
+                for (final p in quickProjects)
+                  chip(p.title, Icons.view_timeline_outlined, o?.project?.id == p.id, () async {
+                    final picked = await pickTask(d, p);
+                    if (picked != null) setD(() => owner = picked);
+                  }),
               ]),
-            ),
-          Row(children: [
-            if (timeActs.isNotEmpty) choice(Icons.bolt_outlined, 'Libre', pickActivity),
-            if (timeActs.isNotEmpty && projects.isNotEmpty) const SizedBox(width: 8),
-            if (projects.isNotEmpty) choice(Icons.folder_outlined, 'Projet', pickProject),
-          ]),
-          const SizedBox(height: 6),
-          Text('Libre = une action sans projet, rangée sous une activité (son chrono).',
-              style: TextStyle(fontSize: 11.5, color: cs.onSurface.withValues(alpha: .55))),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Annuler')),
-          FilledButton(
-            onPressed: () {
-              if (ctrl.text.trim().isEmpty || owner == null) return;
-              Navigator.pop(d, true);
-            },
-            child: const Text('Viser aujourd\'hui'),
+              if (o != null && (!isQuick || o.task != null))
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(color: cs.primary.withValues(alpha: .1), borderRadius: BorderRadius.circular(10)),
+                  child: Row(children: [
+                    Icon(o.activity != null ? Icons.timer_outlined : Icons.view_timeline_outlined, size: 18, color: cs.primary),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(o.label, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+                  ]),
+                ),
+              if (!other && (quickActivity != null || quickProjects.isNotEmpty))
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(onPressed: () => setD(() => other = true), child: const Text('Ailleurs…')),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    if (timeActs.isNotEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final x = await pickActivity(d);
+                            if (x != null) setD(() => owner = x);
+                          },
+                          icon: const Icon(Icons.timer_outlined, size: 18),
+                          label: const Text('Une activité'),
+                        ),
+                      ),
+                    if (timeActs.isNotEmpty && projects.isNotEmpty) const SizedBox(width: 8),
+                    if (projects.isNotEmpty)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final x = await pickProject(d);
+                            if (x != null) setD(() => owner = x);
+                          },
+                          icon: const Icon(Icons.view_timeline_outlined, size: 18),
+                          label: const Text('Un projet'),
+                        ),
+                      ),
+                  ]),
+                ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: canSave ? save : null,
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: const StadiumBorder()),
+                icon: const Icon(Icons.wb_sunny_outlined),
+                label: const Text('Viser aujourd\'hui'),
+              ),
+              if (onOther != null)
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(d, false);
+                    onOther();
+                  },
+                  child: const Text('Plutôt un projet ou une action sans jour'),
+                ),
+            ]),
           ),
-        ],
+        ),
       );
     }),
   );
@@ -153,6 +224,19 @@ Future<bool> showNewFocusedAction(BuildContext context, {required AppLogic logic
   }
   logic.onChange();
   return true;
+}
+
+/// « Pour » par défaut : l'activité du chrono qui tourne, sinon celle de la
+/// dernière session chronométrée.
+_Owner? _defaultOwner(AppLogic logic, List<Activity> timeActs) {
+  final ids = {for (final a in timeActs) a.id};
+  final running = logic.runningActivity();
+  if (running != null && ids.contains(running.id)) return _Owner.activity(running);
+  final sessions = [...logic.state.sessions]..sort((a, b) => b.startAt.compareTo(a.startAt));
+  for (final s in sessions) {
+    if (ids.contains(s.activityId)) return _Owner.activity(timeActs.firstWhere((a) => a.id == s.activityId));
+  }
+  return null;
 }
 
 class _PickList extends StatelessWidget {
