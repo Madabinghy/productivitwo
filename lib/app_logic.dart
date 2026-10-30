@@ -35,6 +35,7 @@ import 'package:productivitwo_v1/gold_engine.dart';
 
 // ---------- Constantes ----------
 const int kMinDailyGoalMin = 1; // plancher dur pour activités "time"
+const int kIdleZeroDays = 30; // sans chrono depuis n jours → plus de minimum
 
 // ---------- Périodes / compteurs ----------
 class PeriodCount {
@@ -2307,6 +2308,22 @@ class AppLogic implements HuntStore {
     for (final a in state.activeActivities.where((x) => !x.isHabit)) {
       // Épinglée à la main = vérité utilisateur — la calibration n'y touche pas.
       if (a.targetSource == 'user' || a.role == ActivityRole.shopping) continue;
+      // Aucun chrono depuis 30 jours (activité qui a au moins cet âge) : plus
+      // de minimum. Il remonte tout seul dès qu'elle revit (branche « seed »).
+      if (a.goalMin > 0 &&
+          t.difference(a.createdAt).inDays >= kIdleZeroDays &&
+          totalForRangeByActivity(
+                  a.id, t.subtract(const Duration(days: kIdleZeroDays)), t) ==
+              Duration.zero) {
+        final old = a.goalMin;
+        a.goalMin = 0;
+        a.targetSource = 'orion';
+        a.lastTuneAt = t;
+        touched = true;
+        notes.add('${a.name} : cible $old → aucune (pas de chrono depuis '
+            '$kIdleZeroDays j)');
+        continue;
+      }
       // Micro-cible potentielle (< 10 min, jamais réglée) : peut être un
       // déclencheur VOULU (10 pompes en 1 min) — c'est une QUESTION pour le
       // user (carte « ORION · RÉGLAGE »), pas un réglage silencieux.
@@ -2319,7 +2336,8 @@ class AppLogic implements HuntStore {
       final ratio30 =
           s30.targetMin > 0 ? s30.doneMin / s30.targetMin : 0.0;
 
-      if (a.goalMin < floorMin) a.goalMin = floorMin;
+      // 0 = « pas de minimum » assumé : le plancher ne s'applique qu'aux cibles posées.
+      if (a.goalMin > 0 && a.goalMin < floorMin) a.goalMin = floorMin;
 
       if (a.lastTuneAt != null &&
           t.difference(a.lastTuneAt!).compareTo(coolDown) < 0) {

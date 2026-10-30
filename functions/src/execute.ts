@@ -896,19 +896,26 @@ async function executeGetUserContext(uid: string): Promise<string> {
   );
 }
 
+// Épinglée = « user » : la calibration de l'app ne la touche plus ; rendue = « orion ».
+function goalPinPatch(pin: boolean | undefined): Record<string, unknown> {
+  if (pin === undefined) return {};
+  return { targetSource: pin ? "user" : "orion" };
+}
+
 async function executeUpdateActivityGoal(
   uid: string,
   activityId: string,
-  updates: { goalMin?: number; habitTarget?: number; habitFreq?: number }
+  updates: { goalMin?: number; habitTarget?: number; habitFreq?: number; pinGoal?: boolean }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
   const snap = await ref.get();
   if (!snap.exists) return `Activité introuvable : ${activityId}`;
 
   const patch: Record<string, unknown> = {};
-  if (updates.goalMin !== undefined) patch.goalMin = updates.goalMin;
+  if (updates.goalMin !== undefined) patch.goalMin = Math.max(0, Math.round(updates.goalMin));
   if (updates.habitTarget !== undefined) patch.habitTarget = updates.habitTarget;
   if (updates.habitFreq !== undefined) patch.habitFreq = updates.habitFreq;
+  Object.assign(patch, goalPinPatch(updates.pinGoal));
 
   await ref.update(patch);
   const name = snap.data()?.name ?? activityId;
@@ -1555,6 +1562,7 @@ async function executeUpdateActivity(
     finalTarget?: number;
     timeContext?: string;
     splitMoments?: unknown;
+    pinGoal?: boolean;
   }
 ): Promise<string> {
   const ref = db.collection(`users/${uid}/activities`).doc(activityId);
@@ -1565,7 +1573,8 @@ async function executeUpdateActivity(
   const patch: Record<string, unknown> = {};
   if (updates.name !== undefined) patch.name = updates.name;
   if (updates.domainId !== undefined) patch.domainId = updates.domainId;
-  if (updates.goalMin !== undefined) patch.goalMin = updates.goalMin;
+  if (updates.goalMin !== undefined) patch.goalMin = Math.max(0, Math.round(updates.goalMin));
+  Object.assign(patch, goalPinPatch(updates.pinGoal));
   if (updates.unit !== undefined) patch.unit = updates.unit;
   if (updates.habitFreq !== undefined) patch.habitFreq = updates.habitFreq;
   if (updates.habitTarget !== undefined) patch.habitTarget = updates.habitTarget;

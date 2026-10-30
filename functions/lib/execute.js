@@ -817,6 +817,12 @@ async function executeGetUserContext(uid) {
         objectives,
         activeProjects }), (pausedProjects.length > 0 ? { pausedProjects } : {})), { todaySchedule, inboxItems: inboxItems.length > 0 ? inboxItems : null, recentActivity }), null, 2);
 }
+// Épinglée = « user » : la calibration de l'app ne la touche plus ; rendue = « orion ».
+function goalPinPatch(pin) {
+    if (pin === undefined)
+        return {};
+    return { targetSource: pin ? "user" : "orion" };
+}
 async function executeUpdateActivityGoal(uid, activityId, updates) {
     var _a, _b;
     const ref = db_1.db.collection(`users/${uid}/activities`).doc(activityId);
@@ -825,11 +831,12 @@ async function executeUpdateActivityGoal(uid, activityId, updates) {
         return `Activité introuvable : ${activityId}`;
     const patch = {};
     if (updates.goalMin !== undefined)
-        patch.goalMin = updates.goalMin;
+        patch.goalMin = Math.max(0, Math.round(updates.goalMin));
     if (updates.habitTarget !== undefined)
         patch.habitTarget = updates.habitTarget;
     if (updates.habitFreq !== undefined)
         patch.habitFreq = updates.habitFreq;
+    Object.assign(patch, goalPinPatch(updates.pinGoal));
     await ref.update(patch);
     const name = (_b = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.name) !== null && _b !== void 0 ? _b : activityId;
     return `✅ Objectif de "${name}" mis à jour. Visible dans Productivitwo à la prochaine synchronisation.`;
@@ -1409,7 +1416,8 @@ async function executeUpdateActivity(uid, activityId, updates) {
     if (updates.domainId !== undefined)
         patch.domainId = updates.domainId;
     if (updates.goalMin !== undefined)
-        patch.goalMin = updates.goalMin;
+        patch.goalMin = Math.max(0, Math.round(updates.goalMin));
+    Object.assign(patch, goalPinPatch(updates.pinGoal));
     if (updates.unit !== undefined)
         patch.unit = updates.unit;
     if (updates.habitFreq !== undefined)

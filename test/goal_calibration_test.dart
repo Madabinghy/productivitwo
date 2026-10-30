@@ -133,4 +133,57 @@ void main() {
     expect(l2.challengeActivity()?.id, 'a1');
     expect(l2.challengeDurationFor(micro), 1);
   });
+
+  group('aucun chrono depuis 30 jours', () {
+    Activity old(String id, {int goalMin = 1, String src = 'default'}) =>
+        Activity(
+            id: id,
+            name: 'Voiture',
+            domainId: 'd1',
+            type: 'time',
+            goalMin: goalMin,
+            targetSource: src,
+            createdAt: now.subtract(const Duration(days: 60)));
+
+    test('minimum → 0, et il y reste sans chrono', () async {
+      final a = old('a1', goalMin: 4, src: 'orion');
+      final l = _logic([a], []);
+      final notes = await l.autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, 0);
+      expect(notes.single, contains('Voiture : cible 4 → aucune'));
+      final later = now.add(const Duration(days: 3));
+      expect(await l.autoAdjustStandardsRealtime(now: later), isEmpty);
+      expect(a.goalMin, 0);
+    });
+
+    test('défaut 1 min/j aussi', () async {
+      final a = old('a1');
+      await _logic([a], []).autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, 0);
+    });
+
+    test('un chrono il y a 20 j → on garde', () async {
+      final a = old('a1', goalMin: 4, src: 'orion');
+      final s = Session(
+          activityId: 'a1',
+          startAt: now.subtract(const Duration(days: 20)),
+          endAt: now.subtract(const Duration(days: 20)).add(const Duration(minutes: 30)));
+      await _logic([a], [s]).autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, isNot(0));
+    });
+
+    test('épinglée ou trop récente → on garde', () async {
+      final pinned = old('a1', goalMin: 4, src: 'user');
+      final fresh = _time('a2', 'Neuve', goalMin: 4, targetSource: 'orion');
+      await _logic([pinned, fresh], []).autoAdjustStandardsRealtime(now: now);
+      expect(pinned.goalMin, 4);
+      expect(fresh.goalMin, 4);
+    });
+
+    test('à 0, une activité qui revit fort remonte', () async {
+      final a = old('a1', goalMin: 0, src: 'orion');
+      await _logic([a], _daily('a1', now, 40)).autoAdjustStandardsRealtime(now: now);
+      expect(a.goalMin, 30);
+    });
+  });
 }
