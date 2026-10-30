@@ -835,6 +835,24 @@ du minimum du domaine) ; le plancher 1 min ne s'applique plus à un 0, et la bra
 MCP : `update_activity_goal` / `update_activity` acceptent `goalMin: 0` et `pinGoal` (true = épinglée comme à la main, false = rendue
 à la calibration ; seulement à la demande de l'utilisateur, ⚠️ `firebase deploy --only functions`).
 
+## Recharge (2026-10-30, maquette validée « Mode Recharge »)
+
+La nuit sort des modes (logique pure `utils/recharge.dart` ↔ `functions/src/elan.ts`, **garder alignés**). **Début** = premier
+début de sommeil APRÈS le dernier pointage d'élan réel du jour vécu : bloc dont le titre ou l'activité est un nom de sommeil
+(`isSleepName` : Sommeil · Dormir · Nuit · Coucher ; doc du jour après la bascule, doc du lendemain avant) ou chrono Sommeil
+(`sleepStartsOf`, `rechargeStart`) — le serveur ne lit que les blocs. **En recharge maintenant** (`AppLogic.rechargeSinceNow` /
+`inRecharge`, d'après `todayBlocks`) : soir au sommeil sans pointage depuis, chrono Sommeil qui tourne, matin avant le premier
+geste (pointage, +1, chrono hors repos, bloc fait). **Écrans** : `ModePill` « 🌙 Recharge » (bleu nuit `kRechargeColor` /
+`kRechargeInk`), `RechargeBanner` en tête de la feuille du mode, `RechargeCard` (`widgets/recharge_card.dart`) en tête d'Aujourd'hui
+— matin « Bonjour · 7 h 25 de recharge · Comment tu démarres ? » (Flemme · Normal · En forme ; sans choix le premier geste vaut
+Normal, rien n'est écrit), soir « Recharge depuis 22:40 » + « Pas encore couché · garder … » (repointe le mode : la recharge attend
+le chrono Sommeil). **Statistiques** : un pointage VIRTUEL de valeur `kRechargeValue` (0) ferme le dernier pointage du jour
+(`withRechargeMarks`, `AppLogic.elanMarksWithRecharge` : feuille du mode, Domaines, `ElanStatsCard`, badges via `BadgeCenter`) ;
+une fenêtre de recharge ne compte ni dans l'élan moyen, ni dans les créneaux, ni comme flemme (`MoodMark.lowElan` exclut 0,
+`modeFromElan(0)` = Normal : ni malgré tout ni à fond) et n'est jamais « corrigée » par `dedupeMoodMarks`. Bande du jour : case
+de recharge en bleu nuit. **Sieste** : un bloc de repos fait (`isRestBlock` : sommeil ou « Sieste ») n'est jamais une victoire
+sur la flemme (`winsIn`, app et serveur). Jamais stocké.
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers

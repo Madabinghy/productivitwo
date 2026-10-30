@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/elan_view.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue;
 import 'package:productivitwo_v1/utils/mode_colors.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeSheet;
@@ -102,11 +103,14 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final now = DateTime.now();
     final schedules = _schedules ?? const <DailySchedule>[];
     final byYmd = {for (final s in schedules) s.date: s};
-    final days60 = buildElanDays(marks: st.moodMarks, schedulesByYmd: byYmd, hits: st.habitHits, activities: st.activities, now: now, days: 60, dayStartMin: logic.dayStartMin);
+    // La nuit (recharge) ferme le dernier pointage du jour : elle ne pèse pas.
+    final marks = logic.elanMarksWithRecharge(byYmd);
+    final rechargeSince = logic.rechargeSinceNow;
+    final days60 = buildElanDays(marks: marks, schedulesByYmd: byYmd, hits: st.habitHits, activities: st.activities, now: now, days: 60, dayStartMin: logic.dayStartMin);
     final week = days60.sublist(days60.length - 7);
     final wm = elanMetrics(week);
     final month = elanMonth(days60);
-    final slots = todayElanSlots(marks: st.moodMarks, schedule: byYmd[logic.livedTodayYmd], hits: st.habitHits, activities: st.activities, now: now, dayStartMin: logic.dayStartMin);
+    final slots = todayElanSlots(marks: marks, schedule: byYmd[logic.livedTodayYmd], hits: st.habitHits, activities: st.activities, now: now, dayStartMin: logic.dayStartMin);
     final pointedToday = slots.where((s) => s.pointed).length;
     final text3 = cs.onSurface.withValues(alpha: .55);
     final hardest = hardestBucket(week);
@@ -129,12 +133,16 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         ]),
         const SizedBox(height: 2),
         Text('Une posture, changeable à tout moment. Elle pointe ton élan et repart en Normal demain.', style: TextStyle(fontSize: 12.5, color: text3)),
+        if (rechargeSince != null) ...[
+          const SizedBox(height: 12),
+          RechargeBanner(since: rechargeSince, now: now),
+        ],
         const SizedBox(height: 12),
         Row(children: [
           for (final m in DayMode.values) ...[
             if (m != DayMode.low) const SizedBox(width: 8),
-            Expanded(child: _modeTile(cs, dark, m, selected: m == cur, onTap: () {
-              if (m != cur) logic.setMode(m);
+            Expanded(child: _modeTile(cs, dark, m, selected: rechargeSince == null && m == cur, onTap: () {
+              if (m != cur || rechargeSince != null) logic.setMode(m);
             })),
           ],
         ]),
@@ -146,7 +154,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           ],
         ]),
         const SizedBox(height: 10),
-        ElanDayStrip(cells: elanTimeline(st.moodMarks, now, logic.dayStartMin), dayStartMin: logic.dayStartMin),
+        ElanDayStrip(cells: elanTimeline(marks, now, logic.dayStartMin), dayStartMin: logic.dayStartMin),
         title('CETTE SEMAINE',
             right: wm.count == 0
                 ? 'aucun pointage'
@@ -380,7 +388,7 @@ class ElanDayStrip extends StatelessWidget {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: .5),
                 decoration: BoxDecoration(
-                  color: cells[i] == null ? cs.onSurface.withValues(alpha: .07) : elanColor(cells[i]!),
+                  color: cells[i] == null ? cs.onSurface.withValues(alpha: .07) : (cells[i] == kRechargeValue ? kRechargeColor : elanColor(cells[i]!)),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -567,6 +575,25 @@ class ModePill extends StatelessWidget {
     final pal = NowPalette.of(context);
     final m = logic.mode;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    if (logic.inRecharge) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => showModeSheet(context, logic, badges: badges),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(9, 3, 9, 3),
+          decoration: BoxDecoration(
+            color: kRechargeColor.withValues(alpha: .35),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: kRechargeInk.withValues(alpha: .35)),
+          ),
+          child: const Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.bedtime_outlined, size: 12, color: kRechargeInk),
+            SizedBox(width: 4),
+            Text('Recharge', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: kRechargeInk)),
+          ]),
+        ),
+      );
+    }
     final accent = modeAccentOverride(m, dark: dark);
     final fg = accent ?? pal.text3;
     final trail = todayElanValues(logic.state.moodMarks, DateTime.now(), logic.dayStartMin);
@@ -605,4 +632,39 @@ Widget? modeChipFor(BuildContext context, AppLogic logic, DateTime? doneAt) {
     child: Text(m == DayMode.low ? 'malgré tout' : 'à fond',
         maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c)),
   );
+}
+
+/// Recharge : bleu nuit, hors de la rampe d'élan (qui se lit à la clarté).
+const kRechargeColor = Color(0xFF2A3C58);
+const kRechargeInk = Color(0xFFC9D8EE);
+
+/// « En recharge depuis 22:40 » (feuille du mode).
+class RechargeBanner extends StatelessWidget {
+  final DateTime since;
+  final DateTime now;
+  const RechargeBanner({super.key, required this.since, required this.now});
+
+  @override
+  Widget build(BuildContext context) {
+    final hm = '${since.hour.toString().padLeft(2, '0')}:${since.minute.toString().padLeft(2, '0')}';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: kRechargeColor.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kRechargeInk.withValues(alpha: .25)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.bedtime_outlined, size: 20, color: kRechargeInk),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('En recharge depuis $hm', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kRechargeInk)),
+            Text('La nuit ne compte ni dans ton élan, ni dans la flemme. Choisis un mode pour démarrer.',
+                style: TextStyle(fontSize: 12, height: 1.3, color: kRechargeInk.withValues(alpha: .8))),
+          ]),
+        ),
+      ]),
+    );
+  }
 }

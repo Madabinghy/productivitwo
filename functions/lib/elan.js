@@ -19,6 +19,9 @@ exports.livedDayEndMs = livedDayEndMs;
 exports.moodMarkKey = moodMarkKey;
 exports.dedupeMoodMarks = dedupeMoodMarks;
 exports.elanWindows = elanWindows;
+exports.isSleepName = isSleepName;
+exports.isRestName = isRestName;
+exports.rechargeStartMs = rechargeStartMs;
 exports.winsIn = winsIn;
 exports.elanSummary = elanSummary;
 exports.formatElanSummary = formatElanSummary;
@@ -110,13 +113,68 @@ function dedupeMoodMarks(marks) {
     }
     return out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
-function elanWindows(marks, ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_MIN) {
+function elanWindows(marks, ymd, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_MIN, rechargeMs = null) {
     const ms = dedupeMoodMarks(marks.filter((m) => m.kind === "elan" && m.ymd === ymd))
         .map((m) => ({ m, t: Date.parse(m.at) }))
         .filter((x) => isFinite(x.t))
         .sort((a, b) => a.t - b.t);
-    const end = livedDayEndMs(ymd, offsetMin, dayStartMin);
+    const dayEnd = livedDayEndMs(ymd, offsetMin, dayStartMin);
+    // Recharge : la nuit ferme le dernier pointage (elle ne pèse ni dans l'élan, ni dans la flemme).
+    const last = ms.length ? ms[ms.length - 1].t : null;
+    const end = rechargeMs !== null && last !== null && rechargeMs >= last && rechargeMs < dayEnd ? rechargeMs : dayEnd;
     return ms.map((x, i) => ({ mark: x.m, startMs: x.t, endMs: i + 1 < ms.length ? ms[i + 1].t : end }));
+}
+/** Recharge (miroir de `lib/utils/recharge.dart`, garder alignés) : nom de
+ *  sommeil de nuit (« Sommeil », « Dormir », « Nuit », « Coucher ») et de repos
+ *  (sommeil ou « Sieste »). */
+function normName(s) {
+    return (s !== null && s !== void 0 ? s : "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+function isSleepName(s) {
+    const n = normName(s);
+    return n.startsWith("sommeil") || n.startsWith("dormir") || n.startsWith("nuit") || n.startsWith("coucher");
+}
+function isRestName(s) {
+    return isSleepName(s) || normName(s).startsWith("sieste");
+}
+function blockMin(b) {
+    var _a;
+    const p = ((_a = b.startTime) !== null && _a !== void 0 ? _a : "").split(":");
+    if (p.length < 2)
+        return null;
+    const h = Number(p[0]), m = Number(p[1]);
+    return isFinite(h) && isFinite(m) ? h * 60 + m : null;
+}
+/** Début de la recharge du jour vécu `ymd` (epoch ms) : premier bloc Sommeil
+ *  (doc du jour après la bascule, doc du lendemain avant) qui suit le dernier
+ *  pointage d'élan. Le serveur ne regarde que les blocs (l'app y ajoute les
+ *  chronos Sommeil). */
+function rechargeStartMs(opts) {
+    var _a;
+    const dayStartMin = (_a = opts.dayStartMin) !== null && _a !== void 0 ? _a : exports.DEFAULT_DAY_START_MIN;
+    const [y, mo, d] = opts.ymd.split("-").map(Number);
+    const midnightLocal = Date.UTC(y, mo - 1, d);
+    const sleep = (b) => { var _a; return b.status !== "deleted" && b.status !== "skipped" && (isSleepName(b.title) || isSleepName(opts.activityNames.get((_a = b.activityId) !== null && _a !== void 0 ? _a : ""))); };
+    const starts = [];
+    const toMs = (localMin) => {
+        const local = midnightLocal + localMin * 60000;
+        return local - offsetFor(new Date(local), opts.offsetMin) * 60000;
+    };
+    for (const b of opts.blocks) {
+        const m = blockMin(b);
+        if (m !== null && m >= dayStartMin && sleep(b))
+            starts.push(toMs(m));
+    }
+    for (const b of opts.nextBlocks) {
+        const m = blockMin(b);
+        if (m !== null && m < dayStartMin && sleep(b))
+            starts.push(toMs(24 * 60 + m));
+    }
+    starts.sort((a, b) => a - b);
+    for (const t of starts)
+        if (opts.lastMarkMs === null || t >= opts.lastMarkMs)
+            return t;
+    return null;
 }
 function isDailyRoutine(a) {
     if (a.deleted || (a.type !== "habit" && a.type !== "action"))
@@ -126,10 +184,14 @@ function isDailyRoutine(a) {
 /** Faits dans une fenêtre : blocs terminés (`doneAt` dedans) et routines
  *  quotidiennes dont la cible du jour est atteinte PAR un hit de la fenêtre. */
 function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DEFAULT_DAY_START_MIN) {
-    var _a;
+    var _a, _b;
     let n = 0;
+    const names = new Map(activities.map((a) => { var _a; return [a.id, (_a = a.name) !== null && _a !== void 0 ? _a : ""]; }));
     for (const b of blocks) {
         if (b.status !== "done" || !b.doneAt)
+            continue;
+        // Une sieste ou le sommeil ne sont pas des choses faites malgré la flemme.
+        if (isRestName(b.title) || isRestName(names.get((_a = b.activityId) !== null && _a !== void 0 ? _a : "")))
             continue;
         const t = Date.parse(b.doneAt);
         if (t >= w.startMs && t < w.endMs)
@@ -138,7 +200,7 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
     for (const a of activities) {
         if (!isDailyRoutine(a))
             continue;
-        const target = Math.max(1, (_a = a.habitTarget) !== null && _a !== void 0 ? _a : 1);
+        const target = Math.max(1, (_b = a.habitTarget) !== null && _b !== void 0 ? _b : 1);
         const dayHits = hits
             .filter((h) => h.habitId === a.id && livedParts(h.ts, offsetMin, dayStartMin).ymd === w.mark.ymd)
             .map((h) => Date.parse(h.ts))
@@ -153,7 +215,7 @@ function winsIn(w, blocks, hits, activities, offsetMin, dayStartMin = exports.DE
 }
 /** Résumé des `days` derniers jours vécus (aujourd'hui compris). */
 function elanSummary(opts) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const days = (_a = opts.days) !== null && _a !== void 0 ? _a : 7;
     const dayStartMin = (_b = opts.dayStartMin) !== null && _b !== void 0 ? _b : exports.DEFAULT_DAY_START_MIN;
     const [y, m, d] = opts.todayYmd.split("-").map(Number);
@@ -161,10 +223,25 @@ function elanSummary(opts) {
     let count = 0, sum = 0, lowCount = 0, lowWon = 0, minutes = 0, weighted = 0, slots = 0;
     const nowMs = (_c = opts.nowMs) !== null && _c !== void 0 ? _c : Date.now();
     const effort = { facile: 0, juste: 0, dur: 0 };
+    const activityNames = new Map(opts.activities.map((a) => { var _a; return [a.id, (_a = a.name) !== null && _a !== void 0 ? _a : ""]; }));
     for (let i = days - 1; i >= 0; i--) {
         const ymd = new Date(Date.UTC(y, m - 1, d - i)).toISOString().slice(0, 10);
         const seen = new Set();
-        const views = elanWindows(opts.marks, ymd, opts.offsetMin, dayStartMin).map((w) => {
+        const dayMarkMs = opts.marks
+            .filter((mk) => mk.kind === "elan" && mk.ymd === ymd)
+            .map((mk) => Date.parse(mk.at))
+            .filter((t) => isFinite(t));
+        const nextYmd = new Date(Date.UTC(y, m - 1, d - i + 1)).toISOString().slice(0, 10);
+        const recharge = rechargeStartMs({
+            ymd,
+            blocks: (_d = opts.schedulesByYmd.get(ymd)) !== null && _d !== void 0 ? _d : [],
+            nextBlocks: (_e = opts.schedulesByYmd.get(nextYmd)) !== null && _e !== void 0 ? _e : [],
+            activityNames,
+            lastMarkMs: dayMarkMs.length ? Math.max(...dayMarkMs) : null,
+            offsetMin: opts.offsetMin,
+            dayStartMin,
+        });
+        const views = elanWindows(opts.marks, ymd, opts.offsetMin, dayStartMin, recharge).map((w) => {
             var _a, _b, _c;
             const won = winsIn(w, (_a = opts.schedulesByYmd.get(ymd)) !== null && _a !== void 0 ? _a : [], opts.hits, opts.activities, opts.offsetMin, dayStartMin) > 0;
             count++;

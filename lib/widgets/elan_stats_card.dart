@@ -51,9 +51,10 @@ class _ElanStatsCardsState extends State<ElanStatsCards> {
     return FutureBuilder<List<DailySchedule>>(
       future: _schedules,
       builder: (ctx, snap) {
+        final byYmd = {for (final s in snap.data ?? const <DailySchedule>[]) s.date: s};
         final days = buildElanDays(
-          marks: marks,
-          schedulesByYmd: {for (final s in snap.data ?? const <DailySchedule>[]) s.date: s},
+          marks: widget.marks == null && widget.logic != null ? widget.logic!.elanMarksWithRecharge(byYmd) : marks,
+          schedulesByYmd: byYmd,
           hits: widget.hits ?? widget.logic!.state.habitHits,
           activities: widget.activities ?? widget.logic!.state.activities,
           now: DateTime.now(),

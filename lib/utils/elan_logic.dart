@@ -1,6 +1,7 @@
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue, isRestBlock;
 
 /// Élan (lot 2 badges, 2026-10) : logique pure des pointages d'état.
 /// Trois créneaux d'élan par jour vécu (matin < 12 h, après-midi < 18 h,
@@ -99,7 +100,9 @@ List<MoodMark> dedupeMoodMarks(Iterable<MoodMark> marks) {
     list.sort((a, b) => a.at.compareTo(b.at));
     for (var i = 0; i < list.length; i++) {
       final next = i + 1 < list.length ? list[i + 1] : null;
-      if (next != null && next.at.difference(list[i].at).inMinutes < kElanCorrectionMin) continue;
+      // La recharge (virtuelle) ne corrige rien et n'est jamais corrigée.
+      final real = list[i].value != kRechargeValue && next?.value != kRechargeValue;
+      if (real && next != null && next.at.difference(list[i].at).inMinutes < kElanCorrectionMin) continue;
       out.add(list[i]);
     }
   }
@@ -134,9 +137,12 @@ List<DateTime> winsIn(
   int dayStartMin = kDefaultDayStartMin,
 }) {
   final out = <DateTime>[];
+  if (w.mark.value == kRechargeValue) return out;
+  final byId = {for (final a in activities) a.id: a};
   for (final b in blocks) {
     final t = b.doneAt;
-    if (b.status == 'done' && t != null && w.contains(t)) out.add(t);
+    // Une sieste ou le sommeil ne sont pas des choses faites malgré la flemme.
+    if (b.status == 'done' && t != null && w.contains(t) && !isRestBlock(b, byId)) out.add(t);
   }
   final ymd = w.mark.ymd;
   for (final a in activities) {
@@ -198,6 +204,7 @@ List<ElanDay> buildElanDays({
     final ymd = ymdOf(d);
     final views = <ElanMarkView>[];
     for (final w in elanWindows(marks, ymd, dayStartMin: dayStartMin)) {
+      if (w.mark.value == kRechargeValue) continue; // la nuit ne pèse pas
       final wins = winsIn(w, blocks: schedulesByYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin);
       final end = w.end.isAfter(now) ? now : w.end;
       final minutes = end.difference(w.mark.at).inMinutes;
@@ -266,6 +273,7 @@ DisciplineStats disciplineStats({
     var minutes = 0;
     var weighted = 0.0;
     for (final w in ws) {
+      if (w.mark.value == kRechargeValue) continue;
       final end = w.end.isAfter(now) ? now : w.end;
       final m = end.difference(w.mark.at).inMinutes;
       if (m > 0) {
@@ -273,7 +281,9 @@ DisciplineStats disciplineStats({
         weighted += w.mark.value * m;
       }
     }
-    mean[ymd] = minutes > 0 ? weighted / minutes : ws.fold(0, (s, w) => s + w.mark.value) / ws.length;
+    final real = ws.where((w) => w.mark.value != kRechargeValue).toList();
+    if (real.isEmpty) continue;
+    mean[ymd] = minutes > 0 ? weighted / minutes : real.fold(0, (s, w) => s + w.mark.value) / real.length;
     for (final w in ws) {
       if (!w.low) continue;
       wins.addAll(winsIn(w, blocks: byYmd[ymd]?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin));
@@ -283,7 +293,7 @@ DisciplineStats disciplineStats({
   // Baromètre compte les CRÉNEAUX pointés (3 par jour au plus), pas les changements.
   final firstBySlot = <String, DateTime>{};
   for (final m in marks) {
-    if (m.kind != kMoodElan) continue;
+    if (m.kind != kMoodElan || m.value == kRechargeValue) continue;
     final k = '${m.ymd}:${m.moment ?? elanBucket(m.at.hour * 60 + m.at.minute)}';
     final cur = firstBySlot[k];
     if (cur == null || m.at.isBefore(cur)) firstBySlot[k] = m.at;
@@ -309,6 +319,7 @@ ElanFacts _factsOf(List<MoodMark> marks, Iterable<DateTime> events, {int dayStar
     final ws = byYmd.putIfAbsent(ymd, () => elanWindows(marks, ymd, dayStartMin: dayStartMin));
     for (final w in ws) {
       if (!w.contains(t)) continue;
+      if (w.mark.value == kRechargeValue) break;
       n++;
       sum += w.mark.value;
       if (w.low) low++;

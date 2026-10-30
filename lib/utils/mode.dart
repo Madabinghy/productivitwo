@@ -14,7 +14,9 @@ const kModeLabels = {DayMode.low: 'Flemme', DayMode.normal: 'Normal', DayMode.hi
 /// Valeur d'élan écrite quand l'utilisateur POSE un mode.
 int modeElanValue(DayMode m) => switch (m) { DayMode.low => 2, DayMode.normal => 3, DayMode.high => 4 };
 
-DayMode modeFromElan(int value) => value <= 2 ? DayMode.low : (value >= 4 ? DayMode.high : DayMode.normal);
+/// 0 = recharge (pointage virtuel de la nuit, `utils/recharge.dart`) : ni
+/// malgré tout, ni à fond.
+DayMode modeFromElan(int value) => value == 0 ? DayMode.normal : (value <= 2 ? DayMode.low : (value >= 4 ? DayMode.high : DayMode.normal));
 
 /// Dernier pointage d'élan de la journée vécue [ymd] (YYYY-MM-DD), à [at] au plus tard.
 MoodMark? lastElanMark(Iterable<MoodMark> marks, String ymd, {DateTime? at}) {
