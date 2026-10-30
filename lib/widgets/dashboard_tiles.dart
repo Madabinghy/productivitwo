@@ -23,6 +23,8 @@ class DashboardTiles extends StatelessWidget {
   final VoidCallback? onRoutines;
   final VoidCallback? onObjectives;
   final VoidCallback? onBadges;
+  /// Le compteur « 9 / 72 » de la tuile Badges : la galerie complète (2026-10-30).
+  final VoidCallback? onBadgesGallery;
   final VoidCallback? onReview;
   final VoidCallback? onPerfect;
   final VoidCallback? onActions;
@@ -46,6 +48,7 @@ class DashboardTiles extends StatelessWidget {
     this.onRoutines,
     this.onObjectives,
     this.onBadges,
+    this.onBadgesGallery,
     this.onPerfect,
     this.onActions,
     this.onProjects,
@@ -74,7 +77,7 @@ class DashboardTiles extends StatelessWidget {
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final (i, t) in all.indexed) ...[
             if (i > 0) const SizedBox(width: 10),
-            Expanded(flex: t.$3, child: _Tile(tile: t.$1, onTap: t.$2)),
+            Expanded(flex: t.$3, child: _Tile(tile: t.$1, onTap: t.$2, onBadgeTap: identical(t.$1, badges) ? onBadgesGallery : null)),
           ],
         ]),
       );
@@ -84,9 +87,9 @@ class DashboardTiles extends StatelessWidget {
       for (var i = 0; i < small.length; i += 2)
         IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _Tile(tile: small[i].$1, onTap: small[i].$2)),
+            Expanded(child: _tile(small[i])),
             const SizedBox(width: 8),
-            Expanded(child: i + 1 < small.length ? _Tile(tile: small[i + 1].$1, onTap: small[i + 1].$2) : const SizedBox()),
+            Expanded(child: i + 1 < small.length ? _tile(small[i + 1]) : const SizedBox()),
           ]),
         ),
       if (projects != null) _Tile(tile: projects!, onTap: onProjects),
@@ -102,6 +105,10 @@ class DashboardTiles extends StatelessWidget {
   }
 }
 
+extension on DashboardTiles {
+  Widget _tile((DashTile, VoidCallback?) t) => _Tile(tile: t.$1, onTap: t.$2, onBadgeTap: identical(t.$1, badges) ? onBadgesGallery : null);
+}
+
 Color _markColor(TileMark m) => switch (m) {
       TileMark.on => kBPrimary,
       TileMark.warn => kStakeHunt,
@@ -112,7 +119,9 @@ Color _markColor(TileMark m) => switch (m) {
 class _Tile extends StatelessWidget {
   final DashTile tile;
   final VoidCallback? onTap;
-  const _Tile({required this.tile, this.onTap});
+  /// Le coin de la tuile (« 9 / 72 ») devient un lien à part (galerie des badges).
+  final VoidCallback? onBadgeTap;
+  const _Tile({required this.tile, this.onTap, this.onBadgeTap});
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +139,23 @@ class _Tile extends StatelessWidget {
             Row(children: [
               Text(t.label, style: const TextStyle(fontSize: 10.5, letterSpacing: .9, fontWeight: FontWeight.w800, color: kBText3)),
               const Spacer(),
-              if (t.badge != null)
+              if (t.badge != null && onBadgeTap != null)
+                Flexible(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: onBadgeTap,
+                    child: Container(
+                      constraints: const BoxConstraints(minHeight: 30),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(color: kBRaised, borderRadius: BorderRadius.circular(999)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Flexible(child: Text(t.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.5, color: kBText2, fontWeight: FontWeight.w700))),
+                        const Icon(Icons.chevron_right_rounded, size: 15, color: kBText3),
+                      ]),
+                    ),
+                  ),
+                )
+              else if (t.badge != null)
                 Flexible(child: Text(t.badge!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: kBText4, fontWeight: FontWeight.w600))),
             ]),
             const SizedBox(height: 6),
