@@ -890,6 +890,13 @@ l'ancien Accueil. Onglet **Domaines** (ex-Stats, `week_stats_view.dart`) : titre
 k / n au rythme, semaines tenues, élan, sept jours ; tap = fiche Ma semaine, qui porte désormais la bande des semaines tenues et
 « Mode du jour »), puis les domaines (tap = page du domaine), chacun avec la rangée de ses jours sous la barre (`_dayBars`, `StatusRow.below`, échelle propre au domaine). **Aujourd'hui** : le bouton rond « Chrono libre » (doublon du FAB)
 est remplacé par **Badges** → `showBadgeGallerySheet` (tous les badges en feuille, 94 %).
+**Fiche « Objectifs aujourd'hui »** (maquette validée 2026-10-30, tuile OBJECTIFS d'Aujourd'hui → `ObjectivesDayView`, logique pure
+`utils/objectives_today.dart`, `buildObjectivesToday`) : trois étages — le chiffre du jour (k / n choses faites : temps du jour, routines,
+blocs, relevés ; barre avec le repère de l'heure, « n en retard »), OÙ J'EN SUIS (une ligne par objectif : % du rythme ou « ✓ tenu
+aujourd'hui », barre, « reste aujourd'hui : … » ; tap = fiche trajectoire), À FAIRE (UNE liste de gestes classés — objectif le plus en
+retard d'abord, relevé > bloc > temps > routine, prochaines actions en fin et hors compte ; le premier en avant ; un bouton par geste
+Chrono · +1 · Noter · Lancer · Ouvrir ; l'objectif servi en étiquette ; un geste commun à deux objectifs = une ligne), puis « Enchaîner
+les n » et « ✓ Fait aujourd'hui · n » repliable. Retirés : carte OBJECTIF DU MOMENT, Badges visés, paragraphe (→ ⓘ `kRuleObjectivesToday`).
 **Moyens d'un objectif par domaine** (2026-10-30) : à l'étape Moyens de l'édition d'objectif (`objective_edit_sheet.dart`, `_byDomain`), activités et routines sont rangées par domaine (`groupActivitiesByDomain`, domaine de l'objectif en tête, pastille de couleur, « n choisies »).
 **Bouton « + » d'Aujourd'hui = action visée aujourd'hui** (2026-10-30) : dans l'onglet Aujourd'hui, le FAB « créer » ouvre
 `showNewFocusedAction` (feuille « ☀ À faire aujourd'hui » : titre, « Pour » pré-rempli = chrono en cours sinon dernière activité
