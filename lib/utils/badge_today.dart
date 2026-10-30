@@ -442,8 +442,9 @@ BadgeToday _barometre(TodayFacts f) {
 }
 
 BadgeToday _malgreTout(TodayFacts f) {
-  final mean = f.elanMean;
-  if (mean == null || mean > 2) {
+  // Les victoires d'abord : une journée commencée en Normal puis passée en Flemme a
+  // une moyenne > 2, mais ses victoires comptent (retour user 2026-10-30).
+  if (f.disciplineWinsToday == 0 && (f.elanMean == null || f.elanMean! > 2)) {
     return const BadgeToday(stake: TodayStake.none, chip: '', notes: ['Se gagne en mode Flemme : un chrono tenu 10 min, une action cochée, un bloc fait ou une routine atteinte.']);
   }
   if (f.disciplineWinsToday > 0) {
