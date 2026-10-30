@@ -876,18 +876,22 @@ class TodayViewState extends State<TodayView> {
           Text(sub,
               style: TextStyle(
                   fontSize: 13, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
-          // Le mode du jour (2026-10-30, venu de la barre du haut qui accueille le sommeil).
-          if (!_showTomorrow) ...[
-            const SizedBox(height: 8),
-            ModePill(logic: widget.logic, badges: widget.badges),
-          ],
         ]),
       ),
       // Lanceurs Guérilla et Offensive (2026-10-30, à la place de Badges et ORION : les badges restent sur la
       // tuile BADGES et l'onglet Objectifs, ORION dans le menu ⋯). Point = une session à reprendre.
-      _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
-      const SizedBox(width: 8),
-      _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
+      // Le mode du jour centré sous les deux lanceurs (2026-10-30).
+      Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
+          const SizedBox(width: 8),
+          _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
+        ]),
+        if (!_showTomorrow) ...[
+          const SizedBox(height: 8),
+          ModePill(logic: widget.logic, badges: widget.badges),
+        ],
+      ]),
     ]);
   }
 
