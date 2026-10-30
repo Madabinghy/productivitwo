@@ -839,14 +839,18 @@ MCP : `update_activity_goal` / `update_activity` acceptent `goalMin: 0` et `pinG
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
 `kHalfDayTiers` 5 · 20 · 50 · 100 journées gagnées, record d'affilée en fait ; aucune braise). **Montre suisse** (`montre-suisse`,
-symbole `watch`) : à la bascule, chaque activité-temps à minimum vital (`goalMin` > 0) a fait l'attendu à ce jour de la fenêtre de
-budget (`paceOn` : minimum × `budgetDayIndex`, `computeBadges(budgetWindowDays:)`). **Métronome** (`metronome`, symbole `metronome`) :
+symbole `watch`) : à la bascule, chaque activité-temps à minimum vital (`goalMin` > 0) a fait 7 × son minimum sur les **7 derniers
+jours glissants** (maquette validée 2026-10-30 « Montre suisse glissante » ; `kWatchWindowDays`, `paceOn` : jours gelés et jours
+d'avant la création ne réclament rien ; `ActivityPace.pastMin` / `todayMin` / `aheadMin` / `leavingMin` / `tomorrowNeedMin`) — plus de
+mur le lundi, indépendant de la fenêtre de budget des Domaines. Fiche du badge : `WatchPaceView` (`widgets/watch_pace_view.dart`,
+« k / n couvertes », une barre par activité : gris = 6 jours passés, vert = aujourd'hui, « reste n min » / « ✓ couverte · n d'avance »,
+Chrono), ⓘ `kRuleWatch` ; `badgeToday` annonce « Demain : … » (jour qui sort de la fenêtre). **Métronome** (`metronome`, symbole `metronome`) :
 toutes les routines quotidiennes dues atteintes. Hors domaines en veille (jours gelés, `frozenOf`) et routines acquises ; jour sans rien
 à tenir = neutre. Aujourd'hui : `TodayFacts.pace` (activités face à l'attendu, `composeTodayFacts(budgetWindowDays:,
 restingDomainIds:)`) et `metronomeRoutines` ; `badgeToday` (`_montre`, `_metronome`) ; enjeux = section dédiée de `buildStakeBoard`
 (gain `StakeGainKind.halfDay` « Métronome · la dernière · palier 5 ce soir » sur les routines manquantes, « Montre suisse · k / n » sur
 les activités en retard, seulement s'il y en a au plus `kWatchMaxBehind` (3) — au-delà la journée n'est plus jouable et rien
-n'est posé ; gagnée → `won`). Web : fenêtre de 7 j.
+n'est posé ; gagnée → `won`).
 
 ## Relevés en jeu (2026-10-30)
 

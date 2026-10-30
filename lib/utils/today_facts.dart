@@ -22,8 +22,9 @@ TodayFacts composeTodayFacts({
   DailySchedule? schedule,
   PendingChain? pendingChain,
   Map<String, Acquired> acquired = const {},
-  int budgetWindowDays = 7,
   Set<String> restingDomainIds = const {},
+  /// Jours en veille d'une activité : ne réclament rien dans la fenêtre de Montre suisse.
+  Set<String> Function(Activity a)? frozenOf,
 }) {
   final dayStart = livedDayStart(now, dayStartMin);
   final active = activities.where((a) => !a.deleted).toList();
@@ -61,7 +62,7 @@ TodayFacts composeTodayFacts({
     pace: paceOn(now,
         activities: active.where((a) => !restingDomainIds.contains(a.domainId)).toList(),
         minutes: minutesByActivityDay(sessions, now),
-        windowDays: budgetWindowDays),
+        frozenOf: frozenOf),
     restingDomainIds: restingDomainIds,
   );
 }

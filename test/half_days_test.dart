@@ -23,21 +23,33 @@ void main() {
     expect(h.tierDates.first, DateTime(2026, 10, 5));
   });
 
-  test('Montre suisse : attendu = minimum × jour de la semaine', () {
-    final courir = Activity(id: 'c', name: 'Courir', domainId: 'd', type: 'time', goalMin: 30, createdAt: DateTime(2026, 9, 1));
-    // Lundi 26 → mercredi 28 oct. : 30 + 30 le lundi et le mardi, rien le mercredi.
-    final sessions = [_s('c', DateTime(2026, 10, 26, 8), 30), _s('c', DateTime(2026, 10, 27, 8), 30)];
-    final minutes = minutesByActivityDay(sessions, DateTime(2026, 10, 30));
-    final tue = paceOn(DateTime(2026, 10, 27), activities: [courir], minutes: minutes, windowDays: 7).single;
-    expect((tue.doneMin, tue.expectedMin, tue.onPace), (60, 60, true));
-    final wed = paceOn(DateTime(2026, 10, 28), activities: [courir], minutes: minutes, windowDays: 7).single;
-    expect((wed.doneMin, wed.expectedMin, wed.missingMin), (60, 90, 30));
-    final h = watchDays(ymds: ['2026-10-26', '2026-10-27', '2026-10-28'], activities: [courir], sessions: sessions, now: DateTime(2026, 10, 30), windowDays: 7);
-    expect(h.won, ['2026-10-26', '2026-10-27']);
+  test('Montre suisse : 7 jours glissants, le week-end compte encore le lundi', () {
+    final courir = Activity(id: 'c', name: 'Courir', domainId: 'd', type: 'time', goalMin: 10, createdAt: DateTime(2026, 9, 1));
+    // 70 min le samedi 24 oct. : couvre la fenêtre jusqu'au vendredi 30 inclus.
+    final sessions = [_s('c', DateTime(2026, 10, 24, 8), 70)];
+    final minutes = minutesByActivityDay(sessions, DateTime(2026, 11, 2));
+    final mon = paceOn(DateTime(2026, 10, 26), activities: [courir], minutes: minutes).single;
+    expect((mon.doneMin, mon.expectedMin, mon.onPace, mon.pastMin, mon.todayMin), (70, 70, true, 70, 0));
+    final fri = paceOn(DateTime(2026, 10, 30), activities: [courir], minutes: minutes).single;
+    expect((fri.onPace, fri.leavingMin, fri.tomorrowNeedMin), (true, 70, 70));
+    // Samedi 31 : le samedi 24 est sorti.
+    final sat = paceOn(DateTime(2026, 10, 31), activities: [courir], minutes: minutes).single;
+    expect((sat.doneMin, sat.missingMin), (0, 70));
+    final h = watchDays(ymds: ['2026-10-26', '2026-10-30', '2026-10-31'], activities: [courir], sessions: sessions, now: DateTime(2026, 11, 2));
+    expect(h.won, ['2026-10-26', '2026-10-30']);
     // Domaine en veille ce jour-là : neutre.
-    final frozen = watchDays(
-        ymds: ['2026-10-28'], activities: [courir], sessions: sessions, now: DateTime(2026, 10, 30), windowDays: 7, frozenOf: (_) => {'2026-10-28'});
+    final frozen = watchDays(ymds: ['2026-10-31'], activities: [courir], sessions: sessions, now: DateTime(2026, 11, 2), frozenOf: (_) => {'2026-10-31'});
     expect((frozen.won.length, frozen.neutral), (0, 1));
+  });
+
+  test('Montre suisse : jours gelés et jours avant la création ne réclament rien', () {
+    final lire = Activity(id: 'l', name: 'Lire', domainId: 'd', type: 'time', goalMin: 20, createdAt: DateTime(2026, 10, 28));
+    final minutes = minutesByActivityDay([_s('l', DateTime(2026, 10, 28, 8), 40), _s('l', DateTime(2026, 10, 30, 8), 15)], DateTime(2026, 11, 2));
+    // Créée le 28 : fenêtre comptée sur 28, 29, 30 → 60 min attendues ; le 29 gelé → 40.
+    final p = paceOn(DateTime(2026, 10, 30), activities: [lire], minutes: minutes).single;
+    expect((p.expectedMin, p.doneMin, p.todayMin, p.missingMin), (60, 55, 15, 5));
+    final f = paceOn(DateTime(2026, 10, 30), activities: [lire], minutes: minutes, frozenOf: (_) => {'2026-10-29'}).single;
+    expect((f.expectedMin, f.onPace, f.aheadMin), (40, true, 15));
   });
 
   test('Métronome : toutes les routines dues, hors acquises et veille', () {

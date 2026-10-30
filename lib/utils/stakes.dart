@@ -361,8 +361,8 @@ StakeBoard buildStakeBoard({
             activityGesture(p.activity, p.missingMin),
             StakeGain(
               kind: StakeGainKind.halfDay,
-              label: last ? 'Montre suisse · la dernière${tierNote(watch)}' : 'Montre suisse · ${pace.length - behind.length} / ${pace.length}',
-              detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} attendu à ce jour : encore ${fmtMin(p.missingMin)} pour que toutes les activités soient au rythme.',
+              label: last ? 'Montre suisse · la dernière${tierNote(watch)}' : 'Montre suisse · ${pace.length - behind.length} / ${pace.length} couvertes',
+              detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} sur les 7 derniers jours : encore ${fmtMin(p.missingMin)} pour que toutes les activités soient couvertes.',
               weight: last ? 22 : 10,
               sourceId: 'montre-suisse',
               gauge: (done: pace.length - behind.length, after: pace.length - behind.length + (last ? 1 : 0), total: pace.length),

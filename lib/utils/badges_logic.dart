@@ -610,8 +610,6 @@ BadgeDeck computeBadges({
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
-  /// Fenêtre de budget des minimums (7 ou 14 j) : l'attendu de Montre suisse.
-  int budgetWindowDays = 7,
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -751,7 +749,7 @@ BadgeDeck computeBadges({
   ));
   // Montre suisse et Métronome : les deux moitiés de la journée parfaite (2026-10-30).
   final closedYmds = [for (final d in days) d.ymd];
-  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, windowDays: budgetWindowDays, frozenOf: frozenOf);
+  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, frozenOf: frozenOf);
   final metro = metronomeDays(
     ymds: closedYmds,
     activities: activities,
