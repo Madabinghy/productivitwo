@@ -707,7 +707,7 @@ class TodayViewState extends State<TodayView> {
                     ],
                   ] else if (stakes case final board? when !board.isEmpty) ...[
                     const SizedBox(height: 12),
-                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet),
+                    StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), onTap: _openStakesSheet, lostYesterday: widget.logic.lostSeriesYesterday().length),
                   ],
                   // Braises : les séries cassées hier qu'on peut rallumer (ou en attente du +1).
                   LostYesterdaySection(logic: widget.logic, onChanged: _onEmbersChanged, onPlus: _emberPlus),
@@ -1434,7 +1434,7 @@ class TodayViewState extends State<TodayView> {
             if (ledger != null && !ledger.isEmpty)
               EveningLedgerCard(ledger: ledger)
             else if (!evening)
-              StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow)),
+              StakeScoreboard(board: board, elapsed: dayElapsed(widget.logic.livedNowMinNow), lostYesterday: widget.logic.lostSeriesYesterday().length),
             LostYesterdaySection(
               logic: widget.logic,
               all: true,
