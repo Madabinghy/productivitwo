@@ -68,4 +68,17 @@ void main() {
     expect(s.gains.firstWhere((g) => g.kind == StakeGainKind.halfDay).label, contains('palier 5'));
     expect(badgeToday(deck.byId('metronome')!, facts).chip, '1 / 2 routines');
   });
+
+  test('Montre suisse : plus de 3 activités en retard = aucune ligne d’enjeu', () {
+    final acts = [for (var i = 0; i < 5; i++) Activity(id: 'a$i', name: 'A$i', domainId: 'd', type: 'time', goalMin: 10)];
+    final facts = TodayFacts(ymd: '2026-10-30', now: DateTime(2026, 10, 30, 18), pace: [for (final a in acts) ActivityPace(a, 0, 30)]);
+    final deck = BadgeDeck([
+      BadgeState(def: const BadgeDef(id: 'montre-suisse', family: BadgeFamily.days, name: 'Montre suisse', symbol: 'watch', tiers: kHalfDayTiers, unit: 'j'), level: 0, value: 2),
+    ]);
+    final board = buildStakeBoard(deck: deck, facts: facts, activities: acts);
+    expect(board.top.length + board.rest.length, 0);
+    final few = TodayFacts(ymd: '2026-10-30', now: DateTime(2026, 10, 30, 18), pace: [ActivityPace(acts[0], 0, 30), ActivityPace(acts[1], 40, 30)]);
+    final b2 = buildStakeBoard(deck: deck, facts: few, activities: acts);
+    expect(b2.top.length + b2.rest.length, 1);
+  });
 }

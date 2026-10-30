@@ -351,7 +351,10 @@ StakeBoard buildStakeBoard({
       final behind = [for (final p in pace) if (!p.onPace) p];
       if (pace.isNotEmpty && behind.isEmpty) {
         won.add('Montre suisse');
-      } else if (pace.isNotEmpty) {
+      } else if (pace.isNotEmpty && behind.length <= kWatchMaxBehind) {
+        // Au-delà de [kWatchMaxBehind] activités en retard, la journée n'est plus
+        // jouable ce soir : pas une ligne par activité (2026-10-30, retour user :
+        // « tenu 25 sur 54 », gonflé par une ligne Montre suisse par activité).
         for (final p in behind) {
           final last = behind.length == 1;
           add(
@@ -586,6 +589,9 @@ StakeBoard buildStakeBoard({
 }
 
 /// Familles de la ligne dépliée, dans l'ordre d'affichage.
+/// Montre suisse : au plus ce nombre d'activités à rattraper pour que la journée se joue encore.
+const kWatchMaxBehind = 3;
+
 /// Badges de demi-journée (section dédiée de [buildStakeBoard]).
 const kHalfDayIds = {'montre-suisse', 'metronome'};
 
