@@ -1673,7 +1673,7 @@ class TodayViewState extends State<TodayView> {
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
       ),
-      tlink(tomorrow ? 'Aujourd\'hui' : 'Demain', onToggleDay ?? () => setState(() => tomorrow = !tomorrow)),
+      tlink(tomorrow ? 'Aujourd\'hui' : 'Demain', onToggleDay ?? () => setState(() => _showTomorrow = !_showTomorrow)),
       tlink('Modifier', () {
         final n = DateTime.now();
         _openPlan(tomorrow ? _ymd(n.add(const Duration(days: 1))) : _ymd(n));
