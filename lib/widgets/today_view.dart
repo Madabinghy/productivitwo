@@ -1326,7 +1326,6 @@ class TodayViewState extends State<TodayView> {
         controller: scroll,
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
         children: [
-          const FicheHeader(title: 'Objectifs', chip: 'aujourd\'hui', chipColor: Color(0xFF00897B)),
           ObjectivesDayView(
             logic: widget.logic,
             sync: sync,

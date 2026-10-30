@@ -71,3 +71,9 @@ const kRuleModes = GameRule('Les modes', [
   RuleCard('⚡', 'En forme', 'Les gros morceaux d’abord, deep work proposé.'),
   RuleCard('📈', 'Ton élan', 'Chaque changement de mode est noté : c’est ce qui trace ton élan dans le temps.'),
 ]);
+
+const kRuleObjectivesToday = GameRule('Objectifs aujourd’hui', [
+  RuleCard('🔢', 'Le chiffre du jour', 'Ce que tes objectifs demandent aujourd’hui : temps du jour, routines, blocs, relevés. Le trait = l’heure qu’il est.'),
+  RuleCard('🧭', 'Où j’en suis', 'Une ligne par objectif : son rythme de la semaine et ce qui reste aujourd’hui. Touche-la pour la fiche.'),
+  RuleCard('👉', 'À faire', 'Une seule liste, le plus utile d’abord : l’objectif le plus en retard passe devant. Un bouton par geste.'),
+]);
