@@ -51,6 +51,12 @@ class OpenItem {
   final keys = <String, GlobalKey>{};
 
   String? current(String? defaultId) => _touched ? _id : defaultId;
+
+  /// Retour à l'état d'arrivée (rien de touché).
+  void reset() {
+    _touched = false;
+    _id = null;
+  }
   bool isOpen(String id, String? defaultId) => current(defaultId) == id;
 
   GlobalKey keyFor(String id) => keys.putIfAbsent(id, GlobalKey.new);

@@ -39,10 +39,13 @@ class GoalsView extends StatefulWidget {
   final void Function(Activity activity, Project project, ProjectTask task)? onStartTimer;
   final void Function(int doneCount)? onBadgeCheck;
   final Widget? header;
+  /// Onglet affiché : à chaque retour sur Projets, tous les projets se replient.
+  final bool visible;
   /// État des chronos pour la fiche de tâche (chip « chrono en cours », temps passé, Arrêter).
   final AppLogic? logic;
 
   const GoalsView({
+    this.visible = true,
     super.key,
     required this.domains,
     this.activities = const [],
@@ -73,7 +76,6 @@ class _GoalsViewState extends State<GoalsView> {
   static const _kClientKey = 'projects_client_filter';
   Set<String> _domainFilter = {};
   String? _clientFilter;
-  bool _filtersOpen = false;
   /// Aide « Touche une brique… » affichée jusqu'au premier tap (retour user 2026-10).
   static const _kHintKey = 'bricks_hint_seen';
   bool _hintSeen = true;
@@ -98,9 +100,14 @@ class _GoalsViewState extends State<GoalsView> {
         if (d != null) _domainFilter = d.toSet();
         _hintSeen = prefs.getBool(_kHintKey) ?? false;
         _clientFilter = c;
-        _filtersOpen = _domainFilter.isNotEmpty || c != null;
       });
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant GoalsView old) {
+    super.didUpdateWidget(old);
+    if (widget.visible && !old.visible) _open.reset();
   }
 
   Future<void> _toggleDomain(String id) async {
@@ -241,15 +248,14 @@ class _GoalsViewState extends State<GoalsView> {
         title: const Text('Projets'),
         centerTitle: false,
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: Center(
-              child: Text(
-                '${live.length} actif${live.length > 1 ? 's' : ''}${upcoming.isNotEmpty ? ' · ${upcoming.length} à venir' : ''}',
-                style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55)),
-              ),
+          Center(
+            child: Text(
+              '${live.length} actif${live.length > 1 ? 's' : ''}${upcoming.isNotEmpty ? ' · ${upcoming.length} à venir' : ''}'
+              '${hidden > 0 ? ' · $hidden masqué${hidden > 1 ? 's' : ''}' : ''}',
+              style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .55)),
             ),
           ),
+          if (hasFilters) _filterButton(cs, filterDomains, roots) else const SizedBox(width: 12),
         ],
       ),
       body: nothingAtAll
@@ -259,8 +265,6 @@ class _GoalsViewState extends State<GoalsView> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
               children: [
                 if (widget.header != null) widget.header!,
-                if (hasFilters) _filtersToggle(cs, hidden),
-                if (hasFilters && _filtersOpen) _filtersBar(cs, filterDomains, roots),
                 if (empty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 32),
@@ -269,10 +273,10 @@ class _GoalsViewState extends State<GoalsView> {
                   ),
                 if (live.isNotEmpty) ...[
                   const ListSectionTitle('TOUS LES PROJETS'),
-                  for (final m in live) _item(m, liveRows[m.project.id]!, now, defaultId: live.first.project.id, moment: m == live.first),
+                  for (final m in live) _item(m, liveRows[m.project.id]!, now, defaultId: null, moment: m == live.first),
                 ],
                 if (upcoming.isNotEmpty) ..._section('upcoming', 'À VENIR · ${upcoming.length}', [
-                  for (final m in upcoming) _item(m, rowOf(m.project), now, defaultId: live.firstOrNull?.project.id),
+                  for (final m in upcoming) _item(m, rowOf(m.project), now, defaultId: null),
                 ]),
                 if (paused.isNotEmpty) ..._section('paused', 'EN PAUSE · ${paused.length}', [
                   for (final p in paused) _plainRow(p, 'en pause'),
@@ -295,35 +299,59 @@ class _GoalsViewState extends State<GoalsView> {
     );
   }
 
-  /// Ligne « FILTRES » repliable (même grammaire que l'onglet Actions).
-  Widget _filtersToggle(ColorScheme cs, int hidden) {
+  /// Bouton « Filtrer » de la barre (retour user 2026-10-30 : pas de filtres
+  /// dans la page) : pastille du nombre de filtres actifs, tap = feuille.
+  Widget _filterButton(ColorScheme cs, List<Domain> filterDomains, List<Project> roots) {
     final n = _domainFilter.length + (_clientFilter == null ? 0 : 1);
-    final on = n > 0;
-    return InkWell(
-      onTap: () => setState(() => _filtersOpen = !_filtersOpen),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
-        child: Row(children: [
-          Icon(Icons.tune_rounded, size: 14, color: on ? cs.primary : cs.onSurface.withValues(alpha: .5)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              on
-                  ? 'FILTRES · $n actif${n > 1 ? 's' : ''}${hidden > 0 ? ' · $hidden masqué${hidden > 1 ? 's' : ''}' : ''}'
-                  : 'FILTRES · DOMAINE · POUR',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: on ? cs.primary : cs.onSurface.withValues(alpha: .5)),
-            ),
-          ),
-          Icon(_filtersOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withValues(alpha: .45)),
-        ]),
+    return IconButton(
+      tooltip: 'Filtrer',
+      onPressed: () => _openFilters(filterDomains, roots),
+      icon: Badge(
+        isLabelVisible: n > 0,
+        label: Text('$n'),
+        backgroundColor: cs.primary,
+        textColor: cs.onPrimary,
+        child: Icon(Icons.tune_rounded, color: n > 0 ? cs.primary : null),
       ),
     );
   }
 
-  Widget _filtersBar(ColorScheme cs, List<Domain> filterDomains, List<Project> roots) {
+  Future<void> _openFilters(List<Domain> filterDomains, List<Project> roots) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        final cs = Theme.of(ctx).colorScheme;
+        final n = _domainFilter.length + (_clientFilter == null ? 0 : 1);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Expanded(child: Text('Filtrer les projets', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
+                if (n > 0)
+                  TextButton(
+                    onPressed: () async {
+                      for (final id in _domainFilter.toList()) {
+                        await _toggleDomain(id);
+                      }
+                      await _setClient(null);
+                      setLocal(() {});
+                    },
+                    child: const Text('Tout effacer'),
+                  ),
+              ]),
+              const SizedBox(height: 10),
+              _filtersBar(cs, filterDomains, roots, onChanged: () => setLocal(() {})),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _filtersBar(ColorScheme cs, List<Domain> filterDomains, List<Project> roots, {VoidCallback? onChanged}) {
     Widget chip(String label, bool on, VoidCallback onTap, {Color? color}) => ChoiceChip(
           selected: on,
           onSelected: (_) => onTap(),
@@ -353,7 +381,10 @@ class _GoalsViewState extends State<GoalsView> {
           child: Row(children: [
             label('DOMAINE'),
             for (final d in filterDomains) ...[
-              chip(d.name, _domainFilter.contains(d.id), () => _toggleDomain(d.id), color: domainColor(d.id, domains)),
+              chip(d.name, _domainFilter.contains(d.id), () async {
+                await _toggleDomain(d.id);
+                onChanged?.call();
+              }, color: domainColor(d.id, domains)),
               const SizedBox(width: 6),
             ],
           ]),
@@ -365,8 +396,10 @@ class _GoalsViewState extends State<GoalsView> {
           child: Row(children: [
             label('POUR'),
             for (final r in roots) ...[
-              chip(r.title, _clientFilter == r.id, () => _setClient(_clientFilter == r.id ? null : r.id),
-                  color: domainColor(r.domainId, domains)),
+              chip(r.title, _clientFilter == r.id, () async {
+                await _setClient(_clientFilter == r.id ? null : r.id);
+                onChanged?.call();
+              }, color: domainColor(r.domainId, domains)),
               const SizedBox(width: 6),
             ],
           ]),
