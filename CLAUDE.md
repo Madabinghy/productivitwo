@@ -220,6 +220,10 @@ L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussi
 - Si des commits sont poussés **après** que la PR a été mergée, ils deviennent
   orphelins : refaire une **PR propre** depuis `origin/main` (n'inclure que les
   fichiers voulus).
+- **Claude merge lui-même ses PR** (accord user 2026-10-30) dès que la CI est verte, sans conflit ni
+  commentaire de revue ouvert : merge simple, jamais de force-push, puis il le signale. Les déploiements
+  (`firebase deploy --only functions` / `hosting`) restent à l'utilisateur : Claude les rappelle à chaque merge
+  qui en a besoin.
 
 ---
 
