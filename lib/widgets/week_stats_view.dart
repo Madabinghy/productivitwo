@@ -229,9 +229,10 @@ class _WeekStatsViewState extends State<WeekStatsView> {
   /// Élan moyen de la semaine (pondéré par le temps tenu), « 2,9 » ; null sans pointage.
   String? _elanMean(DateTime now) {
     final st = widget.logic.state;
+    final byYmd = {for (final s in _schedules) s.date: s};
     final days = buildElanDays(
-      marks: st.moodMarks,
-      schedulesByYmd: {for (final s in _schedules) s.date: s},
+      marks: widget.logic.elanMarksWithRecharge(byYmd),
+      schedulesByYmd: byYmd,
       hits: st.habitHits,
       activities: st.activities,
       now: now,

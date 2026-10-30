@@ -2,6 +2,7 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
+import 'package:productivitwo_v1/utils/recharge.dart' show kRechargeValue;
 
 /// Voir son élan (2026-10, maquette « Élan visible ») : la journée par
 /// créneau, la semaine, les 30 derniers jours et la tendance. Logique pure,
@@ -40,7 +41,7 @@ List<ElanSlot> todayElanSlots({
   final ymd = ymdOf(livedDate(now, dayStartMin));
   final nowMin = livedNowMin(now, dayStartMin);
   final cur = elanBucket(nowMin);
-  final windows = elanWindows(marks, ymd, dayStartMin: dayStartMin);
+  final windows = elanWindows(marks, ymd, dayStartMin: dayStartMin).where((w) => w.mark.value != kRechargeValue).toList();
   final out = <ElanSlot>[];
   for (final b in kElanBuckets) {
     final ws = windows.where((x) => (x.mark.moment ?? elanBucket(x.mark.at.hour * 60 + x.mark.at.minute)) == b).toList();

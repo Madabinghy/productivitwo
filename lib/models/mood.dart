@@ -39,7 +39,8 @@ class MoodMark {
   }) : id = id ?? _uuid.v4();
 
   bool get isElan => kind == kMoodElan;
-  bool get lowElan => isElan && value <= 2;
+  /// Flemme ou Mou ; 0 = recharge (pointage virtuel de la nuit), jamais bas.
+  bool get lowElan => isElan && value >= 1 && value <= 2;
 
   Map<String, dynamic> toJson() => {
         'id': id,

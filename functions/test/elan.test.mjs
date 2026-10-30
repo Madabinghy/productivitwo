@@ -87,3 +87,26 @@ test("dedupeMoodMarks : historique des changements, une correction < 5 min rempl
   ]);
   assert.deepEqual(kept.map((m) => m.id), ["b", "c", "d"]);
 });
+
+test("recharge : le bloc Sommeil ferme le dernier pointage ; une sieste n'est pas une victoire", async () => {
+  const { rechargeStartMs, isSleepName, isRestName } = await import("../lib/elan.js");
+  assert.equal(isSleepName("Sommeil"), true);
+  assert.equal(isSleepName("Sieste"), false);
+  assert.equal(isRestName("Sieste"), true);
+  // Flemme à 21:00 (Paris), bloc Sommeil 22:40 → la fenêtre s'arrête à 22:40.
+  const m = mark("2026-10-28T19:00:00.000Z", 2);
+  const r = rechargeStartMs({
+    ymd: "2026-10-28",
+    blocks: [{ title: "Sommeil", startTime: "22:40", status: "pending" }],
+    nextBlocks: [],
+    activityNames: new Map(),
+    lastMarkMs: Date.parse(m.at),
+    offsetMin: OFF,
+  });
+  assert.equal(new Date(r).toISOString(), "2026-10-28T20:40:00.000Z");
+  const ws = elanWindows([m], "2026-10-28", OFF, 300, r);
+  assert.equal((ws[0].endMs - ws[0].startMs) / 60000, 100);
+  // Bloc Sieste fait pendant la flemme : pas une victoire.
+  const nap = winsIn(ws[0], [{ status: "done", doneAt: "2026-10-28T19:30:00.000Z", title: "Sieste" }], [], [], OFF);
+  assert.equal(nap, 0);
+});

@@ -28,6 +28,7 @@ import 'package:productivitwo_v1/utils/today_logic.dart';
 import 'package:productivitwo_v1/widgets/appbar_routines_summery.dart';
 import 'package:productivitwo_v1/widgets/habit_settings_sheet.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/recharge.dart';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/gamification_flags.dart';
@@ -1754,6 +1755,43 @@ class AppLogic implements HuntStore {
 
   /// Mode du jour = dernier pointage d'élan de la journée vécue (jamais stocké).
   DayMode get mode => modeOf(state.moodMarks, DateTime.now(), dayStartMin);
+
+  /// Recharge (2026-10-30, `utils/recharge.dart`) : depuis quand la personne
+  /// recharge (sommeil commencé sans pointage depuis, chrono Sommeil qui tourne,
+  /// ou matin avant le premier geste) ; null = éveillée. D'après [todayBlocks].
+  DateTime? get rechargeSinceNow {
+    final now = DateTime.now();
+    final dayStart = livedDayStart(now, dayStartMin);
+    final byId = {for (final a in state.activities) a.id: a};
+    final ymd = livedProgramYmd(now, dayStartMin);
+    DateTime? lastSleep;
+    for (final s in state.sessions) {
+      if (s.deleted || !isSleepName(byId[s.activityId]?.name)) continue;
+      if (s.startAt.isAfter(now) || now.difference(s.startAt).inHours > 16) continue;
+      if (lastSleep == null || s.startAt.isAfter(lastSleep)) lastSleep = s.startAt;
+    }
+    return rechargeSince(
+      now: now,
+      dayStart: dayStart,
+      sleepStarts: sleepStartsOf(dayStart: dayStart, blocks: todayBlocks, sessions: state.sessions, activitiesById: byId),
+      dayMarks: [for (final m in state.moodMarks) if (m.isElan && m.ymd == ymd) m],
+      sessions: state.sessions,
+      hits: state.habitHits,
+      blocks: todayBlocks,
+      activitiesById: byId,
+      lastSleepStart: lastSleep,
+    );
+  }
+
+  bool get inRecharge => rechargeSinceNow != null;
+
+  /// Pointages d'élan + recharges virtuelles des jours de [byYmd] : pour les
+  /// statistiques d'élan (la nuit ne pèse ni dans l'élan, ni dans la flemme).
+  List<MoodMark> elanMarksWithRecharge(Map<String, DailySchedule> byYmd) {
+    final marks = state.moodMarks;
+    final r = rechargeByYmd(schedulesByYmd: byYmd, marks: marks, sessions: state.sessions, activities: state.activities, dayStartMin: dayStartMin);
+    return withRechargeMarks(marks, r, DateTime.now());
+  }
 
   /// Poser un mode = pointer l'élan correspondant au créneau courant (zéro
   /// double saisie : coach, badges et `get_user_context` lisent la même donnée).

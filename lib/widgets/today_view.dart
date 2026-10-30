@@ -47,6 +47,7 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
 import 'package:productivitwo_v1/widgets/embers_view.dart' show LostYesterdaySection, EmberDots, EmberLedgerPanel;
 import 'package:productivitwo_v1/utils/embers.dart' show kEmberCap;
@@ -693,6 +694,8 @@ class TodayViewState extends State<TodayView> {
                 _header(cs, now, text3),
                 ...[
                 if (!_showTomorrow) ...[
+                  // Recharge : la nuit hors des modes (matin avant le premier geste, soir au sommeil).
+                  RechargeCard(logic: widget.logic),
                   // « Ta journée » (ou « Ce soir » après 19 h) en tête, à la place de
                   // l'ancienne carte « journée gagnée » (retour user 2026-10-30).
                   if (stakes case final board? when isEvening(widget.logic.livedNowMinNow)) ...[

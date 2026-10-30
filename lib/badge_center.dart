@@ -72,7 +72,8 @@ class BadgeCenter extends ChangeNotifier {
       projects: _projects,
       objectives: _objectives,
       sessions: st.sessions,
-      moodMarks: st.moodMarks,
+      // La nuit (recharge) ferme le dernier pointage : elle ne pèse pas dans l'élan.
+      moodMarks: logic.elanMarksWithRecharge({for (final x in _schedules) x.date: x}),
       chainRuns: st.chainRuns,
       now: DateTime.now(),
       dayStartMin: logic.dayStartMin,
