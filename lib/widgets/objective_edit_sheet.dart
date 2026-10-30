@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widgets/activity_picker.dart' show groupActivitiesByDomain;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 
@@ -471,6 +472,30 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
     );
   }
 
+  /// Activités ou routines rangées par domaine (2026-10-30, retour user) : le
+  /// domaine de l'objectif en tête, pastille de couleur, « Sans domaine » à la fin ;
+  /// un compteur « n choisies » sur l'en-tête dès qu'il y en a.
+  List<Widget> _byDomain(List<Activity> items, Widget Function(Activity a) chip) {
+    final cs = Theme.of(context).colorScheme;
+    final picked = {..._timeCommitments.keys, ..._routineIds};
+    final groups = groupActivitiesByDomain(items, widget.domains, preferDomainId: _domainId);
+    return [
+      for (final g in groups) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 6),
+          child: Row(children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: g.color ?? cs.onSurface.withValues(alpha: .4), shape: BoxShape.circle)),
+            const SizedBox(width: 6),
+            Expanded(child: Text(g.name, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: cs.onSurface.withValues(alpha: .75)))),
+            if (g.activities.where((a) => picked.contains(a.id)).length case final n when n > 0)
+              Text('$n choisie${n > 1 ? 's' : ''}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _accent)),
+          ]),
+        ),
+        Wrap(spacing: 8, runSpacing: 8, children: [for (final a in g.activities) chip(a)]),
+      ],
+    ];
+  }
+
   Widget _stepMeans(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Column(
@@ -484,25 +509,21 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
                   letterSpacing: .8,
                   color: cs.onSurface.withOpacity(.45))),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _timeActivities.map((a) {
-              final selected = _timeCommitments.containsKey(a.id);
-              return _chip(
-                context,
-                selected: selected,
-                label: a.name,
-                onTap: () => setState(() {
-                  if (selected) {
-                    _timeCommitments.remove(a.id);
-                  } else {
-                    _timeCommitments[a.id] = 120;
-                  }
-                }),
-              );
-            }).toList(),
-          ),
+          ..._byDomain(_timeActivities, (a) {
+            final selected = _timeCommitments.containsKey(a.id);
+            return _chip(
+              context,
+              selected: selected,
+              label: a.name,
+              onTap: () => setState(() {
+                if (selected) {
+                  _timeCommitments.remove(a.id);
+                } else {
+                  _timeCommitments[a.id] = 120;
+                }
+              }),
+            );
+          }),
           for (final entry in _timeCommitments.entries) ...[
             const SizedBox(height: 12),
             Row(
@@ -574,26 +595,22 @@ class _ObjectiveEditSheetState extends State<_ObjectiveEditSheet> {
                   letterSpacing: .8,
                   color: cs.onSurface.withOpacity(.45))),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _routines.map((a) {
-              final selected = _routineIds.contains(a.id);
-              final freq = switch (a.effHabitFreq) {
-                HabitFreq.daily => '/j',
-                HabitFreq.weekly => '/sem',
-                HabitFreq.monthly => '/mois',
-              };
-              return _chip(
-                context,
-                selected: selected,
-                label: '${a.name} · ${a.effHabitTarget}$freq',
-                onTap: () => setState(() {
-                  selected ? _routineIds.remove(a.id) : _routineIds.add(a.id);
-                }),
-              );
-            }).toList(),
-          ),
+          ..._byDomain(_routines, (a) {
+            final selected = _routineIds.contains(a.id);
+            final freq = switch (a.effHabitFreq) {
+              HabitFreq.daily => '/j',
+              HabitFreq.weekly => '/sem',
+              HabitFreq.monthly => '/mois',
+            };
+            return _chip(
+              context,
+              selected: selected,
+              label: '${a.name} · ${a.effHabitTarget}$freq',
+              onTap: () => setState(() {
+                selected ? _routineIds.remove(a.id) : _routineIds.add(a.id);
+              }),
+            );
+          }),
           const SizedBox(height: 18),
         ],
         if (widget.projects.isNotEmpty) ...[
