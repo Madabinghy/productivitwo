@@ -1411,7 +1411,8 @@ const REST_DOMAIN_TOOL = {
     "Met un domaine EN VEILLE jusqu'à une date incluse (modes et coups, 2026-10 : pendant un coup, on cesse de " +
     "réclamer les autres domaines) ou lève la veille (clear). Un domaine en veille : ses minimums ne comptent plus " +
     "dans la semaine, ses actions sortent de la carte du moment, plan_day ne programme rien dessus ; les routines " +
-    "« toute la journée » restent. Jamais sans accord explicite de l'utilisateur. data/meta.restDomains {domainId: YYYY-MM-DD}.",
+    "« toute la journée » restent ; les séries de ses routines sont GELÉES (un jour en veille ne casse rien et ne compte pas, " +
+    "historique data/meta.restPeriods). Jamais rétroactive. Jamais sans accord explicite de l'utilisateur. data/meta.restDomains {domainId: YYYY-MM-DD}.",
   inputSchema: {
     type: "object",
     required: ["domainId"],

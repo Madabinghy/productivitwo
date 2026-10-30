@@ -6,6 +6,8 @@ import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
+import 'package:productivitwo_v1/utils/reprise.dart';
+import 'package:productivitwo_v1/utils/rest_periods.dart';
 
 /// Badges (lot 1, 2026-10) : catalogue et calcul des paliers depuis les
 /// données d'exécution. Logique pure, aucune écriture : un badge est un FAIT
@@ -123,8 +125,9 @@ class BadgeState {
 }
 
 /// Une case du graphique d'avancement.
-/// `bridged` = jour comblé par une braise (série de routine seulement).
-enum TrackCell { hit, miss, neutral, current, future, bridged }
+/// `bridged` = jour comblé par une braise (série de routine seulement) ;
+/// `frozen` = jour gelé par une veille du domaine (ni tenu ni manqué).
+enum TrackCell { hit, miss, neutral, current, future, bridged, frozen }
 
 /// Bande de cases de la plus ancienne à la plus récente, avec sa légende.
 class BadgeTrack {
@@ -140,7 +143,9 @@ class BadgeDeck {
   final List<BadgeState> badges;
   /// Braises (réserve, rallumages) ; vide quand le deck vient d'un instantané.
   final EmberLedger embers;
-  const BadgeDeck(this.badges, {this.embers = EmberLedger.empty});
+  /// Reprises possibles ou en cours aujourd'hui, par routine (`reprise.dart`).
+  final Map<String, RepriseNow> reprises;
+  const BadgeDeck(this.badges, {this.embers = EmberLedger.empty, this.reprises = const {}});
 
   /// Le compteur « n sur N » compte les paliers de toutes les familles SAUF les
   /// séries de routine (décision 2026-10-26) : un badge par routine gonflait le
@@ -209,14 +214,23 @@ int _levelOf(List<int> tiers, num value) {
 }
 
 /// Séries consécutives (début, longueur) dans un ensemble de jours `YYYY-MM-DD`.
-List<(DateTime, int)> _runsOf(Set<String> days) {
+/// [skip] = jours transparents (gelés) : ils ne cassent pas la série et ne
+/// comptent pas dans sa longueur.
+List<(DateTime, int)> _runsOf(Set<String> days, {Set<String> skip = const {}}) {
   final sorted = days.map((s) => DateTime.parse(s)).toList()..sort();
   final runs = <(DateTime, int)>[];
   DateTime? start;
   DateTime? prev;
   var len = 0;
+  bool bridgedBySkip(DateTime a, DateTime b) {
+    if (skip.isEmpty) return false;
+    for (var d = DateTime(a.year, a.month, a.day + 1); d.isBefore(b); d = DateTime(d.year, d.month, d.day + 1)) {
+      if (!skip.contains(ymdOf(d))) return false;
+    }
+    return true;
+  }
   for (final d in sorted) {
-    if (prev != null && d.difference(prev).inDays == 1) {
+    if (prev != null && (d.difference(prev).inDays == 1 || bridgedBySkip(prev, d))) {
       len++;
     } else {
       if (start != null) runs.add((start, len));
@@ -231,13 +245,19 @@ List<(DateTime, int)> _runsOf(Set<String> days) {
 
 /// Série en cours : jours consécutifs jusqu'à `today` inclus, ou jusqu'à
 /// hier si aujourd'hui n'est pas (encore) atteint.
-int _currentRun(Set<String> days, DateTime today) {
+int _currentRun(Set<String> days, DateTime today, {Set<String> skip = const {}}) {
   var d = _day(today);
-  if (!days.contains(ymdOf(d))) d = d.subtract(const Duration(days: 1));
+  if (!days.contains(ymdOf(d))) d = DateTime(d.year, d.month, d.day - 1);
   var n = 0;
-  while (days.contains(ymdOf(d)) && n < 3650) {
-    n++;
-    d = d.subtract(const Duration(days: 1));
+  var guard = 0;
+  while (guard++ < 4000) {
+    final y = ymdOf(d);
+    if (days.contains(y)) {
+      n++;
+    } else if (!skip.contains(y)) {
+      break;
+    }
+    d = DateTime(d.year, d.month, d.day - 1);
   }
   return n;
 }
@@ -273,11 +293,13 @@ Set<String> routineReachedDays(Activity a, List<HabitHit> hits, {int dayStartMin
 }
 
 /// [bridged] = jours comblés par une braise : ils tiennent la série, mais ne
-/// comptent pas comme « jours atteints ».
-RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}}) {
+/// comptent pas comme « jours atteints ». [frozen] = jours gelés par une veille
+/// du domaine : ni tenus ni manqués.
+RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now,
+    {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}, Set<String> frozen = const {}}) {
   final reachedOnly = routineReachedDays(a, hits, dayStartMin: dayStartMin);
   final days = {...reachedOnly, ...bridged};
-  final runs = _runsOf(days);
+  final runs = _runsOf(days, skip: frozen);
   final longest = runs.fold(0, (m, r) => r.$2 > m ? r.$2 : m);
   final today = livedDate(now, dayStartMin);
   DateTime? first;
@@ -287,7 +309,7 @@ RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int 
   }
   final since = first == null ? 0 : today.difference(_day(livedDate(first, dayStartMin))).inDays + 1;
   return RoutineSeries(
-    current: _currentRun(days, today),
+    current: _currentRun(days, today, skip: frozen),
     longest: longest,
     reachedDays: reachedOnly.length,
     sinceDays: since,
@@ -295,11 +317,21 @@ RoutineSeries routineSeries(Activity a, List<HabitHit> hits, DateTime now, {int 
   );
 }
 
+/// Ligne du record d'une série : « Record en cours · 21 j » ou « Encore 5 j
+/// pour égaler ton record (21 j) » ; rien sans série en cours ni record d'au
+/// moins 3 jours.
+String? recordLine(int current, int longest) {
+  if (current <= 0 || longest < 3) return null;
+  if (current >= longest) return 'Record en cours · $current j';
+  return 'Encore ${longest - current} j pour égaler ton record ($longest j)';
+}
+
 /// Le badge de série d'une routine quotidienne, complet (paliers, faits, bande
 /// des 30 derniers jours) : le deck et la fiche routine / le segment Routines
 /// d'Aujourd'hui l'affichent tel quel.
-BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}}) {
-  final s = routineSeries(a, hits, now, dayStartMin: dayStartMin, bridged: bridged);
+BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now,
+    {int dayStartMin = kDefaultDayStartMin, Set<String> bridged = const {}, Set<String> frozen = const {}}) {
+  final s = routineSeries(a, hits, now, dayStartMin: dayStartMin, bridged: bridged, frozen: frozen);
   final reached = routineReachedDays(a, hits, dayStartMin: dayStartMin);
   final first = reached.isEmpty ? null : (reached.toList()..sort()).first;
   final today = livedDate(now, dayStartMin);
@@ -307,15 +339,18 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayS
   for (var i = 29; i >= 0; i--) {
     final y = ymdOf(today.subtract(Duration(days: i)));
     if (i == 0) {
-      cells.add(reached.contains(y) ? TrackCell.hit : TrackCell.current);
+      cells.add(reached.contains(y) ? TrackCell.hit : (frozen.contains(y) ? TrackCell.frozen : TrackCell.current));
     } else if (first == null || y.compareTo(first) < 0) {
       cells.add(TrackCell.neutral);
     } else {
-      cells.add(reached.contains(y) ? TrackCell.hit : (bridged.contains(y) ? TrackCell.bridged : TrackCell.miss));
+      cells.add(reached.contains(y)
+          ? TrackCell.hit
+          : (bridged.contains(y) ? TrackCell.bridged : (frozen.contains(y) ? TrackCell.frozen : TrackCell.miss)));
     }
   }
   final hits30 = cells.where((c) => c == TrackCell.hit).length;
   final bridged30 = cells.where((c) => c == TrackCell.bridged).length;
+  final frozen30 = cells.where((c) => c == TrackCell.frozen).length;
   return BadgeState(
     def: BadgeDef(id: 'serie-${a.id}', family: BadgeFamily.routines, name: a.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: a.id),
     level: _levelOf(kRoutineTiers, s.longest),
@@ -324,10 +359,14 @@ BadgeState routineBadge(Activity a, List<HabitHit> hits, DateTime now, {int dayS
     facts: [
       ('Série en cours', _plural(s.current, 'jour', 'jours')),
       ('Série la plus longue', _plural(s.longest, 'jour', 'jours')),
+      if (s.longest > s.current && s.current > 0) ('Pour égaler le record', _plural(s.longest - s.current, 'jour', 'jours')),
       if (s.sinceDays > 0) ('Jours atteints sur ${s.sinceDays}', '${s.reachedDays}'),
       if (bridged.isNotEmpty) ('Jours rallumés', '${bridged.length}'),
+      if (frozen.isNotEmpty) ('Jours gelés (veille)', '${frozen.length}'),
     ],
-    track: BadgeTrack(cells: cells, caption: '30 derniers jours · $hits30 jours atteints${bridged30 > 0 ? ' · $bridged30 rallumé${bridged30 > 1 ? 's' : ''}' : ''}'),
+    track: BadgeTrack(
+        cells: cells,
+        caption: '30 derniers jours · $hits30 jours atteints${bridged30 > 0 ? ' · $bridged30 rallumé${bridged30 > 1 ? 's' : ''}' : ''}${frozen30 > 0 ? ' · $frozen30 gelé${frozen30 > 1 ? 's' : ''}' : ''}'),
   );
 }
 
@@ -557,6 +596,8 @@ BadgeDeck computeBadges({
   List<ChainRun> chainRuns = const [],
   int dayStartMin = kDefaultDayStartMin,
   List<EmberSpend> emberSpends = const [],
+  List<RestPeriod> restPeriods = const [],
+  Map<String, String> restDomains = const {},
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -572,8 +613,19 @@ BadgeDeck computeBadges({
     reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
     todayYmd: ymdOf(livedDate(now, dayStartMin)),
   );
+  final todayYmd = ymdOf(livedDate(now, dayStartMin));
+  final frozenByDomain = <String, Set<String>>{};
+  Set<String> frozenOf(Activity a) => frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
+  final repriseEvents = <(String, RepriseEvent)>[];
+  final reprisesNow = <String, RepriseNow>{};
   for (final a in routines) {
-    out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin, bridged: embers.bridged[a.id] ?? const {}));
+    final bridged = embers.bridged[a.id] ?? const <String>{};
+    out.add(routineBadge(a, habitHits, now, dayStartMin: dayStartMin, bridged: bridged, frozen: frozenOf(a)));
+    final r = reprisesOf({...routineReachedDays(a, habitHits, dayStartMin: dayStartMin), ...bridged}, frozenOf(a), todayYmd);
+    for (final e in r.events) {
+      repriseEvents.add((a.name, e));
+    }
+    if (r.now != null) reprisesNow[a.id] = r.now!;
   }
 
   // Objectifs.
@@ -774,6 +826,27 @@ BadgeDeck computeBadges({
       if (deep.isNotEmpty) ('Le dernier', _fmtDate(deep.last)),
     ],
   ));
+  // Reprise : une routine coupée au moins deux jours, puis tenue trois jours d'affilée.
+  repriseEvents.sort((a, b) => a.$2.ymd.compareTo(b.$2.ymd));
+  (String, RepriseEvent)? longestGap;
+  for (final e in repriseEvents) {
+    if (longestGap == null || e.$2.gap > longestGap.$2.gap) longestGap = e;
+  }
+  final routineName = {for (final a in routines) a.id: a.name};
+  final inProgress = reprisesNow.entries.where((e) => !e.value.completedToday && e.value.held > 0).toList()
+    ..sort((a, b) => b.value.held.compareTo(a.value.held));
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'reprise', family: BadgeFamily.discipline, name: 'Reprise', symbol: 'rebound', tiers: kRepriseTiers, unit: 'reprises', unitLong: 'reprises'),
+    level: _levelOf(kRepriseTiers, repriseEvents.length),
+    value: repriseEvents.length,
+    tierDates: [for (final t in kRepriseTiers) t <= repriseEvents.length ? DateTime.parse(repriseEvents[t - 1].$2.ymd) : null],
+    facts: [
+      ('Reprises', '${repriseEvents.length}'),
+      if (inProgress.isNotEmpty) ('En cours', '${routineName[inProgress.first.key]} · ${inProgress.first.value.held} / $kRepriseHold j'),
+      if (repriseEvents.isNotEmpty) ('La dernière', '${repriseEvents.last.$1} · ${_fmtDate(DateTime.parse(repriseEvents.last.$2.ymd))}'),
+      if (longestGap != null) ('Plus longue coupure reprise', '${_plural(longestGap.$2.gap, 'jour', 'jours')} · ${longestGap.$1}'),
+    ],
+  ));
   // Enchaîner (règle 2026-10) : une session compte dès 3 choses faites d'affilée, sortie ou pas
   // (`chainRunCounts`) ; « Plein jour » garde seul l'exigence de la file vidée du premier au dernier bloc.
   final countedRuns = chainRuns.where(chainRunCounts).toList()..sort((a, b) => a.endedAt.compareTo(b.endedAt));
@@ -957,7 +1030,7 @@ BadgeDeck computeBadges({
     }
   }
 
-  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers);
+  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers, reprises: reprisesNow);
 }
 
 int _currentSolidRun(List<DayScore> days) {

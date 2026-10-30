@@ -818,6 +818,8 @@ class TodayViewState extends State<TodayView> {
         chainRuns: _chainRuns,
         dayStartMin: widget.dayStartMin,
         emberSpends: _huntStore.emberSpends,
+        restPeriods: _huntStore.restPeriods,
+        restDomains: _huntStore.restDomains,
       );
 
   String _stakesKey = '';

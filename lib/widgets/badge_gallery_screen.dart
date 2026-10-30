@@ -72,6 +72,9 @@ class _BadgeGalleryScreenState extends State<BadgeGalleryScreen> {
         chainRuns: st.chainRuns,
         now: now,
         dayStartMin: widget.logic.dayStartMin,
+        emberSpends: widget.logic.emberSpends,
+        restPeriods: widget.logic.restPeriods,
+        restDomains: widget.logic.restDomains,
       );
       if (mounted) setState(() => _deck = deck);
     } catch (e) {

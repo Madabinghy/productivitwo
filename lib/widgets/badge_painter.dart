@@ -17,6 +17,8 @@ const kBadgeKhaki = Color(0xFFC9B978);
 const kBadgeKhakiDark = Color(0xFF8E8150);
 /// Braises (rallumage d'une série cassée hier).
 const kEmberColor = Color(0xFFFF8A3D);
+/// Jour gelé par une veille (bandes de série) : gris-vert, ni tenu ni manqué.
+const kFrozenColor = Color(0xFF86A093);
 const kBadgeBrass = Color(0xFFD4B35A);
 const kBadgeBrassDark = Color(0xFFA8863A);
 const kBadgeRibbonInk = Color(0xFF1A1F12);
@@ -387,6 +389,11 @@ class BadgePainter extends CustomPainter {
         c.drawCircle(const Offset(50, 44), 4.5, fill);
         line(38, 56, 41, 53, 4);
         line(62, 56, 59, 53, 4);
+      case 'rebound':
+        // Reprise : trois quarts de cercle, tête pleine alignée sur l'arc (12 h).
+        c.drawArc(Rect.fromCircle(center: const Offset(50, 42), radius: 14), 0, 1.5 * math.pi, false, stroke(6));
+        c.drawPath(_poly([50, 19, 61, 28, 50, 37]), fill);
+        c.drawPath(_poly([50, 19, 61, 28, 50, 37]), stroke(2));
       case 'focus':
         c.drawCircle(const Offset(50, 42), 20, stroke(5));
         c.drawCircle(const Offset(50, 42), 11, stroke(4));

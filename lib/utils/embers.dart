@@ -140,11 +140,17 @@ class LostSeries {
   bool get rekindlable => blocked == null && !pending;
 }
 
-int _runEndingAt(Set<String> days, String ymd) {
+/// [skip] = jours gelés par une veille : enjambés, jamais comptés.
+int _runEndingAt(Set<String> days, String ymd, {Set<String> skip = const {}}) {
   var n = 0;
   var d = ymd;
-  while (days.contains(d) && n < 3650) {
-    n++;
+  var guard = 0;
+  while (guard++ < 4000) {
+    if (days.contains(d)) {
+      n++;
+    } else if (!skip.contains(d)) {
+      break;
+    }
     d = ymdShift(d, -1);
   }
   return n;
@@ -152,21 +158,24 @@ int _runEndingAt(Set<String> days, String ymd) {
 
 /// Les séries cassées hier ([todayYmd] − 1) : routine atteinte avant-hier (série
 /// ≥ 1, jours comblés compris) et pas hier. [routines] = (id, nom) des routines
-/// quotidiennes actives ; [tiers] = paliers des séries.
+/// quotidiennes actives ; [tiers] = paliers des séries ; [frozen] = jours gelés
+/// par une veille, par routine (hier gelé = rien de perdu).
 List<LostSeries> lostYesterday({
   required List<(String id, String name)> routines,
   required Map<String, Set<String>> reached,
   required EmberLedger ledger,
   required String todayYmd,
   List<int> tiers = const [3, 7, 21, 66, 100],
+  Map<String, Set<String>> frozen = const {},
 }) {
   final yesterday = ymdShift(todayYmd, -1);
   final before = ymdShift(todayYmd, -2);
   final out = <LostSeries>[];
   for (final (id, name) in routines) {
     final days = {...?reached[id], ...?ledger.bridged[id]};
-    if (days.contains(yesterday)) continue;
-    final len = _runEndingAt(days, before);
+    final skip = frozen[id] ?? const <String>{};
+    if (days.contains(yesterday) || skip.contains(yesterday)) continue;
+    final len = _runEndingAt(days, before, skip: skip);
     if (len <= 0) continue;
     final next = tiers.where((t) => t > len).firstOrNull;
     final pending = ledger.pending?.activityId == id;

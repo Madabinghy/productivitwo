@@ -14,6 +14,8 @@ const kStakeTier = Color(0xFFE9C46A);
 const kStakeHunt = kBAttention;
 const kStakeObjective = Color(0xFF9B8AFB);
 const kStakeSession = Color(0xFF5DADE2);
+/// Reprise : vert clair (élan « Lancé ») — un retour, ni alerte ni laiton.
+const kStakeReprise = Color(0xFF8FE3C3);
 
 Color stakeGainColor(StakeGain g) {
   if (g.losesTonight) return kStakeLose;
@@ -26,6 +28,7 @@ Color stakeGainColor(StakeGain g) {
     StakeGainKind.session => kStakeSession,
     StakeGainKind.focus => kBPrimary,
     StakeGainKind.routine => kBText3,
+    StakeGainKind.reprise => kStakeReprise,
   };
 }
 
