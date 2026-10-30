@@ -71,6 +71,8 @@ const kRuleWatch = GameRule('Montre suisse', [
   RuleCard('📏', 'La barre', 'Gris : les 6 jours passés. Vert : aujourd’hui. Le bout de la barre : 7 × le minimum.'),
   RuleCard('🗓', 'Pas de mur le lundi', 'Le week-end compte encore le lundi, et une grosse séance couvre les jours d’après.'),
   RuleCard('🌅', 'Demain', 'Ce soir, le jour le plus ancien sort de la fenêtre : la fiche annonce ce qu’il faudra demain.'),
+  RuleCard('🎚', 'Tes minimums',
+      'Un minimum, c’est ce que tu veux tenir chaque semaine. Une activité occasionnelle n’en a pas besoin : retire-le ou cale-le sur ce que tu fais vraiment.'),
 ]);
 
 const kRuleModes = GameRule('Les modes', [
