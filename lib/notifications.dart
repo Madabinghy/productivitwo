@@ -133,30 +133,28 @@ class NotificationService {
 
   /// Planifie (ou replanifie) le rappel quotidien.
   /// [routineCount] : nombre de routines daily de l'utilisateur.
+  /// Matin, « Ta journée » (2026-10-30) : [body] = `morningDigest` du jour
+  /// de la prochaine occurrence, recalculé à chaque ouverture / changement.
   static Future<void> scheduleDailyReminder({
     int hour = 9,
     int minute = 0,
-    required int routineCount,
+    required String body,
   }) async {
     if (!_supported) return;
     if (!_initialized) await init();
 
     await _plugin.cancel(_notifId);
 
-    final body = routineCount > 0
-        ? 'Tu as $routineCount routine${routineCount > 1 ? 's' : ''} à faire aujourd\'hui 🎯'
-        : 'N\'oublie pas tes routines du jour !';
-
     await _plugin.zonedSchedule(
       _notifId,
-      'Productivitwo',
+      'Ta journée',
       body,
       _nextOccurrence(hour, minute),
       const NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
-          'Rappel routines',
-          channelDescription: 'Rappel quotidien pour tes routines',
+          'Ta journée (matin)',
+          channelDescription: 'Ce que la journée porte : blocs, routines, actions visées',
           importance: Importance.defaultImportance,
           priority: Priority.defaultPriority,
         ),
@@ -168,6 +166,13 @@ class NotificationService {
       matchDateTimeComponents: DateTimeComponents.time,
       payload: kPayloadProgram,
     );
+  }
+
+  /// Jour (local) de la prochaine occurrence de [hour]:[minute].
+  static DateTime nextOccurrenceDay(int hour, int minute) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return DateTime(now.year, now.month, now.day, hour, minute).isAfter(now) ? today : today.add(const Duration(days: 1));
   }
 
   static tz.TZDateTime _nextOccurrence(int hour, int minute) {
