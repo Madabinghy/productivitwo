@@ -1582,15 +1582,21 @@ class TodayViewState extends State<TodayView> {
     final dark = cs.brightness == Brightness.dark;
     final link = dark ? kBPrimary : cs.primary;
     final text3 = dark ? kBText3 : cs.onSurface.withOpacity(.55);
+    // « Demain » bascule DANS la feuille (retour user 2026-10-30) : la page ne bouge pas.
+    var tomorrow = false;
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
+        final date = tomorrow ? _ymd(widget.logic.livedToday.add(const Duration(days: 1))) : widget.logic.livedTodayYmd;
         return ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
-          children: _programSection(cs, link, text3, widget.logic.livedTodayYmd, inSheet: true, refresh: () {
-            setLocal(() {});
-            if (mounted) setState(() {});
-          }),
+          children: _programSection(cs, link, text3, date,
+              tomorrow: tomorrow,
+              onToggleDay: () => setLocal(() => tomorrow = !tomorrow),
+              refresh: () {
+                setLocal(() {});
+                if (mounted) setState(() {});
+              }),
         );
       });
     }).whenComplete(() {
@@ -1599,12 +1605,13 @@ class TodayViewState extends State<TodayView> {
     });
   }
 
-  /// En-tête, liste ou frise, bascule liste ⇄ frise. [inSheet] : « Demain »
-  /// ferme la feuille et bascule la page sur demain.
+  /// En-tête, liste ou frise, bascule liste ⇄ frise. [tomorrow] / [onToggleDay] :
+  /// la feuille bascule elle-même entre aujourd'hui et demain ; sans eux, la page.
   List<Widget> _programSection(ColorScheme cs, Color link, Color text3, String date,
-      {bool inSheet = false, required VoidCallback refresh}) {
+      {bool? tomorrow, VoidCallback? onToggleDay, required VoidCallback refresh}) {
+    final t = tomorrow ?? _showTomorrow;
     return [
-      _programHeader(cs, link, text3, inSheet: inSheet),
+      _programHeader(cs, link, text3, tomorrow: t, onToggleDay: onToggleDay),
       const SizedBox(height: 8),
       // key par date : force un nouveau state (nouveau stream Firestore)
       // quand on bascule aujourd'hui ↔ demain.
@@ -1615,7 +1622,7 @@ class TodayViewState extends State<TodayView> {
           logic: widget.logic,
           visible: widget.visible,
           // ▶ n'a de sens que pour le jour même (chrono maintenant).
-          onLaunch: _showTomorrow ? null : widget.onLaunch,
+          onLaunch: t ? null : widget.onLaunch,
           onOpenSource: widget.onOpenSource,
         )
       else
@@ -1624,11 +1631,11 @@ class TodayViewState extends State<TodayView> {
           date: date,
           logic: widget.logic,
           visible: widget.visible,
-          onLaunch: _showTomorrow ? null : widget.onLaunch,
+          onLaunch: t ? null : widget.onLaunch,
           onOpenSource: widget.onOpenSource,
           onRegisterScrollToMinute: (fn) => _listScrollToMinute = fn,
           title: '',
-          emptyText: _showTomorrow
+          emptyText: t
               ? 'Rien de prévu pour demain.\nTouche pour ajouter un bloc, ou demande à Claude/ORION de planifier ta journée.'
               : _domainsPlaceholder(),
         ),
@@ -1650,7 +1657,7 @@ class TodayViewState extends State<TodayView> {
     ];
   }
 
-  Widget _programHeader(ColorScheme cs, Color link, Color text3, {bool inSheet = false}) {
+  Widget _programHeader(ColorScheme cs, Color link, Color text3, {required bool tomorrow, VoidCallback? onToggleDay}) {
     Widget tlink(String label, VoidCallback onTap) => InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
@@ -1662,17 +1669,14 @@ class TodayViewState extends State<TodayView> {
         );
     return Row(children: [
       Expanded(
-        child: Text(_showTomorrow ? 'PROGRAMME DE DEMAIN' : 'PROGRAMME DU JOUR',
+        child: Text(tomorrow ? 'PROGRAMME DE DEMAIN' : 'PROGRAMME DU JOUR',
             style: TextStyle(
                 fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: text3)),
       ),
-      tlink(_showTomorrow ? 'Aujourd\'hui' : 'Demain', () {
-        if (inSheet) Navigator.of(context).maybePop();
-        setState(() => _showTomorrow = !_showTomorrow);
-      }),
+      tlink(tomorrow ? 'Aujourd\'hui' : 'Demain', onToggleDay ?? () => setState(() => tomorrow = !tomorrow)),
       tlink('Modifier', () {
         final n = DateTime.now();
-        _openPlan(_showTomorrow ? _ymd(n.add(const Duration(days: 1))) : _ymd(n));
+        _openPlan(tomorrow ? _ymd(n.add(const Duration(days: 1))) : _ymd(n));
       }),
       IconButton(
         tooltip: 'Synchroniser Google Agenda',
@@ -1683,7 +1687,7 @@ class TodayViewState extends State<TodayView> {
             : Icon(Icons.sync_rounded, size: 18, color: text3),
         onPressed: _syncing ? null : _forceSync,
       ),
-      if (!_showTomorrow)
+      if (!tomorrow)
         IconButton(
           tooltip: 'Reprogrammer la journée',
           visualDensity: VisualDensity.compact,
