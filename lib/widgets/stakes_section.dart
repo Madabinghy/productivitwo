@@ -120,14 +120,7 @@ class StakeScoreboard extends StatelessWidget {
         Row(children: [
           Text('${(elapsed * 100).round()} % de la journée passée', style: const TextStyle(fontSize: 11.5, color: kBText3)),
           const Spacer(),
-          if (total > 0)
-            Text.rich(TextSpan(children: [
-              TextSpan(text: 'tenu $won sur $total · '),
-              TextSpan(
-                text: pace.label,
-                style: TextStyle(fontWeight: FontWeight.w700, color: pace.delta >= 0 ? kBPrimary : kStakeHunt),
-              ),
-            ]), style: const TextStyle(fontSize: 11.5, color: kBText3)),
+          if (total > 0) Text('tenu $won sur $total', style: const TextStyle(fontSize: 11.5, color: kBText3)),
         ]),
       ]),
     ));
