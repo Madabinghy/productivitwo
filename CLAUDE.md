@@ -846,6 +846,11 @@ notifications planifiées.
 (`countsForBadges`, programme relu), routines quotidiennes hors pause, actions visées ce jour (`isFocusedOn`), séries en cours.
 `_refreshDayNotifs` (main.dart) recalcule au démarrage, au retour dans l'app et 20 s après un changement (`logic` écouté,
 `_scheduleDayNotifsRefresh`). Limite : sans ouverture de l'app, le texte répété peut dater.
+**Rappels des blocs** (PR 3) : 5 min avant chaque bloc À FAIRE du programme d'aujourd'hui et de demain (docs calendaires relus),
+hors miroirs d'agenda (`gcalEventId`), pauses et blocs prépa / session ; notifications PONCTUELLES ids 200–259
+(`NotificationService.scheduleBlockAlerts`, replanifiées par `_refreshDayNotifs`), « Dans 5 min · 14:00 → 15:00 », charge utile
+`block:<ymd>|<id>` → `_openBlockFromNotif` → `_openBlockSource` (page focus d'un bloc d'activité, écran bloc d'une tâche, séance).
+Les anciens rappels du modèle `DayBlock` (ids 10–29) sont annulés ; `scheduleBlockReminders` est retiré. Pas de réglage dédié.
 
 ## Confirmation avant de cocher (2026-10-30)
 

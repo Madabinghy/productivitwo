@@ -318,45 +318,51 @@ class NotificationService {
     );
   }
 
-  /// Rappels de blocs — un par bloc avec startHour défini.
-  static Future<void> scheduleBlockReminders({
-    required List<({String id, String label, int hour, int minute})> blocks,
-    int reminderMinutesBefore = 10,
+  /// IDs des rappels des blocs du programme (aujourd'hui et demain).
+  static const _blockAlertBase = 200;
+  static const _blockAlertMax = 60;
+
+  /// Rappels des blocs du programme (2026-10-30), [minutesBefore] avant leur
+  /// début : notifications ponctuelles, replanifiées à chaque ouverture /
+  /// changement. Tap = la source du bloc (charge utile `block:<ymd>|<id>`).
+  /// Annule aussi les anciens rappels de l'ancien modèle de blocs (10–29).
+  static Future<void> scheduleBlockAlerts(
+    List<({String ymd, String id, String title, DateTime start, int durationMin})> blocks, {
+    int minutesBefore = 5,
   }) async {
     if (!_supported) return;
     if (!_initialized) await init();
-
-    // Annule les anciens rappels de blocs (IDs 10–29)
-    for (int i = 10; i < 30; i++) {
+    for (var i = 10; i < 30; i++) {
       await _plugin.cancel(i);
     }
-
-    for (int i = 0; i < blocks.length && i < 20; i++) {
-      final b = blocks[i];
-      final totalMinutes = b.hour * 60 + b.minute - reminderMinutesBefore;
-      if (totalMinutes < 0) continue;
-      final notifHour = totalMinutes ~/ 60;
-      final notifMinute = totalMinutes % 60;
-
+    for (var i = 0; i < _blockAlertMax; i++) {
+      await _plugin.cancel(_blockAlertBase + i);
+    }
+    final now = DateTime.now();
+    final upcoming = [for (final b in blocks) if (b.start.subtract(Duration(minutes: minutesBefore)).isAfter(now)) b]
+      ..sort((a, b) => a.start.compareTo(b.start));
+    String hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    for (var i = 0; i < upcoming.length && i < _blockAlertMax; i++) {
+      final b = upcoming[i];
+      final end = b.start.add(Duration(minutes: b.durationMin));
       await _plugin.zonedSchedule(
-        10 + i,
-        'Productivitwo — ${b.label}',
-        'Dans $reminderMinutesBefore min',
-        _nextOccurrence(notifHour, notifMinute),
+        _blockAlertBase + i,
+        b.title,
+        'Dans $minutesBefore min · ${hm(b.start)} → ${hm(end)}',
+        tz.TZDateTime.from(b.start.subtract(Duration(minutes: minutesBefore)), tz.local),
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'block_reminder', 'Rappels de blocs',
-            channelDescription: 'Rappel avant le début d\'un bloc',
+            channelDescription: 'Rappel juste avant le début d\'un bloc du programme',
             importance: Importance.high,
             priority: Priority.high,
           ),
           iOS: DarwinNotificationDetails(),
         ),
-        androidScheduleMode: AndroidScheduleMode.inexact,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: kPayloadProgram,
+        payload: 'block:${b.ymd}|${b.id}',
       );
     }
   }
