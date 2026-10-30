@@ -826,6 +826,15 @@ pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de b
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+## Minimum des activités (calibration, 2026-10-30)
+
+`AppLogic.autoAdjustStandardsRealtime` (au lancement mobile) cale `goalMin` des activités-temps sur la moyenne 30 j (monte ≥ 120 %,
+descend ≤ 50 %, ±max(5, 20 %), cooldown 48 h) ; jamais une cible épinglée (`targetSource:"user"`, réglage de la fiche activité).
+**Aucun chrono depuis 30 j** (`kIdleZeroDays`, activité d'au moins cet âge) ⇒ `goalMin = 0` = plus de minimum (sort de Montre suisse,
+du minimum du domaine) ; le plancher 1 min ne s'applique plus à un 0, et la branche « seed » le remonte si l'activité revit.
+MCP : `update_activity_goal` / `update_activity` acceptent `goalMin: 0` et `pinGoal` (true = épinglée comme à la main, false = rendue
+à la calibration ; seulement à la demande de l'utilisateur, ⚠️ `firebase deploy --only functions`).
+
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
 Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
