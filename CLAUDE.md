@@ -635,7 +635,7 @@ avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / F
 d'Aujourd'hui, au-dessus de MAINTENANT ; le tableau du jour « Ta journée » / « Ce soir » est TOUT EN HAUT, sous l'en-tête, à la place de
 l'ancienne carte « journée gagnée » (`_dayWinCard`, retirée le 2026-10-30 ; `adaptDayGoalOnOpen` tourne toujours) ; **les enjeux ne sont plus
 sur la page** (2026-10-30) : tap sur « Ta journée » (ou sur « Ce soir », compact sur la page : `EveningLedgerCard(compact: true)`) =
-feuille `_openStakesSheet` (tableau ou bilan complet du soir + `StakesList` ; un +1 garde la feuille ouverte, chrono / focus la ferment) ; le **programme du jour n'est plus sur la
+feuille `_openStakesSheet` (tableau ou bilan complet du soir + `StakesList` — le soir, ENCORE POSSIBLE CE SOIR passe EN TÊTE, le bilan dessous ; un +1 garde la feuille ouverte, chrono / focus la ferment) ; le **programme du jour n'est plus sur la
 page** (2026-10-30) : la tuile PROGRAMME (toujours présente, « Rien de prévu » sans bloc) et la jauge du bord gauche ouvrent la
 feuille `_openProgramSheet` (`showFiche` + `_programSection` : en-tête, liste ou frise, bascule) ; « Demain » bascule DANS la
 feuille (2026-10-30, `_openProgramSheet` : état local `tomorrow`, `_programSection(tomorrow:, onToggleDay:)`), la page ne bouge pas. Le passage auto en « fait » des blocs de routine (`_maybeAutoWin`) ne tourne que feuille ouverte
