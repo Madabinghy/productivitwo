@@ -129,4 +129,11 @@ void main() {
     final keys = [...b.top, ...b.rest].map((s) => s.gesture.key).toSet();
     expect(keys, containsAll(['activity:${courir.id}', 'action:p3', 'action:v1', 'routine:${bible.id}']));
   });
+
+  test('rythme de la journée : tenus face à l’heure', () {
+    expect(stakesPace(10, 29, .4).label, 'en retard de 2');
+    expect(stakesPace(14, 29, .4).label, 'en avance de 2');
+    expect(stakesPace(12, 29, .4).label, 'dans le rythme');
+    expect(stakesPace(0, 0, .5).label, '');
+  });
 }

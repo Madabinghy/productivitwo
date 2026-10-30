@@ -627,7 +627,7 @@ seul gain, `kStakeRestFamilies` pour la ligne dépliée). Sources : `badgeToday`
 `ObjectiveDay` (attendu à ce jour = hebdo × jour / 7), `nextInterventionOf` (prépa), `isFocusedOn` / `isStaleFocus`, routines du jour.
 **Lot 2 livré** : `widgets/stakes_section.dart` dans `today_view.dart` (`_stakeBoard()`, calculé une fois par build depuis
 `BadgeCenter.deck` + `todayFacts()`, rien sans deck ni sur Demain) — `StakeScoreboard` (sous le programme depuis le 2026-10-30 ; gagnés · en jeu · perdus,
-barre « % de la journée passée » 8 h → 22 h, `dayElapsed`) et `StakesList` sous la zone coach : lignes EN JEU = `MomentItem` (titre ·
+barre = enjeux tenus avec un trait à l'heure de la journée 8 h → 22 h (`dayElapsed`), « tenu k sur n · en avance / en retard de d / dans le rythme » (`stakesPace` : attendu = total × part passée), verte en avance, ambre en retard) et `StakesList` sous la zone coach : lignes EN JEU = `MomentItem` (titre ·
 avancement, chips de gains colorées par nature, bouton +1 / Chrono / Lancer / Focus), ouvert = « CE QUE ÇA RAPPORTE » (une jauge
 `StakeGauge` par gain, case de ce soir en clair) + gros bouton + « Tous les badges » ; « + n autres en jeu » replié par famille
 (`kStakeRestFamilies`) ; GAGNÉ / PERDU en une ligne. Gestes : `_runStake` (`routinePlusWithUndo`, `logic.start`, `onNowLaunch`,

@@ -70,6 +70,7 @@ class StakeScoreboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final won = board.won.length, play = board.inPlay, lost = board.lost.length;
     final total = won + play + lost;
+    final pace = stakesPace(won, total, elapsed);
     Widget counter(int n, String label, Color c) => Expanded(
           child: Column(children: [
             Text('$n', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: c, fontFeatures: const [FontFeature.tabularFigures()])),
@@ -93,15 +94,40 @@ class StakeScoreboard extends StatelessWidget {
           counter(lost, lost > 1 ? 'PERDUS' : 'PERDU', kStakeLose),
         ]),
         const SizedBox(height: 10),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(value: elapsed, minHeight: 6, backgroundColor: kBRaised, valueColor: const AlwaysStoppedAnimation(kBText3)),
-        ),
+        // La barre = ce qui est tenu ; le trait = l'heure de la journée. Barre
+        // au-delà du trait : en avance ; en deçà : en retard (retour user).
+        LayoutBuilder(builder: (_, c) {
+          final w = c.maxWidth;
+          final done = total == 0 ? 0.0 : (won / total).clamp(0.0, 1.0);
+          final ahead = pace.delta >= 0;
+          final t = elapsed.clamp(0.0, 1.0);
+          return SizedBox(
+            height: 14,
+            child: Stack(children: [
+              Positioned(left: 0, right: 0, top: 4, height: 6, child: Container(decoration: BoxDecoration(color: kBRaised, borderRadius: BorderRadius.circular(4)))),
+              Positioned(
+                left: 0,
+                top: 4,
+                height: 6,
+                width: w * done,
+                child: Container(decoration: BoxDecoration(color: ahead ? kBPrimary : kStakeHunt, borderRadius: BorderRadius.circular(4))),
+              ),
+              Positioned(left: (w * t - 1).clamp(0.0, w - 2), top: 0, bottom: 0, width: 2, child: Container(color: kBText)),
+            ]),
+          );
+        }),
         const SizedBox(height: 6),
         Row(children: [
           Text('${(elapsed * 100).round()} % de la journée passée', style: const TextStyle(fontSize: 11.5, color: kBText3)),
           const Spacer(),
-          if (total > 0) Text('tenu $won sur $total', style: const TextStyle(fontSize: 11.5, color: kBText3)),
+          if (total > 0)
+            Text.rich(TextSpan(children: [
+              TextSpan(text: 'tenu $won sur $total · '),
+              TextSpan(
+                text: pace.label,
+                style: TextStyle(fontWeight: FontWeight.w700, color: pace.delta >= 0 ? kBPrimary : kStakeHunt),
+              ),
+            ]), style: const TextStyle(fontSize: 11.5, color: kBText3)),
         ]),
       ]),
     ));
