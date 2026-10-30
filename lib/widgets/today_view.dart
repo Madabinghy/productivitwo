@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
 import 'package:productivitwo_v1/utils/game_rules.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -38,7 +37,6 @@ import 'package:productivitwo_v1/widgets/gcal_settings_sheet.dart';
 import 'package:productivitwo_v1/widgets/focus_screen.dart';
 import 'package:productivitwo_v1/widgets/now_card.dart';
 import 'package:productivitwo_v1/widgets/now_coach_zone.dart';
-import 'package:productivitwo_v1/widgets/orion_screen.dart';
 import 'package:productivitwo_v1/widgets/plan_day_screen.dart';
 import 'package:productivitwo_v1/utils/routine_moments.dart';
 import 'package:productivitwo_v1/widgets/routine_detail_sheet.dart';
@@ -47,6 +45,11 @@ import 'package:productivitwo_v1/widgets/routines_day_view.dart';
 import 'package:productivitwo_v1/widgets/routines_organize_screen.dart';
 import 'package:productivitwo_v1/widgets/where_we_go_screen.dart';
 import 'package:productivitwo_v1/widgets/stakes_section.dart';
+import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore;
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
+import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAccent, showGuerillaScreen;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/pending_run_card.dart';
 import 'package:productivitwo_v1/widgets/recharge_card.dart';
 import 'package:productivitwo_v1/widgets/watch_minimums_sheet.dart';
@@ -874,13 +877,47 @@ class TodayViewState extends State<TodayView> {
                   fontSize: 13, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
       ),
-      // Badges (2026-10-30, remplace « Chrono libre », doublon du FAB) : tous les badges en feuille.
-      if (widget.badges case final bc?)
-        _roundBtn(cs, Icons.military_tech_outlined, 'Badges', () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc)),
+      // Lanceurs Guérilla et Offensive (2026-10-30, à la place de Badges et ORION : les badges restent sur la
+      // tuile BADGES et l'onglet Objectifs, ORION dans le menu ⋯). Point = une session à reprendre.
+      _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
       const SizedBox(width: 8),
-      _roundBtn(cs, Icons.auto_awesome, 'ORION',
-          () => OrionScreen.show(context, FirestoreSync()),
-          accent: true),
+      _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
+    ]);
+  }
+
+  Widget _launcherBtn(ColorScheme cs, String kind, IconData icon, String tooltip, Color accent, Color lightAccent) {
+    final p = RunSessionStore.current;
+    final pending = p != null && p.kind == kind && p.isLive(DateTime.now(), widget.logic.livedTodayYmd) ? p : null;
+    final c = cs.brightness == Brightness.dark ? accent : lightAccent;
+    Future<void> open() async {
+      if (kind == kGuerillaKind) {
+        await showGuerillaScreen(context, widget.logic, resume: pending);
+      } else {
+        await showOffensiveScreen(context, widget.logic, resume: pending);
+      }
+      if (mounted) setState(() {});
+    }
+
+    return Stack(clipBehavior: Clip.none, children: [
+      SizedBox(
+        width: 44,
+        height: 44,
+        child: Material(
+          color: c.withValues(alpha: .12),
+          shape: CircleBorder(side: BorderSide(color: c.withValues(alpha: .55))),
+          child: InkWell(
+            onTap: open,
+            customBorder: const CircleBorder(),
+            child: Tooltip(message: pending != null ? 'Reprendre · ${pending.done} coup${pending.done > 1 ? 's' : ''}' : tooltip, child: Icon(icon, size: 20, color: c)),
+          ),
+        ),
+      ),
+      if (pending != null)
+        Positioned(
+          right: -1,
+          top: -1,
+          child: Container(width: 12, height: 12, decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: Border.all(color: cs.surface, width: 2))),
+        ),
     ]);
   }
 
@@ -1554,34 +1591,6 @@ class TodayViewState extends State<TodayView> {
     } catch (_) {}
   }
 
-
-  Widget _roundBtn(ColorScheme cs, IconData icon, String tooltip, VoidCallback onTap,
-      {bool accent = false}) {
-    final dark = cs.brightness == Brightness.dark;
-    return SizedBox(
-      width: 44,
-      height: 44,
-      child: Material(
-        color: accent
-            ? (dark ? kBActive : cs.primaryContainer.withOpacity(.5))
-            : cs.onSurface.withOpacity(.05),
-        shape: CircleBorder(
-            side: BorderSide(
-                color: accent
-                    ? (dark ? kBPrimary : cs.primary).withOpacity(.35)
-                    : cs.onSurface.withOpacity(.1))),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Tooltip(
-            message: tooltip,
-            child: Icon(icon,
-                size: 18, color: accent ? (dark ? kBPrimary : cs.primary) : cs.onSurface),
-          ),
-        ),
-      ),
-    );
-  }
 
   /// Ligne « PROGRAMME DU JOUR » (§ 3.3) : liens Demain / Modifier + outils
   /// (sync agenda, liste ⇄ frise, reprogrammer) — plus de boutons épinglés.
