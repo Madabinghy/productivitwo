@@ -73,6 +73,11 @@
         how: 'En mode En forme, lance « Deep work 90 min » (carte MAINTENANT ou « Bloc de 90 min » d’un objectif) et tiens le chrono au moins 60 min d’affilée '
             'sur cette source : le bloc compte. Un chrono long sans bloc de deep work (sommeil, séance, activité libre) ne compte pas. Paliers : 3, 10 et 30 blocs.',
       ),
+    'semaines-tenues' => (
+        what: 'Les semaines d’affilée où le contrat est tenu : au moins 80 % des routines engagées, du lundi au dimanche.',
+        how: 'Tiens les routines rattachées à tes objectifs (toutes les routines s’il n’y en a aucune) : une semaine compte quand la moyenne de leurs parts faites atteint 80 %. '
+            'Les jours en veille réduisent la cible ; une semaine sans rien à tenir est enjambée. Chaque semaine tenue forge une braise. Paliers : 4, 12, 26 et 52 semaines.',
+      ),
     'reprise' => (
         what: 'Une routine coupée deux jours ou plus, puis tenue trois jours d’affilée.',
         how: 'Après au moins deux jours sans atteindre une routine, atteins-la trois jours de suite : la reprise compte. Un seul jour manqué se rattrape avec une braise, '

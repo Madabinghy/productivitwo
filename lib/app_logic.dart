@@ -1814,6 +1814,7 @@ class AppLogic implements HuntStore {
     final routines = state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily);
     return emberLedger(
       perfectYmds: embers.perfectYmds,
+      heldWeekYmds: embers.heldWeekYmds,
       spends: emberSpends,
       reached: {for (final a in routines) a.id: routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin)},
       todayYmd: livedTodayYmd,

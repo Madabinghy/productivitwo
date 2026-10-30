@@ -835,6 +835,11 @@ Lot 1 de la gamification moyen terme (contre l'abandon). **Veille = séries gel�
 (`TrackCell.frozen`, `kFrozenColor`). **Record** : `recordLine` dans la fiche routine. **Reprise** (`utils/reprise.dart`,
 `reprisesOf`) : 2 jours manqués ou plus (1 jour = braise), puis 3 jours tenus ; badge `reprise` (Discipline, symbole
 `rebound`, 1 / 5 / 15), `BadgeDeck.reprises` → gain `StakeGainKind.reprise` sur le +1 de la routine dans Ta journée.
+**Semaines tenues** (lot 2, handoff `docs/specs/semaines-tenues-2026-10/README.md`, logique pure `utils/held_weeks.dart`) :
+semaine calendaire close où le contrat (routines des objectifs qui couvraient la semaine, sinon toutes) atteint 80 % ;
+jours gelés = cible réduite, semaine sans rien à tenir = neutre. Badge `semaines-tenues` (Objectifs, symbole `week`,
+4 / 12 / 26 / 52), `BadgeDeck.weeks` ; une semaine tenue forge une braise (`emberLedger(heldWeekYmds:)`, `EmberEvent.week`) ;
+carte MA SEMAINE (série + 10 semaines), gain `StakeGainKind.week` le dimanche, ligne du bilan du soir.
 
 ## Règles du jeu en place (2026-10-30)
 

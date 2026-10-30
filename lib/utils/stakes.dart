@@ -70,6 +70,8 @@ enum StakeGainKind {
   routine,
   /// Une reprise après une coupure de 2 jours ou plus (`reprise.dart`).
   reprise,
+  /// Le dimanche, la semaine (contrat à 80 %) se joue ce soir (`held_weeks.dart`).
+  week,
 }
 
 /// Ce qu'un geste rapporte.
@@ -115,7 +117,7 @@ class Stake {
   String get family {
     if (gains.length >= 2) return 'multi';
     return switch (gains.first.kind) {
-      StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise => 'series',
+      StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise || StakeGainKind.week => 'series',
       StakeGainKind.hunt => 'hunt',
       StakeGainKind.objective => 'objective',
       StakeGainKind.session => 'session',
@@ -298,6 +300,31 @@ StakeBoard buildStakeBoard({
           gauge: (done: rp.held, after: rp.afterToday, total: kRepriseHold),
         ),
       );
+    }
+  }
+
+  // ── 1 ter. Le dimanche : la semaine tenue se joue ce soir ───────────────────
+  final week = deck?.weeks.thisWeek;
+  if (deck != null && week != null && week.pct != null && DateTime.parse(facts.ymd).weekday == DateTime.sunday) {
+    final missing = deck.weeks.missing;
+    final open = [for (final r in facts.routines) if (!r.reached && deck.weeks.engagedNow.contains(r.activity.id)) r];
+    final room = open.fold<int>(0, (s, r) => s + (r.target - r.done));
+    if (missing == 0) {
+      won.add('Semaine tenue');
+    } else if (missing <= room) {
+      final streak = deck.weeks.current + 1;
+      for (final r in open) {
+        add(
+          routineGesture(r),
+          StakeGain(
+            kind: StakeGainKind.week,
+            label: 'semaine tenue ce soir',
+            detail: 'Encore $missing coche${missing > 1 ? 's' : ''} : la semaine est tenue ($streak d’affilée) et forge une braise.',
+            weight: 18,
+            sourceId: 'semaines-tenues',
+          ),
+        );
+      }
     }
   }
 

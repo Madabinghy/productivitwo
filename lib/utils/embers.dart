@@ -1,4 +1,5 @@
-/// Braises (maquette validée 2026-10-30) : une journée parfaite forge une
+/// Braises (maquette validée 2026-10-30) : une journée parfaite — ou une
+/// semaine tenue (`held_weeks.dart`, depuis le lot « Semaines tenues ») — forge une
 /// braise (réserve plafonnée à [kEmberCap]) ; une braise rallume une série de
 /// routine cassée HIER, à condition d'atteindre la routine aujourd'hui. Le jour
 /// comblé compte pour la série seulement, jamais pour les journées parfaites ou
@@ -48,7 +49,9 @@ class EmberEvent {
   final EmberEventKind kind;
   final String ymd;
   final String? activityId;
-  const EmberEvent(this.kind, this.ymd, {this.activityId});
+  /// Braise forgée par une semaine tenue (sinon par une journée parfaite).
+  final bool week;
+  const EmberEvent(this.kind, this.ymd, {this.activityId, this.week = false});
 }
 
 class EmberLedger {
@@ -64,7 +67,9 @@ class EmberLedger {
   final List<EmberEvent> history;
   /// Journées parfaites closes (pour recalculer le registre sans le deck).
   final List<String> perfectYmds;
-  const EmberLedger({this.stock = 0, this.pending, this.bridged = const {}, this.used = const [], this.history = const [], this.perfectYmds = const []});
+  /// Dimanches des semaines tenues closes (idem).
+  final List<String> heldWeekYmds;
+  const EmberLedger({this.stock = 0, this.pending, this.bridged = const {}, this.used = const [], this.history = const [], this.perfectYmds = const [], this.heldWeekYmds = const []});
 
   /// Braises encore libres aujourd'hui.
   int get available => (stock - (pending == null ? 0 : 1)).clamp(0, kEmberCap);
@@ -74,15 +79,19 @@ class EmberLedger {
 /// Rejoue les journées parfaites et les rallumages dans l'ordre. Le même jour,
 /// un rallumage passe avant la braise forgée ce jour-là (elle n'est acquise
 /// qu'à la bascule). [reached] = jours atteints par routine (sans les jours
-/// comblés) ; [perfectYmds] = journées closes parfaites.
+/// comblés) ; [perfectYmds] = journées closes parfaites ; [heldWeekYmds] =
+/// dimanches des semaines tenues (la braise est acquise à la bascule du dimanche,
+/// comme celle d'une journée parfaite).
 EmberLedger emberLedger({
   required Iterable<String> perfectYmds,
   required List<EmberSpend> spends,
   required Map<String, Set<String>> reached,
   required String todayYmd,
+  Iterable<String> heldWeekYmds = const [],
 }) {
   final perfect = perfectYmds.where((d) => d.compareTo(todayYmd) < 0).toSet();
-  final dates = {...perfect, for (final s in spends) s.spentYmd}.toList()..sort();
+  final weeks = heldWeekYmds.where((d) => d.compareTo(todayYmd) < 0).toSet();
+  final dates = {...perfect, ...weeks, for (final s in spends) s.spentYmd}.toList()..sort();
   final bySpentDay = <String, List<EmberSpend>>{};
   for (final s in spends) {
     bySpentDay.putIfAbsent(s.spentYmd, () => []).add(s);
@@ -112,16 +121,23 @@ EmberLedger emberLedger({
         rekindledOn[s.activityId] = s.spentYmd;
       }
     }
-    if (perfect.contains(d)) {
+    for (final week in [if (perfect.contains(d)) false, if (weeks.contains(d)) true]) {
       if (stock < kEmberCap) {
         stock++;
-        history.add(EmberEvent(EmberEventKind.earned, d));
+        history.add(EmberEvent(EmberEventKind.earned, d, week: week));
       } else {
-        history.add(EmberEvent(EmberEventKind.capped, d));
+        history.add(EmberEvent(EmberEventKind.capped, d, week: week));
       }
     }
   }
-  return EmberLedger(stock: stock, pending: pending, bridged: bridged, used: used, history: history.reversed.toList(), perfectYmds: perfect.toList()..sort());
+  return EmberLedger(
+      stock: stock,
+      pending: pending,
+      bridged: bridged,
+      used: used,
+      history: history.reversed.toList(),
+      perfectYmds: perfect.toList()..sort(),
+      heldWeekYmds: weeks.toList()..sort());
 }
 
 /// Une série cassée hier, et si elle peut être rallumée.
