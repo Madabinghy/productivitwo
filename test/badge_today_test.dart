@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
+import 'package:productivitwo_v1/utils/elan_logic.dart' show FlemmeWin;
 
 Activity _r(String id) => Activity(id: id, name: id, domainId: 'd', type: 'habit', habitFreq: HabitFreq.daily, habitTarget: 1);
 ScheduleBlock _b(String id, String status, {String? activityId, String kind = 'normal'}) =>
@@ -113,5 +114,20 @@ void main() {
     expect(s.gain, 0);
     expect((s.dayDone, s.dayTotal), (1, 2));
     expect(badgeToday(_state('maree-haute', value: 6), f).dayRatio, 0.0);
+  });
+
+  test('Malgré tout : les victoires du jour s\'affichent même si l\'élan moyen dépasse 2 (journée Normal puis Flemme)', () {
+    final marks = [
+      MoodMark(id: 'a', at: DateTime(2026, 10, 28, 8), ymd: '2026-10-28', kind: kMoodElan, value: 3),
+      MoodMark(id: 'b', at: DateTime(2026, 10, 28, 9), ymd: '2026-10-28', kind: kMoodElan, value: 3),
+      MoodMark(id: 'c', at: DateTime(2026, 10, 28, 9, 30), ymd: '2026-10-28', kind: kMoodElan, value: 2),
+    ];
+    final wins = [FlemmeWin(DateTime(2026, 10, 28, 9, 50), 'Cuisiner', 'chrono tenu 10 min')];
+    final t = badgeToday(_state('malgre-tout', tiers: [10, 50]),
+        TodayFacts(ymd: '2026-10-28', now: now, elanMarks: marks, disciplineWinsToday: 1, flemmeWins: wins));
+    expect(t.stake, TodayStake.saved);
+    expect(t.notes.first, '09:50 · Cuisiner · chrono tenu 10 min');
+    final none = badgeToday(_state('malgre-tout', tiers: [10, 50]), TodayFacts(ymd: '2026-10-28', now: now, elanMarks: marks));
+    expect(none.stake, TodayStake.none);
   });
 }

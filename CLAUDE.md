@@ -865,7 +865,7 @@ Petit-déjeuner · Goûter ; **Cuisiner compte**, décision user). Branché : ba
 en Flemme (`DailyScheduleView.onLaunchTimed`) → bouton principal « 10 min, malgré tout », lien « Tout le bloc · n min » ; `ModePill` en Flemme =
 « Flemme | n victoires » (calcul au plus une fois par minute) ; SnackBar « Victoire sur la flemme · 10 min tenues sur … · n aujourd'hui » à la
 10ᵉ minute (`AppLogic.onFlemmeVictory`, `_checkFlemmeChrono` dans le tick minute, une fois par session) ; fiche du badge = la liste du jour
-(`badgeToday` notes « 17:30 · Rédiger · chrono tenu 25 min ») et la règle. **Règlement du soir** : un bloc coché `doneBy:"chrono"` prend
+(`badgeToday` notes « 17:30 · Rédiger · chrono tenu 25 min ») et la règle — dès qu'il y a une victoire, même si l'élan moyen du jour dépasse 2 (journée Normal puis Flemme, bug du 2026-10-30) ; feuille du mode : section **VICTOIRES SUR LA FLEMME · n** sous les cartes Guérilla / Offensive (`_winsSection`, une ligne par victoire : quoi · comment · heure). **Règlement du soir** : un bloc coché `doneBy:"chrono"` prend
 `doneAt` = fin de son créneau (`updateBlockStatus(doneAt:)`), plus 5 h le lendemain. Serveur (`elan.ts`) : besoins de base exclus des blocs et
 routines ; chronos et actions comptés côté app seulement.
 

@@ -162,6 +162,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         ]),
         const SizedBox(height: 10),
         if (cur == DayMode.high) ...[_offensiveCard(cs), const SizedBox(height: 8), _guerillaCard(cs)] else ...[_guerillaCard(cs), const SizedBox(height: 8), _offensiveCard(cs)],
+        ..._winsSection(cs),
         title('AUJOURD’HUI', right: '${_dayLabel(now)} · ${pointedToday == 0 ? 'rien de pointé' : '$pointedToday créneau${pointedToday > 1 ? 'x' : ''} pointé${pointedToday > 1 ? 's' : ''}'}'),
         Row(children: [
           for (final s in slots) ...[
@@ -234,6 +235,46 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         ]),
       ),
     );
+  }
+
+  /// VICTOIRES SUR LA FLEMME · n (retour user 2026-10-30 : « Flemme | 8 victoires », mais lesquelles ?) :
+  /// une ligne par victoire du jour, heure · quoi · comment. Rien sans victoire.
+  List<Widget> _winsSection(ColorScheme cs) {
+    final wins = widget.badges?.todayFacts().flemmeWins ?? const [];
+    if (wins.isEmpty) return const [];
+    String hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    final sorted = [...wins]..sort((a, b) => a.at.compareTo(b.at));
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    final accent = modeChipColor(DayMode.low, dark: cs.brightness == Brightness.dark);
+    return [
+      Padding(
+        padding: const EdgeInsets.only(top: 18, bottom: 6),
+        child: Row(children: [
+          Expanded(
+            child: Text('VICTOIRES SUR LA FLEMME · ${wins.length}',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: .8, color: text3)),
+          ),
+        ]),
+      ),
+      for (final w in sorted)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Container(width: 8, height: 8, decoration: BoxDecoration(color: accent, shape: BoxShape.circle)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(w.what, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                Text(w.how, style: TextStyle(fontSize: 12, color: text3)),
+              ]),
+            ),
+            Text(hm(w.at), style: TextStyle(fontSize: 12.5, color: text3, fontFeatures: const [FontFeature.tabularFigures()])),
+          ]),
+        ),
+    ];
   }
 
   /// Offensive : en forme, à fond — des coups de 10 / 15 min sur un front.
