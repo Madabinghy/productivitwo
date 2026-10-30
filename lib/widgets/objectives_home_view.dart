@@ -1,29 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
-import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart';
-import 'package:productivitwo_v1/widgets/badge_lines.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
-import 'package:productivitwo_v1/utils/engagement_stats.dart';
-import 'package:productivitwo_v1/utils/palier_colors.dart';
+import 'package:productivitwo_v1/widgets/badge_gallery_screen.dart' show showBadgeGallerySheet;
+import 'package:productivitwo_v1/widgets/badge_painter.dart' show kBadgeBrass;
 import 'package:productivitwo_v1/widgets/objectives_card.dart';
 import 'package:productivitwo_v1/widgets/season_view.dart';
-import 'package:productivitwo_v1/widgets/week_dashboard_sheet.dart';
 
-/// Onglet OBJECTIFS (remplace l'Accueil) — la pyramide des 3 horizons :
-/// AUJOURD'HUI (intention du jour + programme) · CETTE SEMAINE (engagements
-/// + objectifs stratégiques) · SUR 30 JOURS (tendance + jalons à venir).
-/// Chaque étage répond à une question : qu'est-ce que je vise aujourd'hui ?
-/// est-ce que je tiens mes engagements ? est-ce que je vais dans la bonne
-/// direction ? L'ancien Accueil reste intact derrière l'icône Tableau de bord.
-class ObjectivesHomeView extends StatefulWidget {
+/// Onglet OBJECTIFS (refonte « une liste, une fiche », 2026-10-30) : deux tuiles
+/// (Saison, Badges) puis la liste des coups et objectifs ; tap sur une ligne =
+/// fiche de l'objectif, appui long = édition. L'intention du jour, le prochain
+/// bloc et les engagements 7 j (doublons d'Aujourd'hui et de Ma semaine) sont
+/// partis ; l'ancien Accueil n'a plus d'entrée ici.
+class ObjectivesHomeView extends StatelessWidget {
   final AppLogic logic;
   final FirestoreSync sync;
-  final BadgeCenter? badges; // lot 3 : rangée « Badges · n / N » → deck
+  final BadgeCenter? badges;
   final List<Project> projects;
   final VoidCallback onOpenDashboard;
-  final VoidCallback? onOpenNow; // tap sur le prochain bloc → Maintenant
+  final VoidCallback? onOpenNow;
 
   const ObjectivesHomeView({
     super.key,
@@ -36,373 +32,6 @@ class ObjectivesHomeView extends StatefulWidget {
   });
 
   @override
-  State<ObjectivesHomeView> createState() => _ObjectivesHomeViewState();
-}
-
-class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
-  String? _intention;
-  bool _intentionLoaded = false;
-  // Stream créé UNE fois (leçon ArtifactShortcuts : un stream neuf par build
-  // = StreamBuilder qui repart de zéro à chaque rebuild du parent).
-  late final Stream<DailySchedule?> _scheduleStream =
-      widget.sync.streamDailySchedule(_today);
-
-  String get _today {
-    final n = DateTime.now();
-    return '${n.year}-${n.month.toString().padLeft(2, '0')}-${n.day.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.sync.fetchDayIntention(_today).then((v) {
-      if (mounted) {
-        setState(() {
-          _intention = v;
-          _intentionLoaded = true;
-        });
-      }
-    });
-  }
-
-  Future<void> _editIntention() async {
-    final ctrl = TextEditingController(text: _intention ?? '');
-    final saved = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('L\'intention du jour'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
-          maxLines: 2,
-          decoration: const InputDecoration(
-              hintText: 'Ex : boucler la maquette et l\'envoyer'),
-          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Annuler')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Enregistrer')),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (saved == null) return;
-    setState(() => _intention = saved.isEmpty ? null : saved);
-    await widget.sync.setDayIntention(_today, saved);
-  }
-
-  /// Détail des routines du jour — même geste que « Ma semaine » : le
-  /// chiffre se tape, la liste s'ouvre.
-  void _showTodayDetail(List<EngagementStat> stats) {
-    showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) {
-        final cs = Theme.of(ctx).colorScheme;
-        return ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-          children: [
-            const Text('Routines du jour',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(
-                'Les routines quotidiennes — les hebdomadaires se jugent '
-                'sur 7 jours, pas sur une journée.',
-                style: TextStyle(
-                    fontSize: 12.5, color: cs.onSurface.withOpacity(.55))),
-            const SizedBox(height: 12),
-            for (final e in stats)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(children: [
-                  Icon(
-                      e.kept
-                          ? Icons.check_circle
-                          : Icons.radio_button_unchecked,
-                      size: 16,
-                      color: e.kept
-                          ? kPalierGreen
-                          : cs.onSurface.withOpacity(.35)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: Text(e.label,
-                          style: const TextStyle(fontSize: 13.5))),
-                  Text('${e.done} / ${e.target}',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          color: e.kept
-                              ? kPalierGreen
-                              : cs.onSurface.withOpacity(.7))),
-                ]),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _horizon(ColorScheme cs, String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 22, 16, 8),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-                color: cs.onSurface.withOpacity(.45))),
-      );
-
-  // ── AUJOURD'HUI ─────────────────────────────────────────────────────────────
-
-  Widget _todayCard(ColorScheme cs) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: cs.primaryContainer.withOpacity(.3),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // L'intention : une phrase, un tap pour la poser/l'éditer.
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: _editIntention,
-              child: Row(children: [
-                Icon(
-                    _intention == null
-                        ? Icons.flag_outlined
-                        : Icons.flag_rounded,
-                    size: 18,
-                    color: cs.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: !_intentionLoaded
-                      ? const SizedBox(height: 18)
-                      : Text(
-                          _intention ?? 'Définir l\'intention du jour…',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: _intention == null
-                                ? FontWeight.w500
-                                : FontWeight.w700,
-                            fontStyle: _intention == null
-                                ? FontStyle.italic
-                                : null,
-                            color: _intention == null
-                                ? cs.onSurface.withOpacity(.55)
-                                : cs.onSurface,
-                          ),
-                        ),
-                ),
-                Icon(Icons.edit_outlined,
-                    size: 15, color: cs.onSurface.withOpacity(.35)),
-              ]),
-            ),
-            const SizedBox(height: 10),
-            // Engagements tenus AUJOURD'HUI (routines quotidiennes) — le
-            // pendant journalier du « x/y » de la semaine, tap → détail.
-            () {
-              final st = widget.logic.state;
-              final stats = todayEngagements(
-                  activities: st.activities, hits: st.habitHits);
-              if (stats.isEmpty) return const SizedBox.shrink();
-              final kept = stats.where((e) => e.kept).length;
-              final pct = ((kept / stats.length) * 100).round();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => _showTodayDetail(stats),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text('$kept / ${stats.length}',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures()
-                                ],
-                                color: palierColor(pct))),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text('engagements tenus aujourd\'hui',
-                              style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: cs.onSurface.withOpacity(.6))),
-                        ),
-                        Icon(Icons.chevron_right,
-                            size: 16, color: cs.onSurface.withOpacity(.35)),
-                      ]),
-                      const SizedBox(height: 8),
-                      // Heatmap du jour : UNE case par coche attendue,
-                      // groupées par routine — la journée est un tas de
-                      // petits gestes, chacun allume sa case.
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: [
-                          for (final e in stats)
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Plafond d'affichage par routine : au-delà,
-                                // la rangée dirait moins que le détail.
-                                for (var i = 0;
-                                    i < e.target.clamp(1, 14);
-                                    i++)
-                                  Container(
-                                    width: 9,
-                                    height: 9,
-                                    margin:
-                                        const EdgeInsets.only(right: 2),
-                                    decoration: BoxDecoration(
-                                      color: i < e.done
-                                          ? kPalierGreen
-                                          : cs.onSurface
-                                              .withOpacity(.08),
-                                      borderRadius:
-                                          BorderRadius.circular(2.5),
-                                      border: i < e.done
-                                          ? null
-                                          : Border.all(
-                                              color: cs.onSurface
-                                                  .withOpacity(.14),
-                                              width: .5),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }(),
-            // Le temps loggé — remis en avant (l'usage a chuté quand les
-            // stats de temps sont parties dans le sous-menu Tableau de bord).
-            () {
-              final now = DateTime.now();
-              final midnight = DateTime(now.year, now.month, now.day);
-              final today = widget.logic.totalForRange(
-                  midnight, midnight.add(const Duration(days: 1)));
-              final week = widget.logic.totalForRange(
-                  now.subtract(const Duration(days: 7)), now);
-              String fmt(Duration d) {
-                final m = d.inMinutes;
-                if (m >= 60) {
-                  final rest = m % 60;
-                  return '${m ~/ 60} h${rest > 0 ? ' ${rest.toString().padLeft(2, '0')}' : ''}';
-                }
-                return '$m min';
-              }
-
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(children: [
-                  Icon(Icons.timer_outlined,
-                      size: 15, color: cs.onSurface.withOpacity(.5)),
-                  const SizedBox(width: 8),
-                  Text(fmt(today),
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          color: cs.onSurface)),
-                  const SizedBox(width: 6),
-                  Text('aujourd\'hui',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: cs.onSurface.withOpacity(.6))),
-                  const SizedBox(width: 14),
-                  Text(fmt(week),
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                          color: cs.onSurface.withOpacity(.85))),
-                  const SizedBox(width: 6),
-                  Text('sur 7 jours',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: cs.onSurface.withOpacity(.6))),
-                ]),
-              );
-            }(),
-            // La mesure automatique : le programme du jour, en un coup d'œil.
-            StreamBuilder<DailySchedule?>(
-              stream: _scheduleStream,
-              builder: (ctx, snap) {
-                final blocks = (snap.data?.blocks ?? [])
-                    .where((b) => b.status != 'deleted')
-                    .toList();
-                if (blocks.isEmpty) {
-                  return Text('Pas de programme aujourd\'hui.',
-                      style: TextStyle(
-                          fontSize: 12.5,
-                          color: cs.onSurface.withOpacity(.5)));
-                }
-                final done =
-                    blocks.where((b) => b.status == 'done').length;
-                final next = blocks
-                    .where((b) => b.status == 'pending')
-                    .firstOrNull;
-                final pctColor = palierColor(
-                    ((done / blocks.length) * 100).round());
-                return InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: widget.onOpenNow,
-                  child: Row(children: [
-                    Text('$done / ${blocks.length} blocs',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ],
-                            color: pctColor)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                          next == null
-                              ? 'Tout est passé — journée déroulée.'
-                              : 'Prochain : ${next.startTime} · ${next.title}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontSize: 12.5,
-                              color: cs.onSurface.withOpacity(.6))),
-                    ),
-                    if (widget.onOpenNow != null)
-                      Icon(Icons.chevron_right,
-                          size: 16, color: cs.onSurface.withOpacity(.35)),
-                  ]),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-
-  // ── Build ───────────────────────────────────────────────────────────────────
-
-  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return SafeArea(
@@ -410,48 +39,19 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
         padding: const EdgeInsets.only(bottom: 120),
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 8, 0),
-            child: Row(children: [
-              Text('Objectifs',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: cs.onSurface)),
-              const Spacer(),
-              // L'ancien Accueil, intact — discret mais à un tap.
-              IconButton(
-                tooltip: 'Tableau de bord complet',
-                icon: Icon(Icons.dashboard_customize_outlined,
-                    size: 22, color: cs.onSurface.withOpacity(.6)),
-                onPressed: widget.onOpenDashboard,
-              ),
-            ]),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Text('Objectifs', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: cs.onSurface)),
           ),
-          _horizon(cs, 'AUJOURD\'HUI'),
-          _todayCard(cs),
-          _horizon(cs, 'CETTE SEMAINE'),
-          // Engagements 7 j glissants (tap → détail par domaine).
-          WeekDashboardCard(logic: widget.logic),
-          if (widget.badges case final bc?)
-            BadgesRow(
-              center: bc,
-              onOpen: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                  builder: (_) => BadgeGalleryScreen(logic: widget.logic, sync: widget.sync, center: bc, showSamples: false))),
+          if (badges case final bc?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: Row(children: [
+                Expanded(child: SeasonTile(logic: logic, center: bc)),
+                const SizedBox(width: 8),
+                Expanded(child: _BadgesTile(logic: logic, center: bc, sync: sync)),
+              ]),
             ),
-          // Saisons (lot 3) : saison en cours, bilan à voir, ou « Ouvrir une saison ».
-          if (widget.badges case final bc?) SeasonCard(logic: widget.logic, center: bc),
-          // (« Le meilleur à faire » a déménagé dans Maintenant — actionnable
-          // là où on agit : lib/widgets/best_to_do_card.dart.)
-          // Objectifs stratégiques : progression hebdo mesurée — l'étage où
-          // vivra le contrat coach-coaché.
-          // Carte Objectif du moment + lignes + archivés (lot 5) ; le relevé dû
-          // est le geste de la carte (plus de carte « Relevé de la semaine »).
-          ObjectivesCard(
-              logic: widget.logic,
-              sync: widget.sync,
-              projects: widget.projects),
-          // Allègement 2026-10 : « Le temps », « Sur 30 jours » et le camembert
-          // du jour sont partis dans Stats (Objectifs = s'engager, Stats = comprendre).
+          ObjectivesCard(logic: logic, sync: sync, projects: projects),
           const SizedBox(height: 8),
         ],
       ),
@@ -459,6 +59,34 @@ class _ObjectivesHomeViewState extends State<ObjectivesHomeView> {
   }
 }
 
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
+/// « BADGES · 14 / 43 · 5 séries » ; tap = tous les badges en feuille.
+class _BadgesTile extends StatelessWidget {
+  final AppLogic logic;
+  final BadgeCenter center;
+  final FirestoreSync sync;
+  const _BadgesTile({required this.logic, required this.center, required this.sync});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: center,
+      builder: (context, _) {
+        final d = center.deck;
+        return SmallTile(
+          eyebrow: 'BADGES',
+          onTap: () => showBadgeGallerySheet(context, logic: logic, sync: sync, center: center),
+          child: d == null
+              ? const Text('…', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600))
+              : Text.rich(
+                  TextSpan(children: [
+                    TextSpan(text: '${d.acquired}', style: const TextStyle(color: kBadgeBrass)),
+                    TextSpan(text: ' / ${d.total}${d.seriesRunning > 0 ? ' · ${d.seriesRunning} séries' : ''} ›'),
+                  ]),
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+        );
+      },
+    );
+  }
 }

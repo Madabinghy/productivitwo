@@ -150,8 +150,6 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     if (!_loaded) return const SizedBox.shrink();
-    final active = _active;
-    _momentId = active.isEmpty ? null : rankedObjectiveMoments(widget.logic, active).firstOrNull?.objective.id;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -219,7 +217,6 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
 
   /// « Une liste, un seul bloc ouvert » : l'objectif du moment est ouvert par défaut.
   final _open = OpenItem();
-  String? _momentId;
 
   Widget _row(ColorScheme cs, StrategicObjective o) {
     final progress = _progressOf(o);
@@ -251,7 +248,7 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     ].join(' · ');
     return MomentItem(
       key: _open.keyFor(o.id),
-      open: _open.isOpen(o.id, _momentId),
+      open: false,
       collapsed: StatusRow(
         leading: Icon(o.isTactical ? Icons.bolt_rounded : Icons.flag_rounded, color: kObjectiveAccent),
         title: o.title,
@@ -267,7 +264,8 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
         objectiveId: o.id,
         onChanged: _load,
       ),
-      onToggle: () => _open.settle(o.id, () => setState(() => _open.toggle(o.id, _momentId))),
+      // Une liste, une fiche (2026-10-30) : tap = fiche de l'objectif, comme Projets / Actions.
+      onToggle: () => _showDetail(o),
       onLongPress: () => _edit(o),
     );
   }
