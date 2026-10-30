@@ -860,6 +860,10 @@ l'ancien Accueil. Onglet **Domaines** (ex-Stats, `week_stats_view.dart`) : titre
 k / n au rythme, semaines tenues, élan, sept jours ; tap = fiche Ma semaine, qui porte désormais la bande des semaines tenues et
 « Mode du jour »), puis les domaines (tap = page du domaine), chacun avec la rangée de ses jours sous la barre (`_dayBars`, `StatusRow.below`, échelle propre au domaine). **Aujourd'hui** : le bouton rond « Chrono libre » (doublon du FAB)
 est remplacé par **Badges** → `showBadgeGallerySheet` (tous les badges en feuille, 94 %).
+**Bouton « + » d'Aujourd'hui = action visée aujourd'hui** (2026-10-30) : dans l'onglet Aujourd'hui, le FAB « créer » ouvre
+`showNewFocusedAction` (feuille « ☀ À faire aujourd'hui » : titre, « Pour » pré-rempli = chrono en cours sinon dernière activité
+chronométrée, puces des 3 projets du moment `rankProjectMoments`, « Ailleurs… » = activité / projet ; créée avec `focusDate` =
+aujourd'hui) ; lien « Plutôt un projet ou une action sans jour » = `showCreateActionOrProjectSheet`, qui reste le FAB des autres onglets.
 **Page domaine = le domaine vu par toute l'app** (maquette validée 2026-10-30, `domain_page.dart`) : en-tête = nom + chip, intention
 en italique, puces minimum vital · fait / total, ⚙ = intention et minimum (Orion) · veille · nom / couleur (`onManageDomains`) ; puis
 OBJECTIFS (actifs du domaine, « n % du rythme », tap = fiche trajectoire) · ROUTINES (à faire puis atteintes) · ACTIVITÉS (chip au

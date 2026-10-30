@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
 import 'package:productivitwo_v1/widgets/activity_launcher_sheet.dart';
 import 'package:productivitwo_v1/widgets/routine_launcher_sheet.dart';
@@ -4365,15 +4366,23 @@ class _AppRootState extends State<AppRoot>
         FloatingActionButton(
           heroTag: 'fab_create_action',
           mini: true,
-          tooltip: 'Créer une action ou un projet',
-          onPressed: () => showCreateActionOrProjectSheet(
-            context,
-            logic: logic,
-            sync: _sync,
-            onCreated: () {
-              if (mounted) setState(() {});
-            },
-          ),
+          tooltip: _tab == _Tab.aujourdhui ? 'Action à faire aujourd\'hui' : 'Créer une action ou un projet',
+          // Depuis Aujourd'hui : l'action est visée aujourd'hui (2026-10-30) ;
+          // ailleurs, la création libre (action ou projet).
+          onPressed: () {
+            void createFree() => showCreateActionOrProjectSheet(
+                  context,
+                  logic: logic,
+                  sync: _sync,
+                  onCreated: () {
+                    if (mounted) setState(() {});
+                  },
+                );
+            if (_tab != _Tab.aujourdhui) return createFree();
+            showNewFocusedAction(context, logic: logic, sync: _sync, onOther: createFree).then((ok) {
+              if (ok && mounted) setState(() {});
+            });
+          },
           child: const Icon(Icons.add_task, size: 20),
         ),
         const SizedBox(width: 10),
