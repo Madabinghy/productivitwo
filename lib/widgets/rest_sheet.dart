@@ -84,6 +84,12 @@ Future<int> showRestSheet(
     }),
   );
   if (picked == null) return 0;
+  return applyRest(logic, sync, domains: domains, picked: picked, untilYmd: untilYmd);
+}
+
+/// Pose la veille sur `picked` jusqu'à `untilYmd` et la lève sur les autres
+/// domaines de `domains` qui l'avaient (même écriture que la feuille).
+Future<int> applyRest(AppLogic logic, FirestoreSync sync, {required List<Domain> domains, required Set<String> picked, required String untilYmd}) async {
   var n = 0;
   for (final d in domains) {
     final was = logic.isDomainResting(d.id);
@@ -101,6 +107,19 @@ Future<int> showRestSheet(
   }
   await sync.setRestPeriods(logic.restPeriods.map((p) => p.toJson()).toList());
   logic.onChange();
+  return n;
+}
+
+/// Nombre de séries en cours des routines quotidiennes d'un domaine (ce que la
+/// veille gèle).
+int runningSeriesCount(AppLogic logic, String domainId) {
+  final now = DateTime.now();
+  var n = 0;
+  for (final a in logic.state.activeActivities) {
+    if (a.domainId != domainId || !a.isHabit || a.habitFreq != HabitFreq.daily) continue;
+    final s = routineSeries(a, logic.state.habitHits, now, dayStartMin: logic.dayStartMin, bridged: logic.bridgedOf(a.id), frozen: logic.frozenOf(a.id));
+    if (s.current > 0) n++;
+  }
   return n;
 }
 

@@ -154,11 +154,11 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // Coups tactiques (Modes et coups lot 3) : 3 à 10 jours, une cible, au-dessus des stratégiques.
-        ListSectionTitle('COUPS · ${_coups.length}', action: '+ Lancer un coup', onAction: _newCoup),
+        ListSectionTitle('RUSHS · ${_coups.length}', action: '+ Lancer un rush', onAction: _newCoup),
         if (_coups.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text('Un coup = 3 à 10 jours à fond sur une chose, le reste en veille.',
+            child: Text('Un rush = 3 à 10 jours à fond sur une chose, le reste en pause.',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurface.withValues(alpha: .5))),
           )
         else

@@ -74,7 +74,7 @@ List<DeepWorkCandidate> deepWorkCandidates({
       add(DeepWorkCandidate(
         kind: 'coup',
         title: o.title,
-        subtitle: 'Coup en cours$until${n != null ? ' · ${n.action.title}' : ' · ${p.title}'}',
+        subtitle: 'Rush en cours$until${n != null ? ' · ${n.action.title}' : ' · ${p.title}'}',
         projectId: p.id,
         taskId: n?.task.id,
         actionId: n?.action.id,
@@ -87,7 +87,7 @@ List<DeepWorkCandidate> deepWorkCandidates({
     if (!placed && o.timeCommitments.isNotEmpty) {
       final c = o.timeCommitments.first;
       add(DeepWorkCandidate(
-          kind: 'coup', title: o.title, subtitle: 'Coup en cours$until · ${nameOf(c.activityId)}', activityId: c.activityId, objectiveId: o.id));
+          kind: 'coup', title: o.title, subtitle: 'Rush en cours$until · ${nameOf(c.activityId)}', activityId: c.activityId, objectiveId: o.id));
     }
   }
   if (projectPick case final n?) {

@@ -72,7 +72,7 @@ export function modeRules(mode: DayMode): string[] {
       ];
     case "high":
       return [
-        `   → MODE EN FORME déclaré : UN bloc de deep work ≥ 90 min sur le coup en cours (sinon le projet le plus`,
+        `   → MODE EN FORME déclaré : UN bloc de deep work ≥ 90 min sur le rush en cours (sinon le projet le plus`,
         `     en retard), pas de dispersion ; les domaines en veille ne sont jamais programmés.`,
         `   → JOUR DE FOCUS : UN SEUL domaine de travail dans la journée (routines et rendez-vous à part) ;`,
         `     les autres domaines attendent un autre jour de la fenêtre de budget.`,

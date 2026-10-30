@@ -399,7 +399,7 @@ class _DomainPageState extends State<_DomainPage> {
             leading: Icon(r.o.isTactical ? Icons.bolt_rounded : Icons.flag_outlined),
             title: r.o.title,
             sub: [
-              if (r.o.isTactical) 'coup',
+              if (r.o.isTactical) 'rush',
               if (r.p.daysLeft != null) r.p.daysLeft! <= 0 ? 'échéance passée' : 'encore ${r.p.daysLeft} j',
               if (isReadingDue(r.o, now)) 'relevé dû',
             ].join(' · '),

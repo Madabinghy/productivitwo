@@ -826,6 +826,15 @@ pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de b
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+## Rush (ex-« coup », 2026-10-30)
+
+À l'écran et dans les textes MCP on dit **rush**, jamais « coup » (le code garde `coup*`, `horizon:"tactical"` et le champ
+`coups` de `list_objectives` / `get_user_context`). **Lancer un rush** (`widgets/coup_sheet.dart`, maquette validée) = UNE feuille :
+Quoi · Pour (`_SourcePicker` : recherche, onglets Projets / Activités, rangés par domaine, dossier en sous-ligne) · Cible facultative ·
+Jusqu'à quand (3 / 5 / 7 / 10 j avec la date de fin, ou date) · « PENDANT LE RUSH, LES AUTRES DOMAINES » : légende 🌙 En pause (ne
+compte pas, séries gelées) / Actif, un interrupteur « 🌙 En pause | Actif » par domaine, En pause par défaut, domaine du rush absent ;
+un bouton « Lancer le rush · n j · k en pause » (veille posée par `applyRest`, `rest_sheet.dart`). Plus de seconde feuille de veille.
+
 ## Pause, record et reprise (2026-10-30, handoff `docs/specs/pause-record-reprise-2026-10/README.md`)
 
 Lot 1 de la gamification moyen terme (contre l'abandon). **Veille = séries gelées** : `data/meta.restPeriods`

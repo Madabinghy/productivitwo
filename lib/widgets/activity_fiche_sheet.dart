@@ -409,7 +409,7 @@ class _ActivityFicheState extends State<_ActivityFiche> {
         leading: Icon(o.isTactical ? Icons.bolt_rounded : Icons.flag_rounded, color: const Color(0xFF00897B)),
         title: o.title,
         sub: [
-          if (o.isTactical) 'coup · ${coupLabel(o, now)}',
+          if (o.isTactical) 'rush · ${coupLabel(o, now)}',
           '${fmtMin(c.done)} / ${fmtMin(c.target)} cette semaine',
         ].join(' · '),
         bar: (done: c.done, total: c.target, expected: c.target * (now.weekday / 7)),
