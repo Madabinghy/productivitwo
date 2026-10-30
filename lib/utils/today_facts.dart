@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart' show Acquired, isAcquiredOn;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
@@ -21,6 +22,8 @@ TodayFacts composeTodayFacts({
   DailySchedule? schedule,
   PendingChain? pendingChain,
   Map<String, Acquired> acquired = const {},
+  int budgetWindowDays = 7,
+  Set<String> restingDomainIds = const {},
 }) {
   final dayStart = livedDayStart(now, dayStartMin);
   final active = activities.where((a) => !a.deleted).toList();
@@ -55,5 +58,10 @@ TodayFacts composeTodayFacts({
     objectiveDays: days,
     objectives: objectives,
     disciplineWinsToday: disc.wins.length,
+    pace: paceOn(now,
+        activities: active.where((a) => !restingDomainIds.contains(a.domainId)).toList(),
+        minutes: minutesByActivityDay(sessions, now),
+        windowDays: budgetWindowDays),
+    restingDomainIds: restingDomainIds,
   );
 }

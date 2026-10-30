@@ -40,6 +40,17 @@
         how: 'Une journée vécue avec au moins une routine ou un bloc, où rien ne manque : 100 % des routines quotidiennes atteintes et 100 % des blocs faits '
             '(hors miroirs d’agenda, sautés et annulés). Une seule journée suffit.',
       ),
+    'montre-suisse' => (
+        what: 'Une journée où chaque activité est au rythme : toutes les activités avec un minimum vital ont fait l’attendu à ce jour.',
+        how: 'L’attendu, c’est le minimum vital × les jours écoulés de ta fenêtre de budget (semaine ou quinzaine), le repère des barres de Domaines. '
+            'Comptée à la bascule de journée. Domaines en veille hors compte ; un jour sans activité à tenir ne compte ni pour ni contre. '
+            'Paliers : 5, 20, 50, 100 journées.',
+      ),
+    'metronome' => (
+        what: 'Une journée où toutes les routines du jour sont atteintes : la moitié routines de la Journée parfaite, sans les blocs.',
+        how: 'Toutes les routines quotidiennes dues atteintes avant la bascule. Routines acquises et domaines en veille hors compte ; '
+            'un jour sans routine due ne compte ni pour ni contre. Paliers : 5, 20, 50, 100 journées.',
+      ),
     'semaine-solide' => (
         what: '7 journées d’affilée à 80 % au moins sur les routines et sur les blocs.',
         how: 'Chaque jour, atteins au moins 80 % de tes routines quotidiennes et termine au moins 80 % de tes blocs. Une journée sans rien à tenir ne compte ni pour ni contre. '

@@ -852,6 +852,7 @@ class TodayViewState extends State<TodayView> {
       projects: widget.projects,
       schedule: DailySchedule(date: _today, blocks: _allBlocks),
       acquired: _huntStore.acquired,
+      restingDomainIds: {for (final id in _huntStore.restDomains.keys) if (isResting(id, _huntStore.restDomains, now)) id},
     );
     return _stakes = buildStakeBoard(
       deck: deck,

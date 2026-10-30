@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/half_days.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
 import 'package:productivitwo_v1/utils/badge_texts.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show chainRunCounts, kChainTiers;
@@ -609,6 +610,8 @@ BadgeDeck computeBadges({
   Map<String, String> restDomains = const {},
   List<Season> seasons = const [],
   Map<String, Acquired> acquired = const {},
+  /// Fenêtre de budget des minimums (7 ou 14 j) : l'attendu de Montre suisse.
+  int budgetWindowDays = 7,
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -746,6 +749,33 @@ BadgeDeck computeBadges({
     tierDates: [perfect.isEmpty ? null : DateTime.parse(perfect.first.ymd)],
     facts: [('Journées parfaites', '${perfect.length}'), if (perfect.isNotEmpty) ('La dernière', _fmtDate(DateTime.parse(perfect.last.ymd)))],
   ));
+  // Montre suisse et Métronome : les deux moitiés de la journée parfaite (2026-10-30).
+  final closedYmds = [for (final d in days) d.ymd];
+  final watch = watchDays(ymds: closedYmds, activities: activities, sessions: sessions, now: now, windowDays: budgetWindowDays, frozenOf: frozenOf);
+  final metro = metronomeDays(
+    ymds: closedYmds,
+    activities: activities,
+    reachedDaysByRoutine: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
+    frozenOf: frozenOf,
+    acquired: acquired,
+  );
+  for (final (id, name, symbol, h, what) in [
+    ('montre-suisse', 'Montre suisse', 'watch', watch, 'Journées toutes activités au rythme'),
+    ('metronome', 'Métronome', 'metronome', metro, 'Journées toutes routines atteintes'),
+  ]) {
+    out.add(BadgeState(
+      def: BadgeDef(id: id, family: BadgeFamily.days, name: name, symbol: symbol, tiers: kHalfDayTiers, unit: 'j', unitLong: 'journées'),
+      level: _levelOf(kHalfDayTiers, h.won.length),
+      value: h.won.length,
+      tierDates: h.tierDates,
+      facts: [
+        (what, '${h.won.length}'),
+        ('D’affilée, en cours', '${h.current}'),
+        ('Record d’affilée', _plural(h.longest, 'jour', 'jours')),
+        if (h.won.isNotEmpty) ('La dernière', _fmtDate(DateTime.parse(h.won.last))),
+      ],
+    ));
+  }
   final runs80 = solidRuns(days, 0.8);
   final longest80 = runs80.fold(0, (m, r) => r.$2 > m ? r.$2 : m);
   final current80 = _currentSolidRun(days);

@@ -324,6 +324,20 @@ class BadgePainter extends CustomPainter {
           final a = i * math.pi / 4;
           line(50 + math.cos(a) * 15, 42 + math.sin(a) * 15, 50 + math.cos(a) * 22, 42 + math.sin(a) * 22);
         }
+      case 'watch':
+        // Montre suisse : un cadran, les deux aiguilles, couronne et bracelet.
+        c.drawCircle(const Offset(50, 43), 17, stroke(5));
+        line(44, 22, 56, 22);
+        line(44, 64, 56, 64);
+        line(50, 43, 50, 33, 4);
+        line(50, 43, 57, 47, 4);
+        c.drawCircle(const Offset(50, 43), 2.5, fill);
+      case 'metronome':
+        // Métronome : un trapèze, le balancier penché, sa masse.
+        c.drawPath(_poly([38, 62, 45, 22, 55, 22, 62, 62]), stroke(5));
+        line(36, 62, 64, 62);
+        line(50, 56, 60, 28, 4);
+        c.drawCircle(const Offset(57, 36), 3.5, fill);
       case 'bricks2':
         for (final r in const [
           [29.0, 30.0, 20.0],

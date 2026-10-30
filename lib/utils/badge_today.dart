@@ -1,4 +1,5 @@
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/half_days.dart' show ActivityPace;
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show PendingChain, kChainCountedMin;
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
@@ -34,6 +35,10 @@ class TodayFacts {
   final List<ObjectiveDay> objectiveDays;
   final List<StrategicObjective> objectives;
   final int disciplineWinsToday;
+  /// Activités-temps face à l'attendu de leur fenêtre, maintenant (Montre suisse).
+  final List<ActivityPace> pace;
+  /// Domaines en veille aujourd'hui (hors Montre suisse / Métronome).
+  final Set<String> restingDomainIds;
   const TodayFacts({
     required this.ymd,
     required this.now,
@@ -44,7 +49,12 @@ class TodayFacts {
     this.objectiveDays = const [],
     this.objectives = const [],
     this.disciplineWinsToday = 0,
+    this.pace = const [],
+    this.restingDomainIds = const {},
   });
+
+  /// Routines qui comptent pour Métronome aujourd'hui (hors domaines en veille).
+  List<RoutineToday> get metronomeRoutines => routines.where((r) => !restingDomainIds.contains(r.activity.domainId)).toList();
 
   List<ScheduleBlock> get countedBlocks => blocks.where(countsForBadges).toList();
   List<ScheduleBlock> get pendingBlocks => countedBlocks.where((b) => b.status == 'pending').toList();
@@ -148,6 +158,10 @@ BadgeToday badgeToday(BadgeState b, TodayFacts f) {
   switch (id) {
     case 'journee-parfaite':
       return _parfaite(b, f);
+    case 'montre-suisse':
+      return _montre(b, f);
+    case 'metronome':
+      return _metronome(b, f);
     case 'semaine-solide':
     case 'mois-solide':
     case 'vent-contraire':
@@ -250,6 +264,68 @@ BadgeToday _parfaite(BadgeState b, TodayFacts f) {
       for (final x in pending) _blockItem(x),
     ],
     notes: ['Comptée demain à la bascule, une fois la journée close.'],
+  );
+}
+
+/// Montre suisse : chaque activité au niveau attendu de sa fenêtre ce soir.
+BadgeToday _montre(BadgeState b, TodayFacts f) {
+  final all = f.pace;
+  if (all.isEmpty) return const BadgeToday(stake: TodayStake.none, chip: 'journée neutre', notes: ['Aucune activité avec un minimum vital aujourd’hui.']);
+  final behind = all.where((p) => !p.onPace).toList()..sort((x, y) => x.missingMin.compareTo(y.missingMin));
+  final ok = all.length - behind.length;
+  final gauges = [(label: 'Activités au rythme', done: ok, need: all.length, total: all.length)];
+  if (behind.isEmpty) {
+    return BadgeToday(
+        stake: TodayStake.saved,
+        chip: 'toutes au rythme · pour l’instant',
+        gauges: gauges,
+        dayDone: ok,
+        dayTotal: all.length,
+        gain: 1,
+        notes: const ['Comptée demain à la bascule.']);
+  }
+  return BadgeToday(
+    stake: TodayStake.reachable,
+    chip: '$ok / ${all.length} activités au rythme',
+    gauges: gauges,
+    dayDone: ok,
+    dayTotal: all.length,
+    gain: 1,
+    items: [
+      for (final p in behind)
+        GapItem(GapKind.time, 'Encore ${fmtMin(p.missingMin)} de ${p.activity.name}',
+            detail: '${fmtMin(p.doneMin)} / ${fmtMin(p.expectedMin)} attendu à ce jour', activityId: p.activity.id, minutes: p.missingMin),
+    ],
+    notes: const ['Comptée demain à la bascule, une fois la journée close.'],
+  );
+}
+
+/// Métronome : toutes les routines du jour (hors acquises, hors veille).
+BadgeToday _metronome(BadgeState b, TodayFacts f) {
+  final rs = f.metronomeRoutines;
+  if (rs.isEmpty) return const BadgeToday(stake: TodayStake.none, chip: 'journée neutre', notes: ['Aucune routine due aujourd’hui.']);
+  final reached = rs.where((r) => r.reached).length;
+  final missing = rs.where((r) => !r.reached).toList()..sort((x, y) => y.ratio.compareTo(x.ratio));
+  final gauges = [(label: 'Routines', done: reached, need: rs.length, total: rs.length)];
+  if (missing.isEmpty) {
+    return BadgeToday(
+        stake: TodayStake.saved,
+        chip: 'toutes atteintes · pour l’instant',
+        gauges: gauges,
+        dayDone: reached,
+        dayTotal: rs.length,
+        gain: 1,
+        notes: const ['Comptée demain à la bascule.']);
+  }
+  return BadgeToday(
+    stake: TodayStake.reachable,
+    chip: '$reached / ${rs.length} routines',
+    gauges: gauges,
+    dayDone: reached,
+    dayTotal: rs.length,
+    gain: 1,
+    items: [for (final r in missing) _routineItem(r)],
+    notes: const ['Comptée demain à la bascule, une fois la journée close.'],
   );
 }
 

@@ -826,6 +826,18 @@ pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de b
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
 
+## Montre suisse et Métronome (2026-10-30, maquette validée)
+
+Les deux moitiés de la Journée parfaite, en badges de famille Journées (logique pure `utils/half_days.dart`, paliers
+`kHalfDayTiers` 5 · 20 · 50 · 100 journées gagnées, record d'affilée en fait ; aucune braise). **Montre suisse** (`montre-suisse`,
+symbole `watch`) : à la bascule, chaque activité-temps à minimum vital (`goalMin` > 0) a fait l'attendu à ce jour de la fenêtre de
+budget (`paceOn` : minimum × `budgetDayIndex`, `computeBadges(budgetWindowDays:)`). **Métronome** (`metronome`, symbole `metronome`) :
+toutes les routines quotidiennes dues atteintes. Hors domaines en veille (jours gelés, `frozenOf`) et routines acquises ; jour sans rien
+à tenir = neutre. Aujourd'hui : `TodayFacts.pace` (activités face à l'attendu, `composeTodayFacts(budgetWindowDays:,
+restingDomainIds:)`) et `metronomeRoutines` ; `badgeToday` (`_montre`, `_metronome`) ; enjeux = section dédiée de `buildStakeBoard`
+(gain `StakeGainKind.halfDay` « Métronome · la dernière · palier 5 ce soir » sur les routines manquantes, « Montre suisse · k / n » sur
+les activités en retard ; gagnée → `won`). Web : fenêtre de 7 j.
+
 ## Relevés en jeu (2026-10-30)
 
 Un relevé de métrique dû devient un enjeu d'Aujourd'hui (logique pure `utils/reading_due.dart`, `readingsDue` : jours depuis le

@@ -31,6 +31,7 @@ Color stakeGainColor(StakeGain g) {
     StakeGainKind.reprise => kStakeReprise,
     StakeGainKind.week => kStakeTier,
     StakeGainKind.reading => kStakeObjective,
+    StakeGainKind.halfDay => kStakeTier,
   };
 }
 
