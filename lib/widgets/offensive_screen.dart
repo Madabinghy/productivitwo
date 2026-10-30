@@ -385,13 +385,18 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
 
   Widget _header(String title, {Widget? trailing}) => SizedBox(
         height: 48,
+        // Le titre et son ⓘ prennent toute la place restante : le bouton de droite
+        // reste collé au bord (un Flexible + un Spacer se partageaient la largeur).
         child: Row(children: [
-          Flexible(
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: kOffensiveAccent)),
+          Expanded(
+            child: Row(children: [
+              Flexible(
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1, color: kOffensiveAccent)),
+              ),
+              const InfoDot(kRuleOffensive),
+            ]),
           ),
-          const InfoDot(kRuleOffensive),
-          const Spacer(),
           if (trailing != null) trailing,
         ]),
       );
