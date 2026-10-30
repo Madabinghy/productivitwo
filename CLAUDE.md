@@ -637,8 +637,8 @@ l'ancienne carte « journée gagnée » (`_dayWinCard`, retirée le 2026-10-30 ;
 sur la page** (2026-10-30) : tap sur « Ta journée » (ou sur « Ce soir », compact sur la page : `EveningLedgerCard(compact: true)`) =
 feuille `_openStakesSheet` (tableau ou bilan complet du soir + `StakesList` ; un +1 garde la feuille ouverte, chrono / focus la ferment) ; le **programme du jour n'est plus sur la
 page** (2026-10-30) : la tuile PROGRAMME (toujours présente, « Rien de prévu » sans bloc) et la jauge du bord gauche ouvrent la
-feuille `_openProgramSheet` (`showFiche` + `_programSection` : en-tête, liste ou frise, bascule) ; « Demain » ferme la feuille et
-montre le programme de demain sur la page. Le passage auto en « fait » des blocs de routine (`_maybeAutoWin`) ne tourne que feuille ouverte
+feuille `_openProgramSheet` (`showFiche` + `_programSection` : en-tête, liste ou frise, bascule) ; « Demain » bascule DANS la
+feuille (2026-10-30, `_openProgramSheet` : état local `tomorrow`, `_programSection(tomorrow:, onToggleDay:)`), la page ne bouge pas. Le passage auto en « fait » des blocs de routine (`_maybeAutoWin`) ne tourne que feuille ouverte
 (`_parallelSection(cs, stakes)` → `widgets/dashboard_tiles.dart` `DashboardTiles`, logique pure `utils/dashboard_tiles.dart`) : PROGRAMME
 (`programTile` : bande des blocs, en cours / ensuite ; tap = remonte au programme), ROUTINES (`routinesTile`, tap = fiche Routines),
 OBJECTIFS (`objectivesTile` : au rythme ≥ 85 %, relevés dus ; tap = fiche Objectifs), BADGES (`badgesTile` : palier ce soir, séries à
