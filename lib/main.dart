@@ -3654,6 +3654,15 @@ class _AppRootState extends State<AppRoot>
     logic.programBacklogHook ??= _programBacklogItem;
     logic.onSessionOffBlock ??= _askSessionVsBlock;
     logic.onUserStopped ??= _askStopTarget;
+    logic.onFlemmeVictory ??= (session, name) {
+      if (!mounted) return;
+      final wins = _badges.todayFacts().disciplineWinsToday;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Victoire sur la flemme · 10 min tenues sur $name${wins > 0 ? ' · $wins aujourd’hui' : ''}'),
+        duration: const Duration(seconds: 4),
+        behavior: SnackBarBehavior.floating,
+      ));
+    };
 
 
 

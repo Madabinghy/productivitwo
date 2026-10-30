@@ -30,12 +30,16 @@ import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/moment_item.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show StepDots;
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
+import 'package:productivitwo_v1/utils/mode.dart' show DayMode;
+import 'package:productivitwo_v1/utils/recharge.dart' show isBasicNeedBlock;
 
 class DailyScheduleView extends StatefulWidget {
   final String date; // YYYY-MM-DD
   final AppLogic logic;
   // Lancer un bloc (▶) : démarre le chrono de la tâche/activité liée + focus.
   final void Function(ScheduleBlock block)? onLaunch;
+  /// En Flemme : « 10 min, malgré tout » (lancer le bloc avec un minuteur).
+  final void Function(ScheduleBlock block, int minutes)? onLaunchTimed;
   // Tap sur un bloc issu d'une source (tâche/routine/activité) → ouvre SA fiche
   // (au lieu du sheet de renommage du bloc).
   final void Function(ScheduleBlock block)? onOpenSource;
@@ -59,6 +63,7 @@ class DailyScheduleView extends StatefulWidget {
       required this.date,
       required this.logic,
       this.onLaunch,
+      this.onLaunchTimed,
       this.onOpenSource,
       this.title = 'Programme du jour',
       this.emptyText,
@@ -1049,6 +1054,12 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
     final nextStep = focusAction == null ? null : nextChecklistItem(focusAction);
     final steps = focusAction != null && focusAction.checklist.isNotEmpty;
     final launchable = widget.onLaunch != null && !isDone && (block.projectId != null || block.activityId != null);
+    // Flemme (maquette « Malgré tout ») : le petit pas d'abord, « Tout le bloc » à côté.
+    // Les deux comptent : c'est démarrer, 10 min, qui fait la victoire.
+    final smallStep = launchable &&
+        widget.onLaunchTimed != null &&
+        widget.logic.mode == DayMode.low &&
+        !isBasicNeedBlock(block, {for (final a in widget.logic.state.activities) a.id: a});
     final accent = isDone ? kPalierGreen : (block.challenge ? const Color(0xFFB8860B) : _categoryColor(block.category, cs));
     final pill = isDone
         ? 'fait'
@@ -1076,10 +1087,23 @@ class _DailyScheduleViewState extends State<DailyScheduleView> {
                   right: '${focusAction.checklist.where((c) => c.done).length} / ${focusAction.checklist.length}'),
             ])
           : null,
-      primaryLabel: isDone ? 'Rouvrir' : (launchable ? (current ? 'Lancer' : 'Commencer') : 'Fait'),
-      primaryIcon: isDone ? Icons.undo_rounded : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded),
+      primaryLabel: isDone ? 'Rouvrir' : (smallStep ? '10 min, malgré tout' : (launchable ? (current ? 'Lancer' : 'Commencer') : 'Fait')),
+      primaryIcon: isDone ? Icons.undo_rounded : (smallStep ? Icons.timer_outlined : (launchable ? Icons.play_arrow_rounded : Icons.check_rounded)),
+      chainLabel: smallStep ? 'Tout le bloc · ${fmtMin(block.durationMin)}' : null,
+      chainIcon: smallStep ? Icons.play_arrow_rounded : null,
+      onChain: smallStep
+          ? () {
+              HapticFeedback.lightImpact();
+              widget.onLaunch!(block);
+            }
+          : null,
       onPrimary: isDone
           ? () => _toggleDone(block)
+          : smallStep
+              ? () {
+                  HapticFeedback.lightImpact();
+                  widget.onLaunchTimed!(block, 10);
+                }
           : launchable
               ? () {
                   HapticFeedback.lightImpact();

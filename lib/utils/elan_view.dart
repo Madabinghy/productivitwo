@@ -37,6 +37,8 @@ List<ElanSlot> todayElanSlots({
   required List<Activity> activities,
   required DateTime now,
   int dayStartMin = kDefaultDayStartMin,
+  List<Session> sessions = const [],
+  List<DoneAction> doneActions = const [],
 }) {
   final ymd = ymdOf(livedDate(now, dayStartMin));
   final nowMin = livedNowMin(now, dayStartMin);
@@ -53,7 +55,7 @@ List<ElanSlot> todayElanSlots({
     var wins = 0;
     final held = <int, int>{};
     for (final w in ws) {
-      wins += winsIn(w, blocks: schedule?.blocks ?? const [], hits: hits, activities: activities, dayStartMin: dayStartMin).length;
+      wins += winsIn(w, blocks: schedule?.blocks ?? const [], hits: hits, activities: activities, sessions: sessions, doneActions: doneActions, dayStartMin: dayStartMin, now: now).length;
       final end = w.end.isAfter(now) ? now : w.end;
       held[w.mark.value] = (held[w.mark.value] ?? 0) + end.difference(w.mark.at).inMinutes.clamp(0, 1 << 20);
     }

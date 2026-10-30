@@ -3,7 +3,7 @@ import 'package:productivitwo_v1/utils/acquired.dart' show Acquired, isAcquiredO
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/badge_today.dart';
 import 'package:productivitwo_v1/utils/chain_session.dart' show PendingChain;
-import 'package:productivitwo_v1/utils/elan_logic.dart' show disciplineStats;
+import 'package:productivitwo_v1/utils/elan_logic.dart' show FlemmeWin, doneActionsOf, elanWindows, flemmeWinsIn;
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDayStart;
 import 'package:productivitwo_v1/utils/objective_day.dart' show buildObjectiveDays;
 
@@ -48,7 +48,15 @@ TodayFacts composeTodayFacts({
     now: now,
     dayStartMin: dayStartMin,
   );
-  final disc = disciplineStats(marks: elan, schedules: schedule == null ? const [] : [schedule], hits: hits, activities: activities, dayStartMin: dayStartMin);
+  // Victoires sur la flemme du jour (maquette « Malgré tout ») : ce qui a été
+  // fait, ou démarré et tenu 10 min, dans une fenêtre de flemme.
+  final doneActions = doneActionsOf(projects, activities);
+  final flemmeWins = <FlemmeWin>[
+    for (final w in elanWindows(elan, ymd, dayStartMin: dayStartMin))
+      if (w.low)
+        ...flemmeWinsIn(w,
+            blocks: blocks, hits: hits, activities: activities, sessions: sessions, doneActions: doneActions, dayStartMin: dayStartMin, now: now),
+  ];
   return TodayFacts(
     ymd: ymd,
     now: now,
@@ -58,7 +66,8 @@ TodayFacts composeTodayFacts({
     pendingChain: pendingChain,
     objectiveDays: days,
     objectives: objectives,
-    disciplineWinsToday: disc.wins.length,
+    disciplineWinsToday: flemmeWins.length,
+    flemmeWins: flemmeWins,
     pace: paceOn(now,
         activities: active.where((a) => !restingDomainIds.contains(a.domainId)).toList(),
         minutes: minutesByActivityDay(sessions, now),

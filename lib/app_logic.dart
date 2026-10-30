@@ -18,7 +18,7 @@ import 'package:productivitwo_v1/utils/mode.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/seasons.dart';
 import 'package:productivitwo_v1/utils/acquired.dart';
-import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin;
+import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin, kFlemmeChronoMin;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
 import 'package:productivitwo_v1/utils/streak_logic.dart';
@@ -1136,7 +1136,10 @@ class AppLogic implements HuntStore {
         }
         final settled = blocksSettledByChrono(blocks: sched.blocks, sessions: state.sessions, date: prev, now: now);
         for (final b in settled) {
-          await s.updateBlockStatus(key, b.id, 'done', doneBy: 'chrono');
+          // Fait à la fin de son créneau (pas à la bascule du lendemain) : il tombe
+          // dans la bonne fenêtre d'élan (victoire sur la flemme, malgré tout).
+          final end = DateTime(prev.year, prev.month, prev.day).add(Duration(minutes: blockStartMin(b) + b.durationMin));
+          await s.updateBlockStatus(key, b.id, 'done', doneBy: 'chrono', doneAt: end.isAfter(now) ? now : end);
         }
       }
       await prefs.setString('day_settled_ymd', key);
@@ -1155,6 +1158,27 @@ class AppLogic implements HuntStore {
   /// demande plus, le rattachement se fait à la main par « Bloc ▾ ».
   static const askBlockOnChrono = false;
 
+  /// Victoire sur la flemme en direct (maquette « Malgré tout », 2026-10-30) :
+  /// un chrono lancé en Flemme sur autre chose qu'un besoin de base atteint
+  /// [kFlemmeChronoMin] min → l'UI l'annonce, une fois par session.
+  void Function(Session session, String activityName)? onFlemmeVictory;
+  final Set<String> _flemmeAnnounced = {};
+
+  void _checkFlemmeChrono() {
+    final hook = onFlemmeVictory;
+    if (hook == null) return;
+    final now = DateTime.now();
+    for (final s in state.sessions) {
+      if (s.deleted || s.endAt != null || _flemmeAnnounced.contains(s.id)) continue;
+      if (now.difference(s.startAt).inMinutes < kFlemmeChronoMin) continue;
+      if (modeAt(state.moodMarks, s.startAt, dayStartMin) != DayMode.low) continue;
+      final name = state.activities.where((a) => a.id == s.activityId).firstOrNull?.name;
+      if (isBasicNeedName(name)) continue;
+      _flemmeAnnounced.add(s.id);
+      hook(s, name ?? 'ton chrono');
+    }
+  }
+
   void tickBlockTransition() {
     // Bascule de journée vécue (ou premier tick) → règlement de la veille.
     final ymd = livedYmdNow;
@@ -1162,6 +1186,7 @@ class AppLogic implements HuntStore {
       _lastTickLivedYmd = ymd;
       unawaited(settleFinishedDay());
     }
+    _checkFlemmeChrono();
     if (!askBlockOnChrono) return;
     final live = todayBlocks.where((b) => b.status != 'deleted').toList();
     Session? open;

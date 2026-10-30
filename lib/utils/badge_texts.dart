@@ -62,7 +62,7 @@
       ),
     'malgre-tout' => (
         what: 'Les fois où tu as fait quand même, alors que tu étais en mode Flemme (ou pointé « Flemme » / « Mou »).',
-        how: 'Passe en mode Flemme (pilule de MAINTENANT ou Paramètres) ou pointe un élan bas, puis termine un bloc ou atteins une routine avant le changement de mode suivant : chaque chose faite compte une victoire. '
+        how: 'En mode Flemme, chacun de ces gestes vaut une victoire : un chrono lancé et tenu 10 min (« 10 min, malgré tout » comme « Tout le bloc »), une action cochée, un bloc fait, une routine atteinte. Les besoins de base (sommeil, sieste, repas) ne comptent pas ; cuisiner, si. '
             'Paliers : 10, 50 et 200 victoires.',
       ),
     'vent-contraire' => (
