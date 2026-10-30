@@ -61,7 +61,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('page domaine : temps et routines, aucune exception', (tester) async {
+  testWidgets('page domaine : routines et activités sur une page, aucune exception', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -71,10 +71,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
     expect(find.text('ACTIVITÉ DU MOMENT'), findsNothing); // carte retirée (2026-10-30)
-    expect(find.textContaining('À RATTRAPER'), findsOneWidget);
-    await tester.tap(find.text('Routines'));
-    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('ROUTINES ·'), findsOneWidget);
     expect(find.text('Café'), findsOneWidget);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -600));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.textContaining('ACTIVITÉS ·'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

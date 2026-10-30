@@ -16,10 +16,6 @@ import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/widgets/badge_painter.dart' show kBadgeBrass, kBadgeLockedBand, kBadgeLockedRim, kBadgeGaugeFill, kFrozenColor;
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
-/// Section nommée de la fiche « Ma semaine » (repliable).
-typedef WeekDetailSection = ({String title, Widget child});
 
 /// Onglet Stats « une carte, une fiche » (lot 3, 2026-10) : la carte MA
 /// SEMAINE (anneau = engagements des objectifs tenus, chrono de la semaine),
@@ -32,9 +28,6 @@ class WeekStatsView extends StatefulWidget {
   final FirestoreSync sync;
   final Future<bool?> Function(Domain domain, {String focus}) onOpenDomain;
   final VoidCallback onManageDomains;
-  /// Lectures détaillées, construites par l'appelant (jauges + courbe, élan,
-  /// temps, camembert, retards) : sections repliables de la fiche « Ma semaine ».
-  final List<WeekDetailSection> Function(BuildContext ctx) weekDetails;
   /// Centre de badges (facultatif) : programmes pour la ligne Élan et la feuille du mode.
   final BadgeCenter? badges;
   const WeekStatsView({
@@ -43,7 +36,6 @@ class WeekStatsView extends StatefulWidget {
     required this.sync,
     required this.onOpenDomain,
     required this.onManageDomains,
-    required this.weekDetails,
     this.badges,
   });
 
@@ -53,10 +45,7 @@ class WeekStatsView extends StatefulWidget {
 
 class _WeekStatsViewState extends State<WeekStatsView> {
   static List<StrategicObjective>? _cache;
-  static const _kOpenKey = 'week_fiche_open';
   List<StrategicObjective> _objectives = const [];
-  /// Sections de la fiche ouvertes (titres) ; ENGAGEMENTS l'est toujours.
-  Set<String> _open = {};
   List<DailySchedule> _schedules = const [];
 
   @override
@@ -74,10 +63,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
         if (mounted) setState(() => _schedules = s);
       }).catchError((_) {});
     }
-    SharedPreferences.getInstance().then((p) {
-      final v = p.getStringList(_kOpenKey);
-      if (v != null && mounted) setState(() => _open = v.toSet());
-    });
     widget.sync.fetchStrategicObjectives().then((all) {
       if (!mounted) return;
       _cache = all;
@@ -255,71 +240,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     return m.mean.toStringAsFixed(1).replaceAll('.', ',');
   }
 
-  /// Répartition du chrono par domaine et par jour sur la fenêtre de budget
-  /// (Modes et coups lot 4) : une barre par jour, le repère du jour courant.
-  Widget _distribution(BuildContext ctx) {
-    final cs = Theme.of(ctx).colorScheme;
-    final st = widget.logic.state;
-    final now = DateTime.now();
-    final days = widget.logic.budgetWindowDays;
-    final start = budgetWindowStart(now, days);
-    final data = dailyMinutesByDomain(st.sessions, st.activeActivities, start, days, now: now);
-    final domains = st.activeDomains.where((d) => data.containsKey(d.id)).toList();
-    if (domains.isEmpty) {
-      return FicheNote(days == 14
-          ? 'Rien de tracé sur la quinzaine. Avec 14 jours, pousser 3 jours sur un sujet puis le lâcher reste « au rythme ».'
-          : 'Rien de tracé cette semaine. Dans Paramètres, « Budget des minimums » passe la fenêtre à 14 jours.');
-    }
-    final today = budgetDayIndex(now, days) - 1;
-    var max = 1;
-    for (final row in data.values) {
-      for (final v in row) {
-        if (v > max) max = v;
-      }
-    }
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      for (final d in domains)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: domainColor(d.id, st.activeDomains) ?? cs.primary, shape: BoxShape.circle)),
-              const SizedBox(width: 6),
-              Expanded(child: Text(d.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-              Text(fmtMin(data[d.id]!.fold(0, (a, b) => a + b)),
-                  style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .6), fontFeatures: const [FontFeature.tabularFigures()])),
-            ]),
-            const SizedBox(height: 4),
-            SizedBox(
-              height: 28,
-              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                for (var i = 0; i < days; i++) ...[
-                  Expanded(
-                    child: Container(
-                      height: (4 + 24 * data[d.id]![i] / max).clamp(4.0, 28.0),
-                      decoration: BoxDecoration(
-                        color: i > today
-                            ? Colors.transparent
-                            : (domainColor(d.id, st.activeDomains) ?? cs.primary).withValues(alpha: data[d.id]![i] == 0 ? .15 : (i == today ? 1 : .7)),
-                        borderRadius: BorderRadius.circular(2),
-                        border: i > today ? Border.all(color: cs.onSurface.withValues(alpha: .08)) : null,
-                      ),
-                    ),
-                  ),
-                  if (i < days - 1) const SizedBox(width: 2),
-                ],
-              ]),
-            ),
-          ]),
-        ),
-      Row(children: [
-        Text('jour 1', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
-        const Spacer(),
-        Text('jour $days', style: TextStyle(fontSize: 10, color: cs.onSurface.withValues(alpha: .45))),
-      ]),
-    ]);
-  }
-
   /// Ligne Élan (2026-10) : moyenne des 7 jours, pointages, face à la flemme,
   /// créneau difficile, mini-courbe par jour. Tap = la feuille du mode.
   /// Les jours de la fenêtre sous la barre d'un domaine : hauteur = temps du
@@ -375,31 +295,16 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
-  Future<void> _toggleSection(String key, void Function(void Function()) setLocal) async {
-    setLocal(() => _open.contains(key) ? _open.remove(key) : _open.add(key));
-    if (mounted) setState(() {});
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_kOpenKey, _open.toList());
-  }
-
-  /// Fiche « Ma semaine » (2026-10) : ENGAGEMENTS à ce jour (toujours ouvert,
-  /// attendu au prorata + rappel de la semaine entière), puis des sections
-  /// REPLIABLES — répartition, jauges + courbe, élan, temps, camembert,
-  /// retards — au lieu des lectures empilées en vrac.
+  /// Fiche « Ma semaine » (2026-10-30, le contrat seul) : les engagements à ce
+  /// jour (attendu au prorata + rappel de la semaine entière) puis les semaines
+  /// tenues. Répartition, jauges, temps, élan et retards vivent ailleurs
+  /// (lignes de domaine, Aujourd'hui, fiche d'activité, feuille du mode, Actions).
   void _openWeekFiche(WeekSummary w, HeldWeeks hw) {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final n = w.engagements.length;
     showFiche<void>(context, builder: (ctx, scroll) {
       return StatefulBuilder(builder: (ctx, setLocal) {
         final cs = Theme.of(ctx).colorScheme;
-        List<Widget> section(String title, List<Widget> body, {Widget? trailing}) {
-          final open = _open.contains(title);
-          return [
-            FicheTitle(title, trailing: trailing, expanded: open, onToggle: () => _toggleSection(title, setLocal)),
-            if (open) ...body,
-          ];
-        }
-
         return ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
@@ -409,15 +314,6 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               chip: pct == null ? 'sans engagement' : '$pct % du rythme',
               chipColor: pct == null ? kPalierMuted : palierColor(pct),
               kpi: 'Jour ${w.daysElapsed} / 7${w.chronoMin > 0 ? ' · ${fmtMin(w.chronoMin)} de chrono' : ''}',
-            ),
-            if (hw.weeks.isNotEmpty) _heldWeeksStrip(cs, hw),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => showModeSheet(context, widget.logic, badges: widget.badges),
-                icon: const Icon(Icons.wb_sunny_outlined, size: 18),
-                label: const Text('Mode du jour · élan'),
-              ),
             ),
             FicheTitle(w.fromObjectives ? 'ENGAGEMENTS DES OBJECTIFS · À CE JOUR' : 'ROUTINES DE LA SEMAINE · À CE JOUR',
                 trailing: n == 0 ? null : FicheDelta('${w.kept} / $n au rythme', color: palierColor(pct ?? 0))),
@@ -440,15 +336,10 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               FicheNote(
                   'Attendu au prorata du jour (jour ${w.daysElapsed} / 7). Semaine entière : ${w.pctWeek} % · ${w.keptWeek} / $n tenu${w.keptWeek > 1 ? 's' : ''}.'),
             ],
-            ...section(
-              'RÉPARTITION SUR ${widget.logic.budgetWindowDays} J',
-              [_distribution(ctx)],
-              trailing: FicheDelta(budgetWindowLabel(DateTime.now(), widget.logic.budgetWindowDays), color: cs.onSurface.withValues(alpha: .6)),
-            ),
-            for (final d in widget.weekDetails(ctx)) ...section(d.title, [d.child]),
-            const SizedBox(height: 8),
-            Text('Touche un titre pour déplier une lecture ; l\'onglet garde l\'essentiel.',
-                textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .45))),
+            if (hw.weeks.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _heldWeeksStrip(cs, hw),
+            ],
           ],
         );
       });
