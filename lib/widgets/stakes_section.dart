@@ -29,6 +29,7 @@ Color stakeGainColor(StakeGain g) {
     StakeGainKind.focus => kBPrimary,
     StakeGainKind.routine => kBText3,
     StakeGainKind.reprise => kStakeReprise,
+    StakeGainKind.week => kStakeTier,
   };
 }
 

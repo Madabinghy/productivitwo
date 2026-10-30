@@ -316,7 +316,7 @@ class EmberLedgerPanel extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    e.kind == EmberEventKind.earned ? 'Journée parfaite' : '${names[e.activityId] ?? 'Série'} rallumée',
+                    e.kind == EmberEventKind.earned ? (e.week ? 'Semaine tenue' : 'Journée parfaite') : '${names[e.activityId] ?? 'Série'} rallumée',
                     style: const TextStyle(fontSize: 13, color: kBText),
                   ),
                 ),

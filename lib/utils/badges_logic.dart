@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/embers.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf, mondayOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart';
+import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
 
@@ -145,7 +146,9 @@ class BadgeDeck {
   final EmberLedger embers;
   /// Reprises possibles ou en cours aujourd'hui, par routine (`reprise.dart`).
   final Map<String, RepriseNow> reprises;
-  const BadgeDeck(this.badges, {this.embers = EmberLedger.empty, this.reprises = const {}});
+  /// Semaines tenues (`held_weeks.dart`) : série, semaine en cours, coches qui manquent.
+  final HeldWeeks weeks;
+  const BadgeDeck(this.badges, {this.embers = EmberLedger.empty, this.reprises = const {}, this.weeks = HeldWeeks.empty});
 
   /// Le compteur « n sur N » compte les paliers de toutes les familles SAUF les
   /// séries de routine (décision 2026-10-26) : un badge par routine gonflait le
@@ -607,15 +610,18 @@ BadgeDeck computeBadges({
   // Séries de routine : un badge par routine quotidienne active, par nom.
   final routines = activities.where((a) => !a.deleted && a.isHabit && a.habitFreq == HabitFreq.daily).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-  final embers = emberLedger(
-    perfectYmds: [for (final d in days) if (d.perfect) d.ymd],
-    spends: emberSpends,
-    reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
-    todayYmd: ymdOf(livedDate(now, dayStartMin)),
-  );
   final todayYmd = ymdOf(livedDate(now, dayStartMin));
   final frozenByDomain = <String, Set<String>>{};
   Set<String> frozenOf(Activity a) => frozenByDomain.putIfAbsent(a.domainId, () => frozenDaysOf(a.domainId, restPeriods, restDomains, todayYmd));
+  // Semaines tenues : le contrat de la semaine à 80 %, une braise par semaine tenue.
+  final weeks = heldWeeks(activities: activities, hits: habitHits, objectives: objectives, now: now, dayStartMin: dayStartMin, frozenOf: frozenOf);
+  final embers = emberLedger(
+    perfectYmds: [for (final d in days) if (d.perfect) d.ymd],
+    heldWeekYmds: weeks.heldSundays,
+    spends: emberSpends,
+    reached: {for (final a in routines) a.id: routineReachedDays(a, habitHits, dayStartMin: dayStartMin)},
+    todayYmd: todayYmd,
+  );
   final repriseEvents = <(String, RepriseEvent)>[];
   final reprisesNow = <String, RepriseNow>{};
   for (final a in routines) {
@@ -627,6 +633,23 @@ BadgeDeck computeBadges({
     }
     if (r.now != null) reprisesNow[a.id] = r.now!;
   }
+
+  // Semaines tenues (famille Objectifs : c'est le Contrat d'Engagement).
+  final thisWeek = weeks.thisWeek;
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'semaines-tenues', family: BadgeFamily.objectives, name: 'Semaines tenues', symbol: 'week', tiers: kHeldWeekTiers, unit: 'sem.', unitLong: 'semaines'),
+    level: _levelOf(kHeldWeekTiers, weeks.longest),
+    value: weeks.current,
+    tierDates: weeks.tierDates,
+    facts: [
+      ('Série en cours', _plural(weeks.current, 'semaine', 'semaines')),
+      ('Plus longue série', _plural(weeks.longest, 'semaine', 'semaines')),
+      if (weeks.closedCount > 0) ('Semaines tenues', '${weeks.heldCount} sur ${weeks.closedCount}'),
+      if (thisWeek?.pct != null) ('Cette semaine', '${(thisWeek!.pct! * 100).round()} %${weeks.missing > 0 ? ' · encore ${weeks.missing} coche${weeks.missing > 1 ? 's' : ''}' : ' · tenue'}'),
+      if (embers.history.any((e) => e.week && e.kind == EmberEventKind.earned))
+        ('Braises forgées', '${embers.history.where((e) => e.week && e.kind == EmberEventKind.earned).length}'),
+    ],
+  ));
 
   // Objectifs.
   final done = objectives.where((o) => o.status == 'done').toList();
@@ -944,6 +967,21 @@ BadgeDeck computeBadges({
   BadgeTrack? trackOf(BadgeState b) {
     final id = b.def.id;
     if (id.startsWith('serie-')) return b.track; // posé par routineBadge
+    if (id == 'semaines-tenues') {
+      final last = weeks.weeks.length > 12 ? weeks.weeks.sublist(weeks.weeks.length - 12) : weeks.weeks;
+      if (last.isEmpty) return null;
+      final cells = [
+        for (final w in last)
+          switch (w.state) {
+            WeekState.held => TrackCell.hit,
+            WeekState.missed => TrackCell.miss,
+            WeekState.current => TrackCell.current,
+            WeekState.neutral => w.rest ? TrackCell.frozen : TrackCell.neutral,
+          }
+      ];
+      final held = cells.where((c) => c == TrackCell.hit).length;
+      return BadgeTrack(cells: cells, caption: '${last.length} dernières semaines · $held tenue${held > 1 ? 's' : ''}', hitLabel: 'tenue (≥ 80 %)', missLabel: 'sous 80 %');
+    }
     if (id.startsWith('temps-')) {
       final o = objectives.where((x) => x.id == b.def.subjectId).firstOrNull;
       if (o == null) return null;
@@ -1030,7 +1068,7 @@ BadgeDeck computeBadges({
     }
   }
 
-  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers, reprises: reprisesNow);
+  return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers, reprises: reprisesNow, weeks: weeks);
 }
 
 int _currentSolidRun(List<DayScore> days) {

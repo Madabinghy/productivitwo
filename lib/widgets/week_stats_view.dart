@@ -13,6 +13,8 @@ import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/palier_colors.dart';
 import 'package:productivitwo_v1/utils/budget_window.dart';
 import 'package:productivitwo_v1/utils/week_stats.dart';
+import 'package:productivitwo_v1/utils/held_weeks.dart';
+import 'package:productivitwo_v1/widgets/badge_painter.dart' show kBadgeBrass, kBadgeLockedBand, kBadgeLockedRim, kBadgeGaugeFill, kFrozenColor;
 import 'package:productivitwo_v1/widgets/fiche.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart';
 import 'package:productivitwo_v1/widgets/status_row.dart';
@@ -98,7 +100,14 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _weekCard(cs, week, now),
+        _weekCard(cs, week, now,
+            heldWeeks(
+                activities: st.activities,
+                hits: st.habitHits,
+                objectives: _objectives,
+                now: now,
+                dayStartMin: widget.logic.dayStartMin,
+                frozenOf: (a) => widget.logic.frozenOf(a.id))),
         ListSectionTitle(days == 14 ? 'DOMAINES · SUR 14 JOURS' : 'DOMAINES · CETTE SEMAINE', action: 'Gérer', onAction: widget.onManageDomains),
         for (final r in rows) _domainRow(cs, r),
         if (rows.isEmpty)
@@ -110,7 +119,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     );
   }
 
-  Widget _weekCard(ColorScheme cs, WeekSummary w, DateTime now) {
+  Widget _weekCard(ColorScheme cs, WeekSummary w, DateTime now, HeldWeeks hw) {
     final pct = w.engagements.isEmpty ? null : w.pct;
     final st = pct == null ? kPalierMuted : palierColor(pct);
     const days = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
@@ -173,6 +182,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
               ]),
               MomentLegend('Routines tenues par jour · aujourd\'hui en cours',
                   right: behind == 0 ? 'tout au rythme' : 'à rattraper : $behind'),
+              if (hw.weeks.isNotEmpty) _heldWeeksStrip(cs, hw),
             ]),
       primaryLabel: 'Détail',
       primaryIcon: Icons.insights_rounded,
@@ -184,6 +194,56 @@ class _WeekStatsViewState extends State<WeekStatsView> {
         MomentAction('Mode du jour', icon: Icons.wb_sunny_outlined, hint: 'flemme · normal · en forme', onTap: () => showModeSheet(context, widget.logic, badges: widget.badges)),
         MomentAction('Gérer les domaines', icon: Icons.tune_rounded, onTap: widget.onManageDomains),
       ],
+    );
+  }
+
+  /// SEMAINES TENUES (lot 2, 2026-10-30) : la série, les 10 dernières semaines
+  /// (tenue · sous 80 % · en veille · en cours) et ce qu'il reste cette semaine.
+  Widget _heldWeeksStrip(ColorScheme cs, HeldWeeks hw) {
+    final last = hw.weeks.length > 10 ? hw.weeks.sublist(hw.weeks.length - 10) : hw.weeks;
+    final muted = cs.onSurface.withValues(alpha: .55);
+    final w = hw.thisWeek;
+    final pct = w?.pct == null ? null : (w!.pct! * 100).round();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Expanded(child: Text('SEMAINES TENUES', style: TextStyle(fontSize: 10.5, letterSpacing: .6, fontWeight: FontWeight.w700, color: muted))),
+          Text('${hw.current}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: kBadgeBrass)),
+          const SizedBox(width: 5),
+          Text('d’affilée${hw.longest > hw.current ? ' · record ${hw.longest}' : ''}', style: TextStyle(fontSize: 12, color: muted)),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          for (var i = 0; i < last.length; i++) ...[
+            if (i > 0) const SizedBox(width: 4),
+            Expanded(child: _weekCell(last[i])),
+          ],
+          for (var i = last.length; i < 10; i++) ...[const SizedBox(width: 4), const Expanded(child: SizedBox())],
+        ]),
+        if (pct != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            hw.missing == 0
+                ? 'Cette semaine : $pct % du contrat · tenue, une braise dimanche soir'
+                : 'Cette semaine : $pct % du contrat · encore ${hw.missing} coche${hw.missing > 1 ? 's' : ''} d’ici dimanche',
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _weekCell(HeldWeek w) {
+    final (Color? fill, Color border) = switch (w.state) {
+      WeekState.held => (kBadgeBrass, kBadgeBrass),
+      WeekState.missed => (kBadgeLockedBand, kBadgeLockedRim),
+      WeekState.current => (kBadgeGaugeFill.withValues(alpha: .18), kBadgeGaugeFill),
+      WeekState.neutral => w.rest ? (kFrozenColor.withValues(alpha: .22), kFrozenColor) : (null, kBadgeLockedRim),
+    };
+    return Container(
+      height: 16,
+      decoration: BoxDecoration(color: fill, borderRadius: BorderRadius.circular(3), border: Border.all(color: border, width: w.state == WeekState.current ? 1.5 : 1)),
     );
   }
 

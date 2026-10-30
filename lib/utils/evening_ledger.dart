@@ -67,6 +67,16 @@ EveningLedger buildEveningLedger({
       emberStock >= kEmberCap ? 'réserve pleine ($kEmberCap sur $kEmberCap) : rien de plus' : 'acquise à la bascule · ${emberStock + 1} sur $kEmberCap en réserve',
     ));
   }
+  // ── Braise : le dimanche, une semaine tenue en forge une aussi ────────────
+  final week = deck?.weeks.thisWeek;
+  if (week != null && week.pct != null && calToday.weekday == DateTime.sunday && deck!.weeks.missing == 0) {
+    final stock = emberStock + (perfectToday ? 1 : 0);
+    advanced.add(LedgerLine(
+      '+1',
+      'Semaine tenue · ${deck.weeks.current + 1} d’affilée · une braise',
+      stock >= kEmberCap ? 'réserve pleine ($kEmberCap sur $kEmberCap) : rien de plus' : 'acquise à la bascule · ${stock + 1} sur $kEmberCap en réserve',
+    ));
+  }
 
   // ── Badges : paliers obtenus aujourd'hui, puis séries / chasses tenues ─────
   final tiered = <String>{};
