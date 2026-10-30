@@ -39,6 +39,19 @@ class FirestoreSync {
   String? get uid => _auth.currentUser?.uid;
 
   DocumentReference _meta() => _db.doc('users/$uid/data/meta');
+
+  /// Interrupteur « Messages ORION / coach » (push FCM) : absent = activé.
+  /// Lu par le serveur (`pushAllowed`, `functions/src/push_rules.ts`).
+  Future<bool> fetchOrionPushEnabled() async {
+    if (uid == null) return true;
+    final snap = await _db.doc('users/$uid/orion_config/main').get();
+    return snap.data()?['pushEnabled'] != false;
+  }
+
+  Future<void> setOrionPushEnabled(bool on) async {
+    if (uid == null) return;
+    await _db.doc('users/$uid/orion_config/main').set({'pushEnabled': on}, SetOptions(merge: true));
+  }
   CollectionReference _col(String name) =>
       _db.collection('users/$uid/$name');
 

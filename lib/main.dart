@@ -6665,6 +6665,8 @@ class _AppRootState extends State<AppRoot>
   }
 
   void _showNotificationsSheet(BuildContext context) {
+    final orionPush = ValueNotifier<bool?>(null);
+    _sync.fetchOrionPushEnabled().then((v) => orionPush.value = v).catchError((_) => orionPush.value = true);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -6743,6 +6745,23 @@ class _AppRootState extends State<AppRoot>
                       logic.onChange(); rebuild();
                       await _refreshDayNotifs();
                     },
+                  ),
+                  const Divider(height: 1),
+                  // Push du serveur : pas d'heure, un interrupteur.
+                  ValueListenableBuilder<bool?>(
+                    valueListenable: orionPush,
+                    builder: (_, on, __) => SwitchListTile(
+                      secondary: const Icon(Icons.forum_outlined),
+                      title: const Text('Messages ORION / coach'),
+                      subtitle: const Text('Dès qu\'un message arrive, jamais avant le jour prévu'),
+                      value: on ?? true,
+                      onChanged: on == null
+                          ? null
+                          : (v) {
+                              orionPush.value = v;
+                              _sync.setOrionPushEnabled(v);
+                            },
+                    ),
                   ),
                 ],
               ),

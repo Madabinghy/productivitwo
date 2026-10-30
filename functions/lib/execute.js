@@ -92,6 +92,7 @@ exports.checkRateLimit = checkRateLimit;
 exports.todayInParis = todayInParis;
 exports.userDayParts = userDayParts;
 exports.nowInParis = nowInParis;
+const push_rules_1 = require("./push_rules");
 const routine_split_1 = require("./routine_split");
 const schedule_dedupe_1 = require("./schedule_dedupe");
 const phase_resolve_1 = require("./phase_resolve");
@@ -431,8 +432,11 @@ async function executePushAssistantMessage(uid, args) {
         createdBy: "claude",
         shownAt: null,
     });
-    // Notification push FCM — fire and forget
-    sendOrionPushNotification(uid, args.text).catch(() => { });
+    // Notification push FCM — fire and forget ; jamais avant le jour visé
+    // (le message s'affiche ce jour-là dans l'app).
+    if ((0, push_rules_1.shouldPushNow)(args.targetDate, (0, push_rules_1.todayParis)())) {
+        sendOrionPushNotification(uid, args.text, (0, push_rules_1.pushTitleFor)(args.sender, args.characterName)).catch(() => { });
+    }
     return (`✅ Message assistant programmé pour le ${args.targetDate}.\n` +
         `• Condition : ${args.condition.type}\n` +
         `• Texte : "${args.text.slice(0, 60)}${args.text.length > 60 ? "…" : ""}"\n` +
@@ -456,10 +460,13 @@ async function sendFcmPush(uid, title, body, data = {}) {
         android: { notification: { channelId: "orion_messages", priority: "high" } },
     });
 }
-async function sendOrionPushNotification(uid, text) {
+async function sendOrionPushNotification(uid, text, title) {
     var _a;
     const configSnap = await db_1.db.collection(`users/${uid}/orion_config`).doc("main").get();
     if (!configSnap.exists)
+        return;
+    // Interrupteur « Messages ORION / coach » (Paramètres › Notifications).
+    if (!(0, push_rules_1.pushAllowed)(configSnap.data()))
         return;
     const fcmToken = (_a = configSnap.data()) === null || _a === void 0 ? void 0 : _a.fcmToken;
     if (!fcmToken)
@@ -468,7 +475,7 @@ async function sendOrionPushNotification(uid, text) {
     await admin.messaging().send({
         token: fcmToken,
         notification: {
-            title: "◉ ORION",
+            title,
             body: preview,
         },
         data: {
