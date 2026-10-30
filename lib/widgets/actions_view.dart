@@ -88,8 +88,17 @@ class _ActionsViewState extends State<ActionsView> {
   // ponctuelle, réactivation en un tap).
   bool _showPaused = false;
   // Filtres repliés sous la carte du moment (« une carte, une fiche », lot 2).
-  bool _filtersOpen = false;
-  bool _filtersAutoOpened = false;
+  /// Feuille « Filtrer » ouverte : elle se redessine à chaque changement de
+  /// la vue (les filtres vivent dans l'état de la vue), sur les derniers
+  /// arguments calculés par `build`.
+  final _filtersTick = ValueNotifier<int>(0);
+  Widget Function(ColorScheme)? _filtersBarNow;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _filtersTick.value++;
+  }
 
   AppState get _state => widget.logic.state;
 
@@ -225,6 +234,7 @@ class _ActionsViewState extends State<ActionsView> {
 
   @override
   void dispose() {
+    _filtersTick.dispose();
     _scroll.dispose();
     widget.logic.removeListener(_onLogicChange);
     _schedSub?.cancel();
@@ -1192,6 +1202,7 @@ class _ActionsViewState extends State<ActionsView> {
     // La recherche n'est pas un « filtre » : le compte des masquées ne la
     // compte pas (son état vide a son propre message).
     final hiddenByFilters = all.where((e) => !passesFilters(e)).length;
+    _filtersBarNow = (c) => _filtersBar(c, contexts.toList(), active, domains, activeDomains, roots, hiddenByFilters);
     // Tâche pas encore commencée → « À venir » (sauf action déjà au programme
     // du jour : on l'a décidé, elle reste devant).
     final today0 = _day(DateTime.now());
@@ -1272,6 +1283,7 @@ class _ActionsViewState extends State<ActionsView> {
                   color: _searchOpen || _query.isNotEmpty ? cs.primary : cs.onSurface.withOpacity(.6), size: 22),
               onPressed: _searchOpen ? _closeSearch : _openSearch,
             ),
+            _filterButton(cs, active, activeDomains),
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: _byProject ? 'Grouper par urgence' : 'Grouper par projet',
@@ -1304,11 +1316,6 @@ class _ActionsViewState extends State<ActionsView> {
           _captureField(cs),
           if (_pendingCaptures.isNotEmpty) ...[const SizedBox(height: 6), _triageRow(cs)],
           const SizedBox(height: 6),
-          _filtersToggle(cs, active, activeDomains, hiddenByFilters),
-          if (_filtersOpen) ...[
-            const SizedBox(height: 4),
-            _filtersBar(cs, contexts, active, domains, activeDomains, roots, hiddenByFilters),
-          ],
           const SizedBox(height: 6),
 
           // ── @courses actif → la liste de courses du menu, cochable ────────
@@ -2486,34 +2493,48 @@ class _ActionsViewState extends State<ActionsView> {
     );
   }
 
-  /// Ligne « Filtres » repliable : J'ai · Je suis · Domaine · Pour. Ouverte
-  /// d'office quand un filtre est actif (on voit ce qui masque).
-  Widget _filtersToggle(ColorScheme cs, Set<String> active, Set<String> activeDomains, int hidden) {
+  /// Bouton « Filtrer » de l'en-tête (retour user 2026-10-30, comme Projets) :
+  /// pastille du nombre de filtres actifs, tap = feuille J'ai · Je suis ·
+  /// Domaine · Pour.
+  Widget _filterButton(ColorScheme cs, Set<String> active, Set<String> activeDomains) {
     final n = (_time == null ? 0 : 1) + active.length + activeDomains.length + (_clientFilter == null ? 0 : 1);
-    if (n > 0 && !_filtersAutoOpened) {
-      _filtersAutoOpened = true;
-      _filtersOpen = true;
-    }
-    return InkWell(
-      onTap: () => setState(() => _filtersOpen = !_filtersOpen),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-        child: Row(children: [
-          Icon(Icons.tune_rounded, size: 14, color: n > 0 ? cs.primary : cs.onSurface.withOpacity(.5)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              n > 0
-                  ? 'FILTRES · $n actif${n > 1 ? 's' : ''}${hidden > 0 ? ' · $hidden masquée${hidden > 1 ? 's' : ''}' : ''}'
-                  : 'FILTRES · J\'AI · JE SUIS · DOMAINE · POUR',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: n > 0 ? cs.primary : cs.onSurface.withOpacity(.5)),
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      tooltip: 'Filtrer',
+      onPressed: _openFilters,
+      icon: Badge(
+        isLabelVisible: n > 0,
+        label: Text('$n'),
+        backgroundColor: cs.primary,
+        textColor: cs.onPrimary,
+        child: Icon(Icons.tune_rounded, color: n > 0 ? cs.primary : cs.onSurface.withOpacity(.6), size: 22),
+      ),
+    );
+  }
+
+  Future<void> _openFilters() {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .8),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            child: ValueListenableBuilder<int>(
+              valueListenable: _filtersTick,
+              builder: (ctx, _, __) {
+                final cs = Theme.of(ctx).colorScheme;
+                return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Filtrer les actions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 10),
+                  if (_filtersBarNow != null) _filtersBarNow!(cs),
+                ]);
+              },
             ),
           ),
-          Icon(_filtersOpen ? Icons.expand_less : Icons.expand_more, size: 18, color: cs.onSurface.withOpacity(.45)),
-        ]),
+        ),
       ),
     );
   }
