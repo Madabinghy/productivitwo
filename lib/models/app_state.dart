@@ -75,6 +75,8 @@ class AppState {
   int streakNotifHour;     // streak en danger (défaut 20h)
   int streakNotifMinute;
   bool streakNotifEnabled;
+  /// Soir « Journée parfaite : il manque n » (2026-10-30, heure = streakNotif*).
+  bool eveningNotifEnabled;
   int challengeNotifHour;  // défi du jour (défaut 16h)
   int challengeNotifMinute;
   bool challengeNotifEnabled;
@@ -234,6 +236,7 @@ class AppState {
     this.streakNotifHour = 20,
     this.streakNotifMinute = 0,
     this.streakNotifEnabled = false, // opt-in (audit lot 3 : 2 rendez-vous par défaut)
+    this.eveningNotifEnabled = true,
     this.challengeNotifHour = 16,
     this.challengeNotifMinute = 0,
     this.challengeNotifEnabled = false,
@@ -488,6 +491,7 @@ class AppState {
         'streakNotifHour': streakNotifHour,
         'streakNotifMinute': streakNotifMinute,
         'streakNotifEnabled': streakNotifEnabled,
+        'eveningNotifEnabled': eveningNotifEnabled,
         'challengeNotifHour': challengeNotifHour,
         'challengeNotifMinute': challengeNotifMinute,
         'challengeNotifEnabled': challengeNotifEnabled,
@@ -676,6 +680,7 @@ class AppState {
       streakNotifHour: (j['streakNotifHour'] as int?) ?? 20,
       streakNotifMinute: (j['streakNotifMinute'] as int?) ?? 0,
       streakNotifEnabled: (j['streakNotifEnabled'] as bool?) ?? false,
+      eveningNotifEnabled: (j['eveningNotifEnabled'] as bool?) ?? true,
       challengeNotifHour: (j['challengeNotifHour'] as int?) ?? 16,
       challengeNotifMinute: (j['challengeNotifMinute'] as int?) ?? 0,
       challengeNotifEnabled: (j['challengeNotifEnabled'] as bool?) ?? false,

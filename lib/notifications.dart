@@ -217,42 +217,38 @@ class NotificationService {
     );
   }
 
-  /// Streak en danger — routines avec streak ≥ 3 non encore faites.
-  static Future<void> scheduleStreakReminder({
+  /// Soir, « Journée parfaite : il manque n » (2026-10-30, remplace « Streak en
+  /// danger », même id 3) : PONCTUELLE, seulement aujourd'hui et seulement
+  /// s'il reste quelque chose — jamais un texte daté. Null = annulée.
+  static Future<void> scheduleEveningPerfect({
     int hour = 20,
     int minute = 0,
-    required List<String> routineNames,
+    required ({String title, String body})? digest,
   }) async {
     if (!_supported) return;
     if (!_initialized) await init();
     await _plugin.cancel(_streakNotifId);
-    if (routineNames.isEmpty) return;
-
-    final body = routineNames.length == 1
-        ? 'Protège ton streak : ${routineNames.first} !'
-        : '${routineNames.length} routines à streak à faire ce soir';
-
+    if (digest == null) return;
+    final now = tz.TZDateTime.now(tz.local);
+    final at = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (!at.isAfter(now)) return;
     await _plugin.zonedSchedule(
       _streakNotifId,
-      'Productivitwo — Streak en danger 🔥',
-      body,
-      _nextOccurrence(hour, minute),
-      NotificationDetails(
+      digest.title,
+      digest.body,
+      at,
+      const NotificationDetails(
         android: AndroidNotificationDetails(
-          _streakChannelId, 'Streak en danger',
-          channelDescription: 'Rappel pour protéger tes streaks',
+          _streakChannelId, 'Ce soir · journée parfaite',
+          channelDescription: 'Ce qu\'il manque pour une journée parfaite, séries en jeu',
           importance: Importance.high,
           priority: Priority.high,
-          styleInformation: routineNames.length > 1
-              ? BigTextStyleInformation(routineNames.map((n) => '• $n').join('\n'))
-              : null,
         ),
-        iOS: const DarwinNotificationDetails(),
+        iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.inexact,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
       payload: kPayloadPerfect,
     );
   }

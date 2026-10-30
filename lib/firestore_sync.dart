@@ -613,6 +613,7 @@ class FirestoreSync {
       activeAvatar:          local.activeAvatar,
       activeTitle:           local.activeTitle,
       streakNotifEnabled:    local.streakNotifEnabled,
+      eveningNotifEnabled:   local.eveningNotifEnabled,
       streakNotifHour:       local.streakNotifHour,
       streakNotifMinute:     local.streakNotifMinute,
       challengeNotifEnabled: local.challengeNotifEnabled,
