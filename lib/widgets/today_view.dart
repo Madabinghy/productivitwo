@@ -880,17 +880,17 @@ class TodayViewState extends State<TodayView> {
       ),
       // Lanceurs Guérilla et Offensive (2026-10-30, à la place de Badges et ORION : les badges restent sur la
       // tuile BADGES et l'onglet Objectifs, ORION dans le menu ⋯). Point = une session à reprendre.
-      // Le mode du jour centré sous les deux lanceurs (2026-10-30).
+      // Le mode du jour centré au-dessus des deux lanceurs (2026-10-30).
       Column(mainAxisSize: MainAxisSize.min, children: [
+        if (!_showTomorrow) ...[
+          ModePill(logic: widget.logic, badges: widget.badges),
+          const SizedBox(height: 8),
+        ],
         Row(mainAxisSize: MainAxisSize.min, children: [
           _launcherBtn(cs, kGuerillaKind, Icons.bolt, 'Guérilla · la flemme ou moi', kGuerillaAccent, const Color(0xFF5E6B2A)),
           const SizedBox(width: 8),
           _launcherBtn(cs, kOffensiveKind, Icons.north_east, 'Offensive · en forme, à fond', kOffensiveAccent, const Color(0xFFB4532A)),
         ]),
-        if (!_showTomorrow) ...[
-          const SizedBox(height: 8),
-          ModePill(logic: widget.logic, badges: widget.badges),
-        ],
       ]),
     ]);
   }
