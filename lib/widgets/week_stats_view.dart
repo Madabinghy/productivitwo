@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -66,6 +67,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     widget.sync.fetchStrategicObjectives().then((all) {
       if (!mounted) return;
       _cache = all;
+      FicheCache.objectives = all;
       setState(() => _objectives = all);
     }).catchError((_) {});
   }

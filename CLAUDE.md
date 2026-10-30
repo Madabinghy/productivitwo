@@ -882,6 +882,7 @@ est remplacé par **Badges** → `showBadgeGallerySheet` (tous les badges en feu
 `showNewFocusedAction` (feuille « ☀ À faire aujourd'hui » : titre, « Pour » pré-rempli = chrono en cours sinon dernière activité
 chronométrée, puces des 3 projets du moment `rankProjectMoments`, « Ailleurs… » = activité / projet ; créée avec `focusDate` =
 aujourd'hui) ; lien « Plutôt un projet ou une action sans jour » = `showCreateActionOrProjectSheet`, qui reste le FAB des autres onglets.
+**Fiches préchargées** (2026-10-30, `utils/fiche_cache.dart`, `FicheCache`) : objectifs et déroulés relus en arrière-plan ; `showDomainPage` attend les objectifs (cache, sinon lecture bornée à 700 ms) avant de s'ouvrir et précharge les déroulés de ses activités ; la page domaine et la fiche d'activité partent du cache et ne se redessinent que si la relecture diffère (`sameObjectives`, `sameTemplates`). Domaines et Objectifs remplissent le cache.
 **Page domaine = le domaine vu par toute l'app** (maquette validée 2026-10-30, `domain_page.dart`) : en-tête = nom + chip, intention
 en italique, puces minimum vital · fait / total, ⚙ = intention et minimum (Orion) · veille · nom / couleur (`onManageDomains`) ; puis
 OBJECTIFS (actifs du domaine, « n % du rythme », tap = fiche trajectoire) · ROUTINES (à faire puis atteintes) · ACTIVITÉS (chip au

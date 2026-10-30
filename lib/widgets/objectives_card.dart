@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:collection/collection.dart';
+import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/coups.dart';
 import 'package:productivitwo_v1/utils/mode.dart' show activeRests;
 import 'package:productivitwo_v1/widgets/coup_sheet.dart';
@@ -85,6 +86,7 @@ class _ObjectivesCardState extends State<ObjectivesCard> {
     final all = await widget.sync.fetchStrategicObjectives();
     if (!mounted) return;
     _cache = all;
+    FicheCache.objectives = all;
     setState(() {
       _all = all;
       _loaded = true;

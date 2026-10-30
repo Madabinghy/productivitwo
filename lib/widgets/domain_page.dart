@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
+import 'package:productivitwo_v1/utils/fiche_cache.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart' show routineSeries;
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFolderProject, rootProjectOf;
 import 'package:productivitwo_v1/utils/coups.dart' show dayMonthFr;
@@ -46,7 +47,16 @@ Future<bool?> showDomainPage(
   List<Project> projects = const [],
   VoidCallback? onManageDomains,
   void Function(Activity activity, Project project, ProjectTask task)? onStartTimer,
-}) {
+}) async {
+  // Préchargement (2026-10-30) : objectifs avant l'ouverture, déroulés des
+  // activités du domaine en arrière-plan — plus de section qui arrive après coup.
+  if (domain != null) await FicheCache.objectivesFast(sync);
+  for (final a in logic.state.activities) {
+    if (!a.deleted && !a.isHabit && (domain == null || a.domainId == domain.id) && !FicheCache.templates.containsKey(a.id)) {
+      FicheCache.loadTemplates(sync, a.id).ignore();
+    }
+  }
+  if (!context.mounted) return null;
   return showFiche<bool>(
     context,
     builder: (ctx, scroll) => _DomainPage(
@@ -116,7 +126,7 @@ class _TimeRow {
 
 class _DomainPageState extends State<_DomainPage> {
   bool _showPaused = false;
-  List<StrategicObjective>? _objectives;
+  List<StrategicObjective>? _objectives = FicheCache.objectives;
 
   AppLogic get logic => widget.logic;
 
@@ -129,8 +139,8 @@ class _DomainPageState extends State<_DomainPage> {
 
   Future<void> _loadObjectives() async {
     try {
-      final all = await widget.sync.fetchStrategicObjectives();
-      if (mounted) setState(() => _objectives = all);
+      final all = await FicheCache.loadObjectives(widget.sync);
+      if (mounted && !FicheCache.sameObjectives(_objectives, all)) setState(() => _objectives = all);
     } catch (_) {}
   }
 
