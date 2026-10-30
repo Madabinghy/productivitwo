@@ -395,16 +395,15 @@ class _GoalsViewState extends State<GoalsView> {
   /// du moment (ouverte), à sa place dans la liste.
   Widget _item(ProjectMoment m, BrickRow row, DateTime now, {required String? defaultId, bool moment = false}) {
     final id = m.project.id;
-    // Tap = la fiche du projet (retour user 2026-10-30) : prochaine action en
-    // page focus, décisions, actions, « Déplier le projet » ; appui long = le
-    // projet déplié.
+    // Tap = le projet déplié (retour user 2026-10-30) ; appui long = la fiche
+    // du projet (prochaine action en page focus, décisions, actions).
     return MomentItem(
       key: _open.keyFor(id),
       open: false,
       collapsed: _wallRow(m, row, now),
       expanded: const SizedBox.shrink(),
-      onToggle: () => _openFiche(m.project),
-      onLongPress: () => _openPlan(m.project),
+      onToggle: () => _openPlan(m.project),
+      onLongPress: () => _openFiche(m.project),
     );
   }
 
