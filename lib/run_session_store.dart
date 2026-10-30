@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:productivitwo_v1/app_logic.dart';
+import 'package:productivitwo_v1/models.dart' show Session;
 import 'package:productivitwo_v1/utils/run_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,13 +47,15 @@ class RunSessionStore {
   static Future<PendingRun?> live(AppLogic logic) async {
     final p = await load();
     if (p == null) return null;
-    if (p.isLive(DateTime.now(), logic.livedYmdNow)) return p;
+    if (p.isLive(DateTime.now(), logic.livedTodayYmd)) return p;
     await closeAsIs(logic, p);
     return null;
   }
 
-  /// Termine la session telle quelle : ses coups comptent.
+  /// Termine la session telle quelle : ses coups comptent ; le chrono d'un
+  /// coup resté ouvert (app tuée en plein coup) s'arrête.
   static Future<void> closeAsIs(AppLogic logic, PendingRun p) async {
+    if (logic.state.sessions.any((s) => s.endAt == null && !s.startAt.isBefore(p.startedAt))) logic.stopActive(notify: false);
     final run = expiredRunOf(p);
     if (run != null) {
       logic.recordChainRun(run);
@@ -60,4 +63,12 @@ class RunSessionStore {
     }
     await clear();
   }
+}
+
+/// Un coup passé ou fait en moins d'une minute ne laisse pas de session « 0 min »
+/// dans les chronos (retour user 2026-10-30 : « Courir · 0 min » après « Pas ça »).
+void dropShortSession(AppLogic logic, Session? s) {
+  if (s == null || s.endAt == null || s.endAt!.difference(s.startAt).inSeconds >= 60) return;
+  logic.deleteSession(s.id);
+  logic.sync?.deleteSession(s.id);
 }

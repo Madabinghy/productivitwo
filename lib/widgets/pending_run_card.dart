@@ -7,7 +7,8 @@ import 'package:productivitwo_v1/widgets/guerilla_screen.dart' show kGuerillaAcc
 import 'package:productivitwo_v1/widgets/offensive_screen.dart' show kOffensiveAccent, showOffensiveScreen;
 
 /// Une Guérilla / Offensive quittée en route (app fermée, écran quitté) :
-/// « Reprendre » rouvre l'écran au coup suivant, « Terminer ici » la clôt
+/// rouverte d'elle-même au premier affichage après un lancement de l'app ;
+/// sinon « Reprendre » rouvre l'écran au coup suivant, « Terminer ici » la clôt
 /// telle quelle (ses coups comptent). Rien quand aucune n'attend ; une
 /// session expirée (autre journée, 45 min sans rien) est close en silence.
 class PendingRunCard extends StatefulWidget {
@@ -19,11 +20,21 @@ class PendingRunCard extends StatefulWidget {
 }
 
 class _PendingRunCardState extends State<PendingRunCard> {
+  /// Une fois par lancement de l'app : la session en attente se rouvre d'elle-même.
+  static bool _autoResumed = false;
+
   @override
   void initState() {
     super.initState();
-    RunSessionStore.live(widget.logic).then((_) {
-      if (mounted) setState(() {});
+    RunSessionStore.live(widget.logic).then((p) {
+      if (!mounted) return;
+      setState(() {});
+      if (p != null && !_autoResumed) {
+        _autoResumed = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _resume(p);
+        });
+      }
     });
   }
 
@@ -44,7 +55,7 @@ class _PendingRunCardState extends State<PendingRunCard> {
   @override
   Widget build(BuildContext context) {
     final p = RunSessionStore.current;
-    if (p == null || !p.isLive(DateTime.now(), widget.logic.livedYmdNow)) return const SizedBox.shrink();
+    if (p == null || !p.isLive(DateTime.now(), widget.logic.livedTodayYmd)) return const SizedBox.shrink();
     final guerilla = p.kind == kGuerillaKind;
     final accent = guerilla ? kGuerillaAccent : kOffensiveAccent;
     final cs = Theme.of(context).colorScheme;

@@ -20,6 +20,8 @@ void main() {
     expect(p.isLive(DateTime(2026, 10, 30, 16, 20), '2026-10-30'), isTrue);
     expect(p.isLive(DateTime(2026, 10, 30, 16, 28), '2026-10-30'), isFalse);
     expect(p.isLive(DateTime(2026, 10, 30, 16), '2026-10-31'), isFalse);
+    // Format sans tirets (`livedYmd`) : c'était le bug du 2026-10-30, toute session semblait expirée.
+    expect(p.isLive(DateTime(2026, 10, 30, 16), '20261030'), isTrue);
   });
 
   test('aller-retour JSON avec l\'état propre au mode', () {

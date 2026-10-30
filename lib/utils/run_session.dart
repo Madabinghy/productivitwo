@@ -27,7 +27,10 @@ class PendingRun {
     this.extra = const {},
   });
 
-  bool isLive(DateTime now, String livedYmd) => date == livedYmd && now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin;
+  /// [livedYmd] accepté avec ou sans tirets (`2026-10-30` / `20261030`) : la
+  /// comparaison des deux formats rendait toute session « expirée » (bug du 2026-10-30).
+  bool isLive(DateTime now, String livedYmd) =>
+      date.replaceAll('-', '') == livedYmd.replaceAll('-', '') && now.difference(lastActiveAt).inMinutes <= kRunResumeWindowMin;
 
   Map<String, dynamic> toJson() => {
         'kind': kind,

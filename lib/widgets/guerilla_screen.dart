@@ -11,7 +11,7 @@ import 'package:productivitwo_v1/utils/guerilla.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/routine_moments.dart' show buildRoutineDay;
 import 'package:productivitwo_v1/utils/run_session.dart';
-import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
 import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 
@@ -211,7 +211,7 @@ class _GuerillaScreenState extends State<GuerillaScreen> {
   void _stopOwnChrono() {
     if (!_ownChrono) return;
     _ownChrono = false;
-    logic.stopActive(notify: false);
+    dropShortSession(logic, logic.stopActive(notify: false));
   }
 
   void _next() {

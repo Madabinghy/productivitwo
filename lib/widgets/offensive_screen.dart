@@ -12,7 +12,7 @@ import 'package:productivitwo_v1/utils/lived_day.dart' show livedDate;
 import 'package:productivitwo_v1/utils/offensive.dart';
 import 'package:productivitwo_v1/utils/progress_bricks.dart' show projectBricks;
 import 'package:productivitwo_v1/utils/run_session.dart';
-import 'package:productivitwo_v1/run_session_store.dart';
+import 'package:productivitwo_v1/run_session_store.dart' show RunSessionStore, dropShortSession;
 import 'package:productivitwo_v1/widgets/coup_activity_sheet.dart';
 import 'package:productivitwo_v1/widgets/info_dot.dart';
 import 'package:productivitwo_v1/widgets/progress_bricks.dart' show ProgressBricks;
@@ -265,7 +265,7 @@ class _OffensiveScreenState extends State<OffensiveScreen> {
     _ownChrono = false;
     if (_chronoFrom != null) _chronoSec += DateTime.now().difference(_chronoFrom!).inSeconds;
     _chronoFrom = null;
-    logic.stopActive(notify: false);
+    dropShortSession(logic, logic.stopActive(notify: false));
   }
 
   /// Action suivante de la file (même coup, le minuteur continue).
