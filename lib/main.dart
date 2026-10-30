@@ -2703,8 +2703,8 @@ class _AppRootState extends State<AppRoot>
       // Défi ORION retiré (2026-10-30) : on annule le rappel quotidien encore
       // programmé sur les appareils.
       await NotificationService.cancelById(4);
-      if (st.midDayNotifEnabled) await NotificationService.scheduleMidDayScore(
-        hour: st.midDayNotifHour, minute: st.midDayNotifMinute);
+      // Score mi-journée retiré (2026-10-30) : idem.
+      await NotificationService.cancelById(5);
 
       // FCM — enregistre le token et écoute les notifications ORION
       final uid = _sync.uid;
@@ -4035,25 +4035,6 @@ class _AppRootState extends State<AppRoot>
         await sync.updateBlockStatus(todayYmd0, b.id, 'skipped');
         await sync.updateBlockSkipReason(todayYmd0, b.id, 'reporte');
       }
-    }
-
-    final ids = NotificationService.challengeNotifIds(block.id);
-    await NotificationService.scheduleChallengeAt(
-      id: ids.atTime,
-      when: at,
-      title: '🔥 Défi : ${a.name}',
-      body: '$minutes min — c\'est le moment 💪',
-      alarm: true,
-      ringtone: ringtoneByKey(logic.state.alarmSound),
-    );
-    if (remAt != null) {
-      await NotificationService.scheduleChallengeAt(
-        id: ids.reminder,
-        when: remAt,
-        title: 'Défi prévu : ${a.name}',
-        body: 'À $hhmm • $minutes min',
-        alarm: false,
-      );
     }
 
     if (mounted) {
@@ -6761,26 +6742,6 @@ class _AppRootState extends State<AppRoot>
                       setState(() { _state!.streakNotifHour = picked.hour; _state!.streakNotifMinute = picked.minute; });
                       logic.onChange(); rebuild();
                       await _refreshDayNotifs();
-                    },
-                  ),
-                  const Divider(height: 1),
-                  _notifSettingRow(ctx, cs,
-                    icon: Icons.wb_sunny_outlined,
-                    label: 'Score mi-journée',
-                    hour: _state!.midDayNotifHour,
-                    minute: _state!.midDayNotifMinute,
-                    enabled: _state!.midDayNotifEnabled,
-                    onToggled: (v) async {
-                      setState(() => _state!.midDayNotifEnabled = v);
-                      logic.onChange(); rebuild();
-                      if (!v) { await NotificationService.cancelById(5); return; }
-                      await NotificationService.scheduleMidDayScore(
-                          hour: _state!.midDayNotifHour, minute: _state!.midDayNotifMinute);
-                    },
-                    onPicked: (picked) async {
-                      setState(() { _state!.midDayNotifHour = picked.hour; _state!.midDayNotifMinute = picked.minute; });
-                      logic.onChange(); rebuild();
-                      await NotificationService.scheduleMidDayScore(hour: picked.hour, minute: picked.minute);
                     },
                   ),
                 ],
