@@ -41,9 +41,8 @@ Future<void> showActionFocusScreen(
   /// le ⋯ de la barre.
   List<MomentAction> moreActions = const [],
 }) {
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    fullscreenDialog: true,
-    builder: (_) => PullDownToClose(child: _FocusScreen(
+  return Navigator.of(context).push(_focusSheetRoute(
+    builder: (_) => (_FocusScreen(
       logic: logic,
       action: action,
       project: project,
@@ -55,6 +54,41 @@ Future<void> showActionFocusScreen(
     )),
   ));
 }
+
+/// La page focus s'ouvre en FEUILLE (retour user 2026-10-30) : 94 % de
+/// l'écran, coins arrondis, poignée, refermable en tirant vers le bas (depuis
+/// le haut de la liste ou une zone fixe, `PullDownToClose`) ; les
+/// enchaînements la remplacent sur place.
+Route<void> _focusSheetRoute({required WidgetBuilder builder}) => ModalBottomSheetRoute<void>(
+      isScrollControlled: true,
+      useSafeArea: true,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FractionallySizedBox(
+        heightFactor: .94,
+        alignment: Alignment.bottomCenter,
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          child: Stack(children: [
+            Positioned.fill(child: PullDownToClose(child: builder(ctx))),
+            Positioned(
+              top: 6,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: .25), borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
 
 /// Mode « bloc » (maquette « Blocs d'activité », 2026-10) : la page focus
 /// ouverte depuis le ▶ d'un bloc d'ACTIVITÉ porte la file du bloc (une action
@@ -92,9 +126,8 @@ Future<void> showBlockFocusScreen(
   FirestoreSync? sync,
 }) {
   final bf = BlockFocus(block: block, activity: activity, queue: queue, ymd: ymd);
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    fullscreenDialog: true,
-    builder: (_) => PullDownToClose(child: _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true)),
+  return Navigator.of(context).push(_focusSheetRoute(
+    builder: (_) => (_FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true)),
   ));
 }
 
@@ -188,9 +221,8 @@ class _FocusScreenState extends State<_FocusScreen> {
   void _endBlock() {
     final r = _running;
     if (r != null) logic.stopActive();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => PullDownToClose(child: _BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync)),
+    Navigator.of(context).pushReplacement(_focusSheetRoute(
+      builder: (_) => (_BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync)),
     ));
   }
 
@@ -890,9 +922,8 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Terminer le bloc', Icons.check_rounded, _endBlock)
           else if (nextAction != null && _project != null && widget.bloc == null)
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
-              Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (_) => PullDownToClose(child: _FocusScreen(
+              Navigator.of(context).pushReplacement(_focusSheetRoute(
+                builder: (_) => (_FocusScreen(
                   logic: logic,
                   action: nextAction,
                   project: _project,
