@@ -9,7 +9,6 @@ import 'package:productivitwo_v1/utils/actions_logic.dart' show actionDueLabel, 
 import 'package:productivitwo_v1/utils/block_queue.dart';
 import 'package:productivitwo_v1/utils/checklist_logic.dart';
 import 'package:productivitwo_v1/widgets/moment_card.dart' show MomentAction, showMomentActions;
-import 'package:productivitwo_v1/widgets/pull_down_to_close.dart';
 import 'package:productivitwo_v1/widgets/undo_snack.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart';
 import 'package:productivitwo_v1/utils/lived_day.dart' show livedNowMin;
@@ -41,9 +40,8 @@ Future<void> showActionFocusScreen(
   /// le ⋯ de la barre.
   List<MomentAction> moreActions = const [],
 }) {
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    fullscreenDialog: true,
-    builder: (_) => PullDownToClose(child: _FocusScreen(
+  return Navigator.of(context).push(_focusSheetRoute(
+    builder: (_) => (_FocusScreen(
       logic: logic,
       action: action,
       project: project,
@@ -54,6 +52,58 @@ Future<void> showActionFocusScreen(
       moreActions: moreActions,
     )),
   ));
+}
+
+/// La page focus s'ouvre en FEUILLE (retour user 2026-10-30) : même mécanique
+/// que `showFiche` — `DraggableScrollableSheet` dont le contrôleur pilote la
+/// liste de la page (`_SheetScroll`) : tirer vers le bas, depuis la liste
+/// remontée en haut ou n'importe quelle zone fixe, réduit puis ferme la
+/// feuille. Les enchaînements la remplacent sur place.
+Route<void> _focusSheetRoute({required WidgetBuilder builder}) => ModalBottomSheetRoute<void>(
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: .95,
+        minChildSize: .5,
+        maxChildSize: .95,
+        expand: false,
+        builder: (ctx, scroll) {
+          final cs = Theme.of(ctx).colorScheme;
+          return ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: _SheetScroll(
+              controller: scroll,
+              child: Stack(children: [
+                Positioned.fill(child: builder(ctx)),
+                Positioned(
+                  top: 6,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(color: cs.onSurface.withValues(alpha: .25), borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
+          );
+        },
+      ),
+    );
+
+/// Le contrôleur de la feuille, pour la liste de la page.
+class _SheetScroll extends InheritedWidget {
+  final ScrollController controller;
+  const _SheetScroll({required this.controller, required super.child});
+  static ScrollController? of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_SheetScroll>()?.controller;
+  @override
+  bool updateShouldNotify(_SheetScroll old) => old.controller != controller;
 }
 
 /// Mode « bloc » (maquette « Blocs d'activité », 2026-10) : la page focus
@@ -92,9 +142,8 @@ Future<void> showBlockFocusScreen(
   FirestoreSync? sync,
 }) {
   final bf = BlockFocus(block: block, activity: activity, queue: queue, ymd: ymd);
-  return Navigator.of(context).push(MaterialPageRoute<void>(
-    fullscreenDialog: true,
-    builder: (_) => PullDownToClose(child: _FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true)),
+  return Navigator.of(context).push(_focusSheetRoute(
+    builder: (_) => (_FocusScreen.ofQueue(logic: logic, bloc: bf, index: 0, sync: sync ?? FirestoreSync(), picking: true)),
   ));
 }
 
@@ -188,9 +237,8 @@ class _FocusScreenState extends State<_FocusScreen> {
   void _endBlock() {
     final r = _running;
     if (r != null) logic.stopActive();
-    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-      fullscreenDialog: true,
-      builder: (_) => PullDownToClose(child: _BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync)),
+    Navigator.of(context).pushReplacement(_focusSheetRoute(
+      builder: (_) => (_BlockEndScreen(logic: logic, bloc: widget.bloc!, sync: widget.sync)),
     ));
   }
 
@@ -403,6 +451,7 @@ class _FocusScreenState extends State<_FocusScreen> {
         child: Column(children: [
           Expanded(
             child: ListView(
+              controller: _SheetScroll.of(context),
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               children: [
                 _whereAmI(cs, text3),
@@ -890,9 +939,8 @@ class _FocusScreenState extends State<_FocusScreen> {
             primary('Terminer le bloc', Icons.check_rounded, _endBlock)
           else if (nextAction != null && _project != null && widget.bloc == null)
             primary('Enchaîner · ${nextAction.title}', Icons.play_arrow_rounded, () {
-              Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-                fullscreenDialog: true,
-                builder: (_) => PullDownToClose(child: _FocusScreen(
+              Navigator.of(context).pushReplacement(_focusSheetRoute(
+                builder: (_) => (_FocusScreen(
                   logic: logic,
                   action: nextAction,
                   project: _project,
@@ -1028,7 +1076,7 @@ class _BlockEndScreenState extends State<_BlockEndScreen> {
               IconButton(tooltip: 'Fermer', icon: const Icon(Icons.close_rounded, size: 20), onPressed: () => Navigator.of(context).maybePop()),
             ]),
             Expanded(
-              child: ListView(padding: const EdgeInsets.only(top: 10, bottom: 12), children: [
+              child: ListView(controller: _SheetScroll.of(context), padding: const EdgeInsets.only(top: 10, bottom: 12), children: [
                 Text('${b.activity.name}${outcome.heldMin > 0 ? ' ✓' : ''}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.15)),
                 const SizedBox(height: 4),
                 Text('${hm(w.start)} → ${hm(w.end)} · ${days[b.date.weekday - 1]}', style: TextStyle(fontSize: 12.5, color: text3)),
