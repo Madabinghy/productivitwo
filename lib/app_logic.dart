@@ -15,6 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/mode.dart';
+import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/elan_logic.dart' show elanBucket, kElanCorrectionMin;
 import 'package:productivitwo_v1/utils/day_win.dart';
 import 'package:productivitwo_v1/utils/default_estimate.dart';
@@ -1737,7 +1738,15 @@ class AppLogic implements HuntStore {
   /// Domaines en veille (`data/meta.restDomains`, flux meta) et fenêtre de
   /// budget des minimums (7 | 14 j).
   Map<String, String> restDomains = const {};
+  /// Historique des veilles (`data/meta.restPeriods`) : gèle les séries.
+  List<RestPeriod> restPeriods = const [];
   int budgetWindowDays = 7;
+
+  /// Jours gelés d'une routine par une veille de son domaine.
+  Set<String> frozenOf(String activityId) {
+    final a = state.activities.where((x) => x.id == activityId).firstOrNull;
+    return a == null ? const {} : frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd);
+  }
 
   /// Mode du jour = dernier pointage d'élan de la journée vécue (jamais stocké).
   DayMode get mode => modeOf(state.moodMarks, DateTime.now(), dayStartMin);
@@ -1816,7 +1825,13 @@ class AppLogic implements HuntStore {
     final routines = state.activeActivities.where((a) => a.isHabit && a.habitFreq == HabitFreq.daily).toList();
     final ledger = emberLedgerNow();
     final reached = {for (final a in routines) a.id: routineReachedDays(a, state.habitHits, dayStartMin: dayStartMin)};
-    return lostYesterday(routines: [for (final a in routines) (a.id, a.name)], reached: reached, ledger: ledger, todayYmd: livedTodayYmd);
+    return lostYesterday(
+      routines: [for (final a in routines) (a.id, a.name)],
+      reached: reached,
+      ledger: ledger,
+      todayYmd: livedTodayYmd,
+      frozen: {for (final a in routines) a.id: frozenDaysOf(a.domainId, restPeriods, restDomains, livedTodayYmd)},
+    );
   }
 
   Future<void> rekindle(String activityId) async {

@@ -467,7 +467,7 @@ class _DomainPageState extends State<_DomainPage> {
     final done = logic.activeHabitDone(a);
     final reached = logic.habitReached(a);
     final period = switch (a.habitFreq) { HabitFreq.weekly => '7 j', HabitFreq.monthly => '30 j', _ => 'aujourd\'hui' };
-    final series = routineSeries(a, logic.state.habitHits, now, dayStartMin: logic.dayStartMin, bridged: logic.bridgedOf(a.id));
+    final series = routineSeries(a, logic.state.habitHits, now, dayStartMin: logic.dayStartMin, bridged: logic.bridgedOf(a.id), frozen: logic.frozenOf(a.id));
     final pct = target <= 0 ? 100 : (done / target * 100).round().clamp(0, 100);
     final todayN = routineTodayCount(logic, a);
     final mark = todayMark(a.habitFreq, todayN);

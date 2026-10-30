@@ -6,6 +6,7 @@ import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/duration_fmt.dart' show fmtMin;
 import 'package:productivitwo_v1/utils/interventions.dart' show nextInterventionOf;
 import 'package:productivitwo_v1/utils/lived_day.dart' show kDefaultDayStartMin, livedNowMin;
+import 'package:productivitwo_v1/utils/reprise.dart' show kRepriseHold;
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin;
 
 /// « Aujourd'hui en enjeux » (maquette validée 2026-10-30) : tout ce que la
@@ -67,6 +68,8 @@ enum StakeGainKind {
   focus,
   /// Une routine du jour pas encore atteinte (rien d'autre en jeu).
   routine,
+  /// Une reprise après une coupure de 2 jours ou plus (`reprise.dart`).
+  reprise,
 }
 
 /// Ce qu'un geste rapporte.
@@ -112,7 +115,7 @@ class Stake {
   String get family {
     if (gains.length >= 2) return 'multi';
     return switch (gains.first.kind) {
-      StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series => 'series',
+      StakeGainKind.seriesTonight || StakeGainKind.tierTonight || StakeGainKind.series || StakeGainKind.reprise => 'series',
       StakeGainKind.hunt => 'hunt',
       StakeGainKind.objective => 'objective',
       StakeGainKind.session => 'session',
@@ -265,6 +268,36 @@ StakeBoard buildStakeBoard({
           );
         }
       }
+    }
+  }
+
+  // ── 1 bis. Reprises : routine coupée 2 jours ou plus, à tenir 3 jours ───────
+  if (deck != null) {
+    final reprise = deck.byId('reprise');
+    final nextTier = reprise?.nextTarget;
+    for (final e in deck.reprises.entries) {
+      final r = routineById[e.key];
+      if (r == null) continue;
+      final rp = e.value;
+      if (rp.completedToday) {
+        won.add('Reprise ${r.activity.name}');
+        continue;
+      }
+      if (r.reached) continue;
+      final count = (reprise?.value ?? 0).toInt();
+      add(
+        routineGesture(r),
+        StakeGain(
+          kind: StakeGainKind.reprise,
+          label: rp.tonight ? 'reprise ce soir' : 'reprise · ${rp.held} / $kRepriseHold',
+          detail: rp.tonight
+              ? 'Troisième jour tenu après ${rp.gap} jours sans : la reprise compte ce soir${nextTier != null && count + 1 >= nextTier ? ' · palier $nextTier du badge Reprise' : ''}.'
+              : 'Après ${rp.gap} jours sans, ${kRepriseHold - rp.held} jour${kRepriseHold - rp.held > 1 ? 's' : ''} d’affilée pour la reprise.',
+          weight: rp.tonight ? 22 : 12,
+          sourceId: 'reprise',
+          gauge: (done: rp.held, after: rp.afterToday, total: kRepriseHold),
+        ),
+      );
     }
   }
 

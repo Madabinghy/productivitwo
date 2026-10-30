@@ -32,6 +32,7 @@ class BadgeTrackView extends StatelessWidget {
             if (track.cells.contains(TrackCell.neutral)) (TrackCell.neutral, 'rien à tenir'),
             if (track.cells.contains(TrackCell.current)) (TrackCell.current, 'en cours'),
             if (track.cells.contains(TrackCell.bridged)) (TrackCell.bridged, 'rallumé (braise)'),
+            if (track.cells.contains(TrackCell.frozen)) (TrackCell.frozen, 'gelé (veille)'),
           ])
             Row(mainAxisSize: MainAxisSize.min, children: [
               _cell(state, size: 9),
@@ -52,6 +53,7 @@ class BadgeTrackView extends StatelessWidget {
       TrackCell.current => (null, kBadgeGaugeFill),
       TrackCell.future => (null, kBadgeLockedBand),
       TrackCell.bridged => (kEmberColor.withValues(alpha: .35), kEmberColor),
+      TrackCell.frozen => (kFrozenColor.withValues(alpha: .22), kFrozenColor),
     };
     return Container(
       width: s,

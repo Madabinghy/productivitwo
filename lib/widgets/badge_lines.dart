@@ -61,6 +61,8 @@ class RoutineTiersLine extends StatelessWidget {
   final Color accent;
   /// Jours comblés par une braise (`AppLogic.bridgedOf`).
   final Set<String> bridged;
+  /// Jours gelés par une veille (`AppLogic.frozenOf`).
+  final Set<String> frozen;
   const RoutineTiersLine({
     super.key,
     required this.activity,
@@ -69,12 +71,14 @@ class RoutineTiersLine extends StatelessWidget {
     required this.dayStartMin,
     required this.accent,
     this.bridged = const {},
+    this.frozen = const {},
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final s = routineSeries(activity, hits, DateTime.now(), dayStartMin: dayStartMin, bridged: bridged);
+    final s = routineSeries(activity, hits, DateTime.now(), dayStartMin: dayStartMin, bridged: bridged, frozen: frozen);
+    final record = recordLine(s.current, s.longest);
     final level = kRoutineTiers.where((t) => s.longest >= t).length;
     final state = BadgeState(
       def: BadgeDef(id: 'serie-${activity.id}', family: BadgeFamily.routines, name: activity.name, symbol: 'flame', tiers: kRoutineTiers, unit: 'j', unitLong: 'jours', subjectId: activity.id),
@@ -105,6 +109,10 @@ class RoutineTiersLine extends StatelessWidget {
                 style: TextStyle(fontSize: 12.5, color: muted, fontFeatures: const [FontFeature.tabularFigures()]),
               ),
             ]),
+            if (record != null) ...[
+              const SizedBox(height: 4),
+              Text(record, style: TextStyle(fontSize: 12.5, color: s.current >= s.longest ? kBadgeBrass : accent, fontWeight: FontWeight.w600)),
+            ],
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               for (var i = 0; i < kRoutineTiers.length; i++)
@@ -143,7 +151,11 @@ class RoutineTiersLine extends StatelessWidget {
     final cells = <TrackCell>[];
     for (var i = 13; i >= 0; i--) {
       final y = ymdOf(today.subtract(Duration(days: i)));
-      cells.add(reached.contains(y) ? TrackCell.hit : (i == 0 ? TrackCell.current : (bridged.contains(y) ? TrackCell.bridged : TrackCell.miss)));
+      cells.add(reached.contains(y)
+          ? TrackCell.hit
+          : (bridged.contains(y)
+              ? TrackCell.bridged
+              : (frozen.contains(y) ? TrackCell.frozen : (i == 0 ? TrackCell.current : TrackCell.miss))));
     }
     return BadgeTrack(cells: cells, caption: '14 derniers jours · ${cells.where((c) => c == TrackCell.hit).length} atteints');
   }

@@ -25,6 +25,7 @@ import {
 import { removeTask, freeTaskBlocks } from "./task_delete";
 import { modeOf, modeElanValue, MODE_LABELS, MODE_KINDS, parseRestDomains, activeRests, parseBudgetWindowDays, modeRules, budgetRules } from "./mode";
 import type { DayMode } from "./mode";
+import { parseRestPeriods, withRestSet, withRestLifted } from "./rest_periods";
 import {
   timeEntries, measured, calibrate, overBudget, workedUnestimated,
   fmtMin as fmtMinutes, fmtFactor, refLabel, adviceLine, calibrationHeadline,
@@ -2632,18 +2633,24 @@ async function executeRestDomain(uid: string, p: { domainId: string; until?: str
   if (!dom.exists || (dom.data() as Record<string, unknown>).deleted === true) return `Domaine ${p.domainId} introuvable.`;
   const name = String((dom.data() as Record<string, unknown>).name ?? p.domainId);
   const metaRef = db.doc(`users/${uid}/data/meta`);
+  const today = todayInParis();
   if (p.clear) {
-    await metaRef.set({ restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() } }, { merge: true });
+    await db.runTransaction(async (tx) => {
+      const periods = parseRestPeriods((await tx.get(metaRef)).data()?.restPeriods);
+      tx.set(metaRef, { restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() }, restPeriods: withRestLifted(periods, p.domainId, today) }, { merge: true });
+    });
     return `✓ Veille levée sur « ${name} ».`;
   }
   const until = p.until ?? "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(until)) return "until : YYYY-MM-DD requis (ou clear:true).";
-  const today = todayInParis();
   const days = Math.round((new Date(`${until}T12:00:00Z`).getTime() - new Date(`${today}T12:00:00Z`).getTime()) / 86_400_000);
   if (days < 0) return `until ${until} est passé (aujourd'hui ${today}).`;
   if (days > 30) return "Une veille ne dépasse pas 30 jours : au-delà, mets le projet en pause ou archive.";
-  await metaRef.set({ restDomains: { [p.domainId]: until } }, { merge: true });
-  return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus.`;
+  await db.runTransaction(async (tx) => {
+    const periods = parseRestPeriods((await tx.get(metaRef)).data()?.restPeriods);
+    tx.set(metaRef, { restDomains: { [p.domainId]: until }, restPeriods: withRestSet(periods, p.domainId, today, until) }, { merge: true });
+  });
+  return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus ; ses séries de routine sont gelées.`;
 }
 
 async function executeLogRoutineHit(uid: string, activityId: string, delta = 1): Promise<string> {

@@ -73,6 +73,11 @@
         how: 'En mode En forme, lance « Deep work 90 min » (carte MAINTENANT ou « Bloc de 90 min » d’un objectif) et tiens le chrono au moins 60 min d’affilée '
             'sur cette source : le bloc compte. Un chrono long sans bloc de deep work (sommeil, séance, activité libre) ne compte pas. Paliers : 3, 10 et 30 blocs.',
       ),
+    'reprise' => (
+        what: 'Une routine coupée deux jours ou plus, puis tenue trois jours d’affilée.',
+        how: 'Après au moins deux jours sans atteindre une routine, atteins-la trois jours de suite : la reprise compte. Un seul jour manqué se rattrape avec une braise, '
+            'pas par une reprise ; les jours gelés par une veille ne comptent pas comme manqués. Paliers : 1, 5 et 15 reprises.',
+      ),
     'enchaineur' => (
         what: 'Des sessions du mode Enchaîner où tu as fait au moins trois choses d’affilée.',
         how: 'Lance « Enchaîner » depuis MAINTENANT et fais au moins 3 choses dans la même session : elle compte, que tu la mènes au bout ou que tu sortes avant. '

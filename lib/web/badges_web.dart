@@ -6,6 +6,8 @@ import 'dart:async';
 import 'package:productivitwo_v1/utils/badge_hunt.dart';
 import 'package:productivitwo_v1/utils/badges_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
+import 'package:productivitwo_v1/utils/mode.dart' show parseRestDomains;
+import 'package:productivitwo_v1/utils/rest_periods.dart';
 import 'package:productivitwo_v1/utils/engagement_stats.dart' show ymdOf;
 import 'package:productivitwo_v1/utils/lived_day.dart';
 import 'package:productivitwo_v1/utils/objective_trajectory.dart' show isReadingDue;
@@ -22,10 +24,15 @@ class WebHuntStore extends ChangeNotifier implements HuntStore {
   /// Rallumages par les braises (`data/meta.emberSpends`) : les séries du web
   /// comptent les mêmes jours comblés que le mobile.
   List<EmberSpend> emberSpends = const [];
+  /// Veilles (`restDomains`, `restPeriods`) : mêmes séries gelées que le mobile.
+  List<RestPeriod> restPeriods = const [];
+  Map<String, String> restDomains = const {};
   WebHuntStore(this.sync) {
     _sub = sync.streamMetaDoc().listen((m) {
       _hunts = parseBadgeHunts(m['badgeHunts']);
       emberSpends = EmberSpend.listFrom(m['emberSpends']);
+      restPeriods = parseRestPeriods(m['restPeriods']);
+      restDomains = parseRestDomains(m['restDomains']);
       notifyListeners();
     });
   }
@@ -90,8 +97,11 @@ class WebDeckSource extends ChangeNotifier {
     required List<ChainRun> chainRuns,
     required int dayStartMin,
     List<EmberSpend> emberSpends = const [],
+    List<RestPeriod> restPeriods = const [],
+    Map<String, String> restDomains = const {},
   }) {
-    final key = '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}';
+    final key =
+        '${hits.length}|${sessions.length}|${moodMarks.length}|${chainRuns.length}|${projects.length}|${objectives.length}|${schedules.length}|${ymdOf(DateTime.now())}|${emberSpends.length}|${restPeriods.length}|$restDomains';
     if (_deck != null && key == _key) return _deck!;
     _key = key;
     return _deck = computeBadges(
@@ -106,6 +116,8 @@ class WebDeckSource extends ChangeNotifier {
       now: DateTime.now(),
       dayStartMin: dayStartMin,
       emberSpends: emberSpends,
+      restPeriods: restPeriods,
+      restDomains: restDomains,
     );
   }
 }
@@ -189,6 +201,8 @@ class _WebBadgesCardState extends State<WebBadgesCard> {
         chainRuns: widget.chainRuns,
         dayStartMin: widget.dayStartMin,
         emberSpends: widget.huntStore?.emberSpends ?? const [],
+        restPeriods: widget.huntStore?.restPeriods ?? const [],
+        restDomains: widget.huntStore?.restDomains ?? const {},
       );
 
   @override

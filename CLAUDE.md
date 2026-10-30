@@ -220,6 +220,10 @@ L'utilisateur **merge chaque PR dès qu'elle est créée**, pour la tester aussi
 - Si des commits sont poussés **après** que la PR a été mergée, ils deviennent
   orphelins : refaire une **PR propre** depuis `origin/main` (n'inclure que les
   fichiers voulus).
+- **Claude merge lui-même ses PR** (accord user 2026-10-30) dès que la CI est verte, sans conflit ni
+  commentaire de revue ouvert : merge simple, jamais de force-push, puis il le signale. Les déploiements
+  (`firebase deploy --only functions` / `hosting`) restent à l'utilisateur : Claude les rappelle à chaque merge
+  qui en a besoin.
 
 ---
 
@@ -821,6 +825,16 @@ utilisées » repliées (aucun chrono sur 30 j). Ligne = icône du domaine, nom 
 pause exclues. **Défi ORION retiré** (2026-10-30, jamais utilisé) : plus de bouton doré « Challenge me », de puce « Défi ORION » dans MAINTENANT,
 de proposition de défi dans la carte coach, ni de notification « Défi du jour » (annulée au démarrage, `cancelById(4)`, réglage retiré). Les
 champs `challenge*` restent en base ; les défis déjà programmés (blocs 🔥) et `_programChallenge` (carte de combat) ne bougent pas.
+
+## Pause, record et reprise (2026-10-30, handoff `docs/specs/pause-record-reprise-2026-10/README.md`)
+
+Lot 1 de la gamification moyen terme (contre l'abandon). **Veille = séries gelées** : `data/meta.restPeriods`
+`[{domainId, from, to}]` (écrit par `rest_sheet.dart` et le MCP `rest_domain`, jamais rétroactif ; logique pure
+`utils/rest_periods.dart` ↔ `functions/src/rest_periods.ts`, **garder alignés**) ; `AppLogic.frozenOf(activityId)`
+→ `routineSeries` / `routineBadge(frozen:)`, `lostYesterday(frozen:)` : un jour gelé ne casse rien et ne compte pas
+(`TrackCell.frozen`, `kFrozenColor`). **Record** : `recordLine` dans la fiche routine. **Reprise** (`utils/reprise.dart`,
+`reprisesOf`) : 2 jours manqués ou plus (1 jour = braise), puis 3 jours tenus ; badge `reprise` (Discipline, symbole
+`rebound`, 1 / 5 / 15), `BadgeDeck.reprises` → gain `StakeGainKind.reprise` sur le +1 de la routine dans Ta journée.
 
 ## Règles du jeu en place (2026-10-30)
 

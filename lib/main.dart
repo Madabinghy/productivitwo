@@ -64,6 +64,7 @@ import 'package:productivitwo_v1/widgets/onboarding_screen.dart';
 import 'package:confetti/confetti.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/utils/embers.dart' show EmberSpend;
+import 'package:productivitwo_v1/utils/rest_periods.dart' show parseRestPeriods;
 import 'package:productivitwo_v1/gamification_flags.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/storage.dart';
@@ -1975,6 +1976,7 @@ class _AppRootState extends State<AppRoot>
       final sameSpends = spends.map((x) => x.toJson().toString()).join('|') == logic.emberSpends.map((x) => x.toJson().toString()).join('|');
       final elanAll = m['elanPromptsAll'] == true;
       final rest = parseRestDomains(m['restDomains']);
+      final periods = parseRestPeriods(m['restPeriods']);
       final budget = parseBudgetWindowDays(m['budgetWindowDays']);
       final sameHunts = hunts.map((h) => h.toJson().toString()).join('|') == logic.badgeHunts.map((h) => h.toJson().toString()).join('|');
       final same = logic.dayStartMin == start &&
@@ -1983,7 +1985,8 @@ class _AppRootState extends State<AppRoot>
           sameSpends &&
           logic.elanPromptsAll == elanAll &&
           logic.budgetWindowDays == budget &&
-          rest.toString() == logic.restDomains.toString();
+          rest.toString() == logic.restDomains.toString() &&
+          periods.map((x) => x.toJson().toString()).join('|') == logic.restPeriods.map((x) => x.toJson().toString()).join('|');
       if (same) return;
       logic.dayStartMin = start;
       logic.momentWindows = windows;
@@ -1991,6 +1994,7 @@ class _AppRootState extends State<AppRoot>
       logic.emberSpends = spends;
       logic.elanPromptsAll = elanAll;
       logic.restDomains = rest;
+      logic.restPeriods = periods;
       logic.budgetWindowDays = budget;
       logic.onChange();
     });

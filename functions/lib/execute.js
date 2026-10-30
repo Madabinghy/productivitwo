@@ -107,6 +107,7 @@ const badges_mcp_1 = require("./badges_mcp");
 const elan_1 = require("./elan");
 const task_delete_1 = require("./task_delete");
 const mode_1 = require("./mode");
+const rest_periods_1 = require("./rest_periods");
 const estimates_1 = require("./estimates");
 const db_1 = require("./db");
 const uuid_1 = require("uuid");
@@ -2394,21 +2395,29 @@ async function executeRestDomain(uid, p) {
         return `Domaine ${p.domainId} introuvable.`;
     const name = String((_a = dom.data().name) !== null && _a !== void 0 ? _a : p.domainId);
     const metaRef = db_1.db.doc(`users/${uid}/data/meta`);
+    const today = todayInParis();
     if (p.clear) {
-        await metaRef.set({ restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() } }, { merge: true });
+        await db_1.db.runTransaction(async (tx) => {
+            var _a;
+            const periods = (0, rest_periods_1.parseRestPeriods)((_a = (await tx.get(metaRef)).data()) === null || _a === void 0 ? void 0 : _a.restPeriods);
+            tx.set(metaRef, { restDomains: { [p.domainId]: admin.firestore.FieldValue.delete() }, restPeriods: (0, rest_periods_1.withRestLifted)(periods, p.domainId, today) }, { merge: true });
+        });
         return `✓ Veille levée sur « ${name} ».`;
     }
     const until = (_b = p.until) !== null && _b !== void 0 ? _b : "";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(until))
         return "until : YYYY-MM-DD requis (ou clear:true).";
-    const today = todayInParis();
     const days = Math.round((new Date(`${until}T12:00:00Z`).getTime() - new Date(`${today}T12:00:00Z`).getTime()) / 86400000);
     if (days < 0)
         return `until ${until} est passé (aujourd'hui ${today}).`;
     if (days > 30)
         return "Une veille ne dépasse pas 30 jours : au-delà, mets le projet en pause ou archive.";
-    await metaRef.set({ restDomains: { [p.domainId]: until } }, { merge: true });
-    return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus.`;
+    await db_1.db.runTransaction(async (tx) => {
+        var _a;
+        const periods = (0, rest_periods_1.parseRestPeriods)((_a = (await tx.get(metaRef)).data()) === null || _a === void 0 ? void 0 : _a.restPeriods);
+        tx.set(metaRef, { restDomains: { [p.domainId]: until }, restPeriods: (0, rest_periods_1.withRestSet)(periods, p.domainId, today, until) }, { merge: true });
+    });
+    return `✓ « ${name} » en veille jusqu'au ${until} inclus : plus de minimum compté, plus de relance, rien de programmé dessus ; ses séries de routine sont gelées.`;
 }
 async function executeLogRoutineHit(uid, activityId, delta = 1) {
     var _a;
