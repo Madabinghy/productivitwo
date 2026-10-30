@@ -64,12 +64,18 @@ class StakeScoreboard extends StatelessWidget {
   final double elapsed;
   /// Tap = la feuille des enjeux (Aujourd'hui mobile, 2026-10-30).
   final VoidCallback? onTap;
-  const StakeScoreboard({super.key, required this.board, required this.elapsed, this.onTap});
+  /// Séries cassées HIER pas encore rallumées (mobile, 2026-10-30, retour user :
+  /// « perdu » restait à 0, une série ne se perd presque jamais avant la fin de
+  /// la journée). Une braise effective (routine refaite aujourd'hui) la retire.
+  /// Null = les enjeux perdus aujourd'hui (web, sans rallumage).
+  final int? lostYesterday;
+  const StakeScoreboard({super.key, required this.board, required this.elapsed, this.onTap, this.lostYesterday});
 
   @override
   Widget build(BuildContext context) {
-    final won = board.won.length, play = board.inPlay, lost = board.lost.length;
-    final total = won + play + lost;
+    final won = board.won.length, play = board.inPlay, lostToday = board.lost.length;
+    final total = won + play + lostToday;
+    final lost = lostYesterday ?? lostToday;
     final pace = stakesPace(won, total, elapsed);
     Widget counter(int n, String label, Color c) => Expanded(
           child: Column(children: [
@@ -91,7 +97,7 @@ class StakeScoreboard extends StatelessWidget {
         Row(children: [
           counter(won, 'GAGNÉS', kBPrimary),
           counter(play, 'EN JEU', kStakeHunt),
-          counter(lost, lost > 1 ? 'PERDUS' : 'PERDU', kStakeLose),
+          counter(lost, lostYesterday != null ? (lost > 1 ? 'PERDUS HIER' : 'PERDU HIER') : (lost > 1 ? 'PERDUS' : 'PERDU'), kStakeLose),
         ]),
         const SizedBox(height: 10),
         // La barre = ce qui est tenu ; le trait = l'heure de la journée. Barre
