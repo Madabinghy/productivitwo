@@ -858,7 +858,7 @@ objectifs, archivés) — **tap sur une ligne = fiche de l'objectif** (`showObje
 bloc déplié sur place. Retirés : intention du jour, prochain bloc, carte des engagements 7 j (`WeekDashboardCard`), entrée vers
 l'ancien Accueil. Onglet **Domaines** (ex-Stats, `week_stats_view.dart`) : titre + « Gérer », MA SEMAINE en une ligne (`_weekLine` :
 k / n au rythme, semaines tenues, élan, sept jours ; tap = fiche Ma semaine, qui porte désormais la bande des semaines tenues et
-« Mode du jour »), puis les domaines (tap = page du domaine). **Aujourd'hui** : le bouton rond « Chrono libre » (doublon du FAB)
+« Mode du jour »), puis les domaines (tap = page du domaine), chacun avec la rangée de ses jours sous la barre (`_dayBars`, `StatusRow.below`, échelle propre au domaine). **Aujourd'hui** : le bouton rond « Chrono libre » (doublon du FAB)
 est remplacé par **Badges** → `showBadgeGallerySheet` (tous les badges en feuille, 94 %).
 
 ## Règles du jeu en place (2026-10-30)

@@ -21,6 +21,8 @@ class StatusRow extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final bool muted;
+  /// Sous la barre (2026-10-30 : les jours de la semaine d'un domaine).
+  final Widget? below;
 
   const StatusRow({
     super.key,
@@ -35,6 +37,7 @@ class StatusRow extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.muted = false,
+    this.below,
   });
 
   @override
@@ -101,6 +104,10 @@ class StatusRow extends StatelessWidget {
                 if (b != null) ...[
                   const SizedBox(height: 6),
                   ExpectedBar(done: b.done, total: b.total, expected: b.expected, color: st, height: 6),
+                ],
+                if (below != null) ...[
+                  const SizedBox(height: 6),
+                  below!,
                 ],
               ]),
             ),

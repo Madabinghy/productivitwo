@@ -95,6 +95,9 @@ class _WeekStatsViewState extends State<WeekStatsView> {
     final days = widget.logic.budgetWindowDays;
     final rows = domainWeeks(
         domains: st.activeDomains, activities: st.activeActivities, sessions: st.sessions, hits: st.habitHits, now: now, rest: widget.logic.restDomains, windowDays: days);
+    // Temps par jour et par domaine sur la fenêtre (mêmes données que « Répartition »).
+    final perDay = dailyMinutesByDomain(st.sessions, st.activeActivities, budgetWindowStart(now, days), days, now: now);
+    final todayIdx = budgetDayIndex(now, days) - 1;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -113,7 +116,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
                 dayStartMin: widget.logic.dayStartMin,
                 frozenOf: (a) => widget.logic.frozenOf(a.id))),
         ListSectionTitle('${days == 14 ? 'SUR 14 JOURS' : 'CETTE SEMAINE'} · ${rows.length}'),
-        for (final r in rows) _domainRow(cs, r),
+        for (final r in rows) _domainRow(cs, r, perDay[r.domain.id], todayIdx, days),
         if (rows.isEmpty)
           Padding(
             padding: const EdgeInsets.all(24),
@@ -319,7 +322,31 @@ class _WeekStatsViewState extends State<WeekStatsView> {
 
   /// Ligne Élan (2026-10) : moyenne des 7 jours, pointages, face à la flemme,
   /// créneau difficile, mini-courbe par jour. Tap = la feuille du mode.
-  Widget _domainRow(ColorScheme cs, DomainWeek r) {
+  /// Les jours de la fenêtre sous la barre d'un domaine : hauteur = temps du
+  /// jour (échelle propre au domaine), aujourd'hui plus vif, jours à venir en filet.
+  Widget _dayBars(ColorScheme cs, Color color, List<int>? mins, int today, int days) {
+    final m = mins ?? List<int>.filled(days, 0);
+    final max = m.fold<int>(60, (a, b) => b > a ? b : a);
+    return SizedBox(
+      height: 22,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        for (var i = 0; i < days; i++) ...[
+          if (i > 0) SizedBox(width: days > 7 ? 2 : 4),
+          Expanded(
+            child: Container(
+              height: i > today ? 2 : (3 + 19 * m[i] / max).clamp(3.0, 22.0),
+              decoration: BoxDecoration(
+                color: i > today ? cs.onSurface.withValues(alpha: .10) : color.withValues(alpha: m[i] == 0 ? .15 : (i == today ? 1 : .6)),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ],
+      ]),
+    );
+  }
+
+  Widget _domainRow(ColorScheme cs, DomainWeek r, List<int>? perDay, int today, int days) {
     final color = domainColor(r.domain.id, widget.logic.state.activeDomains) ?? cs.primary;
     final restUntil = r.restUntil == null ? null : DateTime.tryParse(r.restUntil!);
     final sub = <String>[
@@ -343,6 +370,7 @@ class _WeekStatsViewState extends State<WeekStatsView> {
         trailing: r.hasGoal || r.resting ? null : Icon(Icons.chevron_right, color: cs.onSurface.withValues(alpha: .4)),
         onTap: () => widget.onOpenDomain(r.domain, focus: 'time'),
         onLongPress: r.routinesTotal > 0 ? () => widget.onOpenDomain(r.domain, focus: 'habit') : null,
+        below: _dayBars(cs, color, perDay, today, days),
       ),
     );
   }
