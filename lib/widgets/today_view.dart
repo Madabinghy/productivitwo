@@ -987,6 +987,7 @@ class TodayViewState extends State<TodayView> {
         onRoutines: _openRoutinesFiche,
         onObjectives: widget.sync == null ? null : _openObjectivesFiche,
         onBadges: bc == null ? null : () => _openBadgesInPlay(board),
+        onBadgesGallery: bc == null ? null : () => showBadgeGallerySheet(context, logic: widget.logic, sync: bc.sync, center: bc),
         onPerfect: bc == null ? null : _openPerfectDaySheet,
         onActions: _openFocusedActionsSheet,
         // Résumé du jour + Où on va : une tuile dans la case libre (retour
