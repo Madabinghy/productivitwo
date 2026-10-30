@@ -73,6 +73,11 @@
         how: 'En mode En forme, lance « Deep work 90 min » (carte MAINTENANT ou « Bloc de 90 min » d’un objectif) et tiens le chrono au moins 60 min d’affilée '
             'sur cette source : le bloc compte. Un chrono long sans bloc de deep work (sommeil, séance, activité libre) ne compte pas. Paliers : 3, 10 et 30 blocs.',
       ),
+    'saisons' => (
+        what: 'Des saisons de six semaines où au moins deux des trois chasses ont été attrapées.',
+        how: 'Ouvre une saison depuis l’onglet Objectifs : choisis trois chasses, figées pour six semaines (tu peux en lâcher une, pas la remplacer). '
+            'Attrape au moins deux paliers visés avant la fin : la saison est réussie. Paliers : 1, 4 et 8 saisons.',
+      ),
     'semaines-tenues' => (
         what: 'Les semaines d’affilée où le contrat est tenu : au moins 80 % des routines engagées, du lundi au dimanche.',
         how: 'Tiens les routines rattachées à tes objectifs (toutes les routines s’il n’y en a aucune) : une semaine compte quand la moyenne de leurs parts faites atteint 80 %. '

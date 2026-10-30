@@ -840,6 +840,10 @@ semaine calendaire close où le contrat (routines des objectifs qui couvraient l
 jours gelés = cible réduite, semaine sans rien à tenir = neutre. Badge `semaines-tenues` (Objectifs, symbole `week`,
 4 / 12 / 26 / 52), `BadgeDeck.weeks` ; une semaine tenue forge une braise (`emberLedger(heldWeekYmds:)`, `EmberEvent.week`) ;
 carte MA SEMAINE (série + 10 semaines), gain `StakeGainKind.week` le dimanche, ligne du bilan du soir.
+**Saisons** (lot 3, handoff `docs/specs/saisons-2026-10/README.md`, logique pure `utils/seasons.dart`, écrans
+`widgets/season_view.dart`) : six semaines, trois chasses figées (remplacent `badgeHunts`, date visée = fin), lâcher sans
+remplacer, attrapée = palier tombé pendant la saison, bilan une fois à la fin ; `data/meta.seasons` ; carte en tête de
+l'onglet Objectifs (`SeasonCard`, sous la rangée Badges) ; badge `saisons` (≥ 2 chasses sur 3, 1 / 4 / 8). Web : badge seul.
 
 ## Règles du jeu en place (2026-10-30)
 

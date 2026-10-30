@@ -9,6 +9,7 @@ import 'package:productivitwo_v1/utils/objective_trajectory.dart';
 import 'package:productivitwo_v1/utils/held_weeks.dart';
 import 'package:productivitwo_v1/utils/reprise.dart';
 import 'package:productivitwo_v1/utils/rest_periods.dart';
+import 'package:productivitwo_v1/utils/seasons.dart';
 
 /// Badges (lot 1, 2026-10) : catalogue et calcul des paliers depuis les
 /// données d'exécution. Logique pure, aucune écriture : un badge est un FAIT
@@ -601,6 +602,7 @@ BadgeDeck computeBadges({
   List<EmberSpend> emberSpends = const [],
   List<RestPeriod> restPeriods = const [],
   Map<String, String> restDomains = const {},
+  List<Season> seasons = const [],
 }) {
   final out = <BadgeState>[];
   // Journées closes : les journées parfaites forgent les braises, qui
@@ -1068,6 +1070,20 @@ BadgeDeck computeBadges({
     }
   }
 
+  // Saisons : réussie = au moins deux chasses attrapées pendant ses six semaines.
+  final won = wonSeasons(seasons, BadgeDeck(out), todayYmd);
+  final closed = seasons.where((s) => s.isOverOn(todayYmd)).length;
+  final running = currentSeason(seasons, todayYmd);
+  out.add(BadgeState(
+    def: const BadgeDef(id: 'saisons', family: BadgeFamily.objectives, name: 'Saisons', symbol: 'season', tiers: kSeasonTiers, unit: 'saisons', unitLong: 'saisons réussies'),
+    level: _levelOf(kSeasonTiers, won.length),
+    value: won.length,
+    tierDates: [for (final t in kSeasonTiers) t <= won.length ? DateTime.parse(won[t - 1].end) : null],
+    facts: [
+      ('Saisons réussies', '${won.length}${closed > 0 ? ' sur $closed' : ''}'),
+      if (running != null) ('En cours', 'Saison ${running.n} · semaine ${running.weekOf(todayYmd)} / ${running.weeks}'),
+    ],
+  ));
   return BadgeDeck([for (final b in out) b.withTrack(trackOf(b))], embers: embers, reprises: reprisesNow, weeks: weeks);
 }
 
