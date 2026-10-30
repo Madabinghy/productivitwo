@@ -90,4 +90,17 @@ void main() {
     expect(ids, isNot(contains('deep-work'))); // trop loin (0 %)
     expect(picks.firstWhere((p) => p.badge.def.id == 'serie-x').tier, 4);
   });
+
+  test('propositions : toutes les routines, et les paliers tenables en six semaines', () {
+    final deck = BadgeDeck([
+      for (var i = 0; i < 9; i++) badge('serie-r$i', [3, 7, 21, 66, 100], level: 1, value: 4),
+    ]);
+    final picks = seasonPicks(deck);
+    expect(picks.length, 9); // plus de coupe à quatre par groupe
+    final p = picks.first;
+    expect(p.tiers, [2, 3]); // 7 j et 21 j tiennent en 42 jours, pas 66
+    expect(p.nextTier(2), 3);
+    expect(p.nextTier(3), 2);
+    expect(p.labelOf(3), 'serie-r0 · série 21 j');
+  });
 }

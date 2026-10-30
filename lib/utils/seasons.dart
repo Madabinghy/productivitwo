@@ -181,14 +181,26 @@ class SeasonPick {
   final BadgeState badge;
   final int tier;
   final SeasonPickGroup group;
-  const SeasonPick(this.badge, this.tier, this.group);
-  int get target => badge.def.tiers[tier - 1];
-  String get label => seasonHuntLabel(badge, tier);
-  /// « encore 32 j », « 3 de plus » : ce qu'il reste.
-  String get remaining {
+  /// Paliers visables en six semaines (1-based, croissants) ; [tier] = le premier.
+  final List<int> tiers;
+  const SeasonPick(this.badge, this.tier, this.group, {this.tiers = const []});
+  int get target => targetOf(tier);
+  int targetOf(int t) => badge.def.tiers[t - 1];
+  String get label => labelOf(tier);
+  String labelOf(int t) => seasonHuntLabel(badge, t);
+  /// « encore 32 j », « encore 3 actions » : ce qu'il reste.
+  String get remaining => remainingOf(tier);
+  String remainingOf(int t) {
+    final target = targetOf(t);
     final left = (target - badge.value).clamp(0, target);
     final unit = badge.def.unit.isEmpty ? '' : ' ${badge.def.unit}';
     return 'encore ${fmtInt(left)}$unit';
+  }
+  /// Palier suivant visable après [t] (retour au premier après le dernier).
+  int nextTier(int t) {
+    final list = tiers.isEmpty ? [tier] : tiers;
+    final i = list.indexOf(t);
+    return list[(i + 1) % list.length];
   }
 }
 
@@ -196,7 +208,9 @@ class SeasonPick {
 /// qui peut tomber en six semaines. « De tes objectifs » = badges portés par un
 /// objectif (temps, trajectoire, relevés, semaines tenues, séries des routines
 /// engagées) ; « Pour repartir » = Reprise et séries cassées qui avaient tenu ;
-/// le reste « À portée ». Les plus avancés d'abord, quatre par groupe au plus.
+/// le reste « À portée ». Les plus avancés d'abord ; TOUS les candidats (la
+/// feuille en montre quatre par groupe, puis « Afficher les n autres »). Une série
+/// peut viser plus haut que son prochain palier tant qu'il tient en six semaines.
 List<SeasonPick> seasonPicks(BadgeDeck deck, {Set<String> engagedRoutineIds = const {}}) {
   final out = <SeasonPick>[];
   for (final b in deck.badges) {
@@ -219,12 +233,13 @@ List<SeasonPick> seasonPicks(BadgeDeck deck, {Set<String> engagedRoutineIds = co
       if ((b.progress ?? 0) < .25 && !serie) continue;
       g = SeasonPickGroup.reachable;
     }
-    out.add(SeasonPick(b, tier, g));
+    final horizon = serie ? kSeasonWeeks * 7 : (id == 'semaines-tenues' || id == 'trajectoire' ? kSeasonWeeks : null);
+    final tiers = [
+      for (var t = tier; t <= b.def.tiers.length; t++)
+        if (t == tier || (horizon != null && b.def.tiers[t - 1] - b.value <= horizon)) t
+    ];
+    out.add(SeasonPick(b, tier, g, tiers: tiers));
   }
   out.sort((a, b) => (b.badge.progress ?? 0).compareTo(a.badge.progress ?? 0));
-  final kept = <SeasonPick>[];
-  for (final g in SeasonPickGroup.values) {
-    kept.addAll(out.where((p) => p.group == g).take(4));
-  }
-  return kept;
+  return [for (final g in SeasonPickGroup.values) ...out.where((p) => p.group == g)];
 }
