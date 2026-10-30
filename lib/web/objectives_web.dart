@@ -90,7 +90,7 @@ class WebObjectivesCard extends StatelessWidget {
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(color: kBAttention.withValues(alpha: .16), borderRadius: BorderRadius.circular(999)),
-              child: Text('COUP · ${coupLabel(d.objective, now)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: kBAttention)),
+              child: Text('RUSH · ${coupLabel(d.objective, now)}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: .6, color: kBAttention)),
             ),
           ],
           Expanded(child: Text(d.objective.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: kBText))),

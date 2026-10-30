@@ -136,7 +136,7 @@ Future<bool> showDeepWorkSheet(
         if (a.id == picked.activityId) a.domainId,
     };
     await showRestSheet(context, logic: logic, sync: sync, untilYmd: until, excludeDomainIds: sourceDomain,
-        title: 'Deep work lancé · mettre le reste en veille ${coup != null ? 'jusqu\'à la fin du coup' : 'jusqu\'à ce soir'} ?');
+        title: 'Deep work lancé · mettre le reste en veille ${coup != null ? 'jusqu\'à la fin du rush' : 'jusqu\'à ce soir'} ?');
   }
   return true;
 }
@@ -173,7 +173,7 @@ class _DeepWorkPickerState extends State<_DeepWorkPicker> {
             if (cands.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text('Aucun coup, projet en retard ni objectif avec engagement de temps. Choisis librement.',
+                child: Text('Aucun rush, projet en retard ni objectif avec engagement de temps. Choisis librement.',
                     style: TextStyle(fontSize: 13, color: cs.onSurface.withValues(alpha: .7))),
               ),
             for (var i = 0; i < cands.length; i++)

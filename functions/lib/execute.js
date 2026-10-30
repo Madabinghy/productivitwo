@@ -360,7 +360,7 @@ function pickStrategicObjective(so) {
             throw new Error(`strategicObjective.horizon invalide : ${String(so.horizon)}`);
         horizon = so.horizon;
         if (horizon === "tactical" && !so.endDate)
-            throw new Error("un coup (horizon tactical) exige endDate (3 à 10 jours)");
+            throw new Error("un rush (horizon tactical) exige endDate (3 à 10 jours)");
     }
     let checkInEvery;
     if (so.checkInEvery !== undefined) {
@@ -811,7 +811,7 @@ async function executeGetUserContext(uid) {
             since: modeCtx.since,
             budgetWindowDays: (0, mode_1.parseBudgetWindowDays)(metaCtx.budgetWindowDays),
             restDomains: Object.entries(restCtx).map(([id, until]) => { var _a; return ({ domainId: id, name: (_a = domainNameById.get(id)) !== null && _a !== void 0 ? _a : id, until }); }),
-            _hint: "Le mode est déclaré par l'utilisateur (set_mode) : Flemme → petites choses, jamais de reproche ; En forme → un bloc de deep work sur le coup. Un domaine en veille n'est jamais réclamé ni programmé.",
+            _hint: "Le mode est déclaré par l'utilisateur (set_mode) : Flemme → petites choses, jamais de reproche ; En forme → un bloc de deep work sur le rush en cours (dire « rush », jamais « coup »). Un domaine en veille n'est jamais réclamé ni programmé.",
         } }), (coups.length > 0 ? { coups } : {})), (elan ? { elan } : {})), (badges ? { badges } : {})), { domains,
         activities,
         objectives,

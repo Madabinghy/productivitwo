@@ -35,9 +35,9 @@ String? validateCoup({required String title, required DateTime? endDate, require
   if (title.trim().isEmpty) return 'Dis ce que tu vises.';
   if (endDate == null) return 'Choisis jusqu\'à quand.';
   final days = _day(endDate).difference(_day(today)).inDays + 1;
-  if (days < kCoupMinDays) return 'Un coup dure au moins $kCoupMinDays jours.';
-  if (days > kCoupMaxDays) return 'Un coup dure au plus $kCoupMaxDays jours — au-delà, c\'est un objectif.';
-  if (!hasSource) return 'Rattache le coup à un projet ou à une activité.';
+  if (days < kCoupMinDays) return 'Un rush dure au moins $kCoupMinDays jours.';
+  if (days > kCoupMaxDays) return 'Un rush dure au plus $kCoupMaxDays jours — au-delà, c\'est un objectif.';
+  if (!hasSource) return 'Rattache le rush à un projet ou à une activité.';
   return null;
 }
 

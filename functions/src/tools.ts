@@ -1395,7 +1395,7 @@ const SET_MODE_TOOL = {
     "c'est un pointage d'élan (mood_marks, kind elan, valeur 2 / 3 / 4) sur le créneau courant ; le mode courant = " +
     "dernier pointage d'élan de la journée vécue. Seulement quand l'utilisateur DIT son état (« j'ai la flemme », " +
     "« je suis en forme ») ; changeable autant de fois qu'il le veut. Effets : get_user_context.mode, règles de plan_day " +
-    "(Flemme = blocs courts, rien de nouveau ; En forme = un bloc de deep work ≥ 90 min sur le coup en cours).",
+    "(Flemme = blocs courts, rien de nouveau ; En forme = un bloc de deep work ≥ 90 min sur le rush en cours).",
   inputSchema: {
     type: "object",
     required: ["kind"],
@@ -1408,7 +1408,7 @@ const SET_MODE_TOOL = {
 const REST_DOMAIN_TOOL = {
   name: "rest_domain",
   description:
-    "Met un domaine EN VEILLE jusqu'à une date incluse (modes et coups, 2026-10 : pendant un coup, on cesse de " +
+    "Met un domaine EN VEILLE jusqu'à une date incluse (modes et rushs, 2026-10 : pendant un rush, on cesse de " +
     "réclamer les autres domaines) ou lève la veille (clear). Un domaine en veille : ses minimums ne comptent plus " +
     "dans la semaine, ses actions sortent de la carte du moment, plan_day ne programme rien dessus ; les routines " +
     "« toute la journée » restent ; les séries de ses routines sont GELÉES (un jour en veille ne casse rien et ne compte pas, " +
@@ -1837,7 +1837,7 @@ export const LIST_OBJECTIVES_TOOL = {
     "trajectory.means (minutes engagées cumulées depuis le début vs attendues à ce jour, totalMin sur l'horizon) " +
     "et trajectory.result (dernier relevé de la métrique vs valeur attendue aujourd'hui sur la droite " +
     "startValue → targetValue, delta signé, status ahead/onTrack/behind) ; readingDue = un relevé est attendu. " +
-    "Les COUPS (objectifs tactiques, horizon tactical, 3–10 j) sont listés à part dans `coups`.",
+    "Les RUSHS (dits « rush » à l'utilisateur, ex-« coups » : objectifs tactiques, horizon tactical, 3–10 j) sont listés à part dans `coups` (nom de champ historique).",
   inputSchema: { type: "object", properties: {} },
 };
 
@@ -1897,7 +1897,7 @@ export const SAVE_OBJECTIVE_TOOL = {
         required: ["label", "targetValue"],
       },
       checkInEvery: { type: "integer", description: "jours entre deux relevés attendus (défaut 7 ; 1..90)" },
-      horizon:      { type: "string", enum: ["strategic", "tactical"], description: "tactical = un COUP : 3 à 10 jours, UNE cible (metric ou timeCommitments), endDate obligatoire ; même fiche et même graphe qu'un objectif, listé à part (coups). Défaut strategic" },
+      horizon:      { type: "string", enum: ["strategic", "tactical"], description: "tactical = un RUSH (dire « rush », jamais « coup ») : 3 à 10 jours, UNE cible (metric ou timeCommitments), endDate obligatoire ; même fiche et même graphe qu'un objectif, listé à part (coups). Défaut strategic" },
       projectIds:   { type: "array", items: { type: "string" }, description: "projets Gantt rattachés (arrayUnion — n'enlève jamais)" },
       timeCommitments: {
         type: "array",

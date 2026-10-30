@@ -325,7 +325,7 @@ class _ProjectsViewState extends State<ProjectsView> {
           // Coups en cours (Modes et coups lot 5) : au-dessus de l'objectif stratégique.
           for (final c in coups) ...[
             const SizedBox(height: 18),
-            _objectiveCard(c, now, label: 'COUP · ${coupLabel(c, now).toUpperCase()}'),
+            _objectiveCard(c, now, label: 'RUSH · ${coupLabel(c, now).toUpperCase()}'),
           ],
           if (objective != null) ...[
             const SizedBox(height: 18),

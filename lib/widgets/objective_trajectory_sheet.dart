@@ -283,7 +283,7 @@ class _TrajectorySheetState extends State<_TrajectorySheet> {
         Expanded(child: Text(o.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))),
         if (o.isTactical) ...[
           const SizedBox(width: 8),
-          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip('coup · ${coupLabel(o, DateTime.now())}', color: _accent)),
+          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 150), child: StateChip('rush · ${coupLabel(o, DateTime.now())}', color: _accent)),
         ],
       ]),
       if (o.kpiTarget != null && o.kpiTarget!.isNotEmpty)

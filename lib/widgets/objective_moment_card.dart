@@ -154,7 +154,7 @@ class _ObjectiveMomentCardState extends State<ObjectiveMomentCard> {
         preferObjectiveId: o.id);
     return MomentCard(
       accent: kObjectiveAccent,
-      eyebrow: o.isTactical ? (isMoment ? 'COUP EN COURS' : 'COUP') : (isMoment ? 'OBJECTIF DU MOMENT' : 'OBJECTIF'),
+      eyebrow: o.isTactical ? (isMoment ? 'RUSH EN COURS' : 'RUSH') : (isMoment ? 'OBJECTIF DU MOMENT' : 'OBJECTIF'),
       pill: fixed == null && ranked.length > 1
           ? '${_offset % ranked.length + 1} / ${ranked.length} · suivant ›'
           : (o.isTactical ? coupLabel(o, now) : (pctInt == null ? null : '$pctInt % du rythme')),
