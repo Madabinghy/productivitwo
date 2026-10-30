@@ -2097,26 +2097,49 @@ class _AppRootState extends State<AppRoot>
       devLog.error('_init() exception non catchée', tag: 'MAIN', error: e);
     }).whenComplete(_drainPendingDeepLink).whenComplete(_restoreCountdownFromAlarm);
 
-    // Ouvre le bon sheet quand l'utilisateur tape une notification
-    NotificationService.onNotificationTap = (id) {
-      final ctx = _navigatorKey.currentState?.overlay?.context;
-      if (ctx == null) return;
-      switch (id) {
-        case 2: // Résumé du jour
-          showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
-        case 3: // Streak en danger → Aujourd'hui (routines du jour en tête)
-          setState(() => _tab = _goNowTab());
-        case 4: // ancien « Défi du jour » (retiré) → Aujourd'hui
-          setState(() => _tab = _goNowTab());
-        case 5: // Score mi-journée → résumé du jour
-          showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
-      }
-    };
+    // Ouvre la bonne chose quand l'utilisateur tape une notification (locale
+    // ou ORION affichée au premier plan) : la charge utile décide, l'id sert
+    // de repli pour les notifications planifiées avant 2026-10-30.
+    NotificationService.onNotificationTap = _onNotificationTap;
 
     // Traite un tap bufferisé (race condition background).
     // handleLaunchNotification() est appelé à la fin de _init(), après que
     // logic soit initialisé, pour éviter un LateInitializationError.
     NotificationService.drainPending();
+  }
+
+  void _onNotificationTap(int id, String? payload) {
+    final ctx = _navigatorKey.currentState?.overlay?.context;
+    if (ctx == null) return;
+    void onToday(void Function(TodayViewState t) open) {
+      setState(() => _tab = _goNowTab());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final t = _todayKey.currentState;
+        if (t != null && t.mounted) open(t);
+      });
+    }
+
+    final p = payload ??
+        switch (id) {
+          1 => NotificationService.kPayloadProgram,
+          2 => NotificationService.kPayloadReview,
+          3 => NotificationService.kPayloadPerfect,
+          100 => NotificationService.kPayloadOrion,
+          _ => NotificationService.kPayloadToday,
+        };
+    if (p == NotificationService.kPayloadOrion) {
+      OrionScreen.show(ctx, _sync);
+    } else if (p.startsWith('http')) {
+      FcmService.openUrl(p);
+    } else if (p == NotificationService.kPayloadReview) {
+      showDayReviewSheet(ctx, logic: logic, projects: _dashboardProjects);
+    } else if (p == NotificationService.kPayloadProgram) {
+      onToday((t) => t.openProgramSheet());
+    } else if (p == NotificationService.kPayloadPerfect) {
+      onToday((t) => t.openPerfectDaySheet());
+    } else {
+      setState(() => _tab = _goNowTab());
+    }
   }
 
   void _startMinuteHeartbeat() {

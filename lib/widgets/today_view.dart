@@ -377,6 +377,11 @@ class TodayViewState extends State<TodayView> {
 
   /// Navigation programmée vers l'onglet (lancement, widget, Siri…) : la carte
   /// MAINTENANT est en tête, on y revient.
+  /// Ouvertures depuis une notification (`main.dart`, `_onNotificationTap`).
+  void openProgramSheet() => _openProgramSheet();
+  void openPerfectDaySheet() => _openPerfectDaySheet();
+  void openStakesSheet() => _openStakesSheet();
+
   void scrollToTop() {
     if (!_scroll.hasClients) return;
     _scroll.animateTo(0,

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:productivitwo_v1/notifications.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // Canal ORION — priorité haute, son par défaut
@@ -19,7 +20,6 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 class FcmService {
   static final _messaging = FirebaseMessaging.instance;
-  static final _localNotifs = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
   // Appelé quand une notif ORION est tapée (app en arrière-plan ou terminée)
@@ -59,23 +59,12 @@ class FcmService {
       sound: true,
     );
 
-    // Canal Android + init local notifications pour affichage foreground
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwinSettings = DarwinInitializationSettings();
-    await _localNotifs.initialize(
-      const InitializationSettings(
-          android: androidSettings, iOS: darwinSettings),
-      onDidReceiveNotificationResponse: (resp) {
-        final payload = resp.payload;
-        if (payload == 'orion') {
-          onOrionNotificationTap?.call();
-        } else if (payload != null && payload.startsWith('http')) {
-          _openUrl(payload);
-        }
-      },
-    );
-
-    await _localNotifs
+    // Plugin partagé avec NotificationService : JAMAIS de second
+    // `initialize` ici (il remplaçait le routage des taps des notifications
+    // de l'app). Les taps des affichages foreground passent par
+    // NotificationService.onNotificationTap (charge utile « orion » / URL).
+    final localNotifs = await NotificationService.plugin();
+    await localNotifs
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(const AndroidNotificationChannel(
@@ -99,15 +88,16 @@ class FcmService {
         .set({'fcmToken': token}, SetOptions(merge: true));
   }
 
-  static void _showLocalNotif(RemoteMessage message) {
+  static Future<void> _showLocalNotif(RemoteMessage message) async {
     final notif = message.notification;
     if (notif == null) return;
 
     final type = message.data['type'] as String?;
     final url = message.data['url'] as String?;
-    final payload = (type == 'github_pr' && url != null) ? url : 'orion';
+    final payload = (type == 'github_pr' && url != null) ? url : NotificationService.kPayloadOrion;
 
-    _localNotifs.show(
+    final localNotifs = await NotificationService.plugin();
+    await localNotifs.show(
       _kOrionNotifId,
       notif.title ?? '◉ ORION',
       notif.body,
@@ -138,13 +128,14 @@ class FcmService {
     }
   }
 
+  /// Ouvre une URL de notification (PR GitHub) dans le navigateur.
+  static Future<void> openUrl(String url) => _openUrl(url);
+
   static Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  static Future<void> clearOrionBadge() async {
-    await _localNotifs.cancel(_kOrionNotifId);
-  }
+  static Future<void> clearOrionBadge() => NotificationService.cancelById(_kOrionNotifId);
 }

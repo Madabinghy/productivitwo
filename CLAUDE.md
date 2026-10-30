@@ -832,6 +832,16 @@ phrase, points, Suivant / Compris). Règles = données dans `utils/game_rules.da
 (feuille Ta journée / Ce soir), `kRuleActivityPace` (lanceur d'activités), `kRuleModes` (feuille du mode). `FicheHeader(info:)`
 colle le ⓘ au titre. Nouvelle règle = une constante + un `InfoDot` à l'endroit où elle sert ; pas d'explication en texte long.
 
+## Notifications (refonte 2026-10-30, 7 PR)
+
+**Un seul routage des taps** (PR 1) : `flutter_local_notifications` est UN plugin partagé — `NotificationService.init` est le seul
+`initialize` (FCM l'emprunte via `NotificationService.plugin()`, jamais de second `initialize` : il écrasait le routage, d'où des
+taps qui n'ouvraient rien une fois connecté). Chaque notification porte une charge utile (`kPayloadProgram` · `kPayloadPerfect` ·
+`kPayloadReview` · `kPayloadToday` · `kPayloadOrion` · URL) ; `_onNotificationTap(id, payload)` (`main.dart`) ouvre la cible :
+Programme → feuille Programme d'Aujourd'hui (`TodayViewState.openProgramSheet`), Perfect → feuille Journée parfaite
+(`openPerfectDaySheet`), Review → bilan du soir, Orion → écran ORION, URL → navigateur ; l'id sert de repli pour les anciennes
+notifications planifiées.
+
 ## Confirmation avant de cocher (2026-10-30)
 
 Toute coche d'un SIMPLE TAP d'une action ou d'une tâche (rond d'une ligne d'Actions, feuille d'action, bouton « Fait », projet
