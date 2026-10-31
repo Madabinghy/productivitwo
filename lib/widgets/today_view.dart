@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/widgets/objective_readings_card.dart' show noteReadingQuick;
 import 'package:productivitwo_v1/widgets/acquired_view.dart' show AcquiredPrompts;
 import 'package:productivitwo_v1/utils/game_rules.dart';
@@ -212,6 +213,9 @@ class TodayViewState extends State<TodayView> {
       final merged = mergeLivedDay(_schedDate, _dayDoc, _nextDoc, widget.logic.dayStartMin);
       setState(() => _schedule = merged);
       widget.logic.todayBlocks = merged?.blocks ?? [];
+      widget.badges?.liveToday = merged;
+      // Widgets iOS (Journée parfaite, Maintenant…) : un bloc coché se voit tout de suite.
+      WidgetService.update(widget.logic);
     }
     _schedSub = FirestoreSync().streamDailySchedule(_schedDate).listen((s) {
       if (!mounted) return;
