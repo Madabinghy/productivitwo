@@ -96,4 +96,24 @@ void main() {
     expect(slots[0].changes, 2);
     expect(slots[0].at, DateTime(2026, 10, 28, 7, 12));
   });
+
+  test('moyenne glissante sur 7 jours, pondérée par le temps', () {
+    ElanDay d(String ymd, List<(int, int)> m) => ElanDay(ymd, [for (final x in m) ElanMarkView('matin', x.$1, false, minutes: x.$2)], null);
+    final all = [
+      d('2026-10-20', [(1, 60)]),
+      for (var i = 21; i <= 26; i++) d('2026-10-$i', [(3, 60)]),
+      d('2026-10-27', [(5, 120)]),
+      d('2026-10-28', []),
+    ];
+    final r = rollingElanMeans(all, 3);
+    expect(r.length, 3);
+    // 20 → 26 : 1 + 6 × 3 sur 7 heures.
+    expect(r[0], closeTo((1 + 18) / 7, 1e-9));
+    // 21 → 27 : 6 × 3 h + 5 × 2 h sur 8 heures.
+    expect(r[1], closeTo((18 + 10) / 8, 1e-9));
+    // 22 → 28 : jour vide ignoré.
+    expect(r[2], closeTo((15 + 10) / 7, 1e-9));
+    expect(rollingElanMeans([d('2026-10-28', [])], 1), [null]);
+  });
 }
+

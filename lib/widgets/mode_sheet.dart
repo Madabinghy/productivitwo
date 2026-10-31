@@ -180,7 +180,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         if (wm.count == 0)
           _note(cs, 'Pointe ton élan (le mode du jour suffit) : la semaine se dessinera ici, un point par pointage.')
         else ...[
-          ElanWeekGraph(days: week, mean: wm.mean),
+          ElanWeekGraph(days: week, mean: wm.mean, rolling: rollingElanMeans(days60, 7)),
           const SizedBox(height: 8),
           _legend(cs),
         ],
@@ -392,7 +392,7 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
       Row(mainAxisSize: MainAxisSize.min, children: [
         Container(width: 12, height: 2, color: kElanAccent),
         const SizedBox(width: 4),
-        Text('moyenne', style: TextStyle(fontSize: 11, color: muted)),
+        Text('moyenne sur 7 jours', style: TextStyle(fontSize: 11, color: muted)),
       ]),
     ]);
   }
@@ -537,7 +537,10 @@ class ElanDayStrip extends StatelessWidget {
 class ElanWeekGraph extends StatelessWidget {
   final List<ElanDay> days;
   final double mean;
-  const ElanWeekGraph({super.key, required this.days, required this.mean});
+  /// Moyenne glissante sur 7 jours, une valeur par jour (`rollingElanMeans`) :
+  /// tracée en courbe à la place du trait plat de la semaine.
+  final List<double?>? rolling;
+  const ElanWeekGraph({super.key, required this.days, required this.mean, this.rolling});
 
   @override
   Widget build(BuildContext context) {
@@ -564,8 +567,16 @@ class ElanWeekGraph extends StatelessWidget {
             return Stack(clipBehavior: Clip.none, children: [
               for (var v = 1; v <= 5; v++)
                 Positioned(top: yOf(v), left: 0, right: 0, child: Container(height: 1, color: cs.onSurface.withValues(alpha: .06))),
-              Positioned(top: yOf(mean), left: 0, right: 0, child: Container(height: 2, color: kElanAccent.withValues(alpha: .7))),
-              Positioned(top: yOf(mean) - 14, right: 2, child: Text(fmtElan(mean), style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: kElanAccent))),
+              if (rolling == null || rolling!.length != days.length) ...[
+                Positioned(top: yOf(mean), left: 0, right: 0, child: Container(height: 2, color: kElanAccent.withValues(alpha: .7))),
+                Positioned(top: yOf(mean) - 14, right: 2, child: Text(fmtElan(mean), style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: kElanAccent))),
+              ] else ...[
+                Positioned.fill(
+                  child: CustomPaint(painter: _RollingPainter([for (final v in rolling!) v == null ? null : yOf(v)], colW, kElanAccent)),
+                ),
+                if (rolling!.last != null)
+                  Positioned(top: yOf(rolling!.last!) - 15, right: 2, child: Text(fmtElan(rolling!.last!), style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: kElanAccent))),
+              ],
               for (var i = 0; i < days.length; i++) ...[
                 Positioned(
                   top: h + 6,
@@ -600,6 +611,46 @@ class ElanWeekGraph extends StatelessWidget {
     const l = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
     return l[DateTime.parse(ymd).weekday - 1];
   }
+}
+
+/// Courbe de la moyenne glissante : un point par jour (centre de colonne),
+/// reliés ; un jour sans valeur coupe la courbe.
+class _RollingPainter extends CustomPainter {
+  final List<double?> ys;
+  final double colW;
+  final Color color;
+  _RollingPainter(this.ys, this.colW, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final line = Paint()
+      ..color = color.withValues(alpha: .8)
+      ..strokeWidth = 2.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final dot = Paint()..color = color;
+    Path? path;
+    for (var i = 0; i < ys.length; i++) {
+      final y = ys[i];
+      if (y == null) {
+        if (path != null) canvas.drawPath(path, line);
+        path = null;
+        continue;
+      }
+      final x = i * colW + colW / 2;
+      if (path == null) {
+        path = Path()..moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+      canvas.drawCircle(Offset(x, y), 2.6, dot);
+    }
+    if (path != null) canvas.drawPath(path, line);
+  }
+
+  @override
+  bool shouldRepaint(_RollingPainter old) => old.ys.toString() != ys.toString() || old.colW != colW;
 }
 
 /// Les 30 derniers jours en cases (10 par ligne), colorées par l'élan moyen du
