@@ -67,6 +67,8 @@ class _PlanScreenState extends State<PlanScreen> {
   List<PlannedBlock> _plan = const [];
   final List<PlanWant> _extra = [];
   final Set<String> _dropped = {};
+  /// Heure et durée choisies à la main (activité → (début, minutes)) : gardées telles quelles à chaque nouvelle proposition.
+  final Map<String, (int, int)> _manual = {};
   bool _loading = false;
   int _capCount = 0;
 
@@ -146,7 +148,8 @@ class _PlanScreenState extends State<PlanScreen> {
     final facts = widget.badges?.todayFacts();
     for (final p in facts?.pace ?? const []) {
       final need = _tomorrow ? p.tomorrowNeedMin : p.missingMin;
-      if (need <= 0) continue;
+      // Sommeil, sieste, repas : jamais un bloc proposé (un « Sommeil » à 15:15 n'a pas de sens).
+      if (need <= 0 || isBasicNeedName(p.activity.name)) continue;
       out.add(PlanStake(
         id: 'watch:${p.activity.id}',
         kind: PlanStakeKind.losing,
@@ -202,7 +205,96 @@ class _PlanScreenState extends State<PlanScreen> {
     for (final w in _extra) {
       if (ids.add(w.activityId)) wants.add(w);
     }
-    _plan = proposeDay(_gaps, wants.where((w) => !_dropped.contains(w.activityId)).toList(), _budget);
+    final fixed = <PlannedBlock>[];
+    final rest = <PlanWant>[];
+    for (final w in wants.where((w) => !_dropped.contains(w.activityId))) {
+      final m = _manual[w.activityId];
+      m == null ? rest.add(w) : fixed.add(PlannedBlock(w, m.$1, m.$2));
+    }
+    // Les blocs réglés à la main occupent leur créneau ; le reste se pose autour.
+    final busy = [
+      ..._blocks,
+      for (final f in fixed) ScheduleBlock(startTime: hmOf(f.startMin), durationMin: f.minutes, title: f.want.title, category: 'project'),
+    ];
+    final used = fixed.fold<int>(0, (s, f) => s + f.minutes);
+    _plan = [...fixed, ...proposeDay(freeGaps(busy, _effectiveWindow), rest, _budget - used < 0 ? 0 : _budget - used)]
+      ..sort((a, b) => a.startMin.compareTo(b.startMin));
+  }
+
+  /// Régler un bloc proposé : heure de début (pas de 15 min) et durée.
+  Future<void> _editPlanned(PlannedBlock p) async {
+    var start = p.startMin, minutes = p.minutes;
+    final res = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: _card,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) {
+        final clash = _blocks
+            .where((b) => blockStartMin(b) < start + minutes && blockStartMin(b) + b.durationMin > start)
+            .map((b) => '${b.startTime} ${b.title}')
+            .firstOrNull;
+        Widget stepper(String label, String value, VoidCallback minus, VoidCallback plus, {VoidCallback? onValue}) => Row(children: [
+              SizedBox(width: 72, child: Text(label, style: const TextStyle(fontSize: 13, color: _text3))),
+              IconButton(onPressed: minus, icon: const Icon(Icons.remove_circle_outline, color: _text2)),
+              Expanded(
+                child: InkWell(
+                  onTap: onValue,
+                  child: Center(child: Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Colors.white))),
+                ),
+              ),
+              IconButton(onPressed: plus, icon: const Icon(Icons.add_circle_outline, color: _text2)),
+            ]);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(p.want.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
+              Text('${hmOf(start)} → ${hmOf(start + minutes)} · ${p.want.reason}', style: const TextStyle(fontSize: 13, color: _text3)),
+              const SizedBox(height: 12),
+              stepper('Début', hmOf(start), () => set(() => start = (start - 15).clamp(0, 24 * 60 - 15)), () => set(() => start = (start + 15).clamp(0, 24 * 60 - 15)),
+                  onValue: () async {
+                final t = await showTimePicker(context: ctx, initialTime: TimeOfDay(hour: start ~/ 60, minute: start % 60));
+                if (t != null) set(() => start = t.hour * 60 + (t.minute ~/ 5) * 5);
+              }),
+              stepper('Durée', fmtMin(minutes), () => set(() => minutes = (minutes - 15).clamp(15, 6 * 60)), () => set(() => minutes = (minutes + 15).clamp(15, 6 * 60))),
+              Wrap(spacing: 6, children: [
+                for (final m in const [30, 45, 60, 90, 120])
+                  ChoiceChip(
+                    label: Text(fmtMin(m)),
+                    selected: minutes == m,
+                    selectedColor: kPlanAccent,
+                    labelStyle: TextStyle(color: minutes == m ? _ink : _text2, fontWeight: FontWeight.w700),
+                    backgroundColor: Colors.transparent,
+                    onSelected: (_) => set(() => minutes = m),
+                  ),
+              ]),
+              if (clash != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('Chevauche « $clash » déjà au programme.', style: const TextStyle(fontSize: 12.5, color: _gold)),
+                ),
+              const SizedBox(height: 14),
+              Row(children: [
+                TextButton(onPressed: () => Navigator.pop(ctx, 'drop'), child: const Text('Retirer', style: TextStyle(color: _ember))),
+                const Spacer(),
+                SizedBox(width: 160, child: _primary('Garder', () => Navigator.pop(ctx, 'ok'))),
+              ]),
+            ]),
+          ),
+        );
+      }),
+    );
+    if (!mounted || res == null) return;
+    setState(() {
+      if (res == 'drop') {
+        _manual.remove(p.want.activityId);
+        _dropped.add(p.want.activityId);
+        _extra.removeWhere((w) => w.activityId == p.want.activityId);
+      } else {
+        _manual[p.want.activityId] = (start, minutes);
+      }
+      _propose();
+    });
   }
 
   String _reasonOf(PlanStake s) => switch (s.id.split(':').first) {
@@ -512,7 +604,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget _fillView() {
     final total = _plan.fold<int>(0, (s, p) => s + p.minutes);
     final used = {for (final p in _plan) p.want.activityId};
-    final others = logic.state.activeActivities.where((a) => !a.isHabit && a.goalMin > 0 && !used.contains(a.id) && !logic.isActivitySnoozed(a.id, _day)).take(5).toList();
+    final others = logic.state.activeActivities.where((a) => !a.isHabit && a.goalMin > 0 && !isBasicNeedName(a.name) && !used.contains(a.id) && !logic.isActivitySnoozed(a.id, _day)).take(5).toList();
     final domains = logic.state.activeDomains;
     Color colorOf(String activityId) {
       final a = logic.state.activities.where((x) => x.id == activityId).firstOrNull;
@@ -532,7 +624,7 @@ class _PlanScreenState extends State<PlanScreen> {
       ),
       Expanded(
         child: ListView(children: [
-          _section('PROPOSÉ · GLISSE POUR RETIRER'),
+          _section('PROPOSÉ · TOUCHE POUR RÉGLER · GLISSE POUR RETIRER'),
           if (_plan.isEmpty)
             const Padding(padding: EdgeInsets.all(12), child: Text('Rien à poser : ajoute une activité ci-dessous, ou garde ta journée libre.', style: TextStyle(color: _text2))),
           for (final p in _plan)
@@ -540,14 +632,21 @@ class _PlanScreenState extends State<PlanScreen> {
               key: ValueKey('plan-${p.want.activityId}'),
               direction: DismissDirection.endToStart,
               onDismissed: (_) => setState(() {
+                _manual.remove(p.want.activityId);
                 _dropped.add(p.want.activityId);
                 _extra.removeWhere((w) => w.activityId == p.want.activityId);
                 _propose();
               }),
-              child: Container(
+              child: GestureDetector(
+                onTap: () => _editPlanned(p),
+                child: Container(
                 margin: const EdgeInsets.only(bottom: 6),
                 padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: _card, borderRadius: BorderRadius.circular(12)),
+                decoration: BoxDecoration(
+                  color: _card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: _manual.containsKey(p.want.activityId) ? Border.all(color: kPlanAccent.withValues(alpha: .5)) : null,
+                ),
                 child: Row(children: [
                   Container(width: 4, height: 34, decoration: BoxDecoration(color: colorOf(p.want.activityId), borderRadius: BorderRadius.circular(2))),
                   const SizedBox(width: 10),
@@ -558,7 +657,10 @@ class _PlanScreenState extends State<PlanScreen> {
                     ]),
                   ),
                   Text(p.want.reason, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _gold)),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.tune, size: 18, color: _text3),
                 ]),
+              ),
               ),
             ),
           if (others.isNotEmpty) ...[
