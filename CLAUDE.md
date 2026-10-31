@@ -928,7 +928,7 @@ sur le rythme), `freeGaps(blocks, DayWindow)` / `freeMinutes` (créneaux libres 
 à fond (`fillRatio` 50 / 80 / 95 % du libre), `proposeDay(gaps, wants, budget)` → `PlannedBlock` (blocs d'ACTIVITÉ, premier créneau
 qui tient, 10 min d'air, quart d'heure, raccourci jusqu'à 30 min), `planBlockOf`. Badge **Cap tenu** : `capHeld(DailySchedule)` =
 programme posé la VEILLE par le mode (`generatedBy:"plan"`, `plannedAt` < jour, pas `plannedSameDay`) et ≥ 70 % des blocs (hors
-miroirs) faits ; `capHeldCount`, paliers `kCapTiers` 5 · 20 · 50.
+miroirs) faits ; `capHeldCount`, paliers `kCapTiers` 5 · 20 · 50. **Lot 3 (badge)** : `cap-tenu` (Discipline, symbole `compass`, paliers 5 · 20 · 50) dans `computeBadges` — journées closes `capHeld`, faits « Journées posées la veille » · « Tenues à 70 % » · « La dernière ».
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 
