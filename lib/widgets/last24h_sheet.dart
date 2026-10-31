@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/domain_colors.dart';
+import 'package:productivitwo_v1/utils/hour_segments.dart';
 import 'package:productivitwo_v1/widgets/fiche.dart';
 
 /// Feuille « Dernières 24 h » (pilule 24 h de la barre du haut, refonte
@@ -86,7 +87,8 @@ class _Last24hState extends State<_Last24h> {
     final parts = byDomain.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
 
     final bins = logic.minutesByHourLast24(now);
-    final binDomains = logic.domainByHourLast24(now);
+    final order = [for (final d in domains) d.id];
+    final binSegs = [for (final m in logic.domainMinutesByHourLast24(now)) hourSegments(m, order)];
     final running = sessions.where((s) => s.endAt == null).firstOrNull;
 
     return ListView(
@@ -103,7 +105,7 @@ class _Last24hState extends State<_Last24h> {
                   '${running != null ? ' · ${_activity(running.activityId)?.name ?? 'un chrono'} tourne depuis ${_hm(running.startAt)}' : ''}',
         ),
         const SizedBox(height: 16),
-        _hourBand(cs, now, bins, binDomains, domains),
+        _hourBand(cs, now, bins, binSegs, domains),
         if (parts.isNotEmpty) ...[
           const SizedBox(height: 20),
           const FicheTitle('RÉPARTITION'),
@@ -150,7 +152,7 @@ class _Last24hState extends State<_Last24h> {
 
   /// 24 barres horaires (la dernière = l'heure en cours), remplies selon les
   /// minutes chronométrées, à la couleur du domaine dominant de l'heure.
-  Widget _hourBand(ColorScheme cs, DateTime now, List<int> bins, List<String?> binDomains, List<Domain> domains) {
+  Widget _hourBand(ColorScheme cs, DateTime now, List<int> bins, List<List<(String, int)>> binSegs, List<Domain> domains) {
     final firstHour = DateTime(now.year, now.month, now.day, now.hour).subtract(const Duration(hours: 23));
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
@@ -167,8 +169,10 @@ class _Last24hState extends State<_Last24h> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 1.5),
-                  child: _bar(cs, i < bins.length ? bins[i].clamp(0, 60) : 0,
-                      (i < binDomains.length ? domainColor(binDomains[i], domains) : null) ?? cs.primary, current: i == 23),
+                  child: _bar(cs, i < bins.length ? bins[i].clamp(0, 60) : 0, [
+                    for (final (id, min) in i < binSegs.length ? binSegs[i] : const <(String, int)>[])
+                      (domainColor(id, domains) ?? cs.primary, min),
+                  ], current: i == 23),
                 ),
               ),
           ]),
@@ -191,7 +195,9 @@ class _Last24hState extends State<_Last24h> {
     );
   }
 
-  Widget _bar(ColorScheme cs, int mins, Color color, {required bool current}) {
+  /// Une barre horaire : hauteur = minutes de l'heure, tranches empilées par
+  /// domaine (le premier domaine en bas).
+  Widget _bar(ColorScheme cs, int mins, List<(Color, int)> segs, {required bool current}) {
     final frac = mins / 60.0;
     return LayoutBuilder(builder: (_, c) {
       final h = c.maxHeight;
@@ -205,11 +211,14 @@ class _Last24hState extends State<_Last24h> {
           ),
         ),
         if (mins > 0)
-          Container(
-            height: (h * frac).clamp(3.0, h),
-            decoration: BoxDecoration(
-              color: current ? color : color.withValues(alpha: .8),
-              borderRadius: BorderRadius.circular(4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: (h * frac).clamp(3.0, h),
+              child: Column(children: [
+                for (final (c, m) in (segs.isEmpty ? [(cs.primary, 1)] : segs).reversed)
+                  Expanded(flex: m < 1 ? 1 : m, child: Container(color: current ? c : c.withValues(alpha: .8))),
+              ]),
             ),
           ),
       ]);

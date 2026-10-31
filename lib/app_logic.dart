@@ -4126,7 +4126,14 @@ extension TodayLogic on AppLogic {
 
   // Retourne le domainId dominant (le plus de minutes) pour chacune des 24 heures.
   // null = aucune session dans cette heure.
-  List<String?> domainByHourLast24(DateTime now) {
+  List<String?> domainByHourLast24(DateTime now) => domainMinutesByHourLast24(now).map((map) {
+        if (map.isEmpty) return null;
+        return map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+      }).toList();
+
+  /// Minutes par domaine pour chacune des 24 dernières heures (la dernière =
+  /// l'heure en cours) : barres empilées de la pilule et de la feuille 24 h.
+  List<Map<String, int>> domainMinutesByHourLast24(DateTime now) {
     final t = now;
     DateTime floorToHour(DateTime d) =>
         DateTime(d.year, d.month, d.day, d.hour);
@@ -4168,10 +4175,7 @@ extension TodayLogic on AppLogic {
       }
     }
 
-    return bins.map((map) {
-      if (map.isEmpty) return null;
-      return map.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-    }).toList();
+    return bins;
   }
 
   // ── Blocs journaliers ──────────────────────────────────────────────────────
