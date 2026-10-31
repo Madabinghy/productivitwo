@@ -109,6 +109,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
 import 'package:productivitwo_v1/widgets/last24h_sheet.dart';
+import 'package:productivitwo_v1/utils/hour_segments.dart';
 import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
 import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/siri_service.dart';
@@ -4432,12 +4433,17 @@ class _AppRootState extends State<AppRoot>
               builder: (context, _, __) {
                 final now = DateTime.now();
                 final bins24 = logic.minutesByHourLast24(now);
-                final domainIds = logic.domainByHourLast24(now);
-                final domColors = domainIds
-                    .map((id) => id == null
-                        ? null
-                        : domainColor(id, logic.state.activeDomains))
-                    .toList();
+                // Couleurs empilées par domaine (2026-10-31) ; une tranche
+                // < 10 min se fond dans le domaine majoritaire de l'heure.
+                final doms = logic.state.activeDomains;
+                final order = [for (final d in doms) d.id];
+                final segs = [
+                  for (final m in logic.domainMinutesByHourLast24(now))
+                    [
+                      for (final (id, min) in hourSegments(m, order, mergeBelow: 10))
+                        (domainColor(id, doms), min),
+                    ],
+                ];
                 final cs = Theme.of(context).colorScheme;
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
@@ -4459,7 +4465,7 @@ class _AppRootState extends State<AppRoot>
                         ),
                         // Barres élargies (2026-10-30, essai) : 192 px au lieu de 54.
                         child: MiniHourBars24h(
-                            bins: bins24, domainColors: domColors, width: 192),
+                            bins: bins24, segments: segs, width: 192),
                       ),
                     ),
                   ),
@@ -6874,6 +6880,9 @@ class MiniSleepBars extends StatelessWidget {
 class MiniHourBars24h extends StatelessWidget {
   final List<int> bins; // 24 valeurs (0..60)
   final List<Color?>? domainColors; // couleur dominante par heure (optionnel)
+  /// Tranches empilées par heure (couleur, minutes), du bas vers le haut ;
+  /// prime sur [domainColors].
+  final List<List<(Color?, int)>>? segments;
   final double height;
   final double width;
   final double gap;
@@ -6882,6 +6891,7 @@ class MiniHourBars24h extends StatelessWidget {
     super.key,
     required this.bins,
     this.domainColors,
+    this.segments,
     this.height = 18,
     this.width = 54,
     this.gap = 1.0,
@@ -6919,11 +6929,7 @@ class MiniHourBars24h extends StatelessWidget {
                     ),
                     Expanded(
                       flex: (doneFrac * 1000).round().clamp(0, 1000),
-                      child: Container(
-                        color: isCurrentHour
-                            ? barColor
-                            : barColor.withOpacity(0.75),
-                      ),
+                      child: _filled(i, barColor, isCurrentHour, cs),
                     ),
                   ],
                 ),
@@ -6933,6 +6939,23 @@ class MiniHourBars24h extends StatelessWidget {
         }),
       ),
     );
+  }
+}
+
+extension on MiniHourBars24h {
+  /// Partie remplie d'une barre : une couleur, ou les tranches empilées (le
+  /// premier domaine en bas).
+  Widget _filled(int i, Color barColor, bool current, ColorScheme cs) {
+    final segs = segments != null && i < segments!.length ? segments![i] : null;
+    Color tone(Color c) => current ? c : c.withOpacity(0.75);
+    if (segs == null || segs.length < 2) {
+      final c = segs != null && segs.isNotEmpty ? (segs.first.$1 ?? cs.primary) : barColor;
+      return Container(color: tone(c));
+    }
+    return Column(children: [
+      for (final (c, min) in segs.reversed)
+        Expanded(flex: min < 1 ? 1 : min, child: Container(color: tone(c ?? cs.primary))),
+    ]);
   }
 }
 
