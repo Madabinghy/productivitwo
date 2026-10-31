@@ -17,6 +17,9 @@ const _kChrono = Color(0xFF3FC7A0);
 const _kLate = Color(0xFFE8A33D);
 const _kOnTrack = Color(0xFF4CBF75);
 
+/// Texte / icône lisible sur un fond de la couleur du domaine.
+Color _onColor(Color c) => ThemeData.estimateBrightnessForColor(c) == Brightness.dark ? Colors.white : const Color(0xFF0D1A12);
+
 /// Une activité lue pour le lanceur : fait aujourd'hui, et sur la fenêtre de
 /// budget face à son minimum (même lecture que la page domaine).
 class LauncherRow {
@@ -299,25 +302,26 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         ? '${elapsed.inHours}:${two(elapsed.inMinutes % 60)}:${two(elapsed.inSeconds % 60)}'
         : '${two(elapsed.inMinutes)}:${two(elapsed.inSeconds % 60)}';
     final domain = logic.state.domains.where((d) => d.id == running.domainId).firstOrNull;
+    final dc = domainColor(running.domainId, logic.state.activeDomains) ?? _kChrono;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
-        gradient: LinearGradient(colors: [_kChrono.withValues(alpha: .22), _kChrono.withValues(alpha: .06)]),
-        border: Border.all(color: _kChrono.withValues(alpha: .45)),
+        gradient: LinearGradient(colors: [dc.withValues(alpha: .22), dc.withValues(alpha: .06)]),
+        border: Border.all(color: dc.withValues(alpha: .45)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Row(children: [
-          Icon(Icons.circle, size: 8, color: _kChrono),
-          SizedBox(width: 8),
-          Text('EN COURS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2, color: _kChrono)),
+        Row(children: [
+          Icon(Icons.circle, size: 8, color: dc),
+          const SizedBox(width: 8),
+          Text('EN COURS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2, color: dc)),
         ]),
         const SizedBox(height: 6),
         Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
           Expanded(child: Text(running.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900))),
           Text(time,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: _kChrono, fontFeatures: [FontFeature.tabularFigures()])),
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: dc, fontFeatures: const [FontFeature.tabularFigures()])),
         ]),
         if (domain != null || open != null)
           Text(
@@ -408,7 +412,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
           Tooltip(
             message: isRunning ? 'En cours' : 'Lancer le chrono',
             child: Material(
-              color: (isRunning ? const Color(0xFFE5675B) : _kChrono).withValues(alpha: .15),
+              color: (isRunning ? const Color(0xFFE5675B) : color).withValues(alpha: .15),
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
@@ -422,7 +426,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
                   width: 40,
                   height: 40,
                   child: Icon(isRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                      size: 22, color: isRunning ? const Color(0xFFE5675B) : _kChrono),
+                      size: 22, color: isRunning ? const Color(0xFFE5675B) : color),
                 ),
               ),
             ),
@@ -454,7 +458,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
         height: size,
         child: Stack(alignment: Alignment.center, children: [
           if (reached)
-            Container(decoration: const BoxDecoration(color: _kOnTrack, shape: BoxShape.circle))
+            Container(decoration: BoxDecoration(color: color, shape: BoxShape.circle))
           else
             SizedBox(
               width: size,
@@ -467,7 +471,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
                 backgroundColor: cs.onSurface.withValues(alpha: .1),
               ),
             ),
-          Icon(reached ? Icons.check_rounded : icon, size: 18, color: reached ? const Color(0xFF0D1A12) : color),
+          Icon(reached ? Icons.check_rounded : icon, size: 18, color: reached ? _onColor(color) : color),
         ]),
       ),
     );
@@ -476,6 +480,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
   /// Appui long : lancer sans limite, avec une durée, ou un Deep work.
   Future<void> _openLaunchOptions(Activity a, LauncherRow r) async {
     final domain = logic.state.domains.where((d) => d.id == a.domainId).firstOrNull;
+    final dc = domainColor(a.domainId, logic.state.activeDomains) ?? _kChrono;
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -483,8 +488,8 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
       builder: (ctx) {
         final cs = Theme.of(ctx).colorScheme;
         Widget dur(String label, VoidCallback onTap, {bool deep = false}) => ActionChip(
-              label: Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: deep ? _kLate : null)),
-              backgroundColor: deep ? _kLate.withValues(alpha: .14) : null,
+              label: Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: deep ? dc : null)),
+              backgroundColor: deep ? dc.withValues(alpha: .14) : null,
               onPressed: () {
                 Navigator.pop(ctx);
                 onTap();
@@ -512,7 +517,7 @@ class _ActivityLauncherState extends State<ActivityLauncher> {
                 },
                 icon: const Icon(Icons.play_arrow_rounded),
                 label: const Text('Lancer le chrono'),
-                style: FilledButton.styleFrom(backgroundColor: _kChrono, foregroundColor: const Color(0xFF08201A), minimumSize: const Size.fromHeight(46)),
+                style: FilledButton.styleFrom(backgroundColor: dc, foregroundColor: _onColor(dc), minimumSize: const Size.fromHeight(46)),
               ),
               const SizedBox(height: 14),
               Text('AVEC UNE DURÉE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1, color: cs.onSurface.withValues(alpha: .45))),
