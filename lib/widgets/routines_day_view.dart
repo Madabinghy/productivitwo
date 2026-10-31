@@ -130,7 +130,15 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
   /// Lignes d'un moment (filtrées en mode Journée parfaite).
   List<RoutineSlot> _rowsOf(RoutineDay day, String key) => widget.onlyMissing
       ? day.of(key).where((s) => !s.reached && s.activity.habitFreq == HabitFreq.daily).toList()
-      : day.of(key);
+      : day.of(key).where((s) => !_isDone(day, s)).toList();
+
+  /// Faite = atteinte ou « pas aujourd'hui » (2026-10-30, comme le lanceur) :
+  /// rangée dans « Faites · n » en bas. La routine gardée en carte après son
+  /// dernier +1 reste à sa place jusqu'à « Suivante ».
+  bool _isDone(RoutineDay day, RoutineSlot s) =>
+      (s.reached || day.dismissed.contains(s.id)) && s.id != _heldSlot(day)?.id;
+
+  bool _doneOpen = false;
 
   RoutineDay _day() => buildRoutineDay(
         activities: logic.state.activeActivities,
@@ -362,10 +370,11 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
       ]),
       if (!widget.onlyMissing) const SizedBox(height: 10),
       for (final m in logic.allMoments)
-        if (widget.onlyMissing ? _rowsOf(day, m.key).isNotEmpty : (day.of(m.key).isNotEmpty || m.timed)) ...[
+        if (_rowsOf(day, m.key).isNotEmpty || (!widget.onlyMissing && m.key == day.current.key)) ...[
           _momentSection(pal, day, m),
           const SizedBox(height: 10),
         ],
+      if (!widget.onlyMissing) _doneSection(pal, day),
       // Routines acquises (2026-10-30) : cochables, hors journée parfaite.
       if (!widget.onlyMissing) AcquiredSection(logic: logic, onPlus: (a) => _plus(a)),
     ]);
@@ -498,6 +507,47 @@ class _RoutinesDayViewState extends State<RoutinesDayView> {
           ),
         ),
       );
+
+  /// « Faites · n » replié : les routines atteintes ou écartées du jour,
+  /// toujours corrigeables (− / +, ouvrir).
+  Widget _doneSection(NowPalette pal, RoutineDay day) {
+    final done = day.slots.where((s) => _isDone(day, s)).toList();
+    if (done.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(color: pal.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: kBLine)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => setState(() => _doneOpen = !_doneOpen),
+          child: SizedBox(
+            height: 52,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(color: Color(0xFF4CBF75), shape: BoxShape.circle),
+                  child: const Icon(Icons.check_rounded, size: 15, color: Color(0xFF0D1A12)),
+                ),
+                const SizedBox(width: 10),
+                Text('Faites · ${done.length}', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: pal.text2)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(done.map((s) => s.activity.name).join(' · '),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: pal.text4)),
+                ),
+                Icon(_doneOpen ? Icons.arrow_drop_up : Icons.arrow_drop_down, size: 18, color: pal.text4),
+              ]),
+            ),
+          ),
+        ),
+        if (_doneOpen)
+          for (final s in done) _row(pal, day, s),
+      ]),
+    );
+  }
 
   Widget _momentSection(NowPalette pal, RoutineDay day, Moment m) {
     final isCur = m.key == day.current.key;
