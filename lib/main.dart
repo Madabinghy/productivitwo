@@ -108,6 +108,8 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
+import 'package:productivitwo_v1/utils/guerilla.dart' show kGuerillaKind;
+import 'package:productivitwo_v1/utils/offensive.dart' show kOffensiveKind;
 import 'package:productivitwo_v1/siri_service.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
@@ -2257,6 +2259,8 @@ class _AppRootState extends State<AppRoot>
       _openBlockFromNotif(p);
     } else if (p == NotificationService.kPayloadPerfect) {
       onToday((t) => t.openPerfectDaySheet());
+    } else if (p.startsWith('run:')) {
+      onToday((t) => t.openRun(p.substring(4)));
     } else {
       setState(() => _tab = _goNowTab());
     }
@@ -2343,6 +2347,23 @@ class _AppRootState extends State<AppRoot>
   }
 
   Future<void> _handleDeepLink(Uri uri) async {
+    // Widgets de l'écran d'accueil (2026-10-31) : …://perfect, …://program,
+    // …://today, …://guerilla, …://offensive.
+    const widgetHosts = {'perfect', 'program', 'today', 'guerilla', 'offensive'};
+    if (widgetHosts.contains(uri.host)) {
+      if (_state == null) {
+        _pendingDeepLink = uri;
+        return;
+      }
+      _onNotificationTap(0, switch (uri.host) {
+        'perfect' => NotificationService.kPayloadPerfect,
+        'program' => NotificationService.kPayloadProgram,
+        'guerilla' => 'run:$kGuerillaKind',
+        'offensive' => 'run:$kOffensiveKind',
+        _ => NotificationService.kPayloadToday,
+      });
+      return;
+    }
     // Widget Projets → ouvrir un projet :
     //   com.madabinghy.productivitwo://project/<projectId>
     if (uri.host == 'project' && uri.pathSegments.isNotEmpty) {
