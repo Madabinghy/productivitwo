@@ -206,3 +206,30 @@ String? trendLabel(ElanMonth m) {
   ];
   return (values: values, current: cur < 0 ? 2 : cur);
 }
+
+
+/// Moyenne GLISSANTE sur [window] jours (2026-10-31, retour user) : pour
+/// chacun des [count] derniers jours de [all] (du plus ancien au plus récent),
+/// l'élan moyen des [window] jours qui finissent ce jour-là, pondéré par le
+/// temps tenu. null = aucun pointage dans la fenêtre.
+List<double?> rollingElanMeans(List<ElanDay> all, int count, {int window = 7}) {
+  final out = <double?>[];
+  for (var g = all.length - count; g < all.length; g++) {
+    if (g < 0) {
+      out.add(null);
+      continue;
+    }
+    var w = 0.0, n = 0, sum = 0.0, plain = 0.0;
+    for (var k = g - window + 1; k <= g; k++) {
+      if (k < 0) continue;
+      for (final m in all[k].marks) {
+        sum += m.value * m.minutes;
+        w += m.minutes;
+        plain += m.value;
+        n++;
+      }
+    }
+    out.add(n == 0 ? null : (w > 0 ? sum / w : plain / n));
+  }
+  return out;
+}

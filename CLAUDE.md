@@ -390,8 +390,9 @@ bloc » ; web : « Pas disponible » dans « Modifier le bloc ». `skipped` + `s
   valeur, heure, choses faites dans la fenêtre), `hardestBucket`, `elanMonth` (30 derniers jours : moyenne, jours de flemme
   et gagnés, en forme, série de pointages, `previousMean` sur les 30 d'avant → `trendLabel`), `weeklyMeans`. UI = la
   **feuille du mode** (`showModeSheet(context, logic, badges:)`, `widgets/mode_sheet.dart`) : trois postures en tête, puis
-  AUJOURD'HUI, CETTE SEMAINE (`ElanWeekGraph` : un point par pointage, anneau vert = fenêtre de flemme gagnée, trait de
-  moyenne), FACE À LA FLEMME, 30 DERNIERS JOURS (`ElanMonthGrid`, tap = le jour) + 3 chiffres + TENDANCE, CE QUE ÇA VAUT
+  AUJOURD'HUI, CETTE SEMAINE (`ElanWeekGraph` : un point par pointage, anneau vert = fenêtre de flemme gagnée, COURBE de la
+  moyenne glissante sur 7 jours depuis le 2026-10-31 — `rollingElanMeans(days60, 7)`, `utils/elan_view.dart` : chaque jour = moyenne
+  pondérée des 7 jours qui finissent ce jour-là), FACE À LA FLEMME, 30 DERNIERS JOURS (`ElanMonthGrid`, tap = le jour) + 3 chiffres + TENDANCE, CE QUE ÇA VAUT
   (Marée haute, Vent contraire, Malgré tout, Baromètre). Programmes via `BadgeCenter.schedules` quand il est passé, sinon
   61 jours relus. **Pilule du mode** (`ModePill`, barre du haut mobile + carte MAINTENANT ; `WebModePill` web, visible
   dès qu'un pointage existe) = mode + traînée `ElanTrail` des trois créneaux du jour (`todayElanValues`). Stats : ligne
