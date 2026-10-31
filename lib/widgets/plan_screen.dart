@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/badge_center.dart';
@@ -77,6 +80,88 @@ class _PlanScreenState extends State<PlanScreen> {
     super.initState();
     // Le matin, on pose plutôt la journée en cours ; l'après-midi et le soir, demain.
     _tomorrow = logic.livedNowMinNow >= 12 * 60;
+    // Chrono : activé d'office si une activité « Planification » existe ; ensuite le dernier choix.
+    _chrono = _planningActivity() != null;
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getBool(_kChronoPref);
+      if (v != null && mounted) setState(() => _chrono = v);
+    }).catchError((_) {});
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _runningSession != null) setState(() {});
+    });
+  }
+
+  static const _kChronoPref = 'plan_chrono';
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Session? get _runningSession {
+    final a = _planningActivity();
+    if (a == null) return null;
+    return logic.state.sessions.where((s) => s.endAt == null && !s.deleted && s.activityId == a.id).firstOrNull;
+  }
+
+  void _setChrono(bool v) {
+    setState(() => _chrono = v);
+    SharedPreferences.getInstance().then((p) => p.setBool(_kChronoPref, v)).catchError((_) => false);
+  }
+
+  /// Lance le chrono sur « Planification » (activité créée au besoin dans Organisation).
+  void _startPlanningChrono() {
+    var a = _planningActivity();
+    if (a == null) {
+      final domains = logic.state.activeDomains;
+      final d = domains.where((d) => d.name.toLowerCase().contains('organis')).firstOrNull ?? domains.firstOrNull;
+      if (d == null) return;
+      a = Activity(domainId: d.id, name: 'Planification', goalMin: 0);
+      logic.state.activities.add(a);
+      logic.onChange();
+    }
+    logic.start(a.id);
+  }
+
+  /// Pastille du chrono dans la barre : temps qui défile, tap = arrêter / relancer.
+  Widget _chronoPill() {
+    final s = _runningSession;
+    if (s == null && _step == _Step.cap) return const SizedBox.shrink();
+    final running = s != null;
+    String label = 'Chrono';
+    if (running) {
+      final d = DateTime.now().difference(s.startAt);
+      final m = d.inMinutes, sec = d.inSeconds % 60;
+      label = '$m:${sec.toString().padLeft(2, '0')}';
+    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Material(
+        color: running ? kPlanAccent.withValues(alpha: .16) : Colors.transparent,
+        shape: StadiumBorder(side: BorderSide(color: running ? kPlanAccent : Colors.white.withValues(alpha: .2))),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: () => setState(() {
+            if (running) {
+              logic.stopActive();
+            } else {
+              _startPlanningChrono();
+            }
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(running ? Icons.timer : Icons.play_arrow_rounded, size: 15, color: running ? kPlanAccent : _text3),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: running ? const Color(0xFFC7D6FF) : _text3, fontFeatures: const [FontFeature.tabularFigures()])),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 
   DateTime get _day {
@@ -308,19 +393,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
   void _begin() {
     _startedAt = DateTime.now();
-    if (_chrono) {
-      var a = _planningActivity();
-      if (a == null) {
-        final domains = logic.state.activeDomains;
-        final d = domains.where((d) => d.name.toLowerCase().contains('organis')).firstOrNull ?? domains.firstOrNull;
-        if (d != null) {
-          a = Activity(domainId: d.id, name: 'Planification', goalMin: 0);
-          logic.state.activities.add(a);
-          logic.onChange();
-        }
-      }
-      if (a != null) logic.start(a.id);
-    }
+    if (_chrono && _runningSession == null) _startPlanningChrono();
     if (_week) {
       setState(() => _step = _Step.weekStakes);
       _loadWeek();
@@ -352,7 +425,7 @@ class _PlanScreenState extends State<PlanScreen> {
 
   void _finish() {
     final a = _planningActivity();
-    if (_chrono && a != null && logic.state.sessions.any((s) => s.endAt == null && !s.deleted && s.activityId == a.id)) {
+    if (a != null && _runningSession != null) {
       logic.stopActive();
     }
     Navigator.of(context).pop();
@@ -387,7 +460,8 @@ class _PlanScreenState extends State<PlanScreen> {
   Widget _top(String label, int stepIdx) => SizedBox(
         height: 48,
         child: Row(children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1, color: kPlanAccent))),
+          Expanded(child: Text(label, maxLines: 2, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 1, color: kPlanAccent))),
+          _chronoPill(),
           if (stepIdx > 0)
             for (var i = 1; i <= 4; i++)
               Container(
@@ -484,7 +558,7 @@ class _PlanScreenState extends State<PlanScreen> {
               Text(a == null ? 'l\'activité sera créée' : 'ce temps compte, comme le reste', style: const TextStyle(fontSize: 12, color: _text3)),
             ]),
           ),
-          Switch(value: _chrono, activeColor: kPlanAccent, onChanged: (v) => setState(() => _chrono = v)),
+          Switch(value: _chrono, activeColor: kPlanAccent, onChanged: _setChrono),
         ]),
       ),
       const Spacer(),
