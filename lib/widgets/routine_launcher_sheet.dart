@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:productivitwo_v1/app_logic.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -269,7 +270,8 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     );
   }
 
-  /// Ligne : anneau (compteur) · nom + une ligne d'infos (fiche) · un lanceur.
+  /// Ligne (retour user 2026-10-31) : l'anneau « + » compte une occurrence
+  /// tout de suite, tap sur la ligne = le compteur, appui long = la fiche.
   Widget _row(ColorScheme cs, RoutineDay day, RoutineSlot s) {
     final a = s.activity;
     final t = s.todo;
@@ -300,15 +302,23 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
-      onTap: () => _openFiche(a),
-      onLongPress: () => _openCounter(a),
+      onTap: () => _openCounter(a),
+      onLongPress: () => _openFiche(a),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Row(children: [
-          InkWell(
-            customBorder: const CircleBorder(),
-            onTap: () => _openCounter(a),
-            child: _ring(cs, s, dc, dismissed: dismissed),
+          Tooltip(
+            message: s.reached ? 'Compteur' : '+1',
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: s.reached
+                  ? () => _openCounter(a)
+                  : () {
+                      HapticFeedback.lightImpact();
+                      _bump(a, 1);
+                    },
+              child: _ring(cs, s, dc, dismissed: dismissed),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
