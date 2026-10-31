@@ -871,8 +871,8 @@ routines ; chronos et actions comptés côté app seulement.
 
 ## Guérilla (2026-10-30, maquette validée « Mode Guérilla »)
 
-« La flemme ou moi » : pas bien, mais debout. Carte « Guérilla · la flemme ou moi » sous les trois modes de la feuille du mode
-(`_guerillaCard`, `mode_sheet.dart`) → écran plein `widgets/guerilla_screen.dart` (`showGuerillaScreen`) : le corps de 1 à 5 (requis
+« La flemme ou moi » : pas bien, mais debout. Lanceur ⚡ de l'en-tête d'Aujourd'hui (la carte de la feuille du mode est retirée le
+2026-10-31, doublon) → écran plein `widgets/guerilla_screen.dart` (`showGuerillaScreen`) : le corps de 1 à 5 (requis
 pour lancer), puis UN coup à la fois (minuteur 5 min, « Fait · suivant » · « Pas ça » sans question · « Encore 5 min » · « Je m'arrête »),
 un point d'étape tous les 3 coups (eau + respirations, Mieux / Pareil → on continue, Moins bien → bilan), bilan : coups gagnés, corps
 avant → après, « Sur tes n guérillas, k t'ont fait remonter », badge. File = logique pure `utils/guerilla.dart` (`buildGuerillaQueue` :
@@ -905,8 +905,8 @@ de l'action précédente s'arrête quand la suivante n'a pas d'activité.
 
 ## Offensive (2026-10-30, maquette validée « Offensive »)
 
-L'équivalent EN FORME de la Guérilla : avancer à fond. Carte « Offensive · en forme, à fond » dans la feuille du mode (en tête
-quand le mode est En forme, sinon sous la Guérilla ; `_launchCard`) → écran `widgets/offensive_screen.dart` (`showOffensiveScreen`) :
+L'équivalent EN FORME de la Guérilla : avancer à fond. Lanceur ↗ de l'en-tête d'Aujourd'hui, ▶ d'un bloc Deep work (la carte de la
+feuille du mode est retirée le 2026-10-31) → écran `widgets/offensive_screen.dart` (`showOffensiveScreen`) :
 durée d'un coup (10 / 15 / 25 min) et FRONT (un projet — `offensiveFronts` : en retard d'abord, puis séance la plus proche, ligne
 `frontLine` « 2 en retard · séance le 9 nov · 4 actions prêtes » — ou « Tout mélanger » = la prochaine action de chaque projet, en
 retard d'abord). Puis les actions l'une après l'autre (`buildOffensiveQueue` / `openTargets` : hors tâches à venir, par date de travail
@@ -990,7 +990,10 @@ de FACE À LA FLEMME, des trois chiffres du mois et de TENDANCE — ton creux (`
 moment, `bandMomentOf`), « En Flemme, tu démarres quand même k/n » (`lowWindowsOf`), « Après une guérilla, tu remontes k/n »
 (`guerillaRebound` : `bodyAfter` > `bodyBefore`), « Ta tendance » (`weeklyLowPct` : part de Flemme sur 4 semaines) ; la grille des
 30 jours reste dessous (tap = un jour en détail), puis les badges du mode. `ElanWeekGraph` n'est plus affiché ; la moyenne glissante sur 7 jours reste en
-titre de la section (« dit 6 j sur 7 · élan 7 j 2,9 ↗ », `_rollingLabel`).
+titre de la section (« dit 6 j sur 7 · élan 7 j 2,9 ↗ », `_rollingLabel`). **Feuille allégée** (2026-10-31, retour user « trop chargée ») :
+visibles = les trois modes, CETTE SEMAINE (bandes + TON TEMPS DIT) et 30 DERNIERS JOURS en UN graphique (`_monthBars` : une barre
+par jour empilée par mode, vide = rien de dit, tap = le jour) ; EN SAVOIR PLUS replié (`_more`) = victoires du jour, CE QUE ÇA
+T'APPREND, badges du mode ; les cartes Guérilla / Offensive (doublon des lanceurs d'Aujourd'hui) et la grille des 30 jours sont retirées.
 
 ## Blocs de temps (2026-10-31, maquette validée « Planifier du temps, pas des tâches »)
 
