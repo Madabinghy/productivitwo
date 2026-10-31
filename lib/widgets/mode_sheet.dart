@@ -125,7 +125,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final wm = elanMetrics(week);
     final month = elanMonth(days60);
     final text3 = cs.onSurface.withValues(alpha: .55);
-    final hardest = hardestBucket(week);
 
     Widget title(String t, {String? right, Color? rightColor}) => Padding(
           padding: const EdgeInsets.only(top: 18, bottom: 8),
@@ -161,26 +160,10 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         ..._winsSection(cs),
         title('CETTE SEMAINE', right: wm.count == 0 ? 'rien de dit' : 'dit ${saidDays(week)} j sur 7${_rollingLabel(days60)}'),
         ..._weekBands(cs, dark, marks, week, now),
-        if (wm.lowCount > 0) ...[
-          title('FACE À LA FLEMME', right: '${wm.lowWon} / ${wm.lowCount} · ${(wm.discipline! * 100).round()} %', rightColor: kPalierGreen),
-          _note(cs,
-              '${wm.lowCount} fenêtre${wm.lowCount > 1 ? 's' : ''} pointée${wm.lowCount > 1 ? 's' : ''} Flemme cette semaine, ${wm.lowWon} où tu as quand même fait quelque chose.'
-              '${hardest == null ? '' : ' ${_bucketSentence(hardest)} est ton créneau difficile.'}'),
-        ],
-        title('30 DERNIERS JOURS', right: _schedules == null ? 'chargement…' : '${month.pointedDays} jour${month.pointedDays > 1 ? 's' : ''} pointé${month.pointedDays > 1 ? 's' : ''}'),
+        title('CE QUE ÇA T’APPREND', right: '30 jours'),
+        ..._learnSection(cs, dark, marks, days60, now),
+        title('30 DERNIERS JOURS', right: _schedules == null ? 'chargement…' : 'touche un jour'),
         ElanMonthGrid(month: month, onDay: (d) => showElanDaySheet(context, logic, marks: marks, day: d, badges: widget.badges)),
-        const SizedBox(height: 10),
-        Row(children: [
-          Expanded(child: _stat(cs, month.mean == null ? '—' : fmtElan(month.mean!), 'élan moyen sur le mois')),
-          const SizedBox(width: 8),
-          Expanded(child: _stat(cs, '${month.lowDays} j', 'de flemme · ${month.lowDaysWon} gagné${month.lowDaysWon > 1 ? 's' : ''}')),
-          const SizedBox(width: 8),
-          Expanded(child: _stat(cs, '${month.highDays} j', 'en forme')),
-        ]),
-        if (trendLabel(month) case final tl?) ...[
-          title('TENDANCE', right: tl, rightColor: month.delta! > 0.15 ? kPalierGreen : (month.delta! < -0.15 ? kPalierCoral : null)),
-          _note(cs, _trendSentence(month)),
-        ],
         if (widget.badges?.deck case final deck?) ...[
           title('CE QUE ÇA VAUT', right: 'badges d’élan'),
           for (final id in const ['maree-haute', 'vent-contraire', 'malgre-tout', 'barometre'])
@@ -200,6 +183,113 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     final prev = r.first;
     final arrow = prev == null ? '' : (today - prev > 0.05 ? ' ↗' : (today - prev < -0.05 ? ' ↘' : ' →'));
     return ' · élan 7 j ${fmtElan(today)}$arrow';
+  }
+
+  /// « Ce que ça t'apprend » (maquette « Ton élan, autrement », PR 2) : ton
+  /// creux, la flemme gagnée, la remontée après une guérilla, la tendance.
+  List<Widget> _learnSection(ColorScheme cs, bool dark, List<MoodMark> marks, List<ElanDay> days60, DateTime now) {
+    final logic = widget.logic;
+    final last30 = days60.sublist(days60.length - 30);
+    final cells30 = [for (final d in last30) elanCellsOfDay(marks, d.ymd, now, logic.dayStartMin)];
+    final byMoment = lowByMoment(cells30, logic.dayStartMin);
+    final hard = hardestMoment(byMoment);
+    final windows = lowWindowsOf(last30);
+    final rebound = guerillaRebound(logic.state.chainRuns, now.subtract(const Duration(days: 30)));
+    final weekly = weeklyLowPct(cells30.sublist(cells30.length - 28));
+    final low = modeChipColor(DayMode.low, dark: dark);
+    final text2 = cs.onSurface.withValues(alpha: .7);
+    final text3 = cs.onSurface.withValues(alpha: .55);
+    Widget card(List<Widget> children) => Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(16)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+        );
+    Widget fact(String big, Color c, String title, String sub) => card([
+          Row(children: [
+            SizedBox(width: 78, child: Text(big, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: c))),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                Text(sub, style: TextStyle(fontSize: 12.5, color: text3)),
+              ]),
+            ),
+          ]),
+        ]);
+    const momentLabel = {'matin': 'matin', 'aprem': 'après-midi', 'soir': 'soir'};
+    final maxM = byMoment.values.fold<int>(0, (a, b) => a > b ? a : b);
+    final out = <Widget>[];
+    if (hard != null) {
+      out.add(card([
+        Text('Ton creux : ${hard == 'matin' ? 'le matin' : (hard == 'aprem' ? 'l’après-midi' : 'le soir')}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 78,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (final k in const ['matin', 'aprem', 'soir'])
+              Expanded(
+                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  Container(
+                    width: 38,
+                    height: maxM == 0 ? 2 : 2 + 52 * byMoment[k]! / maxM,
+                    decoration: BoxDecoration(color: low.withValues(alpha: k == hard ? 1 : .55), borderRadius: const BorderRadius.vertical(top: Radius.circular(6))),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(momentLabel[k]!, style: TextStyle(fontSize: 12, fontWeight: k == hard ? FontWeight.w800 : FontWeight.w500, color: k == hard ? cs.onSurface : text3)),
+                ]),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 4),
+        Text('temps passé en Flemme, par moment de la journée', style: TextStyle(fontSize: 12, color: text3)),
+      ]));
+    }
+    if (windows.total > 0) {
+      out.add(fact('${windows.won}/${windows.total}', low, 'En Flemme, tu démarres quand même',
+          'fenêtres de flemme où tu as fait quelque chose · ${(windows.won * 100 / windows.total).round()} %'));
+    }
+    if (rebound.total > 0) {
+      out.add(fact('${rebound.up}/${rebound.total}', modeChipColor(DayMode.high, dark: dark), 'Après une guérilla, tu remontes',
+          'ton corps va mieux à la fin de ${rebound.up} guérilla${rebound.up > 1 ? 's' : ''} sur ${rebound.total}'));
+    }
+    final known = weekly.whereType<int>().toList();
+    if (known.length >= 2) {
+      final first = weekly.firstWhere((v) => v != null)!;
+      final lastV = weekly.lastWhere((v) => v != null)!;
+      final maxW = known.fold<int>(1, (a, b) => a > b ? a : b);
+      out.add(card([
+        const Text('Ta tendance', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 56,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            for (var i = 0; i < weekly.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(
+                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  if (weekly[i] != null) Text('${weekly[i]} %', style: TextStyle(fontSize: 10.5, color: text3)),
+                  Container(
+                    height: weekly[i] == null ? 2 : 2 + 36 * weekly[i]! / maxW,
+                    decoration: BoxDecoration(color: low.withValues(alpha: i == weekly.length - 1 ? 1 : .5), borderRadius: const BorderRadius.vertical(top: Radius.circular(4))),
+                  ),
+                ]),
+              ),
+            ],
+          ]),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          lastV < first - 3
+              ? 'Moins de temps en Flemme qu’il y a un mois · part de flemme, semaine par semaine'
+              : (lastV > first + 3 ? 'Plus de temps en Flemme qu’il y a un mois · part de flemme, semaine par semaine' : 'Stable depuis un mois · part de flemme, semaine par semaine'),
+          style: TextStyle(fontSize: 12.5, color: text2),
+        ),
+      ]));
+    }
+    if (out.isEmpty) {
+      out.add(_note(cs, 'Dis ton mode quelques jours : ce que ça t’apprend (ton creux, ta façon de repartir) apparaîtra ici.'));
+    }
+    return out;
   }
 
   static const _modePromise = {
@@ -457,15 +547,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
         child: Text(t, style: TextStyle(fontSize: 12.5, height: 1.4, color: cs.onSurface.withValues(alpha: .8))),
       );
 
-  Widget _stat(ColorScheme cs, String v, String l) => Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(v, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-          Text(l, style: TextStyle(fontSize: 10.5, height: 1.25, color: cs.onSurface.withValues(alpha: .55))),
-        ]),
-      );
-
   Widget _badgeRow(ColorScheme cs, BadgeState b) {
     final text3 = cs.onSurface.withValues(alpha: .55);
     final String sub;
@@ -508,20 +589,6 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     );
   }
 
-  String _trendSentence(ElanMonth m) {
-    final weeks = weeklyMeans(m.days).where((w) => w.mean != null).toList();
-    final parts = <String>[];
-    if (weeks.length >= 2) {
-      final lowest = weeks.reduce((a, b) => a.mean! <= b.mean! ? a : b);
-      final last = weeks.last;
-      parts.add('La semaine la plus basse était à ${fmtElan(lowest.mean!)}, la dernière est à ${fmtElan(last.mean!)}.');
-    }
-    final streak = m.pointedStreak;
-    if (streak >= 3) parts.add('Aucun jour sans pointage depuis $streak jours : Baromètre avance.');
-    return parts.isEmpty ? 'Les semaines se lisent en lignes dans la grille.' : parts.join(' ');
-  }
-
-  static String _bucketSentence(String b) => switch (b) { 'matin' => 'Le matin', 'aprem' => 'L’après-midi', _ => 'Le soir' };
 }
 
 /// Accent des moyennes d'élan (ambre, comme le « pour l'instant » des badges).
