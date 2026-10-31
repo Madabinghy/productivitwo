@@ -218,7 +218,10 @@ class _FocusScreenState extends State<_FocusScreen> {
   TaskAction get a => _item?.action ?? widget.action;
   Project? get _project => _item == null ? widget.project : _item!.project;
   ProjectTask? get _task => _item == null ? widget.task : _item!.task;
-  Activity? get _owner => _item == null ? widget.ownerActivity : (_item!.project == null ? widget.bloc!.activity : null);
+  Activity? get _owner => _item == null ? widget.ownerActivity : (_item!.project == null ? (_item!.activity ?? widget.bloc!.activity) : null);
+  /// Activité du chrono : celle de l'élément pour un bloc de TEMPS (chaque
+  /// action a la sienne), sinon celle de la page.
+  Activity? get _chronoAct => widget.bloc?.block.timeBlock != null ? _item?.activity : widget.chronoActivity;
   int _remaining(BlockFocus b) => b.remainingMin(DateTime.now(), dayStartMin: logic.dayStartMin);
 
   /// Prochain élément ouvert de la file après celui-ci (en boucle), sinon null.
@@ -309,7 +312,7 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   void _start({int? minutes}) {
-    final act = widget.chronoActivity;
+    final act = _chronoAct;
     if (act == null) return;
     HapticFeedback.lightImpact();
     logic.start(act.id, taskId: _task?.id, actionId: a.id);
@@ -320,7 +323,7 @@ class _FocusScreenState extends State<_FocusScreen> {
   }
 
   Future<void> _deepWork() async {
-    final act = widget.chronoActivity;
+    final act = _chronoAct;
     if (act == null) return;
     final block = deepWorkBlock(
       DeepWorkCandidate(
@@ -445,7 +448,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     final stepsTotal = a.checklist.length;
     final next = nextChecklistItem(a);
     final after = _phase == _Phase.after;
-    final canChrono = widget.chronoActivity != null;
+    final canChrono = _chronoAct != null;
 
     return Scaffold(
       appBar: AppBar(
@@ -617,10 +620,10 @@ class _FocusScreenState extends State<_FocusScreen> {
                 Expanded(child: Text(a.done ? 'Action faite.' : 'Toutes les étapes sont faites.', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800))),
               ]),
             ],
-            if (a.allContexts.isNotEmpty || (r != null && widget.chronoActivity != null)) ...[
+            if (a.allContexts.isNotEmpty || (r != null && _chronoAct != null)) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 6, children: [
-                if (r != null && widget.chronoActivity != null) _pill('● chrono · ${widget.chronoActivity!.name}', kBrickRunning),
+                if (r != null && _chronoAct != null) _pill('● chrono · ${_chronoAct!.name}', kBrickRunning),
                 for (final c in a.allContexts) _pill(c, text3),
               ]),
             ],
@@ -832,7 +835,7 @@ class _FocusScreenState extends State<_FocusScreen> {
     final remaining = _remaining(bloc);
     final today = DateTime.now();
     return [
-      Text('LA FILE DU BLOC · ${open.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
+      Text(bloc.block.timeBlock != null ? 'SUR QUOI TU PARS ? · ${open.length}' : 'LA FILE DU BLOC · ${open.length}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: text3)),
       const SizedBox(height: 8),
       for (final i in open)
         Padding(
@@ -850,7 +853,9 @@ class _FocusScreenState extends State<_FocusScreen> {
               child: Row(children: [
                 Expanded(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (bloc.queue[i].context case final c?) Text(c, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: text3)),
+                    if (bloc.queue[i].reason case final r?)
+                      Text(r, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .6, color: r == 'EN RETARD' ? kPalierCoral : kBrickRunning)),
+                    if (bloc.queue[i].context ?? bloc.queue[i].activity?.name case final c?) Text(c, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: text3)),
                     Text(bloc.queue[i].action.title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
                   ]),
                 ),
@@ -899,7 +904,7 @@ class _FocusScreenState extends State<_FocusScreen> {
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         );
-    final canChrono = widget.chronoActivity != null;
+    final canChrono = _chronoAct != null;
     final nextIdx = _nextIndex;
     switch (_phase) {
       case _Phase.before:
@@ -973,7 +978,7 @@ class _FocusScreenState extends State<_FocusScreen> {
                   action: nextAction,
                   project: _project,
                   task: t,
-                  chronoActivity: widget.chronoActivity,
+                  chronoActivity: _chronoAct,
                   sync: widget.sync,
                 )),
               ));
@@ -1031,7 +1036,7 @@ class _BlockEndScreenState extends State<_BlockEndScreen> {
     outcome = blockOutcome(
       block: b.block,
       date: b.date,
-      activityId: b.activity.id,
+      activityId: b.block.timeBlock != null ? null : b.activity.id,
       queue: b.queue,
       sessions: widget.logic.state.sessions,
       now: DateTime.now(),

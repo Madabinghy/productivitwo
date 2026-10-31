@@ -1001,9 +1001,15 @@ dans son créneau (`loggedMinForBlock`, `sessionMatchesBlock`), donc il est fait
 blocs de temps, mémorisée `plan_time_mode`) — `timeBlockWants` (`utils/planning.dart` : Deep work 2 h, Petites choses 45 min, Deep work
 1 h 30, Tampon 45 min, au plus trois Deep work, clés `~time:<kind>:n`, `timeKindOf`), « pour : … » sous un Deep work = aperçu (parole,
 projets en retard), « + Deep work · + Petites choses · + Tampon », réglage à la main comme avant ; posé par `planOrTimeBlockOf`. ▶ sur un
-bloc de temps (`_launchTimeBlock`, main.dart) : choix de l'activité du chrono. À venir (lot 2) : « Sur quoi tu pars ? » (file classée :
-parole, séances, retards, visées, prochaines actions ; changer d'action en cours de bloc), « Le bloc est fini » (ce que tu as vraiment
-fait), badge Deep work sur un bloc `deep` tenu 60 min, `plan_day` qui pose des blocs de temps.
+bloc de temps (`_launchTimeBlock`, main.dart) : choix de l'activité du chrono. **Lot 2 livré** : ▶ = « Sur quoi tu pars ? » — la page focus en
+mode bloc (`showBlockFocusScreen`, activité de façade `~time:<kind>` au nom du bloc) sur `timeBlockQueue` (`utils/block_queue.dart`,
+calculée AU LANCEMENT : PAROLE, SÉANCE PROCHE (prépa à 7 j), EN RETARD, VISÉE AUJOURD'HUI, À RE-VISER, PROCHAINE ACTION de chaque projet
+vivant ; Petites choses = actions ≤ 20 min devant ; `QueueItem.activity` = chrono de l'action (liée, sinon projet, sinon porteuse),
+`QueueItem.reason` affiché) ; changer d'action sur place ; « Terminer le bloc » → BLOC TERMINÉ avec tout chrono du créneau
+(`blockOutcome(activityId: null)`), « Caser un bloc … demain » garde `timeBlock`. Tampon ou file vide → choix de l'activité du chrono.
+Badge Deep work : un bloc `deep` compte dès 60 min cumulées de chronos dans son créneau (`deepWorkSessions`). Serveur (⚠️ `firebase
+deploy --only functions`) : `schedule_day` accepte `timeBlock`, `BLOCK_RULES` dit « blocs de temps par défaut ». Web : un bloc de temps
+s'affiche comme un bloc libre (pas de « Sur quoi tu pars ? »).
 
 ## Montre suisse et Métronome (2026-10-30, maquette validée)
 

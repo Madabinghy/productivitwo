@@ -7,7 +7,12 @@
 // pauses, préparations et rendez-vous ne sont pas concernés. Pure, pas d'I/O.
 
 export const BLOCK_RULES =
-  "BLOCS : 30 min minimum pour un bloc de travail. Pour le travail de fond, pose des blocs d'ACTIVITÉ " +
+  "BLOCS : par défaut, pose des blocs de TEMPS (timeBlock, sans source) — « Deep work » (deep, 1 h 30 à 2 h, le " +
+  "matin de préférence), « Petites choses » (small, 45 min, mails / appels / petites actions) et « Tampon » " +
+  "(buffer, 45 min, en fin de journée) : l'utilisateur choisit QUOI faire au moment de lancer le bloc (l'app lui " +
+  "propose sa parole, ses retards, ses visées), car un programme détaillé est faux dès la première interruption. " +
+  "Ne détaille par activité que si l'utilisateur le demande. " +
+  "30 min minimum pour un bloc de travail. Pour un travail de fond détaillé, pose des blocs d'ACTIVITÉ " +
   "(activityId seul, sans projectId / taskId / actionId, titre = le nom de l'activité, ex. « Enseignement ») : " +
   "au lancement, l'app propose la prochaine action de chaque projet lié à l'activité (les en retard d'abord) et " +
   "le bloc ne retient que le temps — JAMAIS un bloc par action, jamais une action recopiée dans le programme. " +

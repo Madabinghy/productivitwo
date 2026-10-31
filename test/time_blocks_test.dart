@@ -3,6 +3,8 @@ import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/day_settle.dart';
 import 'package:productivitwo_v1/utils/planning.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart';
+import 'package:productivitwo_v1/utils/badges_logic.dart' show deepWorkSessions;
+import 'package:productivitwo_v1/utils/block_queue.dart';
 
 void main() {
   test('blocs de temps pour un budget', () {
@@ -34,4 +36,36 @@ void main() {
     expect(blocksSettledByChrono(blocks: [b], sessions: sessions, date: day, now: day.add(const Duration(days: 1))), [b]);
     expect(freeBlockToClaim([b], 9 * 60 + 30), isNull);
   });
+
+  test('badge Deep work : un bloc de temps tenu 60 min cumulées', () {
+    final day = DateTime(2026, 11, 2);
+    final b = ScheduleBlock(startTime: '09:00', durationMin: 120, title: 'Deep work', category: 'project', timeBlock: 'deep');
+    final sch = DailySchedule(date: '2026-11-02', blocks: [b]);
+    final s1 = [
+      Session(activityId: 'a', startAt: day.add(const Duration(hours: 9)), endAt: day.add(const Duration(hours: 9, minutes: 35))),
+      Session(activityId: 'b', startAt: day.add(const Duration(hours: 9, minutes: 40)), endAt: day.add(const Duration(hours: 10, minutes: 10))),
+    ];
+    expect(deepWorkSessions(s1, [sch]).length, 1);
+    expect(deepWorkSessions(s1.take(1).toList(), [sch]), isEmpty);
+  });
+
+  test('file d\'un bloc de temps : parole, retard, visée, prochaine action', () {
+    final today = DateTime(2026, 11, 2);
+    final lateA = TaskAction(id: 'late', title: 'En retard', dueDate: DateTime(2026, 10, 30));
+    final nextA = TaskAction(id: 'next', title: 'Suivante');
+    final t = ProjectTask(id: 't', title: 'T', startDate: DateTime(2026, 10, 1), actions: [nextA, lateA]);
+    final p = Project(id: 'p', title: 'P', createdBy: 'user', startDate: DateTime(2026, 10, 1), linkedActivityId: 'w', tasks: [t]);
+    final own = TaskAction(id: 'own', title: 'Visée', focusDate: today);
+    final pledge = TaskAction(id: 'pl', title: 'Parole', focusDate: today);
+    final acts = [
+      Activity(id: 'w', domainId: 'd', name: 'Travail'),
+      Activity(id: 'x', domainId: 'd', name: 'Perso', ownActions: [own, pledge]),
+    ];
+    final q = timeBlockQueue(projects: [p], activities: acts, today: today, paroleIds: {'pl'});
+    expect(q.map((e) => e.id).toList(), ['pl', 'late', 'own']); // la prochaine action du projet est déjà la plus en retard
+    expect(q.first.reason, 'PAROLE');
+    expect(q[1].activity?.id, 'w');
+    expect(q[2].activity?.id, 'x');
+  });
 }
+
