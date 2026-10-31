@@ -1227,17 +1227,37 @@ Set<String> newTierKeys(BadgeDeck d, Set<String> seen) => acquiredTierKeys(d).di
 /// au moins [minMin] minutes d'affilée dans son créneau. Un par bloc, dans
 /// l'ordre des fins. Un chrono long sans bloc de deep work (Sommeil, séance,
 /// activité libre) ne compte pas : le deep work est un choix, pas une durée.
+/// Un bloc de TEMPS Deep work (`timeBlock: "deep"`, 2026-10-31) compte dès que
+/// les chronos de son créneau, toutes activités, cumulent [minMin] minutes.
 List<DateTime> deepWorkSessions(List<Session> sessions, List<DailySchedule> schedules, {int minMin = 60}) {
   final out = <DateTime>[];
   for (final sch in schedules) {
     final day = DateTime.tryParse(sch.date);
     if (day == null) continue;
     for (final b in sch.blocks) {
-      if (b.kind != 'deepwork' || b.status == 'deleted') continue;
+      final timeDeep = b.timeBlock == 'deep';
+      if ((b.kind != 'deepwork' && !timeDeep) || b.status == 'deleted') continue;
       final p = b.startTime.split(':');
       final startMin = (int.tryParse(p[0]) ?? 0) * 60 + (p.length > 1 ? int.tryParse(p[1]) ?? 0 : 0);
       final from = DateTime(day.year, day.month, day.day).add(Duration(minutes: startMin));
       final to = from.add(Duration(minutes: b.durationMin));
+      if (timeDeep) {
+        // Bloc de temps Deep work : tous les chronos terminés du créneau, cumulés.
+        var sum = 0;
+        DateTime? last;
+        for (final s in sessions) {
+          final end = s.endAt;
+          if (s.deleted || end == null) continue;
+          final a = s.startAt.isAfter(from) ? s.startAt : from;
+          final z = end.isBefore(to) ? end : to;
+          final m = z.difference(a).inMinutes;
+          if (m <= 0) continue;
+          sum += m;
+          if (last == null || z.isAfter(last)) last = z;
+        }
+        if (sum >= minMin && last != null) out.add(last);
+        continue;
+      }
       DateTime? reached;
       for (final s in sessions) {
         final end = s.endAt;

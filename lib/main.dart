@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:productivitwo_v1/utils/interventions.dart';
 import 'package:productivitwo_v1/utils/parole.dart';
 import 'package:productivitwo_v1/widgets/focused_action_create.dart' show showNewFocusedAction;
 import 'package:productivitwo_v1/widgets/deep_work_sheet.dart' show showDeepWorkSheet;
@@ -2970,11 +2971,39 @@ class _AppRootState extends State<AppRoot>
   /// [goToNow] = false : lancement depuis la carte MAINTENANT d'Aujourd'hui,
   /// on reste sur l'onglet.
   /// Bloc de TEMPS (Deep work · Petites choses · Tampon) : rien n'est attribué
-  /// au bloc, on choisit au moment de le lancer. Lot 1 : le chrono, sur
-  /// l'activité choisie ; le bloc se coche par le temps tenu (60 %).
+  /// au bloc. Au lancement, « Sur quoi tu pars ? » = la page focus en mode
+  /// bloc sur une file calculée MAINTENANT (`timeBlockQueue` : parole, séance
+  /// proche, retards, visées, prochaines actions), chaque action avec le
+  /// chrono de son activité. File vide → choix de l'activité du chrono.
   Future<void> _launchTimeBlock(ScheduleBlock block) async {
     final st = _state;
     if (st == null) return;
+    final today = logic.livedToday;
+    final projects = _dashboardProjects;
+    final parole = paroleOfDay(logic.paroles, paroleIndex(projects, st.activeActivities), logic.livedTodayYmd, logic.dayStartMin);
+    final prepIds = <String>{
+      for (final p in projects)
+        for (final i in interventionsOf(p))
+          if (!i.isDone && i.prep != null && i.date.difference(today).inDays >= 0 && i.date.difference(today).inDays <= 7) i.prep!.id,
+    };
+    final queue = timeBlockQueue(
+      projects: projects,
+      activities: st.activeActivities,
+      today: today,
+      paroleIds: parole?.ids.toSet() ?? const {},
+      prepTaskIds: prepIds,
+      small: block.timeBlock == 'small',
+    );
+    if (queue.isNotEmpty && block.timeBlock != 'buffer') {
+      await showBlockFocusScreen(context,
+          logic: logic,
+          block: block,
+          activity: Activity(id: '~time:${block.timeBlock}', domainId: '', name: block.title),
+          queue: queue,
+          ymd: block.docDate ?? logic.livedTodayYmd);
+      return;
+    }
+    if (!mounted) return;
     final id = await showActivityPicker(context,
         activities: st.activeActivities.where((a) => !a.isHabit).toList(),
         domains: st.activeDomains,

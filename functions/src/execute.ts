@@ -3596,6 +3596,7 @@ async function executeScheduleDay(
     skipReason?: string;
     reportReason?: string;
     sessionTemplateId?: string;
+    timeBlock?: string;
   }>,
   opts: { mode?: string; generatedBy?: string } = {}
 ): Promise<string> {
@@ -3625,6 +3626,8 @@ async function executeScheduleDay(
     skipReason: b.skipReason ?? null, // pourquoi l'engagement a sauté (check-in)
     reportReason: b.reportReason ?? null, // raison donnée au moment du report
     sessionTemplateId: b.sessionTemplateId ?? null, // séance (déroulé) → ▶ = player
+    // Bloc de TEMPS (2026-10-31) : "deep" | "small" | "buffer", sans source.
+    ...(b.timeBlock === "deep" || b.timeBlock === "small" || b.timeBlock === "buffer" ? { timeBlock: b.timeBlock } : {}),
   }));
 
   // Remplacer les blocs ne doit pas effacer les faits trackés au niveau du

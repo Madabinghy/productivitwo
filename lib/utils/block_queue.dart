@@ -18,6 +18,10 @@ class QueueItem {
   /// Jour visé (intention) ; `focusedToday` = visée pour la journée du bloc.
   final DateTime? focus;
   final bool focusedToday;
+  /// Bloc de TEMPS : l'activité du chrono de cet élément (action liée, sinon
+  /// projet lié, sinon activité porteuse) et la raison de son rang.
+  final Activity? activity;
+  final String? reason;
   const QueueItem({
     required this.action,
     this.project,
@@ -26,6 +30,8 @@ class QueueItem {
     this.overdue = false,
     this.focus,
     this.focusedToday = false,
+    this.activity,
+    this.reason,
   });
 
   /// Date de travail : jour visé, sinon échéance.
@@ -160,7 +166,7 @@ class BlockOutcome {
 BlockOutcome blockOutcome({
   required ScheduleBlock block,
   required DateTime date,
-  required String activityId,
+  required String? activityId,
   required List<QueueItem> queue,
   required List<Session> sessions,
   required DateTime now,
@@ -170,7 +176,8 @@ BlockOutcome blockOutcome({
   var held = 0;
   final byAction = <String, int>{};
   for (final s in sessions) {
-    if (s.deleted || s.activityId != activityId) continue;
+    // Bloc de temps (activityId null) : tout chrono compte.
+    if (s.deleted || (activityId != null && s.activityId != activityId)) continue;
     final a = s.startAt.isAfter(w.start) ? s.startAt : w.start;
     final b = (s.endAt ?? now).isBefore(end) ? (s.endAt ?? now) : end;
     final m = b.difference(a).inMinutes;
@@ -201,5 +208,96 @@ ScheduleBlock carriedActivityBlock(ScheduleBlock b, String fromYmd) => ScheduleB
       category: b.category,
       activityId: b.activityId,
       domainId: b.domainId,
+      timeBlock: b.timeBlock,
       carriedFromDate: fromYmd,
     );
+
+
+/// File d'un bloc de TEMPS (« Sur quoi tu pars ? », 2026-10-31) : calculée AU
+/// MOMENT du lancement, sur tous les projets vivants et les actions propres.
+/// Rang : la parole du jour, puis la prépa d'une séance proche, puis les
+/// actions en retard, puis visées aujourd'hui, puis à re-viser, puis la
+/// prochaine action de chaque projet. En Petites choses ([small]), les
+/// actions courtes (≤ 20 min) passent devant à rang égal. [max] éléments.
+List<QueueItem> timeBlockQueue({
+  required List<Project> projects,
+  required List<Activity> activities,
+  required DateTime today,
+  Set<String> paroleIds = const {},
+  Set<String> prepTaskIds = const {},
+  bool small = false,
+  int max = 12,
+}) {
+  final d = _day(today);
+  final byId = {for (final a in activities) a.id: a};
+  final seen = <String>{};
+  final ranked = <(int, int, QueueItem)>[];
+  var order = 0;
+  void add(TaskAction a, Project? p, ProjectTask? t, Activity? owner) {
+    if (a.done || !seen.add(a.id)) return;
+    final act = byId[a.linkedActivityId] ?? (p == null ? owner : byId[p.linkedActivityId]);
+    final base = _item(a, p, t, d);
+    final stale = base.focus != null && base.focus!.isBefore(d);
+    final int r;
+    final String reason;
+    if (paroleIds.contains(a.id)) {
+      r = 0;
+      reason = 'PAROLE';
+    } else if (t != null && prepTaskIds.contains(t.id)) {
+      r = 1;
+      reason = 'SÉANCE PROCHE';
+    } else if (base.overdue) {
+      r = 2;
+      reason = 'EN RETARD';
+    } else if (base.focus != null && !base.focus!.isBefore(d) && !base.focus!.isAfter(d)) {
+      r = 3;
+      reason = 'VISÉE AUJOURD’HUI';
+    } else if (stale) {
+      r = 4;
+      reason = 'À RE-VISER';
+    } else {
+      r = 5;
+      reason = 'PROCHAINE ACTION';
+    }
+    final short = small && (a.estimatedMin ?? 45) <= 20 ? 0 : 1;
+    ranked.add((r * 2 + short, order++, QueueItem(
+      action: a, project: p, task: t, due: base.due, overdue: base.overdue, focus: base.focus,
+      focusedToday: base.focusedToday, activity: act, reason: reason)));
+  }
+
+  for (final p in projects) {
+    if (p.status != 'active' || p.paused || isFolderProject(p, projects)) continue;
+    // Les actions de la parole, visées ou en retard de ce projet…
+    for (final t in ganttOrder(p)) {
+      if (t.status == 'done' || t.status == 'skipped' || isUpcomingTask(t, d)) continue;
+      for (final a in t.actions) {
+        if (a.done) continue;
+        final f = focusDateOf(a);
+        final due = effectiveDueDate(a, t);
+        if (paroleIds.contains(a.id) || prepTaskIds.contains(t.id) || (f != null && !f.isAfter(d)) || (due != null && due.isBefore(d))) {
+          add(a, p, t, null);
+        }
+      }
+    }
+    // … puis sa prochaine action.
+    QueueItem? best;
+    for (final t in ganttOrder(p)) {
+      if (t.status == 'done' || t.status == 'skipped' || isUpcomingTask(t, d)) continue;
+      for (final a in t.actions) {
+        if (a.done) continue;
+        final w = workDate(a, t);
+        if (best == null || (w != null && (best.work == null || w.isBefore(best.work!)))) best = _item(a, p, t, d);
+      }
+    }
+    if (best != null) add(best.action, p, best.task, null);
+  }
+  for (final act in activities) {
+    if (act.deleted || act.isHabit) continue;
+    for (final a in act.ownActions) {
+      final f = focusDateOf(a);
+      if (paroleIds.contains(a.id) || (f != null && !f.isAfter(d))) add(a, null, null, act);
+    }
+  }
+  ranked.sort((x, y) => x.$1 != y.$1 ? x.$1.compareTo(y.$1) : x.$2.compareTo(y.$2));
+  return [for (final e in ranked.take(max)) e.$3];
+}
