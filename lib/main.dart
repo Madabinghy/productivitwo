@@ -108,6 +108,7 @@ import 'package:productivitwo_v1/web/assistant_widget.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:productivitwo_v1/widget_service.dart';
+import 'package:productivitwo_v1/widgets/last24h_sheet.dart';
 import 'package:productivitwo_v1/siri_service.dart';
 
 enum _Tab { dashboard, projets, aujourdhui, actions, stats }
@@ -1759,196 +1760,6 @@ Future<bool> openEditSessionSheet(
   }
   return true;
 }
-
-class _Last24hSessionsSheet extends StatefulWidget {
-  final dynamic logic;
-  final FirestoreSync? sync;
-  const _Last24hSessionsSheet({required this.logic, this.sync});
-
-  @override
-  State<_Last24hSessionsSheet> createState() => _Last24hSessionsSheetState();
-}
-
-class _Last24hSessionsSheetState extends State<_Last24hSessionsSheet> {
-  dynamic get logic => widget.logic;
-  FirestoreSync? get sync => widget.sync;
-
-  @override
-  void initState() {
-    super.initState();
-    // Refresh temps réel : toute modification (édition/suppression, chrono en
-    // cours) rafraîchit la liste sans avoir à quitter le widget.
-    logic.rev?.addListener(_onRev);
-  }
-
-  @override
-  void dispose() {
-    logic.rev?.removeListener(_onRev);
-    super.dispose();
-  }
-
-  void _onRev() {
-    if (mounted) setState(() {});
-  }
-
-  void _deleteSession(Session s) {
-    logic.deleteSession(s.id);
-    sync?.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
-    if (mounted) setState(() {});
-  }
-
-  /// Couleur du domaine de l'activité d'une session (null si introuvable).
-  Color? _domainColorFor(Session s) {
-    final acts = (logic.state.activities as List).cast<Activity>();
-    final a = acts.firstWhereOrNull((x) => x.id == s.activityId);
-    if (a == null) return null;
-    return domainColor(
-        a.domainId, (logic.state.activeDomains as List).cast<Domain>());
-  }
-
-  Future<void> _openEditSessionSheet(BuildContext context, dynamic logic, Session s) async {
-    final changed = await openEditSessionSheet(context, logic as AppLogic, s, sync: sync);
-    if (changed && mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final from = now.subtract(const Duration(hours: 24));
-
-    // 1) filtre sessions intersectant les dernières 24h
-    final List<Session> sessions = (logic.state.sessions as List)
-        .cast<Session>()
-        .where((s) => _intersectsWindow(s.startAt, s.endAt, from, now))
-        .toList()
-      ..sort((Session a, Session b) => b.startAt.compareTo(a.startAt));
-
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 8,
-          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.access_time_rounded, color: cs.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Dernières 24h',
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                ),
-                if (sessions.isNotEmpty)
-                  Text(
-                    '${sessions.length} session${sessions.length > 1 ? 's' : ''}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurface.withValues(alpha: .6)),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (sessions.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Text("Aucune session sur les dernières 24h."),
-              )
-            else
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: sessions.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final s = sessions[i];
-                    final actName = _activityName(logic, s.activityId);
-
-                    final end = s.endAt;
-                    final dur = s.duration;
-                    final dColor = _domainColorFor(s) ?? cs.primary;
-
-                    return Dismissible(
-                      key: ValueKey(s.id),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        color: cs.errorContainer,
-                        child: Icon(Icons.delete_outline,
-                            color: cs.onErrorContainer),
-                      ),
-                      onDismissed: (_) => _deleteSession(s),
-                      child: ListTile(
-                        minLeadingWidth: 6,
-                        leading: Container(
-                          width: 4,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: dColor,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        title: Text(
-                          actName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          "${_hm(s.startAt)} → ${end == null ? "en cours" : _hm(end)}  •  ${_fmtDur(dur)}",
-                        ),
-                        onTap: () => _openEditSessionSheet(context, logic, s),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () =>
-                              _openEditSessionSheet(context, logic, s),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  bool _intersectsWindow(
-      DateTime start, DateTime? end, DateTime wStart, DateTime wEnd) {
-    final e = end ?? DateTime.now();
-    // intersection si start < wEnd ET end > wStart
-    return start.isBefore(wEnd) && e.isAfter(wStart);
-  }
-
-  String _activityName(dynamic logic, String activityId) {
-    // Comme ton runningActivity(): fallback Activity si introuvable
-    final a = logic.state.activities.firstWhere(
-      (x) => x.id == activityId,
-      orElse: () => Activity(domainId: '', name: 'Activité', habitTarget: 1),
-    );
-    return (a.name.isEmpty) ? "Activité" : a.name;
-  }
-
-  String _hm(DateTime d) =>
-      "${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}";
-
-  String _fmtDur(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    if (h <= 0) return "${m}m";
-    return "${h}h${m.toString().padLeft(2, '0')}";
-  }
-}
-
 
 class AppRoot extends StatefulWidget {
   const AppRoot({super.key});
@@ -4150,12 +3961,15 @@ class _AppRootState extends State<AppRoot>
     setState(() {});
   }
 
-  void _openLast24hSessionsSheet(BuildContext context, dynamic logic) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _Last24hSessionsSheet(logic: logic, sync: _sync),
+  void _openLast24hSessionsSheet(BuildContext context, AppLogic logic) {
+    showLast24hSheet(
+      context,
+      logic: logic,
+      onDelete: (s) {
+        logic.deleteSession(s.id);
+        _sync.deleteSession(s.id); // hard-delete Firestore — évite le retour au prochain pull
+      },
+      onEdit: (ctx, s) => openEditSessionSheet(ctx, logic, s, sync: _sync),
     );
   }
 
