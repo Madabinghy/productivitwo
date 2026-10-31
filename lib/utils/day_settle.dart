@@ -21,7 +21,7 @@ List<ScheduleBlock> blocksSettledByChrono({
   final out = <ScheduleBlock>[];
   for (final b in blocks) {
     if (b.status != 'pending' || b.noAutoWin) continue;
-    if (b.actionId == null && b.taskId == null && b.activityId == null) continue;
+    if (b.actionId == null && b.taskId == null && b.activityId == null && b.timeBlock == null) continue;
     final start = midnight.add(Duration(minutes: blockStartMin(b)));
     if (!start.isBefore(now)) continue;
     final end = midnight.add(Duration(minutes: blockEndMin(b)));

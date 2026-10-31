@@ -1,3 +1,4 @@
+import 'dart:ui' show Color;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/today_logic.dart' show blockStartMin, blockEndMin;
 import 'package:productivitwo_v1/utils/week_capacity.dart' show DayWindow;
@@ -206,4 +207,53 @@ List<Map<String, int>> spreadWeek(List<WeekWant> wants, List<int> free, {int chu
     }
   }
   return out;
+}
+
+// ── Blocs de temps (2026-10-31, « Planifier du temps, pas des tâches ») ───────
+
+const kTimeBlockLabels = {'deep': 'Deep work', 'small': 'Petites choses', 'buffer': 'Tampon'};
+const kTimeBlockColors = {'deep': Color(0xFF6FC3FF), 'small': Color(0xFFF2C14E), 'buffer': Color(0xFF8FA89A)};
+const _kTimePrefix = '~time:';
+
+/// Clé « activité » d'une envie de bloc de temps (`~time:deep:1`).
+String timeWantId(String kind, int n) => '$_kTimePrefix$kind:$n';
+
+/// Le genre d'un bloc de temps derrière une clé d'envie, sinon null.
+String? timeKindOf(String activityId) => activityId.startsWith(_kTimePrefix) ? activityId.substring(_kTimePrefix.length).split(':').first : null;
+
+/// Les blocs de temps d'une journée pour [budget] minutes : du Deep work
+/// d'abord (2 h, puis 1 h 30), des Petites choses (45 min), un Tampon
+/// (45 min) ; jamais plus de trois Deep work.
+List<PlanWant> timeBlockWants(int budget, {Map<String, String> reasons = const {}}) {
+  final out = <PlanWant>[];
+  var rem = budget;
+  var deep = 0, n = 0;
+  void add(String kind, int min) {
+    n++;
+    out.add(PlanWant(activityId: timeWantId(kind, n), title: kTimeBlockLabels[kind]!, minutes: min, reason: reasons[kind] ?? ''));
+    rem -= min;
+    if (kind == 'deep') deep++;
+  }
+
+  if (rem >= 90) add('deep', rem >= 120 ? 120 : 90);
+  if (rem >= 45) add('small', 45);
+  if (rem >= 135) add('deep', 90);
+  if (rem >= 45) add('buffer', 45);
+  while (rem >= 90 && deep < 3) {
+    add('deep', 90);
+  }
+  return out;
+}
+
+/// Le bloc du programme d'un bloc proposé, bloc de temps compris.
+ScheduleBlock planOrTimeBlockOf(PlannedBlock p) {
+  final kind = timeKindOf(p.want.activityId);
+  if (kind == null) return planBlockOf(p);
+  return ScheduleBlock(
+    startTime: hmOf(p.startMin),
+    durationMin: p.minutes,
+    title: kTimeBlockLabels[kind]!,
+    category: kind == 'deep' ? 'project' : 'personal',
+    timeBlock: kind,
+  );
 }
