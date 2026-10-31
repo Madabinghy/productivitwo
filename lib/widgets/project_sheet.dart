@@ -1,6 +1,8 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:productivitwo_v1/utils/offensive.dart' show openTargets;
+import 'package:productivitwo_v1/widgets/offensive_screen.dart' show showOffensiveScreen;
 import 'package:productivitwo_v1/widgets/activity_picker.dart';
 import 'package:productivitwo_v1/firestore_sync.dart';
 import 'package:productivitwo_v1/models.dart';
@@ -343,6 +345,31 @@ class _ProjectSheetState extends State<_ProjectSheet> {
     return kDomainPalette[idx % kDomainPalette.length];
   }
 
+  /// « Offensive sur ce projet » (2026-10-31) : l'offensive avec ce projet pour front.
+  Widget _offensiveButton() {
+    final logic = widget.logic;
+    final ready = _project.status == 'active' ? openTargets(_project, DateTime.now()).length : 0;
+    if (logic == null || ready == 0) return const SizedBox.shrink();
+    const accent = Color(0xFFFF8A4C);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: OutlinedButton.icon(
+        onPressed: () => showOffensiveScreen(context, logic, projectId: _project.id).then((_) {
+          if (mounted) setState(() {});
+        }),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: accent,
+          side: BorderSide(color: accent.withValues(alpha: .5)),
+          minimumSize: const Size.fromHeight(42),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: const Icon(Icons.north_east_rounded, size: 18),
+        label: Text('Offensive sur ce projet · $ready action${ready > 1 ? 's' : ''} prête${ready > 1 ? 's' : ''}',
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+
   // ── Activité liée : chrono hérité par toutes les actions du projet ────────
 
   Widget _linkedActivityRow(ColorScheme cs) {
@@ -628,6 +655,7 @@ class _ProjectSheetState extends State<_ProjectSheet> {
                     ),
                   const SizedBox(height: 8),
                   _linkedActivityRow(cs),
+                  _offensiveButton(),
                   if (_project.status == 'draft') ...[
                     const SizedBox(height: 12),
                     _DraftPlanBanner(onValidate: _validatePlan),
