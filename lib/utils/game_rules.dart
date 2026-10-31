@@ -108,3 +108,10 @@ const kRuleRecharge = GameRule('La recharge', [
   RuleCard('🚶', 'Pas encore couché ?', 'Le bouton te remet dans ton mode. Si c’est le chrono Sommeil qui tourne, il l’arrête aussi (moins de 5 min = lancé par erreur, retiré).'),
   RuleCard('☀️', 'Au réveil', 'La carte te demande comment tu démarres : Flemme, Normal ou En forme. Sans choix, ton premier geste (+1, chrono) te met en Normal.'),
 ]);
+
+const kRuleParole = GameRule('Parole tenue', [
+  RuleCard('🤝', 'Donner sa parole', 'La veille, au moins 3 actions que tu t’engages à finir le lendemain. Le plus simple : l’étape « Ta parole pour demain » de Planifier demain.'),
+  RuleCard('✅', 'La tenir', 'Toutes faites avant la fin de la journée = une journée de Parole tenue. Le badge compte les journées tenues : un jour raté ne remet rien à zéro.'),
+  RuleCard('➕', 'Ajoutées le jour même', 'Une action visée dans la journée reste utile, mais ne compte pas pour la parole : seule la parole donnée la veille compte.'),
+  RuleCard('↪️', 'Pas possible ?', 'Vise-la un autre jour : elle reste dans la parole d’aujourd’hui et la journée ne compte pas. Tes journées déjà gagnées restent acquises.'),
+]);

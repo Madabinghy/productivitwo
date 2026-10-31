@@ -1,3 +1,4 @@
+import 'package:productivitwo_v1/utils/parole.dart' show ParoleDay, kParoleMin;
 import 'package:productivitwo_v1/models.dart';
 import 'package:productivitwo_v1/utils/actions_logic.dart' show isFocusedOn, shortDateFr;
 import 'package:productivitwo_v1/utils/badge_today.dart' show TodayFacts;
@@ -152,7 +153,7 @@ List<BadgeState> nearBadges(BadgeDeck deck) {
 }
 
 /// ACTIONS : visées aujourd'hui, faites, la première ouverte en tête.
-DashTile? actionsTile({required List<Project> projects, required List<Activity> activities, required DateTime today}) {
+DashTile? actionsTile({required List<Project> projects, required List<Activity> activities, required DateTime today, ParoleDay? parole}) {
   final focused = <TaskAction>[];
   for (final p in projects) {
     if (p.status != 'active' || p.paused) continue;
@@ -163,6 +164,35 @@ DashTile? actionsTile({required List<Project> projects, required List<Activity> 
   }
   for (final a in activities) {
     focused.addAll(a.ownActions.where((x) => isFocusedOn(x, today) || (x.done && _sameDay(x.focusDate, today))));
+  }
+  // Parole tenue : la tuile parle de la parole du jour quand elle existe (≥ 3).
+  if (parole != null && parole.ids.length >= kParoleMin) {
+    final byId = <String, TaskAction>{};
+    for (final p in projects) {
+      for (final t in p.tasks) {
+        for (final a in t.actions) {
+          byId[a.id] = a;
+        }
+      }
+    }
+    for (final act in activities) {
+      for (final a in act.ownActions) {
+        byId[a.id] = a;
+      }
+    }
+    final items = [for (final id in parole.ids) byId[id]];
+    final kept = items.where((a) => a != null && a.done).length;
+    final left = items.where((a) => a != null && !a.done).toList();
+    final extra = focused.where((a) => !parole.ids.contains(a.id)).length;
+    return DashTile(
+      label: 'PAROLE',
+      badge: '☀ ${focused.length}',
+      value: '$kept / ${items.length} tenue',
+      mini: [for (final a in items) a?.done == true ? TileMark.on : TileMark.off],
+      sub: left.isEmpty
+          ? 'parole tenue${extra > 0 ? ' · +$extra hors parole' : ''}'
+          : '${left.length == 1 ? 'la dernière' : 'encore ${left.length}'} · ${left.first!.title}',
+    );
   }
   if (focused.isEmpty) return null;
   final done = focused.where((a) => a.done).length;
