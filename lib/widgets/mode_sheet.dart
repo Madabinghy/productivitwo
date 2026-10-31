@@ -55,6 +55,9 @@ class _ModeSheetBody extends StatefulWidget {
 
 class _ModeSheetBodyState extends State<_ModeSheetBody> {
   List<DailySchedule>? _schedules;
+  /// Mode touché, pas encore choisi (retour user 2026-10-31 : un tap ne change
+  /// pas le mode à l'insu de l'utilisateur, il explique d'abord).
+  DayMode? _preview;
 
   @override
   void initState() {
@@ -137,28 +140,31 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
           InfoDot(kRuleModes),
         ]),
         const SizedBox(height: 2),
-        Text('Un tap. L’app adapte ce qu’elle te propose, et ta semaine se dessine plus bas.', style: TextStyle(fontSize: 12.5, color: text3)),
+        Text('Touche un mode pour voir ce qu’il change. Ta semaine se dessine plus bas.', style: TextStyle(fontSize: 12.5, color: text3)),
         if (rechargeSince != null) ...[
           const SizedBox(height: 12),
           RechargeBanner(since: rechargeSince, now: now),
         ],
         const SizedBox(height: 12),
-        // Les trois modes côte à côte (retour user : « trois choses qui vont ensemble »),
-        // puis ce que l'app propose dans le mode choisi.
+        // Les trois modes côte à côte (retour user : « trois choses qui vont ensemble ») ;
+        // un tap explique le mode, le changement se confirme dessous.
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final m in DayMode.values) ...[
             if (m != DayMode.low) const SizedBox(width: 8),
             Expanded(
-              child: _modeCard(cs, dark, m, selected: rechargeSince == null && m == cur, since: m == cur ? _sinceLabel(marks, now) : null, onTap: () {
-                if (m != cur || rechargeSince != null) logic.setMode(m);
-              }),
+              child: _modeCard(cs, dark, m,
+                  selected: rechargeSince == null && m == cur,
+                  previewed: _preview == m,
+                  since: m == cur ? _sinceLabel(marks, now) : null,
+                  onTap: () => setState(() => _preview = _preview == m ? null : m)),
             ),
           ],
         ]),
-        if (rechargeSince == null) ...[
-          const SizedBox(height: 8),
+        const SizedBox(height: 8),
+        if (_preview != null)
+          _modeExplainCard(cs, dark, _preview!, current: rechargeSince == null && _preview == cur, since: _sinceLabel(marks, now))
+        else if (rechargeSince == null)
           Text(_modePromise[cur]!, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: text3)),
-        ],
         title('CETTE SEMAINE', right: wm.count == 0 ? 'rien de dit' : 'dit ${saidDays(week)} j sur 7${_rollingLabel(days60)}'),
         ..._weekBands(cs, dark, marks, week, now),
         title('30 DERNIERS JOURS', right: _schedules == null ? 'chargement…' : 'touche un jour'),
@@ -380,13 +386,63 @@ class _ModeSheetBodyState extends State<_ModeSheetBody> {
     return 'depuis ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
+  static const _modeExplain = {
+    DayMode.low: 'Pas l’énergie ? Pas grave. L’app te propose de petits démarrages : « 10 min, malgré tout » sur un bloc, '
+        'une guérilla de coups de 5 min. Démarrer et tenir 10 min, cocher une action, finir une routine : chaque geste '
+        'compte comme une victoire sur la flemme.',
+    DayMode.normal: 'Le programme tel qu’il est, une chose après l’autre. C’est le mode de chaque matin.',
+    DayMode.high: 'De l’énergie à revendre ? L’app te pousse vers les gros morceaux : une offensive sur un projet, '
+        'un deep work de 90 min.',
+  };
+
+  /// Ce que fait le mode touché, et le bouton pour y passer (rien ne change
+  /// sans ce bouton).
+  Widget _modeExplainCard(ColorScheme cs, bool dark, DayMode m, {required bool current, String? since}) {
+    final c = modeChipColor(m, dark: dark);
+    final label = kModeLabels[m]!;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(color: c.withValues(alpha: .08), borderRadius: BorderRadius.circular(14), border: Border.all(color: c.withValues(alpha: .35))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(current ? 'Tu es en $label${since == null ? '' : ' $since'}' : 'Passer en $label ?',
+            style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w800, color: c)),
+        const SizedBox(height: 4),
+        Text(_modeExplain[m]!, style: TextStyle(fontSize: 13.5, height: 1.4, color: cs.onSurface.withValues(alpha: .8))),
+        const SizedBox(height: 6),
+        Text('Chaque changement de mode est noté : c’est ce qui trace ton élan plus bas.',
+            style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: .55))),
+        const SizedBox(height: 10),
+        if (current)
+          OutlinedButton(onPressed: () => setState(() => _preview = null), child: const Text('OK'))
+        else
+          Row(children: [
+            TextButton(onPressed: () => setState(() => _preview = null), child: const Text('Pas maintenant')),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: c, foregroundColor: dark ? Colors.black : Colors.white),
+                onPressed: () {
+                  widget.logic.setMode(m);
+                  setState(() => _preview = null);
+                },
+                child: Text('Passer en $label'),
+              ),
+            ),
+          ]),
+      ]),
+    );
+  }
+
   /// « Là, tu es comment ? » (maquette « Ton élan, autrement ») : une grande
   /// carte par mode, avec ce que l'app va proposer.
-  Widget _modeCard(ColorScheme cs, bool dark, DayMode m, {required bool selected, String? since, required VoidCallback onTap}) {
+  Widget _modeCard(ColorScheme cs, bool dark, DayMode m,
+      {required bool selected, bool previewed = false, String? since, required VoidCallback onTap}) {
     final c = modeChipColor(m, dark: dark);
     return Material(
-      color: selected ? c.withValues(alpha: .14) : c.withValues(alpha: .05),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: selected ? c : c.withValues(alpha: .35), width: selected ? 2 : 1.2)),
+      color: selected ? c.withValues(alpha: .14) : c.withValues(alpha: previewed ? .10 : .05),
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: selected || previewed ? c : c.withValues(alpha: .35), width: selected || previewed ? 2 : 1.2)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
