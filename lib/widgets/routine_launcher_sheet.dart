@@ -277,6 +277,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     final linked = _linkedOf(a);
     final hasTimer = (a.timerMin ?? 0) > 0;
     final streak = a.habitFreq == HabitFreq.daily ? logic.habitCurrentStreak(a.id) : 0;
+    final dc = _colorOf(a);
     final meta = <InlineSpan>[];
     void add(String text, {Color? color}) {
       if (meta.isNotEmpty) meta.add(const TextSpan(text: ' · '));
@@ -289,13 +290,13 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       if (t.dayTarget! > 1 || t.dayDone > 1) add('${t.dayDone} / ${t.dayTarget} aujourd\'hui');
       if (!s.reached) {
         final share = s.share;
-        add(share != null ? share.label : momentOf(s.moment).thisOne, color: kRoutineAccent);
+        add(share != null ? share.label : momentOf(s.moment).thisOne, color: dc);
       }
     } else {
       add(t.progressLabel);
-      if (!s.reached && s.moment != kMomentAllDay && s.moment != kMomentAny) add(momentOf(s.moment).thisOne, color: kRoutineAccent);
+      if (!s.reached && s.moment != kMomentAllDay && s.moment != kMomentAny) add(momentOf(s.moment).thisOne, color: dc);
     }
-    if (streak > 0) add('🔥 $streak j', color: kRoutineAccent);
+    if (streak > 0) add('🔥 $streak j', color: dc);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -307,7 +308,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           InkWell(
             customBorder: const CircleBorder(),
             onTap: () => _openCounter(a),
-            child: _ring(cs, s, dismissed: dismissed),
+            child: _ring(cs, s, dc, dismissed: dismissed),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -330,16 +331,16 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           // corriger ou en ajouter sans ouvrir la fiche ni le compteur.
           if (s.reached && !dismissed) ...[
             const SizedBox(width: 6),
-            _miniBtn(cs, Icons.remove_rounded, t.dayDone > 0 ? () => _bump(a, -1) : null),
+            _miniBtn(cs, dc, Icons.remove_rounded, t.dayDone > 0 ? () => _bump(a, -1) : null),
             const SizedBox(width: 6),
-            _miniBtn(cs, Icons.add_rounded, () => _bump(a, 1), accent: true),
+            _miniBtn(cs, dc, Icons.add_rounded, () => _bump(a, 1), accent: true),
           ],
           if (!s.reached && !dismissed && (linked != null || hasTimer)) ...[
             const SizedBox(width: 8),
             Tooltip(
               message: linked != null ? 'Chrono sur « ${linked.name} »' : 'Minuteur ${a.timerMin} min',
               child: Material(
-                color: kRoutineAccent.withValues(alpha: .14),
+                color: dc.withValues(alpha: .14),
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
@@ -347,7 +348,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                   child: SizedBox(
                     width: 38,
                     height: 38,
-                    child: Icon(linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined, size: 20, color: kRoutineAccent),
+                    child: Icon(linked != null ? Icons.play_arrow_rounded : Icons.timer_outlined, size: 20, color: dc),
                   ),
                 ),
               ),
@@ -363,8 +364,11 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
     _changed();
   }
 
-  Widget _miniBtn(ColorScheme cs, IconData icon, VoidCallback? onTap, {bool accent = false}) => Material(
-        color: accent ? kRoutineAccent.withValues(alpha: .14) : cs.onSurface.withValues(alpha: .07),
+  /// Couleur du domaine de la routine (essai 2026-10-31, comme le lanceur d'activités) ; orange sans domaine.
+  Color _colorOf(Activity a) => domainColor(a.domainId, logic.state.activeDomains) ?? kRoutineAccent;
+
+  Widget _miniBtn(ColorScheme cs, Color dc, IconData icon, VoidCallback? onTap, {bool accent = false}) => Material(
+        color: accent ? dc.withValues(alpha: .14) : cs.onSurface.withValues(alpha: .07),
         shape: const CircleBorder(),
         child: InkWell(
           customBorder: const CircleBorder(),
@@ -372,12 +376,13 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
           child: SizedBox(
             width: 36,
             height: 36,
-            child: Icon(icon, size: 19, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? kRoutineAccent : cs.onSurface.withValues(alpha: .7))),
+            child: Icon(icon, size: 19, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? dc : cs.onSurface.withValues(alpha: .7))),
           ),
         ),
       );
 
-  Widget _ring(ColorScheme cs, RoutineSlot s, {required bool dismissed}) {
+  Widget _ring(ColorScheme cs, RoutineSlot s, Color dc, {required bool dismissed}) {
+    final on = ThemeData.estimateBrightnessForColor(dc) == Brightness.dark ? Colors.white : const Color(0xFF0D1A12);
     final t = s.todo;
     final target = t.dayTarget ?? t.weekTarget;
     final count = t.dayTarget != null ? t.dayDone : t.weekDone;
@@ -393,7 +398,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
       height: size,
       child: Stack(alignment: Alignment.center, children: [
         if (s.reached)
-          Container(decoration: const BoxDecoration(color: Color(0xFF4CBF75), shape: BoxShape.circle))
+          Container(decoration: BoxDecoration(color: dc, shape: BoxShape.circle))
         else
           SizedBox(
             width: size,
@@ -402,7 +407,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               value: progress,
               strokeWidth: 4,
               strokeCap: StrokeCap.round,
-              color: kRoutineAccent,
+              color: dc,
               backgroundColor: cs.onSurface.withValues(alpha: .1),
             ),
           ),
@@ -411,12 +416,12 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               style: TextStyle(
                   fontSize: label.length > 3 ? 9.5 : 11,
                   fontWeight: FontWeight.w900,
-                  color: s.reached ? const Color(0xFF0D1A12) : cs.onSurface,
+                  color: s.reached ? on : cs.onSurface,
                   fontFeatures: const [FontFeature.tabularFigures()]))
         else if (s.reached)
-          const Icon(Icons.check_rounded, size: 20, color: Color(0xFF0D1A12))
+          Icon(Icons.check_rounded, size: 20, color: on)
         else
-          Icon(Icons.add_rounded, size: 20, color: dismissed ? cs.onSurface.withValues(alpha: .3) : kRoutineAccent),
+          Icon(Icons.add_rounded, size: 20, color: dismissed ? cs.onSurface.withValues(alpha: .3) : dc),
       ]),
     );
   }
@@ -430,6 +435,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
   Future<void> _openCounter(Activity a) async {
     final linked = _linkedOf(a);
     final domain = logic.state.domains.where((d) => d.id == a.domainId).firstOrNull;
+    final dc = _colorOf(a);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -452,7 +458,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
         }
 
         Widget roundBtn(IconData icon, VoidCallback? onTap, {bool accent = false}) => Material(
-              color: accent ? kRoutineAccent.withValues(alpha: .18) : cs.onSurface.withValues(alpha: .08),
+              color: accent ? dc.withValues(alpha: .18) : cs.onSurface.withValues(alpha: .08),
               shape: const CircleBorder(),
               child: InkWell(
                 customBorder: const CircleBorder(),
@@ -460,7 +466,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
                 child: SizedBox(
                   width: 54,
                   height: 54,
-                  child: Icon(icon, size: 26, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? kRoutineAccent : cs.onSurface.withValues(alpha: .7))),
+                  child: Icon(icon, size: 26, color: onTap == null ? cs.onSurface.withValues(alpha: .2) : (accent ? dc : cs.onSurface.withValues(alpha: .7))),
                 ),
               ),
             );
@@ -503,7 +509,7 @@ class _RoutineLauncherState extends State<RoutineLauncher> {
               if (s?.share case final share? when !(s!.reached))
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(share.label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: kRoutineAccent)),
+                  child: Text(share.label, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: dc)),
                 ),
               const SizedBox(height: 10),
               if (linked != null)

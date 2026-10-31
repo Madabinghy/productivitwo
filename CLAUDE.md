@@ -805,7 +805,7 @@ séries en cours » + barre, recherche ; routines À FAIRE rangées par domaine 
 et « pas aujourd'hui »). Données = `buildRoutineDay` (même état que la vue Routines). Une ligne = anneau (compte, « + » si rien) qui ouvre le
 **compteur** (− compte + au jour ou aux 7 j, part du moment, puis Chrono sur l'activité liée · Minuteur · Mettre au / Retirer du programme ·
 Réglages), nom + UNE ligne d'infos (compte, part du moment « 0 / 10 ce soir » ou moment, « 🔥 n j ») qui ouvre la fiche routine, au plus UN
-lanceur (▶ activité liée, sinon ⏱ minuteur) ; appui long = compteur. Plus de ☆, pastille « Quotidien » ni flammes répétées sur la ligne ; seules les routines FAITES (repli « Faites ») gardent − / + sur la ligne (retour user 2026-10-30 : corriger sans ouvrir la fiche).
+lanceur (▶ activité liée, sinon ⏱ minuteur) ; appui long = compteur. Plus de ☆, pastille « Quotidien » ni flammes répétées sur la ligne ; seules les routines FAITES (repli « Faites ») gardent − / + sur la ligne (retour user 2026-10-30 : corriger sans ouvrir la fiche). **Couleur du domaine** (essai 2026-10-31, comme le lanceur d'activités — retour à l'orange `kRoutineAccent` si ça ne convient pas) : anneau, rond plein « atteinte » et sa coche, « + », infos colorées (moment, part, 🔥), lanceur ▶ / ⏱, − / + des faites et du compteur prennent la couleur du domaine de la routine (`_colorOf`, orange sans domaine) ; la barre globale et « Nouvelle » restent orange.
 
 **Sélecteur d'activité partagé** (2026-10-30, retour user « partout où je choisis une activité ») : `widgets/activity_picker.dart` —
 `groupActivitiesByDomain` (ordre des domaines, domaine préféré en tête, « Sans domaine » à la fin), `ActivityDomainHeader` (pastille de
